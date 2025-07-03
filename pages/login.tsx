@@ -1,42 +1,38 @@
 import { useState } from 'react';
 import { supabase } from '../utils/supabaseClient';
+import { useRouter } from 'next/router';
 
-export default function Signup() {
+export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const router = useRouter();
 
-  const handleSignup = async (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!email || !password) {
-      alert('Please enter both email and password.');
-      return;
-    }
-
-    const { data, error } = await supabase.auth.signUp({
+    const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
     if (error) {
-      console.error('Signup error:', error.message);
-      alert('Signup failed: ' + error.message);
+      alert('Login failed: ' + error.message);
     } else {
-      alert('Signup successful! Please check your email to confirm.');
-      console.log('Signup data:', data);
+      alert('Login successful!');
+      router.push('/dashboard');
     }
   };
 
   return (
     <div style={{ padding: '2rem', maxWidth: '400px', margin: 'auto' }}>
-      <h1>Sign Up</h1>
-      <form onSubmit={handleSignup}>
+      <h1>Login</h1>
+      <form onSubmit={handleLogin}>
         <div style={{ marginBottom: '1rem' }}>
           <input
             type="email"
             placeholder="Email"
             value={email}
-            onChange={e => setEmail(e.target.value)}
+            onChange={(e) => setEmail(e.target.value)}
             required
             style={{ width: '100%', padding: '0.5rem' }}
           />
@@ -46,7 +42,7 @@ export default function Signup() {
             type="password"
             placeholder="Password"
             value={password}
-            onChange={e => setPassword(e.target.value)}
+            onChange={(e) => setPassword(e.target.value)}
             required
             style={{ width: '100%', padding: '0.5rem' }}
           />
@@ -61,7 +57,7 @@ export default function Signup() {
             cursor: 'pointer',
           }}
         >
-          Create Account
+          Log In
         </button>
       </form>
     </div>
