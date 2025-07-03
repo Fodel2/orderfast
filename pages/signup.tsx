@@ -19,11 +19,9 @@ export default function Signup() {
     });
 
     if (error) {
-      console.error('Signup error:', error.message);
       alert('Signup failed: ' + error.message);
     } else {
       alert('Signup successful! Please check your email to confirm.');
-      console.log('Signup data:', data);
     }
   };
 
@@ -36,7 +34,7 @@ export default function Signup() {
             type="email"
             placeholder="Email"
             value={email}
-            onChange={e => setEmail(e.target.value)}
+            onChange={(e) => setEmail(e.target.value)}
             required
             style={{ width: '100%', padding: '0.5rem' }}
           />
@@ -46,10 +44,24 @@ export default function Signup() {
             type="password"
             placeholder="Password"
             value={password}
-            onChange={e => setPassword(e.target.value)}
+            onChange={(e) => setPassword(e.target.value)}
             required
             style={{ width: '100%', padding: '0.5rem' }}
           />
         </div>
         <button
           type="submit"
+          style={{
+            padding: '0.5rem 1rem',
+            backgroundColor: 'black',
+            color: 'white',
+            border: 'none',
+            cursor: 'pointer',
+          }}
+        >
+          Create Account
+        </button>
+      </form>
+    </div>
+  );
+}
