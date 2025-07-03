@@ -7,7 +7,11 @@ export default function Signup() {
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("Submitting signup...");
+
+    if (!email || !password) {
+      alert('Please enter both email and password.');
+      return;
+    }
 
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -15,36 +19,37 @@ export default function Signup() {
     });
 
     if (error) {
-      console.error("Signup error:", error.message);
-      alert("Signup failed: " + error.message);
+      console.error('Signup error:', error.message);
+      alert('Signup failed: ' + error.message);
     } else {
-      console.log("Signup success:", data);
-      alert("Signup successful!");
+      alert('Signup successful! Please check your email to confirm.');
+      console.log('Signup data:', data);
     }
   };
 
   return (
-    <div style={{ padding: '2rem' }}>
-      <h1>Create Account</h1>
+    <div style={{ padding: '2rem', maxWidth: '400px', margin: 'auto' }}>
+      <h1>Sign Up</h1>
       <form onSubmit={handleSignup}>
-        <input
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={e => setEmail(e.target.value)}
-          required
-        />
-        <br /><br />
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={e => setPassword(e.target.value)}
-          required
-        />
-        <br /><br />
-        <button type="submit">Sign Up</button>
-      </form>
-    </div>
-  );
-}
+        <div style={{ marginBottom: '1rem' }}>
+          <input
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            required
+            style={{ width: '100%', padding: '0.5rem' }}
+          />
+        </div>
+        <div style={{ marginBottom: '1rem' }}>
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            required
+            style={{ width: '100%', padding: '0.5rem' }}
+          />
+        </div>
+        <button
+          type="submit"
