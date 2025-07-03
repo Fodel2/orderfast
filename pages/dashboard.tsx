@@ -1,15 +1,61 @@
-import { useSession } from '@supabase/auth-helpers-react';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/router';
+import { supabase } from '../utils/supabaseClient';
 
 export default function Dashboard() {
-  const session = useSession();
+  const [userEmail, setUserEmail] = useState('');
+  const router = useRouter();
 
-  if (!session) return <p className="text-center mt-10">You need to log in.</p>;
+  useEffect(() => {
+    const getUser = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session) {
+        router.push('/login');
+        return;
+      }
+
+      setUserEmail(session.user.email);
+    };
+
+    getUser();
+  }, [router]);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    router.push('/login');
+  };
 
   return (
-    <div className="p-6">
-      <h2 className="text-2xl font-semibold mb-4">Dashboard</h2>
-      <p>Welcome, {session.user.email}</p>
-      <p>This is where you'll manage your menu, orders, and settings.</p>
+    <div style={{ padding: '2rem' }}>
+      <h1>Restaurant Dashboard</h1>
+      <p>Welcome, <strong>{userEmail}</strong></p>
+
+      <button
+        onClick={handleSignOut}
+        style={{
+          marginTop: '1rem',
+          padding: '0.5rem 1rem',
+          backgroundColor: 'black',
+          color: 'white',
+          border: 'none',
+          cursor: 'pointer',
+        }}
+      >
+        Sign Out
+      </button>
+
+      <hr style={{ margin: '2rem 0' }} />
+
+      <h2>Coming Soon:</h2>
+      <ul>
+        <li>🧾 Menu manager</li>
+        <li>📸 Logo uploader</li>
+        <li>📦 Orders</li>
+        <li>🏬 Printer integration</li>
+      </ul>
     </div>
   );
 }
