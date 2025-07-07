@@ -92,7 +92,24 @@ export default function AddItemModal({
         zIndex: 1000,
       }}
     >
-      <div style={{ background: 'white', padding: '2rem', width: '400px' }}>
+      <div style={{ background: 'white', padding: '2rem', width: '400px', position: 'relative' }}>
+        <button
+          type="button"
+          aria-label="Close"
+          onClick={onClose}
+          style={{
+            position: 'absolute',
+            top: '0.5rem',
+            right: '0.5rem',
+            background: 'transparent',
+            border: 'none',
+            fontSize: '1.5rem',
+            lineHeight: '1',
+            cursor: 'pointer',
+          }}
+        >
+          ×
+        </button>
         <h3 style={{ marginTop: 0 }}>Add Item</h3>
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: '1rem' }}>
