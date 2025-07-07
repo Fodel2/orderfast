@@ -58,5 +58,6 @@ export default function MenuBuilder() {
 
   if (!session) return <p>Loading...</p>;
 
-  return (
-    <div style={{
+    return (
+  <div style={{ padding: '2rem' }}>
+
