@@ -15,18 +15,15 @@ export default function MenuBuilder() {
         router.push('/login');
       } else {
         setSession(session);
+        fetchCategories();
       }
     };
+
     getSession();
   }, []);
 
-  useEffect(() => {
-    if (session) {
-      fetchCategories();
-    }
-  }, [session]);
-
   const fetchCategories = async () => {
+    setLoading(true);
     const { data, error } = await supabase
       .from('menu_categories')
       .select('*')
@@ -37,27 +34,46 @@ export default function MenuBuilder() {
     } else {
       setCategories(data);
     }
-
     setLoading(false);
   };
 
   const addCategory = async () => {
-    const name = prompt("Enter category name:");
-    if (name) {
-      const { data, error } = await supabase
-        .from('menu_categories')
-        .insert([{ name, description: '', sort_order: categories.length + 1 }]);
+    const name = prompt('Enter category name:');
+    if (!name) return;
 
-      if (error) {
-        console.error('Error adding category:', error.message);
-      } else {
-        fetchCategories(); // Refresh list
-      }
+    const { error } = await supabase
+      .from('menu_categories')
+      .insert([{ name, description: '', sort_order: categories.length }]);
+
+    if (error) {
+      console.error('Error adding category:', error.message);
+    } else {
+      fetchCategories(); // Refresh after adding
     }
   };
 
-  if (!session) return <p>Loading...</p>;
+  if (!session) return <p>Loading session...</p>;
 
-    return (
-  <div style={{ padding: '2rem' }}>
+  return (
+    <div style={{ padding: '2rem' }}>
+      <h1>Menu Builder</h1>
+      <p>Here you'll manage categories, items, and addons.</p>
 
+      <div style={{ marginBottom: '1rem' }}>
+        <button onClick={addCategory}>+ Add Category</button>
+      </div>
+
+      {loading ? (
+        <p>Loading categories...</p>
+      ) : (
+        <ul>
+          {categories.map((cat) => (
+            <li key={cat.id}>
+              <strong>{cat.name}</strong>: {cat.description}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
