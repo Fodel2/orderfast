@@ -5,6 +5,7 @@ import { supabase } from '../../utils/supabaseClient';
 export default function MenuBuilder() {
   const [session, setSession] = useState(null);
   const [categories, setCategories] = useState<any[]>([]);
+  const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
@@ -15,41 +16,34 @@ export default function MenuBuilder() {
         router.push('/login');
       } else {
         setSession(session);
-        fetchCategories();
+        fetchData();
       }
     };
 
     getSession();
   }, []);
 
-  const fetchCategories = async () => {
+  const fetchData = async () => {
     setLoading(true);
-    const { data, error } = await supabase
+
+    const { data: categoriesData, error: catError } = await supabase
       .from('menu_categories')
       .select('*')
       .order('sort_order', { ascending: true });
 
-    if (error) {
-      console.error('Error fetching categories:', error.message);
+    const { data: itemsData, error: itemsError } = await supabase
+      .from('menu_items')
+      .select('*')
+      .order('name', { ascending: true });
+
+    if (catError || itemsError) {
+      console.error('Error fetching data:', catError || itemsError);
     } else {
-      setCategories(data);
+      setCategories(categoriesData);
+      setItems(itemsData);
     }
+
     setLoading(false);
-  };
-
-  const addCategory = async () => {
-    const name = prompt('Enter category name:');
-    if (!name) return;
-
-    const { error } = await supabase
-      .from('menu_categories')
-      .insert([{ name, description: '', sort_order: categories.length }]);
-
-    if (error) {
-      console.error('Error adding category:', error.message);
-    } else {
-      fetchCategories(); // Refresh after adding
-    }
   };
 
   if (!session) return <p>Loading session...</p>;
@@ -57,22 +51,29 @@ export default function MenuBuilder() {
   return (
     <div style={{ padding: '2rem' }}>
       <h1>Menu Builder</h1>
-      <p>Here you'll manage categories, items, and addons.</p>
-
-      <div style={{ marginBottom: '1rem' }}>
-        <button onClick={addCategory}>+ Add Category</button>
-      </div>
+      <p>Manage categories and items here.</p>
 
       {loading ? (
-        <p>Loading categories...</p>
+        <p>Loading...</p>
       ) : (
-        <ul>
+        <div>
           {categories.map((cat) => (
-            <li key={cat.id}>
-              <strong>{cat.name}</strong>: {cat.description}
-            </li>
+            <div key={cat.id} style={{ marginBottom: '2rem' }}>
+              <h2>{cat.name}</h2>
+              <p>{cat.description}</p>
+              <ul>
+                {items
+                  .filter(item => item.category_id === cat.id)
+                  .map(item => (
+                    <li key={item.id}>
+                      <strong>{item.name}</strong> – ${item.price.toFixed(2)}<br />
+                      <small>{item.description}</small>
+                    </li>
+                  ))}
+              </ul>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
     </div>
   );
