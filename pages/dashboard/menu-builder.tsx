@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../../utils/supabaseClient';
+import AddItemModal from '../../components/AddItemModal';
 
 export default function MenuBuilder() {
   const [session, setSession] = useState(null);
   const [categories, setCategories] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [defaultCategoryId, setDefaultCategoryId] = useState<number | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -61,10 +64,19 @@ export default function MenuBuilder() {
             <div key={cat.id} style={{ marginBottom: '2rem' }}>
               <h2>{cat.name}</h2>
               <p>{cat.description}</p>
+              <button
+                onClick={() => {
+                  setDefaultCategoryId(cat.id);
+                  setShowAddModal(true);
+                }}
+                style={{ marginBottom: '1rem' }}
+              >
+                Add Item
+              </button>
               <ul>
                 {items
-                  .filter(item => item.category_id === cat.id)
-                  .map(item => (
+                  .filter((item) => item.category_id === cat.id)
+                  .map((item) => (
                     <li key={item.id}>
                       <strong>{item.name}</strong> – ${item.price.toFixed(2)}<br />
                       <small>{item.description}</small>
@@ -74,6 +86,14 @@ export default function MenuBuilder() {
             </div>
           ))}
         </div>
+      )}
+      {showAddModal && (
+        <AddItemModal
+          categories={categories}
+          defaultCategoryId={defaultCategoryId || undefined}
+          onClose={() => setShowAddModal(false)}
+          onCreated={fetchData}
+        />
       )}
     </div>
   );
