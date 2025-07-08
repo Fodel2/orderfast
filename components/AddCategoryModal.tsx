@@ -56,6 +56,7 @@ export default function AddCategoryModal({ onClose, onCreated, category, sortOrd
         justifyContent: 'center',
         alignItems: 'center',
         padding: '1rem',
+        // Keep the overlay locked vertically with no horizontal scroll
         overflowX: 'hidden',
         overflowY: 'auto',
         zIndex: 1000,
@@ -66,7 +67,8 @@ export default function AddCategoryModal({ onClose, onCreated, category, sortOrd
           background: 'white',
           padding: '2rem',
           width: '100%',
-          maxWidth: '500px',
+          // Cap width to the viewport so content never forces horizontal scroll
+          maxWidth: 'min(500px, 100vw)',
           position: 'relative',
           overflowX: 'hidden',
           boxSizing: 'border-box',
