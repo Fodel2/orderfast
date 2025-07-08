@@ -347,16 +347,47 @@ export default function AddItemModal({
           </div>
           {/* Image upload field */}
           <div style={{ marginBottom: '1rem' }}>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => {
-                const file = e.target.files?.[0] || null;
-                setImageFile(file);
-                setImagePreview(file ? URL.createObjectURL(file) : null);
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                marginBottom: '0.5rem',
               }}
-              style={{ width: '100%', boxSizing: 'border-box' }}
-            />
+            >
+              <label
+                htmlFor="item-image-input"
+                style={{
+                  border: '1px solid #ccc',
+                  padding: '0.5rem',
+                  cursor: 'pointer',
+                }}
+              >
+                Select image
+              </label>
+              <input
+                id="item-image-input"
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  setImageFile(file);
+                  setImagePreview(file ? URL.createObjectURL(file) : null);
+                }}
+                style={{ display: 'none' }}
+              />
+              {imagePreview && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setImageFile(null);
+                    setImagePreview(null);
+                  }}
+                >
+                  Remove image
+                </button>
+              )}
+            </div>
             <small>Images should be square for best results.</small>
             {imagePreview && (
               <div
@@ -375,17 +406,6 @@ export default function AddItemModal({
                   alt="Preview"
                   style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                 />
-                <div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setImageFile(null);
-                      setImagePreview(null);
-                    }}
-                  >
-                    Remove image
-                  </button>
-                </div>
               </div>
             )}
           </div>
