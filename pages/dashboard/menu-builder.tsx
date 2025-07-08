@@ -199,6 +199,7 @@ export default function MenuBuilder() {
                                   setDefaultCategoryId(null);
                                   setShowAddModal(true);
                                 }}
+                                onPointerDown={(e) => e.stopPropagation()}
                                 style={{ cursor: 'grab', padding: '0.25rem 0' }}
                               >
                                 <strong>{item.name}</strong> – ${item.price.toFixed(2)}<br />
