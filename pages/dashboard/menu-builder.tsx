@@ -27,6 +27,7 @@ function SortableWrapper({ id, children }: { id: number; children: React.ReactNo
     transition,
     opacity: isDragging ? 0.6 : undefined,
     background: isDragging ? '#f0f0f0' : undefined,
+    cursor: isDragging ? 'grabbing' : 'grab',
   } as React.CSSProperties;
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
@@ -147,14 +148,18 @@ export default function MenuBuilder() {
             {categories.map((cat) => (
               <SortableWrapper key={cat.id} id={cat.id}>
                 <div style={{ marginBottom: '2rem' }}>
-                  <h2>{cat.name}</h2>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ userSelect: 'none', cursor: 'grab' }}>☰</span>
+                    <h2 style={{ margin: 0 }}>{cat.name}</h2>
+                  </div>
                   <p>{cat.description}</p>
                   <button
                     onClick={() => {
                       setEditCategory(cat);
                       setShowAddCatModal(true);
                     }}
-                    style={{ marginBottom: '0.5rem' }}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    style={{ marginBottom: '0.5rem', cursor: 'pointer' }}
                   >
                     Edit Category
                   </button>
@@ -164,7 +169,8 @@ export default function MenuBuilder() {
                       setEditItem(null);
                       setShowAddModal(true);
                     }}
-                    style={{ marginBottom: '1rem' }}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    style={{ marginBottom: '1rem', cursor: 'pointer' }}
                   >
                     Add New Item
                   </button>
@@ -192,7 +198,7 @@ export default function MenuBuilder() {
                                   setDefaultCategoryId(null);
                                   setShowAddModal(true);
                                 }}
-                                style={{ cursor: 'pointer', padding: '0.25rem 0' }}
+                                style={{ cursor: 'grab', padding: '0.25rem 0' }}
                               >
                                 <strong>{item.name}</strong> – ${item.price.toFixed(2)}<br />
                                 <small>{item.description}</small>
