@@ -67,8 +67,8 @@ export default function AddCategoryModal({ onClose, onCreated, category, sortOrd
           background: 'white',
           padding: '2rem',
           width: '100%',
-          // Cap width to the viewport so content never forces horizontal scroll
-          maxWidth: 'min(500px, 100vw)',
+          maxWidth: '500px',
+          minWidth: 0,
           position: 'relative',
           overflowX: 'hidden',
           boxSizing: 'border-box',
@@ -99,6 +99,8 @@ export default function AddCategoryModal({ onClose, onCreated, category, sortOrd
             flexDirection: 'column',
             maxHeight: '80vh',
             width: '100%',
+            minWidth: 0,
+            boxSizing: 'border-box',
             overflowX: 'hidden',
           }}
         >
