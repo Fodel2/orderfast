@@ -176,6 +176,7 @@ export default function AddItemModal({
     const categoryId =
       rawCat && typeof rawCat === 'object' ? (rawCat as any).id : rawCat ?? null;
     const itemData = {
+      restaurant_id: restaurantId,
       name,
       description,
       price: parseFloat(price),
