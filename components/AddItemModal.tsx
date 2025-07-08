@@ -32,6 +32,7 @@ export default function AddItemModal({
   const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
 
   const nameInputRef = useRef<HTMLInputElement | null>(null);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
 
   const filteredCategories = useMemo(
     () => categories.filter((c) => c.restaurant_id === restaurantId),
@@ -242,6 +243,12 @@ export default function AddItemModal({
 
   return (
     <div
+      ref={overlayRef}
+      onClick={(e) => {
+        if (e.target === overlayRef.current) {
+          onClose();
+        }
+      }}
       style={{
         position: 'fixed',
         top: 0,
@@ -260,6 +267,7 @@ export default function AddItemModal({
       }}
     >
       <div
+        onClick={(e) => e.stopPropagation()}
         style={{
           background: 'white',
           padding: '2rem',
