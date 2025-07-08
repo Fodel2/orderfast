@@ -39,39 +39,51 @@ export default function AddItemModal({
     }).format(num);
   }, [price]);
 
-  // If an existing item is provided, pre-fill all fields for editing
+  // Pre-fill or reset fields whenever the modal is opened
   useEffect(() => {
-    const loadItemCategories = async (itemId: number) => {
-      const { data } = await supabase
-        .from('menu_item_categories')
-        .select('category_id')
-        .eq('item_id', itemId);
-      if (data) {
-        setSelectedCategories(data.map((d) => d.category_id));
+    const resetFields = async () => {
+      if (item) {
+        setName(item.name || '');
+        setDescription(item.description || '');
+        setPrice(item.price ? String(item.price) : '');
+        setIs18Plus(!!item.is_18_plus);
+        setVegan(!!item.vegan);
+        setVegetarian(!!item.vegetarian);
+        setImageFile(null);
+        setImagePreview(item.image_url || null);
+
+        // Load categories linked to this item. If none exist in the
+        // pivot table, fall back to the item's category_id field so the
+        // form validation succeeds.
+        const { data } = await supabase
+          .from('menu_item_categories')
+          .select('category_id')
+          .eq('item_id', item.id);
+        if (data && data.length) {
+          setSelectedCategories(data.map((d) => d.category_id));
+        } else if (item.category_id) {
+          setSelectedCategories([item.category_id]);
+        } else {
+          setSelectedCategories([]);
+        }
+      } else {
+        // Creating a new item
+        setName('');
+        setDescription('');
+        setPrice('');
+        setIs18Plus(false);
+        setVegan(false);
+        setVegetarian(false);
+        setImageFile(null);
+        setImagePreview(null);
+        setSelectedCategories(
+          defaultCategoryId ? [defaultCategoryId] : []
+        );
       }
     };
 
-    if (item) {
-      setName(item.name || '');
-      setDescription(item.description || '');
-      setPrice(item.price ? String(item.price) : '');
-      setIs18Plus(!!item.is_18_plus);
-      setVegan(!!item.vegan);
-      setVegetarian(!!item.vegetarian);
-      if (item.image_url) {
-        setImagePreview(item.image_url);
-      }
-      // Fetch categories linked to this item
-      loadItemCategories(item.id);
-    }
-  }, [item]);
-
-  // If creating a new item and a default category is provided, preselect it
-  useEffect(() => {
-    if (!item && defaultCategoryId) {
-      setSelectedCategories([defaultCategoryId]);
-    }
-  }, [defaultCategoryId, item]);
+    resetFields();
+  }, [item, defaultCategoryId]);
 
   useEffect(() => {
     nameInputRef.current?.focus();
@@ -138,6 +150,7 @@ export default function AddItemModal({
             vegan,
             vegetarian,
             image_url: uploadedUrl,
+            category_id: selectedCategories[0] || null,
           })
           .eq('id', item.id)
           .select()
@@ -153,6 +166,7 @@ export default function AddItemModal({
               vegan,
               vegetarian,
               image_url: uploadedUrl,
+              category_id: selectedCategories[0] || null,
             },
           ])
           .select()
