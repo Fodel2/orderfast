@@ -1,5 +1,41 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
+import Cropper from 'react-easy-crop';
+import type { Area } from 'react-easy-crop';
 import { supabase } from '../utils/supabaseClient';
+
+const PREVIEW_SIZE = 256;
+
+async function getCroppedImg(imageSrc: string, pixelCrop: Area) {
+  const image = new Image();
+  image.src = imageSrc;
+  await new Promise((resolve) => {
+    image.onload = resolve;
+  });
+  const canvas = document.createElement('canvas');
+  canvas.width = PREVIEW_SIZE;
+  canvas.height = PREVIEW_SIZE;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  ctx.drawImage(
+    image,
+    pixelCrop.x,
+    pixelCrop.y,
+    pixelCrop.width,
+    pixelCrop.height,
+    0,
+    0,
+    PREVIEW_SIZE,
+    PREVIEW_SIZE
+  );
+  return new Promise<{ file: File; url: string } | null>((resolve) => {
+    canvas.toBlob((blob) => {
+      if (!blob) return resolve(null);
+      const file = new File([blob], 'image.jpg', { type: blob.type });
+      const url = URL.createObjectURL(blob);
+      resolve({ file, url });
+    }, 'image/jpeg');
+  });
+}
 
 interface AddItemModalProps {
   categories: any[];
@@ -29,6 +65,11 @@ export default function AddItemModal({
   const [selectedCategories, setSelectedCategories] = useState<number[]>([]);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [rawImage, setRawImage] = useState<string | null>(null);
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
+  const [showCropper, setShowCropper] = useState(false);
   const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
 
   const nameInputRef = useRef<HTMLInputElement | null>(null);
@@ -60,6 +101,8 @@ export default function AddItemModal({
         setIsVegetarian(!!item.is_vegetarian);
         setImageFile(null);
         setImagePreview(item.image_url || null);
+        setRawImage(null);
+        setShowCropper(false);
 
         // Load categories linked to this item. If none exist in the
         // pivot table, fall back to the item's category_id field so the
@@ -98,6 +141,8 @@ export default function AddItemModal({
         setIsVegetarian(false);
         setImageFile(null);
         setImagePreview(null);
+        setRawImage(null);
+        setShowCropper(false);
         setSelectedCategories(
           defaultCategoryId &&
             filteredCategories.some((c) => c.id === defaultCategoryId)
@@ -127,12 +172,51 @@ export default function AddItemModal({
     return () => document.removeEventListener('mousedown', handleOutside);
   }, [categoryDropdownOpen]);
 
+  useEffect(() => {
+    return () => {
+      if (rawImage) URL.revokeObjectURL(rawImage);
+      if (imagePreview && imagePreview.startsWith('blob:')) {
+        URL.revokeObjectURL(imagePreview);
+      }
+    };
+  }, [rawImage, imagePreview]);
+
   const dropdownRef = useRef<HTMLDivElement | null>(null);
 
   const toggleCategory = (id: number) => {
     setSelectedCategories((prev) =>
       prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]
     );
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    if (file) {
+      const url = URL.createObjectURL(file);
+      setRawImage(url);
+      setShowCropper(true);
+    }
+  };
+
+  const handleCropCancel = () => {
+    setShowCropper(false);
+    if (rawImage) {
+      URL.revokeObjectURL(rawImage);
+    }
+    setRawImage(null);
+  };
+
+  const handleCropSave = async () => {
+    if (!rawImage || !croppedAreaPixels) {
+      handleCropCancel();
+      return;
+    }
+    const result = await getCroppedImg(rawImage, croppedAreaPixels);
+    handleCropCancel();
+    if (result) {
+      setImageFile(result.file);
+      setImagePreview(result.url);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -350,11 +434,7 @@ export default function AddItemModal({
             <input
               type="file"
               accept="image/*"
-              onChange={(e) => {
-                const file = e.target.files?.[0] || null;
-                setImageFile(file);
-                setImagePreview(file ? URL.createObjectURL(file) : null);
-              }}
+              onChange={handleFileChange}
               style={{ width: '100%', boxSizing: 'border-box' }}
             />
             <small>Images should be square for best results.</small>
@@ -531,6 +611,73 @@ export default function AddItemModal({
           </div>
         </form>
       </div>
+      {showCropper && rawImage && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.8)',
+            zIndex: 1100,
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}
+        >
+          <div
+            style={{
+              position: 'relative',
+              width: '90vw',
+              maxWidth: '400px',
+              height: '90vh',
+              maxHeight: '400px',
+            }}
+          >
+            <Cropper
+              image={rawImage}
+              crop={crop}
+              zoom={zoom}
+              aspect={1}
+              onCropChange={setCrop}
+              onZoomChange={setZoom}
+              onCropComplete={(_, areaPixels) => setCroppedAreaPixels(areaPixels)}
+            />
+            <div
+              style={{
+                position: 'absolute',
+                bottom: 0,
+                left: 0,
+                right: 0,
+                padding: '0.5rem',
+                background: 'rgba(0,0,0,0.5)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+              }}
+            >
+              <input
+                type="range"
+                min={1}
+                max={3}
+                step={0.1}
+                value={zoom}
+                onChange={(e) => setZoom(Number(e.target.value))}
+                style={{ width: '80%' }}
+              />
+              <div style={{ marginTop: '0.5rem' }}>
+                <button type="button" onClick={handleCropCancel} style={{ marginRight: '0.5rem' }}>
+                  Cancel
+                </button>
+                <button type="button" onClick={handleCropSave}>
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
