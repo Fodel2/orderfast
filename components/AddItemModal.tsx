@@ -6,6 +6,8 @@ interface AddItemModalProps {
   defaultCategoryId?: number;
   onClose: () => void;
   onCreated: () => void;
+  /** Existing item when editing */
+  item?: any;
 }
 
 export default function AddItemModal({
@@ -13,6 +15,7 @@ export default function AddItemModal({
   defaultCategoryId,
   onClose,
   onCreated,
+  item,
 }: AddItemModalProps) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -21,12 +24,33 @@ export default function AddItemModal({
   const [vegan, setVegan] = useState(false);
   const [vegetarian, setVegetarian] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState<number[]>([]);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
 
+  // If an existing item is provided, pre-fill all fields for editing
   useEffect(() => {
-    if (defaultCategoryId) {
+    if (item) {
+      setName(item.name || '');
+      setDescription(item.description || '');
+      setPrice(item.price ? String(item.price) : '');
+      setIs18Plus(!!item.is_18_plus);
+      setVegan(!!item.vegan);
+      setVegetarian(!!item.vegetarian);
+      if (item.image_url) {
+        setImagePreview(item.image_url);
+      }
+      if (item.category_id) {
+        setSelectedCategories([item.category_id]);
+      }
+    }
+  }, [item]);
+
+  // If creating a new item and a default category is provided, preselect it
+  useEffect(() => {
+    if (!item && defaultCategoryId) {
       setSelectedCategories([defaultCategoryId]);
     }
-  }, [defaultCategoryId]);
+  }, [defaultCategoryId, item]);
 
   const handleSelectChange = (
     e: React.ChangeEvent<HTMLSelectElement>
@@ -39,24 +63,61 @@ export default function AddItemModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    let uploadedUrl = imagePreview;
 
-    const { data, error } = await supabase
-      .from('menu_items')
-      .insert([
-        {
-          name,
-          description,
-          price: parseFloat(price),
-          is_18_plus: is18Plus,
-          vegan,
-          vegetarian,
-        },
-      ])
-      .select()
-      .single();
+    // Upload new image if a file was selected
+    if (imageFile) {
+      const filePath = `${Date.now()}-${imageFile.name}`;
+      const { error: uploadError } = await supabase.storage
+        .from('menu_item_images')
+        .upload(filePath, imageFile);
+
+      if (uploadError) {
+        alert('Failed to upload image: ' + uploadError.message);
+        return;
+      }
+
+      // Retrieve a public URL for the uploaded image
+      const { data: urlData } = supabase.storage
+        .from('menu_item_images')
+        .getPublicUrl(filePath);
+      uploadedUrl = urlData.publicUrl;
+    }
+
+    // Decide whether to insert a new item or update an existing one
+    const { data, error } = await (item
+      ? supabase
+          .from('menu_items')
+          .update({
+            name,
+            description,
+            price: parseFloat(price),
+            is_18_plus: is18Plus,
+            vegan,
+            vegetarian,
+            image_url: uploadedUrl,
+          })
+          .eq('id', item.id)
+          .select()
+          .single()
+      : supabase
+          .from('menu_items')
+          .insert([
+            {
+              name,
+              description,
+              price: parseFloat(price),
+              is_18_plus: is18Plus,
+              vegan,
+              vegetarian,
+              image_url: uploadedUrl,
+            },
+          ])
+          .select()
+          .single());
 
     if (error) {
-      alert('Failed to create item: ' + error.message);
+      alert('Failed to save item: ' + error.message);
       return;
     }
 
@@ -140,6 +201,27 @@ export default function AddItemModal({
               required
               style={{ width: '100%', padding: '0.5rem' }}
             />
+          </div>
+          {/* Image upload field */}
+          <div style={{ marginBottom: '1rem' }}>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0] || null;
+                setImageFile(file);
+                setImagePreview(file ? URL.createObjectURL(file) : null);
+              }}
+            />
+            {imagePreview && (
+              <div style={{ marginTop: '0.5rem' }}>
+                <img
+                  src={imagePreview}
+                  alt="Preview"
+                  style={{ maxWidth: '100%', height: 'auto' }}
+                />
+              </div>
+            )}
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
             <label>
