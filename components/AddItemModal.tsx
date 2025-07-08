@@ -362,18 +362,28 @@ export default function AddItemModal({
               <div
                 style={{
                   marginTop: '0.5rem',
-                  width: '256px',
-                  height: '256px',
+                  width: '40vw',
+                  height: '40vw',
+                  maxWidth: '200px',
+                  maxHeight: '200px',
                   overflow: 'hidden',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
+                  marginLeft: 'auto',
+                  marginRight: 'auto',
+                  borderRadius: '0.5rem',
                 }}
               >
                 <img
                   src={imagePreview}
                   alt="Preview"
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                    borderRadius: '0.5rem',
+                  }}
                 />
                 <div>
                   <button
