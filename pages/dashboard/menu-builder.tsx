@@ -193,6 +193,7 @@ export default function MenuBuilder() {
                           .map((item) => (
                             <SortableWrapper key={item.id} id={item.id}>
                               <li
+                                /* Clicking an existing item opens the modal pre-filled for editing */
                                 onClick={() => {
                                   setEditItem(item);
                                   setDefaultCategoryId(null);

@@ -214,8 +214,8 @@ export default function AddItemModal({
           background: 'white',
           padding: '2rem',
           width: '100%',
-          // Prevent the modal from ever exceeding the viewport width
-          maxWidth: 'min(500px, 100vw)',
+          maxWidth: '500px',
+          minWidth: 0,
           position: 'relative',
           overflowX: 'hidden',
           boxSizing: 'border-box',
@@ -241,7 +241,7 @@ export default function AddItemModal({
         <h3 style={{ marginTop: 0 }}>{item ? 'Edit Item' : 'Add Item'}</h3>
         <form
           onSubmit={handleSubmit}
-          style={{ display: 'flex', flexDirection: 'column', maxHeight: '80vh', width: '100%', overflowX: 'hidden' }}
+          style={{ display: 'flex', flexDirection: 'column', maxHeight: '80vh', width: '100%', minWidth: 0, overflowX: 'hidden', boxSizing: 'border-box' }}
         >
           <div
             style={{
