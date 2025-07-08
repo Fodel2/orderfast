@@ -41,6 +41,16 @@ export default function AddItemModal({
 
   // If an existing item is provided, pre-fill all fields for editing
   useEffect(() => {
+    const loadItemCategories = async (itemId: number) => {
+      const { data } = await supabase
+        .from('menu_item_categories')
+        .select('category_id')
+        .eq('item_id', itemId);
+      if (data) {
+        setSelectedCategories(data.map((d) => d.category_id));
+      }
+    };
+
     if (item) {
       setName(item.name || '');
       setDescription(item.description || '');
@@ -51,9 +61,8 @@ export default function AddItemModal({
       if (item.image_url) {
         setImagePreview(item.image_url);
       }
-      if (item.category_id) {
-        setSelectedCategories([item.category_id]);
-      }
+      // Fetch categories linked to this item
+      loadItemCategories(item.id);
     }
   }, [item]);
 
@@ -154,16 +163,26 @@ export default function AddItemModal({
       return;
     }
 
-    if (data && data.id && selectedCategories.length) {
-      const inserts = selectedCategories.map((catId) => ({
-        item_id: data.id,
-        category_id: catId,
-      }));
-      const { error: catError } = await supabase
-        .from('menu_item_categories')
-        .insert(inserts);
-      if (catError) {
-        alert('Failed to link categories: ' + catError.message);
+    if (data && data.id) {
+      // Remove previous category links when editing
+      if (item) {
+        await supabase
+          .from('menu_item_categories')
+          .delete()
+          .eq('item_id', data.id);
+      }
+
+      if (selectedCategories.length) {
+        const inserts = selectedCategories.map((catId) => ({
+          item_id: data.id,
+          category_id: catId,
+        }));
+        const { error: catError } = await supabase
+          .from('menu_item_categories')
+          .insert(inserts);
+        if (catError) {
+          alert('Failed to link categories: ' + catError.message);
+        }
       }
     }
 
