@@ -138,6 +138,9 @@ export default function AddItemModal({
       uploadedUrl = urlData.publicUrl;
     }
 
+    // Default tasks array if not provided
+    const tasks = item?.tasks ?? [];
+
     // Decide whether to insert a new item or update an existing one
     const { data, error } = await (item
       ? supabase
@@ -151,6 +154,7 @@ export default function AddItemModal({
             vegetarian,
             image_url: uploadedUrl,
             category_id: selectedCategories[0] || null,
+            tasks,
           })
           .eq('id', item.id)
           .select()
@@ -167,6 +171,7 @@ export default function AddItemModal({
               vegetarian,
               image_url: uploadedUrl,
               category_id: selectedCategories[0] || null,
+              tasks,
             },
           ])
           .select()
