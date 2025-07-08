@@ -217,10 +217,12 @@ export default function AddItemModal({
       }
 
       if (selectedCategories.length) {
-        const inserts = selectedCategories.map((catId) => ({
+        const catIds = selectedCategories
+          .map((c) => (typeof c === 'object' ? (c as any).id : c))
+          .filter((id): id is number => typeof id === 'number');
+        const inserts = catIds.map((id) => ({
           item_id: data.id,
-          category_id:
-            catId && typeof catId === 'object' ? (catId as any).id : catId,
+          category_id: id,
         }));
         const { error: catError } = await supabase
           .from('menu_item_categories')
