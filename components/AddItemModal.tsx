@@ -21,8 +21,8 @@ export default function AddItemModal({
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
   const [is18Plus, setIs18Plus] = useState(false);
-  const [vegan, setVegan] = useState(false);
-  const [vegetarian, setVegetarian] = useState(false);
+  const [isVegan, setIsVegan] = useState(false);
+  const [isVegetarian, setIsVegetarian] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState<number[]>([]);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -47,8 +47,8 @@ export default function AddItemModal({
         setDescription(item.description || '');
         setPrice(item.price ? String(item.price) : '');
         setIs18Plus(!!item.is_18_plus);
-        setVegan(!!item.vegan);
-        setVegetarian(!!item.vegetarian);
+        setIsVegan(!!item.is_vegan);
+        setIsVegetarian(!!item.is_vegetarian);
         setImageFile(null);
         setImagePreview(item.image_url || null);
 
@@ -80,8 +80,8 @@ export default function AddItemModal({
         setDescription('');
         setPrice('');
         setIs18Plus(false);
-        setVegan(false);
-        setVegetarian(false);
+        setIsVegan(false);
+        setIsVegetarian(false);
         setImageFile(null);
         setImagePreview(null);
         setSelectedCategories(
@@ -155,8 +155,8 @@ export default function AddItemModal({
       description,
       price: parseFloat(price),
       is_18_plus: is18Plus,
-      vegan,
-      vegetarian,
+      is_vegan: isVegan,
+      is_vegetarian: isVegetarian,
       image_url: uploadedUrl,
       category_id: categoryId,
     };
@@ -357,8 +357,8 @@ export default function AddItemModal({
             <label>
               <input
                 type="checkbox"
-                checked={vegan}
-                onChange={(e) => setVegan(e.target.checked)}
+                checked={isVegan}
+                onChange={(e) => setIsVegan(e.target.checked)}
               />{' '}
               Vegan
             </label>
@@ -367,8 +367,8 @@ export default function AddItemModal({
             <label>
               <input
                 type="checkbox"
-                checked={vegetarian}
-                onChange={(e) => setVegetarian(e.target.checked)}
+                checked={isVegetarian}
+                onChange={(e) => setIsVegetarian(e.target.checked)}
               />{' '}
               Vegetarian
             </label>
