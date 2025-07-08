@@ -146,45 +146,33 @@ export default function AddItemModal({
       uploadedUrl = urlData.publicUrl;
     }
 
-    // Default tasks array if not provided
-    const tasks = item?.tasks ?? [];
-
     // Decide whether to insert a new item or update an existing one
     const rawCat = selectedCategories[0];
     const categoryId =
       rawCat && typeof rawCat === 'object' ? (rawCat as any).id : rawCat ?? null;
+    const itemData = {
+      name,
+      description,
+      price: parseFloat(price),
+      is_18_plus: is18Plus,
+      vegan,
+      vegetarian,
+      image_url: uploadedUrl,
+      category_id: categoryId,
+    };
+
+    console.log('Saving menu item:', itemData);
+
     const { data, error } = await (item
       ? supabase
           .from('menu_items')
-          .update({
-            name,
-            description,
-            price: parseFloat(price),
-            is_18_plus: is18Plus,
-            vegan,
-            vegetarian,
-            image_url: uploadedUrl,
-            category_id: categoryId,
-            tasks,
-          })
+          .update(itemData)
           .eq('id', item.id)
           .select()
           .single()
       : supabase
           .from('menu_items')
-          .insert([
-            {
-              name,
-              description,
-              price: parseFloat(price),
-              is_18_plus: is18Plus,
-              vegan,
-              vegetarian,
-              image_url: uploadedUrl,
-              category_id: categoryId,
-              tasks,
-            },
-          ])
+          .insert([itemData])
           .select()
           .single());
 
