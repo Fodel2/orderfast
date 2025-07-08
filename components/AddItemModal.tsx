@@ -383,6 +383,11 @@ export default function AddItemModal({
                     setImageFile(null);
                     setImagePreview(null);
                   }}
+                  style={{
+                    border: '1px solid #ccc',
+                    padding: '0.5rem',
+                    cursor: 'pointer',
+                  }}
                 >
                   Remove image
                 </button>
