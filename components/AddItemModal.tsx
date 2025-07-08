@@ -60,9 +60,17 @@ export default function AddItemModal({
           .select('category_id')
           .eq('item_id', item.id);
         if (data && data.length) {
-          setSelectedCategories(data.map((d) => d.category_id));
+          setSelectedCategories(
+            data.map((d) =>
+              typeof d.category_id === 'object' ? d.category_id.id : d.category_id
+            )
+          );
         } else if (item.category_id) {
-          setSelectedCategories([item.category_id]);
+          const id =
+            typeof item.category_id === 'object'
+              ? item.category_id.id
+              : item.category_id;
+          setSelectedCategories([id]);
         } else {
           setSelectedCategories([]);
         }
@@ -142,6 +150,9 @@ export default function AddItemModal({
     const tasks = item?.tasks ?? [];
 
     // Decide whether to insert a new item or update an existing one
+    const rawCat = selectedCategories[0];
+    const categoryId =
+      rawCat && typeof rawCat === 'object' ? (rawCat as any).id : rawCat ?? null;
     const { data, error } = await (item
       ? supabase
           .from('menu_items')
@@ -153,7 +164,7 @@ export default function AddItemModal({
             vegan,
             vegetarian,
             image_url: uploadedUrl,
-            category_id: selectedCategories[0] || null,
+            category_id: categoryId,
             tasks,
           })
           .eq('id', item.id)
@@ -170,7 +181,7 @@ export default function AddItemModal({
               vegan,
               vegetarian,
               image_url: uploadedUrl,
-              category_id: selectedCategories[0] || null,
+              category_id: categoryId,
               tasks,
             },
           ])
@@ -194,7 +205,8 @@ export default function AddItemModal({
       if (selectedCategories.length) {
         const inserts = selectedCategories.map((catId) => ({
           item_id: data.id,
-          category_id: catId,
+          category_id:
+            catId && typeof catId === 'object' ? (catId as any).id : catId,
         }));
         const { error: catError } = await supabase
           .from('menu_item_categories')
