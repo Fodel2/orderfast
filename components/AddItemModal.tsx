@@ -203,6 +203,8 @@ export default function AddItemModal({
         justifyContent: 'center',
         alignItems: 'center',
         padding: '1rem',
+        overflowX: 'hidden',
+        overflowY: 'auto',
         zIndex: 1000,
       }}
     >

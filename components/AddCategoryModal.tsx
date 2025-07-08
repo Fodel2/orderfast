@@ -55,6 +55,9 @@ export default function AddCategoryModal({ onClose, onCreated, category, sortOrd
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
+        padding: '1rem',
+        overflowX: 'hidden',
+        overflowY: 'auto',
         zIndex: 1000,
       }}
     >
@@ -89,7 +92,13 @@ export default function AddCategoryModal({ onClose, onCreated, category, sortOrd
         <h3 style={{ marginTop: 0 }}>{category ? 'Edit Category' : 'Add Category'}</h3>
         <form
           onSubmit={handleSubmit}
-          style={{ display: 'flex', flexDirection: 'column', maxHeight: '80vh' }}
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            maxHeight: '80vh',
+            width: '100%',
+            overflowX: 'hidden',
+          }}
         >
           <div style={{ flex: '1 1 auto', overflowY: 'auto', paddingRight: '0.5rem' }}>
             <div style={{ marginBottom: '1rem' }}>
