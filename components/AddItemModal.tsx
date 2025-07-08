@@ -112,7 +112,7 @@ export default function AddItemModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !price || !selectedCategories.length || !(imageFile || imagePreview)) {
+    if (!name || !price || !selectedCategories.length) {
       alert('Please fill out all required fields.');
       return;
     }
@@ -123,7 +123,7 @@ export default function AddItemModal({
     if (imageFile) {
       const filePath = `${Date.now()}-${imageFile.name}`;
       const { error: uploadError } = await supabase.storage
-        .from('menu_item_images')
+        .from('menu-images')
         .upload(filePath, imageFile);
 
       if (uploadError) {
@@ -133,7 +133,7 @@ export default function AddItemModal({
 
       // Retrieve a public URL for the uploaded image
       const { data: urlData } = supabase.storage
-        .from('menu_item_images')
+        .from('menu-images')
         .getPublicUrl(filePath);
       uploadedUrl = urlData.publicUrl;
     }
