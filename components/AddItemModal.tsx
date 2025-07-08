@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { supabase } from '../utils/supabaseClient';
 
 interface AddItemModalProps {
@@ -26,6 +26,18 @@ export default function AddItemModal({
   const [selectedCategories, setSelectedCategories] = useState<number[]>([]);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
+
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
+
+  const formattedPrice = useMemo(() => {
+    const num = parseFloat(price);
+    if (isNaN(num)) return '';
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: 'USD',
+    }).format(num);
+  }, [price]);
 
   // If an existing item is provided, pre-fill all fields for editing
   useEffect(() => {
@@ -52,17 +64,38 @@ export default function AddItemModal({
     }
   }, [defaultCategoryId, item]);
 
-  const handleSelectChange = (
-    e: React.ChangeEvent<HTMLSelectElement>
-  ) => {
-    const values = Array.from(e.target.selectedOptions).map((o) =>
-      parseInt(o.value, 10)
+  useEffect(() => {
+    nameInputRef.current?.focus();
+
+    const handleOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (
+        categoryDropdownOpen &&
+        dropdownRef.current &&
+        !dropdownRef.current.contains(target)
+      ) {
+        setCategoryDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [categoryDropdownOpen]);
+
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+
+  const toggleCategory = (id: number) => {
+    setSelectedCategories((prev) =>
+      prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]
     );
-    setSelectedCategories(values);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!name || !price || !selectedCategories.length || !(imageFile || imagePreview)) {
+      alert('Please fill out all required fields.');
+      return;
+    }
+
     let uploadedUrl = imagePreview;
 
     // Upload new image if a file was selected
@@ -172,17 +205,19 @@ export default function AddItemModal({
           ×
         </button>
         <h3 style={{ marginTop: 0 }}>Add Item</h3>
-        <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: '1rem' }}>
-            <input
-              type="text"
-              placeholder="Name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              style={{ width: '100%', padding: '0.5rem' }}
-            />
-          </div>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', maxHeight: '80vh' }}>
+          <div style={{ flex: '1 1 auto', overflowY: 'auto', paddingRight: '0.5rem' }}>
+            <div style={{ marginBottom: '1rem' }}>
+              <input
+                type="text"
+                placeholder="Name"
+                ref={nameInputRef}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                style={{ width: '100%', padding: '0.5rem' }}
+              />
+            </div>
           <div style={{ marginBottom: '1rem' }}>
             <textarea
               placeholder="Description"
@@ -201,6 +236,11 @@ export default function AddItemModal({
               required
               style={{ width: '100%', padding: '0.5rem' }}
             />
+            {formattedPrice && (
+              <div style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>
+                {formattedPrice}
+              </div>
+            )}
           </div>
           {/* Image upload field */}
           <div style={{ marginBottom: '1rem' }}>
@@ -213,13 +253,25 @@ export default function AddItemModal({
                 setImagePreview(file ? URL.createObjectURL(file) : null);
               }}
             />
+            <small>Images should be square for best results.</small>
             {imagePreview && (
               <div style={{ marginTop: '0.5rem' }}>
                 <img
                   src={imagePreview}
                   alt="Preview"
-                  style={{ maxWidth: '100%', height: 'auto' }}
+                  style={{ height: '100px', objectFit: 'cover' }}
                 />
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setImageFile(null);
+                      setImagePreview(null);
+                    }}
+                  >
+                    Remove image
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -253,21 +305,104 @@ export default function AddItemModal({
               Vegetarian
             </label>
           </div>
-          <div style={{ marginBottom: '1rem' }}>
-            <select
-              multiple
-              value={selectedCategories.map(String)}
-              onChange={handleSelectChange}
-              style={{ width: '100%', padding: '0.5rem' }}
+          <div style={{ marginBottom: '1rem' }} ref={dropdownRef}>
+            <div
+              role="combobox"
+              tabIndex={0}
+              aria-expanded={categoryDropdownOpen}
+              onClick={() => setCategoryDropdownOpen((o) => !o)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setCategoryDropdownOpen((o) => !o);
+                }
+              }}
+              style={{
+                border: '1px solid #ccc',
+                minHeight: '40px',
+                padding: '0.5rem',
+                display: 'flex',
+                flexWrap: 'wrap',
+                cursor: 'pointer',
+              }}
             >
-              {categories.map((cat) => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.name}
-                </option>
-              ))}
-            </select>
+              {selectedCategories.length === 0 && (
+                <span style={{ color: '#888' }}>Select categories...</span>
+              )}
+              {selectedCategories.map((id) => {
+                const cat = categories.find((c) => c.id === id);
+                if (!cat) return null;
+                return (
+                  <span
+                    key={id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      padding: '0 4px',
+                      margin: '0 4px 4px 0',
+                      background: '#eee',
+                      borderRadius: '3px',
+                    }}
+                  >
+                    {cat.name}
+                    <button
+                      type="button"
+                      aria-label={`Remove ${cat.name}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleCategory(id);
+                      }}
+                      style={{
+                        marginLeft: '4px',
+                        border: 'none',
+                        background: 'transparent',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      ×
+                    </button>
+                  </span>
+                );
+              })}
+            </div>
+            {categoryDropdownOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  zIndex: 10,
+                  background: 'white',
+                  border: '1px solid #ccc',
+                  padding: '0.5rem',
+                  maxHeight: '150px',
+                  overflowY: 'auto',
+                  width: '100%',
+                }}
+              >
+                {categories.map((cat) => {
+                  const checked = selectedCategories.includes(cat.id);
+                  return (
+                    <div
+                      key={cat.id}
+                      style={{ padding: '0.25rem 0' }}
+                      onClick={() => toggleCategory(cat.id)}
+                    >
+                      <label style={{ cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          readOnly
+                          style={{ marginRight: '0.5rem' }}
+                        />
+                        {cat.name}
+                      </label>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          </div>
+          <div style={{ position: 'sticky', bottom: 0, background: 'white', paddingTop: '1rem', display: 'flex', justifyContent: 'flex-end' }}>
             <button
               type="button"
               onClick={onClose}
