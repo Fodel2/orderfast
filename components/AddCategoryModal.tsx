@@ -104,7 +104,7 @@ export default function AddCategoryModal({ onClose, onCreated, category, sortOrd
             overflowX: 'hidden',
           }}
         >
-          <div style={{ flex: '1 1 auto', overflowY: 'auto', paddingRight: '0.5rem' }}>
+          <div style={{ flex: '1 1 auto', overflowY: 'auto', paddingRight: '0.5rem', width: '100%', boxSizing: 'border-box' }}>
             <div style={{ marginBottom: '1rem' }}>
               <input
                 type="text"
@@ -112,7 +112,7 @@ export default function AddCategoryModal({ onClose, onCreated, category, sortOrd
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
-                style={{ width: '100%', padding: '0.5rem' }}
+                style={{ width: '100%', padding: '0.5rem', boxSizing: 'border-box' }}
               />
             </div>
             <div style={{ marginBottom: '1rem' }}>
@@ -120,7 +120,7 @@ export default function AddCategoryModal({ onClose, onCreated, category, sortOrd
                 placeholder="Description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                style={{ width: '100%', padding: '0.5rem' }}
+                style={{ width: '100%', padding: '0.5rem', boxSizing: 'border-box' }}
               />
             </div>
           </div>
@@ -132,6 +132,8 @@ export default function AddCategoryModal({ onClose, onCreated, category, sortOrd
               paddingTop: '1rem',
               display: 'flex',
               justifyContent: 'flex-end',
+              width: '100%',
+              boxSizing: 'border-box',
             }}
           >
             <button type="button" onClick={onClose} style={{ marginRight: '0.5rem' }}>
