@@ -203,6 +203,7 @@ export default function AddItemModal({
         justifyContent: 'center',
         alignItems: 'center',
         padding: '1rem',
+        // Disable any side-to-side scrolling of the overlay itself
         overflowX: 'hidden',
         overflowY: 'auto',
         zIndex: 1000,
@@ -213,7 +214,8 @@ export default function AddItemModal({
           background: 'white',
           padding: '2rem',
           width: '100%',
-          maxWidth: '500px',
+          // Prevent the modal from ever exceeding the viewport width
+          maxWidth: 'min(500px, 100vw)',
           position: 'relative',
           overflowX: 'hidden',
           boxSizing: 'border-box',
@@ -295,6 +297,7 @@ export default function AddItemModal({
                 setImageFile(file);
                 setImagePreview(file ? URL.createObjectURL(file) : null);
               }}
+              style={{ width: '100%' }}
             />
             <small>Images should be square for best results.</small>
             {imagePreview && (
@@ -302,7 +305,7 @@ export default function AddItemModal({
                 <img
                   src={imagePreview}
                   alt="Preview"
-                  style={{ height: '100px', objectFit: 'cover' }}
+                  style={{ height: '100px', width: '100%', objectFit: 'cover' }}
                 />
                 <div>
                   <button
