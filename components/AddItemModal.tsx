@@ -431,12 +431,37 @@ export default function AddItemModal({
           </div>
           {/* Image upload field */}
           <div style={{ marginBottom: '1rem' }}>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleFileChange}
-              style={{ width: '100%', boxSizing: 'border-box' }}
-            />
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                marginBottom: '0.5rem',
+                flexWrap: 'wrap',
+              }}
+            >
+              <label htmlFor="image-input" style={{ whiteSpace: 'nowrap' }}>
+                Select Image
+              </label>
+              <input
+                id="image-input"
+                type="file"
+                accept="image/*"
+                onChange={handleFileChange}
+              />
+              {imagePreview && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setImageFile(null);
+                    setImagePreview(null);
+                  }}
+                  style={{ whiteSpace: 'nowrap' }}
+                >
+                  Remove image
+                </button>
+              )}
+            </div>
             <small>Images should be square for best results.</small>
             {imagePreview && (
               <div
@@ -465,17 +490,6 @@ export default function AddItemModal({
                     borderRadius: '0.5rem',
                   }}
                 />
-                <div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setImageFile(null);
-                      setImagePreview(null);
-                    }}
-                  >
-                    Remove image
-                  </button>
-                </div>
               </div>
             )}
           </div>
