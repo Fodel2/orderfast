@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { supabase } from '../utils/supabaseClient';
 
 interface AddItemModalProps {
@@ -6,6 +6,8 @@ interface AddItemModalProps {
   defaultCategoryId?: number;
   onClose: () => void;
   onCreated: () => void;
+  /** Existing item when editing */
+  item?: any;
 }
 
 export default function AddItemModal({
@@ -13,6 +15,7 @@ export default function AddItemModal({
   defaultCategoryId,
   onClose,
   onCreated,
+  item,
 }: AddItemModalProps) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -21,55 +24,165 @@ export default function AddItemModal({
   const [vegan, setVegan] = useState(false);
   const [vegetarian, setVegetarian] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState<number[]>([]);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
 
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
+
+  const formattedPrice = useMemo(() => {
+    const num = parseFloat(price);
+    if (isNaN(num)) return '';
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: 'USD',
+    }).format(num);
+  }, [price]);
+
+  // If an existing item is provided, pre-fill all fields for editing
   useEffect(() => {
-    if (defaultCategoryId) {
+    const loadItemCategories = async (itemId: number) => {
+      const { data } = await supabase
+        .from('menu_item_categories')
+        .select('category_id')
+        .eq('item_id', itemId);
+      if (data) {
+        setSelectedCategories(data.map((d) => d.category_id));
+      }
+    };
+
+    if (item) {
+      setName(item.name || '');
+      setDescription(item.description || '');
+      setPrice(item.price ? String(item.price) : '');
+      setIs18Plus(!!item.is_18_plus);
+      setVegan(!!item.vegan);
+      setVegetarian(!!item.vegetarian);
+      if (item.image_url) {
+        setImagePreview(item.image_url);
+      }
+      // Fetch categories linked to this item
+      loadItemCategories(item.id);
+    }
+  }, [item]);
+
+  // If creating a new item and a default category is provided, preselect it
+  useEffect(() => {
+    if (!item && defaultCategoryId) {
       setSelectedCategories([defaultCategoryId]);
     }
-  }, [defaultCategoryId]);
+  }, [defaultCategoryId, item]);
 
-  const handleSelectChange = (
-    e: React.ChangeEvent<HTMLSelectElement>
-  ) => {
-    const values = Array.from(e.target.selectedOptions).map((o) =>
-      parseInt(o.value, 10)
+  useEffect(() => {
+    nameInputRef.current?.focus();
+
+    const handleOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (
+        categoryDropdownOpen &&
+        dropdownRef.current &&
+        !dropdownRef.current.contains(target)
+      ) {
+        setCategoryDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [categoryDropdownOpen]);
+
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+
+  const toggleCategory = (id: number) => {
+    setSelectedCategories((prev) =>
+      prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]
     );
-    setSelectedCategories(values);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    const { data, error } = await supabase
-      .from('menu_items')
-      .insert([
-        {
-          name,
-          description,
-          price: parseFloat(price),
-          is_18_plus: is18Plus,
-          vegan,
-          vegetarian,
-        },
-      ])
-      .select()
-      .single();
-
-    if (error) {
-      alert('Failed to create item: ' + error.message);
+    if (!name || !price || !selectedCategories.length || !(imageFile || imagePreview)) {
+      alert('Please fill out all required fields.');
       return;
     }
 
-    if (data && data.id && selectedCategories.length) {
-      const inserts = selectedCategories.map((catId) => ({
-        item_id: data.id,
-        category_id: catId,
-      }));
-      const { error: catError } = await supabase
-        .from('menu_item_categories')
-        .insert(inserts);
-      if (catError) {
-        alert('Failed to link categories: ' + catError.message);
+    let uploadedUrl = imagePreview;
+
+    // Upload new image if a file was selected
+    if (imageFile) {
+      const filePath = `${Date.now()}-${imageFile.name}`;
+      const { error: uploadError } = await supabase.storage
+        .from('menu_item_images')
+        .upload(filePath, imageFile);
+
+      if (uploadError) {
+        alert('Failed to upload image: ' + uploadError.message);
+        return;
+      }
+
+      // Retrieve a public URL for the uploaded image
+      const { data: urlData } = supabase.storage
+        .from('menu_item_images')
+        .getPublicUrl(filePath);
+      uploadedUrl = urlData.publicUrl;
+    }
+
+    // Decide whether to insert a new item or update an existing one
+    const { data, error } = await (item
+      ? supabase
+          .from('menu_items')
+          .update({
+            name,
+            description,
+            price: parseFloat(price),
+            is_18_plus: is18Plus,
+            vegan,
+            vegetarian,
+            image_url: uploadedUrl,
+          })
+          .eq('id', item.id)
+          .select()
+          .single()
+      : supabase
+          .from('menu_items')
+          .insert([
+            {
+              name,
+              description,
+              price: parseFloat(price),
+              is_18_plus: is18Plus,
+              vegan,
+              vegetarian,
+              image_url: uploadedUrl,
+            },
+          ])
+          .select()
+          .single());
+
+    if (error) {
+      alert('Failed to save item: ' + error.message);
+      return;
+    }
+
+    if (data && data.id) {
+      // Remove previous category links when editing
+      if (item) {
+        await supabase
+          .from('menu_item_categories')
+          .delete()
+          .eq('item_id', data.id);
+      }
+
+      if (selectedCategories.length) {
+        const inserts = selectedCategories.map((catId) => ({
+          item_id: data.id,
+          category_id: catId,
+        }));
+        const { error: catError } = await supabase
+          .from('menu_item_categories')
+          .insert(inserts);
+        if (catError) {
+          alert('Failed to link categories: ' + catError.message);
+        }
       }
     }
 
@@ -89,10 +202,25 @@ export default function AddItemModal({
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
+        padding: '1rem',
+        // Disable any side-to-side scrolling of the overlay itself
+        overflowX: 'hidden',
+        overflowY: 'auto',
         zIndex: 1000,
       }}
     >
-      <div style={{ background: 'white', padding: '2rem', width: '400px', position: 'relative' }}>
+      <div
+        style={{
+          background: 'white',
+          padding: '2rem',
+          width: '100%',
+          maxWidth: '500px',
+          minWidth: 0,
+          position: 'relative',
+          overflowX: 'hidden',
+          boxSizing: 'border-box',
+        }}
+      >
         <button
           type="button"
           aria-label="Close"
@@ -110,18 +238,31 @@ export default function AddItemModal({
         >
           ×
         </button>
-        <h3 style={{ marginTop: 0 }}>Add Item</h3>
-        <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: '1rem' }}>
-            <input
-              type="text"
-              placeholder="Name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              style={{ width: '100%', padding: '0.5rem' }}
-            />
-          </div>
+        <h3 style={{ marginTop: 0 }}>{item ? 'Edit Item' : 'Add Item'}</h3>
+        <form
+          onSubmit={handleSubmit}
+          style={{ display: 'flex', flexDirection: 'column', maxHeight: '80vh', width: '100%', minWidth: 0, overflowX: 'hidden', boxSizing: 'border-box' }}
+        >
+          <div
+            style={{
+              flex: '1 1 auto',
+              overflowY: 'auto',
+              paddingRight: '0.5rem',
+              width: '100%',
+              boxSizing: 'border-box',
+            }}
+          >
+            <div style={{ marginBottom: '1rem' }}>
+              <input
+                type="text"
+                placeholder="Name"
+                ref={nameInputRef}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                style={{ width: '100%', padding: '0.5rem' }}
+              />
+            </div>
           <div style={{ marginBottom: '1rem' }}>
             <textarea
               placeholder="Description"
@@ -140,6 +281,45 @@ export default function AddItemModal({
               required
               style={{ width: '100%', padding: '0.5rem' }}
             />
+            {formattedPrice && (
+              <div style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>
+                {formattedPrice}
+              </div>
+            )}
+          </div>
+          {/* Image upload field */}
+          <div style={{ marginBottom: '1rem' }}>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0] || null;
+                setImageFile(file);
+                setImagePreview(file ? URL.createObjectURL(file) : null);
+              }}
+              style={{ width: '100%' }}
+            />
+            <small>Images should be square for best results.</small>
+            {imagePreview && (
+              <div style={{ marginTop: '0.5rem' }}>
+                <img
+                  src={imagePreview}
+                  alt="Preview"
+                  style={{ height: '100px', width: '100%', objectFit: 'cover' }}
+                />
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setImageFile(null);
+                      setImagePreview(null);
+                    }}
+                  >
+                    Remove image
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
             <label>
@@ -171,21 +351,104 @@ export default function AddItemModal({
               Vegetarian
             </label>
           </div>
-          <div style={{ marginBottom: '1rem' }}>
-            <select
-              multiple
-              value={selectedCategories.map(String)}
-              onChange={handleSelectChange}
-              style={{ width: '100%', padding: '0.5rem' }}
+          <div style={{ marginBottom: '1rem' }} ref={dropdownRef}>
+            <div
+              role="combobox"
+              tabIndex={0}
+              aria-expanded={categoryDropdownOpen}
+              onClick={() => setCategoryDropdownOpen((o) => !o)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setCategoryDropdownOpen((o) => !o);
+                }
+              }}
+              style={{
+                border: '1px solid #ccc',
+                minHeight: '40px',
+                padding: '0.5rem',
+                display: 'flex',
+                flexWrap: 'wrap',
+                cursor: 'pointer',
+              }}
             >
-              {categories.map((cat) => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.name}
-                </option>
-              ))}
-            </select>
+              {selectedCategories.length === 0 && (
+                <span style={{ color: '#888' }}>Select categories...</span>
+              )}
+              {selectedCategories.map((id) => {
+                const cat = categories.find((c) => c.id === id);
+                if (!cat) return null;
+                return (
+                  <span
+                    key={id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      padding: '0 4px',
+                      margin: '0 4px 4px 0',
+                      background: '#eee',
+                      borderRadius: '3px',
+                    }}
+                  >
+                    {cat.name}
+                    <button
+                      type="button"
+                      aria-label={`Remove ${cat.name}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleCategory(id);
+                      }}
+                      style={{
+                        marginLeft: '4px',
+                        border: 'none',
+                        background: 'transparent',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      ×
+                    </button>
+                  </span>
+                );
+              })}
+            </div>
+            {categoryDropdownOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  zIndex: 10,
+                  background: 'white',
+                  border: '1px solid #ccc',
+                  padding: '0.5rem',
+                  maxHeight: '150px',
+                  overflowY: 'auto',
+                  width: '100%',
+                }}
+              >
+                {categories.map((cat) => {
+                  const checked = selectedCategories.includes(cat.id);
+                  return (
+                    <div
+                      key={cat.id}
+                      style={{ padding: '0.25rem 0' }}
+                      onClick={() => toggleCategory(cat.id)}
+                    >
+                      <label style={{ cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          readOnly
+                          style={{ marginRight: '0.5rem' }}
+                        />
+                        {cat.name}
+                      </label>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          </div>
+          <div style={{ position: 'sticky', bottom: 0, background: 'white', paddingTop: '1rem', display: 'flex', justifyContent: 'flex-end' }}>
             <button
               type="button"
               onClick={onClose}
