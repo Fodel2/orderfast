@@ -48,6 +48,7 @@ export default function MenuBuilder() {
   const [editItem, setEditItem] = useState<any | null>(null);
   const [editCategory, setEditCategory] = useState<any | null>(null);
   const [defaultCategoryId, setDefaultCategoryId] = useState<number | null>(null);
+  const [restaurantId, setRestaurantId] = useState<number | null>(null);
   const router = useRouter();
 
   // Persist new ordering for categories
@@ -88,29 +89,41 @@ export default function MenuBuilder() {
 
   useEffect(() => {
     const getSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       if (!session) {
         router.push('/login');
       } else {
         setSession(session);
-        fetchData();
+        const { data: ru } = await supabase
+          .from('restaurant_users')
+          .select('restaurant_id')
+          .eq('user_id', session.user.id)
+          .maybeSingle();
+        if (ru?.restaurant_id) {
+          setRestaurantId(ru.restaurant_id);
+          fetchData(ru.restaurant_id);
+        }
       }
     };
 
     getSession();
   }, []);
 
-  const fetchData = async () => {
+  const fetchData = async (rid: number) => {
     setLoading(true);
 
     const { data: categoriesData, error: catError } = await supabase
       .from('menu_categories')
       .select('*')
+      .eq('restaurant_id', rid)
       .order('sort_order', { ascending: true });
 
     const { data: itemsData, error: itemsError } = await supabase
       .from('menu_items')
       .select('*')
+      .eq('restaurant_id', rid)
       .order('sort_order', { ascending: true });
 
     if (catError || itemsError) {
@@ -236,13 +249,14 @@ export default function MenuBuilder() {
       {showAddModal && (
         <AddItemModal
           categories={categories}
+          restaurantId={restaurantId!}
           defaultCategoryId={defaultCategoryId || undefined}
           item={editItem || undefined}
           onClose={() => {
             setShowAddModal(false);
             setEditItem(null);
           }}
-          onCreated={fetchData}
+          onCreated={() => restaurantId && fetchData(restaurantId)}
         />
       )}
       {showAddCatModal && (
@@ -253,7 +267,7 @@ export default function MenuBuilder() {
             setShowAddCatModal(false);
             setEditCategory(null);
           }}
-          onCreated={fetchData}
+          onCreated={() => restaurantId && fetchData(restaurantId)}
         />
       )}
     </div>
