@@ -193,9 +193,12 @@ export default function AddItemModal({
         }));
         const { error: catError } = await supabase
           .from('menu_item_categories')
-          .insert(inserts);
+          .upsert(inserts, { onConflict: 'item_id,category_id' });
         if (catError) {
-          alert('Failed to link categories: ' + catError.message);
+          const msg =
+            (catError as any).message ||
+            (typeof catError === 'string' ? catError : 'Unknown error');
+          alert('Failed to link categories: ' + msg);
         }
       }
     }
