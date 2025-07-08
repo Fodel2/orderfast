@@ -17,13 +17,16 @@ import { CSS } from '@dnd-kit/utilities';
 import { useRouter } from 'next/router';
 import { supabase } from '../../utils/supabaseClient';
 import AddItemModal from '../../components/AddItemModal';
+import AddCategoryModal from '../../components/AddCategoryModal';
 
 // Small wrapper component used for dnd-kit sortable items
 function SortableWrapper({ id, children }: { id: number; children: React.ReactNode }) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
+    opacity: isDragging ? 0.6 : undefined,
+    background: isDragging ? '#f0f0f0' : undefined,
   } as React.CSSProperties;
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
@@ -40,7 +43,9 @@ export default function MenuBuilder() {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showAddCatModal, setShowAddCatModal] = useState(false);
   const [editItem, setEditItem] = useState<any | null>(null);
+  const [editCategory, setEditCategory] = useState<any | null>(null);
   const [defaultCategoryId, setDefaultCategoryId] = useState<number | null>(null);
   const router = useRouter();
 
@@ -123,6 +128,16 @@ export default function MenuBuilder() {
     <div style={{ padding: '2rem' }}>
       <h1>Menu Builder</h1>
       <p>Manage categories and items here.</p>
+      <p style={{ color: '#666', fontSize: '0.9rem' }}>Drag categories and items to reorder.</p>
+      <button
+        onClick={() => {
+          setEditCategory(null);
+          setShowAddCatModal(true);
+        }}
+        style={{ margin: '1rem 0' }}
+      >
+        Add New Category
+      </button>
 
       {loading ? (
         <p>Loading...</p>
@@ -136,14 +151,26 @@ export default function MenuBuilder() {
                   <p>{cat.description}</p>
                   <button
                     onClick={() => {
+                      setEditCategory(cat);
+                      setShowAddCatModal(true);
+                    }}
+                    style={{ marginBottom: '0.5rem' }}
+                  >
+                    Edit Category
+                  </button>
+                  <button
+                    onClick={() => {
                       setDefaultCategoryId(cat.id);
                       setEditItem(null);
                       setShowAddModal(true);
                     }}
                     style={{ marginBottom: '1rem' }}
                   >
-                    Add Item
+                    Add New Item
                   </button>
+                  <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.5rem' }}>
+                    Drag items to reorder
+                  </div>
 
                   <DndContext
                     sensors={sensors}
@@ -181,6 +208,23 @@ export default function MenuBuilder() {
           </SortableContext>
         </DndContext>
       )}
+      <div style={{ borderTop: '1px solid #ccc', marginTop: '2rem', paddingTop: '1rem' }}>
+        <h2>Live Preview</h2>
+        {categories.map((cat) => (
+          <div key={cat.id} style={{ marginBottom: '1rem' }}>
+            <h3>{cat.name}</h3>
+            <ul style={{ paddingLeft: '1rem' }}>
+              {items
+                .filter((i) => i.category_id === cat.id)
+                .map((i) => (
+                  <li key={i.id} style={{ marginBottom: '0.25rem' }}>
+                    {i.name} – ${i.price.toFixed(2)}
+                  </li>
+                ))}
+            </ul>
+          </div>
+        ))}
+      </div>
       {showAddModal && (
         <AddItemModal
           categories={categories}
@@ -189,6 +233,17 @@ export default function MenuBuilder() {
           onClose={() => {
             setShowAddModal(false);
             setEditItem(null);
+          }}
+          onCreated={fetchData}
+        />
+      )}
+      {showAddCatModal && (
+        <AddCategoryModal
+          category={editCategory || undefined}
+          sortOrder={categories.length}
+          onClose={() => {
+            setShowAddCatModal(false);
+            setEditCategory(null);
           }}
           onCreated={fetchData}
         />

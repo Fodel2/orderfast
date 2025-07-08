@@ -202,10 +202,21 @@ export default function AddItemModal({
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
+        padding: '1rem',
         zIndex: 1000,
       }}
     >
-      <div style={{ background: 'white', padding: '2rem', width: '400px', position: 'relative' }}>
+      <div
+        style={{
+          background: 'white',
+          padding: '2rem',
+          width: '100%',
+          maxWidth: '500px',
+          position: 'relative',
+          overflowX: 'hidden',
+          boxSizing: 'border-box',
+        }}
+      >
         <button
           type="button"
           aria-label="Close"
@@ -223,9 +234,20 @@ export default function AddItemModal({
         >
           ×
         </button>
-        <h3 style={{ marginTop: 0 }}>Add Item</h3>
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', maxHeight: '80vh' }}>
-          <div style={{ flex: '1 1 auto', overflowY: 'auto', paddingRight: '0.5rem' }}>
+        <h3 style={{ marginTop: 0 }}>{item ? 'Edit Item' : 'Add Item'}</h3>
+        <form
+          onSubmit={handleSubmit}
+          style={{ display: 'flex', flexDirection: 'column', maxHeight: '80vh', width: '100%', overflowX: 'hidden' }}
+        >
+          <div
+            style={{
+              flex: '1 1 auto',
+              overflowY: 'auto',
+              paddingRight: '0.5rem',
+              width: '100%',
+              boxSizing: 'border-box',
+            }}
+          >
             <div style={{ marginBottom: '1rem' }}>
               <input
                 type="text"
