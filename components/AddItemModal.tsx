@@ -3,6 +3,8 @@ import { supabase } from '../utils/supabaseClient';
 
 interface AddItemModalProps {
   categories: any[];
+  /** ID of the restaurant the menu belongs to */
+  restaurantId: number;
   defaultCategoryId?: number;
   onClose: () => void;
   onCreated: () => void;
@@ -12,6 +14,7 @@ interface AddItemModalProps {
 
 export default function AddItemModal({
   categories,
+  restaurantId,
   defaultCategoryId,
   onClose,
   onCreated,
@@ -29,6 +32,11 @@ export default function AddItemModal({
   const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
 
   const nameInputRef = useRef<HTMLInputElement | null>(null);
+
+  const filteredCategories = useMemo(
+    () => categories.filter((c) => c.restaurant_id === restaurantId),
+    [categories, restaurantId]
+  );
 
   const formattedPrice = useMemo(() => {
     const num = parseFloat(price);
@@ -60,17 +68,22 @@ export default function AddItemModal({
           .select('category_id')
           .eq('item_id', item.id);
         if (data && data.length) {
-          setSelectedCategories(
-            data.map((d) =>
-              typeof d.category_id === 'object' ? d.category_id.id : d.category_id
-            )
+          const ids = data.map((d) =>
+            typeof d.category_id === 'object' ? d.category_id.id : d.category_id
           );
+          setSelectedCategories(ids.filter((id) =>
+            filteredCategories.some((c) => c.id === id)
+          ));
         } else if (item.category_id) {
           const id =
             typeof item.category_id === 'object'
               ? item.category_id.id
               : item.category_id;
-          setSelectedCategories([id]);
+          if (filteredCategories.some((c) => c.id === id)) {
+            setSelectedCategories([id]);
+          } else {
+            setSelectedCategories([]);
+          }
         } else {
           setSelectedCategories([]);
         }
@@ -85,13 +98,16 @@ export default function AddItemModal({
         setImageFile(null);
         setImagePreview(null);
         setSelectedCategories(
-          defaultCategoryId ? [defaultCategoryId] : []
+          defaultCategoryId &&
+            filteredCategories.some((c) => c.id === defaultCategoryId)
+            ? [defaultCategoryId]
+            : []
         );
       }
     };
 
     resetFields();
-  }, [item, defaultCategoryId]);
+  }, [item, defaultCategoryId, filteredCategories]);
 
   useEffect(() => {
     nameInputRef.current?.focus();
@@ -122,6 +138,15 @@ export default function AddItemModal({
     e.preventDefault();
     if (!name || !price || !selectedCategories.length) {
       alert('Please fill out all required fields.');
+      return;
+    }
+
+    if (
+      selectedCategories.some(
+        (id) => !filteredCategories.find((c) => c.id === id)
+      )
+    ) {
+      alert('Invalid category selected.');
       return;
     }
 
@@ -400,7 +425,7 @@ export default function AddItemModal({
                 <span style={{ color: '#888' }}>Select categories...</span>
               )}
               {selectedCategories.map((id) => {
-                const cat = categories.find((c) => c.id === id);
+                const cat = filteredCategories.find((c) => c.id === id);
                 if (!cat) return null;
                 return (
                   <span
@@ -449,7 +474,7 @@ export default function AddItemModal({
                   boxSizing: 'border-box',
                 }}
               >
-                {categories.map((cat) => {
+                {filteredCategories.map((cat) => {
                   const checked = selectedCategories.includes(cat.id);
                   return (
                     <div
