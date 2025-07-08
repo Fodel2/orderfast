@@ -260,7 +260,7 @@ export default function AddItemModal({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
-                style={{ width: '100%', padding: '0.5rem' }}
+                style={{ width: '100%', padding: '0.5rem', boxSizing: 'border-box' }}
               />
             </div>
           <div style={{ marginBottom: '1rem' }}>
@@ -268,7 +268,7 @@ export default function AddItemModal({
               placeholder="Description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              style={{ width: '100%', padding: '0.5rem' }}
+              style={{ width: '100%', padding: '0.5rem', boxSizing: 'border-box' }}
             />
           </div>
           <div style={{ marginBottom: '1rem' }}>
@@ -279,7 +279,7 @@ export default function AddItemModal({
               value={price}
               onChange={(e) => setPrice(e.target.value)}
               required
-              style={{ width: '100%', padding: '0.5rem' }}
+              style={{ width: '100%', padding: '0.5rem', boxSizing: 'border-box' }}
             />
             {formattedPrice && (
               <div style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>
@@ -297,7 +297,7 @@ export default function AddItemModal({
                 setImageFile(file);
                 setImagePreview(file ? URL.createObjectURL(file) : null);
               }}
-              style={{ width: '100%' }}
+              style={{ width: '100%', boxSizing: 'border-box' }}
             />
             <small>Images should be square for best results.</small>
             {imagePreview && (
@@ -351,7 +351,7 @@ export default function AddItemModal({
               Vegetarian
             </label>
           </div>
-          <div style={{ marginBottom: '1rem' }} ref={dropdownRef}>
+          <div style={{ marginBottom: '1rem', width: '100%', boxSizing: 'border-box' }} ref={dropdownRef}>
             <div
               role="combobox"
               tabIndex={0}
@@ -370,6 +370,8 @@ export default function AddItemModal({
                 display: 'flex',
                 flexWrap: 'wrap',
                 cursor: 'pointer',
+                width: '100%',
+                boxSizing: 'border-box',
               }}
             >
               {selectedCategories.length === 0 && (
@@ -422,6 +424,7 @@ export default function AddItemModal({
                   maxHeight: '150px',
                   overflowY: 'auto',
                   width: '100%',
+                  boxSizing: 'border-box',
                 }}
               >
                 {categories.map((cat) => {
@@ -437,7 +440,7 @@ export default function AddItemModal({
                           type="checkbox"
                           checked={checked}
                           readOnly
-                          style={{ marginRight: '0.5rem' }}
+                          style={{ marginRight: '0.5rem', boxSizing: 'border-box' }}
                         />
                         {cat.name}
                       </label>
@@ -448,7 +451,7 @@ export default function AddItemModal({
             )}
           </div>
           </div>
-          <div style={{ position: 'sticky', bottom: 0, background: 'white', paddingTop: '1rem', display: 'flex', justifyContent: 'flex-end' }}>
+          <div style={{ position: 'sticky', bottom: 0, background: 'white', paddingTop: '1rem', display: 'flex', justifyContent: 'flex-end', width: '100%', boxSizing: 'border-box' }}>
             <button
               type="button"
               onClick={onClose}
