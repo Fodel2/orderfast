@@ -129,8 +129,8 @@ export default function MenuBuilder() {
     if (catError || itemsError) {
       console.error('Error fetching data:', catError || itemsError);
     } else {
-      setCategories(categoriesData);
-      setItems(itemsData);
+      setCategories(categoriesData || []);
+      setItems(itemsData || []);
     }
 
     setLoading(false);
@@ -155,6 +155,8 @@ export default function MenuBuilder() {
 
       {loading ? (
         <p>Loading...</p>
+      ) : categories.length === 0 ? (
+        <p>No menu categories found. Use "Add New Category" to get started.</p>
       ) : (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleCategoryDragEnd}>
           <SortableContext items={categories.map((c) => c.id)} strategy={verticalListSortingStrategy}>
@@ -263,6 +265,7 @@ export default function MenuBuilder() {
         <AddCategoryModal
           category={editCategory || undefined}
           sortOrder={categories.length}
+          restaurantId={restaurantId!}
           onClose={() => {
             setShowAddCatModal(false);
             setEditCategory(null);

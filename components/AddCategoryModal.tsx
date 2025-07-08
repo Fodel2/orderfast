@@ -8,9 +8,17 @@ interface AddCategoryModalProps {
   category?: any;
   /** number of categories to set sort order for new ones */
   sortOrder?: number;
+  /** restaurant the category belongs to */
+  restaurantId: number;
 }
 
-export default function AddCategoryModal({ onClose, onCreated, category, sortOrder = 0 }: AddCategoryModalProps) {
+export default function AddCategoryModal({
+  onClose,
+  onCreated,
+  category,
+  sortOrder = 0,
+  restaurantId,
+}: AddCategoryModalProps) {
   const [name, setName] = useState(category?.name || '');
   const [description, setDescription] = useState(category?.description || '');
 
@@ -30,7 +38,7 @@ export default function AddCategoryModal({ onClose, onCreated, category, sortOrd
       err = error;
     } else {
       const { error } = await supabase.from('menu_categories').insert([
-        { name, description, sort_order: sortOrder },
+        { name, description, sort_order: sortOrder, restaurant_id: restaurantId },
       ]);
       err = error;
     }
