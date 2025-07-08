@@ -359,11 +359,21 @@ export default function AddItemModal({
             />
             <small>Images should be square for best results.</small>
             {imagePreview && (
-              <div style={{ marginTop: '0.5rem' }}>
+              <div
+                style={{
+                  marginTop: '0.5rem',
+                  width: '256px',
+                  height: '256px',
+                  overflow: 'hidden',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
                 <img
                   src={imagePreview}
                   alt="Preview"
-                  style={{ height: '100px', width: '100%', objectFit: 'cover' }}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                 />
                 <div>
                   <button
