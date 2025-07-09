@@ -53,9 +53,15 @@ export default function AddCategoryModal({
 
   return (
     <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
       className="fixed inset-0 bg-black bg-opacity-40 flex justify-center items-center p-4 overflow-x-hidden overflow-y-auto z-[1000]"
     >
       <div
+        onClick={(e) => e.stopPropagation()}
         style={{
           background: 'white',
           padding: '2rem',
