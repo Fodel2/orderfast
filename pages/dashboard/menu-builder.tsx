@@ -248,19 +248,18 @@ export default function MenuBuilder() {
           </div>
         ))}
       </div>
-      {showAddModal && (
-        <AddItemModal
-          categories={categories}
-          restaurantId={restaurantId!}
-          defaultCategoryId={defaultCategoryId || undefined}
-          item={editItem || undefined}
-          onClose={() => {
-            setShowAddModal(false);
-            setEditItem(null);
-          }}
-          onCreated={() => restaurantId && fetchData(restaurantId)}
-        />
-      )}
+      <AddItemModal
+        categories={categories}
+        restaurantId={restaurantId!}
+        defaultCategoryId={defaultCategoryId || undefined}
+        item={editItem || undefined}
+        isOpen={showAddModal}
+        onClose={() => {
+          setShowAddModal(false);
+          setEditItem(null);
+        }}
+        onCreated={() => restaurantId && fetchData(restaurantId)}
+      />
       {showAddCatModal && (
         <AddCategoryModal
           category={editCategory || undefined}
