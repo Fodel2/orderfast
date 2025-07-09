@@ -6,6 +6,7 @@ interface AddItemModalProps {
 }
 
 export default function AddItemModal({ showModal, onClose }: AddItemModalProps) {
+  const DEBUG_MODAL = true; // temporary debug flag
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -30,6 +31,29 @@ export default function AddItemModal({ showModal, onClose }: AddItemModalProps) 
   };
 
   if (!showModal) return null;
+
+  if (DEBUG_MODAL) {
+    return (
+      <div
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(255,0,0,0.5)',
+          zIndex: 9999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#fff',
+          fontSize: '2rem',
+        }}
+      >
+        TEST MODAL
+      </div>
+    );
+  }
 
   return (
     <div
