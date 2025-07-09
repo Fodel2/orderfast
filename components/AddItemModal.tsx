@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Cropper, { Area } from 'react-easy-crop';
-import { UploadCloud, Trash2 } from 'lucide-react';
+import { CloudArrowUpIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { Trash2 } from 'lucide-react';
 
 interface AddItemModalProps {
   showModal: boolean;
@@ -112,7 +113,7 @@ export default function AddItemModal({ showModal, onClose }: AddItemModalProps) 
           onClick={onClose}
           className="absolute right-2 top-2 text-gray-500 hover:text-gray-700"
         >
-          ×
+          <XMarkIcon className="w-5 h-5" />
         </button>
         <h2 className="text-2xl font-bold mb-6">Edit Item</h2>
         <form className="space-y-4">
@@ -151,7 +152,7 @@ export default function AddItemModal({ showModal, onClose }: AddItemModalProps) 
                   </button>
                 </>
               ) : (
-                <UploadCloud className="w-8 h-8 text-gray-400" />
+                <CloudArrowUpIcon className="w-8 h-8 text-gray-400" />
               )}
             </div>
             <input
