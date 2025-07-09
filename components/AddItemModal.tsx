@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import Cropper, { Area } from 'react-easy-crop';
+import { UploadCloud, Trash2 } from 'lucide-react';
 
 interface AddItemModalProps {
   showModal: boolean;
@@ -11,6 +13,43 @@ export default function AddItemModal({ showModal, onClose }: AddItemModalProps) 
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
+  const [tempImage, setTempImage] = useState<string | null>(null);
+  const [cropping, setCropping] = useState(false);
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const croppedAreaPixels = useRef<Area | null>(null);
+
+  const createImage = (url: string): Promise<HTMLImageElement> => {
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      image.addEventListener('load', () => resolve(image));
+      image.addEventListener('error', (err) => reject(err));
+      image.setAttribute('crossOrigin', 'anonymous');
+      image.src = url;
+    });
+  };
+
+  const getCroppedImg = async (imageSrc: string, pixelCrop: Area) => {
+    const image = await createImage(imageSrc);
+    const canvas = document.createElement('canvas');
+    canvas.width = pixelCrop.width;
+    canvas.height = pixelCrop.height;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.drawImage(
+        image,
+        pixelCrop.x,
+        pixelCrop.y,
+        pixelCrop.width,
+        pixelCrop.height,
+        0,
+        0,
+        pixelCrop.width,
+        pixelCrop.height
+      );
+    }
+    return canvas.toDataURL('image/jpeg');
+  };
 
   useEffect(() => {
     if (showModal) {
@@ -25,7 +64,30 @@ export default function AddItemModal({ showModal, onClose }: AddItemModalProps) 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      setImageUrl(URL.createObjectURL(file));
+      const url = URL.createObjectURL(file);
+      setTempImage(url);
+      setCropping(true);
+    }
+  };
+
+  const handleCropComplete = (_: Area, areaPixels: Area) => {
+    croppedAreaPixels.current = areaPixels;
+  };
+
+  const handleConfirmCrop = async () => {
+    if (tempImage && croppedAreaPixels.current) {
+      const cropped = await getCroppedImg(tempImage, croppedAreaPixels.current);
+      setImageUrl(cropped);
+    }
+    setCropping(false);
+    setTempImage(null);
+  };
+
+  const handleRemoveImage = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setImageUrl(null);
+    if (fileRef.current) {
+      fileRef.current.value = '';
     }
   };
 
@@ -69,17 +131,27 @@ export default function AddItemModal({ showModal, onClose }: AddItemModalProps) 
           />
           <div>
             <div
-              className="w-32 h-32 border border-dashed border-gray-400 rounded flex items-center justify-center cursor-pointer mb-2"
+              className="relative w-32 h-32 border border-dashed border-gray-400 rounded flex items-center justify-center cursor-pointer mb-2 overflow-hidden"
               onClick={() => fileRef.current?.click()}
             >
               {imageUrl ? (
-                <img
-                  src={imageUrl}
-                  alt="Preview"
-                  className="max-w-[200px] max-h-[200px] object-cover rounded-xl mx-auto"
-                />
+                <>
+                  <img
+                    src={imageUrl}
+                    alt="Preview"
+                    className="object-cover w-full h-full"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleRemoveImage}
+                    className="absolute top-1 right-1 bg-white/80 rounded-full p-1 hover:bg-red-100"
+                    aria-label="Remove image"
+                  >
+                    <Trash2 className="w-4 h-4 text-red-600" />
+                  </button>
+                </>
               ) : (
-                <span className="text-gray-500">Upload</span>
+                <UploadCloud className="w-8 h-8 text-gray-400" />
               )}
             </div>
             <input
@@ -104,6 +176,42 @@ export default function AddItemModal({ showModal, onClose }: AddItemModalProps) 
           </div>
         </form>
       </div>
+      {cropping && tempImage && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1100]">
+          <div className="bg-white p-4 rounded-xl">
+            <div className="relative w-64 h-64">
+              <Cropper
+                image={tempImage}
+                crop={crop}
+                zoom={zoom}
+                aspect={1}
+                onCropChange={setCrop}
+                onZoomChange={setZoom}
+                onCropComplete={handleCropComplete}
+              />
+            </div>
+            <div className="flex justify-end space-x-2 mt-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setCropping(false);
+                  setTempImage(null);
+                }}
+                className="px-4 py-2 border border-gray-300 rounded"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmCrop}
+                className="px-4 py-2 bg-[#b91c1c] text-white rounded hover:bg-[#a40f0f]"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
