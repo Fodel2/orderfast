@@ -1,52 +1,35 @@
 import { render, screen } from '@testing-library/react'
 import AddItemModal from '../components/AddItemModal'
 
+// Set up mock env vars
+process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://localhost'
+process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'key'
+
 // Mock supabase client to avoid ESM import issues during tests
-jest.mock('../utils/supabaseClient', () => ({
-  supabase: {
-    from: jest.fn(() => ({
-      select: jest.fn(),
-      update: jest.fn(),
-      insert: jest.fn(),
-      delete: jest.fn(),
-      eq: jest.fn(),
-      single: jest.fn(),
-    })),
-    storage: {
-      from: jest.fn(() => ({
-        upload: jest.fn(),
-        getPublicUrl: jest.fn(() => ({ publicUrl: '' })),
-      })),
-    },
-  },
-}))
+jest.mock('../utils/supabaseClient', () => {
+  const chain = {
+    select: jest.fn(() => chain),
+    eq: jest.fn(() => chain),
+    order: jest.fn(async () => ({ data: [], error: null })),
+    insert: jest.fn(() => chain),
+    update: jest.fn(() => chain),
+    delete: jest.fn(() => chain),
+    single: jest.fn(async () => ({ data: {}, error: null })),
+  };
+  return { supabase: { from: jest.fn(() => chain) } };
+});
 
 describe('AddItemModal', () => {
-  const categories = [
-    { id: 1, name: 'Breakfast' },
-    { id: 2, name: 'Lunch' },
-  ]
-
   it('renders when showModal is true', () => {
     render(
-      <AddItemModal
-        showModal={true}
-        onClose={() => {}}
-        onCreated={() => {}}
-        categories={categories}
-      />
+      <AddItemModal showModal={true} onClose={() => {}} restaurantId={1} />
     )
     expect(screen.getByText('Edit Item')).toBeInTheDocument()
   })
 
   it('does not render when showModal is false', () => {
     const { container } = render(
-      <AddItemModal
-        showModal={false}
-        onClose={() => {}}
-        onCreated={() => {}}
-        categories={categories}
-      />
+      <AddItemModal showModal={false} onClose={() => {}} restaurantId={1} />
     )
     expect(container.firstChild).toBeNull()
   })

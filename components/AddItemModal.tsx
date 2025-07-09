@@ -13,30 +13,28 @@ interface Category {
 interface AddItemModalProps {
   showModal: boolean;
   onClose: () => void;
-  /** list of categories to choose from */
-  categories?: Category[];
-  /** optionally preselect a single category */
+  restaurantId: number;
   defaultCategoryId?: number;
-  /** existing item when editing */
   item?: any;
-  /** callback when an item is created or updated */
-  onCreated?: () => void;
+  onSaved?: () => void;
 }
 
 export default function AddItemModal({
   showModal,
   onClose,
-  categories = [],
+  restaurantId,
   defaultCategoryId,
   item,
-  onCreated,
+  onSaved,
 }: AddItemModalProps) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
-  const [is18Plus, setIs18Plus] = useState(false);
   const [isVegan, setIsVegan] = useState(false);
   const [isVegetarian, setIsVegetarian] = useState(false);
+  const [is18Plus, setIs18Plus] = useState(false);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [selectedCategories, setSelectedCategories] = useState<number[]>([]);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -46,8 +44,8 @@ export default function AddItemModal({
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const croppedAreaPixels = useRef<Area | null>(null);
-  const [selectedCategories, setSelectedCategories] = useState<number[]>([]);
 
+  // Utility to crop the image
   const createImage = (url: string): Promise<HTMLImageElement> => {
     return new Promise((resolve, reject) => {
       const image = new Image();
@@ -90,44 +88,55 @@ export default function AddItemModal({
     }
   }, [showModal]);
 
+  // Load categories and prefill fields when the modal is opened
   useEffect(() => {
-    const loadItemCategories = async (itemId: number) => {
-      const { data } = await supabase
-        .from('menu_item_categories')
-        .select('category_id')
-        .eq('item_id', itemId);
-      if (data) {
-        setSelectedCategories(data.map((d) => d.category_id));
-      }
-    };
+    if (!showModal) return;
 
-    if (showModal) {
+    const load = async () => {
+      const { data: catData } = await supabase
+        .from('menu_categories')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .order('sort_order', { ascending: true });
+      setCategories(catData || []);
+
       if (item) {
         setName(item.name || '');
         setDescription(item.description || '');
         setPrice(item.price ? String(item.price) : '');
-        setIs18Plus(!!item.is_18_plus);
         setIsVegan(!!item.is_vegan);
         setIsVegetarian(!!item.is_vegetarian);
+        setIs18Plus(!!item.is_18_plus);
         setImageUrl(item.image_url || null);
-        setImageFile(null);
-        loadItemCategories(item.id);
+        const { data: links } = await supabase
+          .from('menu_item_categories')
+          .select('category_id')
+          .eq('item_id', item.id);
+        if (links && links.length) {
+          setSelectedCategories(links.map((l) => l.category_id));
+        } else if (item.category_id) {
+          setSelectedCategories([item.category_id]);
+        } else {
+          setSelectedCategories([]);
+        }
       } else {
         setName('');
         setDescription('');
         setPrice('');
-        setIs18Plus(false);
         setIsVegan(false);
         setIsVegetarian(false);
+        setIs18Plus(false);
         setImageUrl(null);
-        setImageFile(null);
         setSelectedCategories(
           defaultCategoryId ? [defaultCategoryId] : []
         );
       }
-    }
-  }, [showModal, item, defaultCategoryId]);
+    };
 
+    load();
+  }, [showModal, item, restaurantId, defaultCategoryId]);
+
+  // Handle image file change (open cropper)
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -138,6 +147,22 @@ export default function AddItemModal({
     }
   };
 
+  // For custom dropdown (multi-select)
+  const handleCategoryChange = (values: number[]) => {
+    setSelectedCategories(values);
+  };
+
+  // Remove image
+  const handleRemoveImage = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setImageUrl(null);
+    setImageFile(null);
+    if (fileRef.current) {
+      fileRef.current.value = '';
+    }
+  };
+
+  // Handle image crop complete
   const handleCropComplete = (_: Area, areaPixels: Area) => {
     croppedAreaPixels.current = areaPixels;
   };
@@ -153,10 +178,7 @@ export default function AddItemModal({
     setTempImage(null);
   };
 
-  const handleCategoryChange = (values: number[]) => {
-    setSelectedCategories(values);
-  };
-
+  // Handle submit logic
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !price || !selectedCategories.length) {
@@ -166,7 +188,7 @@ export default function AddItemModal({
 
     let uploadedUrl = imageUrl;
 
-    if (imageFile) {
+    if (imageFile && !uploadedUrl?.startsWith('http')) {
       const filePath = `${Date.now()}-${imageFile.name}`;
       const { error: uploadError } = await supabase.storage
         .from('menu_item_images')
@@ -182,12 +204,13 @@ export default function AddItemModal({
     }
 
     const itemData = {
+      restaurant_id: restaurantId,
       name,
       description,
       price: parseFloat(price),
-      is_18_plus: is18Plus,
       is_vegan: isVegan,
       is_vegetarian: isVegetarian,
+      is_18_plus: is18Plus,
       image_url: uploadedUrl,
     };
 
@@ -211,10 +234,7 @@ export default function AddItemModal({
 
     if (data && data.id) {
       if (item) {
-        await supabase
-          .from('menu_item_categories')
-          .delete()
-          .eq('item_id', data.id);
+        await supabase.from('menu_item_categories').delete().eq('item_id', data.id);
       }
       if (selectedCategories.length) {
         const inserts = selectedCategories.map((catId) => ({
@@ -230,17 +250,8 @@ export default function AddItemModal({
       }
     }
 
-    onCreated && onCreated();
+    onSaved && onSaved();
     onClose();
-  };
-
-  const handleRemoveImage = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setImageUrl(null);
-    setImageFile(null);
-    if (fileRef.current) {
-      fileRef.current.value = '';
-    }
   };
 
   if (!showModal) return null;
@@ -252,7 +263,7 @@ export default function AddItemModal({
           onClose();
         }
       }}
-      className="fixed inset-0 bg-black bg-opacity-40 flex justify-center items-center p-4 overflow-x-hidden overflow-y-auto z-[1000] font-sans debug-modal"
+      className="fixed inset-0 bg-black bg-opacity-40 flex justify-center items-center p-4 overflow-x-hidden overflow-y-auto z-[1000] font-sans"
     >
       <div
         onClick={(e) => e.stopPropagation()}
@@ -275,46 +286,52 @@ export default function AddItemModal({
             onChange={(e) => setName(e.target.value)}
             className="w-full border border-gray-300 rounded p-2"
           />
-        <textarea
-          placeholder="Description"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          className="w-full border border-gray-300 rounded p-2"
-        />
-        <input
-          type="number"
-          step="0.01"
-          placeholder="Price"
-          value={price}
-          onChange={(e) => setPrice(e.target.value)}
-          className="w-full border border-gray-300 rounded p-2"
-        />
-        <div className="space-x-4">
-          <label className="inline-flex items-center space-x-2">
-            <input
-              type="checkbox"
-              checked={is18Plus}
-              onChange={(e) => setIs18Plus(e.target.checked)}
-            />
-            <span>18+</span>
-          </label>
-          <label className="inline-flex items-center space-x-2">
-            <input
-              type="checkbox"
-              checked={isVegan}
-              onChange={(e) => setIsVegan(e.target.checked)}
-            />
-            <span>Vegan</span>
-          </label>
-          <label className="inline-flex items-center space-x-2">
-            <input
-              type="checkbox"
-              checked={isVegetarian}
-              onChange={(e) => setIsVegetarian(e.target.checked)}
-            />
-            <span>Vegetarian</span>
-          </label>
-        </div>
+          <textarea
+            placeholder="Description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className="w-full border border-gray-300 rounded p-2"
+          />
+          <input
+            type="number"
+            step="0.01"
+            placeholder="Price"
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
+            className="w-full border border-gray-300 rounded p-2"
+          />
+          <div className="flex items-center space-x-4">
+            <label className="flex items-center space-x-1">
+              <input
+                type="checkbox"
+                checked={isVegan}
+                onChange={(e) => setIsVegan(e.target.checked)}
+              />
+              <span>Vegan</span>
+            </label>
+            <label className="flex items-center space-x-1">
+              <input
+                type="checkbox"
+                checked={isVegetarian}
+                onChange={(e) => setIsVegetarian(e.target.checked)}
+              />
+              <span>Vegetarian</span>
+            </label>
+            <label className="flex items-center space-x-1">
+              <input
+                type="checkbox"
+                checked={is18Plus}
+                onChange={(e) => setIs18Plus(e.target.checked)}
+              />
+              <span>18+</span>
+            </label>
+          </div>
+          <MultiSelectDropdown
+            options={categories}
+            selected={selectedCategories}
+            onChange={handleCategoryChange}
+            placeholder="Select categories"
+          />
           <div>
             <div
               className="relative w-32 h-32 border border-dashed border-gray-400 rounded flex items-center justify-center cursor-pointer mb-2 overflow-hidden"
@@ -340,27 +357,19 @@ export default function AddItemModal({
                 <CloudArrowUpIcon className="w-8 h-8 text-gray-400" />
               )}
             </div>
-          <input
-            type="file"
-            accept="image/*"
-            ref={fileRef}
-            onChange={handleFileChange}
-            className="hidden"
-          />
-        </div>
-        {categories && categories.length > 0 && (
-          <MultiSelectDropdown
-            options={categories}
-            selected={selectedCategories}
-            onChange={handleCategoryChange}
-            placeholder="Select categories"
-          />
-        )}
-        <div className="text-right mt-6 space-x-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 border border-[#b91c1c] text-[#b91c1c] rounded hover:bg-[#b91c1c]/10"
+            <input
+              type="file"
+              accept="image/*"
+              ref={fileRef}
+              onChange={handleFileChange}
+              className="hidden"
+            />
+          </div>
+          <div className="text-right mt-6 space-x-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 border border-[#b91c1c] text-[#b91c1c] rounded hover:bg-[#b91c1c]/10"
             >
               Cancel
             </button>
@@ -384,6 +393,15 @@ export default function AddItemModal({
                 onCropComplete={handleCropComplete}
               />
             </div>
+            <input
+              type="range"
+              min={1}
+              max={3}
+              step={0.1}
+              value={zoom}
+              onChange={(e) => setZoom(Number(e.target.value))}
+              className="w-full mt-2"
+            />
             <div className="flex justify-end space-x-2 mt-4">
               <button
                 type="button"
