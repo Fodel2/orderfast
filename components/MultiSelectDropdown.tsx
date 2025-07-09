@@ -1,5 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 
+// Simple dropdown that allows selecting multiple options via checkboxes.
+// The parent component controls the selected ids via the `selected` prop.
+
 interface Option {
   id: number;
   name: string;
