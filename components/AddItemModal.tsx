@@ -38,11 +38,11 @@ export default function AddItemModal({ showModal, onClose }: AddItemModalProps) 
           onClose();
         }
       }}
-      className="fixed inset-0 bg-black bg-opacity-40 flex justify-center items-center p-4 overflow-x-hidden overflow-y-auto z-[1000]"
+      className="fixed inset-0 bg-black bg-opacity-40 flex justify-center items-center p-4 overflow-x-hidden overflow-y-auto z-[1000] font-sans"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full relative"
+        className="bg-white rounded-xl shadow-lg p-8 max-w-md w-full relative"
       >
         <button
           type="button"
@@ -52,7 +52,7 @@ export default function AddItemModal({ showModal, onClose }: AddItemModalProps) 
         >
           ×
         </button>
-        <h2 className="text-xl font-semibold mb-4">Add Item</h2>
+        <h2 className="text-2xl font-bold mb-6">Edit Item</h2>
         <form className="space-y-4">
           <input
             type="text"
@@ -90,15 +90,15 @@ export default function AddItemModal({ showModal, onClose }: AddItemModalProps) 
               className="hidden"
             />
           </div>
-          <div className="text-right">
+          <div className="text-right mt-6 space-x-2">
             <button
               type="button"
               onClick={onClose}
-              className="mr-2 px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
+              className="px-4 py-2 border border-[#b91c1c] text-[#b91c1c] rounded hover:bg-[#b91c1c]/10"
             >
               Cancel
             </button>
-            <button type="submit" className="px-4 py-2 bg-red-700 text-white rounded hover:bg-red-800">
+            <button type="submit" className="px-4 py-2 bg-[#b91c1c] text-white rounded hover:bg-[#a40f0f]">
               Save
             </button>
           </div>
