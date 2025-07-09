@@ -18,6 +18,15 @@ import { useRouter } from 'next/router';
 import { supabase } from '../../utils/supabaseClient';
 import AddItemModal from '../../components/AddItemModal';
 import AddCategoryModal from '../../components/AddCategoryModal';
+import DashboardLayout from '../../components/DashboardLayout';
+import {
+  ChevronDownIcon,
+  ChevronUpIcon,
+  PencilSquareIcon,
+  PlusCircleIcon,
+  ArrowsUpDownIcon,
+  TrashIcon,
+} from '@heroicons/react/24/outline';
 
 // Small wrapper component used for dnd-kit sortable items
 function SortableWrapper({ id, children }: { id: number; children: React.ReactNode }) {
@@ -30,7 +39,7 @@ function SortableWrapper({ id, children }: { id: number; children: React.ReactNo
     cursor: isDragging ? 'grabbing' : 'grab',
   } as React.CSSProperties;
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="select-none">
       {children}
     </div>
   );
@@ -49,7 +58,28 @@ export default function MenuBuilder() {
   const [editCategory, setEditCategory] = useState<any | null>(null);
   const [defaultCategoryId, setDefaultCategoryId] = useState<number | null>(null);
   const [restaurantId, setRestaurantId] = useState<number | null>(null);
+  const [collapsedCats, setCollapsedCats] = useState<Set<number>>(new Set());
   const router = useRouter();
+
+  const toggleCollapse = (id: number) => {
+    setCollapsedCats((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const collapseAll = () => {
+    setCollapsedCats(new Set(categories.map((c) => c.id)));
+  };
+
+  const expandAll = () => {
+    setCollapsedCats(new Set());
+  };
 
   // Persist new ordering for categories
   const handleCategoryDragEnd = async ({ active, over }: DragEndEvent) => {
@@ -136,115 +166,180 @@ export default function MenuBuilder() {
     setLoading(false);
   };
 
+  const handleDeleteItem = async (id: number) => {
+    if (!window.confirm('Delete this item?')) return;
+    await supabase.from('menu_items').delete().eq('id', id);
+    setItems((prev) => prev.filter((i) => i.id !== id));
+  };
+
   if (!session) return <p>Loading session...</p>;
 
   return (
-    <div style={{ padding: '2rem' }}>
-      <h1>Menu Builder</h1>
-      <p>Manage categories and items here.</p>
-      <p style={{ color: '#666', fontSize: '0.9rem' }}>Drag categories and items to reorder.</p>
-      <button
-        onClick={() => {
-          setEditCategory(null);
-          setShowAddCatModal(true);
-          console.log('showAddCatModal after click:', showAddCatModal);
-        }}
-        style={{ margin: '1rem 0' }}
-      >
-        Add New Category
-      </button>
+    <DashboardLayout>
+      <div className="mb-6 flex items-center justify-between">
+        <div className="flex items-center text-sm text-gray-500 space-x-2">
+          <ArrowsUpDownIcon className="w-4 h-4" />
+          <span>Drag categories and items to reorder</span>
+        </div>
+        <div className="flex items-center space-x-3">
+          <button onClick={expandAll} className="p-2 rounded hover:bg-gray-200" aria-label="Expand all">
+            <ChevronDownIcon className="w-5 h-5" />
+          </button>
+          <button onClick={collapseAll} className="p-2 rounded hover:bg-gray-200" aria-label="Collapse all">
+            <ChevronUpIcon className="w-5 h-5" />
+          </button>
+          <button
+            onClick={() => {
+              setEditCategory(null);
+              setShowAddCatModal(true);
+            }}
+            className="flex items-center bg-[#b91c1c] text-white px-3 py-2 rounded-lg hover:bg-[#a40f0f]"
+          >
+            <PlusCircleIcon className="w-5 h-5 mr-1" /> Add Category
+          </button>
+        </div>
+      </div>
 
       {loading ? (
         <p>Loading...</p>
       ) : categories.length === 0 ? (
-        <p>No menu categories found. Use "Add New Category" to get started.</p>
+        <div className="text-center text-gray-500 py-10">
+          No menu categories found. Use "Add Category" to get started.
+        </div>
       ) : (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleCategoryDragEnd}>
           <SortableContext items={categories.map((c) => c.id)} strategy={verticalListSortingStrategy}>
             {categories.map((cat) => (
               <SortableWrapper key={cat.id} id={cat.id}>
-                <div style={{ marginBottom: '2rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{ userSelect: 'none', cursor: 'grab' }}>☰</span>
-                    <h2 style={{ margin: 0 }}>{cat.name}</h2>
+                <div className="bg-white rounded-xl shadow mb-4">
+                  <div className="flex items-start justify-between p-4">
+                    <div className="flex items-start space-x-3">
+                      <span className="cursor-grab select-none">☰</span>
+                      <div>
+                        <div className="flex items-center space-x-2">
+                          <h2 className="font-semibold text-lg">{cat.name}</h2>
+                          <span className="text-xs bg-gray-200 rounded-full px-2">
+                            {items.filter((i) => i.category_id === cat.id).length}
+                          </span>
+                        </div>
+                        {cat.description && (
+                          <p className="text-sm text-gray-500">{cat.description}</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => toggleCollapse(cat.id)}
+                        className="p-2 rounded hover:bg-gray-100"
+                        aria-label="Toggle items"
+                        onPointerDown={(e) => e.stopPropagation()}
+                      >
+                        {collapsedCats.has(cat.id) ? (
+                          <ChevronDownIcon className="w-5 h-5" />
+                        ) : (
+                          <ChevronUpIcon className="w-5 h-5" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEditCategory(cat);
+                          setShowAddCatModal(true);
+                        }}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        className="p-2 rounded hover:bg-gray-100"
+                        aria-label="Edit category"
+                      >
+                        <PencilSquareIcon className="w-5 h-5" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          setDefaultCategoryId(cat.id);
+                          setEditItem(null);
+                          setShowAddModal(true);
+                        }}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        className="p-2 rounded hover:bg-gray-100"
+                        aria-label="Add item"
+                      >
+                        <PlusCircleIcon className="w-5 h-5" />
+                      </button>
+                    </div>
                   </div>
-                  <p>{cat.description}</p>
-                  <button
-                    onClick={() => {
-                      setEditCategory(cat);
-                      setShowAddCatModal(true);
-                      console.log('showAddCatModal after click:', showAddCatModal);
-                    }}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    style={{ marginBottom: '0.5rem', cursor: 'pointer' }}
-                  >
-                    Edit Category
-                  </button>
-                  <button
-                    onClick={() => {
-                     setDefaultCategoryId(cat.id);
-                     setEditItem(null);
-                     setShowAddModal(true);
-                      console.log('showAddModal after click:', showAddModal);
-                    }}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    style={{ marginBottom: '1rem', cursor: 'pointer' }}
-                  >
-                    Add New Item
-                  </button>
-                  <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.5rem' }}>
-                    Drag items to reorder
-                  </div>
-
-                  <DndContext
-                    sensors={sensors}
-                    collisionDetection={closestCenter}
-                    onDragEnd={handleItemDragEnd(cat.id)}
-                  >
-                    <SortableContext
-                      items={items.filter((i) => i.category_id === cat.id).map((i) => i.id)}
-                      strategy={verticalListSortingStrategy}
-                    >
-                      <ul style={{ listStyle: 'none', padding: 0 }}>
-                        {items
-                          .filter((item) => item.category_id === cat.id)
-                          .map((item) => (
-                            <SortableWrapper key={item.id} id={item.id}>
-                              <li
-                                /* Clicking an existing item opens the modal pre-filled for editing */
-                                onClick={() => {
-                                  setEditItem(item);
-                                  setDefaultCategoryId(null);
-                                  setShowAddModal(true);
-                                  console.log('showAddModal after click:', showAddModal);
-                                }}
-                                onPointerDown={(e) => e.stopPropagation()}
-                                style={{ cursor: 'grab', padding: '0.25rem 0' }}
-                              >
-                                <strong>{item.name}</strong> – ${item.price.toFixed(2)}<br />
-                                <small>{item.description}</small>
-                              </li>
-                            </SortableWrapper>
-                          ))}
-                      </ul>
-                    </SortableContext>
-                  </DndContext>
+                  {!collapsedCats.has(cat.id) && (
+                    <div className="px-4 pb-4">
+                      <DndContext
+                        sensors={sensors}
+                        collisionDetection={closestCenter}
+                        onDragEnd={handleItemDragEnd(cat.id)}
+                      >
+                        <SortableContext
+                          items={items.filter((i) => i.category_id === cat.id).map((i) => i.id)}
+                          strategy={verticalListSortingStrategy}
+                        >
+                          <ul className="space-y-2">
+                            {items
+                              .filter((item) => item.category_id === cat.id)
+                              .map((item) => (
+                                <SortableWrapper key={item.id} id={item.id}>
+                                  <li
+                                    onClick={() => {
+                                      setEditItem(item);
+                                      setDefaultCategoryId(null);
+                                      setShowAddModal(true);
+                                    }}
+                                    onPointerDown={(e) => e.stopPropagation()}
+                                    className="cursor-grab bg-gray-50 rounded-lg p-2 flex items-center justify-between"
+                                  >
+                                    <div className="flex items-center space-x-2 overflow-hidden">
+                                      <div className="w-10 h-10 bg-gray-200 rounded flex-shrink-0 overflow-hidden">
+                                        {item.image_url && (
+                                          <img src={item.image_url} alt="" className="w-full h-full object-cover" />
+                                        )}
+                                      </div>
+                                      <div className="truncate">
+                                        <p className="font-medium truncate">{item.name}</p>
+                                        <p className="text-xs text-gray-500 truncate">{item.description}</p>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center space-x-2">
+                                      <span className="text-sm font-semibold">${item.price.toFixed(2)}</span>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDeleteItem(item.id);
+                                        }}
+                                        className="p-1 rounded hover:bg-gray-200"
+                                        aria-label="Delete item"
+                                      >
+                                        <TrashIcon className="w-4 h-4 text-gray-500" />
+                                      </button>
+                                      <PencilSquareIcon className="w-4 h-4 text-gray-500" />
+                                    </div>
+                                  </li>
+                                </SortableWrapper>
+                              ))}
+                          </ul>
+                        </SortableContext>
+                      </DndContext>
+                    </div>
+                  )}
                 </div>
               </SortableWrapper>
             ))}
           </SortableContext>
         </DndContext>
       )}
-      <div style={{ borderTop: '1px solid #ccc', marginTop: '2rem', paddingTop: '1rem' }}>
-        <h2>Live Preview</h2>
+      <div className="border-t border-gray-200 mt-8 pt-4">
+        <h2 className="text-lg font-semibold mb-2">Live Preview</h2>
         {categories.map((cat) => (
-          <div key={cat.id} style={{ marginBottom: '1rem' }}>
-            <h3>{cat.name}</h3>
-            <ul style={{ paddingLeft: '1rem' }}>
+          <div key={cat.id} className="mb-4">
+            <h3 className="font-medium">{cat.name}</h3>
+            <ul className="pl-4 list-disc text-sm text-gray-700">
               {items
                 .filter((i) => i.category_id === cat.id)
                 .map((i) => (
-                  <li key={i.id} style={{ marginBottom: '0.25rem' }}>
+                  <li key={i.id} className="mb-1">
                     {i.name} – ${i.price.toFixed(2)}
                   </li>
                 ))}
@@ -275,6 +370,7 @@ export default function MenuBuilder() {
           onCreated={() => restaurantId && fetchData(restaurantId)}
         />
       )}
-    </div>
+    </DashboardLayout>
   );
 }
+
