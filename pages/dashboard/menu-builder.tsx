@@ -258,6 +258,8 @@ export default function MenuBuilder() {
           setShowAddModal(false);
           setEditItem(null);
         }}
+        categories={categories}
+        defaultCategoryId={defaultCategoryId || undefined}
       />
       {showAddCatModal && (
         <AddCategoryModal

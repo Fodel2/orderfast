@@ -1,14 +1,29 @@
 import { useEffect, useRef, useState } from 'react';
+import MultiSelectDropdown from './MultiSelectDropdown';
 import Cropper, { Area } from 'react-easy-crop';
 import { CloudArrowUpIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { Trash2 } from 'lucide-react';
 
+interface Category {
+  id: number;
+  name: string;
+}
+
 interface AddItemModalProps {
   showModal: boolean;
   onClose: () => void;
+  /** list of categories to choose from */
+  categories?: Category[];
+  /** optionally preselect a single category */
+  defaultCategoryId?: number;
 }
 
-export default function AddItemModal({ showModal, onClose }: AddItemModalProps) {
+export default function AddItemModal({
+  showModal,
+  onClose,
+  categories = [],
+  defaultCategoryId,
+}: AddItemModalProps) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -19,6 +34,7 @@ export default function AddItemModal({ showModal, onClose }: AddItemModalProps) 
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const croppedAreaPixels = useRef<Area | null>(null);
+  const [selectedCategories, setSelectedCategories] = useState<number[]>([]);
 
   const createImage = (url: string): Promise<HTMLImageElement> => {
     return new Promise((resolve, reject) => {
@@ -62,6 +78,12 @@ export default function AddItemModal({ showModal, onClose }: AddItemModalProps) 
     }
   }, [showModal]);
 
+  useEffect(() => {
+    if (showModal && defaultCategoryId) {
+      setSelectedCategories([defaultCategoryId]);
+    }
+  }, [showModal, defaultCategoryId]);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -82,6 +104,10 @@ export default function AddItemModal({ showModal, onClose }: AddItemModalProps) 
     }
     setCropping(false);
     setTempImage(null);
+  };
+
+  const handleCategoryChange = (values: number[]) => {
+    setSelectedCategories(values);
   };
 
   const handleRemoveImage = (e: React.MouseEvent) => {
@@ -155,19 +181,27 @@ export default function AddItemModal({ showModal, onClose }: AddItemModalProps) 
                 <CloudArrowUpIcon className="w-8 h-8 text-gray-400" />
               )}
             </div>
-            <input
-              type="file"
-              accept="image/*"
-              ref={fileRef}
-              onChange={handleFileChange}
-              className="hidden"
-            />
-          </div>
-          <div className="text-right mt-6 space-x-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 border border-[#b91c1c] text-[#b91c1c] rounded hover:bg-[#b91c1c]/10"
+          <input
+            type="file"
+            accept="image/*"
+            ref={fileRef}
+            onChange={handleFileChange}
+            className="hidden"
+          />
+        </div>
+        {categories && categories.length > 0 && (
+          <MultiSelectDropdown
+            options={categories}
+            selected={selectedCategories}
+            onChange={handleCategoryChange}
+            placeholder="Select categories"
+          />
+        )}
+        <div className="text-right mt-6 space-x-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 border border-[#b91c1c] text-[#b91c1c] rounded hover:bg-[#b91c1c]/10"
             >
               Cancel
             </button>
