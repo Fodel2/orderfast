@@ -3,6 +3,7 @@ import Cropper, { Area } from 'react-easy-crop';
 import { CloudArrowUpIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { Trash2 } from 'lucide-react';
 import { supabase } from '../utils/supabaseClient';
+import CategoryMultiSelect from './CategoryMultiSelect';
 
 interface AddItemModalProps {
   showModal: boolean;
@@ -141,11 +142,9 @@ export default function AddItemModal({
     }
   };
 
-  const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const values = Array.from(e.target.selectedOptions).map((o) =>
-      parseInt(o.value, 10)
-    );
-    setSelectedCategories(values);
+  // update selected category ids from multi select component
+  const handleCategoryChange = (ids: number[]) => {
+    setSelectedCategories(ids);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -232,7 +231,7 @@ export default function AddItemModal({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-xl shadow-lg p-8 max-w-md w-full relative"
+        className="bg-white rounded-xl shadow-lg p-6 sm:p-8 max-w-lg w-full relative max-h-[90vh] overflow-y-auto"
       >
         <button
           type="button"
@@ -242,16 +241,20 @@ export default function AddItemModal({
         >
           <XMarkIcon className="w-5 h-5" />
         </button>
-        <h2 className="text-2xl font-bold mb-6">Edit Item</h2>
+        <h2 className="text-2xl font-bold mb-6">
+          {item ? 'Edit Item' : 'Add Item'}
+        </h2>
         <form className="space-y-4" onSubmit={handleSubmit}>
           <input
             type="text"
+            aria-label="Item name"
             placeholder="Name"
             value={name}
             onChange={(e) => setName(e.target.value)}
             className="w-full border border-gray-300 rounded p-2"
           />
           <textarea
+            aria-label="Item description"
             placeholder="Description"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -260,15 +263,17 @@ export default function AddItemModal({
           <input
             type="number"
             step="0.01"
+            aria-label="Price"
             placeholder="Price"
             value={price}
             onChange={(e) => setPrice(e.target.value)}
             className="w-full border border-gray-300 rounded p-2"
           />
-          <div className="flex items-center space-x-4">
+          <div className="flex flex-wrap gap-4 items-center">
             <label className="flex items-center space-x-1">
               <input
                 type="checkbox"
+                aria-label="Vegan"
                 checked={isVegan}
                 onChange={(e) => setIsVegan(e.target.checked)}
               />
@@ -277,6 +282,7 @@ export default function AddItemModal({
             <label className="flex items-center space-x-1">
               <input
                 type="checkbox"
+                aria-label="Vegetarian"
                 checked={isVegetarian}
                 onChange={(e) => setIsVegetarian(e.target.checked)}
               />
@@ -285,24 +291,18 @@ export default function AddItemModal({
             <label className="flex items-center space-x-1">
               <input
                 type="checkbox"
+                aria-label="18+"
                 checked={is18Plus}
                 onChange={(e) => setIs18Plus(e.target.checked)}
               />
               <span>18+</span>
             </label>
           </div>
-          <select
-            multiple
-            value={selectedCategories.map(String)}
+          <CategoryMultiSelect
+            categories={categories}
+            selectedIds={selectedCategories}
             onChange={handleCategoryChange}
-            className="w-full border border-gray-300 rounded p-2"
-          >
-            {categories.map((cat) => (
-              <option key={cat.id} value={cat.id}>
-                {cat.name}
-              </option>
-            ))}
-          </select>
+          />
           <div>
             <div
               className="relative w-32 h-32 border border-dashed border-gray-400 rounded flex items-center justify-center cursor-pointer mb-2 overflow-hidden"
@@ -328,14 +328,16 @@ export default function AddItemModal({
                 <CloudArrowUpIcon className="w-8 h-8 text-gray-400" />
               )}
             </div>
-            <input
-              type="file"
-              accept="image/*"
-              ref={fileRef}
-              onChange={handleFileChange}
-              className="hidden"
-            />
-          </div>
+          <input
+            type="file"
+            accept="image/*"
+            ref={fileRef}
+            onChange={handleFileChange}
+            aria-label="Upload image"
+            className="hidden"
+          />
+          <div className="mt-1 text-xs text-gray-500">Preferred: 512x512px PNG/JPG</div>
+        </div>
           <div className="text-right mt-6 space-x-2">
             <button
               type="button"

@@ -22,7 +22,7 @@ describe('AddItemModal', () => {
     render(
       <AddItemModal showModal={true} onClose={() => {}} restaurantId={1} />
     )
-    expect(screen.getByText('Edit Item')).toBeInTheDocument()
+    expect(screen.getByText('Add Item')).toBeInTheDocument()
   })
 
   it('does not render when showModal is false', () => {
