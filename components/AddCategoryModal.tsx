@@ -53,22 +53,7 @@ export default function AddCategoryModal({
 
   return (
     <div
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: '1rem',
-        // Keep the overlay locked vertically with no horizontal scroll
-        overflowX: 'hidden',
-        overflowY: 'auto',
-        zIndex: 1000,
-      }}
+      className="fixed inset-0 bg-black bg-opacity-40 flex justify-center items-center p-4 overflow-x-hidden overflow-y-auto z-[1000]"
     >
       <div
         style={{
