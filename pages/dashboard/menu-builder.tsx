@@ -416,9 +416,12 @@ export default function MenuBuilder() {
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: -20, opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="p-4 text-gray-500"
           >
-            Content coming soon
+            {/*
+              Wrap placeholder in a div so className is applied without
+              assigning it directly to motion.div (prevents TS error)
+            */}
+            <div className="p-4 text-gray-500">Content coming soon</div>
           </motion.div>
         )}
       </AnimatePresence>
