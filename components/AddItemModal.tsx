@@ -185,6 +185,14 @@ export default function AddItemModal({
 
   const dropdownRef = useRef<HTMLDivElement | null>(null);
 
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, []);
+
   const toggleCategory = (id: number) => {
     setSelectedCategories((prev) =>
       prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]
@@ -335,11 +343,11 @@ export default function AddItemModal({
           onClose();
         }
       }}
-      className="fixed inset-0 z-50 flex items-center justify-center overflow-x-hidden overflow-y-auto p-4 bg-black/50 font-[Inter,\_sans-serif]"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,0.3)] p-4"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative w-full max-w-md bg-white p-6 overflow-x-hidden rounded-lg shadow-lg"
+        className="relative w-full max-w-md bg-white p-8 rounded-xl shadow-2xl"
       >
         <button
           type="button"
@@ -403,14 +411,14 @@ export default function AddItemModal({
                   fileInputRef.current?.click();
                 }
               }}
-              className="mt-2 w-[40vw] h-[40vw] max-w-[200px] max-h-[200px] mx-auto overflow-hidden flex items-center justify-center rounded-lg relative cursor-pointer bg-gray-50 border border-dashed border-gray-300 hover:bg-gray-100"
+              className="mt-2 mx-auto w-full max-w-[200px] h-[200px] overflow-hidden flex items-center justify-center rounded-xl relative cursor-pointer bg-gray-50 border border-dashed border-gray-300 hover:bg-gray-100"
             >
               {imagePreview ? (
                 <>
                   <img
                     src={imagePreview}
                     alt="Preview"
-                    className="w-full h-full object-cover rounded-lg"
+                    className="object-cover rounded-xl max-w-[200px] max-h-[200px] mx-auto"
                   />
                   <button
                     type="button"
