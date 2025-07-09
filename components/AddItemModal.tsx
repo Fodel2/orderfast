@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import MultiSelectDropdown from './MultiSelectDropdown';
 import Cropper, { Area } from 'react-easy-crop';
 import { CloudArrowUpIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { Trash2 } from 'lucide-react';
+import MultiSelectDropdown from './MultiSelectDropdown';
+import { supabase } from '../utils/supabaseClient';
 
 interface Category {
   id: number;
@@ -16,6 +17,10 @@ interface AddItemModalProps {
   categories?: Category[];
   /** optionally preselect a single category */
   defaultCategoryId?: number;
+  /** existing item when editing */
+  item?: any;
+  /** callback when an item is created or updated */
+  onCreated?: () => void;
 }
 
 export default function AddItemModal({
@@ -23,10 +28,17 @@ export default function AddItemModal({
   onClose,
   categories = [],
   defaultCategoryId,
+  item,
+  onCreated,
 }: AddItemModalProps) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [price, setPrice] = useState('');
+  const [is18Plus, setIs18Plus] = useState(false);
+  const [isVegan, setIsVegan] = useState(false);
+  const [isVegetarian, setIsVegetarian] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const [tempImage, setTempImage] = useState<string | null>(null);
@@ -79,10 +91,42 @@ export default function AddItemModal({
   }, [showModal]);
 
   useEffect(() => {
-    if (showModal && defaultCategoryId) {
-      setSelectedCategories([defaultCategoryId]);
+    const loadItemCategories = async (itemId: number) => {
+      const { data } = await supabase
+        .from('menu_item_categories')
+        .select('category_id')
+        .eq('item_id', itemId);
+      if (data) {
+        setSelectedCategories(data.map((d) => d.category_id));
+      }
+    };
+
+    if (showModal) {
+      if (item) {
+        setName(item.name || '');
+        setDescription(item.description || '');
+        setPrice(item.price ? String(item.price) : '');
+        setIs18Plus(!!item.is_18_plus);
+        setIsVegan(!!item.is_vegan);
+        setIsVegetarian(!!item.is_vegetarian);
+        setImageUrl(item.image_url || null);
+        setImageFile(null);
+        loadItemCategories(item.id);
+      } else {
+        setName('');
+        setDescription('');
+        setPrice('');
+        setIs18Plus(false);
+        setIsVegan(false);
+        setIsVegetarian(false);
+        setImageUrl(null);
+        setImageFile(null);
+        setSelectedCategories(
+          defaultCategoryId ? [defaultCategoryId] : []
+        );
+      }
     }
-  }, [showModal, defaultCategoryId]);
+  }, [showModal, item, defaultCategoryId]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -90,6 +134,7 @@ export default function AddItemModal({
       const url = URL.createObjectURL(file);
       setTempImage(url);
       setCropping(true);
+      setImageFile(file);
     }
   };
 
@@ -101,6 +146,8 @@ export default function AddItemModal({
     if (tempImage && croppedAreaPixels.current) {
       const cropped = await getCroppedImg(tempImage, croppedAreaPixels.current);
       setImageUrl(cropped);
+      const blob = await (await fetch(cropped)).blob();
+      setImageFile(new File([blob], imageFile?.name || 'image.jpg', { type: 'image/jpeg' }));
     }
     setCropping(false);
     setTempImage(null);
@@ -110,9 +157,87 @@ export default function AddItemModal({
     setSelectedCategories(values);
   };
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name || !price || !selectedCategories.length) {
+      alert('Please fill out all required fields.');
+      return;
+    }
+
+    let uploadedUrl = imageUrl;
+
+    if (imageFile) {
+      const filePath = `${Date.now()}-${imageFile.name}`;
+      const { error: uploadError } = await supabase.storage
+        .from('menu_item_images')
+        .upload(filePath, imageFile);
+      if (uploadError) {
+        alert('Failed to upload image: ' + uploadError.message);
+        return;
+      }
+      const { data: urlData } = supabase.storage
+        .from('menu_item_images')
+        .getPublicUrl(filePath);
+      uploadedUrl = urlData.publicUrl;
+    }
+
+    const itemData = {
+      name,
+      description,
+      price: parseFloat(price),
+      is_18_plus: is18Plus,
+      is_vegan: isVegan,
+      is_vegetarian: isVegetarian,
+      image_url: uploadedUrl,
+    };
+
+    const { data, error } = await (item
+      ? supabase
+          .from('menu_items')
+          .update(itemData)
+          .eq('id', item.id)
+          .select()
+          .single()
+      : supabase
+          .from('menu_items')
+          .insert([itemData])
+          .select()
+          .single());
+
+    if (error) {
+      alert('Failed to save item: ' + error.message);
+      return;
+    }
+
+    if (data && data.id) {
+      if (item) {
+        await supabase
+          .from('menu_item_categories')
+          .delete()
+          .eq('item_id', data.id);
+      }
+      if (selectedCategories.length) {
+        const inserts = selectedCategories.map((catId) => ({
+          item_id: data.id,
+          category_id: catId,
+        }));
+        const { error: catError } = await supabase
+          .from('menu_item_categories')
+          .insert(inserts);
+        if (catError) {
+          alert('Failed to link categories: ' + catError.message);
+        }
+      }
+    }
+
+    onCreated && onCreated();
+    onClose();
+  };
+
   const handleRemoveImage = (e: React.MouseEvent) => {
     e.stopPropagation();
     setImageUrl(null);
+    setImageFile(null);
     if (fileRef.current) {
       fileRef.current.value = '';
     }
@@ -142,7 +267,7 @@ export default function AddItemModal({
           <XMarkIcon className="w-5 h-5" />
         </button>
         <h2 className="text-2xl font-bold mb-6">Edit Item</h2>
-        <form className="space-y-4">
+        <form className="space-y-4" onSubmit={handleSubmit}>
           <input
             type="text"
             placeholder="Name"
@@ -150,12 +275,46 @@ export default function AddItemModal({
             onChange={(e) => setName(e.target.value)}
             className="w-full border border-gray-300 rounded p-2"
           />
-          <textarea
-            placeholder="Description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            className="w-full border border-gray-300 rounded p-2"
-          />
+        <textarea
+          placeholder="Description"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          className="w-full border border-gray-300 rounded p-2"
+        />
+        <input
+          type="number"
+          step="0.01"
+          placeholder="Price"
+          value={price}
+          onChange={(e) => setPrice(e.target.value)}
+          className="w-full border border-gray-300 rounded p-2"
+        />
+        <div className="space-x-4">
+          <label className="inline-flex items-center space-x-2">
+            <input
+              type="checkbox"
+              checked={is18Plus}
+              onChange={(e) => setIs18Plus(e.target.checked)}
+            />
+            <span>18+</span>
+          </label>
+          <label className="inline-flex items-center space-x-2">
+            <input
+              type="checkbox"
+              checked={isVegan}
+              onChange={(e) => setIsVegan(e.target.checked)}
+            />
+            <span>Vegan</span>
+          </label>
+          <label className="inline-flex items-center space-x-2">
+            <input
+              type="checkbox"
+              checked={isVegetarian}
+              onChange={(e) => setIsVegetarian(e.target.checked)}
+            />
+            <span>Vegetarian</span>
+          </label>
+        </div>
           <div>
             <div
               className="relative w-32 h-32 border border-dashed border-gray-400 rounded flex items-center justify-center cursor-pointer mb-2 overflow-hidden"
