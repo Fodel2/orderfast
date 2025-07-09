@@ -335,68 +335,29 @@ export default function AddItemModal({
           onClose();
         }
       }}
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: '1rem',
-        // Disable any side-to-side scrolling of the overlay itself
-        overflowX: 'hidden',
-        overflowY: 'auto',
-        zIndex: 1000,
-      }}
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-x-hidden overflow-y-auto p-4 bg-black/50 font-[Inter,\_sans-serif]"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        style={{
-          background: 'white',
-          padding: '2rem',
-          width: '100%',
-          maxWidth: '500px',
-          minWidth: 0,
-          position: 'relative',
-          overflowX: 'hidden',
-          boxSizing: 'border-box',
-        }}
+        className="relative w-full max-w-md bg-white p-6 overflow-x-hidden rounded-lg shadow-lg"
       >
         <button
           type="button"
           aria-label="Close"
           onClick={onClose}
-          style={{
-            position: 'absolute',
-            top: '0.5rem',
-            right: '0.5rem',
-            background: 'transparent',
-            border: 'none',
-            fontSize: '1.5rem',
-            lineHeight: '1',
-            cursor: 'pointer',
-          }}
+          className="absolute right-2 top-2 text-red-700 hover:text-red-800" 
         >
           ×
         </button>
-        <h3 style={{ marginTop: 0 }}>{item ? 'Edit Item' : 'Add Item'}</h3>
+        <h3 className="mt-0 mb-4 text-xl font-semibold">
+          {item ? 'Edit Item' : 'Add Item'}
+        </h3>
         <form
           onSubmit={handleSubmit}
-          style={{ display: 'flex', flexDirection: 'column', maxHeight: '80vh', width: '100%', minWidth: 0, overflowX: 'hidden', boxSizing: 'border-box' }}
+          className="flex flex-col max-h-[80vh] w-full min-w-0 overflow-x-hidden"
         >
-          <div
-            style={{
-              flex: '1 1 auto',
-              overflowY: 'auto',
-              paddingRight: '0.5rem',
-              width: '100%',
-              boxSizing: 'border-box',
-            }}
-          >
-            <div style={{ marginBottom: '1rem' }}>
+          <div className="flex-1 overflow-y-auto pr-2 w-full">
+            <div className="mb-4">
               <input
                 type="text"
                 placeholder="Name"
@@ -404,18 +365,18 @@ export default function AddItemModal({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
-                style={{ width: '100%', padding: '0.5rem', boxSizing: 'border-box' }}
+                className="w-full p-2 border border-gray-300 rounded"
               />
             </div>
-          <div style={{ marginBottom: '1rem' }}>
+          <div className="mb-4">
             <textarea
               placeholder="Description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              style={{ width: '100%', padding: '0.5rem', boxSizing: 'border-box' }}
+              className="w-full p-2 border border-gray-300 rounded"
             />
           </div>
-          <div style={{ marginBottom: '1rem' }}>
+          <div className="mb-4">
             <input
               type="number"
               step="0.01"
@@ -423,16 +384,14 @@ export default function AddItemModal({
               value={price}
               onChange={(e) => setPrice(e.target.value)}
               required
-              style={{ width: '100%', padding: '0.5rem', boxSizing: 'border-box' }}
+              className="w-full p-2 border border-gray-300 rounded"
             />
             {formattedPrice && (
-              <div style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>
-                {formattedPrice}
-              </div>
+              <div className="mt-1 text-sm text-gray-600">{formattedPrice}</div>
             )}
           </div>
           {/* Image upload field */}
-          <div style={{ marginBottom: '1rem' }}>
+          <div className="mb-4">
             <div
               role="button"
               tabIndex={0}
@@ -444,36 +403,14 @@ export default function AddItemModal({
                   fileInputRef.current?.click();
                 }
               }}
-              style={{
-                marginTop: '0.5rem',
-                width: '40vw',
-                height: '40vw',
-                maxWidth: '200px',
-                maxHeight: '200px',
-                overflow: 'hidden',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginLeft: 'auto',
-                marginRight: 'auto',
-                borderRadius: '0.5rem',
-                position: 'relative',
-                cursor: 'pointer',
-                background: '#f9f9f9',
-                border: '1px dashed #ccc',
-              }}
+              className="mt-2 w-[40vw] h-[40vw] max-w-[200px] max-h-[200px] mx-auto overflow-hidden flex items-center justify-center rounded-lg relative cursor-pointer bg-gray-50 border border-dashed border-gray-300 hover:bg-gray-100"
             >
               {imagePreview ? (
                 <>
                   <img
                     src={imagePreview}
                     alt="Preview"
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'cover',
-                      borderRadius: '0.5rem',
-                    }}
+                    className="w-full h-full object-cover rounded-lg"
                   />
                   <button
                     type="button"
@@ -483,22 +420,13 @@ export default function AddItemModal({
                       setImageFile(null);
                       setImagePreview(null);
                     }}
-                    style={{
-                      position: 'absolute',
-                      top: '4px',
-                      right: '4px',
-                      background: 'rgba(255,255,255,0.8)',
-                      border: 'none',
-                      borderRadius: '50%',
-                      padding: '2px',
-                      cursor: 'pointer',
-                    }}
+                    className="absolute top-1 right-1 bg-white/80 rounded-full p-1 text-red-700 hover:text-red-800"
                   >
                     <Trash2 size={16} />
                   </button>
                 </>
               ) : (
-                <UploadCloud size={32} aria-hidden="true" />
+                <UploadCloud size={32} aria-hidden="true" className="text-red-700" />
               )}
             </div>
             <input
@@ -507,41 +435,41 @@ export default function AddItemModal({
               type="file"
               accept="image/*"
               onChange={handleFileChange}
-              style={{ display: 'none' }}
+              className="hidden"
             />
             <small>Images should be square for best results.</small>
           </div>
-          <div style={{ marginBottom: '0.5rem' }}>
-            <label>
+          <div className="mb-2">
+            <label className="flex items-center space-x-2">
               <input
                 type="checkbox"
                 checked={is18Plus}
                 onChange={(e) => setIs18Plus(e.target.checked)}
-              />{' '}
-              18+
+              />
+              <span>18+</span>
             </label>
           </div>
-          <div style={{ marginBottom: '0.5rem' }}>
-            <label>
+          <div className="mb-2">
+            <label className="flex items-center space-x-2">
               <input
                 type="checkbox"
                 checked={isVegan}
                 onChange={(e) => setIsVegan(e.target.checked)}
-              />{' '}
-              Vegan
+              />
+              <span>Vegan</span>
             </label>
           </div>
-          <div style={{ marginBottom: '0.5rem' }}>
-            <label>
+          <div className="mb-2">
+            <label className="flex items-center space-x-2">
               <input
                 type="checkbox"
                 checked={isVegetarian}
                 onChange={(e) => setIsVegetarian(e.target.checked)}
-              />{' '}
-              Vegetarian
+              />
+              <span>Vegetarian</span>
             </label>
           </div>
-          <div style={{ marginBottom: '1rem', width: '100%', boxSizing: 'border-box' }} ref={dropdownRef}>
+          <div className="mb-4 w-full" ref={dropdownRef}>
             <div
               role="combobox"
               tabIndex={0}
@@ -553,19 +481,10 @@ export default function AddItemModal({
                   setCategoryDropdownOpen((o) => !o);
                 }
               }}
-              style={{
-                border: '1px solid #ccc',
-                minHeight: '40px',
-                padding: '0.5rem',
-                display: 'flex',
-                flexWrap: 'wrap',
-                cursor: 'pointer',
-                width: '100%',
-                boxSizing: 'border-box',
-              }}
+              className="border border-gray-300 min-h-[40px] p-2 flex flex-wrap cursor-pointer w-full rounded"
             >
               {selectedCategories.length === 0 && (
-                <span style={{ color: '#888' }}>Select categories...</span>
+                <span className="text-gray-500">Select categories...</span>
               )}
               {selectedCategories.map((id) => {
                 const cat = filteredCategories.find((c) => c.id === id);
@@ -573,14 +492,7 @@ export default function AddItemModal({
                 return (
                   <span
                     key={id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      padding: '0 4px',
-                      margin: '0 4px 4px 0',
-                      background: '#eee',
-                      borderRadius: '3px',
-                    }}
+                    className="flex items-center px-1 mr-1 mb-1 bg-gray-200 rounded"
                   >
                     {cat.name}
                     <button
@@ -590,12 +502,7 @@ export default function AddItemModal({
                         e.stopPropagation();
                         toggleCategory(id);
                       }}
-                      style={{
-                        marginLeft: '4px',
-                        border: 'none',
-                        background: 'transparent',
-                        cursor: 'pointer',
-                      }}
+                      className="ml-1 text-red-700 hover:text-red-800"
                     >
                       ×
                     </button>
@@ -605,32 +512,22 @@ export default function AddItemModal({
             </div>
             {categoryDropdownOpen && (
               <div
-                style={{
-                  position: 'absolute',
-                  zIndex: 10,
-                  background: 'white',
-                  border: '1px solid #ccc',
-                  padding: '0.5rem',
-                  maxHeight: '150px',
-                  overflowY: 'auto',
-                  width: '100%',
-                  boxSizing: 'border-box',
-                }}
+                className="absolute z-10 bg-white border border-gray-300 p-2 max-h-40 overflow-y-auto w-full rounded shadow"
               >
                 {filteredCategories.map((cat) => {
                   const checked = selectedCategories.includes(cat.id);
                   return (
                     <div
                       key={cat.id}
-                      style={{ padding: '0.25rem 0' }}
+                      className="py-1"
                       onClick={() => toggleCategory(cat.id)}
                     >
-                      <label style={{ cursor: 'pointer' }}>
+                      <label className="cursor-pointer">
                         <input
                           type="checkbox"
                           checked={checked}
                           readOnly
-                          style={{ marginRight: '0.5rem', boxSizing: 'border-box' }}
+                          className="mr-2"
                         />
                         {cat.name}
                       </label>
@@ -641,42 +538,26 @@ export default function AddItemModal({
             )}
           </div>
           </div>
-          <div style={{ position: 'sticky', bottom: 0, background: 'white', paddingTop: '1rem', display: 'flex', justifyContent: 'flex-end', width: '100%', boxSizing: 'border-box' }}>
+          <div className="sticky bottom-0 bg-white pt-4 flex justify-end w-full">
             <button
               type="button"
               onClick={onClose}
-              style={{ marginRight: '0.5rem' }}
+              className="mr-2 px-4 py-2 rounded bg-gray-200 hover:bg-gray-300"
             >
               Cancel
             </button>
-            <button type="submit">Save</button>
+            <button
+              type="submit"
+              className="px-4 py-2 rounded bg-red-700 text-white hover:bg-red-800"
+            >
+              Save
+            </button>
           </div>
         </form>
       </div>
       {showCropper && rawImage && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0,0,0,0.8)',
-            zIndex: 1100,
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-          }}
-        >
-          <div
-            style={{
-              position: 'relative',
-              width: '90vw',
-              maxWidth: '400px',
-              height: '90vh',
-              maxHeight: '400px',
-            }}
-          >
+        <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/80">
+          <div className="relative w-[90vw] max-w-[400px] h-[90vh] max-h-[400px]">
             <Cropper
               image={rawImage}
               crop={crop}
@@ -686,19 +567,7 @@ export default function AddItemModal({
               onZoomChange={setZoom}
               onCropComplete={(_, areaPixels) => setCroppedAreaPixels(areaPixels)}
             />
-            <div
-              style={{
-                position: 'absolute',
-                bottom: 0,
-                left: 0,
-                right: 0,
-                padding: '0.5rem',
-                background: 'rgba(0,0,0,0.5)',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-              }}
-            >
+            <div className="absolute bottom-0 left-0 right-0 p-2 bg-black/50 flex flex-col items-center">
               <input
                 type="range"
                 min={1}
@@ -706,13 +575,21 @@ export default function AddItemModal({
                 step={0.1}
                 value={zoom}
                 onChange={(e) => setZoom(Number(e.target.value))}
-                style={{ width: '80%' }}
+                className="w-4/5"
               />
-              <div style={{ marginTop: '0.5rem' }}>
-                <button type="button" onClick={handleCropCancel} style={{ marginRight: '0.5rem' }}>
+              <div className="mt-2">
+                <button
+                  type="button"
+                  onClick={handleCropCancel}
+                  className="mr-2 px-3 py-1 rounded bg-gray-200 hover:bg-gray-300"
+                >
                   Cancel
                 </button>
-                <button type="button" onClick={handleCropSave}>
+                <button
+                  type="button"
+                  onClick={handleCropSave}
+                  className="px-3 py-1 rounded bg-red-700 text-white hover:bg-red-800"
+                >
                   Save
                 </button>
               </div>
