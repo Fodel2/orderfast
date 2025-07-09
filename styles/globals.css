@@ -6,3 +6,10 @@
 body {
   font-family: 'Inter', sans-serif;
 }
+
+.debug-modal {
+  z-index: 99999 !important;
+  position: fixed !important;
+  display: flex !important;
+  opacity: 1 !important;
+  visibility: visible !important;}
