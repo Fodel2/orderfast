@@ -47,6 +47,8 @@ interface AddItemModalProps {
   onCreated: () => void;
   /** Existing item when editing */
   item?: any;
+  /** Whether the modal should be shown */
+  isOpen: boolean;
 }
 
 export default function AddItemModal({
@@ -56,6 +58,7 @@ export default function AddItemModal({
   onClose,
   onCreated,
   item,
+  isOpen,
 }: AddItemModalProps) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -93,6 +96,7 @@ export default function AddItemModal({
 
   // Pre-fill or reset fields whenever the modal is opened
   useEffect(() => {
+    if (!isOpen) return;
     const resetFields = async () => {
       if (item) {
         setName(item.name || '');
@@ -155,9 +159,10 @@ export default function AddItemModal({
     };
 
     resetFields();
-  }, [item, defaultCategoryId, filteredCategories]);
+  }, [item, defaultCategoryId, filteredCategories, isOpen]);
 
   useEffect(() => {
+    if (!isOpen) return;
     nameInputRef.current?.focus();
 
     const handleOutside = (e: MouseEvent) => {
@@ -172,7 +177,7 @@ export default function AddItemModal({
     };
     document.addEventListener('mousedown', handleOutside);
     return () => document.removeEventListener('mousedown', handleOutside);
-  }, [categoryDropdownOpen]);
+  }, [categoryDropdownOpen, isOpen]);
 
   useEffect(() => {
     return () => {
@@ -186,12 +191,13 @@ export default function AddItemModal({
   const dropdownRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    if (!isOpen) return;
     const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
       document.body.style.overflow = originalOverflow;
     };
-  }, []);
+  }, [isOpen]);
 
   const toggleCategory = (id: number) => {
     setSelectedCategories((prev) =>
@@ -334,6 +340,8 @@ export default function AddItemModal({
     onCreated();
     onClose();
   };
+
+  if (!isOpen) return null;
 
   return (
     <div
