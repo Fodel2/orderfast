@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
+import { UploadCloud, Trash2 } from 'lucide-react';
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
 import { supabase } from '../utils/supabaseClient';
@@ -74,6 +75,7 @@ export default function AddItemModal({
 
   const nameInputRef = useRef<HTMLInputElement | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const filteredCategories = useMemo(
     () => categories.filter((c) => c.restaurant_id === restaurantId),
@@ -432,66 +434,82 @@ export default function AddItemModal({
           {/* Image upload field */}
           <div style={{ marginBottom: '1rem' }}>
             <div
+              role="button"
+              tabIndex={0}
+              aria-label={imagePreview ? 'Change image' : 'Upload image'}
+              onClick={() => fileInputRef.current?.click()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  fileInputRef.current?.click();
+                }
+              }}
               style={{
+                marginTop: '0.5rem',
+                width: '40vw',
+                height: '40vw',
+                maxWidth: '200px',
+                maxHeight: '200px',
+                overflow: 'hidden',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '0.5rem',
-                marginBottom: '0.5rem',
-                flexWrap: 'wrap',
+                justifyContent: 'center',
+                marginLeft: 'auto',
+                marginRight: 'auto',
+                borderRadius: '0.5rem',
+                position: 'relative',
+                cursor: 'pointer',
+                background: '#f9f9f9',
+                border: '1px dashed #ccc',
               }}
             >
-              <label htmlFor="image-input" style={{ whiteSpace: 'nowrap' }}>
-                Select Image
-              </label>
-              <input
-                id="image-input"
-                type="file"
-                accept="image/*"
-                onChange={handleFileChange}
-              />
-              {imagePreview && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setImageFile(null);
-                    setImagePreview(null);
-                  }}
-                  style={{ whiteSpace: 'nowrap' }}
-                >
-                  Remove image
-                </button>
+              {imagePreview ? (
+                <>
+                  <img
+                    src={imagePreview}
+                    alt="Preview"
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      borderRadius: '0.5rem',
+                    }}
+                  />
+                  <button
+                    type="button"
+                    aria-label="Remove image"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setImageFile(null);
+                      setImagePreview(null);
+                    }}
+                    style={{
+                      position: 'absolute',
+                      top: '4px',
+                      right: '4px',
+                      background: 'rgba(255,255,255,0.8)',
+                      border: 'none',
+                      borderRadius: '50%',
+                      padding: '2px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </>
+              ) : (
+                <UploadCloud size={32} aria-hidden="true" />
               )}
             </div>
+            <input
+              ref={fileInputRef}
+              id="image-input"
+              type="file"
+              accept="image/*"
+              onChange={handleFileChange}
+              style={{ display: 'none' }}
+            />
             <small>Images should be square for best results.</small>
-            {imagePreview && (
-              <div
-                style={{
-                  marginTop: '0.5rem',
-                  width: '40vw',
-                  height: '40vw',
-                  maxWidth: '200px',
-                  maxHeight: '200px',
-                  overflow: 'hidden',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginLeft: 'auto',
-                  marginRight: 'auto',
-                  borderRadius: '0.5rem',
-                }}
-              >
-                <img
-                  src={imagePreview}
-                  alt="Preview"
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'cover',
-                    borderRadius: '0.5rem',
-                  }}
-                />
-              </div>
-            )}
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
             <label>
