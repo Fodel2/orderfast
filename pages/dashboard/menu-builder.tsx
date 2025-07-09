@@ -18,6 +18,8 @@ import { useRouter } from 'next/router';
 import { supabase } from '../../utils/supabaseClient';
 import AddItemModal from '../../components/AddItemModal';
 import AddCategoryModal from '../../components/AddCategoryModal';
+import PullMenuModal from '../../components/PullMenuModal';
+import Toast from '../../components/Toast';
 import DashboardLayout from '../../components/DashboardLayout';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -28,6 +30,7 @@ import {
   ArrowsUpDownIcon,
   TrashIcon,
 } from '@heroicons/react/24/outline';
+import stringSimilarity from 'string-similarity';
 
 // Small wrapper component used for dnd-kit sortable items
 function SortableWrapper({ id, children }: { id: number; children: React.ReactNode }) {
@@ -62,6 +65,9 @@ export default function MenuBuilder() {
   const [collapsedCats, setCollapsedCats] = useState<Set<number>>(new Set());
   const [heroImage, setHeroImage] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'menu' | 'addons' | 'stock' | 'build'>('menu');
+  const [showPullModal, setShowPullModal] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
   const fileRef = useRef<HTMLInputElement | null>(null);
   const router = useRouter();
 
@@ -189,6 +195,112 @@ export default function MenuBuilder() {
     setItems((prev) => prev.filter((i) => i.id !== id));
   };
 
+  // Import menu items from a scraped menu
+  const handleImportMenu = async (link: string) => {
+    if (!restaurantId) return;
+    try {
+      setImportLoading(true);
+      const res = await fetch('/api/pull-menu', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: link }),
+      });
+      if (!res.ok) throw new Error('Failed to fetch menu');
+      const data = await res.json();
+      const imported = data.categories as any[];
+      let newCount = 0;
+      let updatedCount = 0;
+
+      for (const cat of imported) {
+        let existingCat = categories.find(
+          (c) => c.name.toLowerCase() === cat.name.toLowerCase()
+        );
+        let categoryId = existingCat?.id;
+        if (!existingCat) {
+          const { data: cd } = await supabase
+            .from('menu_categories')
+            .insert([
+              {
+                name: cat.name,
+                description: '',
+                restaurant_id: restaurantId,
+                sort_order: categories.length + newCount,
+              },
+            ])
+            .select()
+            .single();
+          if (cd) {
+            setCategories((prev) => [...prev, cd]);
+            categoryId = cd.id;
+          }
+        }
+        if (!categoryId) continue;
+
+        for (const item of cat.items as any[]) {
+          const match = items.find(
+            (i) =>
+              stringSimilarity.compareTwoStrings(
+                i.name.toLowerCase(),
+                item.name.toLowerCase()
+              ) > 0.8
+          );
+          if (match) {
+            if (
+              match.description !== item.description ||
+              Math.abs(match.price - item.price) > 0.01
+            ) {
+              const { data: ud } = await supabase
+                .from('menu_items')
+                .update({
+                  description: item.description,
+                  price: item.price,
+                })
+                .eq('id', match.id)
+                .select()
+                .single();
+              if (ud) {
+                setItems((prev) =>
+                  prev.map((it) => (it.id === match.id ? ud : it))
+                );
+                updatedCount++;
+              }
+            }
+          } else {
+            const so = items.filter((it) => it.category_id === categoryId).length;
+            const { data: nd } = await supabase
+              .from('menu_items')
+              .insert([
+                {
+                  restaurant_id: restaurantId,
+                  category_id: categoryId,
+                  name: item.name,
+                  description: item.description,
+                  price: item.price,
+                  sort_order: so,
+                },
+              ])
+              .select()
+              .single();
+            if (nd) {
+              setItems((prev) => [...prev, nd]);
+              newCount++;
+            }
+          }
+        }
+      }
+
+      setToastMessage(
+        `Imported ${newCount} new items and updated ${updatedCount} existing ones!`
+      );
+    } catch (err) {
+      console.error(err);
+      alert('Failed to import menu. Please try again.');
+    } finally {
+      setImportLoading(false);
+      setShowPullModal(false);
+    }
+  };
+
   if (!session) return <p>Loading session...</p>;
 
   return (
@@ -244,6 +356,26 @@ export default function MenuBuilder() {
         </nav>
       </div>
 
+      {activeTab === 'build' && (
+        <div className="mb-6 flex items-center justify-between">
+          <button
+            onClick={() => {
+              setEditCategory(null);
+              setShowAddCatModal(true);
+            }}
+            className="flex items-center bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700"
+          >
+            <PlusCircleIcon className="w-5 h-5 mr-1" /> Add Category
+          </button>
+          <button
+            onClick={() => setShowPullModal(true)}
+            className="flex items-center bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700"
+          >
+            Pull Menu
+          </button>
+        </div>
+      )}
+
       <div className="mb-6 flex items-center justify-between">
         <div className="flex items-center text-sm text-gray-500 space-x-2">
           <ArrowsUpDownIcon className="w-4 h-4" />
@@ -256,15 +388,17 @@ export default function MenuBuilder() {
           <button onClick={collapseAll} className="p-2 rounded hover:bg-gray-200" aria-label="Collapse all">
             <ChevronUpIcon className="w-5 h-5" />
           </button>
-          <button
-            onClick={() => {
-              setEditCategory(null);
-              setShowAddCatModal(true);
-            }}
-            className="flex items-center bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700"
-          >
-            <PlusCircleIcon className="w-5 h-5 mr-1" /> Add Category
-          </button>
+          {activeTab !== 'build' && (
+            <button
+              onClick={() => {
+                setEditCategory(null);
+                setShowAddCatModal(true);
+              }}
+              className="flex items-center bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700"
+            >
+              <PlusCircleIcon className="w-5 h-5 mr-1" /> Add Category
+            </button>
+          )}
         </div>
       </div>
 
@@ -465,6 +599,15 @@ export default function MenuBuilder() {
           onCreated={() => restaurantId && fetchData(restaurantId)}
         />
       )}
+      <PullMenuModal
+        show={showPullModal}
+        loading={importLoading}
+        onClose={() => {
+          if (!importLoading) setShowPullModal(false);
+        }}
+        onSubmit={handleImportMenu}
+      />
+      <Toast message={toastMessage} onClose={() => setToastMessage('')} />
     </DashboardLayout>
   );
 }
