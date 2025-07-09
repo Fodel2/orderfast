@@ -147,6 +147,7 @@ export default function MenuBuilder() {
         onClick={() => {
           setEditCategory(null);
           setShowAddCatModal(true);
+          console.log('showAddCatModal after click:', showAddCatModal);
         }}
         style={{ margin: '1rem 0' }}
       >
@@ -172,6 +173,7 @@ export default function MenuBuilder() {
                     onClick={() => {
                       setEditCategory(cat);
                       setShowAddCatModal(true);
+                      console.log('showAddCatModal after click:', showAddCatModal);
                     }}
                     onPointerDown={(e) => e.stopPropagation()}
                     style={{ marginBottom: '0.5rem', cursor: 'pointer' }}
@@ -180,9 +182,10 @@ export default function MenuBuilder() {
                   </button>
                   <button
                     onClick={() => {
-                      setDefaultCategoryId(cat.id);
-                      setEditItem(null);
-                      setShowAddModal(true);
+                     setDefaultCategoryId(cat.id);
+                     setEditItem(null);
+                     setShowAddModal(true);
+                      console.log('showAddModal after click:', showAddModal);
                     }}
                     onPointerDown={(e) => e.stopPropagation()}
                     style={{ marginBottom: '1rem', cursor: 'pointer' }}
@@ -213,6 +216,7 @@ export default function MenuBuilder() {
                                   setEditItem(item);
                                   setDefaultCategoryId(null);
                                   setShowAddModal(true);
+                                  console.log('showAddModal after click:', showAddModal);
                                 }}
                                 onPointerDown={(e) => e.stopPropagation()}
                                 style={{ cursor: 'grab', padding: '0.25rem 0' }}

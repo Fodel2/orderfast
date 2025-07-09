@@ -101,7 +101,7 @@ export default function AddItemModal({ showModal, onClose }: AddItemModalProps) 
           onClose();
         }
       }}
-      className="fixed inset-0 bg-black bg-opacity-40 flex justify-center items-center p-4 overflow-x-hidden overflow-y-auto z-[1000] font-sans"
+      className="fixed inset-0 bg-black bg-opacity-40 flex justify-center items-center p-4 overflow-x-hidden overflow-y-auto z-[1000] font-sans debug-modal"
     >
       <div
         onClick={(e) => e.stopPropagation()}
