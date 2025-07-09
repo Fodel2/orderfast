@@ -91,10 +91,10 @@ export default function AddCategoryModal({
             />
           </div>
           <div className="sticky bottom-0 bg-white pt-4 flex justify-end space-x-2">
-            <button type="button" onClick={onClose} className="px-4 py-2 border border-[#b91c1c] text-[#b91c1c] rounded hover:bg-[#b91c1c]/10">
+            <button type="button" onClick={onClose} className="px-4 py-2 border border-teal-600 text-teal-600 rounded hover:bg-teal-50">
               Cancel
             </button>
-            <button type="submit" className="px-4 py-2 bg-[#b91c1c] text-white rounded hover:bg-[#a40f0f]">
+            <button type="submit" className="px-4 py-2 bg-teal-600 text-white rounded hover:bg-teal-700">
               Save
             </button>
           </div>
