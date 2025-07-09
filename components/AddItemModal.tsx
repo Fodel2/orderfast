@@ -2,18 +2,20 @@ import { useEffect, useRef, useState } from 'react';
 import Cropper, { Area } from 'react-easy-crop';
 import { CloudArrowUpIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { Trash2 } from 'lucide-react';
+import MultiSelectDropdown from './MultiSelectDropdown';
 import { supabase } from '../utils/supabaseClient';
+
+interface Category {
+  id: number;
+  name: string;
+}
 
 interface AddItemModalProps {
   showModal: boolean;
   onClose: () => void;
-  /** restaurant this item belongs to */
   restaurantId: number;
-  /** default category when creating */
   defaultCategoryId?: number;
-  /** item to edit */
   item?: any;
-  /** callback after save */
   onSaved?: () => void;
 }
 
@@ -31,9 +33,10 @@ export default function AddItemModal({
   const [isVegan, setIsVegan] = useState(false);
   const [isVegetarian, setIsVegetarian] = useState(false);
   const [is18Plus, setIs18Plus] = useState(false);
-  const [categories, setCategories] = useState<any[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategories, setSelectedCategories] = useState<number[]>([]);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const [tempImage, setTempImage] = useState<string | null>(null);
@@ -42,6 +45,7 @@ export default function AddItemModal({
   const [zoom, setZoom] = useState(1);
   const croppedAreaPixels = useRef<Area | null>(null);
 
+  // Utility to crop the image
   const createImage = (url: string): Promise<HTMLImageElement> => {
     return new Promise((resolve, reject) => {
       const image = new Image();
@@ -132,35 +136,82 @@ export default function AddItemModal({
     load();
   }, [showModal, item, restaurantId, defaultCategoryId]);
 
+  // Handle image file change (open cropper)
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const url = URL.createObjectURL(file);
       setTempImage(url);
       setCropping(true);
+      setImageFile(file);
     }
   };
 
-  const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const values = Array.from(e.target.selectedOptions).map((o) =>
-      parseInt(o.value, 10)
-    );
+  // For custom dropdown (multi-select)
+  const handleCategoryChange = (values: number[]) => {
     setSelectedCategories(values);
   };
 
+  // Remove image
+  const handleRemoveImage = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setImageUrl(null);
+    setImageFile(null);
+    if (fileRef.current) {
+      fileRef.current.value = '';
+    }
+  };
+
+  // Handle image crop complete
+  const handleCropComplete = (_: Area, areaPixels: Area) => {
+    croppedAreaPixels.current = areaPixels;
+  };
+
+  const handleConfirmCrop = async () => {
+    if (tempImage && croppedAreaPixels.current) {
+      const cropped = await getCroppedImg(tempImage, croppedAreaPixels.current);
+      setImageUrl(cropped);
+      const blob = await (await fetch(cropped)).blob();
+      setImageFile(new File([blob], imageFile?.name || 'image.jpg', { type: 'image/jpeg' }));
+    }
+    setCropping(false);
+    setTempImage(null);
+  };
+
+  // Handle submit logic
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const categoryId = selectedCategories[0] ?? null;
+    if (!name || !price || !selectedCategories.length) {
+      alert('Please fill out all required fields.');
+      return;
+    }
+
+    let uploadedUrl = imageUrl;
+
+    if (imageFile && !uploadedUrl?.startsWith('http')) {
+      const filePath = `${Date.now()}-${imageFile.name}`;
+      const { error: uploadError } = await supabase.storage
+        .from('menu_item_images')
+        .upload(filePath, imageFile);
+      if (uploadError) {
+        alert('Failed to upload image: ' + uploadError.message);
+        return;
+      }
+      const { data: urlData } = supabase.storage
+        .from('menu_item_images')
+        .getPublicUrl(filePath);
+      uploadedUrl = urlData.publicUrl;
+    }
+
     const itemData = {
       restaurant_id: restaurantId,
       name,
       description,
-      price: parseFloat(price) || 0,
+      price: parseFloat(price),
       is_vegan: isVegan,
       is_vegetarian: isVegetarian,
       is_18_plus: is18Plus,
-      image_url: imageUrl,
-      category_id: categoryId,
+      image_url: uploadedUrl,
     };
 
     const { data, error } = await (item
@@ -186,37 +237,21 @@ export default function AddItemModal({
         await supabase.from('menu_item_categories').delete().eq('item_id', data.id);
       }
       if (selectedCategories.length) {
-        const inserts = selectedCategories.map((cid) => ({
+        const inserts = selectedCategories.map((catId) => ({
           item_id: data.id,
-          category_id: cid,
+          category_id: catId,
         }));
-        await supabase.from('menu_item_categories').insert(inserts);
+        const { error: catError } = await supabase
+          .from('menu_item_categories')
+          .insert(inserts);
+        if (catError) {
+          alert('Failed to link categories: ' + catError.message);
+        }
       }
     }
 
-    onSaved?.();
+    onSaved && onSaved();
     onClose();
-  };
-
-  const handleCropComplete = (_: Area, areaPixels: Area) => {
-    croppedAreaPixels.current = areaPixels;
-  };
-
-  const handleConfirmCrop = async () => {
-    if (tempImage && croppedAreaPixels.current) {
-      const cropped = await getCroppedImg(tempImage, croppedAreaPixels.current);
-      setImageUrl(cropped);
-    }
-    setCropping(false);
-    setTempImage(null);
-  };
-
-  const handleRemoveImage = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setImageUrl(null);
-    if (fileRef.current) {
-      fileRef.current.value = '';
-    }
   };
 
   if (!showModal) return null;
@@ -228,7 +263,7 @@ export default function AddItemModal({
           onClose();
         }
       }}
-      className="fixed inset-0 bg-black bg-opacity-40 flex justify-center items-center p-4 overflow-x-hidden overflow-y-auto z-[1000] font-sans debug-modal"
+      className="fixed inset-0 bg-black bg-opacity-40 flex justify-center items-center p-4 overflow-x-hidden overflow-y-auto z-[1000] font-sans"
     >
       <div
         onClick={(e) => e.stopPropagation()}
@@ -291,18 +326,12 @@ export default function AddItemModal({
               <span>18+</span>
             </label>
           </div>
-          <select
-            multiple
-            value={selectedCategories.map(String)}
+          <MultiSelectDropdown
+            options={categories}
+            selected={selectedCategories}
             onChange={handleCategoryChange}
-            className="w-full border border-gray-300 rounded p-2"
-          >
-            {categories.map((cat) => (
-              <option key={cat.id} value={cat.id}>
-                {cat.name}
-              </option>
-            ))}
-          </select>
+            placeholder="Select categories"
+          />
           <div>
             <div
               className="relative w-32 h-32 border border-dashed border-gray-400 rounded flex items-center justify-center cursor-pointer mb-2 overflow-hidden"

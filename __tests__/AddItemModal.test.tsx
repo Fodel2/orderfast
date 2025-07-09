@@ -1,9 +1,11 @@
 import { render, screen } from '@testing-library/react'
 import AddItemModal from '../components/AddItemModal'
 
+// Set up mock env vars
 process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://localhost'
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'key'
 
+// Mock supabase client to avoid ESM import issues during tests
 jest.mock('../utils/supabaseClient', () => {
   const chain = {
     select: jest.fn(() => chain),
