@@ -254,6 +254,10 @@ export default function MenuBuilder() {
       </div>
       <AddItemModal
         showModal={showAddModal}
+        restaurantId={restaurantId!}
+        defaultCategoryId={defaultCategoryId || undefined}
+        item={editItem || undefined}
+        onSaved={() => restaurantId && fetchData(restaurantId)}
         onClose={() => {
           setShowAddModal(false);
           setEditItem(null);

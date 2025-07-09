@@ -2,15 +2,37 @@ import { useEffect, useRef, useState } from 'react';
 import Cropper, { Area } from 'react-easy-crop';
 import { CloudArrowUpIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { Trash2 } from 'lucide-react';
+import { supabase } from '../utils/supabaseClient';
 
 interface AddItemModalProps {
   showModal: boolean;
   onClose: () => void;
+  /** restaurant this item belongs to */
+  restaurantId: number;
+  /** default category when creating */
+  defaultCategoryId?: number;
+  /** item to edit */
+  item?: any;
+  /** callback after save */
+  onSaved?: () => void;
 }
 
-export default function AddItemModal({ showModal, onClose }: AddItemModalProps) {
+export default function AddItemModal({
+  showModal,
+  onClose,
+  restaurantId,
+  defaultCategoryId,
+  item,
+  onSaved,
+}: AddItemModalProps) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [price, setPrice] = useState('');
+  const [isVegan, setIsVegan] = useState(false);
+  const [isVegetarian, setIsVegetarian] = useState(false);
+  const [is18Plus, setIs18Plus] = useState(false);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [selectedCategories, setSelectedCategories] = useState<number[]>([]);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
@@ -62,6 +84,54 @@ export default function AddItemModal({ showModal, onClose }: AddItemModalProps) 
     }
   }, [showModal]);
 
+  // Load categories and prefill fields when the modal is opened
+  useEffect(() => {
+    if (!showModal) return;
+
+    const load = async () => {
+      const { data: catData } = await supabase
+        .from('menu_categories')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .order('sort_order', { ascending: true });
+      setCategories(catData || []);
+
+      if (item) {
+        setName(item.name || '');
+        setDescription(item.description || '');
+        setPrice(item.price ? String(item.price) : '');
+        setIsVegan(!!item.is_vegan);
+        setIsVegetarian(!!item.is_vegetarian);
+        setIs18Plus(!!item.is_18_plus);
+        setImageUrl(item.image_url || null);
+        const { data: links } = await supabase
+          .from('menu_item_categories')
+          .select('category_id')
+          .eq('item_id', item.id);
+        if (links && links.length) {
+          setSelectedCategories(links.map((l) => l.category_id));
+        } else if (item.category_id) {
+          setSelectedCategories([item.category_id]);
+        } else {
+          setSelectedCategories([]);
+        }
+      } else {
+        setName('');
+        setDescription('');
+        setPrice('');
+        setIsVegan(false);
+        setIsVegetarian(false);
+        setIs18Plus(false);
+        setImageUrl(null);
+        setSelectedCategories(
+          defaultCategoryId ? [defaultCategoryId] : []
+        );
+      }
+    };
+
+    load();
+  }, [showModal, item, restaurantId, defaultCategoryId]);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -69,6 +139,63 @@ export default function AddItemModal({ showModal, onClose }: AddItemModalProps) 
       setTempImage(url);
       setCropping(true);
     }
+  };
+
+  const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const values = Array.from(e.target.selectedOptions).map((o) =>
+      parseInt(o.value, 10)
+    );
+    setSelectedCategories(values);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const categoryId = selectedCategories[0] ?? null;
+    const itemData = {
+      restaurant_id: restaurantId,
+      name,
+      description,
+      price: parseFloat(price) || 0,
+      is_vegan: isVegan,
+      is_vegetarian: isVegetarian,
+      is_18_plus: is18Plus,
+      image_url: imageUrl,
+      category_id: categoryId,
+    };
+
+    const { data, error } = await (item
+      ? supabase
+          .from('menu_items')
+          .update(itemData)
+          .eq('id', item.id)
+          .select()
+          .single()
+      : supabase
+          .from('menu_items')
+          .insert([itemData])
+          .select()
+          .single());
+
+    if (error) {
+      alert('Failed to save item: ' + error.message);
+      return;
+    }
+
+    if (data && data.id) {
+      if (item) {
+        await supabase.from('menu_item_categories').delete().eq('item_id', data.id);
+      }
+      if (selectedCategories.length) {
+        const inserts = selectedCategories.map((cid) => ({
+          item_id: data.id,
+          category_id: cid,
+        }));
+        await supabase.from('menu_item_categories').insert(inserts);
+      }
+    }
+
+    onSaved?.();
+    onClose();
   };
 
   const handleCropComplete = (_: Area, areaPixels: Area) => {
@@ -116,7 +243,7 @@ export default function AddItemModal({ showModal, onClose }: AddItemModalProps) 
           <XMarkIcon className="w-5 h-5" />
         </button>
         <h2 className="text-2xl font-bold mb-6">Edit Item</h2>
-        <form className="space-y-4">
+        <form className="space-y-4" onSubmit={handleSubmit}>
           <input
             type="text"
             placeholder="Name"
@@ -130,6 +257,52 @@ export default function AddItemModal({ showModal, onClose }: AddItemModalProps) 
             onChange={(e) => setDescription(e.target.value)}
             className="w-full border border-gray-300 rounded p-2"
           />
+          <input
+            type="number"
+            step="0.01"
+            placeholder="Price"
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
+            className="w-full border border-gray-300 rounded p-2"
+          />
+          <div className="flex items-center space-x-4">
+            <label className="flex items-center space-x-1">
+              <input
+                type="checkbox"
+                checked={isVegan}
+                onChange={(e) => setIsVegan(e.target.checked)}
+              />
+              <span>Vegan</span>
+            </label>
+            <label className="flex items-center space-x-1">
+              <input
+                type="checkbox"
+                checked={isVegetarian}
+                onChange={(e) => setIsVegetarian(e.target.checked)}
+              />
+              <span>Vegetarian</span>
+            </label>
+            <label className="flex items-center space-x-1">
+              <input
+                type="checkbox"
+                checked={is18Plus}
+                onChange={(e) => setIs18Plus(e.target.checked)}
+              />
+              <span>18+</span>
+            </label>
+          </div>
+          <select
+            multiple
+            value={selectedCategories.map(String)}
+            onChange={handleCategoryChange}
+            className="w-full border border-gray-300 rounded p-2"
+          >
+            {categories.map((cat) => (
+              <option key={cat.id} value={cat.id}>
+                {cat.name}
+              </option>
+            ))}
+          </select>
           <div>
             <div
               className="relative w-32 h-32 border border-dashed border-gray-400 rounded flex items-center justify-center cursor-pointer mb-2 overflow-hidden"
