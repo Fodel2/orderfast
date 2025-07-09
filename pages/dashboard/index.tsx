@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../../utils/supabaseClient';
+import DashboardLayout from '../../components/DashboardLayout';
 
 export default function Dashboard() {
   const [userEmail, setUserEmail] = useState('');
@@ -29,33 +30,27 @@ export default function Dashboard() {
   };
 
   return (
-    <div style={{ padding: '2rem' }}>
-      <h1>Restaurant Dashboard</h1>
-      <p>Welcome, <strong>{userEmail}</strong></p>
-
-      <button
-        onClick={handleSignOut}
-        style={{
-          marginTop: '1rem',
-          padding: '0.5rem 1rem',
-          backgroundColor: 'black',
-          color: 'white',
-          border: 'none',
-          cursor: 'pointer',
-        }}
-      >
-        Sign Out
-      </button>
-
-      <hr style={{ margin: '2rem 0' }} />
-
-      <h2>Coming Soon:</h2>
-      <ul>
-        <li>🧾 Menu manager</li>
-        <li>📸 Logo uploader</li>
-        <li>📦 Orders</li>
-        <li>🏬 Printer integration</li>
-      </ul>
-    </div>
+    <DashboardLayout>
+      <div className="p-8">
+        <h1 className="text-3xl font-bold mb-4">Restaurant Dashboard</h1>
+        <p className="mb-6">
+          Welcome, <strong>{userEmail}</strong>
+        </p>
+        <button
+          onClick={handleSignOut}
+          className="mb-8 px-4 py-2 bg-black text-white rounded"
+        >
+          Sign Out
+        </button>
+        <hr className="my-8" />
+        <h2 className="text-xl font-semibold mb-2">Coming Soon:</h2>
+        <ul className="list-disc pl-6 space-y-1">
+          <li>🧾 Menu manager</li>
+          <li>📸 Logo uploader</li>
+          <li>📦 Orders</li>
+          <li>🏬 Printer integration</li>
+        </ul>
+      </div>
+    </DashboardLayout>
   );
 }

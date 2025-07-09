@@ -2,10 +2,21 @@ import Link from 'next/link';
 import {
   HomeIcon,
   ClipboardDocumentListIcon,
-  ReceiptPercentIcon,
+  MegaphoneIcon,
   TruckIcon,
+  CpuChipIcon,
+  DeviceTabletIcon,
+  GlobeAltIcon,
+  UserGroupIcon,
+  ArrowsRightLeftIcon,
+  ChartBarIcon,
+  DocumentTextIcon,
+  Cog6ToothIcon,
+  ComputerDesktopIcon,
   Bars3Icon,
   XMarkIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
 } from '@heroicons/react/24/outline';
 import { ReactNode, useState } from 'react';
 import { useRouter } from 'next/router';
@@ -17,13 +28,23 @@ interface DashboardLayoutProps {
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const nav = [
     { href: '/dashboard', label: 'Home', icon: HomeIcon },
+    { href: null, label: 'Orders', icon: TruckIcon },
     { href: '/dashboard/menu-builder', label: 'Menu', icon: ClipboardDocumentListIcon },
-    { href: '#', label: 'Sales', icon: ReceiptPercentIcon },
-    { href: '#', label: 'Orders', icon: TruckIcon },
+    { href: null, label: 'Promotions', icon: MegaphoneIcon },
+    { href: null, label: 'POS', icon: ComputerDesktopIcon },
+    { href: null, label: 'KOD', icon: CpuChipIcon },
+    { href: null, label: 'Kiosk', icon: DeviceTabletIcon },
+    { href: null, label: 'Website', icon: GlobeAltIcon },
+    { href: null, label: 'Team', icon: UserGroupIcon },
+    { href: null, label: 'Transactions', icon: ArrowsRightLeftIcon },
+    { href: null, label: 'Sales', icon: ChartBarIcon },
+    { href: null, label: 'Invoices', icon: DocumentTextIcon },
+    { href: null, label: 'Settings', icon: Cog6ToothIcon },
   ];
 
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(false); // mobile open state
+  const [collapsed, setCollapsed] = useState(false); // desktop collapse state
 
   const highlight = 'text-teal-600';
 
@@ -31,43 +52,61 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     <div className="min-h-screen flex bg-gray-100">
       {/* Mobile sidebar overlay */}
       <div
-        className={`fixed inset-0 bg-black/40 z-40 md:hidden transition-opacity ${open ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        className={`fixed inset-0 bg-black/40 z-40 md:hidden transition-opacity${open ? ' opacity-100' : ' opacity-0 pointer-events-none'}`}
         onClick={() => setOpen(false)}
         aria-hidden={!open}
       />
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-60 bg-white border-r shadow-sm flex flex-col py-6 transform transition-transform md:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}
+        className={`fixed inset-y-0 left-0 z-50 bg-white border-r shadow-sm flex flex-col py-6 transform transition-transform md:translate-x-0 w-60 ${open ? 'translate-x-0' : '-translate-x-full'} ${collapsed ? 'md:w-20' : 'md:w-60'}`}
       >
-        <div className="px-6 text-2xl font-semibold mb-8 flex items-center justify-between">
-          OrderFast
-          <button
-            className="md:hidden p-1 rounded hover:bg-gray-100"
-            onClick={() => setOpen(false)}
-            aria-label="Close sidebar"
-          >
-            <XMarkIcon className="w-6 h-6" />
-          </button>
+        <div className="px-4 mb-8 flex items-center justify-between">
+          {!collapsed && <span className="text-2xl font-semibold">OrderFast</span>}
+          <div className="flex items-center space-x-2">
+            <button
+              className="hidden md:block p-1 rounded hover:bg-gray-100"
+              onClick={() => setCollapsed(!collapsed)}
+              aria-label="Toggle sidebar"
+            >
+              {collapsed ? (
+                <ChevronRightIcon className="w-5 h-5" />
+              ) : (
+                <ChevronLeftIcon className="w-5 h-5" />
+              )}
+            </button>
+            <button
+              className="md:hidden p-1 rounded hover:bg-gray-100"
+              onClick={() => setOpen(false)}
+              aria-label="Close sidebar"
+            >
+              <XMarkIcon className="w-6 h-6" />
+            </button>
+          </div>
         </div>
         <nav className="flex-1 px-2 space-y-1">
           {nav.map((n) => {
-            const active = router.pathname === n.href;
-            return (
-              <Link
-                key={n.href}
-                href={n.href}
-                className={`flex items-center space-x-3 px-4 py-2 rounded hover:bg-gray-50 focus:outline-none ${active ? 'bg-gray-50 ' + highlight : ''}`}
-              >
-                <n.icon className={`w-5 h-5 ${active ? highlight : 'text-gray-500'}`} />
-                <span className={active ? highlight : ''}>{n.label}</span>
+            const active = !!n.href && router.pathname === n.href;
+            const base = `flex items-center px-4 py-2 rounded hover:bg-gray-50 focus:outline-none ${active ? 'bg-gray-50 border-l-4 border-teal-600' : ''}`;
+            const labelClass = `${active ? highlight : 'text-gray-700'} ${collapsed ? 'hidden' : 'ml-3'}`;
+            const iconClass = `w-6 h-6 ${active ? highlight : 'text-gray-400'}`;
+            return n.href ? (
+              <Link key={n.label} href={n.href} className={base} aria-label={n.label}>
+                <n.icon className={iconClass} aria-hidden="true" />
+                <span className={labelClass}>{n.label}</span>
               </Link>
+            ) : (
+              <span key={n.label} className={`${base} text-gray-400 cursor-not-allowed`} title="Coming soon" aria-label={n.label}>
+                <n.icon className="w-6 h-6 text-gray-400" aria-hidden="true" />
+                <span className={labelClass}>{n.label}</span>
+              </span>
             );
           })}
         </nav>
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 md:ml-60 p-6">
+      <main className={`flex-1 p-6 transition-all ${collapsed ? 'md:ml-20' : 'md:ml-60'}`}
+      >
         {/* Mobile toggle button */}
         <button
           onClick={() => setOpen(true)}
