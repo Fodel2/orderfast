@@ -262,10 +262,6 @@ export default function MenuBuilder() {
           setShowAddModal(false);
           setEditItem(null);
         }}
-        onCreated={() => restaurantId && fetchData(restaurantId!)}
-        item={editItem || undefined}
-        categories={categories}
-        defaultCategoryId={defaultCategoryId || undefined}
       />
       {showAddCatModal && (
         <AddCategoryModal
