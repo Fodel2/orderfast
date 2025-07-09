@@ -73,7 +73,11 @@ export default function AddItemModal({ showModal, onClose }: AddItemModalProps) 
               onClick={() => fileRef.current?.click()}
             >
               {imageUrl ? (
-                <img src={imageUrl} alt="Preview" className="object-cover w-full h-full rounded" />
+                <img
+                  src={imageUrl}
+                  alt="Preview"
+                  className="max-w-[200px] max-h-[200px] object-cover rounded-xl mx-auto"
+                />
               ) : (
                 <span className="text-gray-500">Upload</span>
               )}
