@@ -20,6 +20,9 @@ import AddItemModal from '../../components/AddItemModal';
 import AddCategoryModal from '../../components/AddCategoryModal';
 import PullMenuModal from '../../components/PullMenuModal';
 import Toast from '../../components/Toast';
+import ConfirmModal from '../../components/ConfirmModal';
+import DraftCategoryModal from '../../components/DraftCategoryModal';
+import DraftItemModal from '../../components/DraftItemModal';
 import DashboardLayout from '../../components/DashboardLayout';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -68,6 +71,17 @@ export default function MenuBuilder() {
   const [showPullModal, setShowPullModal] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+  // Draft menu state for the Build tab
+  const [buildCategories, setBuildCategories] = useState<any[]>([]);
+  const [buildItems, setBuildItems] = useState<any[]>([]);
+  const [showDraftItemModal, setShowDraftItemModal] = useState(false);
+  const [draftItem, setDraftItem] = useState<any | null>(null);
+  const [showDraftCategoryModal, setShowDraftCategoryModal] = useState(false);
+  const [draftCategory, setDraftCategory] = useState<any | null>(null);
+  const [confirmState, setConfirmState] = useState<
+    | { title: string; message: string; action: () => void }
+    | null
+  >(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const router = useRouter();
 
@@ -117,6 +131,32 @@ export default function MenuBuilder() {
       )
     );
   };
+
+  // Reorder draft categories locally
+  const handleDraftCategoryDragEnd = ({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id) return;
+    const oldIndex = buildCategories.findIndex((c) => c.id === active.id);
+    const newIndex = buildCategories.findIndex((c) => c.id === over.id);
+    const newCats = arrayMove(buildCategories, oldIndex, newIndex);
+    setBuildCategories(newCats);
+  };
+
+  // Reorder draft items locally
+  const handleDraftItemDragEnd =
+    (categoryId: number) => ({ active, over }: DragEndEvent) => {
+      if (!over || active.id === over.id) return;
+      const catItems = buildItems.filter((i) => i.category_id === categoryId);
+      const oldIndex = catItems.findIndex((i) => i.id === active.id);
+      const newIndex = catItems.findIndex((i) => i.id === over.id);
+      const sorted = arrayMove(catItems, oldIndex, newIndex);
+
+      const updated = [...buildItems];
+      sorted.forEach((it, idx) => {
+        const gi = updated.findIndex((i) => i.id === it.id);
+        updated[gi] = { ...it, sort_order: idx };
+      });
+      setBuildItems(updated);
+    };
 
   // Persist new ordering for items within a category
   const handleItemDragEnd = (categoryId: number) => async ({ active, over }: DragEndEvent) => {
@@ -301,6 +341,132 @@ export default function MenuBuilder() {
     }
   };
 
+  // Import menu data into the draft build menu only
+  const handleImportMenuDraft = async (link: string) => {
+    try {
+      setImportLoading(true);
+      const res = await fetch('/api/pull-menu', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: link }),
+      });
+      if (!res.ok) throw new Error('Failed to fetch menu');
+      const data = await res.json();
+      const imported = data.categories as any[];
+      const newCats = [...buildCategories];
+      const newItems = [...buildItems];
+      imported.forEach((cat: any) => {
+        const id = Date.now() + Math.random();
+        newCats.push({ id, name: cat.name, description: '', sort_order: newCats.length });
+        (cat.items || []).forEach((it: any, idx: number) => {
+          newItems.push({
+            id: Date.now() + Math.random(),
+            category_id: id,
+            name: it.name,
+            description: it.description,
+            price: it.price,
+            sort_order: idx,
+          });
+        });
+      });
+      setBuildCategories(newCats);
+      setBuildItems(newItems);
+      setToastMessage('Menu imported to build table');
+    } catch (err) {
+      console.error(err);
+      alert('Failed to import menu. Please try again.');
+    } finally {
+      setImportLoading(false);
+      setShowPullModal(false);
+    }
+  };
+
+  // Duplicate live menu into the draft state
+  const duplicateLiveMenu = () => {
+    const doIt = () => {
+      setBuildCategories(categories.map((c) => ({ ...c })));
+      setBuildItems(items.map((i) => ({ ...i })));
+      setToastMessage('Live menu duplicated');
+    };
+    if (buildCategories.length || buildItems.length) {
+      setConfirmState({
+        title: 'Overwrite build menu?',
+        message:
+          'Duplicating the live menu will overwrite all items in your current build menu. Continue?',
+        action: doIt,
+      });
+    } else {
+      doIt();
+    }
+  };
+
+  // Delete all draft items and categories
+  const deleteAllDraft = () => {
+    setConfirmState({
+      title: 'Delete build menu',
+      message:
+        'Are you sure you want to delete ALL items from your build menu? This cannot be undone.',
+      action: () => {
+        setBuildCategories([]);
+        setBuildItems([]);
+      },
+    });
+  };
+
+  // Publish draft menu to Supabase as the live menu
+  const publishMenu = async () => {
+    if (!restaurantId) return;
+    setConfirmState({
+      title: 'Publish menu',
+      message: 'This will replace your live menu with the build menu. Continue?',
+      action: async () => {
+        try {
+          await supabase.from('menu_items').delete().eq('restaurant_id', restaurantId);
+          await supabase.from('menu_categories').delete().eq('restaurant_id', restaurantId);
+          const idMap = new Map<number, number>();
+          for (let i = 0; i < buildCategories.length; i++) {
+            const bc = buildCategories[i];
+            const { data: cd, error: ce } = await supabase
+              .from('menu_categories')
+              .insert([
+                {
+                  name: bc.name,
+                  description: bc.description,
+                  restaurant_id: restaurantId,
+                  sort_order: i,
+                },
+              ])
+              .select()
+              .single();
+            if (ce || !cd) throw ce;
+            idMap.set(bc.id, cd.id);
+          }
+          for (let i = 0; i < buildItems.length; i++) {
+            const bi = buildItems[i];
+            const cid = idMap.get(bi.category_id);
+            if (!cid) continue;
+            const { error: ie } = await supabase.from('menu_items').insert([
+              {
+                restaurant_id: restaurantId,
+                category_id: cid,
+                name: bi.name,
+                description: bi.description,
+                price: bi.price,
+                sort_order: bi.sort_order || 0,
+              },
+            ]);
+            if (ie) throw ie;
+          }
+          setToastMessage('Menu published');
+          fetchData(restaurantId);
+        } catch (err) {
+          console.error(err);
+          setToastMessage('Failed to publish menu');
+        }
+      },
+    });
+  };
+
   if (!session) return <p>Loading session...</p>;
 
   return (
@@ -357,21 +523,41 @@ export default function MenuBuilder() {
       </div>
 
       {activeTab === 'build' && (
-        <div className="mb-6 flex items-center justify-between">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => {
+                setDraftCategory(null);
+                setShowDraftCategoryModal(true);
+              }}
+              className="flex items-center bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700"
+            >
+              <PlusCircleIcon className="w-5 h-5 mr-1" /> Add Category
+            </button>
+            <button
+              onClick={() => setShowPullModal(true)}
+              className="flex items-center bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700"
+            >
+              Pull Menu
+            </button>
+            <button
+              onClick={duplicateLiveMenu}
+              className="flex items-center bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700"
+            >
+              Duplicate Live Menu
+            </button>
+            <button
+              onClick={deleteAllDraft}
+              className="flex items-center bg-red-600 text-white px-3 py-2 rounded-lg hover:bg-red-700"
+            >
+              Delete All
+            </button>
+          </div>
           <button
-            onClick={() => {
-              setEditCategory(null);
-              setShowAddCatModal(true);
-            }}
+            onClick={publishMenu}
             className="flex items-center bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700"
           >
-            <PlusCircleIcon className="w-5 h-5 mr-1" /> Add Category
-          </button>
-          <button
-            onClick={() => setShowPullModal(true)}
-            className="flex items-center bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700"
-          >
-            Pull Menu
+            Publish
           </button>
         </div>
       )}
@@ -543,19 +729,145 @@ export default function MenuBuilder() {
             )}
           </motion.div>
         )}
-        {activeTab !== 'menu' && (
+        {activeTab === 'build' && (
           <motion.div
-            key={activeTab}
+            key="build"
             initial={{ x: 20, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: -20, opacity: 0 }}
             transition={{ duration: 0.2 }}
           >
-            {/*
-              Wrap placeholder in a div so className is applied without
-              assigning it directly to motion.div (prevents TS error)
-            */}
-            <div className="p-4 text-gray-500">Content coming soon</div>
+            {buildCategories.length === 0 ? (
+              <div className="text-center text-gray-500 py-10">
+                No items in your build menu.
+              </div>
+            ) : (
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDraftCategoryDragEnd}
+              >
+                <SortableContext
+                  items={buildCategories.map((c) => c.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {buildCategories.map((cat) => (
+                    <SortableWrapper key={cat.id} id={cat.id}>
+                      <div className="bg-white rounded-xl shadow mb-4">
+                        <div className="flex items-start justify-between p-4">
+                          <div className="flex items-start space-x-3">
+                            <span className="cursor-grab select-none">☰</span>
+                            <div>
+                              <div className="flex items-center space-x-2">
+                                <h2 className="font-semibold text-lg">{cat.name}</h2>
+                                <span className="text-xs bg-gray-200 rounded-full px-2">
+                                  {buildItems.filter((i) => i.category_id === cat.id).length}
+                                </span>
+                              </div>
+                              {cat.description && (
+                                <p className="text-sm text-gray-500">{cat.description}</p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={() => toggleCollapse(cat.id)}
+                              className="p-2 rounded hover:bg-gray-100"
+                              aria-label="Toggle items"
+                              onPointerDown={(e) => e.stopPropagation()}
+                            >
+                              {collapsedCats.has(cat.id) ? (
+                                <ChevronDownIcon className="w-5 h-5" />
+                              ) : (
+                                <ChevronUpIcon className="w-5 h-5" />
+                              )}
+                            </button>
+                            <button
+                              onClick={() => {
+                                setDraftCategory(cat);
+                                setShowDraftCategoryModal(true);
+                              }}
+                              onPointerDown={(e) => e.stopPropagation()}
+                              className="p-2 rounded hover:bg-gray-100"
+                              aria-label="Edit category"
+                            >
+                              <PencilSquareIcon className="w-5 h-5" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                setDefaultCategoryId(cat.id);
+                                setDraftItem(null);
+                                setShowDraftItemModal(true);
+                              }}
+                              onPointerDown={(e) => e.stopPropagation()}
+                              className="p-2 rounded hover:bg-gray-100"
+                              aria-label="Add item"
+                            >
+                              <PlusCircleIcon className="w-5 h-5" />
+                            </button>
+                          </div>
+                        </div>
+                        {!collapsedCats.has(cat.id) && (
+                          <div className="px-4 pb-4">
+                            <DndContext
+                              sensors={sensors}
+                              collisionDetection={closestCenter}
+                              onDragEnd={handleDraftItemDragEnd(cat.id)}
+                            >
+                              <SortableContext
+                                items={buildItems
+                                  .filter((i) => i.category_id === cat.id)
+                                  .map((i) => i.id)}
+                                strategy={verticalListSortingStrategy}
+                              >
+                                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                  {buildItems
+                                    .filter((item) => item.category_id === cat.id)
+                                    .map((item) => (
+                                      <SortableWrapper key={item.id} id={item.id}>
+                                        <div
+                                          onClick={() => {
+                                            setDraftItem(item);
+                                            setShowDraftItemModal(true);
+                                          }}
+                                          onPointerDown={(e) => e.stopPropagation()}
+                                          className="cursor-grab bg-gray-50 rounded-lg p-3 flex items-start justify-between"
+                                        >
+                                          <div className="flex items-start space-x-2 overflow-hidden">
+                                            <div className="w-12 h-12 bg-gray-200 rounded flex-shrink-0" />
+                                            <div className="truncate">
+                                              <p className="font-medium truncate text-sm">{item.name}</p>
+                                              <p className="text-xs text-gray-500 truncate">{item.description}</p>
+                                            </div>
+                                          </div>
+                                          <div className="flex items-center space-x-2">
+                                            <span className="text-sm font-semibold">${item.price.toFixed(2)}</span>
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setBuildItems((prev) => prev.filter((i) => i.id !== item.id));
+                                              }}
+                                              className="p-1 rounded hover:bg-gray-200"
+                                              aria-label="Delete item"
+                                            >
+                                              <TrashIcon className="w-4 h-4 text-gray-500" />
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </SortableWrapper>
+                                    ))}
+                                </div>
+                              </SortableContext>
+                            </DndContext>
+                          </div>
+                        )}
+                      </div>
+                    </SortableWrapper>
+                  ))}
+                </SortableContext>
+              </DndContext>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -605,8 +917,60 @@ export default function MenuBuilder() {
         onClose={() => {
           if (!importLoading) setShowPullModal(false);
         }}
-        onSubmit={handleImportMenu}
+        onSubmit={activeTab === 'build' ? handleImportMenuDraft : handleImportMenu}
       />
+      <DraftItemModal
+        show={showDraftItemModal}
+        categories={buildCategories}
+        item={draftItem || undefined}
+        onClose={() => {
+          setShowDraftItemModal(false);
+          setDraftItem(null);
+        }}
+        onSave={(it) => {
+          if (draftItem) {
+            setBuildItems((prev) => prev.map((p) => (p.id === draftItem.id ? { ...p, ...it } : p)));
+          } else {
+            const id = Date.now() + Math.random();
+            setBuildItems((prev) => [...prev, { ...it, id }]);
+          }
+        }}
+      />
+      {showDraftCategoryModal && (
+        <DraftCategoryModal
+          show={showDraftCategoryModal}
+          category={draftCategory || undefined}
+          onClose={() => {
+            setShowDraftCategoryModal(false);
+            setDraftCategory(null);
+          }}
+          onSave={(cat) => {
+            if (draftCategory) {
+              setBuildCategories((prev) =>
+                prev.map((c) => (c.id === draftCategory.id ? { ...c, ...cat } : c))
+              );
+            } else {
+              const id = Date.now() + Math.random();
+              setBuildCategories((prev) => [
+                ...prev,
+                { id, name: cat.name, description: cat.description, sort_order: prev.length },
+              ]);
+            }
+          }}
+        />
+      )}
+      {confirmState && (
+        <ConfirmModal
+          show={true}
+          title={confirmState.title}
+          message={confirmState.message}
+          onConfirm={() => {
+            confirmState.action();
+            setConfirmState(null);
+          }}
+          onCancel={() => setConfirmState(null)}
+        />
+      )}
       <Toast message={toastMessage} onClose={() => setToastMessage('')} />
     </DashboardLayout>
   );
