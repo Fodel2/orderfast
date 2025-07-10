@@ -23,6 +23,7 @@ import ConfirmModal from '../../components/ConfirmModal';
 import DraftCategoryModal from '../../components/DraftCategoryModal';
 import ViewItemModal from '../../components/ViewItemModal';
 import DashboardLayout from '../../components/DashboardLayout';
+import AddonsTab from '../../components/AddonsTab';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChevronDownIcon,
@@ -663,6 +664,17 @@ export default function MenuBuilder() {
           </SortableContext>
         </DndContext>
             )}
+          </motion.div>
+        )}
+        {activeTab === 'addons' && (
+          <motion.div
+            key="addons"
+            initial={{ x: 20, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: -20, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            {restaurantId && <AddonsTab restaurantId={restaurantId} />}
           </motion.div>
         )}
         {activeTab === 'build' && (
