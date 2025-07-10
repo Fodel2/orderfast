@@ -87,19 +87,18 @@ export default function AddonGroupModal({
         return;
       }
     } else {
-      // Patch: add restaurant_id to addon_groups insert
       const {
         data: { user },
       } = await supabase.auth.getUser();
 
       // Fetch restaurant_id for current user
-      const { data: restaurantUser, error } = await supabase
+      const { data: restaurantUser, error: fetchError } = await supabase
         .from('restaurant_users')
         .select('restaurant_id')
         .eq('user_id', user?.id)
         .single();
 
-      console.log('Fetched restaurant user:', restaurantUser, error);
+      console.log('Fetched restaurant user:', restaurantUser, fetchError);
 
       if (!restaurantUser) {
         alert('No restaurant found for this user.');
@@ -115,15 +114,18 @@ export default function AddonGroupModal({
 
       console.log('Inserting addon group:', payload);
 
-      const { error: insertError } = await supabase
+      const { data, error: insertError } = await supabase
         .from('addon_groups')
-        .insert([payload]);
+        .insert([payload])
+        .select();
 
       if (insertError) {
         console.error('Insert error:', insertError);
         alert('Insert failed. Check console for details.');
         return;
       }
+
+      groupId = data?.[0]?.id;
     }
 
     if (!groupId) return;
