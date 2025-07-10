@@ -679,8 +679,7 @@ export default function MenuBuilder() {
                                           </div>
                                           <div className="flex items-center space-x-2">
                                             <span className="text-sm font-semibold">${item.price.toFixed(2)}</span>
-                                            <button
-                                              type="button"
+                                            {/* Removed item-level delete button; delete now handled in modal */}
                                           </div>
                                         </div>
                                       </SortableWrapper>
