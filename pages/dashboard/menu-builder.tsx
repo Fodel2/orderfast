@@ -734,35 +734,31 @@ export default function MenuBuilder() {
           onCreated={() => restaurantId && fetchData(restaurantId)}
         />
       )}
-      <AddItemModal
-        showModal={showDraftItemModal}
-        restaurantId={restaurantId!}
-        defaultCategoryId={defaultCategoryId || undefined}
-        item={draftItem || undefined}
-        categoriesProp={buildCategories}
-        onSaveData={async (data, cats, addons) => {
-onSaveData={async (data, cats, addons) => {
-  const base = { ...data, category_id: cats[0] ?? null, addons };
-  if (draftItem) {
-    setBuildItems((prev) =>
-      prev.map((p) => (p.id === draftItem.id ? { ...p, ...base } : p))
-    );
-  } else {
-    const id = Date.now() + Math.random();
-    setBuildItems((prev) => [...prev, { ...base, id }]);
-  }
-}}
-
-          }
-        }}
-        onDeleteData={(id) => {
-          setBuildItems((prev) => prev.filter((i) => i.id !== id));
-        }}
-        onClose={() => {
-          setShowDraftItemModal(false);
-          setDraftItem(null);
-        }}
-      />
+ <AddItemModal
+  showModal={showDraftItemModal}
+  restaurantId={restaurantId!}
+  defaultCategoryId={defaultCategoryId || undefined}
+  item={draftItem || undefined}
+  categoriesProp={buildCategories}
+  onSaveData={async (data, cats, addons) => {
+    const base = { ...data, category_id: cats[0] ?? null, addons };
+    if (draftItem) {
+      setBuildItems((prev) =>
+        prev.map((p) => (p.id === draftItem.id ? { ...p, ...base } : p))
+      );
+    } else {
+      const id = Date.now() + Math.random();
+      setBuildItems((prev) => [...prev, { ...base, id }]);
+    }
+  }}
+  onDeleteData={(id) => {
+    setBuildItems((prev) => prev.filter((i) => i.id !== id));
+  }}
+  onClose={() => {
+    setShowDraftItemModal(false);
+    setDraftItem(null);
+  }}
+/>
       {showDraftCategoryModal && (
         <DraftCategoryModal
           show={showDraftCategoryModal}
