@@ -87,9 +87,20 @@ export default function AddonGroupModal({
         return;
       }
     } else {
+      // Patch: add restaurant_id to addon_groups insert
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      const { data: restaurantUser } = await supabase
+        .from('restaurant_users')
+        .select('restaurant_id')
+        .eq('user_id', user?.id)
+        .maybeSingle();
+      const rid = restaurantUser?.restaurant_id ?? restaurantId;
+
       const { data, error } = await supabase
         .from('addon_groups')
-        .insert([{ name, multiple_choice: multipleChoice, required, restaurant_id: restaurantId }])
+        .insert([{ name, multiple_choice: multipleChoice, required, restaurant_id: rid }])
         .select()
         .single();
       if (error) {
