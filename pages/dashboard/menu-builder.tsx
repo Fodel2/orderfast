@@ -746,7 +746,7 @@ export default function MenuBuilder() {
         item={draftItem || undefined}
         categoriesProp={buildCategories}
         onSaveData={async (data, cats, addons) => {
-          const base = { ...data, category_id: cats[0] ?? null };
+          const base = { ...data, category_id: cats[0] ?? null, addons };
           if (draftItem) {
             setBuildItems((prev) =>
               prev.map((p) => (p.id === draftItem.id ? { ...p, ...base } : p))
