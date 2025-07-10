@@ -87,16 +87,45 @@ export default function AddonGroupModal({
         return;
       }
     } else {
-      const { data, error } = await supabase
-        .from('addon_groups')
-        .insert([{ name, multiple_choice: multipleChoice, required, restaurant_id: restaurantId }])
-        .select()
+      // Patch: add restaurant_id to addon_groups insert
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      const { data: restaurantUser, error: fetchError } = await supabase
+        .from('restaurant_users')
+        .select('restaurant_id')
+        .eq('user_id', user?.id)
         .single();
-      if (error) {
-        alert('Failed to save: ' + error.message);
+
+      console.log('Fetched restaurant user:', restaurantUser, fetchError);
+
+      if (!restaurantUser) {
+        alert('No restaurant found for this user.');
         return;
       }
-      groupId = data?.id;
+
+      const payload = {
+        name,
+        multiple_choice: multipleChoice,
+        required,
+        restaurant_id: restaurantUser.restaurant_id,
+      };
+
+      console.log('Inserting addon group:', payload);
+
+      const { data, error: insertError } = await supabase
+        .from('addon_groups')
+        .insert([payload])
+        .select();
+
+      if (insertError) {
+        console.error('Insert error:', insertError);
+        alert('Insert failed. Check console for details.');
+        return;
+      }
+
+      groupId = data?.[0]?.id;
     }
 
     if (!groupId) return;
