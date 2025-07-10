@@ -24,6 +24,7 @@ import DraftCategoryModal from '../../components/DraftCategoryModal';
 import ViewItemModal from '../../components/ViewItemModal';
 import DashboardLayout from '../../components/DashboardLayout';
 import AddonsTab from '../../components/AddonsTab';
+import StockTab, { StockTabProps } from '../../components/StockTab';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChevronDownIcon,
@@ -112,6 +113,9 @@ export default function MenuBuilder() {
     | { title: string; message: string; action: () => void }
     | null
   >(null);
+  const [stockCategories, setStockCategories] = useState<StockTabProps['categories']>([]);
+  const [stockAddons, setStockAddons] = useState<StockTabProps['addons']>([]);
+  const [stockLoading, setStockLoading] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const router = useRouter();
 
@@ -128,6 +132,59 @@ export default function MenuBuilder() {
     localStorage.setItem('draftCategories', JSON.stringify(buildCategories));
     localStorage.setItem('draftItems', JSON.stringify(buildItems));
   }, [buildCategories, buildItems]);
+
+  // Load stock data when Stock tab is opened
+  useEffect(() => {
+    const loadStock = async (rid: number) => {
+      setStockLoading(true);
+      const { data: catData } = await supabase
+        .from('menu_categories')
+        .select('*')
+        .eq('restaurant_id', rid)
+        .order('sort_order', { ascending: true });
+      const { data: itemData } = await supabase
+        .from('menu_items')
+        .select('id,name,category_id,stock_status,stock_return_date')
+        .eq('restaurant_id', rid);
+      const mappedCats = (catData || []).map((c) => ({
+        id: String(c.id),
+        name: c.name,
+        items: (itemData || [])
+          .filter((i) => i.category_id === c.id)
+          .map((i) => ({
+            id: String(i.id),
+            name: i.name,
+            stock_status: i.stock_status,
+            stock_return_date: i.stock_return_date,
+          })),
+      }));
+
+      const { data: groups } = await supabase
+        .from('addon_groups')
+        .select('id')
+        .eq('restaurant_id', rid);
+      let mappedAddons: StockTabProps['addons'] = [];
+      if (groups && groups.length) {
+        const { data: opts } = await supabase
+          .from('addon_options')
+          .select('id,name,group_id,stock_status,stock_return_date')
+          .in('group_id', groups.map((g) => g.id));
+        mappedAddons = (opts || []).map((o) => ({
+          id: String(o.id),
+          name: o.name,
+          stock_status: o.stock_status,
+          stock_return_date: o.stock_return_date,
+        }));
+      }
+
+      setStockCategories(mappedCats);
+      setStockAddons(mappedAddons);
+      setStockLoading(false);
+    };
+    if (activeTab === 'stock' && restaurantId) {
+      loadStock(restaurantId);
+    }
+  }, [activeTab, restaurantId]);
 
   const hasMenuChanges = useMemo(() => {
     return (
@@ -695,6 +752,21 @@ export default function MenuBuilder() {
             transition={{ duration: 0.2 }}
           >
             {restaurantId && <AddonsTab restaurantId={restaurantId} />}
+          </motion.div>
+        )}
+        {activeTab === 'stock' && (
+          <motion.div
+            key="stock"
+            initial={{ x: 20, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: -20, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            {stockLoading ? (
+              <div className="p-4">Loading...</div>
+            ) : (
+              <StockTab categories={stockCategories} addons={stockAddons} />
+            )}
           </motion.div>
         )}
         {activeTab === 'build' && (
