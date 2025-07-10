@@ -21,6 +21,7 @@ import AddCategoryModal from '../../components/AddCategoryModal';
 import Toast from '../../components/Toast';
 import ConfirmModal from '../../components/ConfirmModal';
 import DraftCategoryModal from '../../components/DraftCategoryModal';
+import ViewItemModal from '../../components/ViewItemModal';
 import DashboardLayout from '../../components/DashboardLayout';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -99,6 +100,8 @@ export default function MenuBuilder() {
   const [draftItem, setDraftItem] = useState<any | null>(null);
   const [showDraftCategoryModal, setShowDraftCategoryModal] = useState(false);
   const [draftCategory, setDraftCategory] = useState<any | null>(null);
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [viewItem, setViewItem] = useState<any | null>(null);
   const [confirmState, setConfirmState] = useState<
     | { title: string; message: string; action: () => void }
     | null
@@ -520,7 +523,7 @@ export default function MenuBuilder() {
         <button onClick={collapseAll} className="p-2 rounded hover:bg-gray-200" aria-label="Collapse all">
           <ChevronUpIcon className="w-5 h-5" />
         </button>
-        {activeTab !== 'build' && (
+        {activeTab !== 'build' && activeTab !== 'menu' && (
           <button
             onClick={() => {
               setEditCategory(null);
@@ -531,15 +534,7 @@ export default function MenuBuilder() {
             <PlusCircleIcon className="w-5 h-5 mr-1" /> Add Category
           </button>
         )}
-        {activeTab === 'menu' && (
-          <button
-            onClick={publishLiveMenu}
-            disabled={!hasMenuChanges}
-            className="flex items-center bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700 disabled:opacity-50"
-          >
-            Publish Changes
-          </button>
-        )}
+        {/* Publish button hidden on Menu tab */}
       </div>
     </div>
 
@@ -599,29 +594,7 @@ export default function MenuBuilder() {
                           <ChevronUpIcon className="w-5 h-5" />
                         )}
                       </button>
-                      <button
-                        onClick={() => {
-                          setEditCategory(cat);
-                          setShowAddCatModal(true);
-                        }}
-                        onPointerDown={(e) => e.stopPropagation()}
-                        className="p-2 rounded hover:bg-gray-100"
-                        aria-label="Edit category"
-                      >
-                        <PencilSquareIcon className="w-5 h-5" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          setDefaultCategoryId(cat.id);
-                          setEditItem(null);
-                          setShowAddModal(true);
-                        }}
-                        onPointerDown={(e) => e.stopPropagation()}
-                        className="p-2 rounded hover:bg-gray-100"
-                        aria-label="Add item"
-                      >
-                        <PlusCircleIcon className="w-5 h-5" />
-                      </button>
+                      {/* actions removed in read-only menu */}
                     </div>
                   </div>
                   {!collapsedCats.has(cat.id) && (
@@ -646,9 +619,8 @@ export default function MenuBuilder() {
                                 <SortableWrapper key={item.id} id={item.id}>
                                   <div
                                     onClick={() => {
-                                      setEditItem(item);
-                                      setDefaultCategoryId(null);
-                                      setShowAddModal(true);
+                                      setViewItem(item);
+                                      setShowViewModal(true);
                                     }}
                                     className="cursor-grab bg-gray-50 rounded-lg p-3 flex items-start justify-between"
                                   >
@@ -915,6 +887,14 @@ export default function MenuBuilder() {
         />
       )}
       <Toast message={toastMessage} onClose={() => setToastMessage('')} />
+      <ViewItemModal
+        showModal={showViewModal}
+        item={viewItem}
+        onClose={() => {
+          setShowViewModal(false);
+          setViewItem(null);
+        }}
+      />
     </DashboardLayout>
   );
 }
