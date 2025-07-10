@@ -27,6 +27,21 @@ export default function CategoryMultiSelect({
       paddingBottom: '0.125rem',
     }),
     menu: (base: any) => ({ ...base, zIndex: 60 }),
+    multiValue: (base: any) => ({
+      ...base,
+      backgroundColor: '#14b8a6',
+      borderRadius: '9999px',
+    }),
+    multiValueLabel: (base: any) => ({
+      ...base,
+      color: 'white',
+      fontWeight: 500,
+    }),
+    multiValueRemove: (base: any) => ({
+      ...base,
+      color: 'white',
+      ':hover': { backgroundColor: '#0d9488', color: 'white' },
+    }),
   };
 
   return (

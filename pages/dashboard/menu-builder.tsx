@@ -550,18 +550,6 @@ export default function MenuBuilder() {
                                     </div>
                                     <div className="flex items-center space-x-2">
                                       <span className="text-sm font-semibold">${item.price.toFixed(2)}</span>
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleDeleteItem(item.id);
-                                        }}
-                                        className="p-1 rounded hover:bg-gray-200"
-                                        aria-label="Delete item"
-                                      >
-                                        <TrashIcon className="w-4 h-4 text-gray-500" />
-                                      </button>
-                                      <PencilSquareIcon className="w-4 h-4 text-gray-500" />
                                     </div>
                                   </div>
                                 </SortableWrapper>
@@ -703,17 +691,7 @@ export default function MenuBuilder() {
                                           </div>
                                           <div className="flex items-center space-x-2">
                                             <span className="text-sm font-semibold">${item.price.toFixed(2)}</span>
-                                            <button
-                                              type="button"
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                setBuildItems((prev) => prev.filter((i) => i.id !== item.id));
-                                              }}
-                                              className="p-1 rounded hover:bg-gray-200"
-                                              aria-label="Delete item"
-                                            >
-                                              <TrashIcon className="w-4 h-4 text-gray-500" />
-                                            </button>
+                                            {/* Removed item-level delete button; delete now handled in modal */}
                                           </div>
                                         </div>
                                       </SortableWrapper>
@@ -738,6 +716,7 @@ export default function MenuBuilder() {
         defaultCategoryId={defaultCategoryId || undefined}
         item={editItem || undefined}
         onSaved={() => restaurantId && fetchData(restaurantId)}
+        onDeleted={() => restaurantId && fetchData(restaurantId)}
         onClose={() => {
           setShowAddModal(false);
           setEditItem(null);
@@ -762,19 +741,22 @@ export default function MenuBuilder() {
         item={draftItem || undefined}
         categoriesProp={buildCategories}
         onSaveData={async (data, cats, addons) => {
-          if (draftItem) {
-            setBuildItems((prev) =>
-              prev.map((p) =>
-                p.id === draftItem.id ? { ...p, ...data, categories: cats, addons } : p
-              )
-            );
-          } else {
-            const id = Date.now() + Math.random();
-            setBuildItems((prev) => [
-              ...prev,
-              { ...data, id, categories: cats, addons },
-            ]);
+onSaveData={async (data, cats, addons) => {
+  const base = { ...data, category_id: cats[0] ?? null, addons };
+  if (draftItem) {
+    setBuildItems((prev) =>
+      prev.map((p) => (p.id === draftItem.id ? { ...p, ...base } : p))
+    );
+  } else {
+    const id = Date.now() + Math.random();
+    setBuildItems((prev) => [...prev, { ...base, id }]);
+  }
+}}
+
           }
+        }}
+        onDeleteData={(id) => {
+          setBuildItems((prev) => prev.filter((i) => i.id !== id));
         }}
         onClose={() => {
           setShowDraftItemModal(false);
