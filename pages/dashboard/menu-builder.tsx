@@ -31,7 +31,6 @@ import {
   ArrowsUpDownIcon,
   TrashIcon,
 } from '@heroicons/react/24/outline';
-import stringSimilarity from 'string-similarity';
 
 // Small wrapper component used for dnd-kit sortable items
 function SortableWrapper({ id, children }: { id: number; children: React.ReactNode }) {
@@ -230,7 +229,6 @@ export default function MenuBuilder() {
     await supabase.from('menu_items').delete().eq('id', id);
     setItems((prev) => prev.filter((i) => i.id !== id));
   };
-
 
   // Duplicate live menu into the draft state
   const duplicateLiveMenu = () => {
@@ -435,13 +433,21 @@ export default function MenuBuilder() {
 
       <AnimatePresence mode="wait">
         {activeTab === 'menu' && (
-          <motion.div
+        <motion.div
             key="menu"
             initial={{ x: 20, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: -20, opacity: 0 }}
             transition={{ duration: 0.2 }}
           >
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold flex items-center gap-2">
+                <span role="img" aria-label="plates">🍽️</span> Live Menu
+              </h2>
+              <p className="text-sm text-gray-600">
+                This is what your customers see right now. All published items appear here. Changes go live instantly!
+              </p>
+            </div>
             {loading ? (
               <p>Loading...</p>
             ) : categories.length === 0 ? (
@@ -529,7 +535,6 @@ export default function MenuBuilder() {
                                       setDefaultCategoryId(null);
                                       setShowAddModal(true);
                                     }}
-                                    onPointerDown={(e) => e.stopPropagation()}
                                     className="cursor-grab bg-gray-50 rounded-lg p-3 flex items-start justify-between"
                                   >
                                     <div className="flex items-start space-x-2 overflow-hidden">
@@ -570,6 +575,14 @@ export default function MenuBuilder() {
             exit={{ x: -20, opacity: 0 }}
             transition={{ duration: 0.2 }}
           >
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold flex items-center gap-2">
+                <span role="img" aria-label="tools">🛠️</span> Build Menu
+              </h2>
+              <p className="text-sm text-gray-600">
+                Draft your next big update! Make changes and preview them here—publish when you’re ready for the world to see.
+              </p>
+            </div>
             {buildCategories.length === 0 ? (
               <div className="text-center text-gray-500 py-10">
                 No items in your build menu.
@@ -663,7 +676,6 @@ export default function MenuBuilder() {
                                             setDraftItem(item);
                                             setShowDraftItemModal(true);
                                           }}
-                                          onPointerDown={(e) => e.stopPropagation()}
                                           className="cursor-grab bg-gray-50 rounded-lg p-3 flex items-start justify-between"
                                         >
                                           <div className="flex items-start space-x-2 overflow-hidden">
@@ -698,23 +710,6 @@ export default function MenuBuilder() {
           </motion.div>
         )}
       </AnimatePresence>
-      <div className="border-t border-gray-200 mt-8 pt-4">
-        <h2 className="text-lg font-semibold mb-2">Live Preview</h2>
-        {categories.map((cat) => (
-          <div key={cat.id} className="mb-4">
-            <h3 className="font-medium">{cat.name}</h3>
-            <ul className="pl-4 list-disc text-sm text-gray-700">
-              {items
-                .filter((i) => i.category_id === cat.id)
-                .map((i) => (
-                  <li key={i.id} className="mb-1">
-                    {i.name} – ${i.price.toFixed(2)}
-                  </li>
-                ))}
-            </ul>
-          </div>
-        ))}
-      </div>
       <AddItemModal
         showModal={showAddModal}
         restaurantId={restaurantId!}
@@ -746,14 +741,18 @@ export default function MenuBuilder() {
         item={draftItem || undefined}
         categoriesProp={buildCategories}
         onSaveData={async (data, cats, addons) => {
-          const base = { ...data, category_id: cats[0] ?? null, addons };
-          if (draftItem) {
-            setBuildItems((prev) =>
-              prev.map((p) => (p.id === draftItem.id ? { ...p, ...base } : p))
-            );
-          } else {
-            const id = Date.now() + Math.random();
-            setBuildItems((prev) => [...prev, { ...base, id }]);
+onSaveData={async (data, cats, addons) => {
+  const base = { ...data, category_id: cats[0] ?? null, addons };
+  if (draftItem) {
+    setBuildItems((prev) =>
+      prev.map((p) => (p.id === draftItem.id ? { ...p, ...base } : p))
+    );
+  } else {
+    const id = Date.now() + Math.random();
+    setBuildItems((prev) => [...prev, { ...base, id }]);
+  }
+}}
+
           }
         }}
         onDeleteData={(id) => {
