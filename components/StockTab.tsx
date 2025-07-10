@@ -13,6 +13,12 @@ export interface StockTabProps {
       stock_return_date: string | null;
     }[];
   }[];
+  addons: {
+    id: string;
+    name: string;
+    stock_status: 'in_stock' | 'scheduled' | 'out';
+    stock_return_date: string | null;
+  }[];
 }
 
 function StockStatusBadge({ status, returnDate }: { status: 'in_stock' | 'scheduled' | 'out'; returnDate: string | null }) {
@@ -31,7 +37,7 @@ function StockStatusBadge({ status, returnDate }: { status: 'in_stock' | 'schedu
   return <span className={`text-xs px-2 py-1 rounded ${color}`}>{label}</span>;
 }
 
-export default function StockTab({ categories }: StockTabProps) {
+export default function StockTab({ categories, addons }: StockTabProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set(categories.map((c) => c.id)));
 
   const expandAll = () => setExpanded(new Set(categories.map((c) => c.id)));
@@ -101,6 +107,25 @@ export default function StockTab({ categories }: StockTabProps) {
           );
         })}
       </div>
+      {addons.length > 0 && (
+        <div className="mt-8">
+          <h3 className="text-xl font-semibold mb-2">Add-ons</h3>
+          <ul className="space-y-2">
+            {addons.map((addon) => (
+              <li
+                key={addon.id}
+                className="flex justify-between items-center bg-white rounded-lg shadow px-4 py-2"
+              >
+                <span>{addon.name}</span>
+                <StockStatusBadge
+                  status={addon.stock_status}
+                  returnDate={addon.stock_return_date}
+                />
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
