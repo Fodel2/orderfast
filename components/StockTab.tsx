@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Disclosure } from '@headlessui/react';
-import { ChevronUpIcon } from '@heroicons/react/24/outline';
+import { ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
 
 export interface StockTabProps {
   categories: {
@@ -50,6 +50,11 @@ export default function StockTab({ categories, addons }: StockTabProps) {
       return next;
     });
 
+  const handleStockChange = (itemId: string, newStatus: 'in_stock' | 'scheduled' | 'out') => {
+    // Placeholder for future implementation
+    console.log('change stock', itemId, newStatus);
+  };
+
   return (
     <div>
       <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -65,11 +70,11 @@ export default function StockTab({ categories, addons }: StockTabProps) {
           </p>
         </div>
         <div className="shrink-0 flex items-center space-x-2">
-          <button onClick={expandAll} className="px-3 py-2 text-sm bg-white border rounded-lg shadow-sm hover:bg-gray-50">
-            ⬇ Expand All
+          <button onClick={expandAll} className="p-2 rounded hover:bg-gray-200" aria-label="Expand all">
+            <ChevronDownIcon className="w-5 h-5" />
           </button>
-          <button onClick={collapseAll} className="px-3 py-2 text-sm bg-white border rounded-lg shadow-sm hover:bg-gray-50">
-            ⬆ Collapse All
+          <button onClick={collapseAll} className="p-2 rounded hover:bg-gray-200" aria-label="Collapse all">
+            <ChevronUpIcon className="w-5 h-5" />
           </button>
         </div>
       </div>
@@ -95,7 +100,18 @@ export default function StockTab({ categories, addons }: StockTabProps) {
                         {cat.items.map((item) => (
                           <li key={item.id} className="flex justify-between items-center border-b last:border-b-0 pb-1">
                             <span>{item.name}</span>
-                            <StockStatusBadge status={item.stock_status} returnDate={item.stock_return_date} />
+                            <div className="flex items-center space-x-2">
+                              <StockStatusBadge status={item.stock_status} returnDate={item.stock_return_date} />
+                              <select
+                                value={item.stock_status}
+                                onChange={(e) => handleStockChange(item.id, e.target.value as 'in_stock' | 'scheduled' | 'out')}
+                                className="border rounded p-1 text-sm"
+                              >
+                                <option value="in_stock">In Stock</option>
+                                <option value="scheduled">Back Tomorrow</option>
+                                <option value="out">Off Indefinitely</option>
+                              </select>
+                            </div>
                           </li>
                         ))}
                       </ul>
