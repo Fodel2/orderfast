@@ -16,6 +16,16 @@ interface AddItemModalProps {
   item?: any;
   /** callback after save */
   onSaved?: () => void;
+  /**
+   * Optional categories to display. If not provided,
+   * the component will fetch categories from Supabase.
+   */
+  categoriesProp?: any[];
+  /**
+   * Optional custom save handler for draft mode. When provided,
+   * the modal will call this instead of saving directly to Supabase.
+   */
+  onSaveData?: (data: any, categories: number[]) => Promise<void>;
 }
 
 export default function AddItemModal({
@@ -25,6 +35,8 @@ export default function AddItemModal({
   defaultCategoryId,
   item,
   onSaved,
+  categoriesProp,
+  onSaveData,
 }: AddItemModalProps) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -90,12 +102,17 @@ export default function AddItemModal({
     if (!showModal) return;
 
     const load = async () => {
-      const { data: catData } = await supabase
-        .from('menu_categories')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .order('sort_order', { ascending: true });
-      setCategories(catData || []);
+      if (categoriesProp) {
+        // Use provided categories in draft mode
+        setCategories(categoriesProp);
+      } else {
+        const { data: catData } = await supabase
+          .from('menu_categories')
+          .select('*')
+          .eq('restaurant_id', restaurantId)
+          .order('sort_order', { ascending: true });
+        setCategories(catData || []);
+      }
 
       if (item) {
         setName(item.name || '');
@@ -131,7 +148,7 @@ export default function AddItemModal({
     };
 
     load();
-  }, [showModal, item, restaurantId, defaultCategoryId]);
+  }, [showModal, item, restaurantId, defaultCategoryId, categoriesProp]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -161,6 +178,14 @@ export default function AddItemModal({
       image_url: imageUrl,
       category_id: categoryId,
     };
+
+    // If a custom save handler is provided (draft mode), use it
+    if (onSaveData) {
+      await onSaveData(itemData, selectedCategories);
+      onSaved?.();
+      onClose();
+      return;
+    }
 
     const { data, error } = await (item
       ? supabase
