@@ -4,6 +4,7 @@ import { CloudArrowUpIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { Trash2 } from 'lucide-react';
 import { supabase } from '../utils/supabaseClient';
 import CategoryMultiSelect from './CategoryMultiSelect';
+import AddonMultiSelect from './AddonMultiSelect';
 
 interface AddItemModalProps {
   showModal: boolean;
@@ -25,7 +26,7 @@ interface AddItemModalProps {
    * Optional custom save handler for draft mode. When provided,
    * the modal will call this instead of saving directly to Supabase.
    */
-  onSaveData?: (data: any, categories: number[]) => Promise<void>;
+  onSaveData?: (data: any, categories: number[], addons: number[]) => Promise<void>;
 }
 
 export default function AddItemModal({
@@ -46,6 +47,9 @@ export default function AddItemModal({
   const [is18Plus, setIs18Plus] = useState(false);
   const [categories, setCategories] = useState<any[]>([]);
   const [selectedCategories, setSelectedCategories] = useState<number[]>([]);
+  // addon group selection state
+  const [addonGroups, setAddonGroups] = useState<any[]>([]);
+  const [selectedAddons, setSelectedAddons] = useState<number[]>([]);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
@@ -114,6 +118,14 @@ export default function AddItemModal({
         setCategories(catData || []);
       }
 
+      // fetch addon groups for the multi-select
+      const { data: addonData } = await supabase
+        .from('addon_groups')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .order('name', { ascending: true });
+      setAddonGroups(addonData || []);
+
       if (item) {
         setName(item.name || '');
         setDescription(item.description || '');
@@ -133,6 +145,16 @@ export default function AddItemModal({
         } else {
           setSelectedCategories([]);
         }
+
+        const { data: addonLinks } = await supabase
+          .from('item_addon_links')
+          .select('addon_group_id')
+          .eq('item_id', item.id);
+        if (addonLinks && addonLinks.length) {
+          setSelectedAddons(addonLinks.map((l) => l.addon_group_id));
+        } else {
+          setSelectedAddons([]);
+        }
       } else {
         setName('');
         setDescription('');
@@ -144,6 +166,7 @@ export default function AddItemModal({
         setSelectedCategories(
           defaultCategoryId ? [defaultCategoryId] : []
         );
+        setSelectedAddons([]);
       }
     };
 
@@ -164,6 +187,10 @@ export default function AddItemModal({
     setSelectedCategories(ids);
   };
 
+  const handleAddonChange = (ids: number[]) => {
+    setSelectedAddons(ids);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const categoryId = selectedCategories[0] ?? null;
@@ -181,7 +208,7 @@ export default function AddItemModal({
 
     // If a custom save handler is provided (draft mode), use it
     if (onSaveData) {
-      await onSaveData(itemData, selectedCategories);
+      await onSaveData(itemData, selectedCategories, selectedAddons);
       onSaved?.();
       onClose();
       return;
@@ -208,6 +235,7 @@ export default function AddItemModal({
     if (data && data.id) {
       if (item) {
         await supabase.from('menu_item_categories').delete().eq('item_id', data.id);
+        await supabase.from('item_addon_links').delete().eq('item_id', data.id);
       }
       if (selectedCategories.length) {
         const inserts = selectedCategories.map((cid) => ({
@@ -215,6 +243,13 @@ export default function AddItemModal({
           category_id: cid,
         }));
         await supabase.from('menu_item_categories').insert(inserts);
+      }
+      if (selectedAddons.length) {
+        const inserts = selectedAddons.map((aid) => ({
+          item_id: data.id,
+          addon_group_id: aid,
+        }));
+        await supabase.from('item_addon_links').insert(inserts);
       }
     }
 
@@ -270,6 +305,40 @@ export default function AddItemModal({
           {item ? 'Edit Item' : 'Add Item'}
         </h2>
         <form className="space-y-4" onSubmit={handleSubmit}>
+          <div className="flex flex-col sm:flex-row sm:items-start sm:space-x-4">
+            <div
+              className="relative w-32 h-32 border-2 border-dashed border-teal-600 rounded-lg flex items-center justify-center cursor-pointer overflow-hidden mb-2 sm:mb-0"
+              onClick={() => fileRef.current?.click()}
+            >
+              {imageUrl ? (
+                <>
+                  <img src={imageUrl} alt="Preview" className="object-cover w-full h-full" />
+                  <button
+                    type="button"
+                    onClick={handleRemoveImage}
+                    className="absolute top-1 right-1 bg-white/80 rounded-full p-1 hover:bg-red-100"
+                    aria-label="Remove image"
+                  >
+                    <Trash2 className="w-4 h-4 text-red-600" />
+                  </button>
+                </>
+              ) : (
+                <CloudArrowUpIcon className="w-8 h-8 text-teal-500" />
+              )}
+              <input
+                type="file"
+                accept="image/*"
+                ref={fileRef}
+                onChange={handleFileChange}
+                aria-label="Upload image"
+                className="hidden"
+              />
+            </div>
+            <div className="text-sm text-gray-500 sm:mt-0 mt-2">
+              Preferred size 512x512px PNG/JPG. Click the image to upload or replace.
+            </div>
+          </div>
+          <div className="border-t border-gray-200" />
           <input
             type="text"
             aria-label="Item name"
@@ -328,41 +397,11 @@ export default function AddItemModal({
             selectedIds={selectedCategories}
             onChange={handleCategoryChange}
           />
-          <div>
-            <div
-              className="relative w-32 h-32 border border-dashed border-gray-400 rounded flex items-center justify-center cursor-pointer mb-2 overflow-hidden"
-              onClick={() => fileRef.current?.click()}
-            >
-              {imageUrl ? (
-                <>
-                  <img
-                    src={imageUrl}
-                    alt="Preview"
-                    className="object-cover w-full h-full"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleRemoveImage}
-                    className="absolute top-1 right-1 bg-white/80 rounded-full p-1 hover:bg-red-100"
-                    aria-label="Remove image"
-                  >
-                    <Trash2 className="w-4 h-4 text-red-600" />
-                  </button>
-                </>
-              ) : (
-                <CloudArrowUpIcon className="w-8 h-8 text-gray-400" />
-              )}
-            </div>
-          <input
-            type="file"
-            accept="image/*"
-            ref={fileRef}
-            onChange={handleFileChange}
-            aria-label="Upload image"
-            className="hidden"
+          <AddonMultiSelect
+            addons={addonGroups}
+            selectedIds={selectedAddons}
+            onChange={handleAddonChange}
           />
-          <div className="mt-1 text-xs text-gray-500">Preferred: 512x512px PNG/JPG</div>
-        </div>
           <div className="text-right mt-6 space-x-2">
             <button
               type="button"
