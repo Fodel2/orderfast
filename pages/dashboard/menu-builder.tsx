@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import {
   DndContext,
   PointerSensor,
@@ -32,6 +32,30 @@ import {
   TrashIcon,
 } from '@heroicons/react/24/outline';
 
+const normalizeCats = (arr: any[]) =>
+  [...arr]
+    .map(({ id, name, description, sort_order }) => ({
+      id,
+      name,
+      description,
+      sort_order,
+    }))
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+
+const normalizeItems = (arr: any[]) =>
+  [...arr]
+    .map(({ id, category_id, name, description, price, sort_order }) => ({
+      id,
+      category_id,
+      name,
+      description,
+      price,
+      sort_order,
+    }))
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+
+const deepEqual = (a: any, b: any) => JSON.stringify(a) === JSON.stringify(b);
+
 // Small wrapper component used for dnd-kit sortable items
 function SortableWrapper({ id, children }: { id: number; children: React.ReactNode }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
@@ -55,6 +79,8 @@ export default function MenuBuilder() {
   const [session, setSession] = useState(null);
   const [categories, setCategories] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
+  const [origCategories, setOrigCategories] = useState<any[]>([]);
+  const [origItems, setOrigItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showAddCatModal, setShowAddCatModal] = useState(false);
@@ -79,6 +105,34 @@ export default function MenuBuilder() {
   >(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const router = useRouter();
+
+  // Load draft menu from localStorage
+  useEffect(() => {
+    const cats = localStorage.getItem('draftCategories');
+    const its = localStorage.getItem('draftItems');
+    if (cats) setBuildCategories(JSON.parse(cats));
+    if (its) setBuildItems(JSON.parse(its));
+  }, []);
+
+  // Auto-save draft menu to localStorage
+  useEffect(() => {
+    localStorage.setItem('draftCategories', JSON.stringify(buildCategories));
+    localStorage.setItem('draftItems', JSON.stringify(buildItems));
+  }, [buildCategories, buildItems]);
+
+  const hasMenuChanges = useMemo(() => {
+    return (
+      !deepEqual(normalizeCats(categories), normalizeCats(origCategories)) ||
+      !deepEqual(normalizeItems(items), normalizeItems(origItems))
+    );
+  }, [categories, origCategories, items, origItems]);
+
+  const hasBuildChanges = useMemo(() => {
+    return (
+      !deepEqual(normalizeCats(buildCategories), normalizeCats(categories)) ||
+      !deepEqual(normalizeItems(buildItems), normalizeItems(items))
+    );
+  }, [buildCategories, categories, buildItems, items]);
 
   const toggleCollapse = (id: number) => {
     setCollapsedCats((prev) => {
@@ -125,6 +179,7 @@ export default function MenuBuilder() {
         supabase.from('menu_categories').update({ sort_order: idx }).eq('id', cat.id)
       )
     );
+    setOrigCategories(newCats);
   };
 
   // Reorder draft categories locally
@@ -138,18 +193,29 @@ export default function MenuBuilder() {
 
   // Reorder draft items locally
   const handleDraftItemDragEnd =
-    (categoryId: number) => ({ active, over }: DragEndEvent) => {
+    (categoryId: number) => async ({ active, over }: DragEndEvent) => {
       if (!over || active.id === over.id) return;
-      const catItems = buildItems.filter((i) => i.category_id === categoryId);
+      const catItems = buildItems
+        .filter((i) => i.category_id === categoryId)
+        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
       const oldIndex = catItems.findIndex((i) => i.id === active.id);
       const newIndex = catItems.findIndex((i) => i.id === over.id);
       const sorted = arrayMove(catItems, oldIndex, newIndex);
 
       const updated = [...buildItems];
-      sorted.forEach((it, idx) => {
-        const gi = updated.findIndex((i) => i.id === it.id);
-        updated[gi] = { ...it, sort_order: idx };
-      });
+      await Promise.all(
+        sorted.map((it, idx) => {
+          const gi = updated.findIndex((i) => i.id === it.id);
+          updated[gi] = { ...it, sort_order: idx };
+          if (typeof it.id === 'number') {
+            return supabase
+              .from('draft_menu_items')
+              .update({ sort_order: idx })
+              .eq('id', it.id);
+          }
+          return Promise.resolve();
+        })
+      );
       setBuildItems(updated);
     };
 
@@ -173,6 +239,7 @@ export default function MenuBuilder() {
         supabase.from('menu_items').update({ sort_order: idx }).eq('id', it.id)
       )
     );
+    setOrigItems(updated);
   };
 
   useEffect(() => {
@@ -219,6 +286,8 @@ export default function MenuBuilder() {
     } else {
       setCategories(categoriesData || []);
       setItems(itemsData || []);
+      setOrigCategories(categoriesData || []);
+      setOrigItems(itemsData || []);
     }
 
     setLoading(false);
@@ -260,6 +329,39 @@ export default function MenuBuilder() {
         setBuildItems([]);
       },
     });
+  };
+
+  const publishLiveMenu = async () => {
+    if (!restaurantId) return;
+    try {
+      await Promise.all(
+        categories.map((cat, idx) =>
+          supabase
+            .from('menu_categories')
+            .update({ name: cat.name, description: cat.description, sort_order: idx })
+            .eq('id', cat.id)
+        )
+      );
+      await Promise.all(
+        items.map((it) =>
+          supabase
+            .from('menu_items')
+            .update({
+              name: it.name,
+              description: it.description,
+              price: it.price,
+              sort_order: it.sort_order,
+            })
+            .eq('id', it.id)
+        )
+      );
+      setOrigCategories(categories);
+      setOrigItems(items);
+      setToastMessage('Menu published');
+    } catch (err) {
+      console.error(err);
+      setToastMessage('Failed to publish menu');
+    }
   };
 
   // Publish draft menu to Supabase as the live menu
@@ -398,9 +500,10 @@ export default function MenuBuilder() {
           </div>
           <button
             onClick={publishMenu}
-            className="flex items-center bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700"
+            disabled={!hasBuildChanges}
+            className="flex items-center bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700 disabled:opacity-50"
           >
-            Publish
+            Publish Changes
           </button>
         </div>
       )}
@@ -410,26 +513,35 @@ export default function MenuBuilder() {
           <ArrowsUpDownIcon className="w-4 h-4" />
           <span>Drag categories and items to reorder</span>
         </div>
-        <div className="flex items-center space-x-3">
-          <button onClick={expandAll} className="p-2 rounded hover:bg-gray-200" aria-label="Expand all">
-            <ChevronDownIcon className="w-5 h-5" />
+      <div className="flex items-center space-x-3">
+        <button onClick={expandAll} className="p-2 rounded hover:bg-gray-200" aria-label="Expand all">
+          <ChevronDownIcon className="w-5 h-5" />
+        </button>
+        <button onClick={collapseAll} className="p-2 rounded hover:bg-gray-200" aria-label="Collapse all">
+          <ChevronUpIcon className="w-5 h-5" />
+        </button>
+        {activeTab !== 'build' && (
+          <button
+            onClick={() => {
+              setEditCategory(null);
+              setShowAddCatModal(true);
+            }}
+            className="flex items-center bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700"
+          >
+            <PlusCircleIcon className="w-5 h-5 mr-1" /> Add Category
           </button>
-          <button onClick={collapseAll} className="p-2 rounded hover:bg-gray-200" aria-label="Collapse all">
-            <ChevronUpIcon className="w-5 h-5" />
+        )}
+        {activeTab === 'menu' && (
+          <button
+            onClick={publishLiveMenu}
+            disabled={!hasMenuChanges}
+            className="flex items-center bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700 disabled:opacity-50"
+          >
+            Publish Changes
           </button>
-          {activeTab !== 'build' && (
-            <button
-              onClick={() => {
-                setEditCategory(null);
-                setShowAddCatModal(true);
-              }}
-              className="flex items-center bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700"
-            >
-              <PlusCircleIcon className="w-5 h-5 mr-1" /> Add Category
-            </button>
-          )}
-        </div>
+        )}
       </div>
+    </div>
 
       <AnimatePresence mode="wait">
         {activeTab === 'menu' && (
@@ -462,7 +574,6 @@ export default function MenuBuilder() {
                       <div className="bg-white rounded-xl shadow mb-4">
                         <div className="flex items-start justify-between p-4">
                     <div className="flex items-start space-x-3">
-                      <span className="cursor-grab select-none">☰</span>
                       <div>
                         <div className="flex items-center space-x-2">
                           <h2 className="font-semibold text-lg">{cat.name}</h2>
@@ -521,12 +632,16 @@ export default function MenuBuilder() {
                         onDragEnd={handleItemDragEnd(cat.id)}
                       >
                         <SortableContext
-                          items={items.filter((i) => i.category_id === cat.id).map((i) => i.id)}
+                          items={items
+                            .filter((i) => i.category_id === cat.id)
+                            .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+                            .map((i) => i.id)}
                           strategy={verticalListSortingStrategy}
                         >
                           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
                             {items
                               .filter((item) => item.category_id === cat.id)
+                              .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
                               .map((item) => (
                                 <SortableWrapper key={item.id} id={item.id}>
                                   <div
@@ -663,12 +778,14 @@ export default function MenuBuilder() {
                               <SortableContext
                                 items={buildItems
                                   .filter((i) => i.category_id === cat.id)
+                                  .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
                                   .map((i) => i.id)}
                                 strategy={verticalListSortingStrategy}
                               >
                                 <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
                                   {buildItems
                                     .filter((item) => item.category_id === cat.id)
+                                    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
                                     .map((item) => (
                                       <SortableWrapper key={item.id} id={item.id}>
                                         <div
@@ -679,6 +796,7 @@ export default function MenuBuilder() {
                                           className="cursor-grab bg-gray-50 rounded-lg p-3 flex items-start justify-between"
                                         >
                                           <div className="flex items-start space-x-2 overflow-hidden">
+                                            <span className="cursor-grab select-none mr-2">☰</span>
                                           <div className="w-12 h-12 bg-gray-200 rounded flex-shrink-0 overflow-hidden">
                                             {item.image_url && (
                                               <img src={item.image_url} alt="" className="object-cover w-full h-full" />
@@ -741,14 +859,16 @@ export default function MenuBuilder() {
   item={draftItem || undefined}
   categoriesProp={buildCategories}
   onSaveData={async (data, cats, addons) => {
-    const base = { ...data, category_id: cats[0] ?? null, addons };
+    const categoryId = cats[0] ?? null;
+    const base = { ...data, category_id: categoryId, addons };
     if (draftItem) {
       setBuildItems((prev) =>
         prev.map((p) => (p.id === draftItem.id ? { ...p, ...base } : p))
       );
     } else {
       const id = Date.now() + Math.random();
-      setBuildItems((prev) => [...prev, { ...base, id }]);
+      const order = buildItems.filter((i) => i.category_id === categoryId).length;
+      setBuildItems((prev) => [...prev, { ...base, id, sort_order: order }]);
     }
   }}
   onDeleteData={(id) => {
