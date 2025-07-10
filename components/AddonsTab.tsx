@@ -112,7 +112,7 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number }) {
 
   const deleteGroup = async (g: any) => {
     await supabase.from('addon_options').delete().eq('group_id', g.id);
-    await supabase.from('menu_item_addon_groups').delete().eq('addon_group_id', g.id);
+    await supabase.from('item_addon_links').delete().eq('group_id', g.id);
     await supabase.from('addon_groups').delete().eq('id', g.id);
     load();
   };

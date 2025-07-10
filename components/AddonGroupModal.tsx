@@ -45,9 +45,9 @@ export default function AddonGroupModal({
         setMultipleChoice(!!group.multiple_choice);
         setRequired(!!group.required);
         const { data: links } = await supabase
-          .from('menu_item_addon_groups')
+          .from('item_addon_links')
           .select('item_id')
-          .eq('addon_group_id', group.id);
+          .eq('group_id', group.id);
         const itemIds = links?.map((l: any) => l.item_id) || [];
         setSelectedItems(itemIds);
         const catIds = Array.from(
@@ -105,10 +105,10 @@ export default function AddonGroupModal({
       .filter((it) => selectedCats.includes(it.category_id))
       .map((it) => it.id);
     const itemIds = Array.from(new Set([...selectedItems, ...catItemIds]));
-    await supabase.from('menu_item_addon_groups').delete().eq('addon_group_id', groupId);
+    await supabase.from('item_addon_links').delete().eq('group_id', groupId);
     if (itemIds.length) {
-      await supabase.from('menu_item_addon_groups').insert(
-        itemIds.map((id) => ({ item_id: id, addon_group_id: groupId }))
+      await supabase.from('item_addon_links').insert(
+        itemIds.map((id) => ({ item_id: id, group_id: groupId }))
       );
     }
     onSaved();
