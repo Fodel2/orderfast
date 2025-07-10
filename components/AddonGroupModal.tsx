@@ -95,20 +95,25 @@ export default function AddonGroupModal({
         .from('restaurant_users')
         .select('restaurant_id')
         .eq('user_id', user?.id)
-        .maybeSingle();
-      const rid = restaurantUser?.restaurant_id ?? restaurantId;
+        .single();
+      const restaurant_id = restaurantUser?.restaurant_id ?? restaurantId;
+
+      if (!restaurant_id) {
+        alert('Restaurant not found');
+        return;
+      }
 
       // Temporary debug output for addon_groups insert
       console.log('Inserting addon group:', {
         name,
         multiple_choice: multipleChoice,
         required,
-        restaurant_id: rid,
+        restaurant_id,
       });
 
       const { data, error } = await supabase
         .from('addon_groups')
-        .insert([{ name, multiple_choice: multipleChoice, required, restaurant_id: rid }])
+        .insert([{ name, multiple_choice: multipleChoice, required, restaurant_id }])
         .select()
         .single();
       if (error) {
