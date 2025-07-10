@@ -317,6 +317,16 @@ export default function MenuBuilder() {
     setItems((prev) => prev.filter((i) => i.id !== id));
   };
 
+  const handleDeleteDraftCategory = (id: number) => {
+    const hasItems = buildItems.some((i) => i.category_id === id);
+    const msg = hasItems
+      ? 'Delete this category and all items in it?'
+      : 'Delete this category?';
+    if (!window.confirm(msg)) return;
+    setBuildCategories((prev) => prev.filter((c) => c.id !== id));
+    setBuildItems((prev) => prev.filter((i) => i.category_id !== id));
+  };
+
   // Duplicate live menu into the draft state
   const duplicateLiveMenu = () => {
     const doIt = () => {
@@ -526,7 +536,7 @@ export default function MenuBuilder() {
         </div>
       )}
 
-      {activeTab !== 'addons' && (
+      {activeTab === 'build' && (
         <div className="mb-6 flex items-center justify-between">
           <div className="flex items-center text-sm text-gray-500 space-x-2">
             <ArrowsUpDownIcon className="w-4 h-4" />
@@ -539,17 +549,15 @@ export default function MenuBuilder() {
             <button onClick={collapseAll} className="p-2 rounded hover:bg-gray-200" aria-label="Collapse all">
               <ChevronUpIcon className="w-5 h-5" />
             </button>
-            {activeTab === 'menu' && (
-              <button
-                onClick={() => {
-                  setEditCategory(null);
-                  setShowAddCatModal(true);
-                }}
-                className="flex items-center bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700"
-              >
-                <PlusCircleIcon className="w-5 h-5 mr-1" /> Add Category
-              </button>
-            )}
+            <button
+              onClick={() => {
+                setDraftCategory(null);
+                setShowDraftCategoryModal(true);
+              }}
+              className="flex items-center bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700"
+            >
+              <PlusCircleIcon className="w-5 h-5 mr-1" /> Add Category
+            </button>
             {/* Publish button hidden on Menu tab */}
           </div>
         </div>
@@ -565,9 +573,19 @@ export default function MenuBuilder() {
             transition={{ duration: 0.2 }}
           >
             <div className="mb-6">
-              <h2 className="text-2xl font-bold flex items-center gap-2">
-                <span role="img" aria-label="plates">🍽️</span> Live Menu
-              </h2>
+              <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-bold flex items-center gap-2">
+                  <span role="img" aria-label="plates">🍽️</span> Live Menu
+                </h2>
+                <div className="flex items-center space-x-3">
+                  <button onClick={expandAll} className="p-2 rounded hover:bg-gray-200" aria-label="Expand all">
+                    <ChevronDownIcon className="w-5 h-5" />
+                  </button>
+                  <button onClick={collapseAll} className="p-2 rounded hover:bg-gray-200" aria-label="Collapse all">
+                    <ChevronUpIcon className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
               <p className="text-sm text-gray-600">
                 This is what your customers see right now. All published items appear here. Changes go live instantly!
               </p>
@@ -763,6 +781,14 @@ export default function MenuBuilder() {
                             >
                               <PlusCircleIcon className="w-5 h-5" />
                             </button>
+                            <button
+                              onClick={() => handleDeleteDraftCategory(cat.id)}
+                              onPointerDown={(e) => e.stopPropagation()}
+                              className="p-2 rounded hover:bg-red-100"
+                              aria-label="Delete category"
+                            >
+                              <TrashIcon className="w-5 h-5 text-red-600" />
+                            </button>
                           </div>
                         </div>
                         {!collapsedCats.has(cat.id) && (
@@ -843,7 +869,10 @@ export default function MenuBuilder() {
             setShowAddCatModal(false);
             setEditCategory(null);
           }}
-          onCreated={() => restaurantId && fetchData(restaurantId)}
+          onCreated={() => {
+            restaurantId && fetchData(restaurantId);
+            setToastMessage('Category saved');
+          }}
         />
       )}
  <AddItemModal
