@@ -531,27 +531,29 @@ export default function MenuBuilder() {
           <ArrowsUpDownIcon className="w-4 h-4" />
           <span>Drag categories and items to reorder</span>
         </div>
-      <div className="flex items-center space-x-3">
-        <button onClick={expandAll} className="p-2 rounded hover:bg-gray-200" aria-label="Expand all">
-          <ChevronDownIcon className="w-5 h-5" />
-        </button>
-        <button onClick={collapseAll} className="p-2 rounded hover:bg-gray-200" aria-label="Collapse all">
-          <ChevronUpIcon className="w-5 h-5" />
-        </button>
-        {activeTab !== 'build' && activeTab !== 'menu' && (
-          <button
-            onClick={() => {
-              setEditCategory(null);
-              setShowAddCatModal(true);
-            }}
-            className="flex items-center bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700"
-          >
-            <PlusCircleIcon className="w-5 h-5 mr-1" /> Add Category
-          </button>
+        {activeTab !== 'addons' && (
+          <div className="flex items-center space-x-3">
+            <button onClick={expandAll} className="p-2 rounded hover:bg-gray-200" aria-label="Expand all">
+              <ChevronDownIcon className="w-5 h-5" />
+            </button>
+            <button onClick={collapseAll} className="p-2 rounded hover:bg-gray-200" aria-label="Collapse all">
+              <ChevronUpIcon className="w-5 h-5" />
+            </button>
+            {activeTab !== 'build' && activeTab !== 'menu' && (
+              <button
+                onClick={() => {
+                  setEditCategory(null);
+                  setShowAddCatModal(true);
+                }}
+                className="flex items-center bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700"
+              >
+                <PlusCircleIcon className="w-5 h-5 mr-1" /> Add Category
+              </button>
+            )}
+            {/* Publish button hidden on Menu tab */}
+          </div>
         )}
-        {/* Publish button hidden on Menu tab */}
       </div>
-    </div>
 
       <AnimatePresence mode="wait">
         {activeTab === 'menu' && (
