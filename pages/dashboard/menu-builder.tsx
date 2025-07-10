@@ -22,7 +22,6 @@ import PullMenuModal from '../../components/PullMenuModal';
 import Toast from '../../components/Toast';
 import ConfirmModal from '../../components/ConfirmModal';
 import DraftCategoryModal from '../../components/DraftCategoryModal';
-import DraftItemModal from '../../components/DraftItemModal';
 import DashboardLayout from '../../components/DashboardLayout';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -834,7 +833,11 @@ export default function MenuBuilder() {
                                           className="cursor-grab bg-gray-50 rounded-lg p-3 flex items-start justify-between"
                                         >
                                           <div className="flex items-start space-x-2 overflow-hidden">
-                                            <div className="w-12 h-12 bg-gray-200 rounded flex-shrink-0" />
+                                          <div className="w-12 h-12 bg-gray-200 rounded flex-shrink-0 overflow-hidden">
+                                            {item.image_url && (
+                                              <img src={item.image_url} alt="" className="object-cover w-full h-full" />
+                                            )}
+                                          </div>
                                             <div className="truncate">
                                               <p className="font-medium truncate text-sm">{item.name}</p>
                                               <p className="text-xs text-gray-500 truncate">{item.description}</p>
@@ -919,21 +922,25 @@ export default function MenuBuilder() {
         }}
         onSubmit={activeTab === 'build' ? handleImportMenuDraft : handleImportMenu}
       />
-      <DraftItemModal
-        show={showDraftItemModal}
-        categories={buildCategories}
+      <AddItemModal
+        showModal={showDraftItemModal}
+        restaurantId={restaurantId!}
+        defaultCategoryId={defaultCategoryId || undefined}
         item={draftItem || undefined}
+        categoriesProp={buildCategories}
+        onSaveData={async (data) => {
+          if (draftItem) {
+            setBuildItems((prev) =>
+              prev.map((p) => (p.id === draftItem.id ? { ...p, ...data } : p))
+            );
+          } else {
+            const id = Date.now() + Math.random();
+            setBuildItems((prev) => [...prev, { ...data, id }]);
+          }
+        }}
         onClose={() => {
           setShowDraftItemModal(false);
           setDraftItem(null);
-        }}
-        onSave={(it) => {
-          if (draftItem) {
-            setBuildItems((prev) => prev.map((p) => (p.id === draftItem.id ? { ...p, ...it } : p)));
-          } else {
-            const id = Date.now() + Math.random();
-            setBuildItems((prev) => [...prev, { ...it, id }]);
-          }
         }}
       />
       {showDraftCategoryModal && (
