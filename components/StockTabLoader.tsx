@@ -13,6 +13,7 @@ interface Row {
 
 export default function StockTabLoader() {
   const [categories, setCategories] = useState<StockTabProps['categories']>([]);
+  const addons: StockTabProps['addons'] = [];
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
