@@ -98,6 +98,14 @@ export default function AddonGroupModal({
         .maybeSingle();
       const rid = restaurantUser?.restaurant_id ?? restaurantId;
 
+      // Temporary debug output for addon_groups insert
+      console.log('Inserting addon group:', {
+        name,
+        multiple_choice: multipleChoice,
+        required,
+        restaurant_id: rid,
+      });
+
       const { data, error } = await supabase
         .from('addon_groups')
         .insert([{ name, multiple_choice: multipleChoice, required, restaurant_id: rid }])
