@@ -13,6 +13,7 @@ interface Row {
 
 export default function StockTabLoader() {
   const [categories, setCategories] = useState<StockTabProps['categories']>([]);
+  const addons: StockTabProps['addons'] = [];
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -59,5 +60,5 @@ JOIN menu_items i ON i.category_id = c.id;`;
   if (loading) return <div className="p-4">Loading...</div>;
   if (error) return <div className="p-4 text-red-500">Error: {error}</div>;
 
-  return <StockTab categories={categories} />;
+  return <StockTab categories={categories} addons={addons} />;
 }

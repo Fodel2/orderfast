@@ -46,9 +46,30 @@ export default function StockPage() {
     },
   ];
 
+  const addons = [
+    {
+      id: 'a1',
+      name: 'Cheese',
+      stock_status: 'in_stock' as const,
+      stock_return_date: null,
+    },
+    {
+      id: 'a2',
+      name: 'Bacon',
+      stock_status: 'out' as const,
+      stock_return_date: null,
+    },
+    {
+      id: 'a3',
+      name: 'Avocado',
+      stock_status: 'scheduled' as const,
+      stock_return_date: new Date().toISOString(),
+    },
+  ];
+
   return (
     <div className="p-4">
-      <StockTab categories={categories} />
+      <StockTab categories={categories} addons={addons} />
     </div>
   );
 }
