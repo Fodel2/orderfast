@@ -526,12 +526,12 @@ export default function MenuBuilder() {
         </div>
       )}
 
-      <div className="mb-6 flex items-center justify-between">
-        <div className="flex items-center text-sm text-gray-500 space-x-2">
-          <ArrowsUpDownIcon className="w-4 h-4" />
-          <span>Drag categories and items to reorder</span>
-        </div>
-        {activeTab !== 'addons' && (
+      {activeTab !== 'addons' && (
+        <div className="mb-6 flex items-center justify-between">
+          <div className="flex items-center text-sm text-gray-500 space-x-2">
+            <ArrowsUpDownIcon className="w-4 h-4" />
+            <span>Drag categories and items to reorder</span>
+          </div>
           <div className="flex items-center space-x-3">
             <button onClick={expandAll} className="p-2 rounded hover:bg-gray-200" aria-label="Expand all">
               <ChevronDownIcon className="w-5 h-5" />
@@ -539,7 +539,7 @@ export default function MenuBuilder() {
             <button onClick={collapseAll} className="p-2 rounded hover:bg-gray-200" aria-label="Collapse all">
               <ChevronUpIcon className="w-5 h-5" />
             </button>
-            {activeTab !== 'build' && activeTab !== 'menu' && (
+            {activeTab === 'menu' && (
               <button
                 onClick={() => {
                   setEditCategory(null);
@@ -552,8 +552,8 @@ export default function MenuBuilder() {
             )}
             {/* Publish button hidden on Menu tab */}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       <AnimatePresence mode="wait">
         {activeTab === 'menu' && (
