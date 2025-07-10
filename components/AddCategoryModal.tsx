@@ -21,6 +21,8 @@ export default function AddCategoryModal({
 }: AddCategoryModalProps) {
   const [name, setName] = useState(category?.name || '');
   const [description, setDescription] = useState(category?.description || '');
+  const [saving, setSaving] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,6 +31,8 @@ export default function AddCategoryModal({
       return;
     }
 
+    if (saving) return;
+    setSaving(true);
     let err;
     if (category) {
       const { error } = await supabase
@@ -45,10 +49,16 @@ export default function AddCategoryModal({
 
     if (err) {
       alert('Failed to save category: ' + err.message);
+      setSaving(false);
       return;
     }
-    onCreated();
-    onClose();
+    setShowSuccess(true);
+    setTimeout(() => {
+      onCreated();
+      onClose();
+      setShowSuccess(false);
+      setSaving(false);
+    }, 800);
   };
 
   return (
@@ -94,11 +104,16 @@ export default function AddCategoryModal({
             <button type="button" onClick={onClose} className="px-4 py-2 border border-teal-600 text-teal-600 rounded hover:bg-teal-50">
               Cancel
             </button>
-            <button type="submit" className="px-4 py-2 bg-teal-600 text-white rounded hover:bg-teal-700">
-              Save
+            <button type="submit" disabled={saving} className="px-4 py-2 bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50">
+              {saving ? 'Saving...' : 'Save'}
             </button>
           </div>
         </form>
+        {showSuccess && (
+          <div className="absolute inset-0 flex items-center justify-center bg-white/80 rounded-xl">
+            <div className="text-green-600 text-5xl animate-bounce">✓</div>
+          </div>
+        )}
       </div>
     </div>
   );

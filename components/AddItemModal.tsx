@@ -174,6 +174,10 @@ export default function AddItemModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (selectedCategories.length === 0) {
+      alert('Please select at least one category');
+      return;
+    }
     const categoryId = selectedCategories[0] ?? null;
     const itemData = {
       restaurant_id: restaurantId,
