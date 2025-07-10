@@ -910,6 +910,7 @@ export default function MenuBuilder() {
             setShowDraftCategoryModal(false);
             setDraftCategory(null);
           }}
+          // DraftCategoryModal will close itself after showing a success overlay
           onSave={(cat) => {
             if (draftCategory) {
               setBuildCategories((prev) =>
@@ -919,7 +920,12 @@ export default function MenuBuilder() {
               const id = Date.now() + Math.random();
               setBuildCategories((prev) => [
                 ...prev,
-                { id, name: cat.name, description: cat.description, sort_order: prev.length },
+                {
+                  id,
+                  name: cat.name,
+                  description: cat.description,
+                  sort_order: prev.length,
+                },
               ]);
             }
           }}
