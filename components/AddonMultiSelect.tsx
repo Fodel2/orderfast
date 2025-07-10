@@ -1,23 +1,19 @@
 import Select from 'react-select';
 
-interface Category {
+interface AddonGroup {
   id: number;
   name: string;
 }
 
-interface CategoryMultiSelectProps {
-  categories: Category[];
+interface AddonMultiSelectProps {
+  options: AddonGroup[];
   selectedIds: number[];
   onChange: (ids: number[]) => void;
 }
 
-export default function CategoryMultiSelect({
-  categories,
-  selectedIds,
-  onChange,
-}: CategoryMultiSelectProps) {
-  const options = categories.map((c) => ({ value: c.id, label: c.name }));
-  const value = options.filter((opt) => selectedIds.includes(opt.value));
+export default function AddonMultiSelect({ options, selectedIds, onChange }: AddonMultiSelectProps) {
+  const selectOptions = options.map(g => ({ value: g.id, label: g.name }));
+  const value = selectOptions.filter(o => selectedIds.includes(o.value));
 
   const styles = {
     control: (base: any) => ({
@@ -46,14 +42,12 @@ export default function CategoryMultiSelect({
 
   return (
     <Select
-      inputId="category-select"
-      aria-label="Select categories"
+      inputId="addon-select"
+      aria-label="Select add-ons"
       isMulti
-      options={options}
+      options={selectOptions}
       value={value}
-      onChange={(opts) =>
-        onChange(Array.isArray(opts) ? opts.map((o) => o.value) : [])
-      }
+      onChange={(opts) => onChange(Array.isArray(opts) ? opts.map(o => o.value) : [])}
       styles={styles}
       classNamePrefix="rs"
       className="react-select-container"

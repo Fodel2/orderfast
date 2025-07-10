@@ -18,7 +18,6 @@ import { useRouter } from 'next/router';
 import { supabase } from '../../utils/supabaseClient';
 import AddItemModal from '../../components/AddItemModal';
 import AddCategoryModal from '../../components/AddCategoryModal';
-import PullMenuModal from '../../components/PullMenuModal';
 import Toast from '../../components/Toast';
 import ConfirmModal from '../../components/ConfirmModal';
 import DraftCategoryModal from '../../components/DraftCategoryModal';
@@ -67,8 +66,6 @@ export default function MenuBuilder() {
   const [collapsedCats, setCollapsedCats] = useState<Set<number>>(new Set());
   const [heroImage, setHeroImage] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'menu' | 'addons' | 'stock' | 'build'>('menu');
-  const [showPullModal, setShowPullModal] = useState(false);
-  const [importLoading, setImportLoading] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   // Draft menu state for the Build tab
   const [buildCategories, setBuildCategories] = useState<any[]>([]);
@@ -234,151 +231,6 @@ export default function MenuBuilder() {
     setItems((prev) => prev.filter((i) => i.id !== id));
   };
 
-  // Import menu items from a scraped menu
-  const handleImportMenu = async (link: string) => {
-    if (!restaurantId) return;
-    try {
-      setImportLoading(true);
-      const res = await fetch('/api/pull-menu', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: link }),
-      });
-      if (!res.ok) throw new Error('Failed to fetch menu');
-      const data = await res.json();
-      const imported = data.categories as any[];
-      let newCount = 0;
-      let updatedCount = 0;
-
-      for (const cat of imported) {
-        let existingCat = categories.find(
-          (c) => c.name.toLowerCase() === cat.name.toLowerCase()
-        );
-        let categoryId = existingCat?.id;
-        if (!existingCat) {
-          const { data: cd } = await supabase
-            .from('menu_categories')
-            .insert([
-              {
-                name: cat.name,
-                description: '',
-                restaurant_id: restaurantId,
-                sort_order: categories.length + newCount,
-              },
-            ])
-            .select()
-            .single();
-          if (cd) {
-            setCategories((prev) => [...prev, cd]);
-            categoryId = cd.id;
-          }
-        }
-        if (!categoryId) continue;
-
-        for (const item of cat.items as any[]) {
-          const match = items.find(
-            (i) =>
-              stringSimilarity.compareTwoStrings(
-                i.name.toLowerCase(),
-                item.name.toLowerCase()
-              ) > 0.8
-          );
-          if (match) {
-            if (
-              match.description !== item.description ||
-              Math.abs(match.price - item.price) > 0.01
-            ) {
-              const { data: ud } = await supabase
-                .from('menu_items')
-                .update({
-                  description: item.description,
-                  price: item.price,
-                })
-                .eq('id', match.id)
-                .select()
-                .single();
-              if (ud) {
-                setItems((prev) =>
-                  prev.map((it) => (it.id === match.id ? ud : it))
-                );
-                updatedCount++;
-              }
-            }
-          } else {
-            const so = items.filter((it) => it.category_id === categoryId).length;
-            const { data: nd } = await supabase
-              .from('menu_items')
-              .insert([
-                {
-                  restaurant_id: restaurantId,
-                  category_id: categoryId,
-                  name: item.name,
-                  description: item.description,
-                  price: item.price,
-                  sort_order: so,
-                },
-              ])
-              .select()
-              .single();
-            if (nd) {
-              setItems((prev) => [...prev, nd]);
-              newCount++;
-            }
-          }
-        }
-      }
-
-      setToastMessage(
-        `Imported ${newCount} new items and updated ${updatedCount} existing ones!`
-      );
-    } catch (err) {
-      console.error(err);
-      alert('Failed to import menu. Please try again.');
-    } finally {
-      setImportLoading(false);
-      setShowPullModal(false);
-    }
-  };
-
-  // Import menu data into the draft build menu only
-  const handleImportMenuDraft = async (link: string) => {
-    try {
-      setImportLoading(true);
-      const res = await fetch('/api/pull-menu', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: link }),
-      });
-      if (!res.ok) throw new Error('Failed to fetch menu');
-      const data = await res.json();
-      const imported = data.categories as any[];
-      const newCats = [...buildCategories];
-      const newItems = [...buildItems];
-      imported.forEach((cat: any) => {
-        const id = Date.now() + Math.random();
-        newCats.push({ id, name: cat.name, description: '', sort_order: newCats.length });
-        (cat.items || []).forEach((it: any, idx: number) => {
-          newItems.push({
-            id: Date.now() + Math.random(),
-            category_id: id,
-            name: it.name,
-            description: it.description,
-            price: it.price,
-            sort_order: idx,
-          });
-        });
-      });
-      setBuildCategories(newCats);
-      setBuildItems(newItems);
-      setToastMessage('Menu imported to build table');
-    } catch (err) {
-      console.error(err);
-      alert('Failed to import menu. Please try again.');
-    } finally {
-      setImportLoading(false);
-      setShowPullModal(false);
-    }
-  };
 
   // Duplicate live menu into the draft state
   const duplicateLiveMenu = () => {
@@ -532,12 +384,6 @@ export default function MenuBuilder() {
               className="flex items-center bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700"
             >
               <PlusCircleIcon className="w-5 h-5 mr-1" /> Add Category
-            </button>
-            <button
-              onClick={() => setShowPullModal(true)}
-              className="flex items-center bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700"
-            >
-              Pull Menu
             </button>
             <button
               onClick={duplicateLiveMenu}
@@ -699,18 +545,6 @@ export default function MenuBuilder() {
                                     </div>
                                     <div className="flex items-center space-x-2">
                                       <span className="text-sm font-semibold">${item.price.toFixed(2)}</span>
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleDeleteItem(item.id);
-                                        }}
-                                        className="p-1 rounded hover:bg-gray-200"
-                                        aria-label="Delete item"
-                                      >
-                                        <TrashIcon className="w-4 h-4 text-gray-500" />
-                                      </button>
-                                      <PencilSquareIcon className="w-4 h-4 text-gray-500" />
                                     </div>
                                   </div>
                                 </SortableWrapper>
@@ -847,15 +681,6 @@ export default function MenuBuilder() {
                                             <span className="text-sm font-semibold">${item.price.toFixed(2)}</span>
                                             <button
                                               type="button"
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                setBuildItems((prev) => prev.filter((i) => i.id !== item.id));
-                                              }}
-                                              className="p-1 rounded hover:bg-gray-200"
-                                              aria-label="Delete item"
-                                            >
-                                              <TrashIcon className="w-4 h-4 text-gray-500" />
-                                            </button>
                                           </div>
                                         </div>
                                       </SortableWrapper>
@@ -897,6 +722,7 @@ export default function MenuBuilder() {
         defaultCategoryId={defaultCategoryId || undefined}
         item={editItem || undefined}
         onSaved={() => restaurantId && fetchData(restaurantId)}
+        onDeleted={() => restaurantId && fetchData(restaurantId)}
         onClose={() => {
           setShowAddModal(false);
           setEditItem(null);
@@ -914,29 +740,25 @@ export default function MenuBuilder() {
           onCreated={() => restaurantId && fetchData(restaurantId)}
         />
       )}
-      <PullMenuModal
-        show={showPullModal}
-        loading={importLoading}
-        onClose={() => {
-          if (!importLoading) setShowPullModal(false);
-        }}
-        onSubmit={activeTab === 'build' ? handleImportMenuDraft : handleImportMenu}
-      />
       <AddItemModal
         showModal={showDraftItemModal}
         restaurantId={restaurantId!}
         defaultCategoryId={defaultCategoryId || undefined}
         item={draftItem || undefined}
         categoriesProp={buildCategories}
-        onSaveData={async (data) => {
+        onSaveData={async (data, cats, addons) => {
+          const base = { ...data, category_id: cats[0] ?? null };
           if (draftItem) {
             setBuildItems((prev) =>
-              prev.map((p) => (p.id === draftItem.id ? { ...p, ...data } : p))
+              prev.map((p) => (p.id === draftItem.id ? { ...p, ...base } : p))
             );
           } else {
             const id = Date.now() + Math.random();
-            setBuildItems((prev) => [...prev, { ...data, id }]);
+            setBuildItems((prev) => [...prev, { ...base, id }]);
           }
+        }}
+        onDeleteData={(id) => {
+          setBuildItems((prev) => prev.filter((i) => i.id !== id));
         }}
         onClose={() => {
           setShowDraftItemModal(false);
