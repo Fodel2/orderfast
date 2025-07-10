@@ -91,36 +91,39 @@ export default function AddonGroupModal({
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      const { data: restaurantUser } = await supabase
+
+      // Fetch restaurant_id for current user
+      const { data: restaurantUser, error } = await supabase
         .from('restaurant_users')
         .select('restaurant_id')
         .eq('user_id', user?.id)
         .single();
-      const restaurant_id = restaurantUser?.restaurant_id ?? restaurantId;
 
-      if (!restaurant_id) {
-        alert('Restaurant not found');
+      console.log('Fetched restaurant user:', restaurantUser, error);
+
+      if (!restaurantUser) {
+        alert('No restaurant found for this user.');
         return;
       }
 
-      // Temporary debug output for addon_groups insert
-      console.log('Inserting addon group:', {
+      const payload = {
         name,
         multiple_choice: multipleChoice,
         required,
-        restaurant_id,
-      });
+        restaurant_id: restaurantUser.restaurant_id,
+      };
 
-      const { data, error } = await supabase
+      console.log('Inserting addon group:', payload);
+
+      const { error: insertError } = await supabase
         .from('addon_groups')
-        .insert([{ name, multiple_choice: multipleChoice, required, restaurant_id }])
-        .select()
-        .single();
-      if (error) {
-        alert('Failed to save: ' + error.message);
+        .insert([payload]);
+
+      if (insertError) {
+        console.error('Insert error:', insertError);
+        alert('Insert failed. Check console for details.');
         return;
       }
-      groupId = data?.id;
     }
 
     if (!groupId) return;
