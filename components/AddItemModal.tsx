@@ -136,7 +136,7 @@ export default function AddItemModal({
         }
 
         const { data: addonLinks } = await supabase
-          .from('menu_item_addon_groups')
+          .from('item_addon_links')
           .select('addon_group_id')
           .eq('item_id', item.id);
         if (addonLinks?.length) {
@@ -206,7 +206,7 @@ export default function AddItemModal({
     if (data?.id) {
       if (item) {
         await supabase.from('menu_item_categories').delete().eq('item_id', data.id);
-        await supabase.from('menu_item_addon_groups').delete().eq('item_id', data.id);
+        await supabase.from('item_addon_links').delete().eq('item_id', data.id);
       }
       if (selectedCategories.length) {
         await supabase.from('menu_item_categories').insert(
@@ -214,8 +214,8 @@ export default function AddItemModal({
         );
       }
       if (selectedAddons.length) {
-        await supabase.from('menu_item_addon_groups').insert(
-          selectedAddons.map((aid) => ({ item_id: data.id, addon_group_id: aid }))
+        await supabase.from('item_addon_links').insert(
+          selectedAddons.map((aid) => ({ item_id: data.id, group_id: aid }))
         );
       }
     }
@@ -256,7 +256,7 @@ export default function AddItemModal({
     }
     await supabase.from('menu_items').delete().eq('id', item.id);
     await supabase.from('menu_item_categories').delete().eq('item_id', item.id);
-    await supabase.from('menu_item_addon_groups').delete().eq('item_id', item.id);
+    await supabase.from('item_addon_links').delete().eq('item_id', item.id);
     onDeleted?.();
     onClose();
   };

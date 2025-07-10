@@ -23,6 +23,7 @@ import ConfirmModal from '../../components/ConfirmModal';
 import DraftCategoryModal from '../../components/DraftCategoryModal';
 import ViewItemModal from '../../components/ViewItemModal';
 import DashboardLayout from '../../components/DashboardLayout';
+import AddonsTab from '../../components/AddonsTab';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChevronDownIcon,
@@ -525,32 +526,34 @@ export default function MenuBuilder() {
         </div>
       )}
 
-      <div className="mb-6 flex items-center justify-between">
-        <div className="flex items-center text-sm text-gray-500 space-x-2">
-          <ArrowsUpDownIcon className="w-4 h-4" />
-          <span>Drag categories and items to reorder</span>
+      {activeTab !== 'addons' && (
+        <div className="mb-6 flex items-center justify-between">
+          <div className="flex items-center text-sm text-gray-500 space-x-2">
+            <ArrowsUpDownIcon className="w-4 h-4" />
+            <span>Drag categories and items to reorder</span>
+          </div>
+          <div className="flex items-center space-x-3">
+            <button onClick={expandAll} className="p-2 rounded hover:bg-gray-200" aria-label="Expand all">
+              <ChevronDownIcon className="w-5 h-5" />
+            </button>
+            <button onClick={collapseAll} className="p-2 rounded hover:bg-gray-200" aria-label="Collapse all">
+              <ChevronUpIcon className="w-5 h-5" />
+            </button>
+            {activeTab === 'menu' && (
+              <button
+                onClick={() => {
+                  setEditCategory(null);
+                  setShowAddCatModal(true);
+                }}
+                className="flex items-center bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700"
+              >
+                <PlusCircleIcon className="w-5 h-5 mr-1" /> Add Category
+              </button>
+            )}
+            {/* Publish button hidden on Menu tab */}
+          </div>
         </div>
-      <div className="flex items-center space-x-3">
-        <button onClick={expandAll} className="p-2 rounded hover:bg-gray-200" aria-label="Expand all">
-          <ChevronDownIcon className="w-5 h-5" />
-        </button>
-        <button onClick={collapseAll} className="p-2 rounded hover:bg-gray-200" aria-label="Collapse all">
-          <ChevronUpIcon className="w-5 h-5" />
-        </button>
-        {activeTab !== 'build' && activeTab !== 'menu' && (
-          <button
-            onClick={() => {
-              setEditCategory(null);
-              setShowAddCatModal(true);
-            }}
-            className="flex items-center bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700"
-          >
-            <PlusCircleIcon className="w-5 h-5 mr-1" /> Add Category
-          </button>
-        )}
-        {/* Publish button hidden on Menu tab */}
-      </div>
-    </div>
+      )}
 
       <AnimatePresence mode="wait">
         {activeTab === 'menu' && (
@@ -663,6 +666,17 @@ export default function MenuBuilder() {
           </SortableContext>
         </DndContext>
             )}
+          </motion.div>
+        )}
+        {activeTab === 'addons' && (
+          <motion.div
+            key="addons"
+            initial={{ x: 20, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: -20, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            {restaurantId && <AddonsTab restaurantId={restaurantId} />}
           </motion.div>
         )}
         {activeTab === 'build' && (
