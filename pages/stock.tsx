@@ -1,4 +1,4 @@
-import StockTab from '@/components/StockTab';
+import StockTab from '../components/StockTab';
 
 export default function StockPage() {
   const categories = [
