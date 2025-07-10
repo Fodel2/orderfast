@@ -1,6 +1,11 @@
 import { useState } from 'react';
-import { Disclosure } from '@headlessui/react';
-import { ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
+import { Disclosure, Listbox } from '@headlessui/react';
+import {
+  ChevronUpIcon,
+  ChevronDownIcon,
+  ChevronUpDownIcon,
+  CheckIcon,
+} from '@heroicons/react/24/outline';
 
 export interface StockTabProps {
   categories: {
@@ -39,8 +44,15 @@ function StockStatusBadge({ status, returnDate }: { status: 'in_stock' | 'schedu
 
 export default function StockTab({ categories, addons }: StockTabProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set(categories.map((c) => c.id)));
+  const [data, setData] = useState<typeof categories>(categories);
 
-  const expandAll = () => setExpanded(new Set(categories.map((c) => c.id)));
+  const stockOptions = [
+    { value: 'in_stock', label: 'In Stock' },
+    { value: 'scheduled', label: 'Back Tomorrow' },
+    { value: 'out', label: 'Off Indefinitely' },
+  ] as const;
+
+  const expandAll = () => setExpanded(new Set(data.map((c) => c.id)));
   const collapseAll = () => setExpanded(new Set());
   const toggle = (id: string) =>
     setExpanded((prev) => {
@@ -50,9 +62,53 @@ export default function StockTab({ categories, addons }: StockTabProps) {
       return next;
     });
 
-  const handleStockChange = (itemId: string, newStatus: 'in_stock' | 'scheduled' | 'out') => {
-    // Placeholder for future implementation
-    console.log('change stock', itemId, newStatus);
+  const tomorrowMidnight = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    d.setHours(0, 0, 0, 0);
+    return d.toISOString();
+  };
+
+  const updateStockStatus = async (
+    itemId: string,
+    status: 'in_stock' | 'scheduled' | 'out'
+  ) => {
+    const { supabase } = await import('../utils/supabaseClient');
+    let returnDate: string | null = null;
+    if (status === 'scheduled') {
+      returnDate = tomorrowMidnight();
+    }
+    const { error } = await supabase
+      .from('menu_items')
+      .update({
+        stock_status: status,
+        stock_return_date: returnDate,
+        stock_last_updated_at: new Date().toISOString(),
+      })
+      .eq('id', itemId);
+    if (error) console.error('Failed to update stock', error);
+  };
+
+  const handleStockChange = (
+    itemId: string,
+    newStatus: 'in_stock' | 'scheduled' | 'out'
+  ) => {
+    setData((prev) =>
+      prev.map((cat) => ({
+        ...cat,
+        items: cat.items.map((it) =>
+          it.id === itemId
+            ? {
+                ...it,
+                stock_status: newStatus,
+                stock_return_date:
+                  newStatus === 'scheduled' ? tomorrowMidnight() : null,
+              }
+            : it
+        ),
+      }))
+    );
+    updateStockStatus(itemId, newStatus);
   };
 
   return (
@@ -70,16 +126,26 @@ export default function StockTab({ categories, addons }: StockTabProps) {
           </p>
         </div>
         <div className="shrink-0 flex items-center space-x-2">
-          <button onClick={expandAll} className="p-2 rounded hover:bg-gray-200" aria-label="Expand all">
+          <button
+            onClick={expandAll}
+            className="p-2 rounded hover:bg-gray-200 flex items-center gap-1"
+            aria-label="Expand all"
+          >
             <ChevronDownIcon className="w-5 h-5" />
+            <span>⬇ Expand All</span>
           </button>
-          <button onClick={collapseAll} className="p-2 rounded hover:bg-gray-200" aria-label="Collapse all">
+          <button
+            onClick={collapseAll}
+            className="p-2 rounded hover:bg-gray-200 flex items-center gap-1"
+            aria-label="Collapse all"
+          >
             <ChevronUpIcon className="w-5 h-5" />
+            <span>⬆ Collapse All</span>
           </button>
         </div>
       </div>
       <div className="space-y-2">
-        {categories.map((cat) => {
+        {data.map((cat) => {
           const isOpen = expanded.has(cat.id);
           return (
             <Disclosure key={`${cat.id}-${isOpen}`} defaultOpen={isOpen}>
@@ -102,15 +168,48 @@ export default function StockTab({ categories, addons }: StockTabProps) {
                             <span>{item.name}</span>
                             <div className="flex items-center space-x-2">
                               <StockStatusBadge status={item.stock_status} returnDate={item.stock_return_date} />
-                              <select
+                              <Listbox
                                 value={item.stock_status}
-                                onChange={(e) => handleStockChange(item.id, e.target.value as 'in_stock' | 'scheduled' | 'out')}
-                                className="border rounded p-1 text-sm"
+                                onChange={(val) =>
+                                  handleStockChange(
+                                    item.id,
+                                    val as 'in_stock' | 'scheduled' | 'out'
+                                  )
+                                }
                               >
-                                <option value="in_stock">In Stock</option>
-                                <option value="scheduled">Back Tomorrow</option>
-                                <option value="out">Off Indefinitely</option>
-                              </select>
+                                <div className="relative w-40 text-sm">
+                                  <Listbox.Button className="relative w-full cursor-default rounded border bg-white py-1 pl-2 pr-8 text-left">
+                                    <span className="block truncate">
+                                      {stockOptions.find((o) => o.value === item.stock_status)?.label}
+                                    </span>
+                                    <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+                                      <ChevronUpDownIcon className="h-5 w-5 text-gray-400" />
+                                    </span>
+                                  </Listbox.Button>
+                                  <Listbox.Options className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md bg-white py-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
+                                    {stockOptions.map((opt) => (
+                                      <Listbox.Option
+                                        key={opt.value}
+                                        value={opt.value}
+                                        className={({ active }) =>
+                                          `relative cursor-default select-none py-2 pl-10 pr-4 ${active ? 'bg-gray-100 text-gray-900' : 'text-gray-900'}`
+                                        }
+                                      >
+                                        {({ selected }) => (
+                                          <>
+                                            <span className={`block truncate ${selected ? 'font-medium' : 'font-normal'}`}>{opt.label}</span>
+                                            {selected ? (
+                                              <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-indigo-600">
+                                                <CheckIcon className="h-5 w-5" />
+                                              </span>
+                                            ) : null}
+                                          </>
+                                        )}
+                                      </Listbox.Option>
+                                    ))}
+                                  </Listbox.Options>
+                                </div>
+                              </Listbox>
                             </div>
                           </li>
                         ))}
