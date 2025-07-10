@@ -187,11 +187,13 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number }) {
           <div className="p-4 pt-0">
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd(g.id)}>
               <SortableContext items={(options[g.id] || []).map((o) => o.id)} strategy={verticalListSortingStrategy}>
-                {(options[g.id] || []).map((o) => (
+                {(options[g.id] || []).map((o, idx) => (
                   <SortableOption key={o.id} id={o.id}>
                     <div className="flex items-end space-x-2 border-b py-1">
                       <label className="flex-1 text-sm">
-                        <span className="text-xs font-semibold">Addon Name</span>
+                        {idx === 0 && (
+                          <span className="text-xs font-semibold">Addon Name</span>
+                        )}
                         <input
                           type="text"
                           value={o.name}
@@ -202,7 +204,9 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number }) {
                         />
                       </label>
                       <label className="w-24 text-sm">
-                        <span className="text-xs font-semibold">Price</span>
+                        {idx === 0 && (
+                          <span className="text-xs font-semibold">Price</span>
+                        )}
                         <div className="relative">
                           <span className="absolute left-1 top-1/2 -translate-y-1/2 text-gray-500">
                             $
