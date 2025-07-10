@@ -27,6 +27,7 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number }) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
   const [groups, setGroups] = useState<any[]>([]);
   const [options, setOptions] = useState<Record<number, any[]>>({});
+  const [priceInputs, setPriceInputs] = useState<Record<number, string>>({});
   const [showModal, setShowModal] = useState(false);
   const [editingGroup, setEditingGroup] = useState<any | null>(null);
   const [confirmDel, setConfirmDel] = useState<any | null>(null);
@@ -44,14 +45,18 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number }) {
         .select('*')
         .in('group_id', grp.map((g) => g.id));
       const map: Record<number, any[]> = {};
+      const priceMap: Record<number, string> = {};
       grp.forEach((g) => (map[g.id] = []));
       opts?.forEach((o) => {
         if (!map[o.group_id]) map[o.group_id] = [];
         map[o.group_id].push(o);
+        priceMap[o.id] = String(o.price ?? 0);
       });
       setOptions(map);
+      setPriceInputs(priceMap);
     } else {
       setOptions({});
+      setPriceInputs({});
     }
   };
 
@@ -67,6 +72,7 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number }) {
       .single();
     if (data) {
       setOptions((prev) => ({ ...prev, [gid]: [...(prev[gid] || []), data] }));
+      setPriceInputs((prev) => ({ ...prev, [data.id]: '0' }));
     }
   };
 
@@ -76,11 +82,19 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number }) {
       ...prev,
       [gid]: prev[gid].map((o) => (o.id === id ? { ...o, ...fields } : o)),
     }));
+    if (fields.price !== undefined) {
+      setPriceInputs((p) => ({ ...p, [id]: String(fields.price) }));
+    }
   };
 
   const deleteOption = async (gid: number, id: number) => {
     await supabase.from('addon_options').delete().eq('id', id);
     setOptions((prev) => ({ ...prev, [gid]: prev[gid].filter((o) => o.id !== id) }));
+    setPriceInputs((prev) => {
+      const copy = { ...prev };
+      delete copy[id];
+      return copy;
+    });
   };
 
   const handleDragEnd = (gid: number) => ({ active, over }: DragEndEvent) => {
@@ -96,7 +110,16 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number }) {
   const duplicateGroup = async (g: any) => {
     const { data: newGroup } = await supabase
       .from('addon_groups')
-      .insert([{ name: `${g.name} - copy`, multiple_choice: g.multiple_choice, required: g.required, restaurant_id: restaurantId }])
+      .insert([
+        {
+          name: `${g.name} - copy`,
+          multiple_choice: g.multiple_choice,
+          required: g.required,
+          restaurant_id: restaurantId,
+          max_group_select: g.max_group_select,
+          max_option_quantity: g.max_option_quantity,
+        },
+      ])
       .select()
       .single();
     if (newGroup) {
@@ -166,20 +189,46 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number }) {
               <SortableContext items={(options[g.id] || []).map((o) => o.id)} strategy={verticalListSortingStrategy}>
                 {(options[g.id] || []).map((o) => (
                   <SortableOption key={o.id} id={o.id}>
-                    <div className="flex items-center space-x-2 border-b py-1">
-                      <input
-                        type="text"
-                        value={o.name}
-                        onChange={(e) => updateOption(g.id, o.id, { name: e.target.value })}
-                        className="flex-1 border border-gray-300 rounded p-1 text-sm"
-                      />
-                      <input
-                        type="number"
-                        value={o.price}
-                        onChange={(e) => updateOption(g.id, o.id, { price: parseFloat(e.target.value) || 0 })}
-                        className="w-20 border border-gray-300 rounded p-1 text-sm"
-                      />
-                      <button onClick={() => deleteOption(g.id, o.id)} className="p-1 rounded hover:bg-red-100" aria-label="Delete option">
+                    <div className="flex items-end space-x-2 border-b py-1">
+                      <label className="flex-1 text-sm">
+                        <span className="text-xs font-semibold">Addon Name</span>
+                        <input
+                          type="text"
+                          value={o.name}
+                          onChange={(e) =>
+                            updateOption(g.id, o.id, { name: e.target.value })
+                          }
+                          className="w-full border border-gray-300 rounded p-1 text-sm"
+                        />
+                      </label>
+                      <label className="w-24 text-sm">
+                        <span className="text-xs font-semibold">Price</span>
+                        <div className="relative">
+                          <span className="absolute left-1 top-1/2 -translate-y-1/2 text-gray-500">
+                            $
+                          </span>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            value={(
+                              parseInt(priceInputs[o.id] ?? String(o.price ?? 0), 10) /
+                              100
+                            ).toFixed(2)}
+                            onChange={(e) => {
+                              const digits = e.target.value.replace(/[^0-9]/g, '');
+                              updateOption(g.id, o.id, { price: parseInt(digits || '0', 10) });
+                              setPriceInputs((prev) => ({ ...prev, [o.id]: digits }));
+                            }}
+                            className="w-full border border-gray-300 rounded p-1 pl-4 text-sm appearance-none"
+                          />
+                        </div>
+                      </label>
+                      <button
+                        onClick={() => deleteOption(g.id, o.id)}
+                        className="p-1 rounded hover:bg-red-100"
+                        aria-label="Delete option"
+                      >
                         <TrashIcon className="w-4 h-4 text-red-600" />
                       </button>
                     </div>
