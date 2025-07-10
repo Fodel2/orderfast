@@ -21,6 +21,12 @@ export default function AddonGroupModal({
   const [name, setName] = useState(group?.name || '');
   const [multipleChoice, setMultipleChoice] = useState<boolean>(!!group?.multiple_choice);
   const [required, setRequired] = useState<boolean>(!!group?.required);
+  const [maxGroupSelect, setMaxGroupSelect] = useState<string>(
+    group?.max_group_select != null ? String(group.max_group_select) : ''
+  );
+  const [maxOptionQuantity, setMaxOptionQuantity] = useState<string>(
+    group?.max_option_quantity != null ? String(group.max_option_quantity) : ''
+  );
   const [categories, setCategories] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
   const [selectedCats, setSelectedCats] = useState<number[]>([]);
@@ -44,6 +50,14 @@ export default function AddonGroupModal({
         setName(group.name || '');
         setMultipleChoice(!!group.multiple_choice);
         setRequired(!!group.required);
+        setMaxGroupSelect(
+          group.max_group_select != null ? String(group.max_group_select) : ''
+        );
+        setMaxOptionQuantity(
+          group.max_option_quantity != null
+            ? String(group.max_option_quantity)
+            : ''
+        );
         const { data: links } = await supabase
           .from('item_addon_links')
           .select('item_id')
@@ -63,6 +77,8 @@ export default function AddonGroupModal({
         setName('');
         setMultipleChoice(false);
         setRequired(false);
+        setMaxGroupSelect('');
+        setMaxOptionQuantity('');
         setSelectedCats([]);
         setSelectedItems([]);
       }
@@ -77,10 +93,21 @@ export default function AddonGroupModal({
       return;
     }
     let groupId = group?.id;
+    const parsedMaxGroup =
+      maxGroupSelect === '' ? null : parseInt(maxGroupSelect, 10) || 0;
+    const parsedMaxOption =
+      maxOptionQuantity === '' ? null : parseInt(maxOptionQuantity, 10) || 0;
+
     if (group) {
       const { error } = await supabase
         .from('addon_groups')
-        .update({ name, multiple_choice: multipleChoice, required })
+        .update({
+          name,
+          multiple_choice: multipleChoice,
+          required,
+          max_group_select: parsedMaxGroup,
+          max_option_quantity: parsedMaxOption,
+        })
         .eq('id', group.id);
       if (error) {
         alert('Failed to save: ' + error.message);
@@ -110,6 +137,8 @@ export default function AddonGroupModal({
         multiple_choice: multipleChoice,
         required,
         restaurant_id: restaurantUser.restaurant_id,
+        max_group_select: parsedMaxGroup,
+        max_option_quantity: parsedMaxOption,
       };
 
       console.log('Inserting addon group:', payload);
@@ -180,6 +209,30 @@ export default function AddonGroupModal({
             />
             <span>Required</span>
           </label>
+          <div>
+            <label className="block text-sm font-medium mb-1">
+              Max options from this group
+            </label>
+            <input
+              type="number"
+              min="0"
+              value={maxGroupSelect}
+              onChange={(e) => setMaxGroupSelect(e.target.value)}
+              className="w-full border border-gray-300 rounded p-2"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">
+              Max quantity per option
+            </label>
+            <input
+              type="number"
+              min="0"
+              value={maxOptionQuantity}
+              onChange={(e) => setMaxOptionQuantity(e.target.value)}
+              className="w-full border border-gray-300 rounded p-2"
+            />
+          </div>
           <div>
             <p className="font-semibold mb-1 text-sm">Assign to Categories</p>
             <CategoryMultiSelect
