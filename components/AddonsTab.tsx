@@ -119,6 +119,14 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number }) {
 
   return (
     <div>
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold flex items-center gap-2">
+          <span role="img" aria-label="wrench">🔧</span> Add-On Manager
+        </h2>
+        <p className="text-sm text-gray-600">
+          Create extra options like toppings, dips, and upgrades that customers can choose before adding their food to the cart.
+        </p>
+      </div>
       <div className="flex justify-between mb-4">
         <h2 className="text-2xl font-bold">Add-on Categories</h2>
         <button

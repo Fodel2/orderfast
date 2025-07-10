@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../utils/supabaseClient';
+import CategoryMultiSelect from './CategoryMultiSelect';
+import ItemMultiSelect from './ItemMultiSelect';
 
 interface AddonGroupModalProps {
   show: boolean;
@@ -23,7 +25,6 @@ export default function AddonGroupModal({
   const [items, setItems] = useState<any[]>([]);
   const [selectedCats, setSelectedCats] = useState<number[]>([]);
   const [selectedItems, setSelectedItems] = useState<number[]>([]);
-  const [search, setSearch] = useState('');
 
   useEffect(() => {
     if (!show) return;
@@ -116,9 +117,6 @@ export default function AddonGroupModal({
 
   if (!show) return null;
 
-  const filteredItems = items.filter((it) =>
-    it.name.toLowerCase().includes(search.toLowerCase())
-  );
 
   return (
     <div
@@ -155,52 +153,19 @@ export default function AddonGroupModal({
           </label>
           <div>
             <p className="font-semibold mb-1 text-sm">Assign to Categories</p>
-            <div className="space-y-1 max-h-32 overflow-y-auto border p-2 rounded">
-              {categories.map((c) => (
-                <label key={c.id} className="flex items-center space-x-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={selectedCats.includes(c.id)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedCats((prev) => [...prev, c.id]);
-                      } else {
-                        setSelectedCats((prev) => prev.filter((id) => id !== c.id));
-                      }
-                    }}
-                  />
-                  <span>{c.name}</span>
-                </label>
-              ))}
-            </div>
+            <CategoryMultiSelect
+              categories={categories}
+              selectedIds={selectedCats}
+              onChange={setSelectedCats}
+            />
           </div>
           <div>
             <p className="font-semibold mb-1 text-sm">Assign to Items</p>
-            <input
-              type="text"
-              placeholder="Search items"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full border border-gray-300 rounded p-1 mb-2"
+            <ItemMultiSelect
+              items={items}
+              selectedIds={selectedItems}
+              onChange={setSelectedItems}
             />
-            <div className="space-y-1 max-h-32 overflow-y-auto border p-2 rounded">
-              {filteredItems.map((it) => (
-                <label key={it.id} className="flex items-center space-x-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={selectedItems.includes(it.id)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedItems((prev) => [...prev, it.id]);
-                      } else {
-                        setSelectedItems((prev) => prev.filter((id) => id !== it.id));
-                      }
-                    }}
-                  />
-                  <span>{it.name}</span>
-                </label>
-              ))}
-            </div>
           </div>
           {selectedCats.length === 0 && selectedItems.length === 0 && (
             <p className="text-xs text-red-500">This group is not assigned to any items.</p>
