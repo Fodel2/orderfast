@@ -76,7 +76,13 @@ function SortableWrapper({ id, children }: { id: number; children: React.ReactNo
 
 export default function MenuBuilder() {
   // Setup sensors for drag and drop interactions
-  const sensors = useSensors(useSensor(PointerSensor));
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  );
   const [session, setSession] = useState(null);
   const [categories, setCategories] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
