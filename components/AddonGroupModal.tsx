@@ -91,7 +91,6 @@ export default function AddonGroupModal({
         data: { user },
       } = await supabase.auth.getUser();
 
-      // Fetch restaurant_id for current user
       const { data: restaurantUser, error: fetchError } = await supabase
         .from('restaurant_users')
         .select('restaurant_id')
