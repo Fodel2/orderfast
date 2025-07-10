@@ -76,7 +76,13 @@ function SortableWrapper({ id, children }: { id: number; children: React.ReactNo
 
 export default function MenuBuilder() {
   // Setup sensors for drag and drop interactions
-  const sensors = useSensors(useSensor(PointerSensor));
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  );
   const [session, setSession] = useState(null);
   const [categories, setCategories] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
@@ -97,11 +103,10 @@ export default function MenuBuilder() {
   const [buildCategories, setBuildCategories] = useState<any[]>([]);
   const [buildItems, setBuildItems] = useState<any[]>([]);
   const [showDraftItemModal, setShowDraftItemModal] = useState(false);
-  const [draftItem, setDraftItem] = useState<any | null>(null);
+  const [selectedItem, setSelectedItem] = useState<any | null>(null);
   const [showDraftCategoryModal, setShowDraftCategoryModal] = useState(false);
   const [draftCategory, setDraftCategory] = useState<any | null>(null);
   const [showViewModal, setShowViewModal] = useState(false);
-  const [viewItem, setViewItem] = useState<any | null>(null);
   const [confirmState, setConfirmState] = useState<
     | { title: string; message: string; action: () => void }
     | null
@@ -155,6 +160,15 @@ export default function MenuBuilder() {
 
   const expandAll = () => {
     setCollapsedCats(new Set());
+  };
+
+  const handleItemClick = (item: any) => {
+    setSelectedItem(item);
+    if (activeTab === 'build') {
+      setShowDraftItemModal(true);
+    } else {
+      setShowViewModal(true);
+    }
   };
 
   const handleHeroChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -618,10 +632,7 @@ export default function MenuBuilder() {
                               .map((item) => (
                                 <SortableWrapper key={item.id} id={item.id}>
                                   <div
-                                    onClick={() => {
-                                      setViewItem(item);
-                                      setShowViewModal(true);
-                                    }}
+                                    onClick={() => handleItemClick(item)}
                                     className="cursor-grab bg-gray-50 rounded-lg p-3 flex items-start justify-between"
                                   >
                                     <div className="flex items-start space-x-2 overflow-hidden">
@@ -729,7 +740,7 @@ export default function MenuBuilder() {
                             <button
                               onClick={() => {
                                 setDefaultCategoryId(cat.id);
-                                setDraftItem(null);
+                                setSelectedItem(null);
                                 setShowDraftItemModal(true);
                               }}
                               onPointerDown={(e) => e.stopPropagation()}
@@ -761,10 +772,7 @@ export default function MenuBuilder() {
                                     .map((item) => (
                                       <SortableWrapper key={item.id} id={item.id}>
                                         <div
-                                          onClick={() => {
-                                            setDraftItem(item);
-                                            setShowDraftItemModal(true);
-                                          }}
+                                          onClick={() => handleItemClick(item)}
                                           className="cursor-grab bg-gray-50 rounded-lg p-3 flex items-start justify-between"
                                         >
                                           <div className="flex items-start space-x-2 overflow-hidden">
@@ -828,14 +836,14 @@ export default function MenuBuilder() {
   showModal={showDraftItemModal}
   restaurantId={restaurantId!}
   defaultCategoryId={defaultCategoryId || undefined}
-  item={draftItem || undefined}
+  item={selectedItem || undefined}
   categoriesProp={buildCategories}
   onSaveData={async (data, cats, addons) => {
     const categoryId = cats[0] ?? null;
     const base = { ...data, category_id: categoryId, addons };
-    if (draftItem) {
+    if (selectedItem) {
       setBuildItems((prev) =>
-        prev.map((p) => (p.id === draftItem.id ? { ...p, ...base } : p))
+        prev.map((p) => (p.id === selectedItem.id ? { ...p, ...base } : p))
       );
     } else {
       const id = Date.now() + Math.random();
@@ -848,7 +856,7 @@ export default function MenuBuilder() {
   }}
   onClose={() => {
     setShowDraftItemModal(false);
-    setDraftItem(null);
+    setSelectedItem(null);
   }}
 />
       {showDraftCategoryModal && (
@@ -889,10 +897,10 @@ export default function MenuBuilder() {
       <Toast message={toastMessage} onClose={() => setToastMessage('')} />
       <ViewItemModal
         showModal={showViewModal}
-        item={viewItem}
+        item={selectedItem}
         onClose={() => {
           setShowViewModal(false);
-          setViewItem(null);
+          setSelectedItem(null);
         }}
       />
     </DashboardLayout>
