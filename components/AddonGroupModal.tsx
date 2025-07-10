@@ -87,6 +87,7 @@ export default function AddonGroupModal({
         return;
       }
     } else {
+      // Patch: add restaurant_id to addon_groups insert
       const {
         data: { user },
       } = await supabase.auth.getUser();
