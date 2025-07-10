@@ -193,18 +193,29 @@ export default function MenuBuilder() {
 
   // Reorder draft items locally
   const handleDraftItemDragEnd =
-    (categoryId: number) => ({ active, over }: DragEndEvent) => {
+    (categoryId: number) => async ({ active, over }: DragEndEvent) => {
       if (!over || active.id === over.id) return;
-      const catItems = buildItems.filter((i) => i.category_id === categoryId);
+      const catItems = buildItems
+        .filter((i) => i.category_id === categoryId)
+        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
       const oldIndex = catItems.findIndex((i) => i.id === active.id);
       const newIndex = catItems.findIndex((i) => i.id === over.id);
       const sorted = arrayMove(catItems, oldIndex, newIndex);
 
       const updated = [...buildItems];
-      sorted.forEach((it, idx) => {
-        const gi = updated.findIndex((i) => i.id === it.id);
-        updated[gi] = { ...it, sort_order: idx };
-      });
+      await Promise.all(
+        sorted.map((it, idx) => {
+          const gi = updated.findIndex((i) => i.id === it.id);
+          updated[gi] = { ...it, sort_order: idx };
+          if (typeof it.id === 'number') {
+            return supabase
+              .from('draft_menu_items')
+              .update({ sort_order: idx })
+              .eq('id', it.id);
+          }
+          return Promise.resolve();
+        })
+      );
       setBuildItems(updated);
     };
 
@@ -621,12 +632,16 @@ export default function MenuBuilder() {
                         onDragEnd={handleItemDragEnd(cat.id)}
                       >
                         <SortableContext
-                          items={items.filter((i) => i.category_id === cat.id).map((i) => i.id)}
+                          items={items
+                            .filter((i) => i.category_id === cat.id)
+                            .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+                            .map((i) => i.id)}
                           strategy={verticalListSortingStrategy}
                         >
                           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
                             {items
                               .filter((item) => item.category_id === cat.id)
+                              .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
                               .map((item) => (
                                 <SortableWrapper key={item.id} id={item.id}>
                                   <div
@@ -763,12 +778,14 @@ export default function MenuBuilder() {
                               <SortableContext
                                 items={buildItems
                                   .filter((i) => i.category_id === cat.id)
+                                  .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
                                   .map((i) => i.id)}
                                 strategy={verticalListSortingStrategy}
                               >
                                 <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
                                   {buildItems
                                     .filter((item) => item.category_id === cat.id)
+                                    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
                                     .map((item) => (
                                       <SortableWrapper key={item.id} id={item.id}>
                                         <div
@@ -842,14 +859,16 @@ export default function MenuBuilder() {
   item={draftItem || undefined}
   categoriesProp={buildCategories}
   onSaveData={async (data, cats, addons) => {
-    const base = { ...data, category_id: cats[0] ?? null, addons };
+    const categoryId = cats[0] ?? null;
+    const base = { ...data, category_id: categoryId, addons };
     if (draftItem) {
       setBuildItems((prev) =>
         prev.map((p) => (p.id === draftItem.id ? { ...p, ...base } : p))
       );
     } else {
       const id = Date.now() + Math.random();
-      setBuildItems((prev) => [...prev, { ...base, id }]);
+      const order = buildItems.filter((i) => i.category_id === categoryId).length;
+      setBuildItems((prev) => [...prev, { ...base, id, sort_order: order }]);
     }
   }}
   onDeleteData={(id) => {
