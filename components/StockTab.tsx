@@ -125,22 +125,19 @@ export default function StockTab({ categories, addons }: StockTabProps) {
             Quickly mark your items, add-ons, or full categories as out of stock — whether it's just for today or until further notice.
           </p>
         </div>
-        <div className="shrink-0 flex items-center space-x-2">
+        <div className="shrink-0 flex items-center justify-end">
           <button
-            onClick={expandAll}
-            className="p-2 rounded hover:bg-gray-200 flex items-center gap-1"
-            aria-label="Expand all"
+            onClick={() => {
+              const allOpen = expanded.size === data.length;
+              if (allOpen) collapseAll();
+              else expandAll();
+            }}
+            className="p-2 rounded hover:bg-gray-200 transition-transform hover:opacity-80"
+            aria-label={expanded.size === data.length ? 'Collapse all' : 'Expand all'}
           >
-            <ChevronDownIcon className="w-5 h-5" />
-            <span>⬇ Expand All</span>
-          </button>
-          <button
-            onClick={collapseAll}
-            className="p-2 rounded hover:bg-gray-200 flex items-center gap-1"
-            aria-label="Collapse all"
-          >
-            <ChevronUpIcon className="w-5 h-5" />
-            <span>⬆ Collapse All</span>
+            <ChevronDownIcon
+              className={`w-5 h-5 transition-transform ${expanded.size === data.length ? 'rotate-180' : ''}`}
+            />
           </button>
         </div>
       </div>
