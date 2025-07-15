@@ -34,7 +34,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     { href: null, label: 'POS', icon: ComputerDesktopIcon },
     { href: null, label: 'KOD', icon: CpuChipIcon },
     { href: null, label: 'Kiosk', icon: DeviceTabletIcon },
-    { href: null, label: 'Website', icon: GlobeAltIcon },
+    { href: '/dashboard/website', label: 'Website', icon: GlobeAltIcon },
     { href: null, label: 'Team', icon: UserGroupIcon },
     { href: null, label: 'Transactions', icon: ArrowsRightLeftIcon },
     { href: null, label: 'Sales', icon: ChartBarIcon },
