@@ -112,7 +112,10 @@ export default function RestaurantMenuPage() {
                     className="flex gap-4 p-4 border rounded-lg shadow-sm bg-white"
                   >
                     <img
-                      src={item.image_url || 'https://via.placeholder.com/120'}
+                      src={
+                        item.image_url ||
+                        "https://placehold.co/120x120?text=No+Image"
+                      }
                       alt={item.name}
                       className="w-24 h-24 object-cover rounded"
                     />
