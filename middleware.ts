@@ -15,13 +15,20 @@ export function middleware(request: NextRequest) {
 
   const host = request.headers.get('host') || '';
   const hostname = host.split(':')[0];
-  const subdomain = hostname.split('.')[0];
+
+  const ROOT_DOMAIN = 'orderfast.vercel.app';
+
+  if (hostname === ROOT_DOMAIN) {
+    return NextResponse.next();
+  }
+
+  const subdomain = hostname.replace(`.${ROOT_DOMAIN}`, '');
 
   if (
+    hostname.endsWith(`.${ROOT_DOMAIN}`) &&
     subdomain &&
     subdomain !== 'www' &&
-    subdomain !== 'whatsthatorder' &&
-    hostname.split('.').length > 2
+    subdomain !== 'whatsthatorder'
   ) {
     const url = request.nextUrl.clone();
     url.pathname = '/restaurant';
