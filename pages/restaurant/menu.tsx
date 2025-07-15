@@ -24,7 +24,9 @@ interface Item {
 
 export default function RestaurantMenuPage() {
   const router = useRouter();
-  const { subdomain } = router.query;
+  const { subdomain, restaurant_id } = router.query;
+  const sub = Array.isArray(subdomain) ? subdomain[0] : subdomain;
+  const idParam = Array.isArray(restaurant_id) ? restaurant_id[0] : restaurant_id;
 
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -34,17 +36,32 @@ export default function RestaurantMenuPage() {
   useEffect(() => {
     if (!router.isReady) return;
 
-    if (!subdomain) {
+    if (!sub && !idParam) {
       setLoading(false);
       return;
     }
 
     const load = async () => {
-      const { data: restData } = await supabase
-        .from('restaurants')
-        .select('id,name')
-        .eq('subdomain', subdomain)
-        .maybeSingle();
+      let restData: Restaurant | null = null;
+
+      if (sub) {
+        const { data } = await supabase
+          .from('restaurants')
+          .select('id,name')
+          .eq('subdomain', sub)
+          .maybeSingle();
+        restData = data as Restaurant | null;
+      } else if (idParam) {
+        const rid = parseInt(idParam as string, 10);
+        if (!isNaN(rid)) {
+          const { data } = await supabase
+            .from('restaurants')
+            .select('id,name')
+            .eq('id', rid)
+            .maybeSingle();
+          restData = data as Restaurant | null;
+        }
+      }
 
       if (!restData) {
         setLoading(false);
@@ -71,18 +88,22 @@ export default function RestaurantMenuPage() {
     };
 
     load();
-  }, [router.isReady, subdomain]);
+  }, [router.isReady, subdomain, restaurant_id]);
 
   if (loading) {
-    return <div className="p-6 text-center">Loading...</div>;
+    return <div className="p-6 text-center text-gray-500">Loading...</div>;
   }
 
-  if (!subdomain) {
-    return <div className="p-6 text-center">No restaurant specified</div>;
+  if (!sub && !idParam) {
+    return (
+      <div className="p-6 text-center text-red-500">No restaurant specified</div>
+    );
   }
 
   if (!restaurant) {
-    return <div className="p-6 text-center">Restaurant not found</div>;
+    return (
+      <div className="p-6 text-center text-red-500">Restaurant not found</div>
+    );
   }
 
   return (
