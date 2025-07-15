@@ -17,7 +17,13 @@ export default function RestaurantPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!router.isReady || !subdomain) return;
+    if (!router.isReady) return;
+
+    if (!subdomain) {
+      setLoading(false);
+      return;
+    }
+
     const load = async () => {
       const { data, error } = await supabase
         .from('restaurants')
@@ -33,6 +39,10 @@ export default function RestaurantPage() {
 
   if (loading) {
     return <div className="p-6 text-center">Loading...</div>;
+  }
+
+  if (!subdomain) {
+    return <div className="p-6 text-center">No restaurant specified</div>;
   }
 
   if (!restaurant) {
