@@ -49,6 +49,7 @@ export default function AddItemModal({
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const croppedAreaPixels = useRef<Area | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
 
   const createImage = (url: string): Promise<HTMLImageElement> => {
     return new Promise((resolve, reject) => {
@@ -122,6 +123,7 @@ export default function AddItemModal({
         setIsVegetarian(!!item.is_vegetarian);
         setIs18Plus(!!item.is_18_plus);
         setImageUrl(item.image_url || null);
+        setImageFile(null);
 
         const { data: links } = await supabase
           .from('menu_item_categories')
@@ -152,6 +154,7 @@ export default function AddItemModal({
         setIsVegetarian(false);
         setIs18Plus(false);
         setImageUrl(null);
+        setImageFile(null);
         setSelectedCategories(defaultCategoryId ? [defaultCategoryId] : []);
         setSelectedAddons([]);
       }
@@ -165,6 +168,7 @@ export default function AddItemModal({
     if (file) {
       const url = URL.createObjectURL(file);
       setTempImage(url);
+      setImageFile(file);
       setCropping(true);
     }
   };
@@ -179,6 +183,19 @@ export default function AddItemModal({
       return;
     }
     const categoryId = selectedCategories[0] ?? null;
+    let finalImageUrl = imageUrl;
+    if (imageFile && imageUrl && imageUrl.startsWith('data:')) {
+      const path = `menu-images/${Date.now()}-${imageFile.name}`;
+      const { error: uploadError } = await supabase.storage
+        .from('menu-images')
+        .upload(path, imageFile, { upsert: true });
+      if (uploadError) {
+        alert('Failed to upload image: ' + uploadError.message);
+        return;
+      }
+      finalImageUrl =
+        supabase.storage.from('menu-images').getPublicUrl(path).data.publicUrl;
+    }
     const itemData = {
       restaurant_id: restaurantId,
       name,
@@ -187,7 +204,7 @@ export default function AddItemModal({
       is_vegan: isVegan,
       is_vegetarian: isVegetarian,
       is_18_plus: is18Plus,
-      image_url: imageUrl,
+      image_url: finalImageUrl,
       category_id: categoryId,
     };
 
@@ -236,6 +253,11 @@ export default function AddItemModal({
     if (tempImage && croppedAreaPixels.current) {
       const cropped = await getCroppedImg(tempImage, croppedAreaPixels.current);
       setImageUrl(cropped);
+      // Convert data URL to File for upload
+      const res = await fetch(cropped);
+      const blob = await res.blob();
+      const name = `item-${Date.now()}.jpg`;
+      setImageFile(new File([blob], name, { type: blob.type }));
     }
     setCropping(false);
     setTempImage(null);
@@ -244,6 +266,7 @@ export default function AddItemModal({
   const handleRemoveImage = (e: React.MouseEvent) => {
     e.stopPropagation();
     setImageUrl(null);
+    setImageFile(null);
     if (fileRef.current) {
       fileRef.current.value = '';
     }
