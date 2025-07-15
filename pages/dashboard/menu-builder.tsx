@@ -564,7 +564,9 @@ export default function MenuBuilder() {
           }
 
           if (linksToInsert.length) {
-            await supabase.from('item_addon_links').insert(linksToInsert);
+            await supabase
+              .from('item_addon_links')
+              .upsert(linksToInsert, { onConflict: 'item_id,group_id' });
           }
 
           setToastMessage('Menu published');
