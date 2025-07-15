@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
-import DashboardLayout from '../../components/DashboardLayout';
-import Toast from '../../components/Toast';
-import CustomPagesSection from '../../components/CustomPagesSection';
-import { supabase } from '../../utils/supabaseClient';
+import DashboardLayout from '../../../components/DashboardLayout';
+import Toast from '../../../components/Toast';
+import CustomPagesSection from '../../../components/CustomPagesSection';
+import { supabase } from '../../../utils/supabaseClient';
 
 export default function WebsitePage() {
   const router = useRouter();

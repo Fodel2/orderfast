@@ -34,7 +34,14 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     { href: null, label: 'POS', icon: ComputerDesktopIcon },
     { href: null, label: 'KOD', icon: CpuChipIcon },
     { href: null, label: 'Kiosk', icon: DeviceTabletIcon },
-    { href: '/dashboard/website', label: 'Website', icon: GlobeAltIcon },
+    {
+      label: 'Website',
+      icon: GlobeAltIcon,
+      children: [
+        { href: '/dashboard/website/settings', label: 'Settings' },
+        { href: '/dashboard/website/preview', label: 'Preview' },
+      ],
+    },
     { href: null, label: 'Team', icon: UserGroupIcon },
     { href: null, label: 'Transactions', icon: ArrowsRightLeftIcon },
     { href: null, label: 'Sales', icon: ChartBarIcon },
@@ -45,6 +52,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false); // mobile open state
   const [collapsed, setCollapsed] = useState(false); // desktop collapse state
+  const [dropdownOpen, setDropdownOpen] = useState<Record<string, boolean>>({});
 
   const highlight = 'text-teal-600';
 
@@ -85,17 +93,65 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         </div>
         <nav className="flex-1 px-2 space-y-1">
           {nav.map((n) => {
-            const active = !!n.href && router.pathname === n.href;
+            const hasChildren = Array.isArray(n.children);
+            const active =
+              (!!n.href && router.pathname === n.href) ||
+              (hasChildren && n.children!.some((c) => router.pathname === c.href));
             const base = `flex items-center px-4 py-2 rounded hover:bg-gray-50 focus:outline-none ${active ? 'bg-gray-50 border-l-4 border-teal-600' : ''}`;
             const labelClass = `${active ? highlight : 'text-gray-700'} ${collapsed ? 'hidden' : 'ml-3'}`;
             const iconClass = `w-6 h-6 ${active ? highlight : 'text-gray-400'}`;
+
+            if (hasChildren) {
+              const openDrop = dropdownOpen[n.label];
+              return (
+                <div key={n.label}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDropdownOpen((prev) => ({ ...prev, [n.label]: !openDrop }))
+                    }
+                    className={base}
+                    aria-label={n.label}
+                  >
+                    <n.icon className={iconClass} aria-hidden="true" />
+                    <span className={labelClass}>{n.label}</span>
+                  </button>
+                  {openDrop && !collapsed && (
+                    <div className="mt-1 ml-8 space-y-1">
+                      {n.children!.map((c) => {
+                        const childActive = router.pathname === c.href;
+                        return (
+                          <Link
+                            key={c.label}
+                            href={c.href}
+                            className={`block px-4 py-2 rounded hover:bg-gray-50 ${
+                              childActive ? 'bg-gray-50 border-l-4 border-teal-600' : ''
+                            }`}
+                          >
+                            <span className={childActive ? highlight : 'text-gray-700'}>
+                              {c.label}
+                            </span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
             return n.href ? (
               <Link key={n.label} href={n.href} className={base} aria-label={n.label}>
                 <n.icon className={iconClass} aria-hidden="true" />
                 <span className={labelClass}>{n.label}</span>
               </Link>
             ) : (
-              <span key={n.label} className={`${base} text-gray-400 cursor-not-allowed`} title="Coming soon" aria-label={n.label}>
+              <span
+                key={n.label}
+                className={`${base} text-gray-400 cursor-not-allowed`}
+                title="Coming soon"
+                aria-label={n.label}
+              >
                 <n.icon className="w-6 h-6 text-gray-400" aria-hidden="true" />
                 <span className={labelClass}>{n.label}</span>
               </span>
