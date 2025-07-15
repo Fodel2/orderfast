@@ -65,7 +65,7 @@ export default function WebsitePreview() {
             {restaurant.website_description}
           </p>
         )}
-        <Link href="/menu" className="px-4 py-2 bg-teal-600 text-white rounded hover:bg-teal-700">
+        <Link href="/restaurant/menu" className="px-4 py-2 bg-teal-600 text-white rounded hover:bg-teal-700">
           View Menu
         </Link>
       </div>
