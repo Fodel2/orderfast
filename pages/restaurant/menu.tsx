@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../utils/supabaseClient';
 
 interface Restaurant {
-  id: number;
+  id: string | number;
   name: string;
 }
 
@@ -24,9 +24,8 @@ interface Item {
 
 export default function RestaurantMenuPage() {
   const router = useRouter();
-  const { subdomain, restaurant_id } = router.query;
-  const sub = Array.isArray(subdomain) ? subdomain[0] : subdomain;
-  const idParam = Array.isArray(restaurant_id) ? restaurant_id[0] : restaurant_id;
+  const { restaurant_id } = router.query;
+  const restaurantId = Array.isArray(restaurant_id) ? restaurant_id[0] : restaurant_id;
 
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -36,39 +35,24 @@ export default function RestaurantMenuPage() {
   useEffect(() => {
     if (!router.isReady) return;
 
-    if (!sub && !idParam) {
+    if (!restaurantId) {
       setLoading(false);
       return;
     }
 
     const load = async () => {
-      let restData: Restaurant | null = null;
-
-      if (sub) {
-        const { data } = await supabase
-          .from('restaurants')
-          .select('id,name')
-          .eq('subdomain', sub)
-          .maybeSingle();
-        restData = data as Restaurant | null;
-      } else if (idParam) {
-        const rid = parseInt(idParam as string, 10);
-        if (!isNaN(rid)) {
-          const { data } = await supabase
-            .from('restaurants')
-            .select('id,name')
-            .eq('id', rid)
-            .maybeSingle();
-          restData = data as Restaurant | null;
-        }
-      }
+      const { data: restData } = await supabase
+        .from('restaurants')
+        .select('id,name')
+        .eq('id', restaurantId)
+        .maybeSingle();
 
       if (!restData) {
         setLoading(false);
         return;
       }
 
-      setRestaurant(restData);
+      setRestaurant(restData as Restaurant);
 
       const { data: catData } = await supabase
         .from('menu_categories')
@@ -88,21 +72,15 @@ export default function RestaurantMenuPage() {
     };
 
     load();
-  }, [router.isReady, subdomain, restaurant_id]);
+  }, [router.isReady, restaurantId]);
 
   if (loading) {
     return <div className="p-6 text-center text-gray-500">Loading...</div>;
   }
 
-  if (!sub && !idParam) {
-    return (
-      <div className="p-6 text-center text-red-500">No restaurant specified</div>
-    );
-  }
-
   if (!restaurant) {
     return (
-      <div className="p-6 text-center text-red-500">Restaurant not found</div>
+      <div className="p-6 text-center text-red-500">No restaurant specified</div>
     );
   }
 
