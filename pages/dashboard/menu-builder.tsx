@@ -488,6 +488,7 @@ export default function MenuBuilder() {
                 name: bi.name,
                 description: bi.description,
                 price: bi.price,
+                image_url: bi.image_url,
                 sort_order: bi.sort_order || 0,
               },
             ]);
