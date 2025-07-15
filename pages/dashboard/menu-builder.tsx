@@ -457,8 +457,49 @@ export default function MenuBuilder() {
       message: 'This will replace your live menu with the build menu. Continue?',
       action: async () => {
         try {
+          const { data: oldItems } = await supabase
+            .from('menu_items')
+            .select('id, category_id')
+            .eq('restaurant_id', restaurantId);
+
+          const oldItemIds = oldItems?.map((i) => i.id) || [];
+          let oldLinks: { item_id: number; group_id: number }[] = [];
+          if (oldItemIds.length) {
+            const { data } = await supabase
+              .from('item_addon_links')
+              .select('item_id, group_id')
+              .in('item_id', oldItemIds);
+            oldLinks = data || [];
+            await supabase.from('item_addon_links').delete().in('item_id', oldItemIds);
+          }
+
+          const itemsByCategory = new Map<number, number[]>();
+          oldItems?.forEach((it) => {
+            if (!itemsByCategory.has(it.category_id)) itemsByCategory.set(it.category_id, []);
+            itemsByCategory.get(it.category_id)!.push(it.id);
+          });
+
+          const groupsByItem = new Map<number, Set<number>>();
+          oldLinks.forEach((l) => {
+            if (!groupsByItem.has(l.item_id)) groupsByItem.set(l.item_id, new Set());
+            groupsByItem.get(l.item_id)!.add(l.group_id);
+          });
+
+          const allGroupIds = Array.from(new Set(oldLinks.map((l) => l.group_id)));
+          const categoryGroups = new Map<number, Set<number>>();
+          for (const [catId, ids] of itemsByCategory.entries()) {
+            if (!ids.length) continue;
+            for (const gid of allGroupIds) {
+              if (ids.every((id) => groupsByItem.get(id)?.has(gid))) {
+                if (!categoryGroups.has(catId)) categoryGroups.set(catId, new Set());
+                categoryGroups.get(catId)!.add(gid);
+              }
+            }
+          }
+
           await supabase.from('menu_items').delete().eq('restaurant_id', restaurantId);
           await supabase.from('menu_categories').delete().eq('restaurant_id', restaurantId);
+
           const idMap = new Map<number, number>();
           for (let i = 0; i < buildCategories.length; i++) {
             const bc = buildCategories[i];
@@ -477,23 +518,55 @@ export default function MenuBuilder() {
             if (ce || !cd) throw ce;
             idMap.set(bc.id, cd.id);
           }
+
+          const itemMap = new Map<number, number>();
           for (let i = 0; i < buildItems.length; i++) {
             const bi = buildItems[i];
             const cid = idMap.get(bi.category_id);
             if (!cid) continue;
-            const { error: ie } = await supabase.from('menu_items').insert([
-              {
-                restaurant_id: restaurantId,
-                category_id: cid,
-                name: bi.name,
-                description: bi.description,
-                price: bi.price,
-                image_url: bi.image_url,
-                sort_order: bi.sort_order || 0,
-              },
-            ]);
-            if (ie) throw ie;
+            const { data: inserted, error: ie } = await supabase
+              .from('menu_items')
+              .insert([
+                {
+                  restaurant_id: restaurantId,
+                  category_id: cid,
+                  name: bi.name,
+                  description: bi.description,
+                  price: bi.price,
+                  image_url: bi.image_url,
+                  sort_order: bi.sort_order || 0,
+                },
+              ])
+              .select('id')
+              .single();
+            if (ie || !inserted) throw ie;
+            itemMap.set(bi.id, inserted.id);
           }
+
+          const linkSet = new Set<string>();
+          const linksToInsert: { item_id: number; group_id: number }[] = [];
+
+          for (const bi of buildItems) {
+            const newId = itemMap.get(bi.id);
+            if (!newId) continue;
+            const groups = new Set<number>();
+            const catGroups = categoryGroups.get(bi.category_id);
+            catGroups?.forEach((g) => groups.add(g));
+            groupsByItem.get(bi.id)?.forEach((g) => groups.add(g));
+            if (Array.isArray(bi.addons)) bi.addons.forEach((g: number) => groups.add(g));
+            groups.forEach((gid) => {
+              const key = `${newId}-${gid}`;
+              if (!linkSet.has(key)) {
+                linkSet.add(key);
+                linksToInsert.push({ item_id: newId, group_id: gid });
+              }
+            });
+          }
+
+          if (linksToInsert.length) {
+            await supabase.from('item_addon_links').insert(linksToInsert);
+          }
+
           setToastMessage('Menu published');
           fetchData(restaurantId);
         } catch (err) {
