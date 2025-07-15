@@ -1,6 +1,7 @@
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import { supabase } from '../../utils/supabaseClient';
+import MenuItemCard from '../../components/MenuItemCard';
 
 interface Restaurant {
   id: number;
@@ -107,47 +108,7 @@ export default function RestaurantMenuPage() {
               <h2 className="text-xl font-semibold text-left">{cat.name}</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {catItems.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex gap-4 p-4 border rounded-lg shadow-sm bg-white"
-                  >
-                    <img
-                      src={
-                        item.image_url ||
-                        "https://placehold.co/120x120?text=No+Image"
-                      }
-                      alt={item.name}
-                      className="w-24 h-24 object-cover rounded"
-                    />
-                    <div className="flex-1 space-y-1 text-left">
-                      <div className="flex justify-between items-start">
-                        <h3 className="font-semibold">{item.name}</h3>
-                        <span className="font-semibold">$
-                          {item.price.toFixed(2)}
-                        </span>
-                      </div>
-                      {item.description && (
-                        <p className="text-sm text-gray-600">
-                          {item.description}
-                        </p>
-                      )}
-                      <div className="text-xs flex flex-wrap gap-2 mt-1">
-                        {item.is_vegetarian && (
-                          <span className="px-2 py-1 bg-green-100 rounded">
-                            🌱 Vegetarian
-                          </span>
-                        )}
-                        {item.is_18_plus && (
-                          <span className="px-2 py-1 bg-red-100 rounded">🔥 18+</span>
-                        )}
-                        {item.stock_status === 'out' && (
-                          <span className="px-2 py-1 bg-gray-200 rounded">
-                            Out of stock
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                  <MenuItemCard key={item.id} item={item} />
                 ))}
               </div>
             </section>
