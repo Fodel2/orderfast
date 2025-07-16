@@ -19,7 +19,7 @@ interface AddonOption {
 }
 
 interface AddonGroup {
-  id: number;
+  id: string;
   name: string;
   required: boolean | null;
   addon_options: AddonOption[];
