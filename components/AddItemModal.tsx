@@ -113,7 +113,7 @@ export default function AddItemModal({
         .from('addon_groups')
         .select('*')
         .eq('restaurant_id', restaurantId)
-        .order('sort_order', { ascending: true });
+        .order('id');
       setAddonGroups(addonData || []);
 
       if (item) {
