@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { getAddonsForItem } from '../utils/getAddonsForItem';
+import type { AddonGroup } from '../utils/types';
 
 interface MenuItem {
   id: number;
@@ -12,18 +13,6 @@ interface MenuItem {
   stock_status?: 'in_stock' | 'scheduled' | 'out' | null;
 }
 
-interface AddonOption {
-  id: number;
-  name: string;
-  price: number | null;
-}
-
-interface AddonGroup {
-  id: string;
-  name: string;
-  required: boolean | null;
-  addon_options: AddonOption[];
-}
 
 export default function MenuItemCard({ item }: { item: MenuItem }) {
   const [showModal, setShowModal] = useState(false);

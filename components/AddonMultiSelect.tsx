@@ -1,14 +1,10 @@
 import Select from 'react-select';
-
-interface AddonGroup {
-  id: number;
-  name: string;
-}
+import type { AddonGroup } from '../utils/types';
 
 interface AddonMultiSelectProps {
   options: AddonGroup[];
-  selectedIds: number[];
-  onChange: (ids: number[]) => void;
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
 }
 
 export default function AddonMultiSelect({ options, selectedIds, onChange }: AddonMultiSelectProps) {

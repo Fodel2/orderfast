@@ -544,14 +544,14 @@ export default function MenuBuilder() {
             itemMap.set(bi.id, inserted.id);
           }
 
-          const addonData: { id: number; selectedAddonGroupIds: number[] }[] = [];
+          const addonData: { id: number; selectedAddonGroupIds: string[] }[] = [];
           for (const bi of buildItems) {
             const newId = itemMap.get(bi.id);
             if (!newId) continue;
             addonData.push({
               id: newId,
               selectedAddonGroupIds: Array.isArray(bi.addons)
-                ? bi.addons.map(Number)
+                ? bi.addons.map(String)
                 : [],
             });
           }
