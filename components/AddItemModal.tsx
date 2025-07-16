@@ -140,10 +140,10 @@ export default function AddItemModal({
 
         const { data: addonLinks } = await supabase
           .from('item_addon_links')
-          .select('addon_group_id')
+          .select('group_id')
           .eq('item_id', item.id);
         if (addonLinks?.length) {
-          setSelectedAddons(addonLinks.map((l) => String(l.addon_group_id)));
+          setSelectedAddons(addonLinks.map((l) => String(l.group_id)));
         } else {
           setSelectedAddons([]);
         }
@@ -211,6 +211,9 @@ export default function AddItemModal({
 
     if (onSaveData) {
       await onSaveData(itemData, selectedCategories, selectedAddons);
+      if (item?.id) {
+        await updateItemAddonLinks(String(item.id), selectedAddons);
+      }
       onSaved?.();
       onClose();
       return;
