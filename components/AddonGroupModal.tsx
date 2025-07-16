@@ -177,7 +177,8 @@ export default function AddonGroupModal({
         .from('item_addon_links')
         .upsert(
           itemIds.map((id) => ({ item_id: id, group_id: groupId })),
-          { onConflict: 'item_id,group_id' }
+{ onConflict: ['item_id', 'group_id'] }
+
         );
       if (upsertError) {
         alert('Failed to update item links: ' + upsertError.message);

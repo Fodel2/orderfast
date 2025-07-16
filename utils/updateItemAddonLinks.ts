@@ -19,7 +19,8 @@ export async function updateItemAddonLinks(itemId: string, selectedAddonGroupIds
       }));
       const { error: upsertError } = await supabase
         .from('item_addon_links')
-        .upsert(rows, { onConflict: 'item_id,group_id' });
+        .upsert(rows, { onConflict: ['item_id', 'group_id'] });
+
       if (upsertError) throw upsertError;
     }
   } catch (err) {
