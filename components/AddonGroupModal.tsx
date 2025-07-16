@@ -163,11 +163,26 @@ export default function AddonGroupModal({
       .filter((it) => selectedCats.includes(it.category_id))
       .map((it) => it.id);
     const itemIds = Array.from(new Set([...selectedItems, ...catItemIds]));
-    await supabase.from('item_addon_links').delete().eq('group_id', groupId);
+    const { error: deleteError } = await supabase
+      .from('item_addon_links')
+      .delete()
+      .eq('group_id', groupId);
+    if (deleteError) {
+      alert('Failed to update item links: ' + deleteError.message);
+      return;
+    }
+
     if (itemIds.length) {
-      await supabase.from('item_addon_links').insert(
-        itemIds.map((id) => ({ item_id: id, group_id: groupId }))
-      );
+      const { error: upsertError } = await supabase
+        .from('item_addon_links')
+        .upsert(
+          itemIds.map((id) => ({ item_id: id, group_id: groupId })),
+          { onConflict: 'item_id,group_id' }
+        );
+      if (upsertError) {
+        alert('Failed to update item links: ' + upsertError.message);
+        return;
+      }
     }
     onSaved();
     onClose();
