@@ -211,9 +211,7 @@ export default function AddItemModal({
 
     if (onSaveData) {
       await onSaveData(itemData, selectedCategories, selectedAddons);
-      if (item?.id) {
-        await updateItemAddonLinks(String(item.id), selectedAddons);
-      }
+      // Draft items are not persisted yet, so skip saving addon links
       onSaved?.();
       onClose();
       return;
