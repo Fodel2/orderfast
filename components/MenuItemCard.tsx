@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { supabase } from '../utils/supabaseClient';
+import { getAddonsForItem } from '../utils/getAddonsForItem';
 
 interface MenuItem {
   id: number;
@@ -32,22 +32,15 @@ export default function MenuItemCard({ item }: { item: MenuItem }) {
 
   const loadAddons = async () => {
     setLoading(true);
-    const { data: links } = await supabase
-      .from('item_addon_links')
-      .select('group_id')
-      .eq('item_id', item.id);
-    const groupIds = links?.map((l: any) => l.group_id) || [];
-    if (groupIds.length > 0) {
-      const { data } = await supabase
-        .from('addon_groups')
-        .select('id,name,required,addon_options(id,name,price)')
-        .in('id', groupIds)
-        .order('sort_order');
-      setGroups(data || []);
-    } else {
+    try {
+      const data = await getAddonsForItem(item.id);
+      setGroups(data);
+    } catch (err) {
+      console.error('Failed to load addons', err);
       setGroups([]);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleClick = () => {
