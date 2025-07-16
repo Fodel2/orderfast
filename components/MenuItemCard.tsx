@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { getAddonsForItem } from '../utils/getAddonsForItem';
 import type { AddonGroup } from '../utils/types';
+import AddonGroups from './AddonGroups';
 
 interface MenuItem {
   id: number;
@@ -85,24 +86,7 @@ export default function MenuItemCard({ item }: { item: MenuItem }) {
             ) : groups.length === 0 ? (
               <p className="text-center text-gray-500">No add-ons available</p>
             ) : (
-              <div className="space-y-4">
-                {groups.map((g) => (
-                  <div key={g.id} className="space-y-1">
-                    <h4 className="font-semibold">
-                      {g.name}{' '}
-                      {g.required ? <span className="text-xs">(Required)</span> : null}
-                    </h4>
-                    <ul className="pl-4 list-disc text-sm">
-                      {g.addon_options.map((o) => (
-                        <li key={o.id} className="flex justify-between">
-                          <span>{o.name}</span>
-                          <span>${((o.price || 0) / 100).toFixed(2)}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
+              <AddonGroups addons={groups} />
             )}
             <div className="mt-6 flex justify-end">
               <button
