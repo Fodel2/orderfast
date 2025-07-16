@@ -41,24 +41,33 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <div className="flex gap-3 overflow-x-auto pb-1">
             {group.addon_options.map(option => {
               const isSelected = selectedAddons[group.id]?.includes(option.id) || false;
 
               return (
                 <div
                   key={option.id}
-                  onClick={() => handleSelect(group.id, option.id, group.multiple_choice)}
-                  className={`cursor-pointer border rounded-lg p-3 text-center transition ${
+                  onClick={() =>
+                    handleSelect(group.id, option.id, group.multiple_choice)}
+                  className={`min-w-[140px] max-w-[160px] cursor-pointer border rounded-lg p-3 text-center flex-shrink-0 transition ${
                     isSelected
                       ? 'border-green-500 bg-green-50 shadow-sm'
                       : 'border-gray-300 bg-white hover:bg-gray-50'
                   }`}
                 >
-                  <div className="w-full h-20 bg-gray-100 mb-2 rounded"></div>
+                  {option.image_url && (
+                    <img
+                      src={option.image_url}
+                      alt={option.name}
+                      className="w-full h-20 object-cover rounded mb-2"
+                    />
+                  )}
                   <div className="font-medium">{option.name}</div>
-                  {option.price > 0 && (
-                    <div className="text-sm text-gray-500">+£{(option.price / 100).toFixed(2)}</div>
+                  {option.price && option.price > 0 && (
+                    <div className="text-sm text-gray-500">
+                      +£{(option.price / 100).toFixed(2)}
+                    </div>
                   )}
                 </div>
               );

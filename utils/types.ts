@@ -2,6 +2,7 @@ export interface AddonOption {
   id: string;
   name: string;
   price: number | null;
+  image_url?: string | null;
 }
 
 export interface AddonGroup {
