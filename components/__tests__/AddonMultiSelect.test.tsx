@@ -7,13 +7,13 @@ import AddonMultiSelect from '../AddonMultiSelect';
 describe('AddonMultiSelect', () => {
   it('shows selected add-on names', () => {
     const addons = [
-      { id: 1, name: 'Cheese' },
-      { id: 2, name: 'Bacon' },
+      { id: '1', name: 'Cheese' },
+      { id: '2', name: 'Bacon' },
     ];
     render(
       <AddonMultiSelect
         options={addons}
-        selectedIds={[1, 2]}
+        selectedIds={['1', '2']}
         onChange={() => {}}
       />
     );

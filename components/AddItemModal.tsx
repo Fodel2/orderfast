@@ -15,7 +15,7 @@ interface AddItemModalProps {
   item?: any;
   onSaved?: () => void;
   categoriesProp?: any[];
-  onSaveData?: (data: any, categories: number[], addons: number[]) => Promise<void>;
+  onSaveData?: (data: any, categories: number[], addons: string[]) => Promise<void>;
   onDeleteData?: (id: number) => Promise<void> | void;
   onDeleted?: () => void;
 }
@@ -41,7 +41,7 @@ export default function AddItemModal({
   const [categories, setCategories] = useState<any[]>([]);
   const [selectedCategories, setSelectedCategories] = useState<number[]>([]);
   const [addonGroups, setAddonGroups] = useState<any[]>([]);
-  const [selectedAddons, setSelectedAddons] = useState<number[]>([]);
+  const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
@@ -143,7 +143,7 @@ export default function AddItemModal({
           .select('addon_group_id')
           .eq('item_id', item.id);
         if (addonLinks?.length) {
-          setSelectedAddons(addonLinks.map((l) => l.addon_group_id));
+          setSelectedAddons(addonLinks.map((l) => String(l.addon_group_id)));
         } else {
           setSelectedAddons([]);
         }
@@ -175,7 +175,7 @@ export default function AddItemModal({
   };
 
   const handleCategoryChange = (ids: number[]) => setSelectedCategories(ids);
-  const handleAddonChange = (ids: number[]) => setSelectedAddons(ids);
+  const handleAddonChange = (ids: string[]) => setSelectedAddons(ids);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -234,7 +234,7 @@ export default function AddItemModal({
           selectedCategories.map((cid) => ({ item_id: data.id, category_id: cid }))
         );
       }
-      await updateItemAddonLinks(String(data.id), selectedAddons.map(String));
+      await updateItemAddonLinks(String(data.id), selectedAddons);
     }
 
     onSaved?.();

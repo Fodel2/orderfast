@@ -1,8 +1,8 @@
 import { supabase } from './supabaseClient';
 
 interface ItemLinkData {
-  id: string | number;
-  selectedAddonGroupIds: (string | number)[];
+  id: string;
+  selectedAddonGroupIds: string[];
 }
 
 /**
