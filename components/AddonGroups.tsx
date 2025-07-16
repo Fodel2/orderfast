@@ -1,66 +1,68 @@
-import React from 'react';
+import { useState } from 'react';
 import type { AddonGroup } from '../utils/types';
 
-// Render Add-On Groups with basic UI styling
-// Assumes props: addons = array of groups, each with options
-
-// Example of expected `addons` structure (from view_addons_for_item):
-// [
-//   {
-//     group_id: 'uuid',
-//     group_name: 'Size',
-//     required: true,
-//     multiple_choice: false,
-//     max_group_select: 1,
-//     max_option_quantity: 1,
-//     options: [
-//       { id: 'uuid', name: 'Small', price: 0 },
-//       { id: 'uuid', name: 'Large', price: 1.5 }
-//     ]
-//   },
-//   ...
-// ]
-
-// Previously this component defined its own AddonGroup interface, but we now
-// reuse the shared type from `utils/types` which exposes a slightly different
-// shape (e.g. `id`/`name` and `addon_options`). To keep the UI the same we map
-// those fields when rendering.
-
 export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
+  const [selectedAddons, setSelectedAddons] = useState<Record<string, string[]>>({});
+
+  const handleSelect = (groupId: string, optionId: string, multiple?: boolean | null) => {
+    setSelectedAddons(prev => {
+      const current = prev[groupId] || [];
+
+      if (multiple) {
+        return {
+          ...prev,
+          [groupId]: current.includes(optionId)
+            ? current.filter(id => id !== optionId)
+            : [...current, optionId],
+        };
+      }
+
+      return { ...prev, [groupId]: [optionId] };
+    });
+  };
+
   return (
     <div className="space-y-6">
-      {addons.map((group) => (
-        <div key={group.id} className="border rounded-xl p-4 shadow-sm">
-          <div className="flex items-center justify-between mb-2">
+      {addons.map(group => (
+        <div key={group.id} className="bg-white border rounded-xl p-4 shadow-sm">
+          <div className="flex justify-between items-center mb-2">
             <h3 className="text-lg font-semibold">
-              {group.name}{' '}
+              {group.name}
               {group.required && (
                 <span className="text-red-500 text-sm ml-2">(Required)</span>
               )}
             </h3>
-            {group.multiple_choice !== undefined && (
-              <p className="text-sm text-gray-500">
-                {group.multiple_choice
-                  ? group.max_group_select != null
-                    ? `Multiple Choice (up to ${group.max_group_select})`
-                    : 'Multiple Choice'
-                  : 'Pick one'}
-              </p>
-            )}
+            <p className="text-sm text-gray-500">
+              {group.multiple_choice
+                ? group.max_group_select != null
+                  ? `Pick up to ${group.max_group_select}`
+                  : 'Multiple Choice'
+                : 'Pick one'}
+            </p>
           </div>
 
-          <div className="flex flex-wrap gap-3">
-            {group.addon_options.map((option) => (
-              <div
-                key={option.id}
-                className="border px-4 py-2 rounded-full text-sm cursor-pointer bg-white hover:bg-gray-100 transition"
-              >
-                {option.name}{' '}
-                {(option.price ?? 0) > 0 && (
-                  <span className="text-gray-500">+£{(option.price! / 100).toFixed(2)}</span>
-                )}
-              </div>
-            ))}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            {group.addon_options.map(option => {
+              const isSelected = selectedAddons[group.id]?.includes(option.id) || false;
+
+              return (
+                <div
+                  key={option.id}
+                  onClick={() => handleSelect(group.id, option.id, group.multiple_choice)}
+                  className={`cursor-pointer border rounded-lg p-3 text-center transition ${
+                    isSelected
+                      ? 'border-green-500 bg-green-50 shadow-sm'
+                      : 'border-gray-300 bg-white hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="w-full h-20 bg-gray-100 mb-2 rounded"></div>
+                  <div className="font-medium">{option.name}</div>
+                  {option.price > 0 && (
+                    <div className="text-sm text-gray-500">+£{(option.price / 100).toFixed(2)}</div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       ))}
