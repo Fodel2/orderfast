@@ -40,7 +40,7 @@ export async function saveItemAddonLinks(items: ItemLinkData[]) {
     if (rows.length) {
       const { error } = await supabase
         .from('item_addon_links')
-        .upsert(rows, { onConflict: ['item_id', 'group_id'] });
+        .upsert(rows, { onConflict: 'item_id,group_id' });
 
       if (error) throw error;
     }
