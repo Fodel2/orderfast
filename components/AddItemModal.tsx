@@ -3,6 +3,7 @@ import Cropper, { Area } from 'react-easy-crop';
 import { CloudArrowUpIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { Trash2 } from 'lucide-react';
 import { supabase } from '../utils/supabaseClient';
+import { updateItemAddonLinks } from '../utils/updateItemAddonLinks';
 import CategoryMultiSelect from './CategoryMultiSelect';
 import AddonMultiSelect from './AddonMultiSelect';
 
@@ -227,18 +228,13 @@ export default function AddItemModal({
     if (data?.id) {
       if (item) {
         await supabase.from('menu_item_categories').delete().eq('item_id', data.id);
-        await supabase.from('item_addon_links').delete().eq('item_id', data.id);
       }
       if (selectedCategories.length) {
         await supabase.from('menu_item_categories').insert(
           selectedCategories.map((cid) => ({ item_id: data.id, category_id: cid }))
         );
       }
-      if (selectedAddons.length) {
-        await supabase.from('item_addon_links').insert(
-          selectedAddons.map((aid) => ({ item_id: data.id, group_id: aid }))
-        );
-      }
+      await updateItemAddonLinks(String(data.id), selectedAddons.map(String));
     }
 
     onSaved?.();
