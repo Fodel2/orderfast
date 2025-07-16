@@ -126,26 +126,40 @@ export default function AddItemModal({
         setImageUrl(item.image_url || null);
         setImageFile(null);
 
-        const { data: links } = await supabase
-          .from('menu_item_categories')
-          .select('category_id')
-          .eq('item_id', item.id);
-        if (links?.length) {
-          setSelectedCategories(links.map((l) => l.category_id));
-        } else if (item.category_id) {
-          setSelectedCategories([item.category_id]);
+        if (onSaveData) {
+          // Draft item editing - use local data
+          if (item.category_id) {
+            setSelectedCategories([item.category_id]);
+          } else {
+            setSelectedCategories([]);
+          }
+          if (Array.isArray(item.addons)) {
+            setSelectedAddons(item.addons.map(String));
+          } else {
+            setSelectedAddons([]);
+          }
         } else {
-          setSelectedCategories([]);
-        }
+          const { data: links } = await supabase
+            .from('menu_item_categories')
+            .select('category_id')
+            .eq('item_id', item.id);
+          if (links?.length) {
+            setSelectedCategories(links.map((l) => l.category_id));
+          } else if (item.category_id) {
+            setSelectedCategories([item.category_id]);
+          } else {
+            setSelectedCategories([]);
+          }
 
-        const { data: addonLinks } = await supabase
-          .from('item_addon_links')
-          .select('group_id')
-          .eq('item_id', item.id);
-        if (addonLinks?.length) {
-          setSelectedAddons(addonLinks.map((l) => String(l.group_id)));
-        } else {
-          setSelectedAddons([]);
+          const { data: addonLinks } = await supabase
+            .from('item_addon_links')
+            .select('group_id')
+            .eq('item_id', item.id);
+          if (addonLinks?.length) {
+            setSelectedAddons(addonLinks.map((l) => String(l.group_id)));
+          } else {
+            setSelectedAddons([]);
+          }
         }
       } else {
         setName('');
@@ -162,7 +176,7 @@ export default function AddItemModal({
     };
 
     load();
-  }, [showModal, item, restaurantId, defaultCategoryId, categoriesProp]);
+  }, [showModal, item, restaurantId, defaultCategoryId, categoriesProp, onSaveData]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
