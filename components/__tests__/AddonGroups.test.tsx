@@ -1,19 +1,18 @@
 import { render, screen } from '@testing-library/react';
-import AddonGroups, { AddonGroup } from '../AddonGroups';
+import AddonGroups from '../AddonGroups';
+import type { AddonGroup } from '../../utils/types';
 
 describe('AddonGroups', () => {
   it('renders group and option names', () => {
     const addons: AddonGroup[] = [
       {
-        group_id: '1',
-        group_name: 'Size',
+        id: '1',
+        name: 'Size',
         required: true,
         multiple_choice: false,
-        max_group_select: 1,
-        max_option_quantity: 1,
-        options: [
+        addon_options: [
           { id: 'a', name: 'Small', price: 0 },
-          { id: 'b', name: 'Large', price: 1.5 },
+          { id: 'b', name: 'Large', price: 150 },
         ],
       },
     ];
