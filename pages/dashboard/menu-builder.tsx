@@ -16,6 +16,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useRouter } from 'next/router';
 import { supabase } from '../../utils/supabaseClient';
+import { saveItemAddonLinks } from '../../utils/saveItemAddonLinks';
 import AddItemModal from '../../components/AddItemModal';
 import AddCategoryModal from '../../components/AddCategoryModal';
 import Toast from '../../components/Toast';
@@ -543,30 +544,20 @@ export default function MenuBuilder() {
             itemMap.set(bi.id, inserted.id);
           }
 
-          const linkSet = new Set<string>();
-          const linksToInsert: { item_id: number; group_id: number }[] = [];
-
+          const addonData: { id: number; selectedAddonGroupIds: number[] }[] = [];
           for (const bi of buildItems) {
             const newId = itemMap.get(bi.id);
             if (!newId) continue;
-            const groups = new Set<number>();
-            const catGroups = categoryGroups.get(bi.category_id);
-            catGroups?.forEach((g) => groups.add(g));
-            groupsByItem.get(bi.id)?.forEach((g) => groups.add(g));
-            if (Array.isArray(bi.addons)) bi.addons.forEach((g: number) => groups.add(g));
-            groups.forEach((gid) => {
-              const key = `${newId}-${gid}`;
-              if (!linkSet.has(key)) {
-                linkSet.add(key);
-                linksToInsert.push({ item_id: newId, group_id: gid });
-              }
+            addonData.push({
+              id: newId,
+              selectedAddonGroupIds: Array.isArray(bi.addons)
+                ? bi.addons.map(Number)
+                : [],
             });
           }
 
-          if (linksToInsert.length) {
-            await supabase
-              .from('item_addon_links')
-              .upsert(linksToInsert, { onConflict: 'item_id,group_id' });
+          if (addonData.length) {
+            await saveItemAddonLinks(addonData);
           }
 
           setToastMessage('Menu published');
