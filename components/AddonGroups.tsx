@@ -31,7 +31,7 @@ export interface AddonGroup {
   group_name: string;
   required?: boolean;
   multiple_choice?: boolean;
-  max_group_select?: number;
+  max_group_select?: number | null;
   max_option_quantity?: number;
   options: AddonOption[];
 }
@@ -50,7 +50,9 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
             </h3>
             <p className="text-sm text-gray-500">
               {group.multiple_choice
-                ? `Pick up to ${group.max_group_select}`
+                ? group.max_group_select != null
+                  ? `Multiple Choice (up to ${group.max_group_select})`
+                  : 'Multiple Choice'
                 : 'Pick one'}
             </p>
           </div>

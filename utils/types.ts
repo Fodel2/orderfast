@@ -9,5 +9,6 @@ export interface AddonGroup {
   name: string;
   required: boolean | null;
   multiple_choice?: boolean | null;
+  max_group_select?: number | null;
   addon_options: AddonOption[];
 }
