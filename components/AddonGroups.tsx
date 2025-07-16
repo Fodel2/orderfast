@@ -41,9 +41,11 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
             {group.multiple_choice !== undefined && (
               <p className="text-sm text-gray-500">
                 {group.multiple_choice
-                  ? group.max_group_select != null
-                    ? `Multiple Choice (up to ${group.max_group_select})`
-                    : 'Multiple Choice'
+{group.multiple_choice
+  ? group.max_group_select != null
+    ? `Pick up to ${group.max_group_select}`
+    : 'Multiple Choice'
+  : 'Pick one'}
                   : 'Pick one'}
               </p>
             )}
