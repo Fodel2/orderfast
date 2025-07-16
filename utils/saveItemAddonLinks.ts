@@ -13,7 +13,11 @@ interface ItemLinkData {
 export async function saveItemAddonLinks(items: ItemLinkData[]) {
   if (!items.length) return;
 
-  const itemIds = items.map((i) => i.id);
+  // Filter out items without a valid id (unsaved drafts)
+  const validItems = items.filter((i) => i.id);
+  if (!validItems.length) return;
+
+  const itemIds = validItems.map((i) => i.id);
 
   try {
     // Remove existing links for these items
@@ -26,7 +30,7 @@ export async function saveItemAddonLinks(items: ItemLinkData[]) {
     }
 
     // Prepare rows for batch insert
-    const rows = items.flatMap((item) =>
+    const rows = validItems.flatMap((item) =>
       (item.selectedAddonGroupIds || []).map((gid) => ({
         item_id: item.id,
         group_id: gid,
