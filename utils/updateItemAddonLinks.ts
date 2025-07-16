@@ -4,6 +4,11 @@ import { supabase } from './supabaseClient';
  * Replace the addon links for a menu item with the given group IDs.
  */
 export async function updateItemAddonLinks(itemId: string, selectedAddonGroupIds: string[]) {
+  if (!itemId) {
+    const msg = 'updateItemAddonLinks called with invalid itemId';
+    console.error(msg, itemId);
+    throw new Error(msg);
+  }
   // Remove existing links for the item
   try {
     const { error: deleteError } = await supabase

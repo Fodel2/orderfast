@@ -15,6 +15,9 @@ export async function saveItemAddonLinks(items: ItemLinkData[]) {
 
   // Filter out items without a valid id (unsaved drafts)
   const validItems = items.filter((i) => i.id);
+  if (validItems.length !== items.length) {
+    console.warn('saveItemAddonLinks received items with missing ids');
+  }
   if (!validItems.length) return;
 
   const itemIds = validItems.map((i) => i.id);
