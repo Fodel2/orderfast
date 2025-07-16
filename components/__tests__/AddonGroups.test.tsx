@@ -10,6 +10,7 @@ describe('AddonGroups', () => {
         name: 'Size',
         required: true,
         multiple_choice: false,
+        max_group_select: 1,
         addon_options: [
           { id: 'a', name: 'Small', price: 0 },
           { id: 'b', name: 'Large', price: 150 },
