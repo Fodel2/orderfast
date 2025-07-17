@@ -18,11 +18,17 @@ export function validateAddonSelections(
       messages.push('Selection required');
     }
 
-    if (
-      group.max_group_select != null &&
-      totalSelected > group.max_group_select
-    ) {
-      messages.push(`Select up to ${group.max_group_select}`);
+    const effectiveGroupMax =
+      group.max_group_select != null
+        ? group.max_group_select
+        : group.multiple_choice
+        ? null
+        : 1;
+
+    const distinctSelected = quantities.filter((q) => q > 0).length;
+
+    if (effectiveGroupMax != null && distinctSelected > effectiveGroupMax) {
+      messages.push(`Select up to ${effectiveGroupMax}`);
     }
 
     if (
@@ -56,17 +62,14 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
       const group = prev[groupId] || {};
       const current = group[optionId] || 0;
 
-      // Total quantity currently selected in this group
-      const totalCount = Object.values(group).reduce((sum, q) => sum + q, 0);
+      const distinctCount = Object.values(group).filter(q => q > 0).length;
 
-      // Prevent increasing quantities when the group cap is hit and this
-      // option has not been selected yet. This allows increasing the
-      // quantity of an already-selected option even if the group cap is
-      // reached.
+      // Prevent selecting a new option when the group cap is hit. Allow
+      // increasing the quantity of an already-selected option.
       if (
         groupMax != null &&
         delta > 0 &&
-        totalCount >= groupMax &&
+        distinctCount >= groupMax &&
         current === 0
       ) {
         return prev;
@@ -115,7 +118,12 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
                 group.max_option_quantity == null
                   ? Infinity
                   : group.max_option_quantity;
-              const groupMax = group.max_group_select;
+              const groupMax =
+                group.max_group_select != null
+                  ? group.max_group_select
+                  : group.multiple_choice
+                  ? null
+                  : 1;
               const groupSelections = selectedQuantities[gid] || {};
               const distinctSelected = Object.values(groupSelections).filter(
                 q => q > 0
