@@ -111,6 +111,11 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
                   ? Infinity
                   : group.max_option_quantity;
               const groupMax = group.max_group_select;
+              const groupSelections = selectedQuantities[gid] || {};
+              const distinctSelected = Object.values(groupSelections).filter(
+                q => q > 0
+              ).length;
+              const groupCapHit = groupMax != null && distinctSelected >= groupMax;
 
               return (
                 <div
@@ -158,7 +163,8 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
                           e.stopPropagation();
                           updateQuantity(gid, option.id, 1, maxQty, groupMax);
                         }}
-                        className="w-8 h-8 rounded-full border border-gray-300 hover:bg-gray-100"
+                        disabled={quantity >= maxQty || (groupCapHit && quantity === 0)}
+                        className="w-8 h-8 rounded-full border border-gray-300 hover:bg-gray-100 disabled:opacity-50"
                       >
                         +
                       </button>

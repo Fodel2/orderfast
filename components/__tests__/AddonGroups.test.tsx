@@ -79,6 +79,29 @@ describe('AddonGroups', () => {
     expect(screen.getByText('1')).toBeInTheDocument();
   });
 
+  it('disables the plus button at max quantity', async () => {
+    const addons: AddonGroup[] = [
+      {
+        id: '1',
+        group_id: '1',
+        name: 'Extras',
+        required: false,
+        multiple_choice: true,
+        max_group_select: 2,
+        max_option_quantity: 1,
+        addon_options: [{ id: 'a', name: 'Cheese', price: 50 }],
+      },
+    ];
+
+    render(<AddonGroups addons={addons} />);
+
+    const option = screen.getByText('Cheese');
+    await userEvent.click(option);
+
+    const plus = screen.getByRole('button', { name: '+' });
+    expect(plus).toBeDisabled();
+  });
+
   it('returns error when required group has no selection', () => {
     const addons: AddonGroup[] = [
       {
