@@ -1,8 +1,8 @@
 import { supabase } from './supabaseClient';
 
 interface ItemLinkData {
-  id: string;
-  selectedAddonGroupIds: string[];
+  id: string | number;
+  selectedAddonGroupIds: Array<string | number>;
 }
 
 /**
@@ -20,7 +20,7 @@ export async function saveItemAddonLinks(items: ItemLinkData[]) {
   }
   if (!validItems.length) return;
 
-  const itemIds = validItems.map((i) => i.id);
+  const itemIds = validItems.map((i) => Number(i.id));
 
   try {
     // Remove existing links for these items
@@ -35,8 +35,8 @@ export async function saveItemAddonLinks(items: ItemLinkData[]) {
     // Prepare rows for batch insert
     const rows = validItems.flatMap((item) =>
       (item.selectedAddonGroupIds || []).map((gid) => ({
-        item_id: item.id,
-        group_id: gid,
+        item_id: Number(item.id),
+        group_id: Number(gid),
       }))
     );
 
