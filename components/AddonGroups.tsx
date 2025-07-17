@@ -9,11 +9,23 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
     groupId: string,
     optionId: string,
     delta: number,
-    maxQty: number
+    maxQty: number,
+    groupMax?: number | null
   ) => {
     setSelectedQuantities(prev => {
       const group = prev[groupId] || {};
       const current = group[optionId] || 0;
+      const selectedCount = Object.values(group).filter(q => q > 0).length;
+
+      if (
+        groupMax != null &&
+        current === 0 &&
+        delta > 0 &&
+        selectedCount >= groupMax
+      ) {
+        return prev;
+      }
+
       const newQty = Math.max(0, Math.min(current + delta, maxQty));
 
       return {
@@ -51,11 +63,12 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
               const gid = group.group_id ?? group.id;
               const quantity = selectedQuantities[gid]?.[option.id] || 0;
               const maxQty = group.max_option_quantity || 1;
+              const groupMax = group.max_group_select;
 
               return (
                 <div
                   key={option.id}
-                  onClick={() => updateQuantity(gid, option.id, 1, maxQty)}
+                  onClick={() => updateQuantity(gid, option.id, 1, maxQty, groupMax)}
                   className={`min-w-[160px] max-w-[180px] border rounded-lg p-3 flex-shrink-0 transition cursor-pointer text-center ${
                     quantity > 0
                       ? 'border-green-500 bg-green-50 shadow-sm'
@@ -84,7 +97,7 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
                         onClick={(e: React.MouseEvent) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          updateQuantity(gid, option.id, -1, maxQty);
+                          updateQuantity(gid, option.id, -1, maxQty, groupMax);
                         }}
                         className="w-8 h-8 rounded-full border border-gray-300 hover:bg-gray-100"
                       >
@@ -96,7 +109,7 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
                         onClick={(e: React.MouseEvent) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          updateQuantity(gid, option.id, 1, maxQty);
+                          updateQuantity(gid, option.id, 1, maxQty, groupMax);
                         }}
                         className="w-8 h-8 rounded-full border border-gray-300 hover:bg-gray-100"
                       >
