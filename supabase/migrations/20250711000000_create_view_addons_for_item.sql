@@ -5,6 +5,8 @@ SELECT
   ag.name AS addon_group_name,
   ag.required,
   ag.multiple_choice,
+  ag.max_group_select,
+  ag.max_option_quantity,
   ao.id AS addon_option_id,
   ao.name AS addon_option_name,
   ao.price
