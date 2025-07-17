@@ -46,27 +46,35 @@ export default function RestaurantMenuPage() {
     }
 
     const load = async () => {
-      const [{ data: rest }, { data: catData }, { data: itemData }] =
-        await Promise.all([
-          supabase
-            .from('restaurants')
-            .select('*')
-            .eq('id', restaurantId)
-            .maybeSingle(),
-          supabase
-            .from('menu_categories')
-            .select('*')
-            .eq('restaurant_id', restaurantId)
-            .order('sort_order', { ascending: true }),
-          supabase
-            .from('menu_items')
-            .select('*')
-            .eq('restaurant_id', restaurantId)
-            .order('sort_order', { ascending: true }),
-        ]);
-      setRestaurant(rest as Restaurant | null);
-      setCategories(catData || []);
-      setItems(itemData || []);
+      const [restRes, catRes, itemRes] = await Promise.all([
+        supabase
+          .from('restaurants')
+          .select('*')
+          .eq('id', restaurantId)
+          .maybeSingle(),
+        supabase
+          .from('menu_categories')
+          .select('*')
+          .eq('restaurant_id', restaurantId)
+          .order('sort_order', { ascending: true }),
+        supabase
+          .from('menu_items')
+          .select('*')
+          .eq('restaurant_id', restaurantId)
+          .order('sort_order', { ascending: true }),
+      ]);
+
+      if (restRes.error) console.error('Failed to fetch restaurant', restRes.error);
+      if (catRes.error) console.error('Failed to fetch categories', catRes.error);
+      if (itemRes.error) console.error('Failed to fetch items', itemRes.error);
+
+      console.log('Restaurant data:', restRes.data);
+      console.log('Category data:', catRes.data);
+      console.log('Item data:', itemRes.data);
+
+      setRestaurant(restRes.data as Restaurant | null);
+      setCategories(catRes.data || []);
+      setItems(itemRes.data || []);
       setLoading(false);
     };
 
@@ -100,20 +108,24 @@ export default function RestaurantMenuPage() {
       </div>
 
       <div className="space-y-8">
-        {categories.map((cat) => {
-          const catItems = items.filter((it) => it.category_id === cat.id);
-          if (catItems.length === 0) return null;
-          return (
-            <section key={cat.id} className="space-y-4">
-              <h2 className="text-xl font-semibold text-left">{cat.name}</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {catItems.map((item) => (
-                  <MenuItemCard key={item.id} item={item} />
-                ))}
-              </div>
-            </section>
-          );
-        })}
+        {categories.length === 0 ? (
+          <p className="text-center text-gray-500">No menu items found.</p>
+        ) : (
+          categories.map((cat) => {
+            const catItems = items.filter((it) => it.category_id === cat.id);
+            if (catItems.length === 0) return null;
+            return (
+              <section key={cat.id} className="space-y-4">
+                <h2 className="text-xl font-semibold text-left">{cat.name}</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {catItems.map((item) => (
+                    <MenuItemCard key={item.id} item={item} />
+                  ))}
+                </div>
+              </section>
+            );
+          })
+        )}
       </div>
     </div>
   );
