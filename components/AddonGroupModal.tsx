@@ -176,7 +176,10 @@ export default function AddonGroupModal({
       const { error: upsertError } = await supabase
         .from('item_addon_links')
         .upsert(
-          itemIds.map((id) => ({ item_id: id, group_id: groupId })),
+          itemIds.map((id) => ({
+            item_id: Number(id),
+            group_id: Number(groupId),
+          })),
           { onConflict: 'item_id,group_id' }
         );
       if (upsertError) {

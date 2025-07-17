@@ -3,7 +3,10 @@ import { supabase } from './supabaseClient';
 /**
  * Replace the addon links for a menu item with the given group IDs.
  */
-export async function updateItemAddonLinks(itemId: string, selectedAddonGroupIds: string[]) {
+export async function updateItemAddonLinks(
+  itemId: string | number,
+  selectedAddonGroupIds: Array<string | number>
+) {
   if (!itemId) {
     const msg = 'updateItemAddonLinks called with invalid itemId';
     console.error(msg, itemId);
@@ -14,13 +17,13 @@ export async function updateItemAddonLinks(itemId: string, selectedAddonGroupIds
     const { error: deleteError } = await supabase
       .from('item_addon_links')
       .delete()
-      .eq('item_id', itemId);
+      .eq('item_id', Number(itemId));
     if (deleteError) throw deleteError;
 
     if (selectedAddonGroupIds.length > 0) {
       const rows = selectedAddonGroupIds.map((groupId) => ({
-        item_id: itemId,
-        group_id: groupId,
+        item_id: Number(itemId),
+        group_id: Number(groupId),
       }));
       const { error: upsertError } = await supabase
         .from('item_addon_links')
