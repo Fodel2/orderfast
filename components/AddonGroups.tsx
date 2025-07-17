@@ -62,9 +62,22 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
       const group = prev[groupId] || {};
       const current = group[optionId] || 0;
 
-      if (delta > 0 && current >= maxQty) return prev;
-
       const distinctCount = Object.values(group).filter(q => q > 0).length;
+
+      console.log('updateQuantity', {
+        groupId,
+        optionId,
+        delta,
+        current,
+        maxQty,
+        groupMax,
+        distinctCount,
+      });
+
+      if (delta > 0 && current >= maxQty) {
+        console.log('blocked: option quantity cap');
+        return prev;
+      }
 
       // Prevent selecting a new option when the group cap is hit. Allow
       // increasing the quantity of an already-selected option.
@@ -74,6 +87,7 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
         distinctCount >= groupMax &&
         current === 0
       ) {
+        console.log('blocked: group cap reached');
         return prev;
       }
 

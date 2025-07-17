@@ -31,6 +31,7 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number }) {
   const [showModal, setShowModal] = useState(false);
   const [editingGroup, setEditingGroup] = useState<any | null>(null);
   const [confirmDel, setConfirmDel] = useState<any | null>(null);
+  const [assignments, setAssignments] = useState<Record<number, string[]>>({});
 
   const load = async () => {
     const { data: grp } = await supabase
@@ -54,9 +55,41 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number }) {
       });
       setOptions(map);
       setPriceInputs(priceMap);
+
+      // Fetch item assignments for display
+      const { data: links } = await supabase
+        .from('item_addon_links')
+        .select('group_id,item_id');
+      const { data: items } = await supabase
+        .from('menu_items')
+        .select('id,name,category_id')
+        .eq('restaurant_id', restaurantId);
+      const { data: cats } = await supabase
+        .from('menu_categories')
+        .select('id,name')
+        .eq('restaurant_id', restaurantId);
+
+      const itemMap = new Map<number, { name: string; category_id: number | null }>();
+      items?.forEach((it) => {
+        itemMap.set(Number(it.id), { name: it.name, category_id: it.category_id });
+      });
+      const catMap = new Map<number, string>();
+      cats?.forEach((c) => catMap.set(Number(c.id), c.name));
+      const assignMap: Record<number, string[]> = {};
+      links?.forEach((l) => {
+        const gId = Number(l.group_id);
+        const item = itemMap.get(Number(l.item_id));
+        if (!item) return;
+        const catName = item.category_id ? catMap.get(Number(item.category_id)) : undefined;
+        const label = catName ? `${catName} - ${item.name}` : item.name;
+        if (!assignMap[gId]) assignMap[gId] = [];
+        assignMap[gId].push(label);
+      });
+      setAssignments(assignMap);
     } else {
       setOptions({});
       setPriceInputs({});
+      setAssignments({});
     }
   };
 
@@ -171,6 +204,11 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number }) {
                 {g.multiple_choice ? 'Multiple Choice' : 'Single Choice'}
                 {g.required ? ' · Required' : ''}
               </p>
+              {assignments[g.id]?.length ? (
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Attached to: {assignments[g.id].join(', ')}
+                </p>
+              ) : null}
             </div>
             <div className="flex space-x-2">
               <button onClick={() => { setEditingGroup(g); setShowModal(true); }} className="p-2 rounded hover:bg-gray-100" aria-label="Edit">
