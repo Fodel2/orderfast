@@ -117,11 +117,11 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
                   : group.max_option_quantity;
               const groupMax = group.max_group_select;
               const groupSelections = selectedQuantities[gid] || {};
-              const totalSelected = Object.values(groupSelections).reduce(
-                (sum, q) => sum + q,
-                0
-              );
-              const groupCapHit = groupMax != null && totalSelected >= groupMax;
+              const distinctSelected = Object.values(groupSelections).filter(
+                q => q > 0
+              ).length;
+              const groupCapHit =
+                groupMax != null && distinctSelected >= groupMax;
 
               return (
                 <div
