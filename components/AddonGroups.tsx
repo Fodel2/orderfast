@@ -64,7 +64,12 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
             {group.addon_options.map((option) => {
               const gid = group.group_id ?? group.id;
               const quantity = selectedQuantities[gid]?.[option.id] || 0;
-              const maxQty = group.max_option_quantity || 1;
+              // If max_option_quantity is null or undefined, treat it as unlimited
+              // rather than defaulting to 1.
+              const maxQty =
+                group.max_option_quantity == null
+                  ? Infinity
+                  : group.max_option_quantity;
               const groupMax = group.max_group_select;
 
               return (
