@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import AddonGroups from '../AddonGroups';
+import AddonGroups, { validateAddonSelections } from '../AddonGroups';
 import type { AddonGroup } from '../../utils/types';
 
 describe('AddonGroups', () => {
@@ -77,5 +77,64 @@ describe('AddonGroups', () => {
 
     await userEvent.click(screen.getByText('–'));
     expect(screen.getByText('1')).toBeInTheDocument();
+  });
+
+  it('returns error when required group has no selection', () => {
+    const addons: AddonGroup[] = [
+      {
+        id: '1',
+        group_id: '1',
+        name: 'Sauce',
+        required: true,
+        multiple_choice: true,
+        max_group_select: 1,
+        max_option_quantity: 1,
+        addon_options: [{ id: 'a', name: 'Ketchup', price: 0 }],
+      },
+    ];
+
+    const errors = validateAddonSelections(addons, {});
+    expect(errors['1']).toBeDefined();
+  });
+
+  it('returns error when selections exceed group cap', () => {
+    const addons: AddonGroup[] = [
+      {
+        id: '1',
+        group_id: '1',
+        name: 'Extras',
+        required: false,
+        multiple_choice: true,
+        max_group_select: 1,
+        max_option_quantity: 2,
+        addon_options: [
+          { id: 'a', name: 'Cheese', price: 0 },
+          { id: 'b', name: 'Bacon', price: 0 },
+        ],
+      },
+    ];
+
+    const errors = validateAddonSelections(addons, {
+      '1': { a: 1, b: 1 },
+    });
+    expect(errors['1']).toBeDefined();
+  });
+
+  it('returns error when option quantity exceeds max', () => {
+    const addons: AddonGroup[] = [
+      {
+        id: '1',
+        group_id: '1',
+        name: 'Extras',
+        required: false,
+        multiple_choice: true,
+        max_group_select: 2,
+        max_option_quantity: 1,
+        addon_options: [{ id: 'a', name: 'Cheese', price: 0 }],
+      },
+    ];
+
+    const errors = validateAddonSelections(addons, { '1': { a: 2 } });
+    expect(errors['1']).toBeDefined();
   });
 });

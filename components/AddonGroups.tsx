@@ -1,9 +1,49 @@
 import { useState } from 'react';
 import type { AddonGroup } from '../utils/types';
 
+export function validateAddonSelections(
+  addons: AddonGroup[],
+  selections: Record<string, Record<string, number>>
+) {
+  const errors: Record<string, string> = {};
+  for (const group of addons) {
+    const gid = group.group_id ?? group.id;
+    const opts = selections[gid] || {};
+    const quantities = Object.values(opts);
+    const distinctSelected = Object.values(opts).filter(q => q > 0).length;
+
+    const messages: string[] = [];
+
+    if (group.required && quantities.every(q => q <= 0)) {
+      messages.push('Selection required');
+    }
+
+    if (
+      group.max_group_select != null &&
+      distinctSelected > group.max_group_select
+    ) {
+      messages.push(`Select up to ${group.max_group_select}`);
+    }
+
+    if (
+      group.max_option_quantity != null &&
+      quantities.some(q => q > group.max_option_quantity)
+    ) {
+      messages.push(`Max ${group.max_option_quantity} per option`);
+    }
+
+    if (messages.length) {
+      errors[gid] = messages.join('. ');
+    }
+  }
+  return errors;
+}
+
 export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
   const [selectedQuantities, setSelectedQuantities] =
     useState<Record<string, Record<string, number>>>({});
+
+  const errors = validateAddonSelections(addons, selectedQuantities);
 
   const updateQuantity = (
     groupId: string,
@@ -128,6 +168,11 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
               );
             })}
           </div>
+          {errors[group.group_id ?? group.id] && (
+            <p className="text-red-600 text-sm mt-2">
+              {errors[group.group_id ?? group.id]}
+            </p>
+          )}
         </div>
       ))}
     </div>
