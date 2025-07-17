@@ -4,7 +4,7 @@ import AddonGroups from '../AddonGroups';
 import type { AddonGroup } from '../../utils/types';
 
 describe('AddonGroups quantity increments when group at cap', () => {
-  it('allows increasing qty of selected option when group at cap', async () => {
+  it('prevents increasing qty when group cap reached', async () => {
     const addons: AddonGroup[] = [
       {
         id: '1',
@@ -30,9 +30,8 @@ describe('AddonGroups quantity increments when group at cap', () => {
     // try to select mayo - should not add due to cap
     await userEvent.click(mayo);
     expect(screen.queryByText('1', { selector: 'span' })).toBeInTheDocument();
-    // we expect only ketchup is selected with quantity 1
-    // increase ketchup qty
-    await userEvent.click(screen.getAllByText('+')[0]);
-    expect(screen.getByText('2')).toBeInTheDocument();
+    // try to increase ketchup qty
+    const plus = screen.getByText('+');
+    expect(plus).toBeDisabled();
   });
 });
