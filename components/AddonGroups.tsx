@@ -10,7 +10,7 @@ export function validateAddonSelections(
     const gid = group.group_id ?? group.id;
     const opts = selections[gid] || {};
     const quantities = Object.values(opts);
-    const distinctSelected = Object.values(opts).filter(q => q > 0).length;
+    const totalSelected = quantities.reduce((sum, q) => sum + q, 0);
 
     const messages: string[] = [];
 
@@ -20,7 +20,7 @@ export function validateAddonSelections(
 
     if (
       group.max_group_select != null &&
-      distinctSelected > group.max_group_select
+      totalSelected > group.max_group_select
     ) {
       messages.push(`Select up to ${group.max_group_select}`);
     }
@@ -56,14 +56,11 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
       const group = prev[groupId] || {};
       const current = group[optionId] || 0;
 
-      // Count how many distinct options in this group currently have a
-      // quantity greater than zero.
-      const distinctCount = Object.values(group).filter(q => q > 0).length;
+      // Total quantity currently selected in this group
+      const totalCount = Object.values(group).reduce((sum, q) => sum + q, 0);
 
-      // Adding a brand new option should respect the group cap. Increasing the
-      // quantity of an already-selected option should not count against the cap.
-      const isNewSelection = current === 0 && delta > 0;
-      if (groupMax != null && isNewSelection && distinctCount >= groupMax) {
+      // Prevent increasing quantities beyond the overall group cap
+      if (groupMax != null && delta > 0 && totalCount >= groupMax) {
         return prev;
       }
 
@@ -112,10 +109,11 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
                   : group.max_option_quantity;
               const groupMax = group.max_group_select;
               const groupSelections = selectedQuantities[gid] || {};
-              const distinctSelected = Object.values(groupSelections).filter(
-                q => q > 0
-              ).length;
-              const groupCapHit = groupMax != null && distinctSelected >= groupMax;
+              const totalSelected = Object.values(groupSelections).reduce(
+                (sum, q) => sum + q,
+                0
+              );
+              const groupCapHit = groupMax != null && totalSelected >= groupMax;
 
               return (
                 <div
@@ -163,7 +161,7 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
                           e.stopPropagation();
                           updateQuantity(gid, option.id, 1, maxQty, groupMax);
                         }}
-                        disabled={quantity >= maxQty || (groupCapHit && quantity === 0)}
+                        disabled={quantity >= maxQty || groupCapHit}
                         className="w-8 h-8 rounded-full border border-gray-300 hover:bg-gray-100 disabled:opacity-50"
                       >
                         +

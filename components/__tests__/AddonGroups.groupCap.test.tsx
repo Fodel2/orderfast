@@ -4,7 +4,7 @@ import AddonGroups from '../AddonGroups';
 import type { AddonGroup } from '../../utils/types';
 
 describe('AddonGroups group cap', () => {
-  it('allows multiple quantities for single option even if group cap is 1', async () => {
+  it('disables increasing quantity when group cap reached', async () => {
     const addons: AddonGroup[] = [
       {
         id: '1',
@@ -22,7 +22,7 @@ describe('AddonGroups group cap', () => {
 
     const option = screen.getByText('Ketchup');
     await userEvent.click(option);
-    await userEvent.click(screen.getByText('+'));
-    expect(screen.getByText('2')).toBeInTheDocument();
+    const plus = screen.getByText('+');
+    expect(plus).toBeDisabled();
   });
 });
