@@ -177,8 +177,8 @@ export default function AddonGroupModal({
         .from('item_addon_links')
         .upsert(
           itemIds.map((id) => ({
-            item_id: Number(id),
-            group_id: Number(groupId),
+            item_id: id,
+            group_id: groupId,
           })),
           { onConflict: 'item_id,group_id' }
         );
