@@ -4,7 +4,7 @@ import { supabase } from '../../utils/supabaseClient';
 import MenuItemCard from '../../components/MenuItemCard';
 
 interface Restaurant {
-  id: number;
+  id: string | number;
   name: string;
   logo_url: string | null;
   website_description: string | null;
@@ -47,46 +47,61 @@ export default function RestaurantMenuPage() {
     }
 
     const load = async () => {
-      const [restRes, catRes, itemRes] = await Promise.all([
-        supabase
-          .from('restaurants')
-          .select('*')
-          .eq('id', restaurantId)
-          .maybeSingle(),
-        supabase
-          .from('menu_categories')
-          .select('*')
-          .eq('restaurant_id', restaurantId)
-          .order('sort_order', { ascending: true }),
-        supabase
-          .from('menu_items')
-          .select('*')
-          .eq('restaurant_id', restaurantId)
-          .order('sort_order', { ascending: true }),
-      ]);
+      const restRes = await supabase
+        .from('restaurants')
+        .select('*')
+        .eq('id', restaurantId)
+        .maybeSingle();
 
-      let linksRes = { data: [] as { item_id: number; category_id: number }[] | null, error: null as any };
-      if (!itemRes.error && itemRes.data && itemRes.data.length) {
-        linksRes = await supabase
-          .from('menu_item_categories')
-          .select('item_id, category_id')
-          .in('item_id', itemRes.data.map((i) => i.id));
-      }
+      const { data: catData, error: catErr } = await supabase
+        .from('menu_categories')
+        .select(
+          `id,name,menu_items!inner(
+            id,name,description,price,image_url,is_vegetarian,is_18_plus,stock_status,category_id,sort_order,
+            menu_item_categories(category_id)
+          )`
+        )
+        .eq('restaurant_id', restaurantId)
+        .eq('status', 'live')
+        .order('sort_order', { ascending: true })
+        .order('sort_order', { foreignTable: 'menu_items', ascending: true });
 
       if (restRes.error) console.error('Failed to fetch restaurant', restRes.error);
-      if (catRes.error) console.error('Failed to fetch categories', catRes.error);
-      if (itemRes.error) console.error('Failed to fetch items', itemRes.error);
-      if (linksRes.error) console.error('Failed to fetch item links', linksRes.error);
+      if (catErr) console.error('Failed to fetch categories', catErr);
+
+      const cats: Category[] = [];
+      const itms: Item[] = [];
+      const links: { item_id: number; category_id: number }[] = [];
+
+      for (const row of catData || []) {
+        cats.push({ id: row.id, name: row.name });
+        for (const it of row.menu_items || []) {
+          itms.push({
+            id: it.id,
+            name: it.name,
+            description: it.description,
+            price: it.price,
+            image_url: it.image_url,
+            is_vegetarian: it.is_vegetarian,
+            is_18_plus: it.is_18_plus,
+            stock_status: it.stock_status,
+            category_id: it.category_id,
+          });
+          for (const l of it.menu_item_categories || []) {
+            links.push({ item_id: it.id, category_id: l.category_id });
+          }
+        }
+      }
 
       console.log('Restaurant data:', restRes.data);
-      console.log('Category data:', catRes.data);
-      console.log('Item data:', itemRes.data);
-      console.log('Item link data:', linksRes.data);
+      console.log('Category data:', cats);
+      console.log('Item data:', itms);
+      console.log('Item link data:', links);
 
       setRestaurant(restRes.data as Restaurant | null);
-      setCategories(catRes.data || []);
-      setItems(itemRes.data || []);
-      setItemLinks(linksRes.data || []);
+      setCategories(cats);
+      setItems(itms);
+      setItemLinks(links);
       setLoading(false);
     };
 
