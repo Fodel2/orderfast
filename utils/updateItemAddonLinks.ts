@@ -17,13 +17,13 @@ export async function updateItemAddonLinks(
     const { error: deleteError } = await supabase
       .from('item_addon_links')
       .delete()
-      .eq('item_id', Number(itemId));
+      .eq('item_id', itemId);
     if (deleteError) throw deleteError;
 
     if (selectedAddonGroupIds.length > 0) {
       const rows = selectedAddonGroupIds.map((groupId) => ({
-        item_id: Number(itemId),
-        group_id: Number(groupId),
+        item_id: itemId,
+        group_id: groupId,
       }));
       const { error: upsertError } = await supabase
         .from('item_addon_links')
