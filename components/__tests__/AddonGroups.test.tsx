@@ -8,6 +8,7 @@ describe('AddonGroups', () => {
     const addons: AddonGroup[] = [
       {
         id: '1',
+        group_id: '1',
         name: 'Size',
         required: true,
         multiple_choice: false,
@@ -30,6 +31,7 @@ describe('AddonGroups', () => {
     const addons: AddonGroup[] = [
       {
         id: '1',
+        group_id: '1',
         name: 'Extras',
         required: false,
         multiple_choice: true,

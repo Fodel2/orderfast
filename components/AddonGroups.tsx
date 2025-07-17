@@ -9,18 +9,18 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
     groupId: string,
     optionId: string,
     delta: number,
-    max: number
+    maxQty: number
   ) => {
     setSelectedQuantities(prev => {
       const group = prev[groupId] || {};
       const current = group[optionId] || 0;
-      const updatedQty = Math.max(0, Math.min(current + delta, max));
+      const newQty = Math.max(0, Math.min(current + delta, maxQty));
 
       return {
         ...prev,
         [groupId]: {
           ...group,
-          [optionId]: updatedQty,
+          [optionId]: newQty,
         },
       };
     });
@@ -29,7 +29,7 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
   return (
     <div className="space-y-6">
       {addons.map(group => (
-        <div key={group.id} className="bg-white border rounded-xl p-4 shadow-sm">
+        <div key={group.group_id ?? group.id} className="bg-white border rounded-xl p-4 shadow-sm">
           <div className="flex justify-between items-center mb-2">
             <h3 className="text-lg font-semibold">
               {group.name}
@@ -48,15 +48,14 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
 
           <div className="flex gap-3 overflow-x-auto pb-1">
             {group.addon_options.map((option) => {
-              const quantity = selectedQuantities[group.id]?.[option.id] || 0;
+              const gid = group.group_id ?? group.id;
+              const quantity = selectedQuantities[gid]?.[option.id] || 0;
               const maxQty = group.max_option_quantity || 1;
 
               return (
                 <div
                   key={option.id}
-                  onClick={() =>
-                    updateQuantity(group.id, option.id, 1, maxQty)
-                  }
+                  onClick={() => updateQuantity(gid, option.id, 1, maxQty)}
                   className={`min-w-[160px] max-w-[180px] border rounded-lg p-3 flex-shrink-0 transition cursor-pointer text-center ${
                     quantity > 0
                       ? 'border-green-500 bg-green-50 shadow-sm'
@@ -85,7 +84,7 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
                     >
                       <button
                         onClick={() =>
-                          updateQuantity(group.id, option.id, -1, maxQty)
+                          updateQuantity(gid, option.id, -1, maxQty)
                         }
                         className="w-8 h-8 rounded-full border border-gray-300 hover:bg-gray-100"
                       >
@@ -94,7 +93,7 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
                       <span className="w-6 text-center">{quantity}</span>
                       <button
                         onClick={() =>
-                          updateQuantity(group.id, option.id, 1, maxQty)
+                          updateQuantity(gid, option.id, 1, maxQty)
                         }
                         className="w-8 h-8 rounded-full border border-gray-300 hover:bg-gray-100"
                       >
