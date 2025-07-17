@@ -2,7 +2,8 @@ import { useState } from 'react';
 import type { AddonGroup } from '../utils/types';
 
 export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
-  const [selectedQuantities, setSelectedQuantities] = useState<Record<string, Record<string, number>>>({});
+  const [selectedQuantities, setSelectedQuantities] =
+    useState<Record<string, Record<string, number>>>({});
 
   const updateQuantity = (
     groupId: string,
@@ -48,12 +49,15 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
           <div className="flex gap-3 overflow-x-auto pb-1">
             {group.addon_options.map((option) => {
               const quantity = selectedQuantities[group.id]?.[option.id] || 0;
-              const showQtyControls = !!group.max_option_quantity && group.max_option_quantity > 1;
+              const maxQty = group.max_option_quantity || 1;
 
               return (
                 <div
                   key={option.id}
-                  className={`min-w-[160px] max-w-[180px] border rounded-lg p-3 text-center flex-shrink-0 transition ${
+                  onClick={() =>
+                    updateQuantity(group.id, option.id, 1, maxQty)
+                  }
+                  className={`min-w-[160px] max-w-[180px] border rounded-lg p-3 flex-shrink-0 transition cursor-pointer text-center ${
                     quantity > 0
                       ? 'border-green-500 bg-green-50 shadow-sm'
                       : 'border-gray-300 bg-white hover:bg-gray-50'
@@ -74,54 +78,29 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
                     </div>
                   )}
 
-                  {showQtyControls ? (
-                    <div className="flex items-center justify-center gap-2 mt-3">
+                  {quantity > 0 && (
+                    <div
+                      className="mt-3 flex justify-center items-center gap-2"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <button
                         onClick={() =>
-                          updateQuantity(
-                            group.id,
-                            option.id,
-                            -1,
-                            group.max_option_quantity!
-                          )
+                          updateQuantity(group.id, option.id, -1, maxQty)
                         }
                         className="w-8 h-8 rounded-full border border-gray-300 hover:bg-gray-100"
                       >
                         –
                       </button>
-                      <div className="w-6 text-center">{quantity}</div>
+                      <span className="w-6 text-center">{quantity}</span>
                       <button
                         onClick={() =>
-                          updateQuantity(
-                            group.id,
-                            option.id,
-                            1,
-                            group.max_option_quantity!
-                          )
+                          updateQuantity(group.id, option.id, 1, maxQty)
                         }
                         className="w-8 h-8 rounded-full border border-gray-300 hover:bg-gray-100"
                       >
                         +
                       </button>
                     </div>
-                  ) : (
-                    <button
-                      onClick={() =>
-                        updateQuantity(
-                          group.id,
-                          option.id,
-                          quantity === 0 ? 1 : -1,
-                          1
-                        )
-                      }
-                      className={`mt-3 w-full text-sm py-1.5 rounded ${
-                        quantity > 0
-                          ? 'bg-green-600 text-white'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
-                    >
-                      {quantity > 0 ? 'Selected' : 'Select'}
-                    </button>
                   )}
                 </div>
               );
