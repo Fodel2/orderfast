@@ -14,16 +14,17 @@ export async function updateItemAddonLinks(
   }
   // Remove existing links for the item
   try {
+    const itemIdStr = String(itemId);
     const { error: deleteError } = await supabase
       .from('item_addon_links')
       .delete()
-      .eq('item_id', itemId);
+      .eq('item_id', itemIdStr);
     if (deleteError) throw deleteError;
 
     if (selectedAddonGroupIds.length > 0) {
       const rows = selectedAddonGroupIds.map((groupId) => ({
-        item_id: itemId,
-        group_id: groupId,
+        item_id: itemIdStr,
+        group_id: String(groupId),
       }));
       const { error: upsertError } = await supabase
         .from('item_addon_links')

@@ -166,7 +166,7 @@ export default function AddonGroupModal({
     const { error: deleteError } = await supabase
       .from('item_addon_links')
       .delete()
-      .eq('group_id', groupId);
+      .eq('group_id', String(groupId));
     if (deleteError) {
       alert('Failed to update item links: ' + deleteError.message);
       return;
@@ -177,8 +177,8 @@ export default function AddonGroupModal({
         .from('item_addon_links')
         .upsert(
           itemIds.map((id) => ({
-            item_id: id,
-            group_id: groupId,
+            item_id: String(id),
+            group_id: String(groupId),
           })),
           { onConflict: 'item_id,group_id' }
         );

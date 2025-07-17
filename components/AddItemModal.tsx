@@ -142,7 +142,7 @@ export default function AddItemModal({
           const { data: links } = await supabase
             .from('menu_item_categories')
             .select('category_id')
-            .eq('item_id', item.id);
+            .eq('item_id', String(item.id));
           if (links?.length) {
             setSelectedCategories(links.map((l) => l.category_id));
           } else if (item.category_id) {
@@ -154,7 +154,7 @@ export default function AddItemModal({
           const { data: addonLinks } = await supabase
             .from('item_addon_links')
             .select('group_id')
-            .eq('item_id', item.id);
+            .eq('item_id', String(item.id));
           if (addonLinks?.length) {
             setSelectedAddons(addonLinks.map((l) => String(l.group_id)));
           } else {
@@ -242,11 +242,17 @@ export default function AddItemModal({
 
     if (data?.id) {
       if (item) {
-        await supabase.from('menu_item_categories').delete().eq('item_id', data.id);
+        await supabase
+          .from('menu_item_categories')
+          .delete()
+          .eq('item_id', String(data.id));
       }
       if (selectedCategories.length) {
         await supabase.from('menu_item_categories').insert(
-          selectedCategories.map((cid) => ({ item_id: data.id, category_id: cid }))
+          selectedCategories.map((cid) => ({
+            item_id: String(data.id),
+            category_id: String(cid),
+          }))
         );
       }
       await updateItemAddonLinks(String(data.id), selectedAddons);
@@ -292,9 +298,15 @@ export default function AddItemModal({
       onClose();
       return;
     }
-    await supabase.from('menu_items').delete().eq('id', item.id);
-    await supabase.from('menu_item_categories').delete().eq('item_id', item.id);
-    await supabase.from('item_addon_links').delete().eq('item_id', item.id);
+    await supabase.from('menu_items').delete().eq('id', String(item.id));
+    await supabase
+      .from('menu_item_categories')
+      .delete()
+      .eq('item_id', String(item.id));
+    await supabase
+      .from('item_addon_links')
+      .delete()
+      .eq('item_id', String(item.id));
     onDeleted?.();
     onClose();
   };
