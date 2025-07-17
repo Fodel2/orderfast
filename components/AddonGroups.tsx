@@ -59,8 +59,16 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
       // Total quantity currently selected in this group
       const totalCount = Object.values(group).reduce((sum, q) => sum + q, 0);
 
-      // Prevent increasing quantities beyond the overall group cap
-      if (groupMax != null && delta > 0 && totalCount >= groupMax) {
+      // Prevent increasing quantities when the group cap is hit and this
+      // option has not been selected yet. This allows increasing the
+      // quantity of an already-selected option even if the group cap is
+      // reached.
+      if (
+        groupMax != null &&
+        delta > 0 &&
+        totalCount >= groupMax &&
+        current === 0
+      ) {
         return prev;
       }
 
@@ -161,7 +169,9 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
                           e.stopPropagation();
                           updateQuantity(gid, option.id, 1, maxQty, groupMax);
                         }}
-                        disabled={quantity >= maxQty || groupCapHit}
+                        disabled={
+                          quantity >= maxQty || (groupCapHit && quantity === 0)
+                        }
                         className="w-8 h-8 rounded-full border border-gray-300 hover:bg-gray-100 disabled:opacity-50"
                       >
                         +
