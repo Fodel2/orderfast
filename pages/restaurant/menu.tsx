@@ -35,6 +35,7 @@ export default function RestaurantMenuPage() {
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [items, setItems] = useState<Item[]>([]);
+  const [itemLinks, setItemLinks] = useState<{ item_id: number; category_id: number }[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -64,17 +65,28 @@ export default function RestaurantMenuPage() {
           .order('sort_order', { ascending: true }),
       ]);
 
+      let linksRes = { data: [] as { item_id: number; category_id: number }[] | null, error: null as any };
+      if (!itemRes.error && itemRes.data && itemRes.data.length) {
+        linksRes = await supabase
+          .from('menu_item_categories')
+          .select('item_id, category_id')
+          .in('item_id', itemRes.data.map((i) => i.id));
+      }
+
       if (restRes.error) console.error('Failed to fetch restaurant', restRes.error);
       if (catRes.error) console.error('Failed to fetch categories', catRes.error);
       if (itemRes.error) console.error('Failed to fetch items', itemRes.error);
+      if (linksRes.error) console.error('Failed to fetch item links', linksRes.error);
 
       console.log('Restaurant data:', restRes.data);
       console.log('Category data:', catRes.data);
       console.log('Item data:', itemRes.data);
+      console.log('Item link data:', linksRes.data);
 
       setRestaurant(restRes.data as Restaurant | null);
       setCategories(catRes.data || []);
       setItems(itemRes.data || []);
+      setItemLinks(linksRes.data || []);
       setLoading(false);
     };
 
@@ -112,7 +124,13 @@ export default function RestaurantMenuPage() {
           <p className="text-center text-gray-500">No menu items found.</p>
         ) : (
           categories.map((cat) => {
-            const catItems = items.filter((it) => it.category_id === cat.id);
+            const catItems = items.filter(
+              (it) =>
+                it.category_id === cat.id ||
+                itemLinks.some(
+                  (link) => link.item_id === it.id && link.category_id === cat.id
+                )
+            );
             if (catItems.length === 0) return null;
             return (
               <section key={cat.id} className="space-y-4">
