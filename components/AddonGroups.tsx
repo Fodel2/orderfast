@@ -15,18 +15,20 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
     setSelectedQuantities(prev => {
       const group = prev[groupId] || {};
       const current = group[optionId] || 0;
-      const selectedCount = Object.values(group).filter(q => q > 0).length;
 
-      if (
-        groupMax != null &&
-        current === 0 &&
-        delta > 0 &&
-        selectedCount >= groupMax
-      ) {
+      // Count how many distinct options in this group currently have a
+      // quantity greater than zero.
+      const distinctCount = Object.values(group).filter(q => q > 0).length;
+
+      // Adding a brand new option should respect the group cap. Increasing the
+      // quantity of an already-selected option should not count against the cap.
+      const isNewSelection = current === 0 && delta > 0;
+      if (groupMax != null && isNewSelection && distinctCount >= groupMax) {
         return prev;
       }
 
-      const newQty = Math.max(0, Math.min(current + delta, maxQty));
+      const newQty = Math.min(Math.max(current + delta, 0), maxQty);
+      if (newQty === current) return prev;
 
       return {
         ...prev,
