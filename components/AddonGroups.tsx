@@ -56,7 +56,8 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
     optionId: string,
     delta: number,
     maxQty: number,
-    groupMax?: number | null
+    groupMax: number | null,
+    multipleChoice: boolean
   ) => {
     setSelectedQuantities(prev => {
       const group = prev[groupId] || {};
@@ -72,7 +73,15 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
         maxQty,
         groupMax,
         distinctCount,
+        multipleChoice,
       });
+
+      if (!multipleChoice) {
+        const cleared: Record<string, number> = {};
+        Object.keys(group).forEach((key) => (cleared[key] = 0));
+        cleared[optionId] = 1;
+        return { ...prev, [groupId]: cleared };
+      }
 
       if (delta > 0 && current >= maxQty) {
         console.log('blocked: option quantity cap');
@@ -107,6 +116,13 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
   return (
     <div className="space-y-6">
       {addons.map(group => (
+        console.log('render group', {
+          id: group.group_id ?? group.id,
+          multiple_choice: group.multiple_choice,
+          max_option_quantity: group.max_option_quantity,
+          max_group_select: group.max_group_select,
+          required: group.required,
+        }),
         <div key={group.group_id ?? group.id} className="bg-white border rounded-xl p-4 shadow-sm">
           <div className="flex justify-between items-center mb-2">
             <h3 className="text-lg font-semibold">
@@ -128,12 +144,12 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
             {group.addon_options.map((option) => {
               const gid = group.group_id ?? group.id;
               const quantity = selectedQuantities[gid]?.[option.id] || 0;
-              // If max_option_quantity is null or undefined, treat it as unlimited
-              // rather than defaulting to 1.
-              const maxQty =
-                group.max_option_quantity == null
+              // For single-choice groups always force max qty to 1
+              const maxQty = group.multiple_choice
+                ? group.max_option_quantity == null
                   ? Infinity
-                  : group.max_option_quantity;
+                  : group.max_option_quantity
+                : 1;
               const groupMax =
                 group.max_group_select != null
                   ? group.max_group_select
@@ -150,7 +166,9 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
               return (
                 <div
                   key={option.id}
-                  onClick={() => updateQuantity(gid, option.id, 1, maxQty, groupMax)}
+                  onClick={() =>
+                    updateQuantity(gid, option.id, 1, maxQty, groupMax, !!group.multiple_choice)
+                  }
                   className={`min-w-[160px] max-w-[180px] border rounded-lg p-3 flex-shrink-0 transition cursor-pointer text-center ${
                     quantity > 0
                       ? 'border-green-500 bg-green-50 shadow-sm'
@@ -172,14 +190,14 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
                     </div>
                   )}
 
-                  {quantity > 0 && (
+                  {quantity > 0 && group.multiple_choice && (
                     <div className="mt-3 flex justify-center items-center gap-2">
                       <button
                         type="button"
                         onClick={(e: React.MouseEvent) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          updateQuantity(gid, option.id, -1, maxQty, groupMax);
+                          updateQuantity(gid, option.id, -1, maxQty, groupMax, !!group.multiple_choice);
                         }}
                         className="w-8 h-8 rounded-full border border-gray-300 hover:bg-gray-100"
                       >
@@ -191,7 +209,7 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
                         onClick={(e: React.MouseEvent) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          updateQuantity(gid, option.id, 1, maxQty, groupMax);
+                          updateQuantity(gid, option.id, 1, maxQty, groupMax, !!group.multiple_choice);
                         }}
                         disabled={
                           quantity >= maxQty || (groupCapHit && quantity === 0)
