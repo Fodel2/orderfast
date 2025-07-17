@@ -13,6 +13,9 @@ interface Restaurant {
 interface Category {
   id: number;
   name: string;
+  description: string | null;
+  sort_order: number;
+  restaurant_id: number;
 }
 
 interface Item {
@@ -56,13 +59,12 @@ export default function RestaurantMenuPage() {
       const { data: catData, error: catErr } = await supabase
         .from('menu_categories')
         .select(
-          `id,name,menu_items!inner(
+          `id,name,description,sort_order,restaurant_id,menu_items!inner(
             id,name,description,price,image_url,is_vegetarian,is_18_plus,stock_status,category_id,sort_order,
             menu_item_categories(category_id)
           )`
         )
         .eq('restaurant_id', restaurantId)
-        .eq('status', 'live')
         .order('sort_order', { ascending: true })
         .order('sort_order', { foreignTable: 'menu_items', ascending: true });
 
@@ -74,7 +76,13 @@ export default function RestaurantMenuPage() {
       const links: { item_id: number; category_id: number }[] = [];
 
       for (const row of catData || []) {
-        cats.push({ id: row.id, name: row.name });
+        cats.push({
+          id: row.id,
+          name: row.name,
+          description: row.description,
+          sort_order: row.sort_order,
+          restaurant_id: row.restaurant_id,
+        });
         for (const it of row.menu_items || []) {
           itms.push({
             id: it.id,
