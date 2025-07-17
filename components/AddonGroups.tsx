@@ -78,23 +78,22 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
                   )}
 
                   {quantity > 0 && (
-                    <div
-                      className="mt-3 flex justify-center items-center gap-2"
-                      onClick={(e) => e.stopPropagation()}
-                    >
+                    <div className="mt-3 flex justify-center items-center gap-2">
                       <button
-                        onClick={() =>
-                          updateQuantity(gid, option.id, -1, maxQty)
-                        }
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          updateQuantity(gid, option.id, -1, maxQty);
+                        }}
                         className="w-8 h-8 rounded-full border border-gray-300 hover:bg-gray-100"
                       >
                         –
                       </button>
                       <span className="w-6 text-center">{quantity}</span>
                       <button
-                        onClick={() =>
-                          updateQuantity(gid, option.id, 1, maxQty)
-                        }
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          updateQuantity(gid, option.id, 1, maxQty);
+                        }}
                         className="w-8 h-8 rounded-full border border-gray-300 hover:bg-gray-100"
                       >
                         +
