@@ -11,5 +11,6 @@ export interface AddonGroup {
   required: boolean | null;
   multiple_choice?: boolean | null;
   max_group_select?: number | null;
+  max_option_quantity?: number | null;
   addon_options: AddonOption[];
 }
