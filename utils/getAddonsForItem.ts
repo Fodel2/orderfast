@@ -25,6 +25,8 @@ export async function getAddonsForItem(
         name: row.addon_group_name,
         required: row.required,
         multiple_choice: row.multiple_choice,
+        max_group_select: row.max_group_select,
+        max_option_quantity: row.max_option_quantity,
         addon_options: [],
       };
     }
