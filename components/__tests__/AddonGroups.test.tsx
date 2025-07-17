@@ -52,4 +52,30 @@ describe('AddonGroups', () => {
     await userEvent.click(screen.getByText('Cheese'));
     expect(screen.getByText('2')).toBeInTheDocument();
   });
+
+  it('adjusts quantity with plus and minus buttons', async () => {
+    const addons: AddonGroup[] = [
+      {
+        id: '1',
+        group_id: '1',
+        name: 'Extras',
+        required: false,
+        multiple_choice: true,
+        max_group_select: 2,
+        max_option_quantity: 2,
+        addon_options: [{ id: 'a', name: 'Cheese', price: 50 }],
+      },
+    ];
+
+    render(<AddonGroups addons={addons} />);
+
+    const option = screen.getByText('Cheese');
+    await userEvent.click(option);
+
+    await userEvent.click(screen.getByText('+'));
+    expect(screen.getByText('2')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByText('–'));
+    expect(screen.getByText('1')).toBeInTheDocument();
+  });
 });

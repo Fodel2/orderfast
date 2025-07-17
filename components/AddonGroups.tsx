@@ -80,7 +80,7 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
                   {quantity > 0 && (
                     <div className="mt-3 flex justify-center items-center gap-2">
                       <button
-                        onClick={(e) => {
+                        onClick={(e: React.MouseEvent) => {
                           e.stopPropagation();
                           updateQuantity(gid, option.id, -1, maxQty);
                         }}
@@ -90,7 +90,7 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
                       </button>
                       <span className="w-6 text-center">{quantity}</span>
                       <button
-                        onClick={(e) => {
+                        onClick={(e: React.MouseEvent) => {
                           e.stopPropagation();
                           updateQuantity(gid, option.id, 1, maxQty);
                         }}
