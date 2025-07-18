@@ -13,4 +13,20 @@ describe('ItemMultiSelect', () => {
     expect(screen.getByText('Burger')).toBeInTheDocument();
     expect(screen.getByText('Fries')).toBeInTheDocument();
   });
+
+  it('renders when disabledIds are provided', () => {
+    const items = [
+      { id: 1, name: 'Burger' },
+      { id: 2, name: 'Fries' },
+    ];
+    render(
+      <ItemMultiSelect
+        items={items}
+        selectedIds={[]}
+        disabledIds={[2]}
+        onChange={() => {}}
+      />
+    );
+    expect(screen.getByLabelText('Select items')).toBeInTheDocument();
+  });
 });

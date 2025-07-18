@@ -36,6 +36,22 @@ export default function AddonGroupModal({
   const [selectedCats, setSelectedCats] = useState<number[]>([]);
   const [selectedItems, setSelectedItems] = useState<number[]>([]);
 
+  const getCatItemIds = (cats: number[]) => [
+    ...items.filter((it) => cats.includes(it.category_id)).map((it) => it.id),
+    ...itemCatLinks.filter((l) => cats.includes(l.category_id)).map((l) => l.item_id),
+  ];
+
+  const handleCategoryChange = (ids: number[]) => {
+    setSelectedCats(ids);
+    const toRemove = getCatItemIds(ids);
+    setSelectedItems((prev) => prev.filter((id) => !toRemove.includes(id)));
+  };
+
+  const handleItemChange = (ids: number[]) => {
+    const blocked = getCatItemIds(selectedCats);
+    setSelectedItems(ids.filter((id) => !blocked.includes(id)));
+  };
+
   useEffect(() => {
     if (!show) return;
     const load = async () => {
@@ -50,12 +66,15 @@ export default function AddonGroupModal({
         .select('*')
         .eq('restaurant_id', restaurantId);
       setItems(itemData || []);
+
+      let catLinks: { item_id: number; category_id: number }[] = [];
       if (itemData && itemData.length) {
         const { data: links } = await supabase
           .from('menu_item_categories')
           .select('item_id, category_id')
           .in('item_id', itemData.map((i: any) => i.id));
-        setItemCatLinks(links || []);
+        catLinks = links || [];
+        setItemCatLinks(catLinks);
       } else {
         setItemCatLinks([]);
       }
@@ -76,15 +95,19 @@ export default function AddonGroupModal({
           .select('item_id')
           .eq('group_id', group.id);
         const itemIds = links?.map((l: any) => l.item_id) || [];
-        setSelectedItems(itemIds);
         const fromPrimary = itemData
           ?.filter((it: any) => itemIds.includes(it.id))
           .map((it: any) => it.category_id) || [];
-        const fromLinks = itemCatLinks
+        const fromLinks = catLinks
           .filter((l) => itemIds.includes(l.item_id))
           .map((l) => l.category_id);
         const catIds = Array.from(new Set([...fromPrimary, ...fromLinks]));
+        const catItemIds = [
+          ...itemData.filter((it: any) => catIds.includes(it.category_id)).map((it: any) => it.id),
+          ...catLinks.filter((l) => catIds.includes(l.category_id)).map((l) => l.item_id),
+        ];
         setSelectedCats(catIds);
+        setSelectedItems(itemIds.filter((id: number) => !catItemIds.includes(id)));
       } else {
         setName('');
         setMultipleChoice(false);
@@ -171,14 +194,7 @@ export default function AddonGroupModal({
 
     if (!groupId) return;
 
-    const catItemIds = [
-      ...items
-        .filter((it) => selectedCats.includes(it.category_id))
-        .map((it) => it.id),
-      ...itemCatLinks
-        .filter((l) => selectedCats.includes(l.category_id))
-        .map((l) => l.item_id),
-    ];
+    const catItemIds = getCatItemIds(selectedCats);
     const itemIds = Array.from(new Set([...selectedItems, ...catItemIds]));
     const { error: deleteError } = await supabase
       .from('item_addon_links')
@@ -273,7 +289,7 @@ export default function AddonGroupModal({
             <CategoryMultiSelect
               categories={categories}
               selectedIds={selectedCats}
-              onChange={setSelectedCats}
+              onChange={handleCategoryChange}
             />
           </div>
           <div>
@@ -281,7 +297,8 @@ export default function AddonGroupModal({
             <ItemMultiSelect
               items={items}
               selectedIds={selectedItems}
-              onChange={setSelectedItems}
+              disabledIds={getCatItemIds(selectedCats)}
+              onChange={handleItemChange}
             />
           </div>
           {selectedCats.length === 0 && selectedItems.length === 0 && (
