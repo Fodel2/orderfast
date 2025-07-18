@@ -22,9 +22,10 @@ export async function updateItemAddonLinks(
     if (deleteError) throw deleteError;
 
     if (selectedAddonGroupIds.length > 0) {
-      const rows = selectedAddonGroupIds.map((groupId) => ({
+      const unique = Array.from(new Set(selectedAddonGroupIds.map(String)));
+      const rows = unique.map((groupId) => ({
         item_id: itemIdStr,
-        group_id: String(groupId),
+        group_id: groupId,
       }));
       const { error: upsertError } = await supabase
         .from('item_addon_links')

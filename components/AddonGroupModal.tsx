@@ -95,17 +95,20 @@ export default function AddonGroupModal({
           .select('item_id')
           .eq('group_id', group.id);
         const itemIds = links?.map((l: any) => l.item_id) || [];
-        const fromPrimary = itemData
-          ?.filter((it: any) => itemIds.includes(it.id))
-          .map((it: any) => it.category_id) || [];
-        const fromLinks = catLinks
-          .filter((l) => itemIds.includes(l.item_id))
-          .map((l) => l.category_id);
-        const catIds = Array.from(new Set([...fromPrimary, ...fromLinks]));
-        const catItemIds = [
-          ...itemData.filter((it: any) => catIds.includes(it.category_id)).map((it: any) => it.id),
-          ...catLinks.filter((l) => catIds.includes(l.category_id)).map((l) => l.item_id),
+
+        const getItemsForCat = (cid: number) => [
+          ...itemData.filter((it: any) => it.category_id === cid).map((it: any) => it.id),
+          ...catLinks.filter((l) => l.category_id === cid).map((l) => l.item_id),
         ];
+
+        const catIds = categories
+          .filter((c) => {
+            const ids = getItemsForCat(c.id);
+            return ids.length > 0 && ids.every((id) => itemIds.includes(id));
+          })
+          .map((c) => c.id);
+
+        const catItemIds = catIds.flatMap((cid) => getItemsForCat(cid));
         setSelectedCats(catIds);
         setSelectedItems(itemIds.filter((id: number) => !catItemIds.includes(id)));
       } else {
@@ -195,7 +198,7 @@ export default function AddonGroupModal({
     if (!groupId) return;
 
     const catItemIds = getCatItemIds(selectedCats);
-    const itemIds = Array.from(new Set([...selectedItems, ...catItemIds]));
+    const itemIds = Array.from(new Set([...selectedItems, ...catItemIds])).map((id) => String(id));
     const { error: deleteError } = await supabase
       .from('item_addon_links')
       .delete()
@@ -206,15 +209,13 @@ export default function AddonGroupModal({
     }
 
     if (itemIds.length) {
+      const rows = itemIds.map((id) => ({
+        item_id: id,
+        group_id: String(groupId),
+      }));
       const { error: upsertError } = await supabase
         .from('item_addon_links')
-        .upsert(
-          itemIds.map((id) => ({
-            item_id: String(id),
-            group_id: String(groupId),
-          })),
-          { onConflict: 'item_id,group_id' }
-        );
+        .upsert(rows, { onConflict: 'item_id,group_id' });
       if (upsertError) {
         alert('Failed to update item links: ' + upsertError.message);
         return;

@@ -33,12 +33,13 @@ export async function saveItemAddonLinks(items: ItemLinkData[]) {
     }
 
     // Prepare rows for batch insert
-    const rows = validItems.flatMap((item) =>
-      (item.selectedAddonGroupIds || []).map((gid) => ({
+    const rows = validItems.flatMap((item) => {
+      const unique = Array.from(new Set((item.selectedAddonGroupIds || []).map(String)));
+      return unique.map((gid) => ({
         item_id: String(item.id),
-        group_id: String(gid),
-      }))
-    );
+        group_id: gid,
+      }));
+    });
 
     if (rows.length) {
       const { error } = await supabase
