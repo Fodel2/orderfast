@@ -9,9 +9,10 @@ interface ItemMultiSelectProps {
   items: MenuItem[];
   selectedIds: number[];
   onChange: (ids: number[]) => void;
+  disabledIds?: number[];
 }
 
-export default function ItemMultiSelect({ items, selectedIds, onChange }: ItemMultiSelectProps) {
+export default function ItemMultiSelect({ items, selectedIds, onChange, disabledIds = [] }: ItemMultiSelectProps) {
   const options = items.map((item) => ({ value: item.id, label: item.name }));
   const value = options.filter((opt) => selectedIds.includes(opt.value));
 
@@ -48,6 +49,7 @@ export default function ItemMultiSelect({ items, selectedIds, onChange }: ItemMu
       options={options}
       value={value}
       onChange={(opts) => onChange(Array.isArray(opts) ? opts.map((o) => o.value) : [])}
+      isOptionDisabled={(opt) => disabledIds.includes(opt.value)}
       styles={styles}
       classNamePrefix="rs"
       className="react-select-container"
