@@ -29,6 +29,10 @@ export default function AddonGroupModal({
   );
   const [categories, setCategories] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
+  const [itemCatLinks, setItemCatLinks] = useState<{
+    item_id: number;
+    category_id: number;
+  }[]>([]);
   const [selectedCats, setSelectedCats] = useState<number[]>([]);
   const [selectedItems, setSelectedItems] = useState<number[]>([]);
 
@@ -46,6 +50,15 @@ export default function AddonGroupModal({
         .select('*')
         .eq('restaurant_id', restaurantId);
       setItems(itemData || []);
+      if (itemData && itemData.length) {
+        const { data: links } = await supabase
+          .from('menu_item_categories')
+          .select('item_id, category_id')
+          .in('item_id', itemData.map((i: any) => i.id));
+        setItemCatLinks(links || []);
+      } else {
+        setItemCatLinks([]);
+      }
       if (group) {
         setName(group.name || '');
         setMultipleChoice(!!group.multiple_choice);
@@ -64,14 +77,13 @@ export default function AddonGroupModal({
           .eq('group_id', group.id);
         const itemIds = links?.map((l: any) => l.item_id) || [];
         setSelectedItems(itemIds);
-        const catIds = Array.from(
-          new Set(
-            itemData
-              ?.filter((it: any) => itemIds.includes(it.id))
-              .map((it: any) => it.category_id)
-              .filter((v: any) => v)
-          )
-        );
+        const fromPrimary = itemData
+          ?.filter((it: any) => itemIds.includes(it.id))
+          .map((it: any) => it.category_id) || [];
+        const fromLinks = itemCatLinks
+          .filter((l) => itemIds.includes(l.item_id))
+          .map((l) => l.category_id);
+        const catIds = Array.from(new Set([...fromPrimary, ...fromLinks]));
         setSelectedCats(catIds);
       } else {
         setName('');
@@ -159,9 +171,14 @@ export default function AddonGroupModal({
 
     if (!groupId) return;
 
-    const catItemIds = items
-      .filter((it) => selectedCats.includes(it.category_id))
-      .map((it) => it.id);
+    const catItemIds = [
+      ...items
+        .filter((it) => selectedCats.includes(it.category_id))
+        .map((it) => it.id),
+      ...itemCatLinks
+        .filter((l) => selectedCats.includes(l.category_id))
+        .map((l) => l.item_id),
+    ];
     const itemIds = Array.from(new Set([...selectedItems, ...catItemIds]));
     const { error: deleteError } = await supabase
       .from('item_addon_links')
