@@ -3,7 +3,6 @@ import Cropper, { Area } from 'react-easy-crop';
 import { CloudArrowUpIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { Trash2 } from 'lucide-react';
 import { supabase } from '../utils/supabaseClient';
-import { updateItemAddonLinks } from '../utils/updateItemAddonLinks';
 import CategoryMultiSelect from './CategoryMultiSelect';
 import AddonMultiSelect from './AddonMultiSelect';
 
@@ -109,12 +108,16 @@ export default function AddItemModal({
         setCategories(catData || []);
       }
 
-      const { data: addonData } = await supabase
-        .from('addon_groups')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .order('id');
-      setAddonGroups(addonData || []);
+      if (onSaveData) {
+        const { data: addonData } = await supabase
+          .from('addon_groups')
+          .select('*')
+          .eq('restaurant_id', restaurantId)
+          .order('id');
+        setAddonGroups(addonData || []);
+      } else {
+        setAddonGroups([]);
+      }
 
       if (item) {
         setName(item.name || '');
@@ -151,15 +154,7 @@ export default function AddItemModal({
             setSelectedCategories([]);
           }
 
-          const { data: addonLinks } = await supabase
-            .from('item_addon_links')
-            .select('group_id')
-            .eq('item_id', String(item.id));
-          if (addonLinks?.length) {
-            setSelectedAddons(addonLinks.map((l) => String(l.group_id)));
-          } else {
-            setSelectedAddons([]);
-          }
+          setSelectedAddons([]);
         }
       } else {
         setName('');
@@ -255,7 +250,6 @@ export default function AddItemModal({
           }))
         );
       }
-      await updateItemAddonLinks(String(data.id), selectedAddons);
     }
 
     onSaved?.();
@@ -421,11 +415,13 @@ export default function AddItemModal({
             selectedIds={selectedCategories}
             onChange={handleCategoryChange}
           />
-          <AddonMultiSelect
-            options={addonGroups}
-            selectedIds={selectedAddons}
-            onChange={handleAddonChange}
-          />
+          {onSaveData && (
+            <AddonMultiSelect
+              options={addonGroups}
+              selectedIds={selectedAddons}
+              onChange={handleAddonChange}
+            />
+          )}
           <div className="text-right mt-6 space-x-2">
             {item && (
               <button

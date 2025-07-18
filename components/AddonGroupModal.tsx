@@ -1,7 +1,5 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../utils/supabaseClient';
-import CategoryMultiSelect from './CategoryMultiSelect';
-import ItemMultiSelect from './ItemMultiSelect';
 
 interface AddonGroupModalProps {
   show: boolean;
@@ -27,102 +25,29 @@ export default function AddonGroupModal({
   const [maxOptionQuantity, setMaxOptionQuantity] = useState<string>(
     group?.max_option_quantity != null ? String(group.max_option_quantity) : ''
   );
-  const [categories, setCategories] = useState<any[]>([]);
-  const [items, setItems] = useState<any[]>([]);
-  const [itemCatLinks, setItemCatLinks] = useState<{
-    item_id: number;
-    category_id: number;
-  }[]>([]);
-  const [selectedCats, setSelectedCats] = useState<number[]>([]);
-  const [selectedItems, setSelectedItems] = useState<number[]>([]);
-
-  const getCatItemIds = (cats: number[]) => [
-    ...items.filter((it) => cats.includes(it.category_id)).map((it) => it.id),
-    ...itemCatLinks.filter((l) => cats.includes(l.category_id)).map((l) => l.item_id),
-  ];
-
-  const handleCategoryChange = (ids: number[]) => {
-    setSelectedCats(ids);
-    const toRemove = getCatItemIds(ids);
-    setSelectedItems((prev) => prev.filter((id) => !toRemove.includes(id)));
-  };
-
-  const handleItemChange = (ids: number[]) => {
-    const blocked = getCatItemIds(selectedCats);
-    setSelectedItems(ids.filter((id) => !blocked.includes(id)));
-  };
 
   useEffect(() => {
     if (!show) return;
-    const load = async () => {
-      const { data: catData } = await supabase
-        .from('menu_categories')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .order('sort_order', { ascending: true });
-      setCategories(catData || []);
-      const { data: itemData } = await supabase
-        .from('menu_items')
-        .select('*')
-        .eq('restaurant_id', restaurantId);
-      setItems(itemData || []);
-
-      let catLinks: { item_id: number; category_id: number }[] = [];
-      if (itemData && itemData.length) {
-        const { data: links } = await supabase
-          .from('menu_item_categories')
-          .select('item_id, category_id')
-          .in('item_id', itemData.map((i: any) => i.id));
-        catLinks = links || [];
-        setItemCatLinks(catLinks);
-      } else {
-        setItemCatLinks([]);
-      }
-      if (group) {
-        setName(group.name || '');
-        setMultipleChoice(!!group.multiple_choice);
-        setRequired(!!group.required);
-        setMaxGroupSelect(
-          group.max_group_select != null ? String(group.max_group_select) : ''
-        );
-        setMaxOptionQuantity(
-          group.max_option_quantity != null
-            ? String(group.max_option_quantity)
-            : ''
-        );
-        const { data: links } = await supabase
-          .from('item_addon_links')
-          .select('item_id')
-          .eq('group_id', group.id);
-        const itemIds = links?.map((l: any) => l.item_id) || [];
-
-        const getItemsForCat = (cid: number) => [
-          ...itemData.filter((it: any) => it.category_id === cid).map((it: any) => it.id),
-          ...catLinks.filter((l) => l.category_id === cid).map((l) => l.item_id),
-        ];
-
-        const catIds = categories
-          .filter((c) => {
-            const ids = getItemsForCat(c.id);
-            return ids.length > 0 && ids.every((id) => itemIds.includes(id));
-          })
-          .map((c) => c.id);
-
-        const catItemIds = catIds.flatMap((cid) => getItemsForCat(cid));
-        setSelectedCats(catIds);
-        setSelectedItems(itemIds.filter((id: number) => !catItemIds.includes(id)));
-      } else {
-        setName('');
-        setMultipleChoice(false);
-        setRequired(false);
-        setMaxGroupSelect('');
-        setMaxOptionQuantity('');
-        setSelectedCats([]);
-        setSelectedItems([]);
-      }
-    };
-    load();
-  }, [show, restaurantId, group]);
+    if (group) {
+      setName(group.name || '');
+      setMultipleChoice(!!group.multiple_choice);
+      setRequired(!!group.required);
+      setMaxGroupSelect(
+        group.max_group_select != null ? String(group.max_group_select) : ''
+      );
+      setMaxOptionQuantity(
+        group.max_option_quantity != null
+          ? String(group.max_option_quantity)
+          : ''
+      );
+    } else {
+      setName('');
+      setMultipleChoice(false);
+      setRequired(false);
+      setMaxGroupSelect('');
+      setMaxOptionQuantity('');
+    }
+  }, [show, group]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -197,30 +122,6 @@ export default function AddonGroupModal({
 
     if (!groupId) return;
 
-    const catItemIds = getCatItemIds(selectedCats);
-    const itemIds = Array.from(new Set([...selectedItems, ...catItemIds])).map((id) => String(id));
-    const { error: deleteError } = await supabase
-      .from('item_addon_links')
-      .delete()
-      .eq('group_id', String(groupId));
-    if (deleteError) {
-      alert('Failed to update item links: ' + deleteError.message);
-      return;
-    }
-
-    if (itemIds.length) {
-      const rows = itemIds.map((id) => ({
-        item_id: id,
-        group_id: String(groupId),
-      }));
-      const { error: upsertError } = await supabase
-        .from('item_addon_links')
-        .upsert(rows, { onConflict: 'item_id,group_id' });
-      if (upsertError) {
-        alert('Failed to update item links: ' + upsertError.message);
-        return;
-      }
-    }
     onSaved();
     onClose();
   };
@@ -285,26 +186,6 @@ export default function AddonGroupModal({
               className="w-full border border-gray-300 rounded p-2"
             />
           </div>
-          <div>
-            <p className="font-semibold mb-1 text-sm">Assign to Categories</p>
-            <CategoryMultiSelect
-              categories={categories}
-              selectedIds={selectedCats}
-              onChange={handleCategoryChange}
-            />
-          </div>
-          <div>
-            <p className="font-semibold mb-1 text-sm">Assign to Items</p>
-            <ItemMultiSelect
-              items={items}
-              selectedIds={selectedItems}
-              disabledIds={getCatItemIds(selectedCats)}
-              onChange={handleItemChange}
-            />
-          </div>
-          {selectedCats.length === 0 && selectedItems.length === 0 && (
-            <p className="text-xs text-red-500">This group is not assigned to any items.</p>
-          )}
           <div className="flex justify-end space-x-2 pt-2">
             <button
               type="button"
