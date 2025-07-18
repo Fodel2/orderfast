@@ -10,7 +10,6 @@ export function validateAddonSelections(
     const gid = group.group_id ?? group.id;
     const opts = selections[gid] || {};
     const quantities = Object.values(opts);
-    const totalSelected = quantities.reduce((sum, q) => sum + q, 0);
 
     const messages: string[] = [];
 
@@ -18,12 +17,18 @@ export function validateAddonSelections(
       messages.push("Selection required");
     }
 
+    const multipleChoice =
+      typeof group.multiple_choice === "string"
+        ? group.multiple_choice === "true"
+        : !!group.multiple_choice;
+
+    const rawGroupSelect =
+      group?.max_group_select ?? (group as any)?.maxGroupSelect;
+    const rawOptionQty =
+      group?.max_option_quantity ?? (group as any)?.maxOptionQuantity;
+
     const effectiveGroupMax =
-      group.max_group_select != null
-        ? group.max_group_select
-        : Boolean(group.multiple_choice)
-          ? null
-          : 1;
+      rawGroupSelect != null ? rawGroupSelect : multipleChoice ? null : 1;
 
     const distinctSelected = quantities.filter((q) => q > 0).length;
 
@@ -31,11 +36,8 @@ export function validateAddonSelections(
       messages.push(`Select up to ${effectiveGroupMax}`);
     }
 
-    if (
-      group.max_option_quantity != null &&
-      quantities.some((q) => q > group.max_option_quantity)
-    ) {
-      messages.push(`Max ${group.max_option_quantity} per option`);
+    if (rawOptionQty != null && quantities.some((q) => q > rawOptionQty)) {
+      messages.push(`Max ${rawOptionQty} per option`);
     }
 
     if (messages.length) {
@@ -117,20 +119,33 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
 
   return (
     <div className="space-y-6">
-      {addons.map(
-        (group) => (
-          console.log("render group", {
-            id: group.group_id ?? group.id,
-            multiple_choice: group.multiple_choice,
-            max_option_quantity: group.max_option_quantity,
-            max_group_select: group.max_group_select,
-            required: group.required,
-          }),
-          (
-            <div
-              key={group.group_id ?? group.id}
-              className="bg-white border rounded-xl p-4 shadow-sm"
-            >
+      {addons.map((group) => {
+        console.log('[DEBUG] full group object:', group);
+        console.log("render group", {
+          id: group.group_id ?? group.id,
+          multiple_choice: group.multiple_choice,
+          max_option_quantity:
+            (group as any).max_option_quantity ?? (group as any).maxOptionQuantity,
+          max_group_select:
+            (group as any).max_group_select ?? (group as any).maxGroupSelect,
+          required: group.required,
+        });
+
+        const gid = group.group_id ?? group.id;
+        const multipleChoice =
+          typeof group.multiple_choice === "string"
+            ? group.multiple_choice === "true"
+            : !!group.multiple_choice;
+        const max_group_select =
+          group?.max_group_select ?? (group as any)?.maxGroupSelect ?? Infinity;
+        const max_option_quantity =
+          group?.max_option_quantity ?? (group as any)?.maxOptionQuantity ?? Infinity;
+
+        return (
+          <div
+            key={gid}
+            className="bg-white border rounded-xl p-4 shadow-sm"
+          >
               <div className="flex justify-between items-center mb-2">
                 <h3 className="text-lg font-semibold">
                   {group.name}
@@ -141,13 +156,9 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
                   )}
                 </h3>
                 <p className="text-sm text-gray-500">
-                  {(
-                    typeof group.multiple_choice === "string"
-                      ? group.multiple_choice === "true"
-                      : !!group.multiple_choice
-                  )
-                    ? group.max_group_select != null
-                      ? `Pick up to ${group.max_group_select}`
+                  {multipleChoice
+                    ? max_group_select !== Infinity
+                      ? `Pick up to ${max_group_select}`
                       : "Multiple Choice"
                     : "Pick one"}
                 </p>
@@ -158,27 +169,15 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
                   const gid = group.group_id ?? group.id;
                   const quantity = selectedQuantities[gid]?.[option.id] || 0;
 
-                  // Cast boolean-like values coming from the API
-                  const multipleChoice =
-                    typeof group.multiple_choice === "string"
-                      ? group.multiple_choice === "true"
-                      : !!group.multiple_choice;
-
-                  // Determine max quantity per option
                   const maxQty = multipleChoice
-                    ? group.max_option_quantity != null
-                      ? group.max_option_quantity > 0
-                        ? group.max_option_quantity
-                        : 0
-                      : Infinity
+                    ? max_option_quantity > 0
+                      ? max_option_quantity
+                      : 0
                     : 1;
 
-                  // Determine max number of distinct selections in group
                   const groupMax = multipleChoice
-                    ? group.max_group_select != null
-                      ? group.max_group_select > 0
-                        ? group.max_group_select
-                        : 0
+                    ? max_group_select > 0
+                      ? max_group_select
                       : Infinity
                     : 1;
 
@@ -289,9 +288,8 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
                 </p>
               )}
             </div>
-          )
-        ),
-      )}
-    </div>
+          );
+        })}
+      </div>
   );
 }
