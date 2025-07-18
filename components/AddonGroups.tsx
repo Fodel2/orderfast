@@ -66,14 +66,13 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
 
       const distinctCount = Object.values(group).filter((q) => q > 0).length;
 
-      console.log("updateQuantity", {
+      console.log('[DEBUG] updateQuantity', {
         groupId,
         optionId,
         delta,
         current,
         maxQty,
         groupMax,
-        distinctCount,
         multipleChoice,
       });
 
@@ -111,56 +110,50 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
 
   return (
     <div className="space-y-6">
-      {addons.map(
-        (group) => (
-          console.log("render group", {
-            id: group.group_id ?? group.id,
-            multiple_choice: group.multiple_choice,
-            max_option_quantity: group.max_option_quantity,
-            max_group_select: group.max_group_select,
-            required: group.required,
-          }),
-          (
-            <div
-              key={group.group_id ?? group.id}
-              className="bg-white border rounded-xl p-4 shadow-sm"
-            >
-              <div className="flex justify-between items-center mb-2">
-                <h3 className="text-lg font-semibold">
-                  {group.name}
-                  {group.required && (
-                    <span className="text-red-500 text-sm ml-2">
-                      (Required)
-                    </span>
-                  )}
-                </h3>
-                <p className="text-sm text-gray-500">
-                  {(
-                    typeof group.multiple_choice === "string"
-                      ? group.multiple_choice === "true"
-                      : !!group.multiple_choice
-                  )
-                    ? group.max_group_select != null
-                      ? `Pick up to ${group.max_group_select}`
-                      : "Multiple Choice"
-                    : "Pick one"}
-                </p>
-              </div>
+      {addons.map((group) => {
+        const gid = group.group_id ?? group.id;
+        const multipleChoice =
+          typeof group.multiple_choice === 'string'
+            ? group.multiple_choice === 'true'
+            : !!group.multiple_choice;
+
+        console.log('render group', {
+          id: gid,
+          multiple_choice: multipleChoice,
+          max_option_quantity: group.max_option_quantity,
+          max_group_select: group.max_group_select,
+          required: group.required,
+        });
+
+        return (
+          <div key={gid} className="bg-white border rounded-xl p-4 shadow-sm">
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="text-lg font-semibold">
+                {group.name}
+                {group.required && (
+                  <span className="text-red-500 text-sm ml-2">(Required)</span>
+                )}
+              </h3>
+              <p className="text-sm text-gray-500">
+                {multipleChoice
+                  ? group.max_group_select != null
+                    ? `Pick up to ${group.max_group_select}`
+                    : 'Multiple Choice'
+                  : 'Pick one'}
+              </p>
+            </div>
 
               <div className="flex gap-3 overflow-x-auto pb-1">
-                {group.addon_options.map((option) => {
-                  const gid = group.group_id ?? group.id;
-                  const quantity = selectedQuantities[gid]?.[option.id] || 0;
-
-                  // Cast boolean-like values coming from the API
-                  const multipleChoice =
-                    typeof group.multiple_choice === "string"
-                      ? group.multiple_choice === "true"
-                      : !!group.multiple_choice;
+                  {group.addon_options.map((option) => {
+                    const quantity = selectedQuantities[gid]?.[option.id] || 0;
 
                   // Determine max quantity per option
                   const maxQty = multipleChoice
-                    ? (group.max_option_quantity ?? Infinity)
+                    ? group.max_option_quantity != null
+                      ? group.max_option_quantity > 0
+                        ? group.max_option_quantity
+                        : 0
+                      : Infinity
                     : 1;
 
                   // Determine max number of distinct selections in group
@@ -295,9 +288,8 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
                 </p>
               )}
             </div>
-          )
-        ),
-      )}
-    </div>
+          );
+        })}
+      </div>
   );
 }
