@@ -56,7 +56,7 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
     optionId: string,
     delta: number,
     maxQty: number,
-    groupMax: number | null,
+    groupMax: number,
     multipleChoice: boolean
   ) => {
     setSelectedQuantities(prev => {
@@ -90,12 +90,7 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
 
       // Prevent selecting a new option when the group cap is hit. Allow
       // increasing the quantity of an already-selected option.
-      if (
-        groupMax != null &&
-        delta > 0 &&
-        distinctCount >= groupMax &&
-        current === 0
-      ) {
+      if (delta > 0 && distinctCount >= groupMax && current === 0) {
         console.log('blocked: group cap reached');
         return prev;
       }
@@ -144,24 +139,21 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
             {group.addon_options.map((option) => {
               const gid = group.group_id ?? group.id;
               const quantity = selectedQuantities[gid]?.[option.id] || 0;
-              const maxQty =
-                group.max_option_quantity != null
-                  ? group.max_option_quantity
-                  : group.multiple_choice
-                  ? Infinity
-                  : 1;
-              const groupMax =
-                group.max_group_select != null
-                  ? group.max_group_select
-                  : group.multiple_choice
-                  ? Infinity
-                  : 1;
+// Determine max quantity per option
+const maxQty = group.multiple_choice
+  ? group.max_option_quantity ?? Infinity
+  : 1;
+
+// Determine max number of distinct selections in group
+const groupMax = group.multiple_choice
+  ? group.max_group_select ?? Infinity
+  : 1;
+
               const groupSelections = selectedQuantities[gid] || {};
               const distinctSelected = Object.values(groupSelections).filter(
                 q => q > 0
               ).length;
-              const groupCapHit =
-                groupMax != null && distinctSelected >= groupMax;
+              const groupCapHit = distinctSelected >= groupMax;
 
               const handleTileClick = () => {
                 if (quantity >= maxQty) {
@@ -178,7 +170,18 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
               return (
                 <div
                   key={option.id}
-                  onClick={handleTileClick}
+onClick={() => {
+  if (quantity >= maxQty) {
+    console.log('blocked click: option quantity cap');
+    return;
+  }
+  if (group.multiple_choice && groupCapHit && quantity === 0) {
+    console.log('blocked click: group cap reached');
+    return;
+  }
+  updateQuantity(gid, option.id, 1, maxQty, groupMax, !!group.multiple_choice);
+}}
+
                   className={`min-w-[160px] max-w-[180px] border rounded-lg p-3 flex-shrink-0 transition cursor-pointer text-center ${
                     quantity > 0
                       ? 'border-green-500 bg-green-50 shadow-sm'
