@@ -144,17 +144,17 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
             {group.addon_options.map((option) => {
               const gid = group.group_id ?? group.id;
               const quantity = selectedQuantities[gid]?.[option.id] || 0;
-              // For single-choice groups always force max qty to 1
-              const maxQty = group.multiple_choice
-                ? group.max_option_quantity == null
+              const maxQty =
+                group.max_option_quantity != null
+                  ? group.max_option_quantity
+                  : group.multiple_choice
                   ? Infinity
-                  : group.max_option_quantity
-                : 1;
+                  : 1;
               const groupMax =
                 group.max_group_select != null
                   ? group.max_group_select
                   : group.multiple_choice
-                  ? null
+                  ? Infinity
                   : 1;
               const groupSelections = selectedQuantities[gid] || {};
               const distinctSelected = Object.values(groupSelections).filter(
@@ -163,16 +163,31 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
               const groupCapHit =
                 groupMax != null && distinctSelected >= groupMax;
 
+              const handleTileClick = () => {
+                if (quantity >= maxQty) {
+                  console.log('blocked: option quantity cap');
+                  return;
+                }
+                if (group.multiple_choice && groupCapHit && quantity === 0) {
+                  console.log('blocked: group cap reached');
+                  return;
+                }
+                updateQuantity(gid, option.id, 1, maxQty, groupMax, !!group.multiple_choice);
+              };
+
               return (
                 <div
                   key={option.id}
-                  onClick={() =>
-                    updateQuantity(gid, option.id, 1, maxQty, groupMax, !!group.multiple_choice)
-                  }
+                  onClick={handleTileClick}
                   className={`min-w-[160px] max-w-[180px] border rounded-lg p-3 flex-shrink-0 transition cursor-pointer text-center ${
                     quantity > 0
                       ? 'border-green-500 bg-green-50 shadow-sm'
                       : 'border-gray-300 bg-white hover:bg-gray-50'
+                  } ${
+                    group.multiple_choice &&
+                    (quantity >= maxQty || (groupCapHit && quantity === 0))
+                      ? 'pointer-events-none opacity-50'
+                      : ''
                   }`}
                 >
                   {option.image_url && (
