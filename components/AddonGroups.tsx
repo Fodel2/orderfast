@@ -77,6 +77,12 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
         multipleChoice,
       });
 
+      // Block all interaction when either limit is zero
+      if (maxQty === 0 || groupMax === 0) {
+        console.log("blocked: selection disabled by limits");
+        return prev;
+      }
+
       if (!multipleChoice) {
         const cleared: Record<string, number> = {};
         Object.keys(group).forEach((key) => (cleared[key] = 0));
@@ -160,29 +166,32 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
 
                   // Determine max quantity per option
                   const maxQty = multipleChoice
-                    ? (group.max_option_quantity ?? Infinity)
+                    ? group.max_option_quantity != null
+                      ? group.max_option_quantity > 0
+                        ? group.max_option_quantity
+                        : 0
+                      : Infinity
                     : 1;
 
                   // Determine max number of distinct selections in group
                   const groupMax = multipleChoice
-                    ? (group.max_group_select ?? Infinity)
+                    ? group.max_group_select != null
+                      ? group.max_group_select > 0
+                        ? group.max_group_select
+                        : 0
+                      : Infinity
                     : 1;
 
                   const groupSelections = selectedQuantities[gid] || {};
-                  const distinctSelected = Object.values(
-                    groupSelections,
-                  ).filter((q) => q > 0).length;
+                  const distinctSelected = Object.values(groupSelections).filter(
+                    (q) => q > 0,
+                  ).length;
                   const groupCapHit = distinctSelected >= groupMax;
 
                   const handleTileClick = () => {
-                    if (quantity >= maxQty) {
-                      console.log("blocked: option quantity cap");
-                      return;
-                    }
-                    if (multipleChoice && groupCapHit && quantity === 0) {
-                      console.log("blocked: group cap reached");
-                      return;
-                    }
+                    if (maxQty === 0 || groupMax === 0) return;
+                    if (quantity >= maxQty) return;
+                    if (multipleChoice && groupCapHit && quantity === 0) return;
                     updateQuantity(
                       gid,
                       option.id,
@@ -196,31 +205,14 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
                   return (
                     <div
                       key={option.id}
-                      onClick={() => {
-                        if (quantity >= maxQty) {
-                          console.log("blocked click: option quantity cap");
-                          return;
-                        }
-                        if (multipleChoice && groupCapHit && quantity === 0) {
-                          console.log("blocked click: group cap reached");
-                          return;
-                        }
-                        updateQuantity(
-                          gid,
-                          option.id,
-                          1,
-                          maxQty,
-                          groupMax,
-                          multipleChoice,
-                        );
-                      }}
+                      onClick={handleTileClick}
                       className={`min-w-[160px] max-w-[180px] border rounded-lg p-3 flex-shrink-0 transition cursor-pointer text-center ${
                         quantity > 0
                           ? "border-green-500 bg-green-50 shadow-sm"
                           : "border-gray-300 bg-white hover:bg-gray-50"
                       } ${
                         multipleChoice &&
-                        (quantity >= maxQty || (groupCapHit && quantity === 0))
+                        ((groupCapHit && quantity === 0) || maxQty === 0)
                           ? "pointer-events-none opacity-50"
                           : ""
                       }`}
@@ -277,7 +269,9 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
                             }}
                             disabled={
                               quantity >= maxQty ||
-                              (groupCapHit && quantity === 0)
+                              (groupCapHit && quantity === 0) ||
+                              maxQty === 0 ||
+                              groupMax === 0
                             }
                             className="w-8 h-8 rounded-full border border-gray-300 hover:bg-gray-100 disabled:opacity-50"
                           >
