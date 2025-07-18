@@ -40,7 +40,8 @@ describe('AddonGroups multiple choice limits', () => {
     // select a second option
     const bacon = screen.getByText('Bacon');
     await userEvent.click(bacon);
-    expect(screen.getByText('1')).toBeInTheDocument();
+    // selection should be blocked when total group quantity at cap
+    expect(screen.queryByText('1')).not.toBeInTheDocument();
 
     // group cap reached - new option should not be added
     const onion = screen.getByText('Onion');
@@ -48,7 +49,7 @@ describe('AddonGroups multiple choice limits', () => {
     // only two qty displays should be present (3 and 1)
     const spans = container.querySelectorAll('span');
     const qtyVals = Array.from(spans).map(s => s.textContent);
-    expect(qtyVals.filter(v => v === '1').length).toBe(1);
+    expect(qtyVals.filter(v => v === '1').length).toBe(0);
     expect(qtyVals.filter(v => v === '3').length).toBe(1);
   });
 });

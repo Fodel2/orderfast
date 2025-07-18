@@ -182,10 +182,11 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
                     : 1;
 
                   const groupSelections = selectedQuantities[gid] || {};
-                  const distinctSelected = Object.values(groupSelections).filter(
-                    (q) => q > 0,
-                  ).length;
-                  const groupCapHit = distinctSelected >= groupMax;
+                  const totalGroupQty = Object.values(groupSelections).reduce(
+                    (sum, q) => sum + q,
+                    0,
+                  );
+                  const groupCapHit = totalGroupQty >= groupMax;
 
                   const handleTileClick = () => {
                     if (maxQty === 0 || groupMax === 0) return;
