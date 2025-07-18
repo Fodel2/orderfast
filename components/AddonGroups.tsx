@@ -56,7 +56,7 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
     optionId: string,
     delta: number,
     maxQty: number,
-    groupMax: number | null,
+    groupMax: number,
     multipleChoice: boolean
   ) => {
     setSelectedQuantities(prev => {
@@ -90,12 +90,7 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
 
       // Prevent selecting a new option when the group cap is hit. Allow
       // increasing the quantity of an already-selected option.
-      if (
-        groupMax != null &&
-        delta > 0 &&
-        distinctCount >= groupMax &&
-        current === 0
-      ) {
+      if (delta > 0 && distinctCount >= groupMax && current === 0) {
         console.log('blocked: group cap reached');
         return prev;
       }
@@ -145,30 +140,32 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
               const gid = group.group_id ?? group.id;
               const quantity = selectedQuantities[gid]?.[option.id] || 0;
               // For single-choice groups always force max qty to 1
-              const maxQty = group.multiple_choice
-                ? group.max_option_quantity == null
-                  ? Infinity
-                  : group.max_option_quantity
-                : 1;
-              const groupMax =
-                group.max_group_select != null
-                  ? group.max_group_select
-                  : group.multiple_choice
-                  ? null
-                  : 1;
+              const maxQty = !group.multiple_choice
+                ? 1
+                : group.max_option_quantity ?? Infinity;
+              const groupMax = !group.multiple_choice
+                ? 1
+                : group.max_group_select ?? Infinity;
               const groupSelections = selectedQuantities[gid] || {};
               const distinctSelected = Object.values(groupSelections).filter(
                 q => q > 0
               ).length;
-              const groupCapHit =
-                groupMax != null && distinctSelected >= groupMax;
+              const groupCapHit = distinctSelected >= groupMax;
 
               return (
                 <div
                   key={option.id}
-                  onClick={() =>
-                    updateQuantity(gid, option.id, 1, maxQty, groupMax, !!group.multiple_choice)
-                  }
+                  onClick={() => {
+                    if (quantity >= maxQty) {
+                      console.log('blocked click: option quantity cap');
+                      return;
+                    }
+                    if (group.multiple_choice && groupCapHit && quantity === 0) {
+                      console.log('blocked click: group cap reached');
+                      return;
+                    }
+                    updateQuantity(gid, option.id, 1, maxQty, groupMax, !!group.multiple_choice);
+                  }}
                   className={`min-w-[160px] max-w-[180px] border rounded-lg p-3 flex-shrink-0 transition cursor-pointer text-center ${
                     quantity > 0
                       ? 'border-green-500 bg-green-50 shadow-sm'
