@@ -16,6 +16,7 @@ interface Category {
   description: string | null;
   sort_order: number;
   restaurant_id: number;
+  image_url?: string;
 }
 
 interface Item {
