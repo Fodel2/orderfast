@@ -66,7 +66,9 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
       const group = prev[groupId] || {};
       const current = group[optionId] || 0;
 
-      const distinctCount = Object.values(group).filter((q) => q > 0).length;
+      const quantities = Object.values(group);
+      const distinctCount = quantities.filter((q) => q > 0).length;
+      const totalCount = quantities.reduce((sum, q) => sum + q, 0);
 
       console.log("updateQuantity", {
         groupId,
@@ -97,14 +99,27 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
         return prev;
       }
 
-      // Prevent selecting a new option when the group cap is hit. Allow
-      // increasing the quantity of an already-selected option.
-      if (delta > 0 && distinctCount >= groupMax && current === 0) {
-        console.log("blocked: group cap reached");
-        return prev;
+      // Prevent selection when the group cap would be exceeded
+      if (delta > 0) {
+        // Block adding a new option when at the cap
+        if (distinctCount >= groupMax && current === 0) {
+          console.log("blocked: group cap reached (new option)");
+          return prev;
+        }
+
+        // Block any increase that would push total quantity past the cap
+        if (totalCount >= groupMax) {
+          console.log("blocked: group total cap reached");
+          return prev;
+        }
       }
 
       const newQty = Math.min(Math.max(current + delta, 0), maxQty);
+      const proposedTotal = totalCount - current + newQty;
+      if (proposedTotal > groupMax) {
+        console.log("blocked: proposed total exceeds cap");
+        return prev;
+      }
       if (newQty === current) return prev;
 
       return {
@@ -191,7 +206,7 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
                   const handleTileClick = () => {
                     if (maxQty === 0 || groupMax === 0) return;
                     if (quantity >= maxQty) return;
-                    if (multipleChoice && groupCapHit && quantity === 0) return;
+                    if (multipleChoice && groupCapHit) return;
                     updateQuantity(
                       gid,
                       option.id,
@@ -269,7 +284,7 @@ export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
                             }}
                             disabled={
                               quantity >= maxQty ||
-                              (groupCapHit && quantity === 0) ||
+                              groupCapHit ||
                               maxQty === 0 ||
                               groupMax === 0
                             }
