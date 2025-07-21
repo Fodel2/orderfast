@@ -1,7 +1,16 @@
-import { useRouter } from 'next/router';
-import { useEffect, useState } from 'react';
-import { supabase } from '../../utils/supabaseClient';
-import MenuItemCard from '../../components/MenuItemCard';
+import { useRouter } from "next/router";
+import { useEffect, useState } from "react";
+import { supabase } from "../../utils/supabaseClient";
+import MenuItemCard from "../../components/MenuItemCard";
+
+function getCategoryIcon(name: string) {
+  const lower = name.toLowerCase();
+  if (lower.includes("burger")) return "🍔";
+  if (lower.includes("pizza")) return "🍕";
+  if (lower.includes("drink") || lower.includes("beverage")) return "🥤";
+  if (lower.includes("dessert") || lower.includes("sweet")) return "🍰";
+  return "❓";
+}
 
 interface Restaurant {
   id: string | number;
@@ -14,6 +23,7 @@ interface Category {
   id: number;
   name: string;
   description: string | null;
+  image_url: string | null;
   sort_order: number;
   restaurant_id: number;
 }
@@ -26,19 +36,23 @@ interface Item {
   image_url: string | null;
   is_vegetarian: boolean | null;
   is_18_plus: boolean | null;
-  stock_status: 'in_stock' | 'scheduled' | 'out' | null;
+  stock_status: "in_stock" | "scheduled" | "out" | null;
   category_id: number;
 }
 
 export default function RestaurantMenuPage() {
   const router = useRouter();
   const { restaurant_id } = router.query;
-  const restaurantId = Array.isArray(restaurant_id) ? restaurant_id[0] : restaurant_id;
+  const restaurantId = Array.isArray(restaurant_id)
+    ? restaurant_id[0]
+    : restaurant_id;
 
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [items, setItems] = useState<Item[]>([]);
-  const [itemLinks, setItemLinks] = useState<{ item_id: number; category_id: number }[]>([]);
+  const [itemLinks, setItemLinks] = useState<
+    { item_id: number; category_id: number }[]
+  >([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -51,25 +65,26 @@ export default function RestaurantMenuPage() {
 
     const load = async () => {
       const restRes = await supabase
-        .from('restaurants')
-        .select('*')
-        .eq('id', restaurantId)
+        .from("restaurants")
+        .select("*")
+        .eq("id", restaurantId)
         .maybeSingle();
 
       const { data: catData, error: catErr } = await supabase
-        .from('menu_categories')
+        .from("menu_categories")
         .select(
           `id,name,description,sort_order,restaurant_id,menu_items!inner(
             id,name,description,price,image_url,is_vegetarian,is_18_plus,stock_status,category_id,sort_order,
             menu_item_categories(category_id)
-          )`
+          )`,
         )
-        .eq('restaurant_id', restaurantId)
-        .order('sort_order', { ascending: true })
-        .order('sort_order', { foreignTable: 'menu_items', ascending: true });
+        .eq("restaurant_id", restaurantId)
+        .order("sort_order", { ascending: true })
+        .order("sort_order", { foreignTable: "menu_items", ascending: true });
 
-      if (restRes.error) console.error('Failed to fetch restaurant', restRes.error);
-      if (catErr) console.error('Failed to fetch categories', catErr);
+      if (restRes.error)
+        console.error("Failed to fetch restaurant", restRes.error);
+      if (catErr) console.error("Failed to fetch categories", catErr);
 
       const cats: Category[] = [];
       const itms: Item[] = [];
@@ -80,6 +95,7 @@ export default function RestaurantMenuPage() {
           id: row.id,
           name: row.name,
           description: row.description,
+          image_url: row.image_url,
           sort_order: row.sort_order,
           restaurant_id: row.restaurant_id,
         });
@@ -101,10 +117,10 @@ export default function RestaurantMenuPage() {
         }
       }
 
-      console.log('Restaurant data:', restRes.data);
-      console.log('Category data:', cats);
-      console.log('Item data:', itms);
-      console.log('Item link data:', links);
+      console.log("Restaurant data:", restRes.data);
+      console.log("Category data:", cats);
+      console.log("Item data:", itms);
+      console.log("Item link data:", links);
 
       setRestaurant(restRes.data as Restaurant | null);
       setCategories(cats);
@@ -122,12 +138,14 @@ export default function RestaurantMenuPage() {
 
   if (!restaurant) {
     return (
-      <div className="p-6 text-center text-red-500">No restaurant specified</div>
+      <div className="p-6 text-center text-red-500">
+        No restaurant specified
+      </div>
     );
   }
 
   return (
-    <div className="p-4 space-y-8">
+    <div className="p-4 space-y-8 scroll-smooth">
       <div className="text-center space-y-4">
         {restaurant.logo_url && (
           <img
@@ -142,6 +160,31 @@ export default function RestaurantMenuPage() {
         )}
       </div>
 
+      <div className="overflow-x-auto -mx-4 px-4 pb-2">
+        <div className="flex space-x-3 w-max">
+          {categories.map((c) => (
+            <a
+              key={c.id}
+              href={`#cat-${c.id}`}
+              className="flex flex-col items-center flex-shrink-0 px-3 py-2 bg-gray-100 rounded-full hover:bg-gray-200"
+            >
+              {c.image_url ? (
+                <img
+                  src={c.image_url}
+                  alt={c.name}
+                  className="w-14 h-14 rounded-full object-cover"
+                />
+              ) : (
+                <div className="w-14 h-14 flex items-center justify-center text-3xl">
+                  {getCategoryIcon(c.name)}
+                </div>
+              )}
+              <span className="text-sm mt-1 whitespace-nowrap">{c.name}</span>
+            </a>
+          ))}
+        </div>
+      </div>
+
       <div className="space-y-8">
         {categories.length === 0 ? (
           <p className="text-center text-gray-500">No menu items found.</p>
@@ -151,12 +194,13 @@ export default function RestaurantMenuPage() {
               (it) =>
                 it.category_id === cat.id ||
                 itemLinks.some(
-                  (link) => link.item_id === it.id && link.category_id === cat.id
-                )
+                  (link) =>
+                    link.item_id === it.id && link.category_id === cat.id,
+                ),
             );
             if (catItems.length === 0) return null;
             return (
-              <section key={cat.id} className="space-y-4">
+              <section id={`cat-${cat.id}`} key={cat.id} className="space-y-4">
                 <h2 className="text-xl font-semibold text-left">{cat.name}</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {catItems.map((item) => (
@@ -175,4 +219,3 @@ export default function RestaurantMenuPage() {
     </div>
   );
 }
-
