@@ -23,10 +23,9 @@ interface Category {
   id: number;
   name: string;
   description: string | null;
-  image_url: string | null;
   sort_order: number;
   restaurant_id: number;
-  image_url?: string;
+  image_url?: string | null;
 }
 
 interface Item {
@@ -74,7 +73,7 @@ export default function RestaurantMenuPage() {
       const { data: catData, error: catErr } = await supabase
         .from("menu_categories")
         .select(
-          `id,name,description,sort_order,restaurant_id,menu_items!inner(
+          `id,name,description,image_url,sort_order,restaurant_id,menu_items!inner(
             id,name,description,price,image_url,is_vegetarian,is_18_plus,stock_status,category_id,sort_order,
             menu_item_categories(category_id)
           )`,
