@@ -1,5 +1,4 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import OrderTypeModal from '../components/OrderTypeModal';
 
 export type OrderType = 'delivery' | 'collection';
 
@@ -12,21 +11,17 @@ const OrderTypeContext = createContext<OrderTypeContextValue | undefined>(undefi
 
 export function OrderTypeProvider({ children }: { children: ReactNode }) {
   const [orderType, setOrderTypeState] = useState<OrderType | null>(null);
-  const [showModal, setShowModal] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem('orderfast_order_type');
     if (stored === 'delivery' || stored === 'collection') {
       setOrderTypeState(stored as OrderType);
-    } else {
-      setShowModal(true);
     }
   }, []);
 
   const setOrderType = (type: OrderType) => {
     localStorage.setItem('orderfast_order_type', type);
     setOrderTypeState(type);
-    setShowModal(false);
   };
 
   const value: OrderTypeContextValue = {
@@ -35,10 +30,7 @@ export function OrderTypeProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <OrderTypeContext.Provider value={value}>
-      {children}
-      {showModal && <OrderTypeModal onSelect={setOrderType} />}
-    </OrderTypeContext.Provider>
+    <OrderTypeContext.Provider value={value}>{children}</OrderTypeContext.Provider>
   );
 }
 
