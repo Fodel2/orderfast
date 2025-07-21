@@ -15,7 +15,7 @@ export default function CartTest() {
   return (
     <div className="p-4 space-y-4">
       <p className="text-lg">Items in cart: {cart.items.length}</p>
-      <p className="text-lg">Subtotal: ${subtotal.toFixed(2)}</p>
+      <p className="text-lg">Subtotal: ${(subtotal / 100).toFixed(2)}</p>
       <div className="flex gap-4">
         <button
           type="button"

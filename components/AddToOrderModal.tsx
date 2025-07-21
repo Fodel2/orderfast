@@ -78,7 +78,7 @@ export default function AddToOrderModal({
           )}
           <h3 className="text-2xl font-semibold">{item.name}</h3>
           {item.description && <p className="text-gray-700">{item.description}</p>}
-          <p className="text-lg font-semibold">${item.price.toFixed(2)}</p>
+          <p className="text-lg font-semibold">${(item.price / 100).toFixed(2)}</p>
           <div className="flex items-center space-x-4">
             <button
               type="button"

@@ -53,7 +53,7 @@ export default function ViewItemModal({ showModal, onClose, item }: ViewItemModa
           )}
           <h2 className="text-2xl font-bold">{item.name}</h2>
           {item.description && <p className="text-gray-700">{item.description}</p>}
-          <p className="text-lg font-semibold">${item.price.toFixed(2)}</p>
+          <p className="text-lg font-semibold">${(item.price / 100).toFixed(2)}</p>
         </div>
       </div>
     </div>
