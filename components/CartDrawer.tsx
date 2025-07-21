@@ -16,15 +16,13 @@ export default function CartDrawer() {
       <button
         type="button"
         onClick={toggle}
-        className="fixed bottom-4 right-4 bg-teal-600 text-white rounded-full w-12 h-12 flex items-center justify-center shadow-lg z-50"
+        className="fixed bottom-4 right-4 bg-teal-600 text-white rounded-full px-4 py-2 flex items-center shadow-lg z-50"
         aria-label="Toggle cart"
       >
-        <ShoppingCartIcon className="w-6 h-6" />
-        {itemCount > 0 && (
-          <span className="absolute -top-1 -right-1 bg-red-600 text-xs w-5 h-5 rounded-full flex items-center justify-center">
-            {itemCount}
-          </span>
-        )}
+        <ShoppingCartIcon className="w-5 h-5 mr-2" />
+        <span>
+          Cart ({itemCount} {itemCount === 1 ? 'item' : 'items'})
+        </span>
       </button>
       {open && (
         <>
