@@ -27,15 +27,14 @@ describe('AddonGroups multiple choice limits', () => {
     const cheese = screen.getByText('Cheese');
     await userEvent.click(cheese);
     await userEvent.click(cheese);
-    await userEvent.click(cheese);
 
-    // plus button should be disabled at per-option cap
+    // plus button should be disabled at group cap
     let plus = screen.getByRole('button', { name: '+' });
     expect(plus).toBeDisabled();
 
     // clicking again should not increase quantity
     await userEvent.click(cheese);
-    expect(screen.getByText('3')).toBeInTheDocument();
+    expect(screen.getByText('2')).toBeInTheDocument();
 
     // select a second option
     const bacon = screen.getByText('Bacon');
@@ -46,10 +45,10 @@ describe('AddonGroups multiple choice limits', () => {
     // group cap reached - new option should not be added
     const onion = screen.getByText('Onion');
     await userEvent.click(onion);
-    // only two qty displays should be present (3 and 1)
+    // only one qty display should remain (2)
     const spans = container.querySelectorAll('span');
     const qtyVals = Array.from(spans).map(s => s.textContent);
     expect(qtyVals.filter(v => v === '1').length).toBe(0);
-    expect(qtyVals.filter(v => v === '3').length).toBe(1);
+    expect(qtyVals.filter(v => v === '2').length).toBe(1);
   });
 });

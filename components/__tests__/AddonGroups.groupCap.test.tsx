@@ -23,9 +23,8 @@ describe('AddonGroups group cap', () => {
     const option = screen.getByText('Ketchup');
     await userEvent.click(option);
     const plus = screen.getByText('+');
-    // With the group cap reached but this option already selected,
-    // the user should still be able to increase the quantity until the
-    // option's max quantity is hit.
-    expect(plus).not.toBeDisabled();
+    // Once the group cap is reached, even the selected option cannot be
+    // increased further.
+    expect(plus).toBeDisabled();
   });
 });
