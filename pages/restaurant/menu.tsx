@@ -160,7 +160,11 @@ export default function RestaurantMenuPage() {
                 <h2 className="text-xl font-semibold text-left">{cat.name}</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {catItems.map((item) => (
-                    <MenuItemCard key={item.id} item={item} />
+                    <MenuItemCard
+                      key={item.id}
+                      item={item}
+                      restaurantId={restaurantId as string}
+                    />
                   ))}
                 </div>
               </section>
