@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { supabase } from '../utils/supabaseClient';
+import { useRef, useState } from "react";
+import { supabase } from "../utils/supabaseClient";
 
 interface AddCategoryModalProps {
   onClose: () => void;
@@ -19,36 +19,79 @@ export default function AddCategoryModal({
   sortOrder = 0,
   restaurantId,
 }: AddCategoryModalProps) {
-  const [name, setName] = useState(category?.name || '');
-  const [description, setDescription] = useState(category?.description || '');
+  const [name, setName] = useState(category?.name || "");
+  const [description, setDescription] = useState(category?.description || "");
   const [saving, setSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [imageUrl, setImageUrl] = useState<string | null>(
+    category?.image_url || null,
+  );
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setImageUrl(URL.createObjectURL(file));
+      setImageFile(file);
+    }
+  };
+
+  const handleRemoveImage = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setImageUrl(null);
+    setImageFile(null);
+    if (fileRef.current) fileRef.current.value = "";
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name) {
-      alert('Name is required');
+      alert("Name is required");
       return;
     }
 
     if (saving) return;
     setSaving(true);
+
+    let finalImageUrl = imageUrl;
+    if (imageFile && imageUrl && imageUrl.startsWith("blob:")) {
+      const path = `category-images/${Date.now()}-${imageFile.name}`;
+      const { error: uploadError } = await supabase.storage
+        .from("category-images")
+        .upload(path, imageFile, { upsert: true });
+      if (uploadError) {
+        alert("Failed to upload image: " + uploadError.message);
+        setSaving(false);
+        return;
+      }
+      finalImageUrl = supabase.storage
+        .from("category-images")
+        .getPublicUrl(path).data.publicUrl;
+    }
+
     let err;
     if (category) {
       const { error } = await supabase
-        .from('menu_categories')
-        .update({ name, description })
-        .eq('id', category.id);
+        .from("menu_categories")
+        .update({ name, description, image_url: finalImageUrl })
+        .eq("id", category.id);
       err = error;
     } else {
-      const { error } = await supabase.from('menu_categories').insert([
-        { name, description, sort_order: sortOrder, restaurant_id: restaurantId },
+      const { error } = await supabase.from("menu_categories").insert([
+        {
+          name,
+          description,
+          sort_order: sortOrder,
+          restaurant_id: restaurantId,
+          image_url: finalImageUrl,
+        },
       ]);
       err = error;
     }
 
     if (err) {
-      alert('Failed to save category: ' + err.message);
+      alert("Failed to save category: " + err.message);
       setSaving(false);
       return;
     }
@@ -82,8 +125,13 @@ export default function AddCategoryModal({
         >
           ×
         </button>
-        <h3 className="text-xl font-semibold mb-4">{category ? 'Edit Category' : 'Add Category'}</h3>
-        <form onSubmit={handleSubmit} className="flex flex-col max-h-[80vh] space-y-4">
+        <h3 className="text-xl font-semibold mb-4">
+          {category ? "Edit Category" : "Add Category"}
+        </h3>
+        <form
+          onSubmit={handleSubmit}
+          className="flex flex-col max-h-[80vh] space-y-4"
+        >
           <div className="flex-1 overflow-y-auto pr-2 space-y-4">
             <input
               type="text"
@@ -99,13 +147,58 @@ export default function AddCategoryModal({
               onChange={(e) => setDescription(e.target.value)}
               className="w-full border border-gray-300 rounded p-2"
             />
+            <div className="flex items-start space-x-4">
+              <div
+                className="relative w-24 h-24 border border-dashed border-gray-400 rounded flex items-center justify-center cursor-pointer overflow-hidden flex-shrink-0"
+                onClick={() => fileRef.current?.click()}
+              >
+                {imageUrl ? (
+                  <>
+                    <img
+                      src={imageUrl}
+                      alt="Preview"
+                      className="object-cover w-full h-full"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleRemoveImage}
+                      className="absolute top-1 right-1 bg-white/80 rounded-full p-1 hover:bg-red-100"
+                      aria-label="Remove image"
+                    >
+                      ×
+                    </button>
+                  </>
+                ) : (
+                  <span className="text-gray-400">Upload</span>
+                )}
+                <input
+                  type="file"
+                  accept="image/*"
+                  ref={fileRef}
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+              </div>
+              <div className="text-sm text-gray-500 leading-snug">
+                <p>Square image works best.</p>
+                <p>PNG or JPG at least 256x256.</p>
+              </div>
+            </div>
           </div>
           <div className="sticky bottom-0 bg-white pt-4 flex justify-end space-x-2">
-            <button type="button" onClick={onClose} className="px-4 py-2 border border-teal-600 text-teal-600 rounded hover:bg-teal-50">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 border border-teal-600 text-teal-600 rounded hover:bg-teal-50"
+            >
               Cancel
             </button>
-            <button type="submit" disabled={saving} className="px-4 py-2 bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50">
-              {saving ? 'Saving...' : 'Save'}
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-4 py-2 bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50"
+            >
+              {saving ? "Saving..." : "Save"}
             </button>
           </div>
         </form>
