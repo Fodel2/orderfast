@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { AddonGroup } from "../utils/types";
 
 export function validateAddonSelections(
@@ -47,12 +47,26 @@ export function validateAddonSelections(
   return errors;
 }
 
-export default function AddonGroups({ addons }: { addons: AddonGroup[] }) {
+export default function AddonGroups({
+  addons,
+  onChange,
+  initialSelections,
+}: {
+  addons: AddonGroup[];
+  onChange?: (sel: Record<string, Record<string, number>>) => void;
+  initialSelections?: Record<string, Record<string, number>>;
+}) {
   const [selectedQuantities, setSelectedQuantities] = useState<
     Record<string, Record<string, number>>
-  >({});
+  >(initialSelections || {});
 
   const errors = validateAddonSelections(addons, selectedQuantities);
+
+  useEffect(() => {
+    if (onChange) {
+      onChange(selectedQuantities);
+    }
+  }, [selectedQuantities, onChange]);
 
   const updateQuantity = (
     groupId: string,

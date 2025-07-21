@@ -26,19 +26,21 @@ describe('MenuItemCard', () => {
     });
   });
 
-  it('updates quantity when + button clicked', async () => {
+  it('opens modal and updates quantity inside', async () => {
     render(
       <MenuItemCard item={{ id: 1, name: 'Burger', price: 5 }} restaurantId="1" />
     );
     const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Add to Cart' }));
     await user.click(screen.getByRole('button', { name: '+' }));
     expect(screen.getByTestId('qty').textContent).toBe('2');
   });
 
-  it('does not allow quantity below 1', async () => {
+  it('does not allow quantity below 1 in modal', async () => {
     const item = { id: 2, name: 'Fries', price: 3 };
     render(<MenuItemCard item={item} restaurantId="1" />);
     const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Add to Cart' }));
     await user.click(screen.getByRole('button', { name: '-' }));
     expect(screen.getByTestId('qty').textContent).toBe('1');
   });

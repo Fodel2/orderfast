@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useCart } from '../context/CartContext';
 import { getAddonsForItem } from '../utils/getAddonsForItem';
 import type { AddonGroup } from '../utils/types';
-import AddonGroups from './AddonGroups';
+import AddonGroups, { validateAddonSelections } from './AddonGroups';
 
 interface MenuItem {
   id: number;
@@ -27,6 +27,10 @@ export default function MenuItemCard({
   const [loading, setLoading] = useState(false);
   const [groups, setGroups] = useState<AddonGroup[]>([]);
   const [qty, setQty] = useState(1);
+  const [notes, setNotes] = useState('');
+  const [selections, setSelections] = useState<
+    Record<string, Record<string, number>>
+  >({});
   const { addToCart } = useCart();
 
   const loadAddons = async () => {
@@ -50,33 +54,50 @@ export default function MenuItemCard({
   const increment = () => setQty((q) => q + 1);
   const decrement = () => setQty((q) => (q > 1 ? q - 1 : 1));
 
-  const handleAddToCart = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    try {
-      const data = await getAddonsForItem(item.id);
-      if (data.some((g) => g.required)) {
-        alert('This item has required add-ons. Please select them first.');
-        return;
-      }
-    } catch (err) {
-      console.error('Failed to load addons', err);
+  const handleFinalAdd = () => {
+    const errors = validateAddonSelections(groups, selections);
+    if (Object.keys(errors).length) {
+      alert('Please complete required add-ons');
+      return;
     }
+
+    const addons = groups.flatMap((g) => {
+      const gid = g.group_id ?? g.id;
+      const opts = selections[gid] || {};
+      return g.addon_options
+        .map((opt) => {
+          const q = opts[opt.id] || 0;
+          if (q > 0) {
+            return {
+              option_id: opt.id,
+              name: opt.name,
+              price: opt.price ?? 0,
+              quantity: q,
+            };
+          }
+          return null;
+        })
+        .filter(Boolean) as any;
+    });
 
     addToCart(String(restaurantId), {
       item_id: String(item.id),
       name: item.name,
       price: item.price,
       quantity: qty,
+      notes: notes.trim() || undefined,
+      addons: addons.length ? addons : undefined,
     });
+
     setQty(1);
+    setNotes('');
+    setSelections({});
+    setShowModal(false);
   };
 
   return (
     <>
-      <div
-        onClick={handleClick}
-        className="flex gap-4 p-4 border rounded-lg shadow-sm bg-white cursor-pointer"
-      >
+      <div className="flex gap-4 p-4 border rounded-lg shadow-sm bg-white">
         <img
           src={item.image_url || 'https://placehold.co/120x120?text=No+Image'}
           alt={item.name}
@@ -99,33 +120,11 @@ export default function MenuItemCard({
               <span className="px-2 py-1 bg-gray-200 rounded">Out of stock</span>
             )}
           </div>
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="mt-3 flex items-center justify-between"
-          >
-            <div className="flex items-center border rounded">
-              <button
-                type="button"
-                onClick={decrement}
-                className="w-8 h-8 flex items-center justify-center"
-              >
-                -
-              </button>
-              <span data-testid="qty" className="w-6 text-center">
-                {qty}
-              </span>
-              <button
-                type="button"
-                onClick={increment}
-                className="w-8 h-8 flex items-center justify-center"
-              >
-                +
-              </button>
-            </div>
+          <div className="mt-3 text-right">
             <button
               type="button"
-              onClick={handleAddToCart}
-              className="ml-4 px-3 py-1 bg-teal-600 text-white rounded hover:bg-teal-700"
+              onClick={handleClick}
+              className="px-3 py-1 bg-teal-600 text-white rounded hover:bg-teal-700"
             >
               Add to Cart
             </button>
@@ -150,14 +149,51 @@ export default function MenuItemCard({
             ) : groups.length === 0 ? (
               <p className="text-center text-gray-500">No add-ons available</p>
             ) : (
-              <AddonGroups addons={groups} />
+              <AddonGroups addons={groups} onChange={setSelections} />
             )}
-            <div className="mt-6 flex justify-end">
+
+            <div className="mt-4 flex items-center justify-between">
+              <div className="flex items-center border rounded">
+                <button
+                  type="button"
+                  onClick={decrement}
+                  className="w-8 h-8 flex items-center justify-center"
+                >
+                  -
+                </button>
+                <span data-testid="qty" className="w-6 text-center">
+                  {qty}
+                </span>
+                <button
+                  type="button"
+                  onClick={increment}
+                  className="w-8 h-8 flex items-center justify-center"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            <textarea
+              className="mt-4 w-full border rounded p-2"
+              placeholder="Add notes (optional)"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+
+            <div className="mt-6 flex justify-end gap-3">
               <button
+                type="button"
                 onClick={() => setShowModal(false)}
+                className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleFinalAdd}
                 className="px-4 py-2 bg-teal-600 text-white rounded hover:bg-teal-700"
               >
-                Close
+                Add to Cart
               </button>
             </div>
           </div>
