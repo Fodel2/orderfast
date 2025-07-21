@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useCart } from '../context/CartContext';
 import { getAddonsForItem } from '../utils/getAddonsForItem';
 import type { AddonGroup } from '../utils/types';
 import AddonGroups from './AddonGroups';
@@ -15,10 +16,18 @@ interface MenuItem {
 }
 
 
-export default function MenuItemCard({ item }: { item: MenuItem }) {
+export default function MenuItemCard({
+  item,
+  restaurantId,
+}: {
+  item: MenuItem;
+  restaurantId: string | number;
+}) {
   const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [groups, setGroups] = useState<AddonGroup[]>([]);
+  const [qty, setQty] = useState(1);
+  const { addToCart } = useCart();
 
   const loadAddons = async () => {
     setLoading(true);
@@ -36,6 +45,30 @@ export default function MenuItemCard({ item }: { item: MenuItem }) {
   const handleClick = () => {
     setShowModal(true);
     loadAddons();
+  };
+
+  const increment = () => setQty((q) => q + 1);
+  const decrement = () => setQty((q) => (q > 1 ? q - 1 : 1));
+
+  const handleAddToCart = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const data = await getAddonsForItem(item.id);
+      if (data.some((g) => g.required)) {
+        alert('This item has required add-ons. Please select them first.');
+        return;
+      }
+    } catch (err) {
+      console.error('Failed to load addons', err);
+    }
+
+    addToCart(String(restaurantId), {
+      item_id: String(item.id),
+      name: item.name,
+      price: item.price,
+      quantity: qty,
+    });
+    setQty(1);
   };
 
   return (
@@ -65,6 +98,37 @@ export default function MenuItemCard({ item }: { item: MenuItem }) {
             {item.stock_status === 'out' && (
               <span className="px-2 py-1 bg-gray-200 rounded">Out of stock</span>
             )}
+          </div>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="mt-3 flex items-center justify-between"
+          >
+            <div className="flex items-center border rounded">
+              <button
+                type="button"
+                onClick={decrement}
+                className="w-8 h-8 flex items-center justify-center"
+              >
+                -
+              </button>
+              <span data-testid="qty" className="w-6 text-center">
+                {qty}
+              </span>
+              <button
+                type="button"
+                onClick={increment}
+                className="w-8 h-8 flex items-center justify-center"
+              >
+                +
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={handleAddToCart}
+              className="ml-4 px-3 py-1 bg-teal-600 text-white rounded hover:bg-teal-700"
+            >
+              Add to Cart
+            </button>
           </div>
         </div>
       </div>
