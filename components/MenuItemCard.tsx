@@ -106,7 +106,7 @@ export default function MenuItemCard({
         <div className="flex-1 space-y-1 text-left">
           <div className="flex justify-between items-start">
             <h3 className="font-semibold">{item.name}</h3>
-            <span className="font-semibold">${item.price.toFixed(2)}</span>
+            <span className="font-semibold">${(item.price / 100).toFixed(2)}</span>
           </div>
           {item.description && <p className="text-sm text-gray-600">{item.description}</p>}
           <div className="text-xs flex flex-wrap gap-2 mt-1">

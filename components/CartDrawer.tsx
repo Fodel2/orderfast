@@ -52,7 +52,7 @@ export default function CartDrawer() {
                       <div className="flex justify-between items-start">
                         <div>
                           <p className="font-medium">{item.name}</p>
-                          <p className="text-xs text-gray-500">${item.price.toFixed(2)}</p>
+                          <p className="text-xs text-gray-500">${(item.price / 100).toFixed(2)}</p>
                         </div>
                         <div className="flex items-center space-x-2">
                           <button
@@ -79,7 +79,7 @@ export default function CartDrawer() {
                               <span>
                                 {addon.name} × {addon.quantity}
                               </span>
-                              <span>${(addon.price * addon.quantity).toFixed(2)}</span>
+                              <span>${((addon.price * addon.quantity) / 100).toFixed(2)}</span>
                             </li>
                           ))}
                         </ul>
@@ -88,7 +88,7 @@ export default function CartDrawer() {
                         <p className="mt-1 ml-4 text-xs italic text-gray-600">{item.notes}</p>
                       )}
                       <div className="mt-2 flex justify-between items-center">
-                        <span className="font-medium">Subtotal: ${itemTotal.toFixed(2)}</span>
+                        <span className="font-medium">Subtotal: ${(itemTotal / 100).toFixed(2)}</span>
                         <button
                           type="button"
                           onClick={() => removeFromCart(item.item_id)}
@@ -105,7 +105,7 @@ export default function CartDrawer() {
             <div className="p-4 border-t space-y-2">
               <div className="flex justify-between font-semibold">
                 <span>Subtotal</span>
-                <span>${subtotal.toFixed(2)}</span>
+                <span>${(subtotal / 100).toFixed(2)}</span>
               </div>
               <button
                 type="button"
