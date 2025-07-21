@@ -36,6 +36,7 @@ interface Item {
   image_url: string | null;
   is_vegetarian: boolean | null;
   is_18_plus: boolean | null;
+  available?: boolean | null;
   stock_status: "in_stock" | "scheduled" | "out" | null;
   category_id: number;
 }
@@ -64,6 +65,12 @@ export default function RestaurantMenuPage() {
     }
 
     const load = async () => {
+      console.log(
+        'Loading menu for',
+        restaurantId,
+        'subdomain',
+        router.query.subdomain
+      );
       const restRes = await supabase
         .from("restaurants")
         .select("*")
@@ -74,13 +81,15 @@ export default function RestaurantMenuPage() {
         .from("menu_categories")
         .select(
           `id,name,description,image_url,sort_order,restaurant_id,menu_items!inner(
-            id,name,description,price,image_url,is_vegetarian,is_18_plus,stock_status,category_id,sort_order,
+            id,name,description,price,image_url,is_vegetarian,is_18_plus,stock_status,available,category_id,sort_order,
             menu_item_categories(category_id)
           )`,
         )
         .eq("restaurant_id", restaurantId)
         .order("sort_order", { ascending: true })
         .order("sort_order", { foreignTable: "menu_items", ascending: true });
+
+      console.log('Raw category query data:', catData);
 
       if (restRes.error)
         console.error("Failed to fetch restaurant", restRes.error);
@@ -100,19 +109,22 @@ export default function RestaurantMenuPage() {
           restaurant_id: row.restaurant_id,
         });
         for (const it of row.menu_items || []) {
-          itms.push({
-            id: it.id,
-            name: it.name,
-            description: it.description,
-            price: it.price,
-            image_url: it.image_url,
-            is_vegetarian: it.is_vegetarian,
-            is_18_plus: it.is_18_plus,
-            stock_status: it.stock_status,
-            category_id: it.category_id,
-          });
-          for (const l of it.menu_item_categories || []) {
-            links.push({ item_id: it.id, category_id: l.category_id });
+          if (it.available && it.stock_status !== "out") {
+            itms.push({
+              id: it.id,
+              name: it.name,
+              description: it.description,
+              price: it.price,
+              image_url: it.image_url,
+              is_vegetarian: it.is_vegetarian,
+              is_18_plus: it.is_18_plus,
+              available: it.available,
+              stock_status: it.stock_status,
+              category_id: it.category_id,
+            });
+            for (const l of it.menu_item_categories || []) {
+              links.push({ item_id: it.id, category_id: l.category_id });
+            }
           }
         }
       }
@@ -187,7 +199,7 @@ export default function RestaurantMenuPage() {
 
       <div className="space-y-8">
         {categories.length === 0 ? (
-          <p className="text-center text-gray-500">No menu items found.</p>
+          <p className="text-center text-gray-500">This menu is currently empty.</p>
         ) : (
           categories.map((cat) => {
             const catItems = items.filter(
