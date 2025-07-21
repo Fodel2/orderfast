@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useRouter } from 'next/router';
 import { useCart } from '../context/CartContext';
 import { XMarkIcon, ShoppingCartIcon } from '@heroicons/react/24/outline';
 import { Trash2 } from 'lucide-react';
@@ -6,6 +7,7 @@ import { Trash2 } from 'lucide-react';
 export default function CartDrawer() {
   const { cart, subtotal, updateQuantity, removeFromCart, clearCart } = useCart();
   const [open, setOpen] = useState(false);
+  const router = useRouter();
 
   const toggle = () => setOpen((o) => !o);
 
@@ -116,6 +118,10 @@ export default function CartDrawer() {
               </button>
               <button
                 type="button"
+                onClick={() => {
+                  setOpen(false);
+                  router.push('/checkout');
+                }}
                 className="w-full px-4 py-2 bg-teal-600 text-white rounded hover:bg-teal-700"
               >
                 Proceed to Checkout
