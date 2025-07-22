@@ -78,7 +78,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateStatus }: Pr
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-xl shadow-lg w-full max-w-lg max-h-[90vh] overflow-y-auto relative"
+        className="bg-white rounded-xl shadow-lg w-full max-w-xl max-h-[90vh] overflow-y-auto relative"
       >
         <button
           type="button"
@@ -89,49 +89,78 @@ export default function OrderDetailsModal({ order, onClose, onUpdateStatus }: Pr
           <XMarkIcon className="w-5 h-5" />
         </button>
         <div className="p-6 space-y-4 text-sm">
-          <h3 className="text-xl font-semibold">
+          <h3 className="text-2xl font-bold">
             Order #{String(order.short_order_number ?? 0).padStart(4, '0')}
           </h3>
-          <p>
-            <strong>Customer:</strong> {order.customer_name || 'Guest'} {order.phone_number || ''}
-          </p>
-          {order.order_type === 'delivery' && order.delivery_address && (
-            <p>
-              <strong>Address:</strong> {formatAddress(order.delivery_address)}
-            </p>
-          )}
-          <p>
-            <strong>Status:</strong> {order.status}
-          </p>
-          <p>
-            <strong>Placed:</strong> {new Date(order.created_at).toLocaleString()}
-          </p>
-          <ul className="space-y-2">
+          <div className="space-y-1">
+            <div className="flex justify-between">
+              <span className="text-gray-500 font-medium">Customer</span>
+              <span className="text-gray-700">
+                {order.customer_name || 'Guest'} {order.phone_number || ''}
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-gray-500 font-medium">Status</span>
+              <span>
+                <span
+                  className={`px-2 py-0.5 text-xs font-semibold rounded-full ${{
+                    pending: 'bg-gray-200 text-gray-800',
+                    accepted: 'bg-green-200 text-green-800',
+                    cancelled: 'bg-red-200 text-red-800',
+                  }[order.status] || 'bg-yellow-200 text-yellow-800'}`}
+                >
+                  {order.status}
+                </span>
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500 font-medium">Placed</span>
+              <span className="text-gray-700">
+                {new Date(order.created_at).toLocaleString()}
+              </span>
+            </div>
+            {order.order_type === 'delivery' && order.delivery_address && (
+              <div className="flex justify-between">
+                <span className="text-gray-500 font-medium">Address</span>
+                <span className="text-right text-gray-700 ml-4">
+                  {formatAddress(order.delivery_address)}
+                </span>
+              </div>
+            )}
+          </div>
+          <ul className="space-y-3 text-sm">
             {order.order_items.map((it) => (
-              <li key={it.id} className="border rounded p-2">
+              <li key={it.id} className="border rounded-lg p-3">
                 <div className="flex justify-between">
-                  <span>
+                  <span className="font-semibold">
                     {it.name} × {it.quantity}
                   </span>
-                  <span>{formatPrice(it.price * it.quantity)}</span>
+                  <span className="font-medium">
+                    {formatPrice(it.price * it.quantity)}
+                  </span>
                 </div>
                 {it.order_addons && it.order_addons.length > 0 && (
                   <ul className="mt-1 ml-4 space-y-1 text-gray-600">
                     {it.order_addons.map((ad) => (
                       <li key={ad.id} className="flex justify-between">
                         <span>
-                          {ad.name} × {ad.quantity}
+                          {ad.name}
+                          <span className="text-xs text-gray-500 ml-1">x{ad.quantity}</span>
                         </span>
                         <span>{formatPrice(ad.price * ad.quantity)}</span>
                       </li>
                     ))}
                   </ul>
                 )}
-                {it.notes && <p className="italic ml-4 mt-1">{it.notes}</p>}
+                {it.notes && (
+                  <p className="italic text-gray-600 ml-4 mt-1">{it.notes}</p>
+                )}
               </li>
             ))}
           </ul>
-          {order.customer_notes && <p className="italic">{order.customer_notes}</p>}
+          {order.customer_notes && (
+            <p className="italic">{order.customer_notes}</p>
+          )}
           <p className="font-semibold">Total: {formatPrice(order.total_price)}</p>
           <div className="flex justify-end space-x-2 pt-2">
             {(() => {
