@@ -6,9 +6,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 const MotionDiv = motion.div;
 import { useCart } from '../context/CartContext';
 import { useOrderType, OrderType } from '../context/OrderTypeContext';
+import { supabase } from '../utils/supabaseClient';
+import { useSession } from '@supabase/auth-helpers-react';
 
 export default function CheckoutPage() {
-  const { cart, subtotal } = useCart();
+  const { cart, subtotal, clearCart } = useCart();
   const { orderType, setOrderType } = useOrderType();
   const [notes, setNotes] = useState('');
   const [scheduledFor, setScheduledFor] = useState('');
@@ -22,19 +24,83 @@ export default function CheckoutPage() {
   const selectClass = (type: OrderType) =>
     `border rounded-lg p-6 flex flex-col items-center justify-center cursor-pointer space-y-2 hover:border-teal-600 ${orderType === type ? 'border-teal-600 bg-teal-50' : 'border-gray-300'}`;
 
-  const placeOrder = () => {
-    const payload = {
-      restaurant_id: cart.restaurant_id,
-      order_type: orderType,
-      items: cart.items,
-      notes: notes || null,
-      scheduled_for: !asap ? scheduledFor || null : null,
-      address: orderType === 'delivery' ? address : null,
-      phone,
-      location,
-    };
-    console.log('Checkout payload', payload);
-    alert(JSON.stringify(payload, null, 2));
+  const session = useSession();
+  const [placing, setPlacing] = useState(false);
+
+  const placeOrder = async () => {
+    if (!cart.restaurant_id || !orderType) return;
+
+    setPlacing(true);
+
+    const deliveryFee = orderType === 'delivery' ? 300 : 0;
+    const serviceFee = Math.round(subtotal * 0.05);
+    const totalPrice = subtotal + serviceFee + deliveryFee;
+
+    try {
+      const { data: order, error } = await supabase
+        .from('orders')
+        .insert([
+          {
+            restaurant_id: cart.restaurant_id,
+            user_id: session?.user?.id || null,
+            order_type: orderType,
+            delivery_address:
+              orderType === 'delivery'
+                ? { address_line_1: address, address_line_2: null, postcode: null }
+                : null,
+            phone_number: phone,
+            customer_notes: notes || null,
+            scheduled_for: !asap ? scheduledFor || null : null,
+            status: 'pending',
+            total_price: totalPrice,
+            service_fee: serviceFee,
+            delivery_fee: deliveryFee,
+          },
+        ])
+        .select('id')
+        .single();
+
+      if (error || !order) throw error || new Error('Failed to insert order');
+
+      for (const item of cart.items) {
+        const { data: oi, error: oiErr } = await supabase
+          .from('order_items')
+          .insert([
+            {
+              order_id: order.id,
+              item_id: item.item_id,
+              name: item.name,
+              price: item.price,
+              quantity: item.quantity,
+              notes: item.notes || null,
+            },
+          ])
+          .select('id')
+          .single();
+        if (oiErr || !oi) throw oiErr || new Error('Failed to insert order item');
+
+        for (const addon of item.addons || []) {
+          const { error: oaErr } = await supabase.from('order_addons').insert([
+            {
+              order_item_id: oi.id,
+              option_id: addon.option_id,
+              name: addon.name,
+              price: addon.price,
+              quantity: addon.quantity,
+            },
+          ]);
+          if (oaErr) throw oaErr;
+        }
+      }
+
+      clearCart();
+      router.push(`/order-confirmation?order_id=${order.id}`);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to place order');
+    } finally {
+      setPlacing(false);
+    }
   };
 
   if (!cart.items.length) {
@@ -228,9 +294,10 @@ export default function CheckoutPage() {
           <button
             type="button"
             onClick={placeOrder}
-            className="w-full py-3 bg-teal-600 text-white rounded hover:bg-teal-700"
+            disabled={placing}
+            className="w-full py-3 bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50"
           >
-            Place Order
+            {placing ? 'Placing...' : 'Place Order'}
           </button>
         </div>
       )}
