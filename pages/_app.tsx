@@ -1,4 +1,4 @@
-import '../styles/globals.css'
+import '../styles/globals.css';
 import { SessionContextProvider } from '@supabase/auth-helpers-react';
 import { createBrowserSupabaseClient } from '@supabase/auth-helpers-nextjs';
 import { useState } from 'react';
@@ -13,10 +13,12 @@ export default function App({ Component, pageProps }) {
   const [supabase] = useState(() => createBrowserSupabaseClient());
   const router = useRouter();
 
+  const isCustomerPage = router.pathname.startsWith('/website');
+
   function BottomNavWrapper() {
     const { cart } = useCart();
     const count = cart.items.reduce((sum, it) => sum + it.quantity, 0);
-    if (router.pathname === '/checkout') return null;
+    if (!isCustomerPage || router.pathname === '/checkout') return null;
     return <BottomNavBar cartCount={count} />;
   }
 
