@@ -352,14 +352,15 @@ export default function OrdersPage() {
 
   return (
     <DashboardLayout>
-      <h1 className="text-2xl font-bold mb-2">Live Orders</h1>
+      <div className="flex flex-col flex-1 h-full">
+        <h1 className="text-2xl font-bold mb-2">Live Orders</h1>
       {breakUntil && new Date(breakUntil).getTime() > now && (
         <BreakCountdown breakUntil={breakUntil} onEnd={endBreak} />
       )}
       {outOfStockCount > 0 && (
         <div
           onClick={() => router.push('/dashboard/menu-builder?tab=stock')}
-          className="mb-2 cursor-pointer rounded bg-orange-600 px-3 py-2 text-white text-sm"
+          className="mb-2 cursor-pointer rounded bg-orange-600 px-2 py-1 text-white text-xs"
         >
           {outOfStockCount} item{outOfStockCount === 1 ? '' : 's'} currently out of stock
         </div>
@@ -390,14 +391,14 @@ export default function OrdersPage() {
           <div className="relative flex items-center space-x-2">
             <button
               onClick={toggleOpen}
-              className={`px-3 py-1 rounded text-white text-sm ${isOpen ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}
+              className={`px-2 py-1 rounded text-white text-sm ${isOpen ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}
             >
               {isOpen ? 'Close Now' : 'Open Now'}
             </button>
             {isOpen && (
               <button
                 onClick={() => setShowBreakModal(true)}
-                className="px-3 py-1 rounded text-white text-sm bg-blue-600 hover:bg-blue-700"
+                className="px-2 py-1 rounded text-white text-sm bg-blue-600 hover:bg-blue-700"
               >
                 Take a Break
               </button>
@@ -438,13 +439,14 @@ export default function OrdersPage() {
           })}
         </div>
       ) : (
-        <div className="h-full flex items-center justify-center text-center">
+        <div className="flex flex-1 items-center justify-center text-center">
           <div className="flex flex-col items-center gap-4 p-8 border rounded-lg shadow-sm">
             <ChefHat className="text-gray-300 text-7xl" />
             <p className="text-gray-500">{randomMessage}</p>
           </div>
         </div>
       )}
+      </div>
       <BreakModal
         show={showBreakModal}
         onClose={() => setShowBreakModal(false)}
