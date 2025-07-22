@@ -9,6 +9,22 @@ import { useOrderType, OrderType } from '../context/OrderTypeContext';
 import { supabase } from '../utils/supabaseClient';
 import { useSession } from '@supabase/auth-helpers-react';
 
+async function generateShortOrderNumber(restaurantId: string) {
+  let attempt = 0;
+  while (attempt < 5) {
+    const num = Math.floor(Math.random() * 10000);
+    const { data } = await supabase
+      .from('orders')
+      .select('id')
+      .eq('restaurant_id', restaurantId)
+      .eq('short_order_number', num)
+      .maybeSingle();
+    if (!data) return num;
+    attempt++;
+  }
+  throw new Error('Could not generate unique order number');
+}
+
 export default function CheckoutPage() {
   const { cart, subtotal, clearCart } = useCart();
   const { orderType, setOrderType } = useOrderType();
@@ -32,6 +48,8 @@ export default function CheckoutPage() {
 
     setPlacing(true);
 
+    const shortOrderNumber = await generateShortOrderNumber(cart.restaurant_id);
+
     const deliveryFee = orderType === 'delivery' ? 300 : 0;
     const serviceFee = Math.round(subtotal * 0.05);
     const totalPrice = subtotal + serviceFee + deliveryFee;
@@ -51,13 +69,14 @@ export default function CheckoutPage() {
             phone_number: phone,
             customer_notes: notes || null,
             scheduled_for: !asap ? scheduledFor || null : null,
-            status: 'pending',
-            total_price: totalPrice,
-            service_fee: serviceFee,
-            delivery_fee: deliveryFee,
-          },
-        ])
-        .select('id')
+          status: 'pending',
+          total_price: totalPrice,
+          service_fee: serviceFee,
+          delivery_fee: deliveryFee,
+          short_order_number: shortOrderNumber,
+        },
+      ])
+        .select('id, short_order_number')
         .single();
 
       if (error || !order) throw error || new Error('Failed to insert order');
@@ -94,7 +113,9 @@ export default function CheckoutPage() {
       }
 
       clearCart();
-      router.push(`/order-confirmation?order_id=${order.id}`);
+      router.push(
+        `/order-confirmation?order_number=${order.short_order_number}`
+      );
     } catch (err) {
       console.error(err);
       alert('Failed to place order');

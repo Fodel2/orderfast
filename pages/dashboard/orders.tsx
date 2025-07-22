@@ -25,6 +25,7 @@ interface OrderItem {
 
 interface Order {
   id: string;
+  short_order_number: number | null;
   order_type: 'delivery' | 'collection';
   customer_name: string | null;
   phone_number: string | null;
@@ -94,6 +95,7 @@ export default function OrdersPage() {
         .select(
           `
           id,
+          short_order_number,
           order_type,
           customer_name,
           phone_number,
@@ -364,7 +366,9 @@ export default function OrdersPage() {
             >
               <div className="flex justify-between items-center">
                 <div>
-                  <h3 className="font-semibold">#{o.id.slice(-6)}</h3>
+                  <h3 className="font-semibold">#
+                    {String(o.short_order_number ?? 0).padStart(4, '0')}
+                  </h3>
                   <p className="text-sm text-gray-500">{o.customer_name || 'Guest'}</p>
                 </div>
                 <div className="text-right">
