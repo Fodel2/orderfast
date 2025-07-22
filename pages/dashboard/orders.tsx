@@ -41,6 +41,7 @@ export default function OrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [now, setNow] = useState(Date.now());
   const [restaurantId, setRestaurantId] = useState<number | null>(null);
+  const [isOpen, setIsOpen] = useState<boolean | null>(null);
   const [todayHours, setTodayHours] = useState<
     | { open_time: string | null; close_time: string | null; closed: boolean }
     | null
@@ -73,6 +74,15 @@ export default function OrdersPage() {
       }
 
       setRestaurantId(ruData.restaurant_id);
+
+      const { data: restData, error: restError } = await supabase
+        .from('restaurants')
+        .select('is_open')
+        .eq('id', ruData.restaurant_id)
+        .single();
+      if (!restError && restData) {
+        setIsOpen(restData.is_open);
+      }
 
       const { data: ordersData, error: ordersError } = await supabase
         .from('orders')
@@ -167,6 +177,18 @@ export default function OrdersPage() {
     setSelectedOrder((prev) => (prev && prev.id === id ? { ...prev, status } : prev));
   };
 
+  const toggleOpen = async () => {
+    if (!restaurantId || isOpen === null) return;
+    const newState = !isOpen;
+    const { error } = await supabase
+      .from('restaurants')
+      .update({ is_open: newState })
+      .eq('id', restaurantId);
+    if (!error) {
+      setIsOpen(newState);
+    }
+  };
+
   const formatPrice = (p: number | null) => {
     return p ? `£${(p / 100).toFixed(2)}` : '£0.00';
   };
@@ -205,25 +227,35 @@ export default function OrdersPage() {
   return (
     <DashboardLayout>
       <h1 className="text-2xl font-bold mb-2">Live Orders</h1>
-      <div className="mb-4 flex items-center space-x-2">
-        {todayHours ? (
-          todayHours.closed ? (
-            <span>Closed Today</span>
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center space-x-2">
+          {todayHours ? (
+            todayHours.closed ? (
+              <span>Closed Today</span>
+            ) : (
+              <>
+                <span>
+                  Open Today: {formatTime(todayHours.open_time)} –{' '}
+                  {formatTime(todayHours.close_time)}
+                </span>
+                <span
+                  className={`text-xs px-2 py-1 rounded-full font-semibold ${isOpenNow() ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}
+                >
+                  {isOpenNow() ? 'Open Now' : 'Closed Now'}
+                </span>
+              </>
+            )
           ) : (
-            <>
-              <span>
-                Open Today: {formatTime(todayHours.open_time)} –{' '}
-                {formatTime(todayHours.close_time)}
-              </span>
-              <span
-                className={`text-xs px-2 py-1 rounded-full font-semibold ${isOpenNow() ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}
-              >
-                {isOpenNow() ? 'Open Now' : 'Closed Now'}
-              </span>
-            </>
-          )
-        ) : (
-          <span>Loading hours...</span>
+            <span>Loading hours...</span>
+          )}
+        </div>
+        {isOpen !== null && (
+          <button
+            onClick={toggleOpen}
+            className={`px-3 py-1 rounded text-white text-sm ${isOpen ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}
+          >
+            {isOpen ? 'Close Now' : 'Open Now'}
+          </button>
         )}
       </div>
       <div className="space-y-4">
