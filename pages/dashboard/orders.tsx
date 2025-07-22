@@ -40,6 +40,11 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [restaurantId, setRestaurantId] = useState<number | null>(null);
+  const [todayHours, setTodayHours] = useState<
+    | { open_time: string | null; close_time: string | null; closed: boolean }
+    | null
+  >(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -66,6 +71,8 @@ export default function OrdersPage() {
         setLoading(false);
         return;
       }
+
+      setRestaurantId(ruData.restaurant_id);
 
       const { data: ordersData, error: ordersError } = await supabase
         .from('orders')
@@ -113,6 +120,46 @@ export default function OrdersPage() {
     return () => clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    if (!restaurantId) return;
+
+    const loadHours = async () => {
+      const today = new Date().getDay();
+      const { data } = await supabase
+        .from('opening_hours')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .eq('day_of_week', today)
+        .maybeSingle();
+      if (data) {
+        setTodayHours({
+          open_time: data.open_time,
+          close_time: data.close_time,
+          closed: data.is_closed,
+        });
+      }
+    };
+
+    loadHours();
+
+    const channel = supabase
+      .channel('hours-' + restaurantId)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'opening_hours',
+          filter: `restaurant_id=eq.${restaurantId}`,
+        },
+        () => loadHours()
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [restaurantId]);
+
 
   const updateStatus = async (id: string, status: string) => {
     await supabase.from('orders').update({ status }).eq('id', id);
@@ -122,6 +169,24 @@ export default function OrdersPage() {
 
   const formatPrice = (p: number | null) => {
     return p ? `£${(p / 100).toFixed(2)}` : '£0.00';
+  };
+
+  const formatTime = (t: string | null) => {
+    if (!t) return '';
+    const d = new Date(`1970-01-01T${t}`);
+    return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  };
+
+  const isOpenNow = () => {
+    if (!todayHours || todayHours.closed || !todayHours.open_time || !todayHours.close_time) return false;
+    const nowDate = new Date();
+    const [oh, om] = todayHours.open_time.split(':').map(Number);
+    const [ch, cm] = todayHours.close_time.split(':').map(Number);
+    const openDate = new Date();
+    openDate.setHours(oh, om, 0, 0);
+    const closeDate = new Date();
+    closeDate.setHours(ch, cm, 0, 0);
+    return nowDate >= openDate && nowDate <= closeDate;
   };
 
   if (loading) return <DashboardLayout>Loading...</DashboardLayout>;
@@ -139,6 +204,28 @@ export default function OrdersPage() {
 
   return (
     <DashboardLayout>
+      <h1 className="text-2xl font-bold mb-2">Live Orders</h1>
+      <div className="mb-4 flex items-center space-x-2">
+        {todayHours ? (
+          todayHours.closed ? (
+            <span>Closed Today</span>
+          ) : (
+            <>
+              <span>
+                Open Today: {formatTime(todayHours.open_time)} –{' '}
+                {formatTime(todayHours.close_time)}
+              </span>
+              <span
+                className={`text-xs px-2 py-1 rounded-full font-semibold ${isOpenNow() ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}
+              >
+                {isOpenNow() ? 'Open Now' : 'Closed Now'}
+              </span>
+            </>
+          )
+        ) : (
+          <span>Loading hours...</span>
+        )}
+      </div>
       <div className="space-y-4">
         {orders.map((o) => {
           const age = now - new Date(o.created_at).getTime();
