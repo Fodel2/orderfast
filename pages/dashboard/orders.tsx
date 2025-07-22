@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import DashboardLayout from '../../components/DashboardLayout';
 import { supabase } from '../../utils/supabaseClient';
 import { InboxIcon } from '@heroicons/react/24/outline';
+import OrderDetailsModal, { Order as OrderType } from '../../components/OrderDetailsModal';
 
 interface OrderAddon {
   id: number;
@@ -21,7 +22,7 @@ interface OrderItem {
 }
 
 interface Order {
-  id: number;
+  id: string;
   order_type: 'delivery' | 'collection';
   customer_name: string | null;
   phone_number: string | null;
@@ -29,13 +30,16 @@ interface Order {
   scheduled_for: string | null;
   customer_notes: string | null;
   status: string;
+  total_price: number | null;
+  created_at: string;
   order_items: OrderItem[];
 }
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
-  const [openIds, setOpenIds] = useState<Record<number, boolean>>({});
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [now, setNow] = useState(Date.now());
   const router = useRouter();
 
   useEffect(() => {
@@ -75,6 +79,8 @@ export default function OrdersPage() {
           scheduled_for,
           customer_notes,
           status,
+          total_price,
+          created_at,
           order_items(
             id,
             name,
@@ -86,8 +92,7 @@ export default function OrdersPage() {
         `
         )
         .eq('restaurant_id', ruData.restaurant_id)
-        .not('status', 'in', '("completed","cancelled")')
-        .order('id', { ascending: true });
+        .order('created_at', { ascending: false });
 
       console.log('orders query result', { ordersData, ordersError });
 
@@ -103,28 +108,19 @@ export default function OrdersPage() {
     load();
   }, [router]);
 
-  const toggleOpen = (id: number) => {
-    setOpenIds((prev) => ({ ...prev, [id]: !prev[id] }));
-  };
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 10000);
+    return () => clearInterval(timer);
+  }, []);
 
-  const updateStatus = async (id: number, status: string) => {
+
+  const updateStatus = async (id: string, status: string) => {
     await supabase.from('orders').update({ status }).eq('id', id);
-    if (status === 'completed' || status === 'cancelled') {
-      setOrders((prev) => prev.filter((o) => o.id !== id));
-    } else {
-      setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status } : o)));
-    }
+    setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status } : o)));
   };
 
   const formatPrice = (p: number | null) => {
     return p ? `£${(p / 100).toFixed(2)}` : '£0.00';
-  };
-
-  const formatAddress = (addr: any) => {
-    if (!addr) return '';
-    return [addr.address_line_1, addr.address_line_2, addr.postcode]
-      .filter(Boolean)
-      .join(', ');
   };
 
   if (loading) return <DashboardLayout>Loading...</DashboardLayout>;
@@ -140,104 +136,42 @@ export default function OrdersPage() {
     );
   }
 
-  const grouped = orders.reduce<Record<string, Order[]>>((acc, o) => {
-    if (!acc[o.status]) acc[o.status] = [];
-    acc[o.status].push(o);
-    return acc;
-  }, {});
-
-  const statusOrder = ['pending', 'accepted', 'preparing', 'ready'];
-  const statuses = [
-    ...statusOrder,
-    ...Object.keys(grouped).filter((s) => !statusOrder.includes(s)),
-  ];
-
-  const statusHeadings: Record<string, string> = {
-    pending: 'Pending Orders',
-    accepted: 'Accepted Orders',
-    preparing: 'Preparing Orders',
-    ready: 'Ready Orders',
-  };
-
   return (
     <DashboardLayout>
-      <div className="space-y-10">
-        {statuses.map((st) => (
-          <section key={st}>
-            <h2 className="text-xl font-bold mb-4">{statusHeadings[st] || st}</h2>
-            <div className="space-y-4">
-              {grouped[st]?.map((o) => (
-                <div key={o.id} className="bg-white border rounded-lg shadow-md p-4 space-y-3">
-                  <div
-                    className="flex justify-between items-start cursor-pointer"
-                    onClick={() => toggleOpen(o.id)}
-                  >
-                    <div>
-                      <div className="flex items-center space-x-2">
-                        <h3 className="font-semibold">Order #{o.id}</h3>
-                        <span className="px-2 py-0.5 text-xs rounded bg-teal-100 text-teal-700">
-                          {o.order_type === 'delivery' ? 'Delivery' : 'Collection'}
-                        </span>
-                      </div>
-                      <p className="text-sm text-gray-500">
-                        {o.scheduled_for ? new Date(o.scheduled_for).toLocaleString() : 'ASAP'}
-                      </p>
-                    </div>
-                    <select
-                      className="border rounded p-1 text-sm"
-                      value={o.status}
-                      onChange={(e) => updateStatus(o.id, e.target.value)}
-                    >
-                      <option value="pending">Pending</option>
-                      <option value="accepted">Accepted</option>
-                      <option value="completed">Completed</option>
-                      <option value="cancelled">Cancelled</option>
-                    </select>
-                  </div>
-                  {openIds[o.id] && (
-                    <div className="text-sm space-y-2 pt-2 border-t">
-                      <p>
-                        <strong>Customer:</strong> {o.customer_name || 'N/A'} {o.phone_number || ''}
-                      </p>
-                      {o.order_type === 'delivery' && o.delivery_address && (
-                        <p>
-                          <strong>Address:</strong> {formatAddress(o.delivery_address)}
-                        </p>
-                      )}
-                      <ul className="space-y-2">
-                        {o.order_items.map((it) => (
-                          <li key={it.id} className="border rounded p-2">
-                            <div className="flex justify-between">
-                              <span>
-                                {it.name} × {it.quantity}
-                              </span>
-                              <span>{formatPrice(it.price * it.quantity)}</span>
-                            </div>
-                            {it.order_addons && it.order_addons.length > 0 && (
-                              <ul className="mt-1 ml-4 space-y-1 text-gray-600">
-                                {it.order_addons.map((ad) => (
-                                  <li key={ad.id} className="flex justify-between">
-                                    <span>
-                                      {ad.name} × {ad.quantity}
-                                    </span>
-                                    <span>{formatPrice(ad.price * ad.quantity)}</span>
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                            {it.notes && <p className="italic ml-4 mt-1">{it.notes}</p>}
-                          </li>
-                        ))}
-                      </ul>
-                      {o.customer_notes && <p className="italic">{o.customer_notes}</p>}
-                    </div>
-                  )}
+      <div className="space-y-4">
+        {orders.map((o) => {
+          const age = now - new Date(o.created_at).getTime();
+          const highlight =
+            o.status === 'pending'
+              ? age < 120000
+                ? 'bg-red-100 animate-pulse'
+                : 'bg-red-300 animate-pulse'
+              : 'bg-white';
+          return (
+            <div
+              key={o.id}
+              className={`${highlight} border rounded-lg shadow-md p-4 cursor-pointer`}
+              onClick={() => setSelectedOrder(o)}
+            >
+              <div className="flex justify-between items-center">
+                <div>
+                  <h3 className="font-semibold">#{o.id.slice(-6)}</h3>
+                  <p className="text-sm text-gray-500">{o.customer_name || 'Guest'}</p>
                 </div>
-              ))}
+                <div className="text-right">
+                  <p className="font-semibold">{formatPrice(o.total_price)}</p>
+                  <p className="text-sm capitalize">{o.status}</p>
+                </div>
+              </div>
             </div>
-          </section>
-        ))}
+          );
+        })}
       </div>
+      <OrderDetailsModal
+        order={selectedOrder as OrderType | null}
+        onClose={() => setSelectedOrder(null)}
+        onUpdateStatus={updateStatus}
+      />
     </DashboardLayout>
   );
 }
