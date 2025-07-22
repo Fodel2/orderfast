@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import DashboardLayout from '../../components/DashboardLayout';
 import { supabase } from '../../utils/supabaseClient';
-import { InboxIcon } from '@heroicons/react/24/outline';
+import { ChefHat } from 'lucide-react';
 import OrderDetailsModal, { Order as OrderType } from '../../components/OrderDetailsModal';
 import BreakModal from '../../components/BreakModal';
 import BreakCountdown from '../../components/BreakCountdown';
@@ -334,9 +334,13 @@ export default function OrdersPage() {
   if (orders.length === 0) {
     return (
       <DashboardLayout>
-        <div className="text-gray-500 flex items-center space-x-2">
-          <InboxIcon className="w-5 h-5" />
-          <span>No orders</span>
+        <div className="h-full flex items-center justify-center text-center">
+          <div className="flex flex-col items-center gap-4 p-8 border rounded-lg shadow-sm">
+            <ChefHat className="text-gray-300 text-7xl" />
+            <p className="text-gray-500">
+              No orders right now... Shall we check the cleaning logs?
+            </p>
+          </div>
         </div>
       </DashboardLayout>
     );
