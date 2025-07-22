@@ -2,6 +2,8 @@ import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
+import { useCart } from '../../context/CartContext';
+import CustomerLayout from '../../components/CustomerLayout';
 
 interface Restaurant {
   id: number;
@@ -15,6 +17,8 @@ export default function RestaurantPage() {
   const { subdomain } = router.query;
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [loading, setLoading] = useState(true);
+  const { cart } = useCart();
+  const itemCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -50,6 +54,7 @@ export default function RestaurantPage() {
   }
 
   return (
+    <CustomerLayout cartCount={itemCount}>
     <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-gray-50">
       {restaurant.logo_url && (
         <img
@@ -71,6 +76,7 @@ export default function RestaurantPage() {
         View Menu
       </Link>
     </div>
+    </CustomerLayout>
   );
 }
 

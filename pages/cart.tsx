@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { useCart } from '../context/CartContext';
+import CustomerLayout from '../components/CustomerLayout';
 
 export default function CartPage() {
   const { cart, subtotal, updateQuantity, removeFromCart } = useCart();
@@ -7,7 +8,8 @@ export default function CartPage() {
   const itemCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
 
   return (
-    <main className="p-4 pb-24 max-w-md mx-auto">
+    <CustomerLayout cartCount={itemCount}>
+      <main className="p-4 pb-24 max-w-md mx-auto">
       <h1 className="text-2xl font-bold mb-4">Your Cart</h1>
       {cart.items.length === 0 ? (
         <p className="text-center text-gray-500">Your cart is empty.</p>
@@ -56,6 +58,7 @@ export default function CartPage() {
         </div>
       )}
     </main>
+    </CustomerLayout>
   );
 }
 
