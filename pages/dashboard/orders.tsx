@@ -42,6 +42,8 @@ export default function OrdersPage() {
   const [now, setNow] = useState(Date.now());
   const [restaurantId, setRestaurantId] = useState<number | null>(null);
   const [isOpen, setIsOpen] = useState<boolean | null>(null);
+  const [breakUntil, setBreakUntil] = useState<string | null>(null);
+  const [showBreakOpts, setShowBreakOpts] = useState(false);
   const [todayHours, setTodayHours] = useState<
     | { open_time: string | null; close_time: string | null; closed: boolean }
     | null
@@ -77,11 +79,12 @@ export default function OrdersPage() {
 
       const { data: restData, error: restError } = await supabase
         .from('restaurants')
-        .select('is_open')
+        .select('is_open, break_until')
         .eq('id', ruData.restaurant_id)
         .single();
       if (!restError && restData) {
         setIsOpen(restData.is_open);
+        setBreakUntil(restData.break_until);
       }
 
       const { data: ordersData, error: ordersError } = await supabase
@@ -126,7 +129,7 @@ export default function OrdersPage() {
   }, [router]);
 
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 10000);
+    const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
 
@@ -170,6 +173,47 @@ export default function OrdersPage() {
     };
   }, [restaurantId]);
 
+  // Automatically end break when time passes
+  useEffect(() => {
+    if (!breakUntil) return;
+    if (new Date(breakUntil).getTime() <= Date.now()) {
+      endBreak();
+      return;
+    }
+    const timer = setInterval(() => {
+      if (breakUntil && new Date(breakUntil).getTime() <= Date.now()) {
+        endBreak();
+      }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [breakUntil]);
+
+  useEffect(() => {
+    if (!restaurantId) return;
+
+    const channel = supabase
+      .channel('restaurant-' + restaurantId)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'restaurants',
+          filter: `id=eq.${restaurantId}`,
+        },
+        (payload) => {
+          const newRow: any = payload.new;
+          setIsOpen(newRow.is_open);
+          setBreakUntil(newRow.break_until);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [restaurantId]);
+
 
   const updateStatus = async (id: string, status: string) => {
     await supabase.from('orders').update({ status }).eq('id', id);
@@ -189,6 +233,31 @@ export default function OrdersPage() {
     }
   };
 
+  const startBreak = async (mins: number) => {
+    if (!restaurantId) return;
+    const until = new Date(Date.now() + mins * 60000).toISOString();
+    const { error } = await supabase
+      .from('restaurants')
+      .update({ is_open: false, break_until: until })
+      .eq('id', restaurantId);
+    if (!error) {
+      setIsOpen(false);
+      setBreakUntil(until);
+    }
+  };
+
+  const endBreak = async () => {
+    if (!restaurantId) return;
+    const { error } = await supabase
+      .from('restaurants')
+      .update({ is_open: true, break_until: null })
+      .eq('id', restaurantId);
+    if (!error) {
+      setIsOpen(true);
+      setBreakUntil(null);
+    }
+  };
+
   const formatPrice = (p: number | null) => {
     return p ? `£${(p / 100).toFixed(2)}` : '£0.00';
   };
@@ -197,6 +266,13 @@ export default function OrdersPage() {
     if (!t) return '';
     const d = new Date(`1970-01-01T${t}`);
     return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  };
+
+  const formatCountdown = (until: string) => {
+    const diff = new Date(until).getTime() - Date.now();
+    const mins = Math.floor(diff / 60000);
+    const secs = Math.floor((diff % 60000) / 1000);
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
   const isOpenNow = () => {
@@ -227,6 +303,11 @@ export default function OrdersPage() {
   return (
     <DashboardLayout>
       <h1 className="text-2xl font-bold mb-2">Live Orders</h1>
+      {breakUntil && new Date(breakUntil).getTime() > now && (
+        <div className="mb-2 text-red-700 font-semibold">
+          On Break — Resumes in {formatCountdown(breakUntil)}
+        </div>
+      )}
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center space-x-2">
           {todayHours ? (
@@ -250,12 +331,36 @@ export default function OrdersPage() {
           )}
         </div>
         {isOpen !== null && (
-          <button
-            onClick={toggleOpen}
-            className={`px-3 py-1 rounded text-white text-sm ${isOpen ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}
-          >
-            {isOpen ? 'Close Now' : 'Open Now'}
-          </button>
+          <div className="relative flex items-center space-x-2">
+            <button
+              onClick={toggleOpen}
+              className={`px-3 py-1 rounded text-white text-sm ${isOpen ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}
+            >
+              {isOpen ? 'Close Now' : 'Open Now'}
+            </button>
+            <button
+              onClick={() => setShowBreakOpts((p) => !p)}
+              className="px-3 py-1 rounded text-white text-sm bg-blue-600 hover:bg-blue-700"
+            >
+              Take a Break
+            </button>
+            {showBreakOpts && (
+              <div className="absolute right-0 top-full mt-1 bg-white border shadow rounded z-10 w-32">
+                {[10, 20, 30, 60].map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => {
+                      startBreak(m);
+                      setShowBreakOpts(false);
+                    }}
+                    className="block w-full text-left px-3 py-1 hover:bg-gray-100"
+                  >
+                    {m} min
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         )}
       </div>
       <div className="space-y-4">
