@@ -40,23 +40,33 @@ export default function OrdersPage() {
 
   useEffect(() => {
     const load = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
       if (!session) {
         router.replace('/login');
         return;
       }
-      const { data: ru } = await supabase
+
+      const { data: ruData, error: ruError } = await supabase
         .from('restaurant_users')
         .select('restaurant_id')
         .eq('user_id', session.user.id)
         .maybeSingle();
-      if (!ru) {
+
+      console.log('restaurant_users result', { ruData, ruError });
+
+      if (ruError || !ruData) {
+        if (ruError) console.error('Error loading restaurant', ruError);
         setLoading(false);
         return;
       }
-      const { data, error } = await supabase
+
+      const { data: ordersData, error: ordersError } = await supabase
         .from('orders')
-        .select(`
+        .select(
+          `
           id,
           order_type,
           customer_name,
@@ -73,15 +83,23 @@ export default function OrdersPage() {
             notes,
             order_addons(id,name,price,quantity)
           )
-        `)
-        .eq('restaurant_id', ru.restaurant_id)
-        .not('status', 'in', '(completed,cancelled)')
+        `
+        )
+        .eq('restaurant_id', ruData.restaurant_id)
+        .not('status', 'in', '("completed","cancelled")')
         .order('id', { ascending: true });
-      if (!error && data) {
-        setOrders(data as Order[]);
+
+      console.log('orders query result', { ordersData, ordersError });
+
+      if (!ordersError && ordersData) {
+        setOrders(ordersData as Order[]);
+      } else if (ordersError) {
+        console.error('Error fetching orders', ordersError);
       }
+
       setLoading(false);
     };
+
     load();
   }, [router]);
 
@@ -111,99 +129,112 @@ export default function OrdersPage() {
 
   if (loading) return <DashboardLayout>Loading...</DashboardLayout>;
 
-  const grouped = {
-    pending: orders.filter((o) => o.status === 'pending'),
-    accepted: orders.filter((o) => o.status === 'accepted'),
-  } as const;
+  if (orders.length === 0) {
+    return (
+      <DashboardLayout>
+        <div className="text-gray-500 flex items-center space-x-2">
+          <InboxIcon className="w-5 h-5" />
+          <span>No orders</span>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
-  const statusHeadings: Record<keyof typeof grouped, string> = {
+  const grouped = orders.reduce<Record<string, Order[]>>((acc, o) => {
+    if (!acc[o.status]) acc[o.status] = [];
+    acc[o.status].push(o);
+    return acc;
+  }, {});
+
+  const statusOrder = ['pending', 'accepted', 'preparing', 'ready'];
+  const statuses = [
+    ...statusOrder,
+    ...Object.keys(grouped).filter((s) => !statusOrder.includes(s)),
+  ];
+
+  const statusHeadings: Record<string, string> = {
     pending: 'Pending Orders',
     accepted: 'Accepted Orders',
+    preparing: 'Preparing Orders',
+    ready: 'Ready Orders',
   };
 
   return (
     <DashboardLayout>
       <div className="space-y-10">
-        {(Object.keys(statusHeadings) as (keyof typeof grouped)[]).map((st) => (
+        {statuses.map((st) => (
           <section key={st}>
-            <h2 className="text-xl font-bold mb-4">{statusHeadings[st]}</h2>
-            {grouped[st].length === 0 ? (
-              <div className="text-gray-500 flex items-center space-x-2">
-                <InboxIcon className="w-5 h-5" />
-                <span>No {statusHeadings[st].toLowerCase()}</span>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {grouped[st].map((o) => (
-                  <div key={o.id} className="bg-white border rounded-lg shadow-md p-4 space-y-3">
-                    <div
-                      className="flex justify-between items-start cursor-pointer"
-                      onClick={() => toggleOpen(o.id)}
-                    >
-                      <div>
-                        <div className="flex items-center space-x-2">
-                          <h3 className="font-semibold">Order #{o.id}</h3>
-                          <span className="px-2 py-0.5 text-xs rounded bg-teal-100 text-teal-700">
-                            {o.order_type === 'delivery' ? 'Delivery' : 'Collection'}
-                          </span>
-                        </div>
-                        <p className="text-sm text-gray-500">
-                          {o.scheduled_for ? new Date(o.scheduled_for).toLocaleString() : 'ASAP'}
-                        </p>
+            <h2 className="text-xl font-bold mb-4">{statusHeadings[st] || st}</h2>
+            <div className="space-y-4">
+              {grouped[st]?.map((o) => (
+                <div key={o.id} className="bg-white border rounded-lg shadow-md p-4 space-y-3">
+                  <div
+                    className="flex justify-between items-start cursor-pointer"
+                    onClick={() => toggleOpen(o.id)}
+                  >
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <h3 className="font-semibold">Order #{o.id}</h3>
+                        <span className="px-2 py-0.5 text-xs rounded bg-teal-100 text-teal-700">
+                          {o.order_type === 'delivery' ? 'Delivery' : 'Collection'}
+                        </span>
                       </div>
-                      <select
-                        className="border rounded p-1 text-sm"
-                        value={o.status}
-                        onChange={(e) => updateStatus(o.id, e.target.value)}
-                      >
-                        <option value="pending">Pending</option>
-                        <option value="accepted">Accepted</option>
-                        <option value="completed">Completed</option>
-                        <option value="cancelled">Cancelled</option>
-                      </select>
+                      <p className="text-sm text-gray-500">
+                        {o.scheduled_for ? new Date(o.scheduled_for).toLocaleString() : 'ASAP'}
+                      </p>
                     </div>
-                    {openIds[o.id] && (
-                      <div className="text-sm space-y-2 pt-2 border-t">
-                        <p>
-                          <strong>Customer:</strong> {o.customer_name || 'N/A'} {o.phone_number || ''}
-                        </p>
-                        {o.order_type === 'delivery' && o.delivery_address && (
-                          <p>
-                            <strong>Address:</strong> {formatAddress(o.delivery_address)}
-                          </p>
-                        )}
-                        <ul className="space-y-2">
-                          {o.order_items.map((it) => (
-                            <li key={it.id} className="border rounded p-2">
-                              <div className="flex justify-between">
-                                <span>
-                                  {it.name} × {it.quantity}
-                                </span>
-                                <span>{formatPrice(it.price * it.quantity)}</span>
-                              </div>
-                              {it.order_addons && it.order_addons.length > 0 && (
-                                <ul className="mt-1 ml-4 space-y-1 text-gray-600">
-                                  {it.order_addons.map((ad) => (
-                                    <li key={ad.id} className="flex justify-between">
-                                      <span>
-                                        {ad.name} × {ad.quantity}
-                                      </span>
-                                      <span>{formatPrice(ad.price * ad.quantity)}</span>
-                                    </li>
-                                  ))}
-                                </ul>
-                              )}
-                              {it.notes && <p className="italic ml-4 mt-1">{it.notes}</p>}
-                            </li>
-                          ))}
-                        </ul>
-                        {o.customer_notes && <p className="italic">{o.customer_notes}</p>}
-                      </div>
-                    )}
+                    <select
+                      className="border rounded p-1 text-sm"
+                      value={o.status}
+                      onChange={(e) => updateStatus(o.id, e.target.value)}
+                    >
+                      <option value="pending">Pending</option>
+                      <option value="accepted">Accepted</option>
+                      <option value="completed">Completed</option>
+                      <option value="cancelled">Cancelled</option>
+                    </select>
                   </div>
-                ))}
-              </div>
-            )}
+                  {openIds[o.id] && (
+                    <div className="text-sm space-y-2 pt-2 border-t">
+                      <p>
+                        <strong>Customer:</strong> {o.customer_name || 'N/A'} {o.phone_number || ''}
+                      </p>
+                      {o.order_type === 'delivery' && o.delivery_address && (
+                        <p>
+                          <strong>Address:</strong> {formatAddress(o.delivery_address)}
+                        </p>
+                      )}
+                      <ul className="space-y-2">
+                        {o.order_items.map((it) => (
+                          <li key={it.id} className="border rounded p-2">
+                            <div className="flex justify-between">
+                              <span>
+                                {it.name} × {it.quantity}
+                              </span>
+                              <span>{formatPrice(it.price * it.quantity)}</span>
+                            </div>
+                            {it.order_addons && it.order_addons.length > 0 && (
+                              <ul className="mt-1 ml-4 space-y-1 text-gray-600">
+                                {it.order_addons.map((ad) => (
+                                  <li key={ad.id} className="flex justify-between">
+                                    <span>
+                                      {ad.name} × {ad.quantity}
+                                    </span>
+                                    <span>{formatPrice(ad.price * ad.quantity)}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                            {it.notes && <p className="italic ml-4 mt-1">{it.notes}</p>}
+                          </li>
+                        ))}
+                      </ul>
+                      {o.customer_notes && <p className="italic">{o.customer_notes}</p>}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </section>
         ))}
       </div>
