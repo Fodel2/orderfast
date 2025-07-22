@@ -4,6 +4,7 @@ import DashboardLayout from '../../components/DashboardLayout';
 import { supabase } from '../../utils/supabaseClient';
 import { InboxIcon } from '@heroicons/react/24/outline';
 import OrderDetailsModal, { Order as OrderType } from '../../components/OrderDetailsModal';
+import BreakModal from '../../components/BreakModal';
 
 interface OrderAddon {
   id: number;
@@ -43,7 +44,7 @@ export default function OrdersPage() {
   const [restaurantId, setRestaurantId] = useState<number | null>(null);
   const [isOpen, setIsOpen] = useState<boolean | null>(null);
   const [breakUntil, setBreakUntil] = useState<string | null>(null);
-  const [showBreakOpts, setShowBreakOpts] = useState(false);
+  const [showBreakModal, setShowBreakModal] = useState(false);
   const [todayHours, setTodayHours] = useState<
     | { open_time: string | null; close_time: string | null; closed: boolean }
     | null
@@ -223,6 +224,10 @@ export default function OrdersPage() {
 
   const toggleOpen = async () => {
     if (!restaurantId || isOpen === null) return;
+    if (!isOpen && breakUntil && new Date(breakUntil).getTime() > Date.now()) {
+      await endBreak();
+      return;
+    }
     const newState = !isOpen;
     const { error } = await supabase
       .from('restaurants')
@@ -338,27 +343,13 @@ export default function OrdersPage() {
             >
               {isOpen ? 'Close Now' : 'Open Now'}
             </button>
-            <button
-              onClick={() => setShowBreakOpts((p) => !p)}
-              className="px-3 py-1 rounded text-white text-sm bg-blue-600 hover:bg-blue-700"
-            >
-              Take a Break
-            </button>
-            {showBreakOpts && (
-              <div className="absolute right-0 top-full mt-1 bg-white border shadow rounded z-10 w-32">
-                {[10, 20, 30, 60].map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => {
-                      startBreak(m);
-                      setShowBreakOpts(false);
-                    }}
-                    className="block w-full text-left px-3 py-1 hover:bg-gray-100"
-                  >
-                    {m} min
-                  </button>
-                ))}
-              </div>
+            {isOpen && (
+              <button
+                onClick={() => setShowBreakModal(true)}
+                className="px-3 py-1 rounded text-white text-sm bg-blue-600 hover:bg-blue-700"
+              >
+                Take a Break
+              </button>
             )}
           </div>
         )}
@@ -392,6 +383,11 @@ export default function OrdersPage() {
           );
         })}
       </div>
+      <BreakModal
+        show={showBreakModal}
+        onClose={() => setShowBreakModal(false)}
+        onSelect={startBreak}
+      />
       <OrderDetailsModal
         order={selectedOrder as OrderType | null}
         onClose={() => setSelectedOrder(null)}
