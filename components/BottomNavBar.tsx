@@ -4,10 +4,10 @@ import { Home, Utensils, ListOrdered, Menu, ShoppingCart } from 'lucide-react';
 
 export default function BottomNavBar({ cartCount = 0 }: { cartCount?: number }) {
   const router = useRouter();
+  const { restaurantId } = (router.query || {}) as Record<string, string>;
 
-  const isPreview = router.pathname.includes('/website/[id]');
-  const restaurantId = (router.query as Record<string, string> | undefined)?.id;
-  const base = isPreview && restaurantId ? `/website/${restaurantId}` : '';
+  const isPreview = (router.asPath || '').includes('/dashboard/website/preview');
+  const base = isPreview && restaurantId ? `/dashboard/website/preview/${restaurantId}` : '';
 
   const buildPath = (p: string) => {
     if (p === '/') return base || '/';
