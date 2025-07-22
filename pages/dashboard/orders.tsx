@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import DashboardLayout from '../../components/DashboardLayout';
 import { supabase } from '../../utils/supabaseClient';
+import { InboxIcon } from '@heroicons/react/24/outline';
 
 interface OrderAddon {
   id: number;
@@ -113,30 +114,41 @@ export default function OrdersPage() {
   const grouped = {
     pending: orders.filter((o) => o.status === 'pending'),
     accepted: orders.filter((o) => o.status === 'accepted'),
+  } as const;
+
+  const statusHeadings: Record<keyof typeof grouped, string> = {
+    pending: 'Pending Orders',
+    accepted: 'Accepted Orders',
   };
 
   return (
     <DashboardLayout>
-      <div className="space-y-8">
-        {(['pending','accepted'] as const).map((st) => (
-          <div key={st}>
-            <h2 className="text-xl font-bold mb-4 capitalize">{st} Orders</h2>
+      <div className="space-y-10">
+        {(Object.keys(statusHeadings) as (keyof typeof grouped)[]).map((st) => (
+          <section key={st}>
+            <h2 className="text-xl font-bold mb-4">{statusHeadings[st]}</h2>
             {grouped[st].length === 0 ? (
-              <p className="text-gray-500">No {st} orders</p>
+              <div className="text-gray-500 flex items-center space-x-2">
+                <InboxIcon className="w-5 h-5" />
+                <span>No {statusHeadings[st].toLowerCase()}</span>
+              </div>
             ) : (
               <div className="space-y-4">
                 {grouped[st].map((o) => (
-                  <div key={o.id} className="bg-white rounded-lg shadow p-4">
+                  <div key={o.id} className="bg-white border rounded-lg shadow-md p-4 space-y-3">
                     <div
                       className="flex justify-between items-start cursor-pointer"
                       onClick={() => toggleOpen(o.id)}
                     >
                       <div>
-                        <p className="font-semibold">
-                          Order #{o.id} - {o.order_type === 'delivery' ? 'Delivery' : 'Collection'}
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          {o.customer_name || ''} {o.phone_number || ''}
+                        <div className="flex items-center space-x-2">
+                          <h3 className="font-semibold">Order #{o.id}</h3>
+                          <span className="px-2 py-0.5 text-xs rounded bg-teal-100 text-teal-700">
+                            {o.order_type === 'delivery' ? 'Delivery' : 'Collection'}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-500">
+                          {o.scheduled_for ? new Date(o.scheduled_for).toLocaleString() : 'ASAP'}
                         </p>
                       </div>
                       <select
@@ -151,16 +163,15 @@ export default function OrdersPage() {
                       </select>
                     </div>
                     {openIds[o.id] && (
-                      <div className="mt-3 text-sm space-y-2">
-                        {o.delivery_address && (
+                      <div className="text-sm space-y-2 pt-2 border-t">
+                        <p>
+                          <strong>Customer:</strong> {o.customer_name || 'N/A'} {o.phone_number || ''}
+                        </p>
+                        {o.order_type === 'delivery' && o.delivery_address && (
                           <p>
                             <strong>Address:</strong> {formatAddress(o.delivery_address)}
                           </p>
                         )}
-                        <p>
-                          <strong>Time:</strong>{' '}
-                          {o.scheduled_for ? new Date(o.scheduled_for).toLocaleString() : 'ASAP'}
-                        </p>
                         <ul className="space-y-2">
                           {o.order_items.map((it) => (
                             <li key={it.id} className="border rounded p-2">
@@ -193,7 +204,7 @@ export default function OrdersPage() {
                 ))}
               </div>
             )}
-          </div>
+          </section>
         ))}
       </div>
     </DashboardLayout>
