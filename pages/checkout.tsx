@@ -9,20 +9,18 @@ import { useOrderType, OrderType } from '../context/OrderTypeContext';
 import { supabase } from '../utils/supabaseClient';
 import { useSession } from '@supabase/auth-helpers-react';
 
-async function generateShortOrderNumber(restaurantId: string) {
-  let attempt = 0;
-  while (attempt < 5) {
-    const num = Math.floor(Math.random() * 10000);
-    const { data } = await supabase
+// Generate a unique 4-digit order number between 1000-9999
+async function generateShortOrderNumber(restaurantId: string): Promise<number> {
+  while (true) {
+    const num = Math.floor(Math.random() * 9000) + 1000;
+    const { data, error } = await supabase
       .from('orders')
       .select('id')
       .eq('restaurant_id', restaurantId)
       .eq('short_order_number', num)
       .maybeSingle();
-    if (!data) return num;
-    attempt++;
+    if (!error && !data) return num;
   }
-  throw new Error('Could not generate unique order number');
 }
 
 export default function CheckoutPage() {
