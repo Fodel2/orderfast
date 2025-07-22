@@ -28,7 +28,7 @@ interface DashboardLayoutProps {
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const nav = [
     { href: '/dashboard', label: 'Home', icon: HomeIcon },
-    { href: null, label: 'Orders', icon: TruckIcon },
+    { href: '/dashboard/orders', label: 'Orders', icon: TruckIcon },
     { href: '/dashboard/menu-builder', label: 'Menu', icon: ClipboardDocumentListIcon },
     { href: null, label: 'Promotions', icon: MegaphoneIcon },
     { href: null, label: 'POS', icon: ComputerDesktopIcon },
