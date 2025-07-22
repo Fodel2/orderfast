@@ -9,6 +9,7 @@ import BreakCountdown from '../../components/BreakCountdown';
 
 interface OrderAddon {
   id: number;
+  option_id: number;
   name: string;
   price: number;
   quantity: number;
@@ -16,6 +17,7 @@ interface OrderAddon {
 
 interface OrderItem {
   id: number;
+  item_id: number;
   name: string;
   price: number;
   quantity: number;
@@ -107,11 +109,12 @@ export default function OrdersPage() {
           created_at,
           order_items(
             id,
+            item_id,
             name,
             price,
             quantity,
             notes,
-            order_addons(id,name,price,quantity)
+            order_addons(id,option_id,name,price,quantity)
           )
         `
         )

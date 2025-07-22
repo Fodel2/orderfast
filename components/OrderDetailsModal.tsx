@@ -1,8 +1,10 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
+import RejectOrderModal from './RejectOrderModal';
 
 interface OrderAddon {
   id: number;
+  option_id: number;
   name: string;
   price: number;
   quantity: number;
@@ -10,6 +12,7 @@ interface OrderAddon {
 
 interface OrderItem {
   id: number;
+  item_id: number;
   name: string;
   price: number;
   quantity: number;
@@ -51,6 +54,8 @@ const formatAddress = (addr: any) => {
 
 export default function OrderDetailsModal({ order, onClose, onUpdateStatus }: Props) {
   const overlayRef = useRef<HTMLDivElement | null>(null);
+  const [showReject, setShowReject] = useState(false);
+  const lastTap = useRef<number>(0);
 
   useEffect(() => {
     if (!order) return;
@@ -158,15 +163,28 @@ export default function OrderDetailsModal({ order, onClose, onUpdateStatus }: Pr
             {order.status !== 'completed' && order.status !== 'cancelled' && (
               <button
                 type="button"
-                onClick={() => onUpdateStatus(order.id, 'cancelled')}
+                onClick={() => {
+                  const now = Date.now();
+                  if (now - lastTap.current < 500) {
+                    setShowReject(true);
+                  }
+                  lastTap.current = now;
+                }}
+                onDoubleClick={() => setShowReject(true)}
                 className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
               >
-                Cancel
+                Reject
               </button>
             )}
           </div>
         </div>
       </div>
+      <RejectOrderModal
+        order={order}
+        show={showReject}
+        onClose={() => setShowReject(false)}
+        onRejected={() => onUpdateStatus(order.id, 'cancelled')}
+      />
     </div>
   );
 }
