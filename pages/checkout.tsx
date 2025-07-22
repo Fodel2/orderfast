@@ -323,3 +323,12 @@ export default function CheckoutPage() {
     </div>
   );
 }
+
+export async function getStaticProps() {
+  return {
+    props: {
+      customerMode: true,
+      cartCount: 0,
+    },
+  };
+}

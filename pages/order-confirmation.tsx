@@ -16,3 +16,12 @@ export default function OrderConfirmation() {
     </div>
   );
 }
+
+export async function getStaticProps() {
+  return {
+    props: {
+      customerMode: true,
+      cartCount: 0,
+    },
+  };
+}
