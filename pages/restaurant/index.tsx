@@ -73,3 +73,12 @@ export default function RestaurantPage() {
     </div>
   );
 }
+
+export async function getStaticProps() {
+  return {
+    props: {
+      customerMode: true,
+      cartCount: 0,
+    },
+  };
+}

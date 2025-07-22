@@ -58,3 +58,12 @@ export default function CartPage() {
     </main>
   );
 }
+
+export async function getStaticProps() {
+  return {
+    props: {
+      customerMode: true,
+      cartCount: 0,
+    },
+  };
+}

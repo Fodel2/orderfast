@@ -13,7 +13,7 @@ export default function App({ Component, pageProps }) {
   const [supabase] = useState(() => createBrowserSupabaseClient());
   const router = useRouter();
 
-  const isCustomerPage = router.pathname.startsWith('/website');
+  const isCustomerPage = pageProps.customerMode === true;
 
   function BottomNavWrapper() {
     const { cart } = useCart();
