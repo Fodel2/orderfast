@@ -79,68 +79,101 @@ export default function RejectOrderModal({ order, show, onClose, onRejected }: P
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-[1000]" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="bg-white rounded-xl shadow-lg w-full max-w-sm p-4 space-y-4" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-lg font-semibold">Reject Order</h3>
-        <div className="space-y-2 text-sm">
-          <p className="font-medium">Reason for rejecting</p>
-          {['Item out of stock','Closing early','Problem in the kitchen','Other'].map((r) => (
-            <label key={r} className="flex items-center space-x-2">
-              <input type="radio" name="reason" value={r} checked={reason===r} onChange={() => setReason(r)} />
-              <span>{r}</span>
-            </label>
-          ))}
-        </div>
-        {reason === 'Item out of stock' && (
-          <div className="space-y-2 text-sm">
-            <p className="font-medium">Mark items out of stock</p>
-            <ul className="space-y-1">
-              {order.order_items.map((it) => (
-                <li key={it.id} className="ml-2 space-y-1">
-                  <label className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      checked={itemIds.has(it.item_id)}
-                      onChange={() => toggleItem(it.item_id)}
-                    />
-                    <span className="font-medium">{it.name}</span>
-                  </label>
-                  {it.order_addons.length > 0 && (
-                    <ul className="ml-6 space-y-1">
-                      {it.order_addons.map((ad) => (
-                        <li key={ad.id}>
-                          <label className="flex items-center space-x-2">
-                            <input
-                              type="checkbox"
-                              checked={addonIds.has(ad.option_id)}
-                              onChange={() => toggleAddon(ad.option_id)}
-                            />
-                            <span>{ad.name}</span>
-                          </label>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </li>
-              ))}
-            </ul>
+    <div
+      className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-[1000]"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div
+        className="bg-white rounded-xl shadow-lg w-full max-w-sm sm:max-w-md overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="bg-gray-100 px-4 py-2 font-bold text-center">Reject Order</div>
+        <div className="p-4 space-y-4 text-sm">
+          <div className="space-y-2 bg-gray-50 p-3 rounded">
+            <p className="font-medium">Reason for rejecting</p>
+            {['Item out of stock', 'Closing early', 'Problem in the kitchen', 'Other'].map((r) => (
+              <label key={r} className="flex items-center space-x-2">
+                <input
+                  type="radio"
+                  name="reason"
+                  value={r}
+                  checked={reason === r}
+                  onChange={() => setReason(r)}
+                />
+                <span>{r}</span>
+              </label>
+            ))}
           </div>
-        )}
-        <div className="space-y-1">
-          <label className="block text-sm font-medium mb-1">Custom message (optional)</label>
-          <textarea className="w-full border rounded-md p-2 min-h-[6rem]" rows={4} value={message} onChange={(e)=>setMessage(e.target.value)} />
-        </div>
-        <div className="flex justify-end space-x-2 pt-2 relative">
-          <button type="button" onClick={onClose} className="px-4 py-2 border border-red-600 text-red-600 rounded hover:bg-red-50">Cancel</button>
-          <button type="button" onClick={handleRejectClick} className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700" disabled={saving}>{saving ? 'Rejecting...' : 'Reject Order'}</button>
-          {showTip && (
-            <div className="absolute -top-8 right-0 text-xs" role="tooltip">
+          {reason === 'Item out of stock' && (
+            <div className="space-y-2 bg-gray-50 p-3 rounded">
+              <p className="font-medium">Mark items out of stock</p>
+              <ul className="space-y-1">
+                {order.order_items.map((it) => (
+                  <li key={it.id} className="ml-2 space-y-1">
+                    <label className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        checked={itemIds.has(it.item_id)}
+                        onChange={() => toggleItem(it.item_id)}
+                      />
+                      <span className="font-medium">{it.name}</span>
+                    </label>
+                    {it.order_addons.length > 0 && (
+                      <ul className="ml-6 space-y-1">
+                        {it.order_addons.map((ad) => (
+                          <li key={ad.id}>
+                            <label className="flex items-center space-x-2">
+                              <input
+                                type="checkbox"
+                                checked={addonIds.has(ad.option_id)}
+                                onChange={() => toggleAddon(ad.option_id)}
+                              />
+                              <span>{ad.name}</span>
+                            </label>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <div className="space-y-1">
+            <label className="block text-sm font-medium mb-1">Custom message (optional)</label>
+            <textarea
+              className="w-full border rounded-md p-2 min-h-[6rem]"
+              rows={4}
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col sm:flex-row justify-end gap-2 pt-2 relative">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 border border-red-600 text-red-600 rounded hover:bg-red-50 w-full sm:w-auto"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleRejectClick}
+              className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 w-full sm:w-auto"
+              disabled={saving}
+            >
+              {saving ? 'Rejecting...' : 'Reject Order'}
+            </button>
+            <div
+              className={`absolute -top-8 right-0 text-xs transition-opacity duration-300 ${showTip ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+              role="tooltip"
+            >
               <div className="relative bg-white rounded shadow px-2 py-1">
                 Double click to reject
                 <div className="absolute left-1/2 -bottom-1 w-2 h-2 bg-white rotate-45 shadow -translate-x-1/2"></div>
               </div>
             </div>
-          )}
+          </div>
         </div>
       </div>
     </div>
