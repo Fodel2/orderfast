@@ -117,6 +117,7 @@ export default function OrdersPage() {
   const updateStatus = async (id: string, status: string) => {
     await supabase.from('orders').update({ status }).eq('id', id);
     setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status } : o)));
+    setSelectedOrder((prev) => (prev && prev.id === id ? { ...prev, status } : prev));
   };
 
   const formatPrice = (p: number | null) => {

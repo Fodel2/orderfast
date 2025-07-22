@@ -126,27 +126,41 @@ export default function OrderDetailsModal({ order, onClose, onUpdateStatus }: Pr
           {order.customer_notes && <p className="italic">{order.customer_notes}</p>}
           <p className="font-semibold">Total: {formatPrice(order.total_price)}</p>
           <div className="flex justify-end space-x-2 pt-2">
-            <button
-              type="button"
-              onClick={() => onUpdateStatus(order.id, 'accepted')}
-              className="px-4 py-2 bg-teal-600 text-white rounded hover:bg-teal-700"
-            >
-              Accept
-            </button>
-            <button
-              type="button"
-              onClick={() => onUpdateStatus(order.id, 'completed')}
-              className="px-4 py-2 bg-teal-600 text-white rounded hover:bg-teal-700"
-            >
-              Complete
-            </button>
-            <button
-              type="button"
-              onClick={() => onUpdateStatus(order.id, 'cancelled')}
-              className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
-            >
-              Cancel
-            </button>
+            {(() => {
+              const transitions: Record<string, Record<string, { next: string; label: string; classes: string }>> = {
+                delivery: {
+                  pending: { next: 'accepted', label: 'Accept Order', classes: 'bg-teal-600 hover:bg-teal-700' },
+                  accepted: { next: 'preparing', label: 'Start Preparing', classes: 'bg-yellow-600 hover:bg-yellow-700' },
+                  preparing: { next: 'delivering', label: 'Mark as Out for Delivery', classes: 'bg-indigo-600 hover:bg-indigo-700' },
+                  delivering: { next: 'completed', label: 'Complete Order', classes: 'bg-green-600 hover:bg-green-700' },
+                },
+                collection: {
+                  pending: { next: 'accepted', label: 'Accept Order', classes: 'bg-teal-600 hover:bg-teal-700' },
+                  accepted: { next: 'preparing', label: 'Start Preparing', classes: 'bg-yellow-600 hover:bg-yellow-700' },
+                  preparing: { next: 'ready_to_collect', label: 'Mark as Ready for Collection', classes: 'bg-indigo-600 hover:bg-indigo-700' },
+                  ready_to_collect: { next: 'completed', label: 'Complete Order', classes: 'bg-green-600 hover:bg-green-700' },
+                },
+              };
+              const t = transitions[order.order_type][order.status];
+              return t ? (
+                <button
+                  type="button"
+                  onClick={() => onUpdateStatus(order.id, t.next)}
+                  className={`px-4 py-2 text-white rounded ${t.classes}`}
+                >
+                  {t.label}
+                </button>
+              ) : null;
+            })()}
+            {order.status !== 'completed' && order.status !== 'cancelled' && (
+              <button
+                type="button"
+                onClick={() => onUpdateStatus(order.id, 'cancelled')}
+                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+              >
+                Cancel
+              </button>
+            )}
           </div>
         </div>
       </div>
