@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import DashboardLayout from '../../components/DashboardLayout';
 import { supabase } from '../../utils/supabaseClient';
@@ -13,6 +13,18 @@ const ACTIVE_STATUSES = [
   'preparing',
   'delivering',
   'ready_to_collect',
+];
+
+const EMPTY_MESSAGES = [
+  'No orders right now… shall we check the cleaning logs?',
+  'All quiet on the frying pan front.',
+  'Your ticket printer is sleeping. Shhh...',
+  'Kitchen\u2019s calm—dare we restock the napkins?',
+  'Nothing cooking yet — maybe time for a tea?',
+  'Still no dings. The bell is getting lonely.',
+  'No orders, no chaos. Suspiciously peaceful.',
+  'Perfect time to clean the sauce bottles again!',
+  'No orders… did someone forget to open?',
 ];
 
 interface OrderAddon {
@@ -63,6 +75,13 @@ export default function OrdersPage() {
     | null
   >(null);
   const router = useRouter();
+  const randomMessage = useMemo(
+    () =>
+      EMPTY_MESSAGES[
+        Math.floor(Math.random() * EMPTY_MESSAGES.length)
+      ],
+    []
+  );
 
   useEffect(() => {
     const load = async () => {
@@ -331,21 +350,6 @@ export default function OrdersPage() {
 
   if (loading) return <DashboardLayout>Loading...</DashboardLayout>;
 
-  if (orders.length === 0) {
-    return (
-      <DashboardLayout>
-        <div className="h-full flex items-center justify-center text-center">
-          <div className="flex flex-col items-center gap-4 p-8 border rounded-lg shadow-sm">
-            <ChefHat className="text-gray-300 text-7xl" />
-            <p className="text-gray-500">
-              No orders right now... Shall we check the cleaning logs?
-            </p>
-          </div>
-        </div>
-      </DashboardLayout>
-    );
-  }
-
   return (
     <DashboardLayout>
       <h1 className="text-2xl font-bold mb-2">Live Orders</h1>
@@ -401,37 +405,46 @@ export default function OrdersPage() {
           </div>
         )}
       </div>
-      <div className="space-y-4">
-        {orders.map((o) => {
-          const age = now - new Date(o.created_at).getTime();
-          const highlight =
-            o.status === 'pending'
-              ? age < 120000
-                ? 'bg-red-100 animate-pulse'
-                : 'bg-red-300 animate-pulse'
-              : 'bg-white';
-          return (
-            <div
-              key={o.id}
-              className={`${highlight} border rounded-lg shadow-md p-4 cursor-pointer`}
-              onClick={() => setSelectedOrder(o)}
-            >
-              <div className="flex justify-between items-center">
-                <div>
-                  <h3 className="font-semibold">#
-                    {String(o.short_order_number ?? 0).padStart(4, '0')}
-                  </h3>
-                  <p className="text-sm text-gray-500">{o.customer_name || 'Guest'}</p>
-                </div>
-                <div className="text-right">
-                  <p className="font-semibold">{formatPrice(o.total_price)}</p>
-                  <p className="text-sm capitalize">{o.status}</p>
+      {orders.length > 0 ? (
+        <div className="space-y-4">
+          {orders.map((o) => {
+            const age = now - new Date(o.created_at).getTime();
+            const highlight =
+              o.status === 'pending'
+                ? age < 120000
+                  ? 'bg-red-100 animate-pulse'
+                  : 'bg-red-300 animate-pulse'
+                : 'bg-white';
+            return (
+              <div
+                key={o.id}
+                className={`${highlight} border rounded-lg shadow-md p-4 cursor-pointer`}
+                onClick={() => setSelectedOrder(o)}
+              >
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h3 className="font-semibold">#
+                      {String(o.short_order_number ?? 0).padStart(4, '0')}
+                    </h3>
+                    <p className="text-sm text-gray-500">{o.customer_name || 'Guest'}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-semibold">{formatPrice(o.total_price)}</p>
+                    <p className="text-sm capitalize">{o.status}</p>
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="h-full flex items-center justify-center text-center">
+          <div className="flex flex-col items-center gap-4 p-8 border rounded-lg shadow-sm">
+            <ChefHat className="text-gray-300 text-7xl" />
+            <p className="text-gray-500">{randomMessage}</p>
+          </div>
+        </div>
+      )}
       <BreakModal
         show={showBreakModal}
         onClose={() => setShowBreakModal(false)}
