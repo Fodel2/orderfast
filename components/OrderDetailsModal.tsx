@@ -19,6 +19,7 @@ interface OrderItem {
 
 export interface Order {
   id: string;
+  short_order_number: number | null;
   order_type: 'delivery' | 'collection';
   customer_name: string | null;
   phone_number: string | null;
@@ -83,7 +84,9 @@ export default function OrderDetailsModal({ order, onClose, onUpdateStatus }: Pr
           <XMarkIcon className="w-5 h-5" />
         </button>
         <div className="p-6 space-y-4 text-sm">
-          <h3 className="text-xl font-semibold">Order #{order.id.slice(-6)}</h3>
+          <h3 className="text-xl font-semibold">
+            Order #{String(order.short_order_number ?? 0).padStart(4, '0')}
+          </h3>
           <p>
             <strong>Customer:</strong> {order.customer_name || 'Guest'} {order.phone_number || ''}
           </p>
