@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useRouter } from 'next/router';
 import { TruckIcon, ShoppingBagIcon, MapPinIcon } from '@heroicons/react/24/outline';
 import { motion, AnimatePresence } from 'framer-motion';
+
+const MotionDiv = motion.div;
 import { useCart } from '../context/CartContext';
 import { useOrderType, OrderType } from '../context/OrderTypeContext';
 
@@ -58,7 +60,7 @@ export default function CheckoutPage() {
       <h1 className="text-2xl font-bold mb-4 text-center">Checkout</h1>
       <AnimatePresence mode="wait">
         {step === 'select' && (
-          <motion.div
+          <MotionDiv
             key="select"
             initial={{ opacity: 0, x: 50 }}
             animate={{ opacity: 1, x: 0 }}
@@ -88,10 +90,10 @@ export default function CheckoutPage() {
                 <span className="text-lg font-medium">Collection</span>
               </div>
             </div>
-          </motion.div>
+          </MotionDiv>
         )}
         {step === 'details' && (
-          <motion.div
+          <MotionDiv
             key="details"
             initial={{ opacity: 0, x: 50 }}
             animate={{ opacity: 1, x: 0 }}
@@ -200,7 +202,7 @@ export default function CheckoutPage() {
                 </div>
               </div>
             </div>
-          </motion.div>
+          </MotionDiv>
         )}
       </AnimatePresence>
       {step === 'details' && (
