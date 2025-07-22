@@ -4,25 +4,24 @@ import { Home, Utensils, ListOrdered, Menu, ShoppingCart } from 'lucide-react';
 
 export default function BottomNavBar({ cartCount = 0 }: { cartCount?: number }) {
   const router = useRouter();
-  const id =
-    typeof router.query?.id === 'string'
-      ? router.query?.id
-      : Array.isArray(router.query?.id)
-      ? router.query?.id[0]
-      : undefined;
+  const { restaurant_id } = router.query || {};
+  const restaurantId =
+    typeof restaurant_id === 'string'
+      ? restaurant_id
+      : Array.isArray(restaurant_id)
+      ? restaurant_id[0]
+      : '';
 
-  const isPreview = (router.asPath || '').includes('/dashboard/website/preview');
-  const base = isPreview && id ? `/dashboard/website/preview/${id}` : '';
-
-  const buildPath = (p: string) => {
-    if (p === '/') return base || '/';
-    return base ? `${base}${p}` : p;
+  const buildPath = (slug: string) => {
+    const base = '/restaurant';
+    const page = slug === '/' ? '' : `/${slug}`;
+    return `${base}${page}?restaurant_id=${restaurantId}`;
   };
 
-  const isActive = (p: string) => {
-    const full = buildPath(p);
+  const isActive = (slug: string) => {
     const current = (router.asPath || '').split('?')[0];
-    return current.startsWith(full);
+    const check = slug === '/' ? '/restaurant' : `/restaurant/${slug}`;
+    return current === check;
   };
 
   return (
@@ -36,8 +35,8 @@ export default function BottomNavBar({ cartCount = 0 }: { cartCount?: number }) 
           Home
         </Link>
         <Link
-          href={buildPath('/menu')}
-          className={`flex flex-col items-center text-xs ${isActive('/menu') ? 'text-black font-semibold' : 'text-gray-400'}`}
+          href={buildPath('menu')}
+          className={`flex flex-col items-center text-xs ${isActive('menu') ? 'text-black font-semibold' : 'text-gray-400'}`}
         >
           <Utensils className="w-5 h-5 mb-1" />
           Menu
@@ -45,7 +44,7 @@ export default function BottomNavBar({ cartCount = 0 }: { cartCount?: number }) 
 
         <div className="absolute -top-6 left-1/2 transform -translate-x-1/2">
           <Link
-            href={buildPath('/cart')}
+            href={buildPath('cart')}
             className="relative bg-black text-white rounded-full w-14 h-14 flex items-center justify-center shadow-lg hover:scale-105 transition"
           >
             <ShoppingCart className="w-6 h-6" />
@@ -58,15 +57,15 @@ export default function BottomNavBar({ cartCount = 0 }: { cartCount?: number }) 
         </div>
 
         <Link
-          href={buildPath('/orders')}
-          className={`flex flex-col items-center text-xs ${isActive('/orders') ? 'text-black font-semibold' : 'text-gray-400'}`}
+          href={buildPath('orders')}
+          className={`flex flex-col items-center text-xs ${isActive('orders') ? 'text-black font-semibold' : 'text-gray-400'}`}
         >
           <ListOrdered className="w-5 h-5 mb-1" />
           Orders
         </Link>
         <Link
-          href={buildPath('/more')}
-          className={`flex flex-col items-center text-xs ${isActive('/more') ? 'text-black font-semibold' : 'text-gray-400'}`}
+          href={buildPath('more')}
+          className={`flex flex-col items-center text-xs ${isActive('more') ? 'text-black font-semibold' : 'text-gray-400'}`}
         >
           <Menu className="w-5 h-5 mb-1" />
           More
