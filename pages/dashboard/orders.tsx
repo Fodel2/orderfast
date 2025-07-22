@@ -5,6 +5,7 @@ import { supabase } from '../../utils/supabaseClient';
 import { InboxIcon } from '@heroicons/react/24/outline';
 import OrderDetailsModal, { Order as OrderType } from '../../components/OrderDetailsModal';
 import BreakModal from '../../components/BreakModal';
+import BreakCountdown from '../../components/BreakCountdown';
 
 interface OrderAddon {
   id: number;
@@ -273,12 +274,6 @@ export default function OrdersPage() {
     return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   };
 
-  const formatCountdown = (until: string) => {
-    const diff = new Date(until).getTime() - Date.now();
-    const mins = Math.floor(diff / 60000);
-    const secs = Math.floor((diff % 60000) / 1000);
-    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-  };
 
   const isOpenNow = () => {
     if (!todayHours || todayHours.closed || !todayHours.open_time || !todayHours.close_time) return false;
@@ -309,9 +304,7 @@ export default function OrdersPage() {
     <DashboardLayout>
       <h1 className="text-2xl font-bold mb-2">Live Orders</h1>
       {breakUntil && new Date(breakUntil).getTime() > now && (
-        <div className="mb-2 text-red-700 font-semibold">
-          On Break — Resumes in {formatCountdown(breakUntil)}
-        </div>
+        <BreakCountdown breakUntil={breakUntil} onEnd={endBreak} />
       )}
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center space-x-2">
