@@ -57,6 +57,7 @@ export default function OrdersPage() {
   const [isOpen, setIsOpen] = useState<boolean | null>(null);
   const [breakUntil, setBreakUntil] = useState<string | null>(null);
   const [showBreakModal, setShowBreakModal] = useState(false);
+  const [outOfStockCount, setOutOfStockCount] = useState(0);
   const [todayHours, setTodayHours] = useState<
     | { open_time: string | null; close_time: string | null; closed: boolean }
     | null
@@ -137,6 +138,28 @@ export default function OrdersPage() {
       } else if (ordersError) {
         console.error('Error fetching orders', ordersError);
       }
+
+      // Count out-of-stock menu items
+      const { count: menuCount } = await supabase
+        .from('menu_items')
+        .select('*', { count: 'exact', head: true })
+        .eq('restaurant_id', ruData.restaurant_id)
+        .or('available.eq.false,stock_status.neq.in_stock');
+
+      let addonCount = 0;
+      const { data: groups } = await supabase
+        .from('addon_groups')
+        .select('id')
+        .eq('restaurant_id', ruData.restaurant_id);
+      if (groups && groups.length) {
+        const { count: ac } = await supabase
+          .from('addon_options')
+          .select('*', { count: 'exact', head: true })
+          .in('group_id', groups.map((g) => g.id))
+          .or('available.eq.false,stock_status.neq.in_stock');
+        addonCount = ac || 0;
+      }
+      setOutOfStockCount((menuCount || 0) + addonCount);
 
       setLoading(false);
     };
@@ -324,6 +347,14 @@ export default function OrdersPage() {
       <h1 className="text-2xl font-bold mb-2">Live Orders</h1>
       {breakUntil && new Date(breakUntil).getTime() > now && (
         <BreakCountdown breakUntil={breakUntil} onEnd={endBreak} />
+      )}
+      {outOfStockCount > 0 && (
+        <div
+          onClick={() => router.push('/dashboard/menu-builder?tab=stock')}
+          className="mb-2 cursor-pointer rounded bg-orange-600 px-3 py-2 text-white text-sm"
+        >
+          {outOfStockCount} item{outOfStockCount === 1 ? '' : 's'} currently out of stock
+        </div>
       )}
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center space-x-2">

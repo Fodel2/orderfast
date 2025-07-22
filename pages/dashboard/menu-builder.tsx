@@ -120,6 +120,14 @@ export default function MenuBuilder() {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const router = useRouter();
 
+  useEffect(() => {
+    if (!router.isReady) return;
+    const t = router.query.tab;
+    if (t === 'menu' || t === 'addons' || t === 'stock' || t === 'build') {
+      setActiveTab(t as any);
+    }
+  }, [router.isReady, router.query.tab]);
+
   // Load draft menu from localStorage
   useEffect(() => {
     const cats = localStorage.getItem('draftCategories');
