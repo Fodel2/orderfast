@@ -7,6 +7,14 @@ import OrderDetailsModal, { Order as OrderType } from '../../components/OrderDet
 import BreakModal from '../../components/BreakModal';
 import BreakCountdown from '../../components/BreakCountdown';
 
+const ACTIVE_STATUSES = [
+  'pending',
+  'accepted',
+  'preparing',
+  'delivering',
+  'ready_to_collect',
+];
+
 interface OrderAddon {
   id: number;
   option_id: number;
@@ -119,6 +127,7 @@ export default function OrdersPage() {
         `
         )
         .eq('restaurant_id', ruData.restaurant_id)
+        .in('status', ACTIVE_STATUSES)
         .order('created_at', { ascending: false });
 
       console.log('orders query result', { ordersData, ordersError });
@@ -224,7 +233,12 @@ export default function OrdersPage() {
 
   const updateStatus = async (id: string, status: string) => {
     await supabase.from('orders').update({ status }).eq('id', id);
-    setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status } : o)));
+    setOrders((prev) => {
+      if (ACTIVE_STATUSES.includes(status)) {
+        return prev.map((o) => (o.id === id ? { ...o, status } : o));
+      }
+      return prev.filter((o) => o.id !== id);
+    });
     setSelectedOrder((prev) => (prev && prev.id === id ? { ...prev, status } : prev));
   };
 
