@@ -2,6 +2,8 @@ import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import { supabase } from "../../utils/supabaseClient";
 import MenuItemCard from "../../components/MenuItemCard";
+import { useCart } from "../../context/CartContext";
+import CustomerLayout from "../../components/CustomerLayout";
 
 function getCategoryIcon(name: string) {
   const lower = name.toLowerCase();
@@ -55,6 +57,8 @@ export default function RestaurantMenuPage() {
     { item_id: number; category_id: number }[]
   >([]);
   const [loading, setLoading] = useState(true);
+  const { cart } = useCart();
+  const itemCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -157,6 +161,7 @@ export default function RestaurantMenuPage() {
   }
 
   return (
+    <CustomerLayout cartCount={itemCount}>
     <div className="p-4 space-y-8 scroll-smooth">
       <div className="text-center space-y-4">
         {restaurant.logo_url && (
@@ -229,6 +234,7 @@ export default function RestaurantMenuPage() {
         )}
       </div>
     </div>
+    </CustomerLayout>
   );
 }
 
