@@ -2,7 +2,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Phone, MapPin, Star } from 'lucide-react';
+import { Phone, MapPin, Star, CircleDot, CircleOff } from 'lucide-react';
 import { supabase } from '../../utils/supabaseClient';
 import { useCart } from '../../context/CartContext';
 import CustomerLayout from '../../components/CustomerLayout';
@@ -97,13 +97,28 @@ export default function RestaurantPage() {
 
   const getStatus = () => {
     if (restaurant.break_until && new Date(restaurant.break_until).getTime() > Date.now()) {
-      const resume = new Date(restaurant.break_until).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      return { text: `On Break – Back at ${resume}`, style: 'bg-yellow-100 text-yellow-800' };
+      const resume = new Date(restaurant.break_until).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      return {
+        text: `On Break – Back at ${resume}`,
+        style: 'bg-yellow-100 text-yellow-800',
+        icon: <CircleDot className="w-4 h-4" />,
+      };
     }
     if (restaurant.is_open && isOpenNow()) {
-      return { text: 'Open Now', style: 'bg-green-100 text-green-800' };
+      return {
+        text: 'Open Now',
+        style: 'bg-green-100 text-green-800',
+        icon: <CircleDot className="w-4 h-4" />,
+      };
     }
-    return { text: 'Currently Closed', style: 'bg-red-100 text-red-800' };
+    return {
+      text: 'Currently Closed',
+      style: 'bg-red-100 text-red-800',
+      icon: <CircleOff className="w-4 h-4" />,
+    };
   };
 
   const status = getStatus();
@@ -114,57 +129,70 @@ export default function RestaurantPage() {
   return (
     <CustomerLayout cartCount={itemCount}>
       <div className="flex flex-col">
-        <div className="relative h-48 w-full">
+        <div className="relative w-full h-60 sm:h-72 md:h-80 lg:h-96 overflow-hidden">
           {restaurant.cover_image_url && (
-            <Image src={restaurant.cover_image_url} alt="Hero" fill className="object-cover" />
+            <Image
+              src={restaurant.cover_image_url}
+              alt="Hero Background"
+              fill
+              className="object-cover object-center"
+            />
           )}
-          <div className="absolute inset-0 bg-black/40 flex flex-col justify-end p-4 text-white">
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent" />
+          <div className="absolute bottom-6 left-4 right-4 text-white">
             {restaurant.logo_url && (
               <Image
                 src={restaurant.logo_url}
                 alt="Logo"
-                width={40}
-                height={40}
-                className="mb-2 rounded"
+                width={60}
+                height={60}
+                className="rounded-full border border-white bg-white p-1"
               />
             )}
-            <h1 className="text-2xl font-bold">{restaurant.name}</h1>
-            {restaurant.website_description && <p className="text-sm">{restaurant.website_description}</p>}
+            <h1 className="text-2xl sm:text-3xl font-bold">{restaurant.name}</h1>
+            {restaurant.website_description && (
+              <p className="text-sm sm:text-base opacity-90">{restaurant.website_description}</p>
+            )}
           </div>
         </div>
 
-        <div className={`text-center py-2 font-medium ${status.style}`}>{status.text}</div>
+        <div
+          className={`flex items-center justify-center gap-2 py-2 text-sm font-medium ${status.style}`}
+        >
+          {status.icon}
+          {status.text}
+        </div>
 
-        <div className="grid grid-cols-3 gap-2 p-4">
-          <Link
-            href={`/restaurant/menu?restaurant_id=${restaurant.id}`}
-            className="bg-black text-white rounded-md text-sm text-center py-2"
-          >
-            Order Now
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 px-4 py-4">
+          <Link href={`/restaurant/menu?restaurant_id=${restaurant.id}`}> 
+            <button className="w-full bg-black text-white rounded-full py-3 text-lg font-semibold">
+              Order Now
+            </button>
           </Link>
           {restaurant.contact_number ? (
-            <Link
-              href={`tel:${restaurant.contact_number}`}
-              className="bg-white border text-sm rounded-md text-center py-2 flex items-center justify-center gap-1"
-            >
-              <Phone className="w-4 h-4" /> Contact
+            <Link href={`tel:${restaurant.contact_number}`}> 
+              <button className="w-full border border-gray-300 rounded-full py-3 text-lg flex items-center justify-center gap-2">
+                <Phone className="w-4 h-4" />
+                Contact
+              </button>
             </Link>
           ) : (
-            <span className="bg-gray-100 border text-sm rounded-md text-center py-2 flex items-center justify-center gap-1 text-gray-400">
-              <Phone className="w-4 h-4" /> Contact
+            <span className="w-full border border-gray-200 rounded-full py-3 text-lg flex items-center justify-center gap-2 text-gray-400">
+              <Phone className="w-4 h-4" />
+              Contact
             </span>
           )}
           {restaurant.address ? (
-            <Link
-              href={mapsUrl}
-              target="_blank"
-              className="bg-white border text-sm rounded-md text-center py-2 flex items-center justify-center gap-1"
-            >
-              <MapPin className="w-4 h-4" /> Directions
+            <Link href={mapsUrl} target="_blank"> 
+              <button className="w-full border border-gray-300 rounded-full py-3 text-lg flex items-center justify-center gap-2">
+                <MapPin className="w-4 h-4" />
+                Directions
+              </button>
             </Link>
           ) : (
-            <span className="bg-gray-100 border text-sm rounded-md text-center py-2 flex items-center justify-center gap-1 text-gray-400">
-              <MapPin className="w-4 h-4" /> Directions
+            <span className="w-full border border-gray-200 rounded-full py-3 text-lg flex items-center justify-center gap-2 text-gray-400">
+              <MapPin className="w-4 h-4" />
+              Directions
             </span>
           )}
         </div>
@@ -173,13 +201,13 @@ export default function RestaurantPage() {
           <h2 className="text-base font-semibold mb-2">What people are saying</h2>
           <div className="space-y-2">
             {[{ rating: 5, text: 'Amazing food!' }, { rating: 4, text: 'Fries are \uD83D\uDD25' }].map((r, i) => (
-              <div key={i} className="bg-gray-100 rounded-md px-3 py-2 text-sm">
+              <div key={i} className="bg-gray-100 rounded-xl px-4 py-3">
                 <div className="flex items-center gap-1 text-yellow-500">
                   {Array.from({ length: r.rating }).map((_, j) => (
                     <Star key={j} className="w-4 h-4 fill-yellow-500 stroke-yellow-500" />
                   ))}
                 </div>
-                <p className="mt-1 text-gray-700">{r.text}</p>
+                <p className="mt-1 text-sm text-gray-700">{r.text}</p>
               </div>
             ))}
           </div>
