@@ -3,7 +3,8 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Phone, MapPin, Clock, Star } from 'lucide-react';
+import { Phone, MapPin, Clock } from 'lucide-react';
+import TestimonialCarousel from '../../components/TestimonialCarousel';
 import { supabase } from '../../utils/supabaseClient';
 import { useCart } from '../../context/CartContext';
 import CustomerLayout from '../../components/CustomerLayout';
@@ -111,10 +112,6 @@ export default function RestaurantHome() {
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(restaurant.address)}`
     : '#';
 
-  const reviews = [
-    { rating: 5, text: 'Amazing food!' },
-    { rating: 4, text: 'Fries are \uD83D\uDD25' },
-  ];
 
   return (
     <CustomerLayout cartCount={itemCount}>
@@ -172,27 +169,7 @@ export default function RestaurantHome() {
         </motion.section>
 
         {/* Section 3: Reviews */}
-        <motion.section
-          className="bg-gray-50 px-4 py-12 min-h-[80vh] flex flex-col justify-center"
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true }}
-          variants={fadeIn}
-        >
-          <h2 className="text-lg font-semibold mb-4 text-center">What customers say</h2>
-          <div className="space-y-4 max-w-md mx-auto">
-            {reviews.map((review, i) => (
-              <div key={i} className="bg-white rounded-xl p-4 shadow-sm">
-                <div className="flex gap-1 text-yellow-500 mb-1">
-                  {Array.from({ length: review.rating }).map((_, idx) => (
-                    <Star key={idx} className="w-4 h-4 fill-yellow-500 stroke-yellow-500" />
-                  ))}
-                </div>
-                <p className="text-sm text-gray-700">{review.text}</p>
-              </div>
-            ))}
-          </div>
-        </motion.section>
+        <TestimonialCarousel />
 
         {/* Section 4: CTA */}
         <motion.section
