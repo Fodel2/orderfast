@@ -1,8 +1,8 @@
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import Image from 'next/image';
-import { Phone, MapPin, Star, CircleDot, CircleOff } from 'lucide-react';
+import Link from 'next/link';
+import { Phone, MapPin, Clock, Star } from 'lucide-react';
 import { supabase } from '../../utils/supabaseClient';
 import { useCart } from '../../context/CartContext';
 import CustomerLayout from '../../components/CustomerLayout';
@@ -25,12 +25,10 @@ interface OpeningHours {
   is_closed: boolean;
 }
 
-export default function RestaurantPage() {
+export default function RestaurantHome() {
   const router = useRouter();
   const { restaurant_id } = router.query;
-  const restaurantId = Array.isArray(restaurant_id)
-    ? restaurant_id[0]
-    : restaurant_id;
+  const restaurantId = Array.isArray(restaurant_id) ? restaurant_id[0] : restaurant_id;
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [todayHours, setTodayHours] = useState<OpeningHours | null>(null);
   const [loading, setLoading] = useState(true);
@@ -43,9 +41,7 @@ export default function RestaurantPage() {
     const load = async () => {
       const { data: rest } = await supabase
         .from('restaurants')
-        .select(
-          'id,name,logo_url,website_description,cover_image_url,contact_number,address,is_open,break_until'
-        )
+        .select('id,name,logo_url,website_description,cover_image_url,contact_number,address,is_open,break_until')
         .eq('id', restaurantId)
         .maybeSingle();
       setRestaurant(rest);
@@ -71,12 +67,8 @@ export default function RestaurantPage() {
     load();
   }, [router.isReady, restaurantId]);
 
-  if (loading) {
+  if (!router.isReady || loading) {
     return <div className="p-6 text-center">Loading...</div>;
-  }
-
-  if (!restaurantId) {
-    return <div className="p-6 text-center">No restaurant specified</div>;
   }
 
   if (!restaurant) {
@@ -95,123 +87,108 @@ export default function RestaurantPage() {
     return now >= openDate && now <= closeDate;
   };
 
-  const getStatus = () => {
-    if (restaurant.break_until && new Date(restaurant.break_until).getTime() > Date.now()) {
-      const resume = new Date(restaurant.break_until).toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-      return {
-        text: `On Break – Back at ${resume}`,
-        style: 'bg-yellow-100 text-yellow-800',
-        icon: <CircleDot className="w-4 h-4" />,
-      };
-    }
-    if (restaurant.is_open && isOpenNow()) {
-      return {
-        text: 'Open Now',
-        style: 'bg-green-100 text-green-800',
-        icon: <CircleDot className="w-4 h-4" />,
-      };
-    }
-    return {
-      text: 'Currently Closed',
-      style: 'bg-red-100 text-red-800',
-      icon: <CircleOff className="w-4 h-4" />,
-    };
-  };
+  const breakUntilActive = restaurant.break_until && new Date(restaurant.break_until).getTime() > Date.now();
+  const open = restaurant.is_open && isOpenNow() && !breakUntilActive;
+  const breakResume = breakUntilActive
+    ? new Date(restaurant.break_until!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : null;
 
-  const status = getStatus();
+  const statusText = breakResume
+    ? `On Break – Back at ${breakResume}`
+    : open
+    ? 'We’re open now!'
+    : 'Sorry, we’re currently closed';
+
+  const statusClasses = `px-4 py-1 rounded-full flex items-center gap-2 ${open ? 'bg-green-100 text-green-700 glow-green' : 'bg-red-100 text-red-700'}`;
+
   const mapsUrl = restaurant.address
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(restaurant.address)}`
     : '#';
 
+  const reviews = [
+    { rating: 5, text: 'Amazing food!' },
+    { rating: 4, text: 'Fries are \uD83D\uDD25' },
+  ];
+
   return (
     <CustomerLayout cartCount={itemCount}>
-      <div className="flex flex-col">
-        <div className="relative w-full h-60 sm:h-72 md:h-80 lg:h-96 overflow-hidden">
+      <div className="flex flex-col w-full">
+        {/* Section 1: Fullscreen Hero */}
+        <section className="relative w-full h-screen flex items-end justify-start">
           {restaurant.cover_image_url && (
-            <Image
-              src={restaurant.cover_image_url}
-              alt="Hero Background"
-              fill
-              className="object-cover object-center"
-            />
+            <Image src={restaurant.cover_image_url} alt="Hero" fill className="object-cover object-center" />
           )}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent" />
-          <div className="absolute bottom-6 left-4 right-4 text-white">
+          <div className="absolute inset-0 bg-black/60" />
+          <div className="relative z-10 p-6 text-white">
             {restaurant.logo_url && (
               <Image
                 src={restaurant.logo_url}
                 alt="Logo"
-                width={60}
-                height={60}
-                className="rounded-full border border-white bg-white p-1"
+                width={64}
+                height={64}
+                className="rounded-full border border-white bg-white mb-4"
               />
             )}
-            <h1 className="text-2xl sm:text-3xl font-bold">{restaurant.name}</h1>
+            <h1 className="text-3xl sm:text-4xl font-bold mb-2 animate-fade-in-down">{restaurant.name}</h1>
             {restaurant.website_description && (
-              <p className="text-sm sm:text-base opacity-90">{restaurant.website_description}</p>
+              <p className="text-sm sm:text-base text-white/90 animate-fade-in-up">
+                {restaurant.website_description}
+              </p>
             )}
+            <div className="mt-6">
+              <Link href={`/restaurant/menu?restaurant_id=${restaurantId}`}>
+                <button className="bg-white text-black rounded-full px-6 py-3 text-sm font-semibold shadow hover:scale-105 transition">
+                  Order Now
+                </button>
+              </Link>
+            </div>
           </div>
-        </div>
+        </section>
 
-        <div
-          className={`flex items-center justify-center gap-2 py-2 text-sm font-medium ${status.style}`}
-        >
-          {status.icon}
-          {status.text}
-        </div>
+        {/* Section 2: Live Status */}
+        <section className="flex items-center justify-center py-3 bg-white text-sm font-medium">
+          <div className={statusClasses}>
+            <Clock className="w-4 h-4" />
+            {statusText}
+          </div>
+        </section>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 px-4 py-4">
-          <Link href={`/restaurant/menu?restaurant_id=${restaurant.id}`}> 
-            <button className="w-full bg-black text-white rounded-full py-3 text-lg font-semibold">
-              Order Now
-            </button>
-          </Link>
-          {restaurant.contact_number ? (
-            <Link href={`tel:${restaurant.contact_number}`}> 
-              <button className="w-full border border-gray-300 rounded-full py-3 text-lg flex items-center justify-center gap-2">
-                <Phone className="w-4 h-4" />
-                Contact
-              </button>
-            </Link>
-          ) : (
-            <span className="w-full border border-gray-200 rounded-full py-3 text-lg flex items-center justify-center gap-2 text-gray-400">
-              <Phone className="w-4 h-4" />
-              Contact
-            </span>
-          )}
-          {restaurant.address ? (
-            <Link href={mapsUrl} target="_blank"> 
-              <button className="w-full border border-gray-300 rounded-full py-3 text-lg flex items-center justify-center gap-2">
-                <MapPin className="w-4 h-4" />
-                Directions
-              </button>
-            </Link>
-          ) : (
-            <span className="w-full border border-gray-200 rounded-full py-3 text-lg flex items-center justify-center gap-2 text-gray-400">
-              <MapPin className="w-4 h-4" />
-              Directions
-            </span>
-          )}
-        </div>
-
-        <div className="px-4 py-2">
-          <h2 className="text-base font-semibold mb-2">What people are saying</h2>
-          <div className="space-y-2">
-            {[{ rating: 5, text: 'Amazing food!' }, { rating: 4, text: 'Fries are \uD83D\uDD25' }].map((r, i) => (
-              <div key={i} className="bg-gray-100 rounded-xl px-4 py-3">
-                <div className="flex items-center gap-1 text-yellow-500">
-                  {Array.from({ length: r.rating }).map((_, j) => (
-                    <Star key={j} className="w-4 h-4 fill-yellow-500 stroke-yellow-500" />
+        {/* Section 3: Reviews */}
+        <section className="bg-gray-50 px-4 py-6">
+          <h2 className="text-lg font-semibold mb-4">What customers say</h2>
+          <div className="space-y-3">
+            {reviews.map((review, i) => (
+              <div key={i} className="bg-white rounded-xl p-4 shadow-sm">
+                <div className="flex gap-1 text-yellow-500 mb-1">
+                  {Array.from({ length: review.rating }).map((_, idx) => (
+                    <Star key={idx} className="w-4 h-4 fill-yellow-500 stroke-yellow-500" />
                   ))}
                 </div>
-                <p className="mt-1 text-sm text-gray-700">{r.text}</p>
+                <p className="text-sm text-gray-700">{review.text}</p>
               </div>
             ))}
           </div>
-        </div>
+        </section>
+
+        {/* Section 4: CTA */}
+        <section className="bg-white px-4 py-6 space-y-3">
+          {restaurant.contact_number && (
+            <Link href={`tel:${restaurant.contact_number}`}>
+              <button className="w-full border border-gray-300 rounded-full py-3 flex items-center justify-center gap-2">
+                <Phone className="w-5 h-5" />
+                Call Us
+              </button>
+            </Link>
+          )}
+          {restaurant.address && (
+            <Link href={mapsUrl} target="_blank">
+              <button className="w-full border border-gray-300 rounded-full py-3 flex items-center justify-center gap-2">
+                <MapPin className="w-5 h-5" />
+                Find Us
+              </button>
+            </Link>
+          )}
+        </section>
       </div>
     </CustomerLayout>
   );
