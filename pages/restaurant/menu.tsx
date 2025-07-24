@@ -61,7 +61,7 @@ export default function RestaurantMenuPage() {
   const { cart } = useCart();
   const itemCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
 
-  const sectionRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const navRef = useRef<HTMLDivElement | null>(null);
   const btnRefs = useRef<Record<number, HTMLButtonElement | null>>({});
 
@@ -241,7 +241,9 @@ export default function RestaurantMenuPage() {
               <section
                 id={`cat-${cat.id}`}
                 key={cat.id}
-                ref={(el) => (sectionRefs.current[cat.id] = el)}
+                ref={(el) => {
+                  sectionRefs.current[cat.id] = el as HTMLDivElement;
+                }}
                 className="space-y-4 scroll-mt-24"
               >
                 <h2 className="text-xl font-semibold text-left">{cat.name}</h2>
