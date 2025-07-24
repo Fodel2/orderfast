@@ -1,6 +1,7 @@
 import { useRouter } from "next/router";
 import { useEffect, useState, useRef } from "react";
 import { motion } from "framer-motion";
+import { Search, ChevronUp, Sandwich, Pizza, CupSoda, Dessert, HelpCircle } from "lucide-react";
 import { supabase } from "../../utils/supabaseClient";
 import MenuItemCard from "../../components/MenuItemCard";
 import { useCart } from "../../context/CartContext";
@@ -8,11 +9,11 @@ import CustomerLayout from "../../components/CustomerLayout";
 
 function getCategoryIcon(name: string) {
   const lower = name.toLowerCase();
-  if (lower.includes("burger")) return "🍔";
-  if (lower.includes("pizza")) return "🍕";
-  if (lower.includes("drink") || lower.includes("beverage")) return "🥤";
-  if (lower.includes("dessert") || lower.includes("sweet")) return "🍰";
-  return "❓";
+  if (lower.includes("burger")) return Sandwich;
+  if (lower.includes("pizza")) return Pizza;
+  if (lower.includes("drink") || lower.includes("beverage")) return CupSoda;
+  if (lower.includes("dessert") || lower.includes("sweet")) return Dessert;
+  return HelpCircle;
 }
 
 interface Restaurant {
@@ -58,12 +59,23 @@ export default function RestaurantMenuPage() {
     { item_id: number; category_id: number }[]
   >([]);
   const [loading, setLoading] = useState(true);
+  const [tempQuery, setTempQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showTop, setShowTop] = useState(false);
   const { cart } = useCart();
   const itemCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
 
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const navRef = useRef<HTMLDivElement | null>(null);
   const btnRefs = useRef<Record<number, HTMLButtonElement | null>>({});
+
+  useEffect(() => {
+    const onScroll = () => {
+      setShowTop(window.scrollY > 400);
+    };
+    window.addEventListener('scroll', onScroll);
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   const scrollToCategory = (id: number) => {
     const section = sectionRefs.current[id];
@@ -195,6 +207,20 @@ export default function RestaurantMenuPage() {
         )}
       </div>
 
+      <div className="relative">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+          <input
+            type="text"
+            placeholder="Search menu..."
+            value={tempQuery}
+            onChange={(e) => setTempQuery(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && setSearchQuery(tempQuery)}
+            className="w-full rounded-full border bg-white pl-10 pr-4 h-9 text-sm shadow-md focus:outline-none focus:ring"
+          />
+        </div>
+      </div>
+
       <div
         ref={navRef}
         className="overflow-x-auto -mx-4 px-4 pb-2 scrollbar-hide snap-x snap-mandatory"
@@ -215,7 +241,10 @@ export default function RestaurantMenuPage() {
                   className="w-12 h-12 rounded-full object-cover"
                 />
               ) : (
-                <span className="text-3xl">{getCategoryIcon(c.name)}</span>
+                (() => {
+                  const Icon = getCategoryIcon(c.name);
+                  return <Icon className="w-6 h-6" />;
+                })()
               )}
               <span className="text-xs mt-1 whitespace-nowrap">{c.name}</span>
             </button>
@@ -230,11 +259,15 @@ export default function RestaurantMenuPage() {
           categories.map((cat) => {
             const catItems = items.filter(
               (it) =>
-                it.category_id === cat.id ||
-                itemLinks.some(
-                  (link) =>
-                    link.item_id === it.id && link.category_id === cat.id,
-                ),
+                (it.category_id === cat.id ||
+                  itemLinks.some(
+                    (link) => link.item_id === it.id && link.category_id === cat.id,
+                  )) &&
+                (!searchQuery ||
+                  it.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                  (it.description || '')
+                    .toLowerCase()
+                    .includes(searchQuery.toLowerCase())),
             );
             if (catItems.length === 0) return null;
             return (
@@ -261,6 +294,17 @@ export default function RestaurantMenuPage() {
           })
         )}
       </div>
+      {showTop && (
+        <motion.button
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          whileHover={{ scale: 1.05 }}
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          className="fixed bottom-6 right-4 z-50 bg-white shadow-lg rounded-full w-10 h-10 flex items-center justify-center transition"
+        >
+          <ChevronUp className="w-5 h-5" />
+        </motion.button>
+      )}
     </div>
     </CustomerLayout>
   );

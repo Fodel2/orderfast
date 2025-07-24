@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
+import { ShoppingCart, Leaf, Carrot, Beer } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { getAddonsForItem } from '../utils/getAddonsForItem';
 import type { AddonGroup } from '../utils/types';
@@ -127,13 +128,19 @@ export default function MenuItemCard({
           )}
           <div className="text-xs flex flex-wrap gap-2 mt-2">
             {item.is_vegan && (
-              <span className="px-2 py-1 rounded-full bg-green-100 text-green-800">🌱 Vegan</span>
+              <span className="px-2 py-1 rounded-full bg-green-100 text-green-800 inline-flex items-center gap-1">
+                <Leaf className="w-3 h-3" /> Vegan
+              </span>
             )}
             {item.is_vegetarian && (
-              <span className="px-2 py-1 rounded-full bg-yellow-100 text-yellow-800">🧀 Vegetarian</span>
+              <span className="px-2 py-1 rounded-full bg-yellow-100 text-yellow-800 inline-flex items-center gap-1">
+                <Carrot className="w-3 h-3" /> Vegetarian
+              </span>
             )}
             {item.is_18_plus && (
-              <span className="px-2 py-1 rounded-full bg-red-100 text-red-800">🔞 18+</span>
+              <span className="px-2 py-1 rounded-full bg-red-100 text-red-800 inline-flex items-center gap-1">
+                <Beer className="w-3 h-3" /> 18+
+              </span>
             )}
             {item.stock_status === 'out' && (
               <span className="px-2 py-1 bg-gray-200 rounded">Out of stock</span>
@@ -143,11 +150,13 @@ export default function MenuItemCard({
             <motion.button
               type="button"
               aria-label="Add to Cart"
-              whileTap={{ scale: 0.9 }}
+              whileTap={{ scale: 0.95 }}
+              animate={recentlyAdded ? { scale: [1, 1.05, 1] } : {}}
               onClick={handleClick}
-              className="bg-teal-600 text-white rounded-full py-2 px-4 hover:bg-teal-700 whitespace-nowrap w-full sm:w-auto flex items-center justify-center"
+              className="bg-primary text-white text-sm h-9 px-4 rounded-full w-full sm:w-auto flex items-center justify-center gap-1"
             >
-              <span className="mr-1">🛒</span>{recentlyAdded ? '✓ Added' : 'Add to Cart'}
+              <ShoppingCart className="w-4 h-4" />
+              {recentlyAdded ? '✓ Added' : 'Add to Cart'}
             </motion.button>
           </div>
         </div>
