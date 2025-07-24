@@ -60,7 +60,17 @@ function TestimonialCarousel() {
   ];
 
   return (
-    <motion.div variants={stagger} className="bg-white px-4 py-16 text-center">
+    <motion.div variants={stagger} className="relative bg-white px-4 py-16 text-center overflow-hidden">
+      <motion.div
+        className="absolute w-24 h-24 bg-purple-300/40 rounded-full blur-2xl -top-8 -left-8"
+        animate={{ y: [0, 20, 0] }}
+        transition={{ duration: 12, repeat: Infinity, ease: 'easeInOut' }}
+      />
+      <motion.div
+        className="absolute w-32 h-32 bg-yellow-200/40 rounded-full blur-2xl -bottom-10 right-10"
+        animate={{ y: [0, -20, 0] }}
+        transition={{ duration: 14, repeat: Infinity, ease: 'easeInOut' }}
+      />
       <motion.div variants={fadeIn} className="max-w-2xl mx-auto mb-8">
         <motion.h2 className="text-2xl font-bold mb-2" variants={fadeIn}>
           Testimonials
@@ -86,7 +96,9 @@ function TestimonialCarousel() {
               initial="hidden"
               whileInView="visible"
               viewport={{ once: true }}
-              className="bg-gray-50 rounded-xl shadow-sm p-6 mx-2 h-full flex flex-col justify-between"
+              animate={{ y: [0, -4, 0] }}
+              transition={{ repeat: Infinity, duration: 6, ease: 'easeInOut' }}
+              className="bg-gray-50/60 backdrop-blur-sm rounded-xl shadow-lg p-6 mx-2 h-full flex flex-col justify-between"
             >
               <div className="flex justify-center gap-1 text-yellow-500 mb-3">
                 {Array.from({ length: t.rating }).map((_, j) => (
@@ -117,8 +129,11 @@ export default function RestaurantHome() {
   const itemCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
 
   const heroRef = useRef<HTMLDivElement>(null);
-  const { scrollY } = useScroll();
-  const bgY = useTransform(scrollY, [0, 300], [0, -80]);
+  const { scrollYProgress } = useScroll({
+    target: heroRef,
+    offset: ['start start', 'end start'],
+  });
+  const bgY = useTransform(scrollYProgress, [0, 1], [0, -120]);
 
   useEffect(() => {
     if (!router.isReady || !restaurantId) return;
@@ -184,7 +199,7 @@ export default function RestaurantHome() {
     ? 'We’re open now!'
     : 'Sorry, we’re currently closed';
 
-  const statusClasses = `px-4 py-1 rounded-full flex items-center gap-2 ${open ? 'bg-green-100 text-green-700 glow-green' : 'bg-red-100 text-red-700'}`;
+  const statusClasses = `px-4 py-1 rounded-full flex items-center gap-2 shadow-md ${open ? 'bg-green-100 text-green-700 glow-green' : 'bg-red-100 text-red-700'}`;
 
   const mapsUrl = restaurant.address
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(restaurant.address)}`
@@ -197,7 +212,7 @@ export default function RestaurantHome() {
         {/* Section 1: Fullscreen Hero */}
         <motion.section
           ref={heroRef}
-          className="relative min-h-screen snap-start flex items-end justify-start bg-white px-4"
+          className="relative min-h-screen snap-start flex items-end justify-start text-white bg-purple-900 px-4"
           initial="hidden"
           whileInView="visible"
           viewport={{ once: true }}
@@ -213,22 +228,43 @@ export default function RestaurantHome() {
               />
             </motion.div>
           )}
-          <div className="absolute inset-0 bg-gradient-to-b from-black to-transparent" />
+          <motion.div
+            className="absolute w-32 h-32 bg-purple-500/40 rounded-full blur-3xl top-10 left-1/4"
+            animate={{ y: [0, -20, 0] }}
+            transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut' }}
+          />
+          <motion.div
+            className="absolute w-24 h-24 bg-pink-400/40 rounded-full blur-2xl bottom-10 right-10"
+            animate={{ y: [0, 15, 0] }}
+            transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-purple-900/70 via-black/60 to-transparent" />
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className={`absolute top-4 left-4 ${statusClasses} backdrop-blur-md shadow-lg ${open ? 'animate-pulse' : ''}`}
+          >
+            <Clock className="w-4 h-4" />
+            <span>{statusText}</span>
+          </motion.div>
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, ease: 'easeOut' }}
             variants={stagger}
-            className="relative z-10 p-6 text-white bg-white/10 backdrop-blur-md rounded-xl"
+            className="relative z-10 p-6 text-white bg-white/20 backdrop-blur-lg rounded-xl"
           >
             {restaurant.logo_url && (
-              <Image
-                src={restaurant.logo_url}
-                alt="Logo"
-                width={64}
-                height={64}
-                className="rounded-full border border-white bg-white mb-4"
-              />
+              <div className="relative w-16 h-16 mb-4">
+                <div className="absolute inset-0 rounded-full bg-purple-500/50 blur-xl" />
+                <Image
+                  src={restaurant.logo_url}
+                  alt="Logo"
+                  fill
+                  className="rounded-full border border-white bg-white p-1 relative"
+                />
+              </div>
             )}
             <motion.h1 className="text-3xl sm:text-4xl font-bold mb-2" variants={fadeIn}>
               {restaurant.name}
@@ -242,18 +278,24 @@ export default function RestaurantHome() {
               <Link href={`/restaurant/menu?restaurant_id=${restaurantId}`}>
                 <motion.button
                   variants={fadeIn}
-                  className="bg-white text-black rounded-full px-6 py-3 text-sm font-semibold shadow-md hover:shadow-lg hover:shadow-white/50 hover:scale-105 transition"
+                  whileHover={{ scale: 1.05 }}
+                  className="bg-white text-black rounded-full px-6 py-3 text-sm font-semibold shadow-md hover:brightness-110 hover:shadow-lg hover:shadow-white/50 transition"
                 >
                   Order Now
                 </motion.button>
               </Link>
             </div>
           </motion.div>
+          <div className="absolute inset-x-0 bottom-0 overflow-hidden leading-none pointer-events-none">
+            <svg className="relative block w-full h-10 text-white" viewBox="0 0 1440 80" preserveAspectRatio="none">
+              <path d="M0 30c80 40 160-40 240 0s160-40 240 0 160-40 240 0 160-40 240 0 160-40 240 0 160-40 240 0v50H0Z" fill="currentColor" />
+            </svg>
+          </div>
         </motion.section>
 
         {/* Section 2: Live Status */}
         <motion.section
-          className="min-h-screen snap-start flex items-center justify-center bg-white px-4 text-sm font-medium"
+          className="relative min-h-screen snap-start flex items-center justify-center bg-gradient-to-b from-purple-50 to-white px-4 text-sm font-medium"
           initial="hidden"
           whileInView="visible"
           viewport={{ once: true }}
@@ -265,22 +307,32 @@ export default function RestaurantHome() {
             </motion.span>
             <motion.span variants={fadeIn}>{statusText}</motion.span>
           </motion.div>
+          <div className="absolute inset-x-0 bottom-0 overflow-hidden leading-none pointer-events-none">
+            <svg className="relative block w-full h-10 text-purple-50" viewBox="0 0 1440 80" preserveAspectRatio="none">
+              <path d="M0 30c80 40 160-40 240 0s160-40 240 0 160-40 240 0 160-40 240 0 160-40 240 0 160-40 240 0v50H0Z" fill="currentColor" />
+            </svg>
+          </div>
         </motion.section>
 
         {/* Section 3: Reviews */}
         <motion.section
-          className="min-h-screen snap-start flex items-center justify-center bg-white px-4"
+          className="relative min-h-screen snap-start flex items-center justify-center bg-gradient-to-b from-yellow-50 to-white px-4"
           initial="hidden"
           whileInView="visible"
           viewport={{ once: true }}
           variants={fadeIn}
         >
           <TestimonialCarousel />
+          <div className="absolute inset-x-0 bottom-0 overflow-hidden leading-none pointer-events-none">
+            <svg className="relative block w-full h-10 text-yellow-50" viewBox="0 0 1440 80" preserveAspectRatio="none">
+              <path d="M0 30c80 40 160-40 240 0s160-40 240 0 160-40 240 0 160-40 240 0 160-40 240 0 160-40 240 0v50H0Z" fill="currentColor" />
+            </svg>
+          </div>
         </motion.section>
 
         {/* Section 4: CTA */}
         <motion.section
-          className="bg-white px-4 py-10 space-y-4 min-h-screen snap-start flex flex-col justify-center"
+          className="relative bg-gradient-to-b from-white via-purple-50 to-white px-4 py-10 space-y-4 min-h-screen snap-start flex flex-col justify-center"
           initial="hidden"
           whileInView="visible"
           viewport={{ once: true }}
@@ -291,7 +343,8 @@ export default function RestaurantHome() {
               <Link href={`tel:${restaurant.contact_number}`}>
                 <motion.button
                   variants={fadeIn}
-                  className="w-full border border-gray-300 rounded-full py-3 flex items-center justify-center gap-2 hover:scale-105 hover:shadow-lg hover:shadow-gray-300/50 transition"
+                  whileHover={{ scale: 1.05 }}
+                  className="w-full border border-gray-300 rounded-full py-3 flex items-center justify-center gap-2 hover:brightness-110 shadow-md hover:shadow-lg hover:shadow-gray-300/50 transition"
                 >
                   <Phone className="w-5 h-5" />
                   Call Us
@@ -302,7 +355,8 @@ export default function RestaurantHome() {
               <Link href={mapsUrl} target="_blank">
                 <motion.button
                   variants={fadeIn}
-                  className="w-full border border-gray-300 rounded-full py-3 flex items-center justify-center gap-2 hover:scale-105 hover:shadow-lg hover:shadow-gray-300/50 transition"
+                  whileHover={{ scale: 1.05 }}
+                  className="w-full border border-gray-300 rounded-full py-3 flex items-center justify-center gap-2 hover:brightness-110 shadow-md hover:shadow-lg hover:shadow-gray-300/50 transition"
                 >
                   <MapPin className="w-5 h-5" />
                   Find Us
@@ -310,6 +364,11 @@ export default function RestaurantHome() {
               </Link>
             )}
           </motion.div>
+          <div className="absolute inset-x-0 bottom-0 overflow-hidden leading-none pointer-events-none">
+            <svg className="relative block w-full h-10 text-white" viewBox="0 0 1440 80" preserveAspectRatio="none">
+              <path d="M0 30c80 40 160-40 240 0s160-40 240 0 160-40 240 0 160-40 240 0 160-40 240 0 160-40 240 0v50H0Z" fill="currentColor" />
+            </svg>
+          </div>
         </motion.section>
       </div>
     </CustomerLayout>
