@@ -162,10 +162,10 @@ export default function RestaurantHome() {
 
   return (
     <CustomerLayout cartCount={itemCount}>
-      <div className="h-screen overflow-y-scroll scroll-snap-y scroll-snap-mandatory">
+      <div className="h-screen overflow-y-scroll snap-y snap-mandatory overflow-x-hidden">
         {/* Section 1: Fullscreen Hero */}
         <motion.section
-          className="relative min-h-screen scroll-snap-start flex items-end justify-start"
+          className="relative min-h-screen snap-start flex items-end justify-start bg-white px-4"
           initial="hidden"
           whileInView="visible"
           viewport={{ once: true }}
@@ -203,7 +203,7 @@ export default function RestaurantHome() {
 
         {/* Section 2: Live Status */}
         <motion.section
-          className="min-h-screen scroll-snap-start flex items-center justify-center bg-white text-sm font-medium"
+          className="min-h-screen snap-start flex items-center justify-center bg-white px-4 text-sm font-medium"
           initial="hidden"
           whileInView="visible"
           viewport={{ once: true }}
@@ -216,13 +216,13 @@ export default function RestaurantHome() {
         </motion.section>
 
         {/* Section 3: Reviews */}
-        <section className="min-h-screen scroll-snap-start flex items-center justify-center bg-white">
+        <section className="min-h-screen snap-start flex items-center justify-center bg-white px-4">
           <TestimonialCarousel />
         </section>
 
         {/* Section 4: CTA */}
         <motion.section
-          className="bg-white px-4 py-10 space-y-4 min-h-screen scroll-snap-start flex flex-col justify-center"
+          className="bg-white px-4 py-10 space-y-4 min-h-screen snap-start flex flex-col justify-center"
           initial="hidden"
           whileInView="visible"
           viewport={{ once: true }}
