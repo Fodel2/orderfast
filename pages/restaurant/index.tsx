@@ -11,6 +11,7 @@ import { Star, Phone, MapPin, Clock } from 'lucide-react';
 import { supabase } from '../../utils/supabaseClient';
 import { useCart } from '../../context/CartContext';
 import CustomerLayout from '../../components/CustomerLayout';
+import FrostedGlassBox from '../../components/FrostedGlassBox';
 
 const fadeIn = {
   hidden: { opacity: 0, y: 30 },
@@ -49,6 +50,47 @@ interface OpeningHours {
   open_time: string | null;
   close_time: string | null;
   is_closed: boolean;
+}
+
+/** Floating emojis with gentle up/down motion used as ambient background */
+function FloatingIconLayer() {
+  const icons = [
+    { e: '🍔', className: 'top-8 left-6 text-3xl', dur: 10 },
+    { e: '🍟', className: 'top-1/3 right-8 text-2xl', dur: 12 },
+    { e: '🥤', className: 'bottom-12 left-1/4 text-3xl', dur: 14 },
+  ];
+  return (
+    <div className="absolute inset-0 pointer-events-none z-0">
+      {icons.map((ic, i) => (
+        <motion.span
+          key={i}
+          className={`absolute ${ic.className}`}
+          animate={{ y: [0, -10, 0] }}
+          transition={{ duration: ic.dur, repeat: Infinity, ease: 'easeInOut' }}
+        >
+          {ic.e}
+        </motion.span>
+      ))}
+    </div>
+  );
+}
+
+/** Small wavy svg divider reused between snap sections */
+function SectionDivider({ className = 'text-white' }: { className?: string }) {
+  return (
+    <div className="absolute inset-x-0 bottom-0 overflow-hidden leading-none pointer-events-none">
+      <svg
+        className={`relative block w-full h-10 ${className}`}
+        viewBox="0 0 1440 80"
+        preserveAspectRatio="none"
+      >
+        <path
+          d="M0 30c80 40 160-40 240 0s160-40 240 0 160-40 240 0 160-40 240 0 160-40 240 0 160-40 240 0v50H0Z"
+          fill="currentColor"
+        />
+      </svg>
+    </div>
+  );
 }
 
 function TestimonialCarousel() {
@@ -220,77 +262,49 @@ export default function RestaurantHome() {
         >
           {restaurant.cover_image_url && (
             <motion.div style={{ y: bgY }} className="absolute inset-0 will-change-transform">
-              <Image
-                src={restaurant.cover_image_url}
-                alt="Hero"
-                fill
-                className="object-cover object-center"
-              />
+              <Image src={restaurant.cover_image_url} alt="Hero" fill className="object-cover object-center" />
             </motion.div>
           )}
-          <motion.div
-            className="absolute w-32 h-32 bg-purple-500/40 rounded-full blur-3xl top-10 left-1/4"
-            animate={{ y: [0, -20, 0] }}
-            transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut' }}
-          />
-          <motion.div
-            className="absolute w-24 h-24 bg-pink-400/40 rounded-full blur-2xl bottom-10 right-10"
-            animate={{ y: [0, 15, 0] }}
-            transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
-          />
+          <FloatingIconLayer />
           <div className="absolute inset-0 bg-gradient-to-b from-purple-900/70 via-black/60 to-transparent" />
           <motion.div
             initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className={`absolute top-4 left-4 ${statusClasses} backdrop-blur-md shadow-lg ${open ? 'animate-pulse' : ''}`}
+            animate={open ? { opacity: [1, 0.7, 1], y: 0 } : { opacity: 1, y: 0 }}
+            transition={{ duration: open ? 2 : 0.6, ease: 'easeOut', repeat: open ? Infinity : 0 }}
+            className={`absolute top-4 left-4 ${statusClasses} backdrop-blur-md shadow-lg`}
           >
             <Clock className="w-4 h-4" />
             <span>{statusText}</span>
           </motion.div>
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, ease: 'easeOut' }}
-            variants={stagger}
-            className="relative z-10 p-6 text-white bg-white/20 backdrop-blur-lg rounded-xl"
-          >
-            {restaurant.logo_url && (
-              <div className="relative w-16 h-16 mb-4">
-                <div className="absolute inset-0 rounded-full bg-purple-500/50 blur-xl" />
-                <Image
-                  src={restaurant.logo_url}
-                  alt="Logo"
-                  fill
-                  className="rounded-full border border-white bg-white p-1 relative"
-                />
+          <FrostedGlassBox className="relative z-10 text-center text-white max-w-sm">
+            <motion.div variants={stagger}>
+              {restaurant.logo_url && (
+                <motion.div variants={fadeIn} className="relative w-16 h-16 mb-4 mx-auto">
+                  <Image src={restaurant.logo_url} alt="Logo" fill className="rounded-full border border-white bg-white p-1" />
+                </motion.div>
+              )}
+              <motion.h1 className="text-3xl sm:text-4xl font-bold mb-2" variants={fadeIn}>
+                {restaurant.name}
+              </motion.h1>
+              {restaurant.website_description && (
+                <motion.p className="text-sm sm:text-base text-white/90" variants={fadeIn}>
+                  {restaurant.website_description}
+                </motion.p>
+              )}
+              <div className="mt-6">
+                <Link href={`/restaurant/menu?restaurant_id=${restaurantId}`}>
+                  <motion.button
+                    variants={fadeIn}
+                    whileHover={{ scale: 1.05, boxShadow: '0 0 8px rgba(255,255,255,0.6)' }}
+                    className="bg-white text-black rounded-full px-6 py-3 text-sm font-semibold shadow-md transition"
+                  >
+                    Order Now
+                  </motion.button>
+                </Link>
               </div>
-            )}
-            <motion.h1 className="text-3xl sm:text-4xl font-bold mb-2" variants={fadeIn}>
-              {restaurant.name}
-            </motion.h1>
-            {restaurant.website_description && (
-              <motion.p className="text-sm sm:text-base text-white/90" variants={fadeIn}>
-                {restaurant.website_description}
-              </motion.p>
-            )}
-            <div className="mt-6">
-              <Link href={`/restaurant/menu?restaurant_id=${restaurantId}`}>
-                <motion.button
-                  variants={fadeIn}
-                  whileHover={{ scale: 1.05 }}
-                  className="bg-white text-black rounded-full px-6 py-3 text-sm font-semibold shadow-md hover:brightness-110 hover:shadow-lg hover:shadow-white/50 transition"
-                >
-                  Order Now
-                </motion.button>
-              </Link>
-            </div>
-          </motion.div>
-          <div className="absolute inset-x-0 bottom-0 overflow-hidden leading-none pointer-events-none">
-            <svg className="relative block w-full h-10 text-white" viewBox="0 0 1440 80" preserveAspectRatio="none">
-              <path d="M0 30c80 40 160-40 240 0s160-40 240 0 160-40 240 0 160-40 240 0 160-40 240 0 160-40 240 0v50H0Z" fill="currentColor" />
-            </svg>
-          </div>
+            </motion.div>
+          </FrostedGlassBox>
+          <SectionDivider className="text-white" />
         </motion.section>
 
         {/* Section 2: Live Status */}
@@ -307,11 +321,7 @@ export default function RestaurantHome() {
             </motion.span>
             <motion.span variants={fadeIn}>{statusText}</motion.span>
           </motion.div>
-          <div className="absolute inset-x-0 bottom-0 overflow-hidden leading-none pointer-events-none">
-            <svg className="relative block w-full h-10 text-purple-50" viewBox="0 0 1440 80" preserveAspectRatio="none">
-              <path d="M0 30c80 40 160-40 240 0s160-40 240 0 160-40 240 0 160-40 240 0 160-40 240 0 160-40 240 0v50H0Z" fill="currentColor" />
-            </svg>
-          </div>
+          <SectionDivider className="text-purple-50" />
         </motion.section>
 
         {/* Section 3: Reviews */}
@@ -322,12 +332,9 @@ export default function RestaurantHome() {
           viewport={{ once: true }}
           variants={fadeIn}
         >
+          <FloatingIconLayer />
           <TestimonialCarousel />
-          <div className="absolute inset-x-0 bottom-0 overflow-hidden leading-none pointer-events-none">
-            <svg className="relative block w-full h-10 text-yellow-50" viewBox="0 0 1440 80" preserveAspectRatio="none">
-              <path d="M0 30c80 40 160-40 240 0s160-40 240 0 160-40 240 0 160-40 240 0 160-40 240 0 160-40 240 0v50H0Z" fill="currentColor" />
-            </svg>
-          </div>
+          <SectionDivider className="text-yellow-50" />
         </motion.section>
 
         {/* Section 4: CTA */}
@@ -343,8 +350,8 @@ export default function RestaurantHome() {
               <Link href={`tel:${restaurant.contact_number}`}>
                 <motion.button
                   variants={fadeIn}
-                  whileHover={{ scale: 1.05 }}
-                  className="w-full border border-gray-300 rounded-full py-3 flex items-center justify-center gap-2 hover:brightness-110 shadow-md hover:shadow-lg hover:shadow-gray-300/50 transition"
+                  whileHover={{ scale: 1.05, boxShadow: '0 0 8px rgba(0,0,0,0.3)' }}
+                  className="w-full border border-gray-300 rounded-full py-3 flex items-center justify-center gap-2 hover:brightness-110 shadow-md transition"
                 >
                   <Phone className="w-5 h-5" />
                   Call Us
@@ -355,8 +362,8 @@ export default function RestaurantHome() {
               <Link href={mapsUrl} target="_blank">
                 <motion.button
                   variants={fadeIn}
-                  whileHover={{ scale: 1.05 }}
-                  className="w-full border border-gray-300 rounded-full py-3 flex items-center justify-center gap-2 hover:brightness-110 shadow-md hover:shadow-lg hover:shadow-gray-300/50 transition"
+                  whileHover={{ scale: 1.05, boxShadow: '0 0 8px rgba(0,0,0,0.3)' }}
+                  className="w-full border border-gray-300 rounded-full py-3 flex items-center justify-center gap-2 hover:brightness-110 shadow-md transition"
                 >
                   <MapPin className="w-5 h-5" />
                   Find Us
@@ -364,11 +371,7 @@ export default function RestaurantHome() {
               </Link>
             )}
           </motion.div>
-          <div className="absolute inset-x-0 bottom-0 overflow-hidden leading-none pointer-events-none">
-            <svg className="relative block w-full h-10 text-white" viewBox="0 0 1440 80" preserveAspectRatio="none">
-              <path d="M0 30c80 40 160-40 240 0s160-40 240 0 160-40 240 0 160-40 240 0 160-40 240 0 160-40 240 0v50H0Z" fill="currentColor" />
-            </svg>
-          </div>
+          <SectionDivider className="text-white" />
         </motion.section>
       </div>
     </CustomerLayout>
