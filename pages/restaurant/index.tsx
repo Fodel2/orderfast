@@ -1,5 +1,6 @@
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Phone, MapPin, Clock, Star } from 'lucide-react';
@@ -34,6 +35,11 @@ export default function RestaurantHome() {
   const [loading, setLoading] = useState(true);
   const { cart } = useCart();
   const itemCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
+
+  const fadeIn = {
+    hidden: { opacity: 0, y: 30 },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.6 } },
+  };
 
   useEffect(() => {
     if (!router.isReady || !restaurantId) return;
@@ -114,7 +120,13 @@ export default function RestaurantHome() {
     <CustomerLayout cartCount={itemCount}>
       <div className="flex flex-col w-full">
         {/* Section 1: Fullscreen Hero */}
-        <section className="relative w-full h-screen flex items-end justify-start">
+        <motion.section
+          className="relative w-full h-screen flex items-end justify-start"
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true }}
+          variants={fadeIn}
+        >
           {restaurant.cover_image_url && (
             <Image src={restaurant.cover_image_url} alt="Hero" fill className="object-cover object-center" />
           )}
@@ -129,9 +141,9 @@ export default function RestaurantHome() {
                 className="rounded-full border border-white bg-white mb-4"
               />
             )}
-            <h1 className="text-3xl sm:text-4xl font-bold mb-2 animate-fade-in-down">{restaurant.name}</h1>
+            <h1 className="text-3xl sm:text-4xl font-bold mb-2">{restaurant.name}</h1>
             {restaurant.website_description && (
-              <p className="text-sm sm:text-base text-white/90 animate-fade-in-up">
+              <p className="text-sm sm:text-base text-white/90">
                 {restaurant.website_description}
               </p>
             )}
@@ -143,20 +155,32 @@ export default function RestaurantHome() {
               </Link>
             </div>
           </div>
-        </section>
+        </motion.section>
 
         {/* Section 2: Live Status */}
-        <section className="flex items-center justify-center py-3 bg-white text-sm font-medium">
+        <motion.section
+          className="flex items-center justify-center py-6 bg-white min-h-[80vh] text-sm font-medium"
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true }}
+          variants={fadeIn}
+        >
           <div className={statusClasses}>
             <Clock className="w-4 h-4" />
             {statusText}
           </div>
-        </section>
+        </motion.section>
 
         {/* Section 3: Reviews */}
-        <section className="bg-gray-50 px-4 py-6">
-          <h2 className="text-lg font-semibold mb-4">What customers say</h2>
-          <div className="space-y-3">
+        <motion.section
+          className="bg-gray-50 px-4 py-12 min-h-[80vh] flex flex-col justify-center"
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true }}
+          variants={fadeIn}
+        >
+          <h2 className="text-lg font-semibold mb-4 text-center">What customers say</h2>
+          <div className="space-y-4 max-w-md mx-auto">
             {reviews.map((review, i) => (
               <div key={i} className="bg-white rounded-xl p-4 shadow-sm">
                 <div className="flex gap-1 text-yellow-500 mb-1">
@@ -168,10 +192,16 @@ export default function RestaurantHome() {
               </div>
             ))}
           </div>
-        </section>
+        </motion.section>
 
         {/* Section 4: CTA */}
-        <section className="bg-white px-4 py-6 space-y-3">
+        <motion.section
+          className="bg-white px-4 py-10 space-y-4 min-h-[80vh] flex flex-col justify-center"
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true }}
+          variants={fadeIn}
+        >
           {restaurant.contact_number && (
             <Link href={`tel:${restaurant.contact_number}`}>
               <button className="w-full border border-gray-300 rounded-full py-3 flex items-center justify-center gap-2">
@@ -188,7 +218,7 @@ export default function RestaurantHome() {
               </button>
             </Link>
           )}
-        </section>
+        </motion.section>
       </div>
     </CustomerLayout>
   );
