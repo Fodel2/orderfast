@@ -39,13 +39,15 @@ function TestimonialCarousel() {
   ];
 
   return (
-    <div className="bg-white px-4 py-16 text-center">
-      <div className="max-w-2xl mx-auto mb-8">
-        <h2 className="text-2xl font-bold">Testimonials</h2>
-        <p className="text-gray-500 text-sm sm:text-base">
+    <motion.div variants={stagger} className="bg-white px-4 py-16 text-center">
+      <motion.div variants={fadeIn} className="max-w-2xl mx-auto mb-8">
+        <motion.h2 className="text-2xl font-bold mb-2" variants={fadeIn}>
+          Testimonials
+        </motion.h2>
+        <motion.p className="text-gray-500 text-sm sm:text-base" variants={fadeIn}>
           See what our customers are saying about their experience with us.
-        </p>
-      </div>
+        </motion.p>
+      </motion.div>
 
       <Swiper
         modules={[Autoplay, Pagination]}
@@ -70,7 +72,7 @@ function TestimonialCarousel() {
           </SwiperSlide>
         ))}
       </Swiper>
-    </div>
+    </motion.div>
   );
 }
 
@@ -86,7 +88,22 @@ export default function RestaurantHome() {
 
   const fadeIn = {
     hidden: { opacity: 0, y: 30 },
-    visible: { opacity: 1, y: 0, transition: { duration: 0.6 } },
+    visible: {
+      opacity: 1,
+      y: 0,
+      transition: {
+        duration: 0.6,
+        ease: 'easeOut',
+      },
+    },
+  };
+
+  const stagger = {
+    visible: {
+      transition: {
+        staggerChildren: 0.15,
+      },
+    },
   };
 
   useEffect(() => {
@@ -175,7 +192,7 @@ export default function RestaurantHome() {
             <Image src={restaurant.cover_image_url} alt="Hero" fill className="object-cover object-center" />
           )}
           <div className="absolute inset-0 bg-black/60" />
-          <div className="relative z-10 p-6 text-white">
+          <motion.div variants={stagger} className="relative z-10 p-6 text-white">
             {restaurant.logo_url && (
               <Image
                 src={restaurant.logo_url}
@@ -185,20 +202,25 @@ export default function RestaurantHome() {
                 className="rounded-full border border-white bg-white mb-4"
               />
             )}
-            <h1 className="text-3xl sm:text-4xl font-bold mb-2">{restaurant.name}</h1>
+            <motion.h1 className="text-3xl sm:text-4xl font-bold mb-2" variants={fadeIn}>
+              {restaurant.name}
+            </motion.h1>
             {restaurant.website_description && (
-              <p className="text-sm sm:text-base text-white/90">
+              <motion.p className="text-sm sm:text-base text-white/90" variants={fadeIn}>
                 {restaurant.website_description}
-              </p>
+              </motion.p>
             )}
             <div className="mt-6">
               <Link href={`/restaurant/menu?restaurant_id=${restaurantId}`}>
-                <button className="bg-white text-black rounded-full px-6 py-3 text-sm font-semibold shadow hover:scale-105 transition">
+                <motion.button
+                  variants={fadeIn}
+                  className="bg-white text-black rounded-full px-6 py-3 text-sm font-semibold shadow hover:scale-105 transition"
+                >
                   Order Now
-                </button>
+                </motion.button>
               </Link>
             </div>
-          </div>
+          </motion.div>
         </motion.section>
 
         {/* Section 2: Live Status */}
@@ -209,16 +231,24 @@ export default function RestaurantHome() {
           viewport={{ once: true }}
           variants={fadeIn}
         >
-          <div className={statusClasses}>
-            <Clock className="w-4 h-4" />
-            {statusText}
-          </div>
+          <motion.div variants={stagger} className={statusClasses}>
+            <motion.span variants={fadeIn} className="flex items-center">
+              <Clock className="w-4 h-4" />
+            </motion.span>
+            <motion.span variants={fadeIn}>{statusText}</motion.span>
+          </motion.div>
         </motion.section>
 
         {/* Section 3: Reviews */}
-        <section className="min-h-screen snap-start flex items-center justify-center bg-white px-4">
+        <motion.section
+          className="min-h-screen snap-start flex items-center justify-center bg-white px-4"
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true }}
+          variants={fadeIn}
+        >
           <TestimonialCarousel />
-        </section>
+        </motion.section>
 
         {/* Section 4: CTA */}
         <motion.section
@@ -228,22 +258,30 @@ export default function RestaurantHome() {
           viewport={{ once: true }}
           variants={fadeIn}
         >
-          {restaurant.contact_number && (
-            <Link href={`tel:${restaurant.contact_number}`}>
-              <button className="w-full border border-gray-300 rounded-full py-3 flex items-center justify-center gap-2">
-                <Phone className="w-5 h-5" />
-                Call Us
-              </button>
-            </Link>
-          )}
-          {restaurant.address && (
-            <Link href={mapsUrl} target="_blank">
-              <button className="w-full border border-gray-300 rounded-full py-3 flex items-center justify-center gap-2">
-                <MapPin className="w-5 h-5" />
-                Find Us
-              </button>
-            </Link>
-          )}
+          <motion.div variants={stagger} className="space-y-4">
+            {restaurant.contact_number && (
+              <Link href={`tel:${restaurant.contact_number}`}>
+                <motion.button
+                  variants={fadeIn}
+                  className="w-full border border-gray-300 rounded-full py-3 flex items-center justify-center gap-2"
+                >
+                  <Phone className="w-5 h-5" />
+                  Call Us
+                </motion.button>
+              </Link>
+            )}
+            {restaurant.address && (
+              <Link href={mapsUrl} target="_blank">
+                <motion.button
+                  variants={fadeIn}
+                  className="w-full border border-gray-300 rounded-full py-3 flex items-center justify-center gap-2"
+                >
+                  <MapPin className="w-5 h-5" />
+                  Find Us
+                </motion.button>
+              </Link>
+            )}
+          </motion.div>
         </motion.section>
       </div>
     </CustomerLayout>
