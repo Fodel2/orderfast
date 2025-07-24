@@ -1,20 +1,13 @@
 import { useRouter } from "next/router";
 import { useEffect, useState, useRef } from "react";
 import { motion } from "framer-motion";
-import { Search, ChevronUp, Sandwich, Pizza, CupSoda, Dessert, HelpCircle } from "lucide-react";
+import { Search, ChevronUp } from "lucide-react";
+import CategoryIcon from "../../components/CategoryIcon";
 import { supabase } from "../../utils/supabaseClient";
 import MenuItemCard from "../../components/MenuItemCard";
 import { useCart } from "../../context/CartContext";
 import CustomerLayout from "../../components/CustomerLayout";
 
-function getCategoryIcon(name: string) {
-  const lower = name.toLowerCase();
-  if (lower.includes("burger")) return Sandwich;
-  if (lower.includes("pizza")) return Pizza;
-  if (lower.includes("drink") || lower.includes("beverage")) return CupSoda;
-  if (lower.includes("dessert") || lower.includes("sweet")) return Dessert;
-  return HelpCircle;
-}
 
 interface Restaurant {
   id: string | number;
@@ -241,10 +234,7 @@ export default function RestaurantMenuPage() {
                   className="w-12 h-12 rounded-full object-cover"
                 />
               ) : (
-                (() => {
-                  const Icon = getCategoryIcon(c.name);
-                  return <Icon className="w-6 h-6" />;
-                })()
+                <CategoryIcon category={c.name} />
               )}
               <span className="text-xs mt-1 whitespace-nowrap">{c.name}</span>
             </button>

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { ShoppingCart, Leaf, Carrot, Beer } from 'lucide-react';
+import { ShoppingCart } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { getAddonsForItem } from '../utils/getAddonsForItem';
 import type { AddonGroup } from '../utils/types';
@@ -36,6 +36,8 @@ export default function MenuItemCard({
   >({});
   const [recentlyAdded, setRecentlyAdded] = useState(false);
   const { addToCart } = useCart();
+
+  const descriptionTooLong = (item.description?.length || 0) > 150;
 
   const loadAddons = async () => {
     setLoading(true);
@@ -113,39 +115,39 @@ export default function MenuItemCard({
           <img
             src={item.image_url}
             alt={item.name}
-            className="w-20 h-20 object-cover rounded-md flex-shrink-0"
+            onClick={handleClick}
+            className="w-20 h-20 object-cover rounded-md flex-shrink-0 cursor-pointer"
           />
         )}
         <div className="flex flex-col flex-1 text-left">
-          <div className="flex items-center gap-2">
-            <h3 className="font-bold flex-1">{item.name}</h3>
-            <span className="bg-emerald-100 text-emerald-800 text-xs px-2 py-1 rounded-md">
-              ${ (item.price / 100).toFixed(2) }
-            </span>
+          <div className="flex items-start justify-between gap-2">
+            <h3 onClick={handleClick} className="font-bold flex-1 cursor-pointer">
+              {item.name}
+            </h3>
+            <div className="flex items-center gap-1 whitespace-nowrap">
+              {item.is_vegan && (
+                <span title="Vegan" className="text-sm">🌱</span>
+              )}
+              {item.is_vegetarian && (
+                <span title="Vegetarian" className="text-sm">🧀</span>
+              )}
+              {item.is_18_plus && (
+                <span title="18+" className="text-sm">🔞</span>
+              )}
+              <span className="font-semibold text-sm">${(item.price / 100).toFixed(2)}</span>
+            </div>
           </div>
           {item.description && (
-            <p className="text-sm text-gray-500 line-clamp-2 mt-1">{item.description}</p>
+            <p className="text-sm text-gray-600 line-clamp-2 mt-1">
+              {item.description}
+              {descriptionTooLong && (
+                <button onClick={handleClick} className="text-teal-600 text-xs ml-1">More</button>
+              )}
+            </p>
           )}
-          <div className="text-xs flex flex-wrap gap-2 mt-2">
-            {item.is_vegan && (
-              <span className="px-2 py-1 rounded-full bg-green-100 text-green-800 inline-flex items-center gap-1">
-                <Leaf className="w-3 h-3" /> Vegan
-              </span>
-            )}
-            {item.is_vegetarian && (
-              <span className="px-2 py-1 rounded-full bg-yellow-100 text-yellow-800 inline-flex items-center gap-1">
-                <Carrot className="w-3 h-3" /> Vegetarian
-              </span>
-            )}
-            {item.is_18_plus && (
-              <span className="px-2 py-1 rounded-full bg-red-100 text-red-800 inline-flex items-center gap-1">
-                <Beer className="w-3 h-3" /> 18+
-              </span>
-            )}
-            {item.stock_status === 'out' && (
-              <span className="px-2 py-1 bg-gray-200 rounded">Out of stock</span>
-            )}
-          </div>
+          {item.stock_status === 'out' && (
+            <span className="text-xs mt-1 text-gray-500">Out of stock</span>
+          )}
           <div className="mt-auto pt-3">
             <motion.button
               type="button"
