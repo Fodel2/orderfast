@@ -101,24 +101,16 @@ export default function MenuItemCard({
       <motion.div
         whileInView={{ opacity: [0, 1], y: [20, 0] }}
         viewport={{ once: true }}
-        className="bg-white rounded-xl shadow-md overflow-hidden flex flex-col sm:flex-row hover:shadow-lg transition-all"
+        className="bg-white rounded-xl shadow hover:shadow-md flex p-4 gap-4 min-h-[7rem]"
       >
-        <div
-          className="relative w-full h-40 sm:w-28 sm:h-28 bg-gray-100 flex-shrink-0 overflow-hidden flex items-center justify-center"
-        >
-          {item.image_url ? (
-            <img
-              src={item.image_url}
-              alt={item.name}
-              className="object-cover w-full h-full rounded-t-xl sm:rounded-l-xl sm:rounded-tr-none"
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center bg-gray-200 text-gray-500 text-xs">
-              Image Coming Soon
-            </div>
-          )}
-        </div>
-        <div className="p-4 flex flex-col flex-1 text-left">
+        {item.image_url && (
+          <img
+            src={item.image_url}
+            alt={item.name}
+            className="w-24 h-24 object-cover rounded-md flex-shrink-0"
+          />
+        )}
+        <div className="flex flex-col flex-1 text-left">
           <h3 className="font-semibold text-lg">{item.name}</h3>
           <span className="font-semibold">${(item.price / 100).toFixed(2)}</span>
           {item.description && (
@@ -135,30 +127,11 @@ export default function MenuItemCard({
               <span className="px-2 py-1 bg-gray-200 rounded">Out of stock</span>
             )}
           </div>
-          <div className="mt-auto flex items-center justify-between pt-3 gap-4">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                aria-label="Decrease quantity"
-                onClick={decrement}
-                className="w-8 h-8 flex items-center justify-center border rounded-full"
-              >
-                -
-              </button>
-              <span className="w-6 text-center">{qty}</span>
-              <button
-                type="button"
-                aria-label="Increase quantity"
-                onClick={increment}
-                className="w-8 h-8 flex items-center justify-center border rounded-full"
-              >
-                +
-              </button>
-            </div>
+          <div className="mt-auto pt-3">
             <button
               type="button"
               onClick={handleClick}
-              className="bg-teal-600 text-white rounded-full py-2 px-4 hover:bg-teal-700 whitespace-nowrap"
+              className="bg-teal-600 text-white rounded-full py-2 px-4 hover:bg-teal-700 whitespace-nowrap w-full sm:w-auto"
             >
               Add to Cart
             </button>
