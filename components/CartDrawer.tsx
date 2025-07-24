@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { useCart } from '../context/CartContext';
 import { XMarkIcon, ShoppingCartIcon } from '@heroicons/react/24/outline';
@@ -12,13 +12,24 @@ export default function CartDrawer() {
   const toggle = () => setOpen((o) => !o);
 
   const itemCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
+  const prevCount = useRef(itemCount);
+  const [bounce, setBounce] = useState(false);
+
+  useEffect(() => {
+    if (itemCount > prevCount.current) {
+      setBounce(true);
+      const t = setTimeout(() => setBounce(false), 300);
+      return () => clearTimeout(t);
+    }
+    prevCount.current = itemCount;
+  }, [itemCount]);
 
   return (
     <>
       <button
         type="button"
         onClick={toggle}
-        className="fixed bottom-4 right-4 bg-teal-600 text-white rounded-full px-4 py-2 flex items-center shadow-lg z-50"
+        className={`fixed bottom-4 right-4 bg-teal-600 text-white rounded-full px-4 py-2 flex items-center shadow-lg z-50 transition-transform ${bounce ? 'animate-bounce' : ''}`}
         aria-label="Toggle cart"
       >
         <ShoppingCartIcon className="w-5 h-5 mr-2" />

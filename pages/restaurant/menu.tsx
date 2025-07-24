@@ -1,5 +1,6 @@
 import { useRouter } from "next/router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import { motion } from "framer-motion";
 import { supabase } from "../../utils/supabaseClient";
 import MenuItemCard from "../../components/MenuItemCard";
 import { useCart } from "../../context/CartContext";
@@ -59,6 +60,23 @@ export default function RestaurantMenuPage() {
   const [loading, setLoading] = useState(true);
   const { cart } = useCart();
   const itemCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
+
+  const sectionRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const navRef = useRef<HTMLDivElement | null>(null);
+  const btnRefs = useRef<Record<number, HTMLButtonElement | null>>({});
+
+  const scrollToCategory = (id: number) => {
+    const section = sectionRefs.current[id];
+    section?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const btn = btnRefs.current[id];
+    const nav = navRef.current;
+    if (btn && nav) {
+      nav.scrollTo({
+        left: btn.offsetLeft - nav.clientWidth / 2 + btn.clientWidth / 2,
+        behavior: 'smooth',
+      });
+    }
+  };
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -177,27 +195,30 @@ export default function RestaurantMenuPage() {
         )}
       </div>
 
-      <div className="overflow-x-auto -mx-4 px-4 pb-2">
+      <div
+        ref={navRef}
+        className="overflow-x-auto -mx-4 px-4 pb-2 scrollbar-hide snap-x snap-mandatory"
+      >
         <div className="flex space-x-3 w-max">
           {categories.map((c) => (
-            <a
+            <button
               key={c.id}
-              href={`#cat-${c.id}`}
-              className="flex flex-col items-center flex-shrink-0 px-3 py-2 bg-gray-100 rounded-full hover:bg-gray-200"
+              ref={(el) => (btnRefs.current[c.id] = el)}
+              onClick={() => scrollToCategory(c.id)}
+              className="flex flex-col items-center justify-center flex-shrink-0 w-20 h-20 bg-white rounded-full shadow hover:bg-gray-50 transition snap-start"
+              aria-label={`View ${c.name}`}
             >
               {c.image_url ? (
                 <img
                   src={c.image_url}
                   alt={c.name}
-                  className="w-14 h-14 rounded-full object-cover"
+                  className="w-12 h-12 rounded-full object-cover"
                 />
               ) : (
-                <div className="w-14 h-14 flex items-center justify-center text-3xl">
-                  {getCategoryIcon(c.name)}
-                </div>
+                <span className="text-3xl">{getCategoryIcon(c.name)}</span>
               )}
-              <span className="text-sm mt-1 whitespace-nowrap">{c.name}</span>
-            </a>
+              <span className="text-xs mt-1 whitespace-nowrap">{c.name}</span>
+            </button>
           ))}
         </div>
       </div>
@@ -217,7 +238,12 @@ export default function RestaurantMenuPage() {
             );
             if (catItems.length === 0) return null;
             return (
-              <section id={`cat-${cat.id}`} key={cat.id} className="space-y-4">
+              <section
+                id={`cat-${cat.id}`}
+                key={cat.id}
+                ref={(el) => (sectionRefs.current[cat.id] = el)}
+                className="space-y-4 scroll-mt-24"
+              >
                 <h2 className="text-xl font-semibold text-left">{cat.name}</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {catItems.map((item) => (

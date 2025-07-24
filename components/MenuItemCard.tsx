@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { motion } from 'framer-motion';
 import { useCart } from '../context/CartContext';
 import { getAddonsForItem } from '../utils/getAddonsForItem';
 import type { AddonGroup } from '../utils/types';
@@ -97,19 +98,24 @@ export default function MenuItemCard({
 
   return (
     <>
-      <div className="flex gap-4 p-4 border rounded-lg shadow-sm bg-white">
-        <img
-          src={item.image_url || 'https://placehold.co/120x120?text=No+Image'}
-          alt={item.name}
-          className="w-24 h-24 object-cover rounded"
-        />
-        <div className="flex-1 space-y-1 text-left">
-          <div className="flex justify-between items-start">
-            <h3 className="font-semibold">{item.name}</h3>
-            <span className="font-semibold">${(item.price / 100).toFixed(2)}</span>
-          </div>
-          {item.description && <p className="text-sm text-gray-600">{item.description}</p>}
-          <div className="text-xs flex flex-wrap gap-2 mt-1">
+      <motion.div
+        whileInView={{ opacity: [0, 1], y: [20, 0] }}
+        viewport={{ once: true }}
+        className="bg-white rounded-xl shadow-md overflow-hidden flex flex-col hover:shadow-lg transition"
+      >
+        <div className="relative w-full h-40 bg-gray-100 overflow-hidden">
+          <img
+            src={item.image_url || 'https://placehold.co/400x240?text=No+Image'}
+            alt={item.name}
+            className="object-cover w-full h-full"
+          />
+        </div>
+        <div className="p-4 flex flex-col flex-1 text-left">
+          <h3 className="font-semibold text-lg">{item.name}</h3>
+          {item.description && (
+            <p className="text-sm text-gray-600 mt-1">{item.description}</p>
+          )}
+          <div className="text-xs flex flex-wrap gap-2 mt-2">
             {item.is_vegetarian && (
               <span className="px-2 py-1 bg-green-100 rounded">🌱 Vegetarian</span>
             )}
@@ -120,17 +126,37 @@ export default function MenuItemCard({
               <span className="px-2 py-1 bg-gray-200 rounded">Out of stock</span>
             )}
           </div>
-          <div className="mt-3 text-right">
-            <button
-              type="button"
-              onClick={handleClick}
-              className="px-3 py-1 bg-teal-600 text-white rounded hover:bg-teal-700"
-            >
-              Add to Cart
-            </button>
+          <div className="mt-auto flex items-center justify-between pt-3">
+            <span className="font-semibold text-lg">${(item.price / 100).toFixed(2)}</span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                aria-label="Decrease quantity"
+                onClick={decrement}
+                className="w-8 h-8 flex items-center justify-center border rounded-full"
+              >
+                -
+              </button>
+              <span className="w-6 text-center">{qty}</span>
+              <button
+                type="button"
+                aria-label="Increase quantity"
+                onClick={increment}
+                className="w-8 h-8 flex items-center justify-center border rounded-full"
+              >
+                +
+              </button>
+            </div>
           </div>
+          <button
+            type="button"
+            onClick={handleClick}
+            className="mt-3 w-full bg-teal-600 text-white rounded-full py-2 hover:bg-teal-700"
+          >
+            Add to Cart
+          </button>
         </div>
-      </div>
+      </motion.div>
 
       {showModal && (
         <div
