@@ -160,6 +160,229 @@ function TestimonialCarousel() {
   );
 }
 
+function MenuPreviewSection() {
+  return (
+    <section className="relative min-h-screen snap-start flex items-center justify-center bg-gradient-to-b from-yellow-50 to-white px-4">
+      <FloatingIconLayer />
+      <motion.div
+        className="relative z-10 max-w-md text-center"
+        variants={fadeIn}
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true }}
+      >
+        <FrostedGlassBox>
+          <motion.h2 variants={fadeIn} className="text-2xl font-bold mb-2">
+            Menu Preview
+          </motion.h2>
+          <motion.p variants={fadeIn} className="text-gray-700">
+            A sneak peek at our crowd favourites.
+          </motion.p>
+        </FrostedGlassBox>
+      </motion.div>
+      <SectionDivider className="text-yellow-50" />
+    </section>
+  );
+}
+
+function GallerySection() {
+  return (
+    <section className="relative min-h-screen snap-start flex items-center justify-center bg-gradient-to-b from-gray-100 to-white px-4">
+      <motion.div
+        className="relative z-10 max-w-md text-center"
+        variants={fadeIn}
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true }}
+      >
+        <FrostedGlassBox>
+          <motion.h2 variants={fadeIn} className="text-2xl font-bold mb-2">
+            Gallery
+          </motion.h2>
+          <motion.p variants={fadeIn} className="text-gray-700">
+            Photos from our kitchen and events.
+          </motion.p>
+        </FrostedGlassBox>
+      </motion.div>
+      <SectionDivider className="text-gray-100" />
+    </section>
+  );
+}
+
+function MeetTheTeamSection() {
+  return (
+    <section className="relative min-h-screen snap-start flex items-center justify-center bg-gradient-to-b from-purple-50 to-white px-4">
+      <motion.div
+        className="relative z-10 max-w-md text-center"
+        variants={fadeIn}
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true }}
+      >
+        <FrostedGlassBox>
+          <motion.h2 variants={fadeIn} className="text-2xl font-bold mb-2">
+            Meet The Team
+          </motion.h2>
+          <motion.p variants={fadeIn} className="text-gray-700">
+            Get to know the faces behind the food.
+          </motion.p>
+        </FrostedGlassBox>
+      </motion.div>
+      <SectionDivider className="text-purple-50" />
+    </section>
+  );
+}
+
+function LocationSection() {
+  return (
+    <section className="relative min-h-screen snap-start flex items-center justify-center bg-gradient-to-b from-green-50 to-white px-4">
+      <motion.div
+        className="relative z-10 max-w-md text-center"
+        variants={fadeIn}
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true }}
+      >
+        <FrostedGlassBox>
+          <motion.h2 variants={fadeIn} className="text-2xl font-bold mb-2">
+            Our Location
+          </motion.h2>
+          <motion.p variants={fadeIn} className="text-gray-700">
+            Find us in the heart of the city.
+          </motion.p>
+        </FrostedGlassBox>
+      </motion.div>
+      <SectionDivider className="text-green-50" />
+    </section>
+  );
+}
+
+function DeliveryInfoSection() {
+  return (
+    <section className="relative min-h-screen snap-start flex items-center justify-center bg-gradient-to-b from-blue-50 to-white px-4">
+      <motion.div
+        className="relative z-10 max-w-md text-center"
+        variants={fadeIn}
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true }}
+      >
+        <FrostedGlassBox>
+          <motion.h2 variants={fadeIn} className="text-2xl font-bold mb-2">
+            Delivery Info
+          </motion.h2>
+          <motion.p variants={fadeIn} className="text-gray-700">
+            Learn about our delivery options and areas.
+          </motion.p>
+        </FrostedGlassBox>
+      </motion.div>
+      <SectionDivider className="text-blue-50" />
+    </section>
+  );
+}
+
+function AppDownloadSection() {
+  return (
+    <section className="relative min-h-screen snap-start flex items-center justify-center bg-gradient-to-b from-pink-50 to-white px-4">
+      <motion.div
+        className="relative z-10 max-w-md text-center"
+        variants={fadeIn}
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true }}
+      >
+        <FrostedGlassBox>
+          <motion.h2 variants={fadeIn} className="text-2xl font-bold mb-2">
+            Get Our App
+          </motion.h2>
+          <motion.p variants={fadeIn} className="text-gray-700">
+            Download for the best ordering experience.
+          </motion.p>
+        </FrostedGlassBox>
+      </motion.div>
+      <SectionDivider className="text-pink-50" />
+    </section>
+  );
+}
+
+function ReservationsSection() {
+  return (
+    <section className="relative min-h-screen snap-start flex items-center justify-center bg-gradient-to-b from-indigo-50 to-white px-4">
+      <motion.div
+        className="relative z-10 max-w-md text-center"
+        variants={fadeIn}
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true }}
+      >
+        <FrostedGlassBox>
+          <motion.h2 variants={fadeIn} className="text-2xl font-bold mb-2">
+            Reservations
+          </motion.h2>
+          <motion.p variants={fadeIn} className="text-gray-700">
+            Book your table in advance.
+          </motion.p>
+        </FrostedGlassBox>
+      </motion.div>
+      <SectionDivider className="text-indigo-50" />
+    </section>
+  );
+}
+
+function AnnouncementsSection() {
+  return (
+    <section className="relative min-h-screen snap-start flex items-center justify-center bg-gradient-to-b from-orange-50 to-white px-4">
+      <motion.div
+        className="relative z-10 max-w-md text-center"
+        variants={fadeIn}
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true }}
+      >
+        <FrostedGlassBox>
+          <motion.h2 variants={fadeIn} className="text-2xl font-bold mb-2">
+            Announcements
+          </motion.h2>
+          <motion.p variants={fadeIn} className="text-gray-700">
+            Latest news and upcoming events.
+          </motion.p>
+        </FrostedGlassBox>
+      </motion.div>
+      <SectionDivider className="text-orange-50" />
+    </section>
+  );
+}
+
+function OrderNowSection() {
+  return (
+    <section className="relative min-h-screen snap-start flex items-center justify-center bg-gradient-to-b from-red-50 to-white px-4">
+      <motion.div
+        className="relative z-10 max-w-md text-center"
+        variants={fadeIn}
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true }}
+      >
+        <FrostedGlassBox>
+          <motion.h2 variants={fadeIn} className="text-2xl font-bold mb-4">
+            Ready to Order?
+          </motion.h2>
+          <Link href="#">
+            <motion.button
+              variants={fadeIn}
+              whileHover={{ scale: 1.05 }}
+              className="bg-red-500 text-white rounded-full px-6 py-3 shadow-md"
+            >
+              Order Now
+            </motion.button>
+          </Link>
+        </FrostedGlassBox>
+      </motion.div>
+      <SectionDivider className="text-red-50" />
+    </section>
+  );
+}
+
 export default function RestaurantHome() {
   const router = useRouter();
   const { restaurant_id } = router.query;
@@ -176,6 +399,16 @@ export default function RestaurantHome() {
     offset: ['start start', 'end start'],
   });
   const bgY = useTransform(scrollYProgress, [0, 1], [0, -120]);
+
+  const showMenuPreview = true;
+  const showGallery = true;
+  const showMeetTheTeam = true;
+  const showLocation = true;
+  const showDeliveryInfo = true;
+  const showAppDownload = true;
+  const showReservations = true;
+  const showAnnouncements = true;
+  const showOrderNow = true;
 
   useEffect(() => {
     if (!router.isReady || !restaurantId) return;
@@ -336,6 +569,16 @@ export default function RestaurantHome() {
           <TestimonialCarousel />
           <SectionDivider className="text-yellow-50" />
         </motion.section>
+
+        {showMenuPreview && <MenuPreviewSection />}
+        {showGallery && <GallerySection />}
+        {showMeetTheTeam && <MeetTheTeamSection />}
+        {showLocation && <LocationSection />}
+        {showDeliveryInfo && <DeliveryInfoSection />}
+        {showAppDownload && <AppDownloadSection />}
+        {showReservations && <ReservationsSection />}
+        {showAnnouncements && <AnnouncementsSection />}
+        {showOrderNow && <OrderNowSection />}
 
         {/* Section 4: CTA */}
         <motion.section
