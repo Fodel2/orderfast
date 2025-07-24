@@ -1,6 +1,6 @@
 import { useRouter } from 'next/router';
-import { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
+import { useEffect, useState, useRef } from 'react';
+import { motion, useScroll, useTransform } from 'framer-motion';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Swiper, SwiperSlide } from 'swiper/react';
@@ -81,15 +81,24 @@ function TestimonialCarousel() {
       >
         {testimonials.map((t, i) => (
           <SwiperSlide key={i}>
-            <div className="bg-gray-50 rounded-xl shadow-sm p-6 mx-2 h-full flex flex-col justify-between">
+            <motion.div
+              variants={fadeIn}
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true }}
+              className="bg-gray-50 rounded-xl shadow-sm p-6 mx-2 h-full flex flex-col justify-between"
+            >
               <div className="flex justify-center gap-1 text-yellow-500 mb-3">
                 {Array.from({ length: t.rating }).map((_, j) => (
-                  <Star key={j} className="w-4 h-4 fill-yellow-500 stroke-yellow-500" />
+                  <Star
+                    key={j}
+                    className="w-4 h-4 fill-yellow-500 stroke-yellow-500 transition hover:brightness-110"
+                  />
                 ))}
               </div>
               <p className="text-sm text-gray-700 italic mb-2">"{t.text}"</p>
               <p className="text-xs text-gray-500 text-right">— {t.name}</p>
-            </div>
+            </motion.div>
           </SwiperSlide>
         ))}
       </Swiper>
@@ -106,6 +115,10 @@ export default function RestaurantHome() {
   const [loading, setLoading] = useState(true);
   const { cart } = useCart();
   const itemCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
+
+  const heroRef = useRef<HTMLDivElement>(null);
+  const { scrollY } = useScroll();
+  const bgY = useTransform(scrollY, [0, 300], [0, -80]);
 
   useEffect(() => {
     if (!router.isReady || !restaurantId) return;
@@ -183,6 +196,7 @@ export default function RestaurantHome() {
       <div className="h-screen overflow-y-scroll snap-y snap-mandatory overflow-x-hidden">
         {/* Section 1: Fullscreen Hero */}
         <motion.section
+          ref={heroRef}
           className="relative min-h-screen snap-start flex items-end justify-start bg-white px-4"
           initial="hidden"
           whileInView="visible"
@@ -190,10 +204,23 @@ export default function RestaurantHome() {
           variants={fadeIn}
         >
           {restaurant.cover_image_url && (
-            <Image src={restaurant.cover_image_url} alt="Hero" fill className="object-cover object-center" />
+            <motion.div style={{ y: bgY }} className="absolute inset-0 will-change-transform">
+              <Image
+                src={restaurant.cover_image_url}
+                alt="Hero"
+                fill
+                className="object-cover object-center"
+              />
+            </motion.div>
           )}
-          <div className="absolute inset-0 bg-black/60" />
-          <motion.div variants={stagger} className="relative z-10 p-6 text-white">
+          <div className="absolute inset-0 bg-gradient-to-b from-black to-transparent" />
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, ease: 'easeOut' }}
+            variants={stagger}
+            className="relative z-10 p-6 text-white bg-white/10 backdrop-blur-md rounded-xl"
+          >
             {restaurant.logo_url && (
               <Image
                 src={restaurant.logo_url}
@@ -215,7 +242,7 @@ export default function RestaurantHome() {
               <Link href={`/restaurant/menu?restaurant_id=${restaurantId}`}>
                 <motion.button
                   variants={fadeIn}
-                  className="bg-white text-black rounded-full px-6 py-3 text-sm font-semibold shadow hover:scale-105 transition"
+                  className="bg-white text-black rounded-full px-6 py-3 text-sm font-semibold shadow-md hover:shadow-lg hover:shadow-white/50 hover:scale-105 transition"
                 >
                   Order Now
                 </motion.button>
@@ -264,7 +291,7 @@ export default function RestaurantHome() {
               <Link href={`tel:${restaurant.contact_number}`}>
                 <motion.button
                   variants={fadeIn}
-                  className="w-full border border-gray-300 rounded-full py-3 flex items-center justify-center gap-2"
+                  className="w-full border border-gray-300 rounded-full py-3 flex items-center justify-center gap-2 hover:scale-105 hover:shadow-lg hover:shadow-gray-300/50 transition"
                 >
                   <Phone className="w-5 h-5" />
                   Call Us
@@ -275,7 +302,7 @@ export default function RestaurantHome() {
               <Link href={mapsUrl} target="_blank">
                 <motion.button
                   variants={fadeIn}
-                  className="w-full border border-gray-300 rounded-full py-3 flex items-center justify-center gap-2"
+                  className="w-full border border-gray-300 rounded-full py-3 flex items-center justify-center gap-2 hover:scale-105 hover:shadow-lg hover:shadow-gray-300/50 transition"
                 >
                   <MapPin className="w-5 h-5" />
                   Find Us
