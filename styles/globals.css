@@ -62,3 +62,12 @@ body {
 .glow-green {
   animation: glow 2s infinite;
 }
+
+/* Hide scrollbar for horizontal carousels */
+.scrollbar-hide {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
