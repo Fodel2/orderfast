@@ -1,4 +1,3 @@
-import TestimonialsSection from '../components/TestimonialsSection';
 
 export default function Home() {
   return (
@@ -21,7 +20,6 @@ export default function Home() {
           </a>
         </div>
       </div>
-      <TestimonialsSection />
     </main>
   );
 }

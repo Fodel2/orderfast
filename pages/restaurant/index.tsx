@@ -3,8 +3,11 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Phone, MapPin, Clock } from 'lucide-react';
-import TestimonialsSection from '../../components/TestimonialsSection';
+import { Swiper, SwiperSlide } from 'swiper/react';
+import { Autoplay, Pagination } from 'swiper/modules';
+import 'swiper/css';
+import 'swiper/css/pagination';
+import { Star, Phone, MapPin, Clock } from 'lucide-react';
 import { supabase } from '../../utils/supabaseClient';
 import { useCart } from '../../context/CartContext';
 import CustomerLayout from '../../components/CustomerLayout';
@@ -25,6 +28,55 @@ interface OpeningHours {
   open_time: string | null;
   close_time: string | null;
   is_closed: boolean;
+}
+
+function TestimonialCarousel() {
+  const testimonials = [
+    { rating: 5, text: "🔥 The best burger I've had in years!", name: 'Jasmine' },
+    { rating: 4, text: 'Quick delivery and amazing fries.', name: 'Luke' },
+    { rating: 5, text: 'So good I came back the next day.', name: 'Aminah' },
+    { rating: 4, text: 'Perfect hangover cure!', name: 'Ben' },
+  ];
+
+  return (
+    <section className="bg-white px-4 py-16 text-center">
+      <div className="max-w-2xl mx-auto mb-8">
+        <h2 className="text-2xl font-bold">Testimonials</h2>
+        <p className="text-gray-500 text-sm sm:text-base">
+          See what our customers are saying about their experience with us.
+        </p>
+      </div>
+
+      <Swiper
+        modules={[Autoplay, Pagination]}
+        spaceBetween={16}
+        slidesPerView={1}
+        loop={true}
+        autoplay={{ delay: 4000 }}
+        pagination={{ clickable: true }}
+        breakpoints={{
+          640: { slidesPerView: 1.2 },
+          768: { slidesPerView: 2 },
+          1024: { slidesPerView: 3 },
+        }}
+        className="max-w-6xl mx-auto"
+      >
+        {testimonials.map((t, i) => (
+          <SwiperSlide key={i}>
+            <div className="bg-gray-50 rounded-xl shadow-sm p-6 mx-2 h-full flex flex-col justify-between">
+              <div className="flex justify-center gap-1 text-yellow-500 mb-3">
+                {Array.from({ length: t.rating }).map((_, j) => (
+                  <Star key={j} className="w-4 h-4 fill-yellow-500 stroke-yellow-500" />
+                ))}
+              </div>
+              <p className="text-sm text-gray-700 italic mb-2">"{t.text}"</p>
+              <p className="text-xs text-gray-500 text-right">— {t.name}</p>
+            </div>
+          </SwiperSlide>
+        ))}
+      </Swiper>
+    </section>
+  );
 }
 
 export default function RestaurantHome() {
@@ -169,7 +221,7 @@ export default function RestaurantHome() {
         </motion.section>
 
         {/* Section 3: Reviews */}
-        <TestimonialsSection />
+        <TestimonialCarousel />
 
         {/* Section 4: CTA */}
         <motion.section
