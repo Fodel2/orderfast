@@ -12,6 +12,27 @@ import { supabase } from '../../utils/supabaseClient';
 import { useCart } from '../../context/CartContext';
 import CustomerLayout from '../../components/CustomerLayout';
 
+const fadeIn = {
+  hidden: { opacity: 0, y: 30 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.6,
+      ease: "easeOut",
+    },
+  },
+};
+
+const stagger = {
+  hidden: {},
+  visible: {
+    transition: {
+      staggerChildren: 0.15,
+    },
+  },
+};
+
 interface Restaurant {
   id: number;
   name: string;
@@ -85,26 +106,6 @@ export default function RestaurantHome() {
   const [loading, setLoading] = useState(true);
   const { cart } = useCart();
   const itemCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
-
-  const fadeIn = {
-    hidden: { opacity: 0, y: 30 },
-    visible: {
-      opacity: 1,
-      y: 0,
-      transition: {
-        duration: 0.6,
-        ease: 'easeOut',
-      },
-    },
-  };
-
-  const stagger = {
-    visible: {
-      transition: {
-        staggerChildren: 0.15,
-      },
-    },
-  };
 
   useEffect(() => {
     if (!router.isReady || !restaurantId) return;
