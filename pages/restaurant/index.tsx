@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Phone, MapPin, Clock } from 'lucide-react';
-import TestimonialCarousel from '../../components/TestimonialCarousel';
+import TestimonialsSection from '../../components/TestimonialsSection';
 import { supabase } from '../../utils/supabaseClient';
 import { useCart } from '../../context/CartContext';
 import CustomerLayout from '../../components/CustomerLayout';
@@ -169,7 +169,7 @@ export default function RestaurantHome() {
         </motion.section>
 
         {/* Section 3: Reviews */}
-        <TestimonialCarousel />
+        <TestimonialsSection />
 
         {/* Section 4: CTA */}
         <motion.section
