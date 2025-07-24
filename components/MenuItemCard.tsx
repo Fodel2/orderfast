@@ -11,6 +11,7 @@ interface MenuItem {
   description?: string | null;
   price: number;
   image_url?: string | null;
+  is_vegan?: boolean | null;
   is_vegetarian?: boolean | null;
   is_18_plus?: boolean | null;
   stock_status?: 'in_stock' | 'scheduled' | 'out' | null;
@@ -32,6 +33,7 @@ export default function MenuItemCard({
   const [selections, setSelections] = useState<
     Record<string, Record<string, number>>
   >({});
+  const [recentlyAdded, setRecentlyAdded] = useState(false);
   const { addToCart } = useCart();
 
   const loadAddons = async () => {
@@ -90,6 +92,9 @@ export default function MenuItemCard({
       addons: addons.length ? addons : undefined,
     });
 
+    setRecentlyAdded(true);
+    setTimeout(() => setRecentlyAdded(false), 1000);
+
     setQty(1);
     setNotes('');
     setSelections({});
@@ -101,40 +106,49 @@ export default function MenuItemCard({
       <motion.div
         whileInView={{ opacity: [0, 1], y: [20, 0] }}
         viewport={{ once: true }}
-        className="bg-white rounded-xl shadow hover:shadow-md flex p-4 gap-4 min-h-[7rem]"
+        className="bg-white rounded-2xl shadow-md hover:shadow-xl transition-all flex p-4 gap-4 min-h-[7rem]"
       >
         {item.image_url && (
           <img
             src={item.image_url}
             alt={item.name}
-            className="w-24 h-24 object-cover rounded-md flex-shrink-0"
+            className="w-20 h-20 object-cover rounded-md flex-shrink-0"
           />
         )}
         <div className="flex flex-col flex-1 text-left">
-          <h3 className="font-semibold text-lg">{item.name}</h3>
-          <span className="font-semibold">${(item.price / 100).toFixed(2)}</span>
+          <div className="flex items-center gap-2">
+            <h3 className="font-bold flex-1">{item.name}</h3>
+            <span className="bg-emerald-100 text-emerald-800 text-xs px-2 py-1 rounded-md">
+              ${ (item.price / 100).toFixed(2) }
+            </span>
+          </div>
           {item.description && (
-            <p className="text-sm text-gray-600 mt-1">{item.description}</p>
+            <p className="text-sm text-gray-500 line-clamp-2 mt-1">{item.description}</p>
           )}
           <div className="text-xs flex flex-wrap gap-2 mt-2">
+            {item.is_vegan && (
+              <span className="px-2 py-1 rounded-full bg-green-100 text-green-800">🌱 Vegan</span>
+            )}
             {item.is_vegetarian && (
-              <span className="px-2 py-1 bg-green-100 rounded">🌱 Vegetarian</span>
+              <span className="px-2 py-1 rounded-full bg-yellow-100 text-yellow-800">🧀 Vegetarian</span>
             )}
             {item.is_18_plus && (
-              <span className="px-2 py-1 bg-red-100 rounded">🔥 18+</span>
+              <span className="px-2 py-1 rounded-full bg-red-100 text-red-800">🔞 18+</span>
             )}
             {item.stock_status === 'out' && (
               <span className="px-2 py-1 bg-gray-200 rounded">Out of stock</span>
             )}
           </div>
           <div className="mt-auto pt-3">
-            <button
+            <motion.button
               type="button"
+              aria-label="Add to Cart"
+              whileTap={{ scale: 0.9 }}
               onClick={handleClick}
-              className="bg-teal-600 text-white rounded-full py-2 px-4 hover:bg-teal-700 whitespace-nowrap w-full sm:w-auto"
+              className="bg-teal-600 text-white rounded-full py-2 px-4 hover:bg-teal-700 whitespace-nowrap w-full sm:w-auto flex items-center justify-center"
             >
-              Add to Cart
-            </button>
+              <span className="mr-1">🛒</span>{recentlyAdded ? '✓ Added' : 'Add to Cart'}
+            </motion.button>
           </div>
         </div>
       </motion.div>
@@ -163,6 +177,7 @@ export default function MenuItemCard({
               <div className="flex items-center border rounded">
                 <button
                   type="button"
+                  aria-label="Decrease quantity"
                   onClick={decrement}
                   className="w-8 h-8 flex items-center justify-center"
                 >
@@ -173,6 +188,7 @@ export default function MenuItemCard({
                 </span>
                 <button
                   type="button"
+                  aria-label="Increase quantity"
                   onClick={increment}
                   className="w-8 h-8 flex items-center justify-center"
                 >
@@ -191,12 +207,14 @@ export default function MenuItemCard({
             <div className="mt-6 flex justify-end gap-3">
               <button
                 type="button"
+                aria-label="Cancel"
                 onClick={() => setShowModal(false)}
                 className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
               >
                 Cancel
               </button>
               <button
+                aria-label="Confirm Add to Cart"
                 onClick={handleFinalAdd}
                 className="px-4 py-2 bg-teal-600 text-white rounded hover:bg-teal-700"
               >
