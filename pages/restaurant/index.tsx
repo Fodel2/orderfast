@@ -39,7 +39,7 @@ function TestimonialCarousel() {
   ];
 
   return (
-    <section className="bg-white px-4 py-16 text-center">
+    <div className="bg-white px-4 py-16 text-center">
       <div className="max-w-2xl mx-auto mb-8">
         <h2 className="text-2xl font-bold">Testimonials</h2>
         <p className="text-gray-500 text-sm sm:text-base">
@@ -54,11 +54,6 @@ function TestimonialCarousel() {
         loop={true}
         autoplay={{ delay: 4000 }}
         pagination={{ clickable: true }}
-        breakpoints={{
-          640: { slidesPerView: 1.2 },
-          768: { slidesPerView: 2 },
-          1024: { slidesPerView: 3 },
-        }}
         className="max-w-6xl mx-auto"
       >
         {testimonials.map((t, i) => (
@@ -75,7 +70,7 @@ function TestimonialCarousel() {
           </SwiperSlide>
         ))}
       </Swiper>
-    </section>
+    </div>
   );
 }
 
@@ -167,10 +162,10 @@ export default function RestaurantHome() {
 
   return (
     <CustomerLayout cartCount={itemCount}>
-      <div className="flex flex-col w-full">
+      <div className="h-screen overflow-y-scroll scroll-snap-y scroll-snap-mandatory">
         {/* Section 1: Fullscreen Hero */}
         <motion.section
-          className="relative w-full h-screen flex items-end justify-start"
+          className="relative min-h-screen scroll-snap-start flex items-end justify-start"
           initial="hidden"
           whileInView="visible"
           viewport={{ once: true }}
@@ -208,7 +203,7 @@ export default function RestaurantHome() {
 
         {/* Section 2: Live Status */}
         <motion.section
-          className="flex items-center justify-center py-6 bg-white min-h-[80vh] text-sm font-medium"
+          className="min-h-screen scroll-snap-start flex items-center justify-center bg-white text-sm font-medium"
           initial="hidden"
           whileInView="visible"
           viewport={{ once: true }}
@@ -221,11 +216,13 @@ export default function RestaurantHome() {
         </motion.section>
 
         {/* Section 3: Reviews */}
-        <TestimonialCarousel />
+        <section className="min-h-screen scroll-snap-start flex items-center justify-center bg-white">
+          <TestimonialCarousel />
+        </section>
 
         {/* Section 4: CTA */}
         <motion.section
-          className="bg-white px-4 py-10 space-y-4 min-h-[80vh] flex flex-col justify-center"
+          className="bg-white px-4 py-10 space-y-4 min-h-screen scroll-snap-start flex flex-col justify-center"
           initial="hidden"
           whileInView="visible"
           viewport={{ once: true }}
