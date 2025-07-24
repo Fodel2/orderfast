@@ -32,7 +32,7 @@ describe('MenuItemCard', () => {
     );
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'Add to Cart' }));
-    await user.click(screen.getByRole('button', { name: '+' }));
+    await user.click(screen.getByRole('button', { name: 'Increase quantity' }));
     expect(screen.getByTestId('qty').textContent).toBe('2');
   });
 
@@ -41,7 +41,7 @@ describe('MenuItemCard', () => {
     render(<MenuItemCard item={item} restaurantId="1" />);
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'Add to Cart' }));
-    await user.click(screen.getByRole('button', { name: '-' }));
+    await user.click(screen.getByRole('button', { name: 'Decrease quantity' }));
     expect(screen.getByTestId('qty').textContent).toBe('1');
   });
 });
