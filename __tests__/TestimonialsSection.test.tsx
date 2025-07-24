@@ -1,9 +1,9 @@
 import { render, screen } from '@testing-library/react';
-import TestimonialCarousel from '../components/TestimonialCarousel';
+import TestimonialsSection from '../components/TestimonialsSection';
 
-describe('TestimonialCarousel', () => {
+describe('TestimonialsSection', () => {
   it('renders star icons for each rating', () => {
-    render(<TestimonialCarousel />);
+    render(<TestimonialsSection />);
     const stars = screen.getAllByTestId('star');
     expect(stars.length).toBe(18);
   });

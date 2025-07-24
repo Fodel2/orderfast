@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion';
 import { Star } from 'lucide-react';
 
-export default function TestimonialCarousel() {
+export default function TestimonialsSection() {
   const testimonials = [
     { rating: 5, text: "🔥 The best burger I've had in years!", name: 'Jasmine' },
     { rating: 4, text: 'Quick delivery and amazing fries.', name: 'Luke' },

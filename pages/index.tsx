@@ -1,4 +1,4 @@
-import TestimonialCarousel from '../components/TestimonialCarousel';
+import TestimonialsSection from '../components/TestimonialsSection';
 
 export default function Home() {
   return (
@@ -21,7 +21,7 @@ export default function Home() {
           </a>
         </div>
       </div>
-      <TestimonialCarousel />
+      <TestimonialsSection />
     </main>
   );
 }
