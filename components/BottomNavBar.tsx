@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+import { useEffect, useState } from 'react';
 import { Home, Utensils, ShoppingCart, ListOrdered, Menu } from 'lucide-react';
 
 export default function BottomNavBar({ cartCount = 0 }: { cartCount?: number }) {
@@ -11,6 +12,27 @@ export default function BottomNavBar({ cartCount = 0 }: { cartCount?: number }) 
       : Array.isArray(restaurant_id)
       ? restaurant_id[0]
       : '';
+
+  const [showNav, setShowNav] = useState(true);
+  const [lastScrollY, setLastScrollY] = useState(0);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentY = window.scrollY;
+      if (currentY < 10 || currentY < lastScrollY) {
+        setShowNav(true);
+      } else {
+        setShowNav(false);
+      }
+      setLastScrollY(currentY);
+    };
+
+    // only track scroll on mobile
+    if (window.innerWidth < 768) {
+      window.addEventListener('scroll', handleScroll);
+    }
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [lastScrollY]);
 
   const buildPath = (slug: string) => {
     const base = '/restaurant';
@@ -33,7 +55,9 @@ export default function BottomNavBar({ cartCount = 0 }: { cartCount?: number }) 
   ];
 
   return (
-    <div className="fixed bottom-4 left-4 right-4 z-50 md:hidden">
+    <div
+      className={`fixed bottom-4 left-4 right-4 z-50 md:hidden transition-all duration-300 ${showNav ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-24'}`}
+    >
       <div className="relative flex items-center justify-between bg-white/60 backdrop-blur-md border border-gray-300 rounded-full px-4 py-2 shadow-lg">
         {navItems.slice(0, 2).map((item) => {
           const Icon = item.icon;
