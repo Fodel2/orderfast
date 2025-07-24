@@ -101,17 +101,26 @@ export default function MenuItemCard({
       <motion.div
         whileInView={{ opacity: [0, 1], y: [20, 0] }}
         viewport={{ once: true }}
-        className="bg-white rounded-xl shadow-md overflow-hidden flex flex-col hover:shadow-lg transition"
+        className="bg-white rounded-xl shadow-md overflow-hidden flex flex-col sm:flex-row hover:shadow-lg transition-all"
       >
-        <div className="relative w-full h-40 bg-gray-100 overflow-hidden">
-          <img
-            src={item.image_url || 'https://placehold.co/400x240?text=No+Image'}
-            alt={item.name}
-            className="object-cover w-full h-full"
-          />
+        <div
+          className="relative w-full h-40 sm:w-28 sm:h-28 bg-gray-100 flex-shrink-0 overflow-hidden flex items-center justify-center"
+        >
+          {item.image_url ? (
+            <img
+              src={item.image_url}
+              alt={item.name}
+              className="object-cover w-full h-full rounded-t-xl sm:rounded-l-xl sm:rounded-tr-none"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-gray-200 text-gray-500 text-xs">
+              Image Coming Soon
+            </div>
+          )}
         </div>
         <div className="p-4 flex flex-col flex-1 text-left">
           <h3 className="font-semibold text-lg">{item.name}</h3>
+          <span className="font-semibold">${(item.price / 100).toFixed(2)}</span>
           {item.description && (
             <p className="text-sm text-gray-600 mt-1">{item.description}</p>
           )}
@@ -126,8 +135,7 @@ export default function MenuItemCard({
               <span className="px-2 py-1 bg-gray-200 rounded">Out of stock</span>
             )}
           </div>
-          <div className="mt-auto flex items-center justify-between pt-3">
-            <span className="font-semibold text-lg">${(item.price / 100).toFixed(2)}</span>
+          <div className="mt-auto flex items-center justify-between pt-3 gap-4">
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -147,14 +155,14 @@ export default function MenuItemCard({
                 +
               </button>
             </div>
+            <button
+              type="button"
+              onClick={handleClick}
+              className="bg-teal-600 text-white rounded-full py-2 px-4 hover:bg-teal-700 whitespace-nowrap"
+            >
+              Add to Cart
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={handleClick}
-            className="mt-3 w-full bg-teal-600 text-white rounded-full py-2 hover:bg-teal-700"
-          >
-            Add to Cart
-          </button>
         </div>
       </motion.div>
 
