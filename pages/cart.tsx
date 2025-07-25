@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { motion } from 'framer-motion';
 import { useCart } from '../context/CartContext';
 import CustomerLayout from '../components/CustomerLayout';
 
@@ -9,55 +10,86 @@ export default function CartPage() {
 
   return (
     <CustomerLayout cartCount={itemCount}>
-      <main className="p-4 pb-24 max-w-md mx-auto">
-      <h1 className="text-2xl font-bold mb-4">Your Cart</h1>
-      {cart.items.length === 0 ? (
-        <p className="text-center text-gray-500">Your cart is empty.</p>
-      ) : (
-        <ul className="space-y-4">
-          {cart.items.map((item) => (
-            <li key={item.item_id} className="border p-3 rounded flex justify-between items-start">
-              <div>
-                <p className="font-medium">{item.name}</p>
-                <p className="text-sm text-gray-500">${(item.price / 100).toFixed(2)}</p>
-              </div>
-              <div className="flex items-center space-x-2">
-                <button
-                  type="button"
-                  onClick={() => updateQuantity(item.item_id, item.quantity - 1)}
-                  className="w-6 h-6 flex items-center justify-center border rounded"
+      <main className="pb-24 pt-4 max-w-screen-sm mx-auto px-4">
+        <h1 className="text-2xl font-bold mb-4">Cart</h1>
+        {cart.items.length === 0 ? (
+          <div className="text-center py-20">
+            <p className="text-gray-500 mb-4">Your cart is empty</p>
+            <Link href="/menu" className="px-4 py-2 bg-primary text-white rounded-full">
+              Browse Menu
+            </Link>
+          </div>
+        ) : (
+          <ul>
+            {cart.items.map((item) => {
+              const img = (item as any).image_url as string | undefined;
+              const tag = (item as any).tag as string | undefined;
+              return (
+                <li
+                  key={item.item_id}
+                  className="rounded-xl shadow-sm p-4 mb-3 flex justify-between items-center"
                 >
-                  -
-                </button>
-                <span>{item.quantity}</span>
-                <button
-                  type="button"
-                  onClick={() => updateQuantity(item.item_id, item.quantity + 1)}
-                  className="w-6 h-6 flex items-center justify-center border rounded"
-                >
-                  +
-                </button>
-                <button
-                  type="button"
-                  onClick={() => removeFromCart(item.item_id)}
-                  className="text-sm text-red-500"
-                >
-                  Remove
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-      {cart.items.length > 0 && (
-        <div className="mt-6 space-y-2">
-          <p className="text-right font-semibold">Subtotal: ${(subtotal / 100).toFixed(2)}</p>
-          <Link href="/checkout" className="block text-center py-2 bg-teal-600 text-white rounded">
-            Proceed to Checkout ({itemCount} {itemCount === 1 ? 'item' : 'items'})
-          </Link>
-        </div>
-      )}
-    </main>
+                  <div className="flex items-center gap-3">
+                    {img && (
+                      <img
+                        src={img}
+                        alt={item.name}
+                        className="w-16 h-16 object-cover rounded-md"
+                      />
+                    )}
+                    <div>
+                      <p className="font-semibold">{item.name}</p>
+                      <p className="text-sm text-gray-500">${(item.price / 100).toFixed(2)}</p>
+                      {tag && <span className="text-xs text-gray-500">{tag}</span>}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="flex items-center justify-end space-x-2">
+                      <motion.button
+                        type="button"
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => updateQuantity(item.item_id, item.quantity - 1)}
+                        className="w-6 h-6 flex items-center justify-center border rounded"
+                      >
+                        -
+                      </motion.button>
+                      <span>{item.quantity}</span>
+                      <motion.button
+                        type="button"
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => updateQuantity(item.item_id, item.quantity + 1)}
+                        className="w-6 h-6 flex items-center justify-center border rounded"
+                      >
+                        +
+                      </motion.button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeFromCart(item.item_id)}
+                      className="text-xs text-red-500 mt-1"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {cart.items.length > 0 && (
+          <div className="sticky bottom-0 bg-white p-4">
+            <p className="text-right font-semibold">
+              Total: ${(subtotal / 100).toFixed(2)}
+            </p>
+            <Link
+              href="/checkout"
+              className="rounded-full bg-primary text-white w-full mt-4 py-2 block text-center"
+            >
+              Continue to Checkout
+            </Link>
+          </div>
+        )}
+      </main>
     </CustomerLayout>
   );
 }
