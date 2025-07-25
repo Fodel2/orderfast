@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { useCart } from '../context/CartContext';
-import CustomerLayout from '../components/CustomerLayout';
+import { useCart } from '../../context/CartContext';
+import CustomerLayout from '../../components/CustomerLayout';
 
 export default function CartPage() {
   const { cart, subtotal, updateQuantity, removeFromCart } = useCart();
