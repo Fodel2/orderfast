@@ -10,24 +10,27 @@ export default function CartPage() {
 
   return (
     <CustomerLayout cartCount={itemCount}>
-      <main className="pb-24 pt-4 max-w-screen-sm mx-auto px-4">
-        <h1 className="text-2xl font-bold mb-4">Cart</h1>
+      <main className="max-w-screen-sm mx-auto px-4 pb-28 pt-6">
+        <h1 className="text-2xl font-bold mb-6">Your Cart</h1>
         {cart.items.length === 0 ? (
-          <div className="text-center py-20">
-            <p className="text-gray-500 mb-4">Your cart is empty</p>
-            <Link href="/menu" className="px-4 py-2 bg-primary text-white rounded-full">
+          <div className="text-center text-gray-500 mt-12">
+            <p>Your cart is empty</p>
+            <Link
+              href="/menu"
+              className="mt-4 inline-block px-4 py-2 bg-primary text-white rounded-full"
+            >
               Browse Menu
             </Link>
           </div>
         ) : (
-          <ul>
+          <div>
             {cart.items.map((item) => {
               const img = (item as any).image_url as string | undefined;
               const tag = (item as any).tag as string | undefined;
               return (
-                <li
+                <div
                   key={item.item_id}
-                  className="rounded-xl shadow-sm p-4 mb-3 flex justify-between items-center"
+                  className="flex justify-between items-center p-4 rounded-xl shadow-sm mb-3"
                 >
                   <div className="flex items-center gap-3">
                     {img && (
@@ -39,7 +42,7 @@ export default function CartPage() {
                     )}
                     <div>
                       <p className="font-semibold">{item.name}</p>
-                      <p className="text-sm text-gray-500">${(item.price / 100).toFixed(2)}</p>
+                      <p className="text-sm text-gray-600">${(item.price / 100).toFixed(2)}</p>
                       {tag && <span className="text-xs text-gray-500">{tag}</span>}
                     </div>
                   </div>
@@ -66,24 +69,22 @@ export default function CartPage() {
                     <button
                       type="button"
                       onClick={() => removeFromCart(item.item_id)}
-                      className="text-xs text-red-500 mt-1"
+                      className="text-xs text-red-500 underline ml-2"
                     >
                       Remove
                     </button>
                   </div>
-                </li>
+                </div>
               );
             })}
-          </ul>
+          </div>
         )}
         {cart.items.length > 0 && (
-          <div className="sticky bottom-0 bg-white p-4">
-            <p className="text-right font-semibold">
-              Total: ${(subtotal / 100).toFixed(2)}
-            </p>
+          <div className="fixed bottom-0 left-0 right-0 bg-white px-4 py-3 shadow-md">
+            <p className="text-right font-semibold">Total: ${(subtotal / 100).toFixed(2)}</p>
             <Link
               href="/checkout"
-              className="rounded-full bg-primary text-white w-full mt-4 py-2 block text-center"
+              className="bg-primary text-white rounded-full w-full py-3 block text-center mt-2"
             >
               Continue to Checkout
             </Link>
