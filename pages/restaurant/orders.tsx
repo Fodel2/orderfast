@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import CustomerLayout from '../../components/CustomerLayout';
 import { useCart } from '../../context/CartContext';
 import { supabase } from '../../utils/supabaseClient';
+import { useUser } from '@supabase/auth-helpers-react';
 
 interface OrderAddon {
   id: number;
@@ -57,6 +58,9 @@ export default function CustomerOrdersPage() {
   const router = useRouter();
   const { cart } = useCart();
   const itemCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
+  const { user } = useUser();
+  const userId = user?.id;
+  const userEmail = user?.email;
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,33 +68,35 @@ export default function CustomerOrdersPage() {
 
   useEffect(() => {
     const loadOrders = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) {
+      if (!user) {
         router.replace('/login');
         return;
       }
 
-      const { data, error } = await supabase
+      const { data: ordersData, error: ordersError } = await supabase
         .from('orders')
         .select(
           `id, short_order_number, order_type, delivery_address, customer_notes, status, total_price, created_at,
           order_items(id,item_id,name,price,quantity,notes,order_addons(id,option_id,name,price,quantity))`
         )
-        .eq('user_id', session.user.id)
+        .or(`user_id.eq.${userId},guest_email.eq.${userEmail}`)
         .order('created_at', { ascending: false });
 
-      if (!error && data) {
-        setOrders(data as Order[]);
-      } else if (error) {
-        console.error('Failed to fetch orders', error);
+      console.log('User ID:', userId);
+      console.log('User Email:', userEmail);
+      console.log('Orders:', ordersData);
+      console.log('Error:', ordersError);
+
+      if (!ordersError && ordersData) {
+        setOrders(ordersData as Order[]);
+      } else if (ordersError) {
+        console.error('Failed to fetch orders', ordersError);
       }
       setLoading(false);
     };
 
     loadOrders();
-  }, [router]);
+  }, [router, user, userId, userEmail]);
 
   const formatTime = (iso: string) => {
     const d = new Date(iso);
