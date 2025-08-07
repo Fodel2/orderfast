@@ -18,7 +18,7 @@ export default function OrdersPage() {
 
   useEffect(() => {
     if (!loading && !user && !guestEmail) {
-      router.replace('/restaurant/login')
+      router.replace('/login')
     }
   }, [loading, user, guestEmail])
 
