@@ -5,7 +5,6 @@ import { useState } from 'react';
 import { useRouter } from 'next/router';
 import { CartProvider } from '../context/CartContext';
 import { OrderTypeProvider } from '../context/OrderTypeContext';
-import CartDrawer from '../components/CartDrawer';
 
 export default function App({ Component, pageProps }) {
   const [supabase] = useState(() => createBrowserSupabaseClient());
@@ -17,7 +16,6 @@ export default function App({ Component, pageProps }) {
       <OrderTypeProvider>
         <CartProvider>
           <Component {...pageProps} />
-          {router.pathname !== '/checkout' && <CartDrawer />}
         </CartProvider>
       </OrderTypeProvider>
     </SessionContextProvider>
