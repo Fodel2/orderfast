@@ -36,6 +36,7 @@ export default function OrdersPage() {
 
   return (
     <div className="max-w-screen-sm mx-auto px-4 pb-24">
+      <pre>{JSON.stringify(orders, null, 2)}</pre>
       <h1 className="text-xl font-semibold mb-4">Your Orders</h1>
       {orders.length === 0 ? (
         <p>No orders found.</p>
