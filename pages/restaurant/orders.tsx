@@ -13,7 +13,7 @@ export default function OrdersPage() {
       const { data } = await supabase
         .from('orders')
         .select('*')
-        .eq('restaurant_id', '358bbecc-4437-4cdf-bbea-bc0ffc0cb1ba')
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false })
 
       setOrders(data || [])
