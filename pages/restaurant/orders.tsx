@@ -1,42 +1,37 @@
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/router'
 import { useSupabaseClient } from '@supabase/auth-helpers-react'
 import { useUser } from '@/lib/useUser'
-import { getGuestEmail } from '@/lib/guestUtils'
 
 export default function OrdersPage() {
   const supabase = useSupabaseClient()
-  const router = useRouter()
   const { user, loading } = useUser()
-  const [guestEmail, setGuestEmail] = useState<string | null>(null)
   const [orders, setOrders] = useState<any[]>([])
 
   useEffect(() => {
-    const email = localStorage.getItem('guest_email')
-    setGuestEmail(email)
-  }, [])
-
-  useEffect(() => {
-    if (!loading && !user && !guestEmail) {
-      router.replace('/login')
-    }
-  }, [loading, user, guestEmail])
-
-  useEffect(() => {
-    if (!user && !guestEmail) return
-
+    if (!user || loading) return
     const fetchOrders = async () => {
-      let query = supabase.from('orders').select('*').order('created_at', { ascending: false })
-      if (user) query = query.eq('user_id', user.id)
-      else if (guestEmail) query = query.eq('guest_email', guestEmail)
-      const { data } = await query
+      const { data } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
       setOrders(data || [])
     }
-
     fetchOrders()
-  }, [user, guestEmail])
+  }, [user, loading])
 
-  if (!user && !guestEmail) return null
+  if (loading) return null
+
+  if (!user) {
+    return (
+      <div className="max-w-screen-sm mx-auto px-4 pb-24 flex items-center justify-center h-96">
+        <div className="text-center">
+          <h2 className="text-lg font-semibold mb-2">You have no orders yet</h2>
+          <p className="text-gray-500">Log in to view your orders.</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="max-w-screen-sm mx-auto px-4 pb-24">
