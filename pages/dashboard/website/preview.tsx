@@ -15,6 +15,7 @@ export default function WebsitePreview() {
   const router = useRouter();
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [loading, setLoading] = useState(true);
+  const [userId, setUserId] = useState<string>('');
 
   useEffect(() => {
     const load = async () => {
@@ -25,6 +26,7 @@ export default function WebsitePreview() {
         router.push('/login');
         return;
       }
+      setUserId(session.user.id);
       const { data: ru } = await supabase
         .from('restaurant_users')
         .select('restaurant_id')
@@ -66,10 +68,10 @@ export default function WebsitePreview() {
           </p>
         )}
         <Link
-          href={`/restaurant/menu?restaurant_id=${restaurant.id}`}
+          href={`/restaurant/orders?restaurant_id=${restaurant.id}&user_id=${userId}`}
           className="px-4 py-2 bg-teal-600 text-white rounded hover:bg-teal-700"
         >
-          View Menu
+          Preview Site
         </Link>
       </div>
     </DashboardLayout>
