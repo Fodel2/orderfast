@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, act } from '@testing-library/react';
 import CustomerLayout from '../components/CustomerLayout';
 import Hero from '../components/customer/Hero';
+import Slides from '../components/customer/Slides';
 import OpenBadge from '../components/customer/OpenBadge';
 import BrandProvider from '../components/branding/BrandProvider';
 
@@ -43,8 +44,10 @@ test('footer hidden on hero and appears after scroll', () => {
   function Wrapper() {
     const [visible, setVisible] = React.useState(true);
     return (
-      <CustomerLayout restaurant={restaurant} hideFooter={visible} hideHeader={visible}>
-        <Hero restaurant={restaurant} onVisibilityChange={setVisible} />
+      <CustomerLayout restaurant={restaurant} hideFooter={visible} hideHeader>
+        <Slides onHeroInView={setVisible}>
+          <Hero restaurant={restaurant} />
+        </Slides>
       </CustomerLayout>
     );
   }
