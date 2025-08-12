@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import DashboardLayout from '../../../components/DashboardLayout';
 import { supabase } from '../../../utils/supabaseClient';
+import { useUser } from '@/lib/useUser';
 
 interface Restaurant {
   id: number;
@@ -15,7 +16,7 @@ export default function WebsitePreview() {
   const router = useRouter();
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [loading, setLoading] = useState(true);
-  const [userId, setUserId] = useState<string>('');
+  const { user } = useUser();
 
   useEffect(() => {
     const load = async () => {
@@ -26,7 +27,6 @@ export default function WebsitePreview() {
         router.push('/login');
         return;
       }
-      setUserId(session.user.id);
       const { data: ru } = await supabase
         .from('restaurant_users')
         .select('restaurant_id')
@@ -68,7 +68,10 @@ export default function WebsitePreview() {
           </p>
         )}
         <Link
-          href={`/restaurant/orders?restaurant_id=${restaurant.id}&user_id=${userId}`}
+          href={{
+            pathname: '/restaurant/orders',
+            query: { restaurant_id: restaurant.id, user_id: user?.id },
+          }}
           className="px-4 py-2 bg-teal-600 text-white rounded hover:bg-teal-700"
         >
           Preview Site
