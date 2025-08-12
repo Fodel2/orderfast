@@ -1,11 +1,12 @@
-import { useState } from 'react';
-import { supabase } from '../utils/supabaseClient';
+import { useState, useEffect } from 'react';
+import { useSupabaseClient } from '@supabase/auth-helpers-react';
 import { useRouter } from 'next/router';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const router = useRouter();
+  const supabase = useSupabaseClient();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,9 +21,24 @@ export default function Login() {
       return;
     }
 
-    alert('Login successful!');
-    await router.push('/dashboard');
+    const redirectTo =
+      typeof router.query.redirect === 'string'
+        ? router.query.redirect
+        : '/dashboard';
+    await router.replace(redirectTo);
   };
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        const redirectTo =
+          typeof router.query.redirect === 'string'
+            ? router.query.redirect
+            : '/dashboard';
+        router.replace(redirectTo);
+      }
+    });
+  }, [router, supabase]);
 
   return (
     <div style={{ padding: '2rem', maxWidth: '400px', margin: 'auto' }}>

@@ -1,41 +1,28 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+import { createMiddlewareSupabaseClient } from '@supabase/auth-helpers-nextjs';
 
-const PUBLIC_FILE = /\.(.*)$/;
+export async function middleware(req: NextRequest) {
+  const res = NextResponse.next();
+  const supabase = createMiddlewareSupabaseClient({ req, res });
 
-export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
 
-  if (
-    pathname.startsWith('/_next') ||
-    pathname.startsWith('/api') ||
-    PUBLIC_FILE.test(pathname)
-  ) {
-    return NextResponse.next();
+  if (!session) {
+    const redirectUrl = new URL('/login', req.url);
+    redirectUrl.searchParams.set(
+      'redirect',
+      req.nextUrl.pathname + req.nextUrl.search,
+    );
+    return NextResponse.redirect(redirectUrl);
   }
 
-  const host = request.headers.get('host') || '';
-  const hostname = host.split(':')[0];
-
-  const ROOT_DOMAIN = 'orderfast.vercel.app';
-
-  if (hostname === ROOT_DOMAIN) {
-    return NextResponse.next();
-  }
-
-  const subdomain = hostname.replace(`.${ROOT_DOMAIN}`, '');
-
-  if (
-    hostname.endsWith(`.${ROOT_DOMAIN}`) &&
-    subdomain &&
-    subdomain !== 'www' &&
-    subdomain !== 'whatsthatorder'
-  ) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/restaurant';
-    url.searchParams.set('subdomain', subdomain);
-    return NextResponse.rewrite(url);
-  }
-
-  return NextResponse.next();
+  return res;
 }
+
+export const config = {
+  matcher: ['/dashboard/:path*'],
+};
 
