@@ -5,6 +5,7 @@ import Hero from '@/components/customer/Hero';
 import Slides from '@/components/customer/Slides';
 import Logo from '@/components/branding/Logo';
 import { useBrand } from '@/components/branding/BrandProvider';
+import DebugFlag from '@/components/dev/DebugFlag';
 import { supabase } from '@/utils/supabaseClient';
 import { useCart } from '@/context/CartContext';
 
@@ -19,6 +20,12 @@ export default function RestaurantHomePage() {
   const pc = Math.min(1, Math.max(0, progress)); // 0..1 scroll progress
   const { cart } = useCart();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
+
+  useEffect(() => {
+    // dev: prove this file renders in prod
+    // eslint-disable-next-line no-console
+    console.log('[Home] pages/restaurant/index.tsx mounted');
+  }, []);
 
   useEffect(() => {
     if (!router.isReady || !restaurantId) return;
@@ -42,6 +49,7 @@ export default function RestaurantHomePage() {
       hideFooter={heroInView}
       hideHeader
     >
+      <DebugFlag label="HOME-A" />
       {restaurant && (
         <>
           {/* Slim header that grows with scroll progress */}
