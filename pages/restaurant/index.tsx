@@ -35,7 +35,8 @@ export default function RestaurantHomePage() {
     >
       {restaurant && (
         <>
-          <CollapsingHeader compact={!heroInView} />
+          {/* slides: header hidden on hero; same logo animates into header */}
+          <CollapsingHeader heroInView={heroInView} />
           <Slides onHeroInView={setHeroInView}>
             <Hero restaurant={restaurant} />
             <section
