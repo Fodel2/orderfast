@@ -15,9 +15,8 @@ export default function RestaurantHomePage() {
   const [restaurant, setRestaurant] = useState<any | null>(null);
   const [progress, setProgress] = useState(0); // 0..1 scroll over hero
   const { name } = useBrand();
-  const [viewport, setViewport] = useState({ w: 0, h: 0 });
   // clamp once for cleaner math
-  const pc = Math.min(1, Math.max(0, progress));
+  const pc = Math.min(1, Math.max(0, progress)); // 0..1 scroll progress
   const { cart } = useCart();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
 
@@ -31,23 +30,10 @@ export default function RestaurantHomePage() {
       .then(({ data }) => setRestaurant(data));
   }, [router.isReady, restaurantId]);
 
-  useEffect(() => {
-    const handle = () => setViewport({ w: window.innerWidth, h: window.innerHeight });
-    handle();
-    window.addEventListener('resize', handle);
-    return () => window.removeEventListener('resize', handle);
-  }, []);
-
   const heroInView = progress < 1;
   const headerHeight = 56 * progress;
   const headerPadding = 8 * progress;
   const brandBg = progress === 0 ? 'transparent' : 'color-mix(in oklab, var(--brand) 18%, white)';
-  const logoTopStart = viewport.h * 0.4;
-  const logoLeftStart = viewport.w * 0.5;
-  const logoTop = logoTopStart + (12 - logoTopStart) * pc;
-  const logoLeft = logoLeftStart + (16 - logoLeftStart) * pc;
-  const translate = -50 * (1 - pc);
-  const logoScale = 1 + 2 * (1 - pc);
 
   return (
     <CustomerLayout
@@ -92,21 +78,21 @@ export default function RestaurantHomePage() {
             style={{
               position: 'fixed',
               zIndex: 30,
-              /* Start a bit lower and bigger (≈96px from 32px base), then dock to (12px,16px). */
-              top: `${logoTop}px`,
-              left: `${logoLeft}px`,
-              transform: `translate(${translate}%, ${translate}%) scale(${logoScale})`,
+              // Center around ~34vh at top; dock to 12px as p→1
+              top: `calc(12px + (34vh - 12px) * ${1 - pc})`,
+              left: `calc(16px + (50vw - 16px) * ${1 - pc})`,
+              // ~72px at hero (32 * 2.25), scale to 32px as p→1
+              transform: `translate(${(-50) * (1 - pc)}%, ${(-50) * (1 - pc)}%) scale(${1 + 1.25 * (1 - pc)})`,
               transformOrigin: 'left center',
               transition: 'top 200ms cubic-bezier(.2,.7,.2,1), left 200ms cubic-bezier(.2,.7,.2,1), transform 200ms cubic-bezier(.2,.7,.2,1)',
               pointerEvents: 'none',
             }}
           >
-            {/* Final docked size is 32; at hero we scale up to approx 96 via transform */}
             <Logo size={32} />
           </div>
 
           <Slides onProgress={setProgress}>
-            <div style={{ '--hero-logo-top': '40vh' } as React.CSSProperties}>
+            <div style={{ '--hero-logo-top': '34vh' } as React.CSSProperties}>
               <Hero restaurant={restaurant} />
             </div>
             <section
