@@ -35,23 +35,23 @@ export default function BottomNavBar({ cartCount = 0 }: { cartCount?: number }) 
   }, [lastScrollY]);
 
   const buildPath = (slug: string) => {
-    const base = '/restaurant';
-    if (slug === '/') return `${base}?restaurant_id=${restaurantId}`;
-    const normalized = slug.startsWith('/') ? slug : `/${slug}`;
-    return `${base}${normalized}?restaurant_id=${restaurantId}`;
+    if (slug === '/') return `/restaurant?restaurant_id=${restaurantId}`;
+    if (slug.startsWith('/')) return `${slug}?restaurant_id=${restaurantId}`;
+    return `/restaurant/${slug}?restaurant_id=${restaurantId}`;
   };
 
   const isActive = (slug: string) => {
     const current = (router.asPath || '').split('?')[0];
-    const check = slug === '/' ? '/restaurant' : `/restaurant${slug.startsWith('/') ? slug : `/${slug}`}`;
-    return current === check;
+    if (slug === '/') return current === '/restaurant';
+    if (slug.startsWith('/')) return current === slug;
+    return current === `/restaurant/${slug}`;
   };
 
   const navItems = [
     { href: '/', icon: Home, label: 'Home' },
     { href: 'menu', icon: Utensils, label: 'Menu' },
     { href: 'orders', icon: ListOrdered, label: 'Orders' },
-    { href: 'more', icon: Menu, label: 'More' },
+    { href: '/restaurant/more', icon: Menu, label: 'More' },
   ];
 
   return (
