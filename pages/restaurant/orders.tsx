@@ -9,6 +9,7 @@ export default function OrdersPage() {
   const router = useRouter()
   const qUserId = typeof router.query.user_id === 'string' ? router.query.user_id : undefined
   const qRestaurantId = typeof router.query.restaurant_id === 'string' ? router.query.restaurant_id : undefined
+  const debug = router.query.debug === '1'
 
   const [orders, setOrders] = useState<any[]>([])
 
@@ -46,6 +47,11 @@ export default function OrdersPage() {
 
   return (
     <div className="max-w-screen-sm mx-auto px-4 pb-24">
+      {debug && (
+        <div className="text-xs text-gray-500 mb-2">
+          Using user_id: {qUserId || user?.id || '—'} | restaurant_id: {qRestaurantId || '—'}
+        </div>
+      )}
       <h1 className="text-xl font-semibold mb-4">Your Orders</h1>
       {orders.length === 0 ? (
         <p>No orders found.</p>
