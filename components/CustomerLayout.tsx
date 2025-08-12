@@ -41,7 +41,7 @@ export default function CustomerLayout({
         {children}
       </main>
 
-      {!hideFooter ? <FooterNav cartCount={cartCount} /> : <div style={{ height: 72 }} />} {/* slides: footer hides on hero */}
+      {!hideFooter ? <FooterNav cartCount={cartCount} /> : null} {/* slides: footer hides on hero */}
     </BrandProvider>
   );
 }

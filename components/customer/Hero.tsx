@@ -3,7 +3,6 @@ import Link from 'next/link';
 import React, { useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import OpenBadge from './OpenBadge';
-import Logo from '../branding/Logo';
 
 interface Props {
   restaurant: any;
@@ -33,7 +32,7 @@ export default function Hero({ restaurant, onVisibilityChange }: Props) {
       <Image src={bg} alt="hero" fill className="object-cover" />
       <div className="absolute inset-0 bg-gradient-to-b from-black/40 to-black/70" />
       <div className="relative z-10 flex flex-col items-center gap-4 px-4">
-        <Logo size={80} />
+        {/* slides: hero — logo provided by CollapsingHeader (single element) */}
         <h1 className="text-4xl font-light">{restaurant?.name}</h1>
         {restaurant?.website_description && (
           <p className="max-w-md text-white/90">{restaurant.website_description}</p>
