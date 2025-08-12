@@ -13,9 +13,8 @@ export default function OrdersPage() {
       const { data } = await supabase
         .from('orders')
         .select('*')
-        .eq('restaurant_id', '358bbecc-4437-4cdf-bbea-bc0ffc0cb1ba')
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false })
-
       setOrders(data || [])
     }
     fetchOrders()
@@ -36,7 +35,6 @@ export default function OrdersPage() {
 
   return (
     <div className="max-w-screen-sm mx-auto px-4 pb-24">
-      <pre>{JSON.stringify(orders, null, 2)}</pre>
       <h1 className="text-xl font-semibold mb-4">Your Orders</h1>
       {orders.length === 0 ? (
         <p>No orders found.</p>
@@ -53,4 +51,3 @@ export default function OrdersPage() {
     </div>
   )
 }
-
