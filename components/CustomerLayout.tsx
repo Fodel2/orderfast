@@ -1,20 +1,28 @@
 import Head from 'next/head';
 import { ReactNode } from 'react';
-import BottomNavBar from './BottomNavBar';
+import BrandProvider from './customer/BrandProvider';
+import CustomerHeader from './customer/CustomerHeader';
+import FooterNav from './customer/FooterNav';
 
 interface CustomerLayoutProps {
   children: ReactNode;
   cartCount?: number;
   includePwaMeta?: boolean;
+  restaurant?: any;
+  hideHeader?: boolean;
+  hideFooter?: boolean;
 }
 
 export default function CustomerLayout({
   children,
   cartCount = 0,
   includePwaMeta = true,
+  restaurant,
+  hideHeader,
+  hideFooter,
 }: CustomerLayoutProps) {
   return (
-    <>
+    <BrandProvider restaurant={restaurant}>
       {includePwaMeta && (
         <Head>
           <title>OrderFast – Restaurant</title>
@@ -26,11 +34,13 @@ export default function CustomerLayout({
         </Head>
       )}
 
-      <main className="min-h-screen pb-24 bg-white text-gray-900">
+      {!hideHeader && <CustomerHeader />}
+
+      <main className="min-h-screen pb-24 pt-14" style={{ background: 'var(--surface)', color: 'var(--ink)' }}>
         {children}
       </main>
 
-      <BottomNavBar cartCount={cartCount} />
-    </>
+      <FooterNav cartCount={cartCount} hidden={hideFooter} />
+    </BrandProvider>
   );
 }

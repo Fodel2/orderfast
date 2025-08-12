@@ -194,7 +194,8 @@ export default function OrdersPage() {
             {orders.map((order: any) => (
               <li
                 key={order.id}
-                className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm cursor-pointer hover:shadow md:hover:shadow-md transition"
+                className="rounded-2xl p-4 shadow-sm cursor-pointer hover:shadow md:hover:shadow-md transition"
+                style={{ background: 'var(--card)', color: 'var(--ink)' }}
                 role="button"
                 tabIndex={0}
                 onClick={() => openOrder(order)}

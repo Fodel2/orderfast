@@ -1,0 +1,42 @@
+:root {
+  --brand: hsl(20 90% 50%);
+  --brand-600: hsl(20 90% 45%);
+  --brand-700: hsl(20 90% 40%);
+  --ink: hsl(230 15% 12%);
+  --surface: hsl(0 0% 98%);
+  --card: hsl(0 0% 100% / 0.7);
+  --muted: hsl(230 10% 46%);
+}
+
+[data-brand] {
+  color: var(--ink);
+  background-color: var(--surface);
+}
+
+.brand-glass {
+  backdrop-filter: saturate(160%) blur(12px);
+  background: rgba(255,255,255,0.7);
+  box-shadow: 0 6px 24px rgba(0,0,0,.08);
+}
+
+.brand-pill {
+  border: 1px solid var(--brand);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.brand-btn {
+  background: var(--brand);
+  color: #fff;
+  border-radius: 14px;
+  padding: 12px 18px;
+  box-shadow: 0 8px 20px rgba(0,0,0,.12);
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+
+.brand-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(0,0,0,.16);
+}
