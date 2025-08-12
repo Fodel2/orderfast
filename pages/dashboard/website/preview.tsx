@@ -2,8 +2,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import DashboardLayout from '../../../components/DashboardLayout';
-import { supabase } from '../../../utils/supabaseClient';
-import { useUser } from '@/lib/useUser';
+import { useSupabaseClient } from '@supabase/auth-helpers-react';
 
 interface Restaurant {
   id: number;
@@ -14,9 +13,10 @@ interface Restaurant {
 
 export default function WebsitePreview() {
   const router = useRouter();
+  const supabase = useSupabaseClient();
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [loading, setLoading] = useState(true);
-  const { user, loading: userLoading } = useUser();
+  const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -27,6 +27,7 @@ export default function WebsitePreview() {
         router.push('/login');
         return;
       }
+      setUserId(session.user.id);
       const { data: ru } = await supabase
         .from('restaurant_users')
         .select('restaurant_id')
@@ -43,7 +44,7 @@ export default function WebsitePreview() {
       setLoading(false);
     };
     load();
-  }, [router]);
+  }, [router, supabase]);
 
   if (loading) return <DashboardLayout>Loading...</DashboardLayout>;
 
@@ -67,17 +68,15 @@ export default function WebsitePreview() {
             {restaurant.website_description}
           </p>
         )}
-        {!userLoading && user && (
-          <Link
-            href={{
-              pathname: '/restaurant/orders',
-              query: { restaurant_id: restaurant.id, user_id: user.id },
-            }}
-            className="px-4 py-2 bg-teal-600 text-white rounded hover:bg-teal-700"
-          >
-            Preview Site
-          </Link>
-        )}
+        <Link
+          href={{
+            pathname: '/restaurant/orders',
+            query: { restaurant_id: restaurant.id, user_id: userId! },
+          }}
+          className="px-4 py-2 bg-teal-600 text-white rounded hover:bg-teal-700"
+        >
+          Preview Site
+        </Link>
       </div>
     </DashboardLayout>
   );
