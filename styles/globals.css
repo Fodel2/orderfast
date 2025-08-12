@@ -4,7 +4,6 @@
 @tailwind components;
 @tailwind utilities;
 
-@import './brand.css';
 
 body {
   font-family: 'Inter', sans-serif;
