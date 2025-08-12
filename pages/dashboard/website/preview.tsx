@@ -16,7 +16,7 @@ export default function WebsitePreview() {
   const router = useRouter();
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [loading, setLoading] = useState(true);
-  const { user } = useUser();
+  const { user, loading: userLoading } = useUser();
 
   useEffect(() => {
     const load = async () => {
@@ -67,15 +67,17 @@ export default function WebsitePreview() {
             {restaurant.website_description}
           </p>
         )}
-        <Link
-          href={{
-            pathname: '/restaurant/orders',
-            query: { restaurant_id: restaurant.id, user_id: user?.id },
-          }}
-          className="px-4 py-2 bg-teal-600 text-white rounded hover:bg-teal-700"
-        >
-          Preview Site
-        </Link>
+        {!userLoading && user && (
+          <Link
+            href={{
+              pathname: '/restaurant/orders',
+              query: { restaurant_id: restaurant.id, user_id: user.id },
+            }}
+            className="px-4 py-2 bg-teal-600 text-white rounded hover:bg-teal-700"
+          >
+            Preview Site
+          </Link>
+        )}
       </div>
     </DashboardLayout>
   );
