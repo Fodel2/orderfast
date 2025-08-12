@@ -4,7 +4,6 @@ import React, { useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import OpenBadge from './OpenBadge';
 import Logo from '../branding/Logo';
-import { useBrand } from '../branding/BrandProvider';
 
 interface Props {
   restaurant: any;
@@ -14,7 +13,6 @@ interface Props {
 export default function Hero({ restaurant, onVisibilityChange }: Props) {
   const ref = useRef<HTMLDivElement | null>(null);
   const router = useRouter();
-  const { brand } = useBrand();
 
   useEffect(() => {
     if (!ref.current || !onVisibilityChange) return;
@@ -41,7 +39,7 @@ export default function Hero({ restaurant, onVisibilityChange }: Props) {
           <p className="max-w-md text-white/90">{restaurant.website_description}</p>
         )}
         {typeof restaurant?.is_open === 'boolean' && <OpenBadge isOpen={restaurant.is_open} />}
-        <Link href={orderHref} className="brand-btn" style={{ background: brand }}>
+        <Link href={orderHref} className="btn-primary">
           Order Now
         </Link>
       </div>

@@ -2,7 +2,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import CustomerLayout from '../../components/CustomerLayout';
 import Hero from '../../components/customer/Hero';
-import Slides from '../../components/customer/Slides';
+import Slides from '../../components/customer/Slides'; // slides: restored
 import { supabase } from '../../utils/supabaseClient';
 import { useCart } from '../../context/CartContext';
 

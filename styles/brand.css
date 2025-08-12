@@ -1,42 +1,15 @@
-:root {
-  --brand: hsl(20 90% 50%);
-  --brand-600: hsl(20 90% 45%);
-  --brand-700: hsl(20 90% 40%);
-  --ink: hsl(230 15% 12%);
-  --surface: hsl(0 0% 98%);
-  --card: hsl(0 0% 100% / 0.7);
-  --muted: hsl(230 10% 46%);
-}
+/* brand: tokens */
+[data-brand-root] .btn-primary { background: var(--brand); color: #fff; }
+[data-brand-root] .btn-primary:hover { background: var(--brand-700); }
+[data-brand-root] .pill { background: color-mix(in oklab, var(--brand) 18%, white); color: var(--brand); }
+[data-brand-root] .fab { background: var(--brand); color: #fff; }
+[data-brand-root] .nav-active { color: var(--brand); }
+[data-brand-root] .link-brand { color: var(--brand); }
 
-[data-brand] {
-  color: var(--ink);
-  background-color: var(--surface);
-}
-
-.brand-glass {
+/* Optional glass effect for headers/nav */
+[data-brand-root] .brand-glass {
   backdrop-filter: saturate(160%) blur(12px);
-  background: color-mix(in oklab, var(--card), transparent 30%);
-  box-shadow: 0 6px 24px rgba(0,0,0,.08);
+  background: color-mix(in oklab, var(--card) 70%, transparent);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.08);
 }
 
-.brand-pill {
-  border: 1px solid color-mix(in oklab, var(--brand), black 12%);
-  border-radius: 9999px;
-  padding: 3px 10px;
-  font-size: 12px;
-  line-height: 1.2;
-}
-
-.brand-btn {
-  background: var(--brand);
-  color: #fff;
-  border-radius: 14px;
-  padding: 12px 18px;
-  box-shadow: 0 8px 20px rgba(0,0,0,.12);
-  transition: transform .12s ease, box-shadow .12s ease;
-}
-
-.brand-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 10px 24px rgba(0,0,0,.16);
-}

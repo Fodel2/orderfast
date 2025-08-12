@@ -5,14 +5,6 @@ import Hero from '../components/customer/Hero';
 import OpenBadge from '../components/customer/OpenBadge';
 import BrandProvider from '../components/branding/BrandProvider';
 
-jest.mock('../utils/supabaseClient', () => ({
-  supabase: {
-    from: () => ({
-      select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null }) }) }),
-    }),
-  },
-}));
-
 jest.mock('next/router', () => ({
   useRouter: () => ({ query: {} }),
 }));
@@ -22,7 +14,7 @@ const restaurant = { id: 1, name: 'Demo Diner', is_open: true, brand_color: '#ff
 test('brand variables apply to button and badge', () => {
   render(
     <BrandProvider restaurant={restaurant}>
-      <button data-testid="btn" style={{ background: 'var(--brand)' }}>
+      <button data-testid="btn" className="btn-primary">
         Btn
       </button>
       <OpenBadge isOpen />
@@ -30,11 +22,11 @@ test('brand variables apply to button and badge', () => {
   );
   const btn = screen.getByTestId('btn');
   const badge = screen.getByText('Open');
-  const root = btn.closest('[data-brand]') as HTMLElement;
+  const root = btn.closest('[data-brand-root]') as HTMLElement;
   expect(root).toHaveStyle('--brand: #ff0000');
-  expect(btn).toHaveStyle('background: var(--brand)');
+  expect(btn).toHaveClass('btn-primary');
   expect(badge).toHaveStyle('border: 1px solid var(--brand)');
-  expect(badge).toHaveClass('brand-pill');
+  expect(badge).toHaveClass('pill');
 });
 
 test('footer hidden on hero and appears after scroll', () => {

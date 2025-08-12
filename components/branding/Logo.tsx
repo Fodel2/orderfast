@@ -1,39 +1,31 @@
+// slides/brand: added
 import React from 'react';
-import Image from 'next/image';
 import { useBrand } from './BrandProvider';
 
-interface Props {
-  size?: number;
-  className?: string;
-  ariaLabel?: string;
-}
-
-export default function Logo({ size = 32, className = '', ariaLabel }: Props) {
-  const { logoUrl, name, initials } = useBrand();
-  const label = ariaLabel || name;
+export default function Logo({ size = 28, className = '' }: { size?: number; className?: string }) {
+  const { logoUrl, initials, name } = useBrand();
   if (logoUrl) {
     return (
-      <Image
-        src={logoUrl}
-        alt={label}
-        width={size}
-        height={size}
-        className={`object-cover rounded-full ${className}`}
-      />
+      <span className={className} style={{ display: 'inline-flex', width: size, height: size, borderRadius: '9999px', overflow: 'hidden' }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={logoUrl} alt={name} width={size} height={size} style={{ width: size, height: size, objectFit: 'cover' }} />
+      </span>
     );
   }
-  const style: React.CSSProperties = {
-    width: size,
-    height: size,
-    fontSize: size * 0.5,
-  };
   return (
-    <div
-      aria-label={label}
-      className={`rounded-full bg-[var(--brand)] text-white flex items-center justify-center font-semibold ${className}`}
-      style={style}
+    <span
+      className={className}
+      style={{
+        width: size, height: size, borderRadius: '9999px',
+        background: 'var(--brand)', color: 'white',
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        fontWeight: 700, letterSpacing: 0.5,
+      }}
+      aria-label={name}
+      title={name}
     >
       {initials}
-    </div>
+    </span>
   );
 }
+

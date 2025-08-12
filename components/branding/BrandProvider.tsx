@@ -1,143 +1,79 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+// slides/brand: added
+import React, { createContext, useContext, useMemo } from 'react';
 import { useRouter } from 'next/router';
-import { supabase } from '../../utils/supabaseClient';
 
-interface RestaurantLite {
-  id: string | number;
-  name: string;
-  logo_url?: string | null;
-  brand_color?: string | null;
-  accent_color?: string | null;
-}
-
-interface BrandTheme {
-  brand: string;
+type BrandCtx = {
+  brand: string; // e.g. hsl(330 90% 50%)
   brand600: string;
   brand700: string;
-  ink: string;
-  surface: string;
-  card: string;
-  muted: string;
-  logoUrl?: string | null;
   name: string;
   initials: string;
+  logoUrl?: string | null;
+};
+const BrandContext = createContext<BrandCtx | null>(null);
+export const useBrand = () => {
+  const v = useContext(BrandContext);
+  if (!v) throw new Error('useBrand must be used within <BrandProvider>');
+  return v;
+};
+
+function hsl(str: string) {
+  // Simple stable hash → hue
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0;
+  const hue = h % 360;
+  // vivid but not neon
+  const s = 86, l = 52;
+  return {
+    brand: `hsl(${hue} ${s}% ${l}%)`,
+    brand600: `hsl(${hue} ${s}% ${Math.max(38, l - 14)}%)`,
+    brand700: `hsl(${hue} ${s}% ${Math.max(30, l - 22)}%)`,
+  };
 }
 
-const BrandContext = createContext<BrandTheme>({
-  brand: 'hsl(20 90% 50%)',
-  brand600: 'hsl(20 90% 45%)',
-  brand700: 'hsl(20 90% 40%)',
-  ink: 'hsl(230 15% 12%)',
-  surface: 'hsl(0 0% 98%)',
-  card: 'hsl(0 0% 100% / 0.7)',
-  muted: 'hsl(230 10% 46%)',
-  logoUrl: null,
-  name: 'Restaurant',
-  initials: 'R',
-});
-
-export function useBrand() {
-  return useContext(BrandContext);
-}
-
-function hashBrand(str: string): string {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
-  const hue = Math.abs(hash) % 360;
-  return `hsl(${hue} 70% 50%)`;
-}
-
-function shade(color: string, lOffset: number) {
-  if (color.startsWith('#')) {
-    const hsl = `hsl(${parseInt(color.slice(1),16)%360} 70% 50%)`;
-    color = hsl;
-  }
-  const match = /hsl\((\d+),?\s*(\d+)%?,?\s*(\d+)%?\)/i.exec(color);
-  if (!match) return color;
-  const h = Number(match[1]);
-  const s = Number(match[2]);
-  const l = Number(match[3]) + lOffset;
-  return `hsl(${h} ${s}% ${Math.max(0, Math.min(100, l))}%)`;
-}
-
-export default function BrandProvider({
-  children,
-  restaurant,
-}: {
-  children: React.ReactNode;
-  restaurant?: RestaurantLite | null;
-}) {
+export const BrandProvider: React.FC<{ restaurant?: any; children: React.ReactNode; }> = ({ restaurant, children }) => {
   const router = useRouter();
-  const [rest, setRest] = useState<RestaurantLite | null | undefined>(restaurant);
+  const qp = (k: string) => (router?.query?.[k] as string) || '';
 
-  useEffect(() => {
-    if (rest || !router.isReady) return;
-    const ridRaw = router.query.restaurant_id;
-    const rid = Array.isArray(ridRaw) ? ridRaw[0] : ridRaw;
-    if (!rid) return;
-    supabase
-      .from('restaurants')
-      .select('id,name,logo_url,brand_color,accent_color')
-      .eq('id', rid)
-      .maybeSingle()
-      .then(({ data }) => setRest(data));
-  }, [rest, router.isReady, router.query]);
+  const name = (restaurant?.name as string) || qp('name') || 'Restaurant';
+  const logoUrl = (restaurant?.logo_url as string) || qp('logo') || null;
+  const colorFromDb = (restaurant?.brand_color as string) || qp('brand') || '';
 
-  const queryBrand = (() => {
-    const qb = router.query.brand;
-    return typeof qb === 'string' ? qb : undefined;
-  })();
+  const { brand, brand600, brand700 } = colorFromDb
+    ? { brand: colorFromDb, brand600: colorFromDb, brand700: colorFromDb }
+    : hsl(name);
 
-  const queryLogo = (() => {
-    const ql = router.query.logo;
-    return typeof ql === 'string' ? ql : undefined;
-  })();
+  const initials = (name || 'R')
+    .split(' ')
+    .map(p => p[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
 
-  const queryName = (() => {
-    const qn = router.query.name;
-    return typeof qn === 'string' ? qn : undefined;
-  })();
-
-  const theme = useMemo(() => {
-    const name = rest?.name || queryName || 'Restaurant';
-    const brandBase =
-      rest?.brand_color || rest?.accent_color || queryBrand || hashBrand(name);
-    const logo = rest?.logo_url || queryLogo || null;
-    const initials = name
-      .split(' ')
-      .map((n) => n[0])
-      .slice(0, 2)
-      .join('')
-      .toUpperCase();
-    return {
-      brand: brandBase,
-      brand600: shade(brandBase, -5),
-      brand700: shade(brandBase, -10),
-      ink: 'var(--ink)',
-      surface: 'var(--surface)',
-      card: 'var(--card)',
-      muted: 'var(--muted)',
-      logoUrl: logo,
-      name,
-      initials,
-    } as BrandTheme;
-  }, [rest, queryBrand, queryLogo, queryName]);
-
-  const styleVars: React.CSSProperties = {
-    '--brand': theme.brand,
-    '--brand-600': theme.brand600,
-    '--brand-700': theme.brand700,
-    '--ink': 'hsl(230 15% 12%)',
-    '--surface': 'hsl(0 0% 98%)',
-    '--card': 'hsl(0 0% 100% / 0.7)',
-    '--muted': 'hsl(230 10% 46%)',
-  } as any;
+  const value = useMemo(() => ({ brand, brand600, brand700, name, initials, logoUrl }), [brand, brand600, brand700, name, initials, logoUrl]);
 
   return (
-    <BrandContext.Provider value={theme}>
-      <div data-brand style={styleVars}>
+    <BrandContext.Provider value={value}>
+      <div
+        data-brand-root
+        style={{
+          // Core design tokens
+          // buttons/badges/FAB/active nav use these
+          // ink/surface/card/muted keep sensible defaults
+          ['--brand' as any]: brand,
+          ['--brand-600' as any]: brand600,
+          ['--brand-700' as any]: brand700,
+          ['--ink' as any]: '#111827',
+          ['--surface' as any]: '#ffffff',
+          ['--card' as any]: '#ffffff',
+          ['--muted' as any]: '#6b7280',
+        } as React.CSSProperties}
+      >
         {children}
       </div>
     </BrandContext.Provider>
   );
-}
+};
+
+export default BrandProvider;
+

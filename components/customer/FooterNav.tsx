@@ -24,7 +24,7 @@ export default function FooterNav({ cartCount = 0, hidden }: Props) {
       href={build(href)}
       className={`flex flex-col items-center justify-center text-xs transition-all ${
         current === (href === '/' ? '/restaurant' : `/restaurant/${href}`)
-          ? 'text-[var(--brand)]'
+          ? 'nav-active'
           : 'text-[var(--muted)]'
       }`}
     >
@@ -43,7 +43,7 @@ export default function FooterNav({ cartCount = 0, hidden }: Props) {
         <div className="absolute -top-6 left-1/2 -translate-x-1/2">
           <Link
             href={build('cart')}
-            className="relative w-14 h-14 rounded-full bg-[var(--brand)] text-white flex items-center justify-center shadow-lg"
+            className="relative w-14 h-14 rounded-full fab flex items-center justify-center shadow-lg"
           >
             <ShoppingCart className="w-6 h-6" />
             {cartCount > 0 && (
