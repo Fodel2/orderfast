@@ -7,6 +7,14 @@ jest.mock('next/router', () => ({
   useRouter: jest.fn(),
 }));
 
+jest.mock('../utils/supabaseClient', () => ({
+  supabase: {
+    from: () => ({
+      select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null }) }) }),
+    }),
+  },
+}));
+
 // Mock Next.js Head to simply render children for easier assertions
 jest.mock('next/head', () => ({
   __esModule: true,
@@ -18,7 +26,7 @@ const mockUseRouter = useRouter as jest.Mock;
 describe('CustomerLayout', () => {
   beforeEach(() => {
     document.head.innerHTML = '';
-    mockUseRouter.mockReturnValue({ pathname: '/' });
+    mockUseRouter.mockReturnValue({ pathname: '/', query: {} });
   });
 
   it('renders children and cart count', () => {

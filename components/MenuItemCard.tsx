@@ -109,7 +109,8 @@ export default function MenuItemCard({
       <motion.div
         whileInView={{ opacity: [0, 1], y: [20, 0] }}
         viewport={{ once: true }}
-        className="bg-white rounded-2xl shadow-md hover:shadow-xl transition-all flex p-4 gap-4 min-h-[7rem]"
+        className="rounded-2xl shadow-md hover:shadow-xl transition-all flex p-4 gap-4 min-h-[7rem]"
+        style={{ background: 'var(--card)', color: 'var(--ink)' }}
       >
         {item.image_url && (
           <img
