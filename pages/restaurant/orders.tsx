@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSupabaseClient } from '@supabase/auth-helpers-react'
 import { useUser } from '@/lib/useUser'
 import { useRouter } from 'next/router'
@@ -11,10 +11,24 @@ export default function OrdersPage() {
   const qUserId = typeof router.query.user_id === 'string' ? router.query.user_id : undefined
   const qRestaurantId = typeof router.query.restaurant_id === 'string' ? router.query.restaurant_id : undefined
 
+  const effectiveUserId = useMemo(() => qUserId || user?.id, [qUserId, user?.id])
+  const canFetch = router.isReady && !loading && !!effectiveUserId
+
   const [orders, setOrders] = useState<any[]>([])
   const [activeOrder, setActiveOrder] = useState<any | null>(null)
   const openOrder = (o: any) => setActiveOrder(o)
   const closeOrder = () => setActiveOrder(null)
+
+  console.debug(
+    '[orders] ready=',
+    router.isReady,
+    'qUserId=',
+    qUserId,
+    'authUser=',
+    user?.id,
+    'canFetch=',
+    canFetch,
+  )
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -24,29 +38,23 @@ export default function OrdersPage() {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  // If user_id is missing but we have an authenticated user, update the URL once (no full reload)
   useEffect(() => {
     if (!router.isReady) return
     if (loading) return
     if (!qUserId && user?.id) {
-      const nextQuery = { ...router.query, user_id: user.id }
-      router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true })
+      const url = new URL(window.location.href)
+      url.searchParams.set('user_id', user.id)
+      router.replace(url.pathname + url.search, undefined, { shallow: true })
     }
   }, [router.isReady, loading, qUserId, user?.id])
 
   useEffect(() => {
-    if (!router.isReady) return
-    if (loading) return
-    const targetUserId = qUserId || user?.id
-    if (!targetUserId) {
-      setOrders([])
-      return
-    }
+    if (!canFetch) return
     const fetchOrders = async () => {
       let query = supabase
         .from('orders')
         .select('*')
-        .eq('user_id', targetUserId)
+        .eq('user_id', effectiveUserId as string)
         .order('created_at', { ascending: false })
       if (qRestaurantId) query = query.eq('restaurant_id', qRestaurantId)
       const { data, error } = await query
@@ -54,7 +62,7 @@ export default function OrdersPage() {
       setOrders(data || [])
     }
     fetchOrders()
-  }, [router.isReady, qUserId, qRestaurantId, user?.id, loading, supabase])
+  }, [canFetch, supabase, effectiveUserId, qRestaurantId])
 
   // Lock body scroll when modal is open
   useEffect(() => {
@@ -78,6 +86,9 @@ export default function OrdersPage() {
           </div>
         )}
         <h1 className="text-xl font-semibold mb-4">Your Orders</h1>
+        {!qUserId && user?.id && (
+          <div className="text-xs text-gray-500 mb-2">Loading your orders…</div>
+        )}
         {orders.length === 0 ? (
           <p>No orders found.</p>
         ) : (
