@@ -3,7 +3,7 @@ import { render, screen, act } from '@testing-library/react';
 import CustomerLayout from '../components/CustomerLayout';
 import Hero from '../components/customer/Hero';
 import OpenBadge from '../components/customer/OpenBadge';
-import BrandProvider from '../components/customer/BrandProvider';
+import BrandProvider from '../components/branding/BrandProvider';
 
 jest.mock('../utils/supabaseClient', () => ({
   supabase: {

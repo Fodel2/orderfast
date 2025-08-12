@@ -19,7 +19,8 @@ interface BrandTheme {
   card: string;
   muted: string;
   logoUrl?: string | null;
-  name?: string;
+  name: string;
+  initials: string;
 }
 
 const BrandContext = createContext<BrandTheme>({
@@ -30,9 +31,12 @@ const BrandContext = createContext<BrandTheme>({
   surface: 'hsl(0 0% 98%)',
   card: 'hsl(0 0% 100% / 0.7)',
   muted: 'hsl(230 10% 46%)',
+  logoUrl: null,
+  name: 'Restaurant',
+  initials: 'R',
 });
 
-export function useBrandTheme() {
+export function useBrand() {
   return useContext(BrandContext);
 }
 
@@ -89,9 +93,22 @@ export default function BrandProvider({
     return typeof ql === 'string' ? ql : undefined;
   })();
 
+  const queryName = (() => {
+    const qn = router.query.name;
+    return typeof qn === 'string' ? qn : undefined;
+  })();
+
   const theme = useMemo(() => {
+    const name = rest?.name || queryName || 'Restaurant';
     const brandBase =
-      rest?.brand_color || rest?.accent_color || queryBrand || hashBrand(rest?.name || 'R');
+      rest?.brand_color || rest?.accent_color || queryBrand || hashBrand(name);
+    const logo = rest?.logo_url || queryLogo || null;
+    const initials = name
+      .split(' ')
+      .map((n) => n[0])
+      .slice(0, 2)
+      .join('')
+      .toUpperCase();
     return {
       brand: brandBase,
       brand600: shade(brandBase, -5),
@@ -100,10 +117,11 @@ export default function BrandProvider({
       surface: 'var(--surface)',
       card: 'var(--card)',
       muted: 'var(--muted)',
-      logoUrl: queryLogo || rest?.logo_url || null,
-      name: rest?.name,
+      logoUrl: logo,
+      name,
+      initials,
     } as BrandTheme;
-  }, [rest, queryBrand, queryLogo]);
+  }, [rest, queryBrand, queryLogo, queryName]);
 
   const styleVars: React.CSSProperties = {
     '--brand': theme.brand,

@@ -15,16 +15,16 @@
 
 .brand-glass {
   backdrop-filter: saturate(160%) blur(12px);
-  background: rgba(255,255,255,0.7);
+  background: color-mix(in oklab, var(--card), transparent 30%);
   box-shadow: 0 6px 24px rgba(0,0,0,.08);
 }
 
 .brand-pill {
-  border: 1px solid var(--brand);
-  border-radius: 999px;
-  padding: 4px 10px;
+  border: 1px solid color-mix(in oklab, var(--brand), black 12%);
+  border-radius: 9999px;
+  padding: 3px 10px;
   font-size: 12px;
-  line-height: 1;
+  line-height: 1.2;
 }
 
 .brand-btn {

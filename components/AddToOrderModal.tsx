@@ -100,7 +100,8 @@ export default function AddToOrderModal({
         <div className="px-6 pb-6">
           <button
             onClick={handleAdd}
-            className="w-full bg-teal-600 text-white py-2 rounded hover:bg-teal-700"
+            className="w-full text-white py-2 rounded hover:opacity-90"
+            style={{ background: 'var(--brand)' }}
           >
             Add to Order
           </button>

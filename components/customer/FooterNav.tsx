@@ -10,12 +10,11 @@ interface Props {
 
 export default function FooterNav({ cartCount = 0, hidden }: Props) {
   const router = useRouter();
-  const { restaurant_id } = router.query || {};
-  const restaurantId = Array.isArray(restaurant_id) ? restaurant_id[0] : restaurant_id || '';
-
   const build = (path: string) => {
-    if (path === '/') return `/restaurant?restaurant_id=${restaurantId}`;
-    return `/restaurant/${path}?restaurant_id=${restaurantId}`;
+    const p = new URLSearchParams(router.query as any);
+    const qs = p.toString();
+    if (path === '/') return `/restaurant?${qs}`;
+    return `/restaurant/${path}?${qs}`;
   };
 
   const current = (router.asPath || '').split('?')[0];
@@ -26,7 +25,7 @@ export default function FooterNav({ cartCount = 0, hidden }: Props) {
       className={`flex flex-col items-center justify-center text-xs transition-all ${
         current === (href === '/' ? '/restaurant' : `/restaurant/${href}`)
           ? 'text-[var(--brand)]'
-          : 'text-gray-500'
+          : 'text-[var(--muted)]'
       }`}
     >
       <Icon className="w-5 h-5" />
