@@ -5,35 +5,35 @@ import { useBrand } from '@/components/branding/BrandProvider';
 
 export default function CollapsingHeader({ heroInView }: { heroInView: boolean }) {
   const { name } = useBrand();
+  const headerVisible = !heroInView;
 
-  // Header shell only shows AFTER hero; while hero is visible, the shell is transparent/invisible.
-  // The Logo element is ONE node that we position/transform between center-of-hero and top-left header.
   return (
     <>
-      {/* Slim header shell (becomes visible only after hero) */}
+      {/* Slim header shell — height 0 on hero (no white bar) */}
       <div
         aria-label="Brand header"
         style={{
           position: 'sticky',
           top: 0,
           zIndex: 20,
-          height: 56,
+          height: headerVisible ? 56 : 0,
+          overflow: 'hidden',
           display: 'flex',
           alignItems: 'center',
           gap: 12,
-          padding: '8px 16px',
-          backdropFilter: heroInView ? 'none' : 'saturate(180%) blur(8px)',
-          background: heroInView ? 'transparent' : 'color-mix(in oklab, var(--brand) 18%, white)',
-          boxShadow: heroInView ? 'none' : '0 2px 12px rgba(0,0,0,0.08)',
-          transition: 'background 220ms ease, box-shadow 220ms ease',
+          padding: headerVisible ? '8px 16px' : '0px 16px',
+          background: headerVisible ? 'color-mix(in oklab, var(--brand) 18%, white)' : 'transparent',
+          backdropFilter: headerVisible ? 'saturate(180%) blur(8px)' : 'none',
+          boxShadow: headerVisible ? '0 2px 12px rgba(0,0,0,0.08)' : 'none',
+          transition:
+            'height 240ms ease, background 220ms ease, box-shadow 220ms ease, padding 200ms ease',
         }}
       >
-        {/* Title fades in only after hero */}
         <div
           style={{
-            opacity: heroInView ? 0 : 1,
-            transform: heroInView ? 'translateY(6px)' : 'translateY(0)',
-            transition: 'opacity 220ms ease, transform 220ms ease',
+            opacity: headerVisible ? 1 : 0,
+            transform: headerVisible ? 'translateY(0)' : 'translateY(6px)',
+            transition: 'opacity 200ms ease, transform 200ms ease',
             fontWeight: 700,
           }}
         >
@@ -41,21 +41,23 @@ export default function CollapsingHeader({ heroInView }: { heroInView: boolean }
         </div>
       </div>
 
-      {/* SINGLE shared logo element — visually centered on hero, then animates to header-left */}
+      {/* SINGLE shared logo: centered on hero at ~34vh; docks to header-left after scroll */}
       <div
         style={{
           position: 'fixed',
           zIndex: 30,
-          // Center over hero vs. dock to header
-          top: heroInView ? '50vh' : 12,
+          top: heroInView ? 'var(--hero-logo-top, 34vh)' : 12,
           left: heroInView ? '50vw' : 16,
-          transform: heroInView ? 'translate(-50%, -50%) scale(1.6)' : 'translate(0,0) scale(1)',
+          transform: heroInView
+            ? 'translate(-50%, -50%) scale(1.6)'
+            : 'translate(0,0) scale(1)',
           transformOrigin: 'left center',
-          transition: 'top 300ms cubic-bezier(.2,.7,.2,1), left 300ms cubic-bezier(.2,.7,.2,1), transform 300ms cubic-bezier(.2,.7,.2,1)',
+          transition:
+            'top 320ms cubic-bezier(.2,.7,.2,1), left 320ms cubic-bezier(.2,.7,.2,1), transform 320ms cubic-bezier(.2,.7,.2,1)',
           pointerEvents: 'none',
         }}
       >
-        <Logo size={heroInView ? 48 : 32} />
+        <Logo size={heroInView ? 56 : 32} />
       </div>
     </>
   );

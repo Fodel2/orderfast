@@ -35,7 +35,7 @@ export default function CustomerLayout({
       <TopBar hidden={hideHeader} />
 
       <main
-        className={`min-h-screen pb-24 ${hideHeader ? '' : 'pt-14'}`}
+        className={`min-h-screen ${hideFooter ? '' : 'pb-24'} ${hideHeader ? '' : 'pt-14'}`}
         style={{ background: 'var(--surface)', color: 'var(--ink)' }}
       >
         {children}
