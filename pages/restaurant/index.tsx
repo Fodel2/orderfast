@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import CustomerLayout from '../../components/CustomerLayout';
 import Hero from '../../components/customer/Hero';
 import Slides from '../../components/customer/Slides'; // slides: restored
+import CollapsingHeader from '../../components/customer/CollapsingHeader';
 import { supabase } from '../../utils/supabaseClient';
 import { useCart } from '../../context/CartContext';
 
@@ -11,7 +12,7 @@ export default function RestaurantHomePage() {
   const { restaurant_id } = router.query;
   const restaurantId = Array.isArray(restaurant_id) ? restaurant_id[0] : restaurant_id;
   const [restaurant, setRestaurant] = useState<any | null>(null);
-  const [heroVisible, setHeroVisible] = useState(true);
+  const [heroInView, setHeroInView] = useState(true);
   const { cart } = useCart();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
 
@@ -29,23 +30,32 @@ export default function RestaurantHomePage() {
     <CustomerLayout
       restaurant={restaurant}
       cartCount={cartCount}
-      hideFooter={heroVisible}
+      hideFooter={heroInView}
       hideHeader
     >
       {restaurant && (
-        <Slides>
-          <Hero restaurant={restaurant} onVisibilityChange={setHeroVisible} />
-          <section className="flex items-center justify-center h-full w-full" style={{ background: 'var(--surface)', color: 'var(--ink)' }}>
-            <div className="text-center">
-              <p>Menu preview coming soon.</p>
-            </div>
-          </section>
-          <section className="flex items-center justify-center h-full w-full" style={{ background: 'var(--surface)', color: 'var(--ink)' }}>
-            <div className="text-center">
-              <p>Gallery placeholder.</p>
-            </div>
-          </section>
-        </Slides>
+        <>
+          <CollapsingHeader compact={!heroInView} />
+          <Slides onHeroInView={setHeroInView}>
+            <Hero restaurant={restaurant} />
+            <section
+              className="flex items-center justify-center h-full w-full"
+              style={{ background: 'var(--surface)', color: 'var(--ink)' }}
+            >
+              <div className="text-center">
+                <p>Menu preview coming soon.</p>
+              </div>
+            </section>
+            <section
+              className="flex items-center justify-center h-full w-full"
+              style={{ background: 'var(--surface)', color: 'var(--ink)' }}
+            >
+              <div className="text-center">
+                <p>Gallery placeholder.</p>
+              </div>
+            </section>
+          </Slides>
+        </>
       )}
     </CustomerLayout>
   );
