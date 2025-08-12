@@ -22,11 +22,10 @@ export default function OrdersPage() {
     itemSubtotal?: number
   }>({})
 
-  // Keep track if we're normalizing the URL (prevents double fetch)
-  const [normalizingUrl, setNormalizingUrl] = useState(false)
-
-  const effectiveUserId = qUserId || user?.id
-  const canFetch = router.isReady && !loading && !!effectiveUserId && !normalizingUrl
+  const effectiveUserId = (typeof router.query.user_id === 'string' && router.query.user_id.trim() !== '')
+    ? router.query.user_id as string
+    : (user?.id || undefined)
+  const canFetch = router.isReady && !loading && !!effectiveUserId
 
   const closeOrder = () => { setActiveOrder(null); setDetails({}) }
   const openOrder = (o: any) => { setActiveOrder(o); loadOrderDetails(o.id, o) }
@@ -51,19 +50,28 @@ export default function OrdersPage() {
   }, [])
 
   useEffect(() => {
-    if (!router.isReady) return
-    if (loading) return
-    if (!qUserId && user?.id) {
-      setNormalizingUrl(true)
-      router
-        .replace(
-          { pathname: router.pathname, query: { ...router.query, user_id: user.id } },
-          undefined,
-          { shallow: true }
-        )
-        .finally(() => setNormalizingUrl(false))
+    if (!router.isReady) return;
+    if (loading) return;
+
+    // Read current param exactly as string (including empty)
+    const rawUserParam = router.query.user_id;
+    const hasUserParam = typeof rawUserParam === 'string';
+    const isBlankUserParam = hasUserParam && rawUserParam.trim() === '';
+
+    // If there is a BLANK user_id in the URL, remove it.
+    if (isBlankUserParam) {
+      const next = { ...router.query };
+      delete (next as any).user_id;
+      router.replace({ pathname: router.pathname, query: next }, undefined, { shallow: true });
+      return;
     }
-  }, [router.isReady, loading, qUserId, user?.id])
+
+    // Only add user_id if it's missing AND we truly have an authenticated user.id
+    if (!hasUserParam && user?.id) {
+      const next = { ...router.query, user_id: user.id };
+      router.replace({ pathname: router.pathname, query: next }, undefined, { shallow: true });
+    }
+  }, [router.isReady, loading, router.query.user_id, user?.id]);
 
   useEffect(() => {
     if (!canFetch) return
