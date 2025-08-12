@@ -1,18 +1,21 @@
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
-import { useEffect, useState } from 'react';
-import CustomerLayout from '../../components/CustomerLayout';
-import Hero from '../../components/customer/Hero';
-import Slides from '../../components/customer/Slides'; // slides: restored
-import CollapsingHeader from '../../components/customer/CollapsingHeader';
-import { supabase } from '../../utils/supabaseClient';
-import { useCart } from '../../context/CartContext';
+import CustomerLayout from '@/components/CustomerLayout';
+import Hero from '@/components/customer/Hero';
+import Slides from '@/components/customer/Slides';
+import Logo from '@/components/branding/Logo';
+import { useBrand } from '@/components/branding/BrandProvider';
+import { supabase } from '@/utils/supabaseClient';
+import { useCart } from '@/context/CartContext';
 
 export default function RestaurantHomePage() {
   const router = useRouter();
   const { restaurant_id } = router.query;
   const restaurantId = Array.isArray(restaurant_id) ? restaurant_id[0] : restaurant_id;
   const [restaurant, setRestaurant] = useState<any | null>(null);
-  const [heroInView, setHeroInView] = useState(true);
+  const [progress, setProgress] = useState(0); // 0..1 scroll over hero
+  const { name } = useBrand();
+  const [viewport, setViewport] = useState({ w: 0, h: 0 });
   const { cart } = useCart();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
 
@@ -26,6 +29,24 @@ export default function RestaurantHomePage() {
       .then(({ data }) => setRestaurant(data));
   }, [router.isReady, restaurantId]);
 
+  useEffect(() => {
+    const handle = () => setViewport({ w: window.innerWidth, h: window.innerHeight });
+    handle();
+    window.addEventListener('resize', handle);
+    return () => window.removeEventListener('resize', handle);
+  }, []);
+
+  const heroInView = progress < 1;
+  const headerHeight = 56 * progress;
+  const headerPadding = 8 * progress;
+  const brandBg = progress === 0 ? 'transparent' : 'color-mix(in oklab, var(--brand) 18%, white)';
+  const logoTopStart = viewport.h * 0.34;
+  const logoLeftStart = viewport.w * 0.5;
+  const logoTop = logoTopStart + (12 - logoTopStart) * progress;
+  const logoLeft = logoLeftStart + (16 - logoLeftStart) * progress;
+  const translate = -50 * (1 - progress);
+  const logoScale = 1.6 - 0.6 * progress;
+
   return (
     <CustomerLayout
       restaurant={restaurant}
@@ -35,9 +56,51 @@ export default function RestaurantHomePage() {
     >
       {restaurant && (
         <>
-          {/* slides: header hidden on hero; same logo animates into header */}
-          <CollapsingHeader heroInView={heroInView} />
-          <Slides onHeroInView={setHeroInView}>
+          {/* Slim header that grows with scroll progress */}
+          <div
+            aria-label="Brand header"
+            style={{
+              position: 'sticky',
+              top: 0,
+              zIndex: 20,
+              height: `${headerHeight}px`,
+              overflow: 'hidden',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              padding: `${headerPadding}px 16px`,
+              background: brandBg,
+              backdropFilter: progress ? 'saturate(180%) blur(8px)' : 'none',
+              boxShadow: progress ? '0 2px 12px rgba(0,0,0,0.08)' : 'none',
+            }}
+          >
+            <div
+              style={{
+                opacity: progress,
+                transform: `translateY(${(1 - progress) * 6}px)`,
+                fontWeight: 700,
+              }}
+            >
+              {name}
+            </div>
+          </div>
+
+          {/* SINGLE moving logo */}
+          <div
+            style={{
+              position: 'fixed',
+              zIndex: 30,
+              top: `${logoTop}px`,
+              left: `${logoLeft}px`,
+              transform: `translate(${translate}%, ${translate}%) scale(${logoScale})`,
+              transformOrigin: 'left center',
+              pointerEvents: 'none',
+            }}
+          >
+            <Logo size={32} />
+          </div>
+
+          <Slides onProgress={setProgress}>
             <Hero restaurant={restaurant} />
             <section
               className="flex items-center justify-center h-full w-full"
