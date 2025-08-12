@@ -28,10 +28,13 @@ export default function Hero({ restaurant, onVisibilityChange }: Props) {
   if (restaurant?.id) params.set('restaurant_id', restaurant.id);
   const orderHref = `/restaurant/menu?${params.toString()}`;
   return (
-    <section ref={ref} className="relative h-full w-full flex items-center justify-center text-center text-white">
+    <section ref={ref} className="relative h-full w-full text-center text-white">
       <Image src={bg} alt="hero" fill className="object-cover" />
       <div className="absolute inset-0 bg-gradient-to-b from-black/40 to-black/70" />
-      <div className="relative z-10 flex flex-col items-center gap-4 px-4">
+      <div
+        className="relative z-10 flex flex-col items-center gap-4 px-4"
+        style={{ paddingTop: 'calc(var(--hero-logo-top, 34vh) + 48px)' }}
+      >
         {/* slides: hero — logo provided by CollapsingHeader (single element) */}
         <h1 className="text-4xl font-light">{restaurant?.name}</h1>
         {restaurant?.website_description && (

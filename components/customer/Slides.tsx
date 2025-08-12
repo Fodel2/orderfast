@@ -15,7 +15,7 @@ export default function Slides({
     if (!onHeroInView || !heroRef.current) return;
     const obs = new IntersectionObserver(
       ([entry]) => onHeroInView(entry.isIntersecting),
-      { root: rootRef.current ?? undefined, threshold: 0.9 }
+      { root: rootRef.current ?? undefined, threshold: 0.98 }
     );
     obs.observe(heroRef.current);
     return () => obs.disconnect();
