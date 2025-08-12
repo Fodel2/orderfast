@@ -50,39 +50,45 @@ export default function RestaurantHomePage() {
       <DebugFlag label="HOME-A" />
       <Slides onHeroInView={setHeroInView}>
         {/* Slide 1 — Hero */}
-        <section className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center bg-gradient-to-b from-neutral-500 to-neutral-800">
+        <section className="home-hero">
           <Logo size={72} />
           <h1 className="text-4xl font-extrabold">{name}</h1>
-          {restaurant?.website_description && <p className="desc">{restaurant.website_description}</p>}
-          {typeof restaurant?.is_open === 'boolean' && (
-            <OpenBadge isOpen={restaurant.is_open} />
+          {restaurant?.website_description && (
+            <p className="desc">{restaurant.website_description}</p>
           )}
-          <Link href={orderHref} className="btn-primary">
-            Order Now
-          </Link>
+          {typeof restaurant?.is_open === 'boolean' && (
+            <div>
+              <OpenBadge isOpen={restaurant.is_open} />
+            </div>
+          )}
+          <div>
+            <Link href={orderHref} className="btn-primary">
+              Order Now
+            </Link>
+          </div>
         </section>
 
-        {/* Slide 2 — Opening hours & address */}
-        <section className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center">
+        {/* Slide 2 — Opening Hours & Address */}
+        <section className="slide-placeholder">
           <h2 className="text-xl font-bold">Opening Hours & Address</h2>
           <p>Opening hours will be displayed here.</p>
           <p>Address details will be displayed here.</p>
         </section>
 
-        {/* Slide 3 — Menu preview */}
-        <section className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center">
+        {/* Slide 3 — Menu Preview */}
+        <section className="slide-placeholder">
           <h2 className="text-xl font-bold">Menu Preview</h2>
           <p>Menu preview coming soon.</p>
         </section>
 
         {/* Slide 4 — Gallery */}
-        <section className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center">
+        <section className="slide-placeholder">
           <h2 className="text-xl font-bold">Gallery</h2>
           <p>Photos will be displayed here.</p>
         </section>
 
-        {/* Slide 5 — Contact info */}
-        <section className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center">
+        {/* Slide 5 — Contact Us */}
+        <section className="slide-placeholder">
           <h2 className="text-xl font-bold">Contact Us</h2>
           <p>Phone, email, and contact form will be displayed here.</p>
         </section>
