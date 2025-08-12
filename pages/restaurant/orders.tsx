@@ -55,9 +55,12 @@ export default function OrdersPage() {
     if (loading) return
     if (!qUserId && user?.id) {
       setNormalizingUrl(true)
-      const next = { ...router.query, user_id: user.id }
       router
-        .replace({ pathname: router.pathname, query: next }, undefined, { shallow: true })
+        .replace(
+          { pathname: router.pathname, query: { ...router.query, user_id: user.id } },
+          undefined,
+          { shallow: true }
+        )
         .finally(() => setNormalizingUrl(false))
     }
   }, [router.isReady, loading, qUserId, user?.id])
