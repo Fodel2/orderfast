@@ -185,7 +185,8 @@ export default function RestaurantMenuPage() {
 
   return (
     <CustomerLayout cartCount={itemCount}>
-    <div className="p-4 space-y-8 scroll-smooth">
+      <div className="max-w-screen-sm mx-auto px-4 pb-24">
+        <div className="pt-4 space-y-8 scroll-smooth">
       <div className="text-center space-y-4">
         {restaurant.logo_url && (
           <img
@@ -295,7 +296,8 @@ export default function RestaurantMenuPage() {
           <ChevronUp className="w-5 h-5" />
         </motion.button>
       )}
-    </div>
+        </div>
+      </div>
     </CustomerLayout>
   );
 }

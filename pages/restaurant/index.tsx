@@ -52,29 +52,6 @@ interface OpeningHours {
   is_closed: boolean;
 }
 
-/** Floating emojis with gentle up/down motion used as ambient background */
-function FloatingIconLayer() {
-  const icons = [
-    { e: '🍔', className: 'top-8 left-6 text-3xl', dur: 10 },
-    { e: '🍟', className: 'top-1/3 right-8 text-2xl', dur: 12 },
-    { e: '🥤', className: 'bottom-12 left-1/4 text-3xl', dur: 14 },
-  ];
-  return (
-    <div className="absolute inset-0 pointer-events-none z-0">
-      {icons.map((ic, i) => (
-        <motion.span
-          key={i}
-          className={`absolute ${ic.className}`}
-          animate={{ y: [0, -10, 0] }}
-          transition={{ duration: ic.dur, repeat: Infinity, ease: 'easeInOut' }}
-        >
-          {ic.e}
-        </motion.span>
-      ))}
-    </div>
-  );
-}
-
 /** Small wavy svg divider reused between snap sections */
 function SectionDivider({ className = 'text-white' }: { className?: string }) {
   return (
@@ -163,7 +140,7 @@ function TestimonialCarousel() {
 function MenuPreviewSection() {
   return (
     <section className="relative min-h-screen snap-start flex items-center justify-center bg-gradient-to-b from-yellow-50 to-white px-4">
-      <FloatingIconLayer />
+          {/* <FloatingIconLayer /> */}
       <motion.div
         className="relative z-10 max-w-md text-center"
         variants={fadeIn}
@@ -180,7 +157,7 @@ function MenuPreviewSection() {
           </motion.p>
         </FrostedGlassBox>
       </motion.div>
-      <SectionDivider className="text-yellow-50" />
+      {/* <SectionDivider className="text-yellow-50" /> */}
     </section>
   );
 }
@@ -204,7 +181,7 @@ function GallerySection() {
           </motion.p>
         </FrostedGlassBox>
       </motion.div>
-      <SectionDivider className="text-gray-100" />
+      {/* <SectionDivider className="text-gray-100" /> */}
     </section>
   );
 }
@@ -228,7 +205,7 @@ function MeetTheTeamSection() {
           </motion.p>
         </FrostedGlassBox>
       </motion.div>
-      <SectionDivider className="text-purple-50" />
+      {/* <SectionDivider className="text-purple-50" /> */}
     </section>
   );
 }
@@ -252,7 +229,7 @@ function LocationSection() {
           </motion.p>
         </FrostedGlassBox>
       </motion.div>
-      <SectionDivider className="text-green-50" />
+      {/* <SectionDivider className="text-green-50" /> */}
     </section>
   );
 }
@@ -276,7 +253,7 @@ function DeliveryInfoSection() {
           </motion.p>
         </FrostedGlassBox>
       </motion.div>
-      <SectionDivider className="text-blue-50" />
+      {/* <SectionDivider className="text-blue-50" /> */}
     </section>
   );
 }
@@ -300,7 +277,7 @@ function AppDownloadSection() {
           </motion.p>
         </FrostedGlassBox>
       </motion.div>
-      <SectionDivider className="text-pink-50" />
+      {/* <SectionDivider className="text-pink-50" /> */}
     </section>
   );
 }
@@ -324,7 +301,7 @@ function ReservationsSection() {
           </motion.p>
         </FrostedGlassBox>
       </motion.div>
-      <SectionDivider className="text-indigo-50" />
+      {/* <SectionDivider className="text-indigo-50" /> */}
     </section>
   );
 }
@@ -348,7 +325,7 @@ function AnnouncementsSection() {
           </motion.p>
         </FrostedGlassBox>
       </motion.div>
-      <SectionDivider className="text-orange-50" />
+      {/* <SectionDivider className="text-orange-50" /> */}
     </section>
   );
 }
@@ -378,7 +355,7 @@ function OrderNowSection() {
           </Link>
         </FrostedGlassBox>
       </motion.div>
-      <SectionDivider className="text-red-50" />
+      {/* <SectionDivider className="text-red-50" /> */}
     </section>
   );
 }
@@ -483,7 +460,8 @@ export default function RestaurantHome() {
 
   return (
     <CustomerLayout cartCount={itemCount}>
-      <div className="h-screen overflow-y-scroll snap-y snap-mandatory overflow-x-hidden">
+      <div className="max-w-screen-sm mx-auto px-4 pb-24">
+        <div className="h-screen overflow-y-scroll snap-y snap-mandatory overflow-x-hidden">
         {/* Section 1: Fullscreen Hero */}
         <motion.section
           ref={heroRef}
@@ -498,7 +476,7 @@ export default function RestaurantHome() {
               <Image src={restaurant.cover_image_url} alt="Hero" fill className="object-cover object-center" />
             </motion.div>
           )}
-          <FloatingIconLayer />
+          {/* <FloatingIconLayer /> */}
           <div className="absolute inset-0 bg-gradient-to-b from-purple-900/70 via-black/60 to-transparent" />
           <motion.div
             initial={{ opacity: 0, y: -10 }}
@@ -537,7 +515,7 @@ export default function RestaurantHome() {
               </div>
             </motion.div>
           </FrostedGlassBox>
-          <SectionDivider className="text-white" />
+          {/* <SectionDivider className="text-white" /> */}
         </motion.section>
 
         {/* Section 2: Live Status */}
@@ -554,7 +532,7 @@ export default function RestaurantHome() {
             </motion.span>
             <motion.span variants={fadeIn}>{statusText}</motion.span>
           </motion.div>
-          <SectionDivider className="text-purple-50" />
+          {/* <SectionDivider className="text-purple-50" /> */}
         </motion.section>
 
         {/* Section 3: Reviews */}
@@ -565,9 +543,9 @@ export default function RestaurantHome() {
           viewport={{ once: true }}
           variants={fadeIn}
         >
-          <FloatingIconLayer />
+          {/* <FloatingIconLayer /> */}
           <TestimonialCarousel />
-          <SectionDivider className="text-yellow-50" />
+          {/* <SectionDivider className="text-yellow-50" /> */}
         </motion.section>
 
         {showMenuPreview && <MenuPreviewSection />}
@@ -614,8 +592,9 @@ export default function RestaurantHome() {
               </Link>
             )}
           </motion.div>
-          <SectionDivider className="text-white" />
+          {/* <SectionDivider className="text-white" /> */}
         </motion.section>
+        </div>
       </div>
     </CustomerLayout>
   );
