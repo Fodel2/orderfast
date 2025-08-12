@@ -1,4 +1,5 @@
 import '../styles/globals.css';
+import '../styles/brand.css'; // brand: tokens
 import { SessionContextProvider } from '@supabase/auth-helpers-react';
 import { CartProvider } from '../context/CartContext';
 import { OrderTypeProvider } from '../context/OrderTypeContext';
