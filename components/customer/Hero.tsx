@@ -1,8 +1,10 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import React, { useEffect, useRef } from 'react';
+import { useRouter } from 'next/router';
 import OpenBadge from './OpenBadge';
-import { useBrandTheme } from './BrandProvider';
+import Logo from '../branding/Logo';
+import { useBrand } from '../branding/BrandProvider';
 
 interface Props {
   restaurant: any;
@@ -11,7 +13,8 @@ interface Props {
 
 export default function Hero({ restaurant, onVisibilityChange }: Props) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const { brand } = useBrandTheme();
+  const router = useRouter();
+  const { brand } = useBrand();
 
   useEffect(() => {
     if (!ref.current || !onVisibilityChange) return;
@@ -24,28 +27,21 @@ export default function Hero({ restaurant, onVisibilityChange }: Props) {
   }, [onVisibilityChange]);
 
   const bg = restaurant?.cover_image_url || 'https://source.unsplash.com/1600x900/?food';
+  const params = new URLSearchParams(router.query as any);
+  if (restaurant?.id) params.set('restaurant_id', restaurant.id);
+  const orderHref = `/restaurant/menu?${params.toString()}`;
   return (
-    <section ref={ref} className="relative h-screen w-full flex items-center justify-center text-center text-white">
+    <section ref={ref} className="relative h-full w-full flex items-center justify-center text-center text-white">
       <Image src={bg} alt="hero" fill className="object-cover" />
       <div className="absolute inset-0 bg-gradient-to-b from-black/40 to-black/70" />
       <div className="relative z-10 flex flex-col items-center gap-4 px-4">
-        {restaurant?.logo_url ? (
-          <Image src={restaurant.logo_url} alt="logo" width={80} height={80} className="rounded-full" />
-        ) : (
-          <div className="w-20 h-20 rounded-full bg-[var(--brand)] flex items-center justify-center text-3xl font-semibold">
-            {restaurant?.name?.[0] || 'R'}
-          </div>
-        )}
+        <Logo size={80} />
         <h1 className="text-4xl font-light">{restaurant?.name}</h1>
         {restaurant?.website_description && (
           <p className="max-w-md text-white/90">{restaurant.website_description}</p>
         )}
         {typeof restaurant?.is_open === 'boolean' && <OpenBadge isOpen={restaurant.is_open} />}
-        <Link
-          href={`/restaurant/menu?restaurant_id=${restaurant?.id}`}
-          className="brand-btn"
-          style={{ background: 'var(--brand)' }}
-        >
+        <Link href={orderHref} className="brand-btn" style={{ background: brand }}>
           Order Now
         </Link>
       </div>

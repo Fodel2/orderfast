@@ -117,7 +117,8 @@ function CartContent({ onClose }: { onClose?: () => void }) {
         <button
           type="button"
           onClick={() => router.push('/checkout')}
-          className="w-full px-4 py-2 bg-teal-600 text-white rounded hover:bg-teal-700"
+          className="w-full px-4 py-2 text-white rounded hover:opacity-90"
+          style={{ background: 'var(--brand)' }}
         >
           Proceed to Checkout
         </button>
@@ -160,7 +161,8 @@ export default function CartDrawer({ inline = false }: CartDrawerProps) {
       <button
         type="button"
         onClick={toggle}
-        className={`fixed bottom-4 right-4 bg-teal-600 text-white rounded-full px-4 py-2 flex items-center shadow-lg z-50 transition-transform ${bounce ? 'animate-bounce' : ''}`}
+        className={`fixed bottom-4 right-4 text-white rounded-full px-4 py-2 flex items-center shadow-lg z-50 transition-transform ${bounce ? 'animate-bounce' : ''}`}
+        style={{ background: 'var(--brand)' }}
         aria-label="Toggle cart"
       >
         <ShoppingCartIcon className="w-5 h-5 mr-2" />

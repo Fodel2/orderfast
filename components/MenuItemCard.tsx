@@ -142,7 +142,7 @@ export default function MenuItemCard({
             <p className="text-sm text-gray-600 line-clamp-2 mt-1">
               {item.description}
               {descriptionTooLong && (
-                <button onClick={handleClick} className="text-teal-600 text-xs ml-1">More</button>
+                <button onClick={handleClick} className="text-[var(--brand)] text-xs ml-1">More</button>
               )}
             </p>
           )}
@@ -156,7 +156,8 @@ export default function MenuItemCard({
               whileTap={{ scale: 0.95 }}
               animate={recentlyAdded ? { scale: [1, 1.05, 1] } : {}}
               onClick={handleClick}
-              className="bg-primary text-white text-sm h-9 px-4 rounded-full w-full sm:w-auto flex items-center justify-center gap-1"
+              className="text-white text-sm h-9 px-4 rounded-full w-full sm:w-auto flex items-center justify-center gap-1 brand-btn"
+              style={{ background: 'var(--brand)' }}
             >
               <ShoppingCart className="w-4 h-4" />
               {recentlyAdded ? '✓ Added' : 'Add to Cart'}
@@ -228,7 +229,8 @@ export default function MenuItemCard({
               <button
                 aria-label="Confirm Add to Cart"
                 onClick={handleFinalAdd}
-                className="px-4 py-2 bg-teal-600 text-white rounded hover:bg-teal-700"
+                className="px-4 py-2 text-white rounded hover:opacity-90"
+                style={{ background: 'var(--brand)' }}
               >
                 Add to Cart
               </button>

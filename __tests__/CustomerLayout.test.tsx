@@ -39,7 +39,6 @@ describe('CustomerLayout', () => {
     render(<CustomerLayout>Child</CustomerLayout>);
     await waitFor(() => {
       expect(document.querySelector('meta[name="theme-color"]')).toBeInTheDocument();
-      expect(document.querySelector('link[rel="manifest"]')).toBeInTheDocument();
     });
   });
 

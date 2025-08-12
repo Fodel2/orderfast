@@ -7,6 +7,8 @@ import { supabase } from "../../utils/supabaseClient";
 import MenuItemCard from "../../components/MenuItemCard";
 import { useCart } from "../../context/CartContext";
 import CustomerLayout from "../../components/CustomerLayout";
+import Logo from "../../components/branding/Logo";
+import { useBrand } from "../../components/branding/BrandProvider";
 
 
 interface Restaurant {
@@ -171,8 +173,10 @@ export default function RestaurantMenuPage() {
     load();
   }, [router.isReady, restaurantId]);
 
+  const brand = useBrand();
+
   if (loading) {
-    return <div className="p-6 text-center text-gray-500">Loading...</div>;
+    return <div className="p-6 text-center text-[var(--muted)]">Loading...</div>;
   }
 
   if (!restaurant) {
@@ -186,20 +190,14 @@ export default function RestaurantMenuPage() {
   return (
     <CustomerLayout cartCount={itemCount} restaurant={restaurant}>
       <div className="max-w-screen-sm mx-auto px-4 pb-24">
-        <div className="pt-4 space-y-8 scroll-smooth">
-      <div className="text-center space-y-4">
-        {restaurant.logo_url && (
-          <img
-            src={restaurant.logo_url}
-            alt={`${restaurant.name} logo`}
-            className="mx-auto h-24 object-contain"
-          />
-        )}
-        <h1 className="text-3xl font-bold">{restaurant.name}</h1>
-        {restaurant.website_description && (
-          <p className="text-gray-600">{restaurant.website_description}</p>
-        )}
-      </div>
+      <div className="pt-4 space-y-8 scroll-smooth">
+        <div className="text-center space-y-4">
+          <Logo size={96} className="mx-auto" />
+          <h1 className="text-3xl font-bold">{brand.name}</h1>
+          {restaurant.website_description && (
+            <p className="text-gray-600">{restaurant.website_description}</p>
+          )}
+        </div>
 
       <div className="relative">
         <div className="relative">

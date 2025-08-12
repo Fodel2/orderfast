@@ -2,6 +2,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import CustomerLayout from '../../components/CustomerLayout';
 import Hero from '../../components/customer/Hero';
+import Slides from '../../components/customer/Slides';
 import { supabase } from '../../utils/supabaseClient';
 import { useCart } from '../../context/CartContext';
 
@@ -29,9 +30,23 @@ export default function RestaurantHomePage() {
       restaurant={restaurant}
       cartCount={cartCount}
       hideFooter={heroVisible}
-      hideHeader={heroVisible}
+      hideHeader
     >
-      {restaurant && <Hero restaurant={restaurant} onVisibilityChange={setHeroVisible} />}
+      {restaurant && (
+        <Slides>
+          <Hero restaurant={restaurant} onVisibilityChange={setHeroVisible} />
+          <section className="flex items-center justify-center h-full w-full" style={{ background: 'var(--surface)', color: 'var(--ink)' }}>
+            <div className="text-center">
+              <p>Menu preview coming soon.</p>
+            </div>
+          </section>
+          <section className="flex items-center justify-center h-full w-full" style={{ background: 'var(--surface)', color: 'var(--ink)' }}>
+            <div className="text-center">
+              <p>Gallery placeholder.</p>
+            </div>
+          </section>
+        </Slides>
+      )}
     </CustomerLayout>
   );
 }

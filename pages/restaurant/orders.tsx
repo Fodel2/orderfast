@@ -210,7 +210,9 @@ export default function OrdersPage() {
                 <div className="flex items-baseline justify-between">
                   <div className="text-base font-semibold">Order #{String(order.short_order_number ?? order.id).slice(0, 4)}</div>
                   {order.status && (
-                    <span className="ml-2 text-xs rounded-full px-2 py-0.5 bg-gray-100 text-gray-700 capitalize">
+                    <span className="ml-2 text-xs rounded-full px-2 py-0.5 capitalize"
+                      style={{ background: 'var(--brand)', color: '#fff' }}
+                    >
                       {String(order.status).replace(/_/g, ' ')}
                     </span>
                   )}
@@ -236,8 +238,11 @@ export default function OrdersPage() {
               {/* Status + Placed */}
               <div className="flex items-center gap-2 mb-2">
                 {activeOrder.status && (
-                  <span className="text-xs rounded-full px-2 py-0.5 bg-gray-100 text-gray-700 capitalize">
-                    {String(activeOrder.status).replace(/_/g,' ')}
+                  <span
+                    className="text-xs rounded-full px-2 py-0.5 capitalize"
+                    style={{ background: 'var(--brand)', color: '#fff' }}
+                  >
+                    {String(activeOrder.status).replace(/_/g, ' ')}
                   </span>
                 )}
                 <div className="text-sm text-gray-600">
