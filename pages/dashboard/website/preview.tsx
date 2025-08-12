@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import DashboardLayout from '../../../components/DashboardLayout';
-import { supabase } from '../../../utils/supabaseClient';
+import { useSupabaseClient } from '@supabase/auth-helpers-react';
 import { useUser } from '@/lib/useUser';
 
 interface Restaurant {
@@ -14,6 +14,7 @@ interface Restaurant {
 
 export default function WebsitePreview() {
   const router = useRouter();
+  const supabase = useSupabaseClient();
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [loading, setLoading] = useState(true);
   const { user, loading: userLoading } = useUser();
