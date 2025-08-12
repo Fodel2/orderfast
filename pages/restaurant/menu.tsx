@@ -173,8 +173,6 @@ export default function RestaurantMenuPage() {
     load();
   }, [router.isReady, restaurantId]);
 
-  const brand = useBrand();
-
   if (loading) {
     return <div className="p-6 text-center text-[var(--muted)]">Loading...</div>;
   }
@@ -187,115 +185,122 @@ export default function RestaurantMenuPage() {
     );
   }
 
-  return (
-    <CustomerLayout cartCount={itemCount} restaurant={restaurant}>
+  const Inner = () => {
+    const { name } = useBrand();
+    return (
       <div className="max-w-screen-sm mx-auto px-4 pb-24">
-      <div className="pt-4 space-y-8 scroll-smooth">
-        <div className="text-center space-y-4">
-          <Logo size={96} className="mx-auto" />
-          <h1 className="text-3xl font-bold">{brand.name}</h1>
-          {restaurant.website_description && (
-            <p className="text-gray-600">{restaurant.website_description}</p>
+        <div className="pt-4 space-y-8 scroll-smooth">
+          <div className="text-center space-y-4">
+            <Logo size={96} className="mx-auto" />
+            <h1 className="text-3xl font-bold">{name}</h1>
+            {restaurant.website_description && (
+              <p className="text-gray-600">{restaurant.website_description}</p>
+            )}
+          </div>
+
+          <div className="relative">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+              <input
+                type="text"
+                placeholder="Search menu..."
+                value={tempQuery}
+                onChange={(e) => setTempQuery(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && setSearchQuery(tempQuery)}
+                className="w-full rounded-full border bg-white pl-10 pr-4 h-9 text-sm shadow-md focus:outline-none focus:ring"
+              />
+            </div>
+          </div>
+
+          <div
+            ref={navRef}
+            className="overflow-x-auto -mx-4 px-4 pb-2 scrollbar-hide snap-x snap-mandatory"
+          >
+            <div className="flex space-x-3 w-max">
+              {categories.map((c) => (
+                <button
+                  key={c.id}
+                  ref={(el) => (btnRefs.current[c.id] = el)}
+                  onClick={() => scrollToCategory(c.id)}
+                  className="flex flex-col items-center justify-center flex-shrink-0 w-20 h-20 bg-white rounded-full shadow hover:bg-gray-50 transition snap-start"
+                  aria-label={`View ${c.name}`}
+                >
+                  {c.image_url ? (
+                    <img
+                      src={c.image_url}
+                      alt={c.name}
+                      className="w-12 h-12 rounded-full object-cover"
+                    />
+                  ) : (
+                    <CategoryIcon category={c.name} />
+                  )}
+                  <span className="text-xs mt-1 whitespace-nowrap">{c.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-8">
+            {categories.length === 0 ? (
+              <p className="text-center text-gray-500">This menu is currently empty.</p>
+            ) : (
+              categories.map((cat) => {
+                const catItems = items.filter(
+                  (it) =>
+                    (it.category_id === cat.id ||
+                      itemLinks.some(
+                        (link) => link.item_id === it.id && link.category_id === cat.id,
+                      )) &&
+                    (!searchQuery ||
+                      it.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                      (it.description || '')
+                        .toLowerCase()
+                        .includes(searchQuery.toLowerCase())),
+                );
+                if (catItems.length === 0) return null;
+                return (
+                  <section
+                    id={`cat-${cat.id}`}
+                    key={cat.id}
+                    ref={(el) => {
+                      sectionRefs.current[cat.id] = el as HTMLDivElement;
+                    }}
+                    className="space-y-4 scroll-mt-24"
+                  >
+                    <h2 className="text-xl font-semibold text-left">{cat.name}</h2>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {catItems.map((item) => (
+                        <MenuItemCard
+                          key={item.id}
+                          item={item}
+                          restaurantId={restaurantId as string}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                );
+              })
+            )}
+          </div>
+          {showTop && (
+            <motion.button
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              whileHover={{ scale: 1.05 }}
+              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+              className="fixed bottom-6 right-4 z-50 bg-white shadow-lg rounded-full w-10 h-10 flex items-center justify-center transition"
+            >
+              <ChevronUp className="w-5 h-5" />
+            </motion.button>
           )}
         </div>
+      </div>
+    );
+  };
 
-      <div className="relative">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-          <input
-            type="text"
-            placeholder="Search menu..."
-            value={tempQuery}
-            onChange={(e) => setTempQuery(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && setSearchQuery(tempQuery)}
-            className="w-full rounded-full border bg-white pl-10 pr-4 h-9 text-sm shadow-md focus:outline-none focus:ring"
-          />
-        </div>
-      </div>
-
-      <div
-        ref={navRef}
-        className="overflow-x-auto -mx-4 px-4 pb-2 scrollbar-hide snap-x snap-mandatory"
-      >
-        <div className="flex space-x-3 w-max">
-          {categories.map((c) => (
-            <button
-              key={c.id}
-              ref={(el) => (btnRefs.current[c.id] = el)}
-              onClick={() => scrollToCategory(c.id)}
-              className="flex flex-col items-center justify-center flex-shrink-0 w-20 h-20 bg-white rounded-full shadow hover:bg-gray-50 transition snap-start"
-              aria-label={`View ${c.name}`}
-            >
-              {c.image_url ? (
-                <img
-                  src={c.image_url}
-                  alt={c.name}
-                  className="w-12 h-12 rounded-full object-cover"
-                />
-              ) : (
-                <CategoryIcon category={c.name} />
-              )}
-              <span className="text-xs mt-1 whitespace-nowrap">{c.name}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="space-y-8">
-        {categories.length === 0 ? (
-          <p className="text-center text-gray-500">This menu is currently empty.</p>
-        ) : (
-          categories.map((cat) => {
-            const catItems = items.filter(
-              (it) =>
-                (it.category_id === cat.id ||
-                  itemLinks.some(
-                    (link) => link.item_id === it.id && link.category_id === cat.id,
-                  )) &&
-                (!searchQuery ||
-                  it.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                  (it.description || '')
-                    .toLowerCase()
-                    .includes(searchQuery.toLowerCase())),
-            );
-            if (catItems.length === 0) return null;
-            return (
-              <section
-                id={`cat-${cat.id}`}
-                key={cat.id}
-                ref={(el) => {
-                  sectionRefs.current[cat.id] = el as HTMLDivElement;
-                }}
-                className="space-y-4 scroll-mt-24"
-              >
-                <h2 className="text-xl font-semibold text-left">{cat.name}</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {catItems.map((item) => (
-                    <MenuItemCard
-                      key={item.id}
-                      item={item}
-                      restaurantId={restaurantId as string}
-                    />
-                  ))}
-                </div>
-              </section>
-            );
-          })
-        )}
-      </div>
-      {showTop && (
-        <motion.button
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          whileHover={{ scale: 1.05 }}
-          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-          className="fixed bottom-6 right-4 z-50 bg-white shadow-lg rounded-full w-10 h-10 flex items-center justify-center transition"
-        >
-          <ChevronUp className="w-5 h-5" />
-        </motion.button>
-      )}
-        </div>
-      </div>
+  return (
+    <CustomerLayout cartCount={itemCount} restaurant={restaurant}>
+      <Inner />
     </CustomerLayout>
   );
 }
