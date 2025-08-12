@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useSupabaseClient } from '@supabase/auth-helpers-react'
 import { useUser } from '@/lib/useUser'
 import { useRouter } from 'next/router'
+import CustomerLayout from '../../components/CustomerLayout'
 
 export default function OrdersPage() {
   const supabase = useSupabaseClient()
@@ -46,26 +47,28 @@ export default function OrdersPage() {
   if (loading) return null
 
   return (
-    <div className="max-w-screen-sm mx-auto px-4 pb-24">
-      {debug && (
-        <div className="text-xs text-gray-500 mb-2">
-          Using user_id: {qUserId || user?.id || '—'} | restaurant_id: {qRestaurantId || '—'}
-        </div>
-      )}
-      <h1 className="text-xl font-semibold mb-4">Your Orders</h1>
-      {orders.length === 0 ? (
-        <p>No orders found.</p>
-      ) : (
-        <ul className="space-y-4">
-          {orders.map((order: any) => (
-            <li key={order.id} className="border p-4 rounded">
-              <div className="font-bold">Order #{String(order.short_order_number ?? order.id).slice(0, 4)}</div>
-              <div className="text-sm text-gray-600">{order.status}</div>
-              <div className="text-sm">Placed: {new Date(order.created_at).toLocaleString()}</div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+    <CustomerLayout>
+      <div className="max-w-screen-sm mx-auto px-4 pb-24">
+        {debug && (
+          <div className="text-xs text-gray-500 mb-2">
+            Using user_id: {qUserId || user?.id || '—'} | restaurant_id: {qRestaurantId || '—'}
+          </div>
+        )}
+        <h1 className="text-xl font-semibold mb-4">Your Orders</h1>
+        {orders.length === 0 ? (
+          <p>No orders found.</p>
+        ) : (
+          <ul className="space-y-4">
+            {orders.map((order: any) => (
+              <li key={order.id} className="border p-4 rounded">
+                <div className="font-bold">Order #{String(order.short_order_number ?? order.id).slice(0, 4)}</div>
+                <div className="text-sm text-gray-600">{order.status}</div>
+                <div className="text-sm">Placed: {new Date(order.created_at).toLocaleString()}</div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </CustomerLayout>
   )
 }
