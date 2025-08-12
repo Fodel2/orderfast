@@ -14,13 +14,14 @@ export default function OrdersPage() {
 
   useEffect(() => {
     if (loading) return
-    const targetUserId = qUserId || user?.id
-    if (!targetUserId) {
-      setOrders([])
-      return
-    }
 
     const fetchOrders = async () => {
+      const targetUserId = qUserId || user?.id
+      if (!targetUserId) {
+        setOrders([])
+        return
+      }
+
       let query = supabase
         .from('orders')
         .select('*')
@@ -31,7 +32,10 @@ export default function OrdersPage() {
         query = query.eq('restaurant_id', qRestaurantId)
       }
 
-      const { data } = await query
+      const { data, error } = await query
+      if (error) {
+        console.error('[orders] fetch error', error)
+      }
       setOrders(data || [])
     }
 
