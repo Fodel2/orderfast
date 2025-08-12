@@ -1,9 +1,14 @@
 import { useRouter } from 'next/router'
+import CustomerLayout from '../../components/CustomerLayout'
+import { useCart } from '../../context/CartContext'
 
 export default function RestaurantMorePage() {
   const router = useRouter()
+  const { cart } = useCart()
+  const itemCount = cart.items.reduce((sum, it) => sum + it.quantity, 0)
 
   return (
+    <CustomerLayout cartCount={itemCount}>
     <div className="max-w-screen-sm mx-auto px-4 pb-24">
       <h1 className="text-xl font-semibold mb-4">More</h1>
 
@@ -35,6 +40,7 @@ export default function RestaurantMorePage() {
         </section>
       </div>
     </div>
+    </CustomerLayout>
   )
 }
 
