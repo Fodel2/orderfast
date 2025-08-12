@@ -11,24 +11,32 @@ type BrandCtx = {
   logoUrl?: string | null;
 };
 const BrandContext = createContext<BrandCtx | null>(null);
-export const useBrand = () => {
-  const v = useContext(BrandContext);
-  if (!v) throw new Error('useBrand must be used within <BrandProvider>');
-  return v;
-};
 
-function hsl(str: string) {
-  // Simple stable hash → hue
+function deriveHslFromName(name: string) {
   let h = 0;
-  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0;
-  const hue = h % 360;
-  // vivid but not neon
-  const s = 86, l = 52;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  const hue = h % 360, s = 86, l = 52;
   return {
     brand: `hsl(${hue} ${s}% ${l}%)`,
     brand600: `hsl(${hue} ${s}% ${Math.max(38, l - 14)}%)`,
     brand700: `hsl(${hue} ${s}% ${Math.max(30, l - 22)}%)`,
   };
+}
+
+export const defaultBrand = (name = 'Restaurant'): BrandCtx => {
+  const { brand, brand600, brand700 } = deriveHslFromName(name);
+  const initials = (name || 'R').split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase();
+  return { brand, brand600, brand700, name, initials, logoUrl: null };
+};
+
+export const useBrand = (): BrandCtx => {
+  // SSR-safe: if no provider, return a deterministic default.
+  return useContext(BrandContext) ?? defaultBrand();
+};
+
+// kept for BrandProvider internals
+function hsl(str: string) {
+  return deriveHslFromName(str);
 }
 
 export const BrandProvider: React.FC<{ restaurant?: any; children: React.ReactNode; }> = ({ restaurant, children }) => {
