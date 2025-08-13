@@ -5,6 +5,8 @@
 [data-brand-root] .fab { background: var(--brand); color: #fff; }
 [data-brand-root] .nav-active { color: var(--brand); }
 [data-brand-root] .link-brand { color: var(--brand); }
+[data-brand-root] .chip{display:inline-flex;align-items:center;gap:.5rem;border-radius:9999px;padding:.5rem .9rem;background:#f4f4f5;color:#111827;font-weight:600;white-space:nowrap}
+[data-brand-root] .chip-active{background:color-mix(in oklab, var(--brand) 18%, white);color:var(--brand);box-shadow:0 0 0 1px color-mix(in oklab, var(--brand) 40%, white) inset}
 
 /* Optional glass effect for headers/nav */
 [data-brand-root] .brand-glass {
