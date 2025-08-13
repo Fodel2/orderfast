@@ -173,9 +173,25 @@ export default function RestaurantMenuPage() {
     const sectionsRef = useRef<Record<string, HTMLElement | null>>({});
     const qp = router?.query || {};
     const headerImg =
-      restaurant?.header_image ||
-      restaurant?.hero_image ||
-      (typeof qp.header === 'string' ? qp.header : '') ||
+      (
+        restaurant &&
+          typeof restaurant === 'object' &&
+          'header_image' in (restaurant as any) &&
+          typeof (restaurant as any).header_image === 'string' &&
+          (restaurant as any).header_image.length > 0
+          ? ((restaurant as any).header_image as string)
+          : ''
+      ) ||
+      (
+        restaurant &&
+          typeof restaurant === 'object' &&
+          'hero_image' in (restaurant as any) &&
+          typeof (restaurant as any).hero_image === 'string' &&
+          (restaurant as any).hero_image.length > 0
+          ? ((restaurant as any).hero_image as string)
+          : ''
+      ) ||
+      (typeof (qp as any).header === 'string' ? ((qp as any).header as string) : '') ||
       '';
     const title =
       restaurant?.name ||
