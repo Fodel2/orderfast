@@ -102,7 +102,7 @@ export default function MenuItemCard({
   return (
     <>
       <div
-        className="rounded-2xl border border-gray-100 p-4 flex gap-4 active:opacity-95"
+        className="tapcard rounded-2xl border border-gray-100 p-4 flex gap-4 active:opacity-95 hover:shadow-sm transition-shadow"
         onClick={handleClick}
         role="button"
         tabIndex={0}
