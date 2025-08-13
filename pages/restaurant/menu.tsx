@@ -8,7 +8,6 @@ import { useCart } from "../../context/CartContext";
 import CustomerLayout from "../../components/CustomerLayout";
 import Logo from "../../components/branding/Logo";
 import { useBrand } from "../../components/branding/BrandProvider";
-import CategoryChips from "@/components/customer/CategoryChips";
 
 
 interface Restaurant {
@@ -171,33 +170,25 @@ export default function RestaurantMenuPage() {
   const Inner = () => {
     const { name } = useBrand();
     const [activeCat, setActiveCat] = useState<string | undefined>(undefined);
-    const obsRef = useRef<IntersectionObserver | null>(null);
+    const sectionsRef = useRef<Record<string, HTMLElement | null>>({});
 
     useEffect(() => {
       if (!Array.isArray(categories) || categories.length === 0) return;
-      const sections = categories
-        .map((c: any) => document.getElementById(`cat-${c.id}`))
-        .filter(Boolean) as HTMLElement[];
-      if (obsRef.current) {
-        obsRef.current.disconnect();
-        obsRef.current = null;
-      }
-      const io = new IntersectionObserver(
+      const obs = new IntersectionObserver(
         (entries) => {
-          const topMost = entries
+          const visible = entries
             .filter((e) => e.isIntersecting)
-            .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
-          if (topMost) {
-            const id = topMost.target.getAttribute('id') || '';
-            const catId = id.replace('cat-', '');
-            if (catId) setActiveCat(catId);
-          }
+            .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+          const id = visible?.target?.getAttribute('data-cat-id');
+          if (id) setActiveCat(id);
         },
-        { rootMargin: '-72px 0px -70% 0px', threshold: [0, 0.2, 0.6] }
+        { root: null, rootMargin: '-64px 0px -70% 0px', threshold: [0, 0.25, 0.5, 0.75, 1] }
       );
-      sections.forEach((el) => io.observe(el));
-      obsRef.current = io;
-      return () => io.disconnect();
+      categories.forEach((c: any) => {
+        const el = sectionsRef.current[c.id];
+        if (el) obs.observe(el);
+      });
+      return () => obs.disconnect();
     }, [Array.isArray(categories) ? categories.length : 0]);
 
     function onChipSelect(c: any) {
@@ -231,14 +222,26 @@ export default function RestaurantMenuPage() {
             </div>
           </div>
 
-          {/* Sticky chips using fetched categories */}
+          {/* sticky category chips */}
           {Array.isArray(categories) && categories.length > 0 && (
-            <CategoryChips
-              categories={categories.map((c: any) => ({ id: String(c.id), name: c.name }))}
-              activeId={activeCat}
-              onSelect={onChipSelect}
-              offset={56}
-            />
+            <div className="sticky top-[60px] z-10 pt-2 pb-3 bg-white/70 backdrop-blur supports-[backdrop-filter]:backdrop-blur rounded-b-xl">
+              <div className="flex gap-3 overflow-x-auto no-scrollbar">
+                {categories.map((c: any) => (
+                  <button
+                    key={c.id}
+                    onClick={() => onChipSelect(c)}
+                    className={`px-4 py-2 rounded-full border whitespace-nowrap transition-colors ${
+                      activeCat === String(c.id)
+                        ? 'bg-pink-100 border-pink-200 text-pink-700'
+                        : 'bg-gray-100 border-gray-200 text-gray-700'
+                    }`}
+                    aria-pressed={activeCat === String(c.id)}
+                  >
+                    {c.name}
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
 
           <div className="space-y-8">
@@ -263,7 +266,9 @@ export default function RestaurantMenuPage() {
                   <section
                     key={cat.id}
                     id={`cat-${cat.id}`}
-                    style={{ scrollMarginTop: 64 }}
+                    data-cat-id={cat.id}
+                    ref={(el) => (sectionsRef.current[cat.id] = el)}
+                    style={{ scrollMarginTop: 76 }}
                     className="space-y-4"
                   >
                     <h2 className="text-xl font-semibold text-left">{cat.name}</h2>
