@@ -1,29 +1,34 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import OrderProgress from '@/components/customer/OrderProgress';
 import { useRouter } from 'next/router';
+import '@/styles/orders.css';
 
 export default function OrderDetailsModal({ order, onClose }: { order: any; onClose: () => void; }) {
   if (!order) return null;
   const router = useRouter();
-  const qp: any = router?.query || {};
+  const qp = router?.query || {};
   const canCancel = !['accepted','ready','completed','cancelled'].includes((order?.status || 'pending').toLowerCase());
   const onCancel = async () => {
     // TODO: wire to real cancel/refund endpoint (Stripe Connect later).
-    // For now, no-op with alert.
-    alert('Cancel & refund requested. (This will be wired to Stripe when ready.)');
+    alert('Cancel & refund requested. (Stripe wiring coming soon.)');
   };
+  const shortNo = order?.number || order?.display_number || (order?.id ? String(order.id).slice(0,6) : '—');
+  const placed = order?.created_at_human || (order?.created_at ? new Date(order.created_at).toLocaleString(undefined, { weekday:'short', day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '');
+  const [anim, setAnim] = useState<'enter'|'exit'|''>('');
+  useEffect(()=>{ setAnim('enter'); },[]);
+  const closeWithAnim = () => { setAnim('exit'); setTimeout(onClose, 180); };
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/40">
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/40" onClick={closeWithAnim}>
       {/* Desktop: centered dialog; Mobile: bottom sheet */}
-      <div className="w-full h-full md:h-auto md:max-w-xl bg-white rounded-t-2xl md:rounded-2xl p-4 md:p-6 shadow-xl overflow-y-auto">
+      <div className={`w-full md:max-w-xl bg-white rounded-t-2xl md:rounded-2xl p-4 md:p-6 shadow-xl ${anim==='enter'?'ordersheet-enter ordersheet-enter-active':anim==='exit'?'ordersheet-exit ordersheet-exit-active':''}`} onClick={e=>e.stopPropagation()}>
         <div className="flex items-center justify-between">
-          <h3 className="text-lg md:text-xl font-bold">Order #{order?.id ?? order?.number}</h3>
-          <button onClick={onClose} aria-label="Close" className="p-2 rounded-md hover:bg-gray-100">✕</button>
+          <h3 className="text-lg md:text-xl font-bold">Order #{shortNo}</h3>
+          <button onClick={closeWithAnim} aria-label="Close" className="p-2 rounded-md hover:bg-gray-100">✕</button>
         </div>
         {/* status pill + placed time */}
         <div className="mt-1 flex items-center gap-2 text-sm">
-          <span className="pill">{order?.status || 'Pending'}</span>
-          <span className="text-gray-500">Placed: {order?.created_at_human ?? order?.created_at}</span>
+          <span className="pill">{(order?.status || 'Pending')}</span>
+          <span className="text-gray-500">Placed: {placed}</span>
         </div>
         {/* progress */}
         <div className="mt-3"><OrderProgress status={(order?.status || 'pending').toLowerCase()} /></div>
@@ -102,26 +107,26 @@ export default function OrderDetailsModal({ order, onClose }: { order: any; onCl
           <div className="text-sm text-gray-600">{order?.restaurant_name}</div>
         </div>
 
-        {/* footer buttons */}
-        <div className="mt-5 flex flex-col md:flex-row gap-2">
-          <button className="md:flex-1 border rounded-lg py-3" onClick={onClose}>Close</button>
-          <a
-            className="md:flex-1 btn-primary text-center py-3 rounded-lg"
-            href={`/restaurant/track?order_id=${order?.id}&restaurant_id=${qp.restaurant_id ?? ''}${qp.user_id ? `&user_id=${qp.user_id}`:''}`}
-          >
-            Track Order
-          </a>
-          <button
-            className={`md:flex-1 rounded-lg py-3 ${canCancel ? 'border border-red-500 text-red-600' : 'border text-gray-400 cursor-not-allowed'}`}
-            onClick={canCancel ? onCancel : undefined}
-            disabled={!canCancel}
-            aria-disabled={!canCancel}
-            title={canCancel ? 'Cancel & Refund' : 'Cannot cancel after acceptance'}
-          >
-            Cancel & Refund
-          </button>
+          {/* footer buttons */}
+          <div className="mt-5 flex flex-col md:flex-row gap-2">
+            <button className="md:flex-1 border rounded-lg py-3" onClick={closeWithAnim}>Close</button>
+            <a
+              className="md:flex-1 btn-primary text-center py-3 rounded-lg"
+              href={`/restaurant/track?order_id=${order?.id}&restaurant_id=${qp.restaurant_id ?? ''}${qp.user_id ? `&user_id=${qp.user_id}`:''}`}
+            >
+              Track Order
+            </a>
+            <button
+              className={`md:flex-1 rounded-lg py-3 ${canCancel ? 'border border-red-500 text-red-600' : 'border text-gray-400 cursor-not-allowed'}`}
+              onClick={canCancel ? onCancel : undefined}
+              disabled={!canCancel}
+              aria-disabled={!canCancel}
+              title={canCancel ? 'Cancel & Refund' : 'Cannot cancel after acceptance'}
+            >
+              Cancel & Refund
+            </button>
+          </div>
         </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
