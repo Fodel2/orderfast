@@ -1,14 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/router';
 import CustomerLayout from '@/components/CustomerLayout';
 import Slides from '@/components/customer/Slides';
 import DebugFlag from '@/components/dev/DebugFlag';
-import Logo from '@/components/branding/Logo';
 import { useBrand } from '@/components/branding/BrandProvider';
-import OpenBadge from '@/components/customer/OpenBadge';
 import { supabase } from '@/utils/supabaseClient';
 import { useCart } from '@/context/CartContext';
+import LandingHero from '@/components/customer/home/LandingHero';
 
 export default function RestaurantHomePage() {
   const router = useRouter();
@@ -18,7 +16,7 @@ export default function RestaurantHomePage() {
   const { cart } = useCart();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
   const [heroInView, setHeroInView] = useState(true);
-  const { name } = useBrand();
+  const brand = useBrand();
 
   useEffect(() => {
     // dev: prove this file renders in prod
@@ -36,6 +34,29 @@ export default function RestaurantHomePage() {
       .then(({ data }) => setRestaurant(data));
   }, [router.isReady, restaurantId]);
 
+  const qp = router?.query || {};
+  const headerImg =
+    (
+      restaurant &&
+      typeof restaurant === 'object' &&
+      'header_image' in (restaurant as any) &&
+      typeof (restaurant as any).header_image === 'string' &&
+      (restaurant as any).header_image.length > 0
+        ? ((restaurant as any).header_image as string)
+        : ''
+    ) ||
+    (
+      restaurant &&
+      typeof restaurant === 'object' &&
+      'hero_image' in (restaurant as any) &&
+      typeof (restaurant as any).hero_image === 'string' &&
+      (restaurant as any).hero_image.length > 0
+        ? ((restaurant as any).hero_image as string)
+        : ''
+    ) ||
+    (typeof (qp as any).header === 'string' ? ((qp as any).header as string) : '') ||
+    '';
+
   const params = new URLSearchParams(router.query as any);
   if (restaurant?.id) params.set('restaurant_id', restaurant.id);
   const orderHref = `/restaurant/menu?${params.toString()}`;
@@ -47,41 +68,19 @@ export default function RestaurantHomePage() {
       hideFooter={heroInView}
       hideHeader={heroInView}
     >
-      <DebugFlag label="HOME-A" />
+      {process.env.NEXT_PUBLIC_DEBUG === '1' && <DebugFlag label="HOME-A" />}
       <Slides onHeroInView={setHeroInView}>
         {/* Slide 1 — HERO */}
-        <section
-          style={{
-            height: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: 'linear-gradient(180deg,#7a7a7a 0%,#3a3a3a 100%)',
-          }}
-        >
-          <div className="w-full max-w-[680px] px-4 text-center flex flex-col items-center gap-4 md:gap-5">
-            <Logo size={84} />
-            <h1 className="text-4xl md:text-5xl font-extrabold">{name}</h1>
-            {restaurant?.website_description && (
-              <p className="text-base md:text-lg text-gray-200/90">
-                {restaurant.website_description}
-              </p>
-            )}
-            {typeof restaurant?.is_open === 'boolean' && (
-              <div className="mt-1">
-                <OpenBadge isOpen={restaurant.is_open} />
-              </div>
-            )}
-            <div className="mt-2">
-              <Link
-                href={orderHref}
-                className="btn-primary px-6 py-3 rounded-full text-base font-semibold shadow-md"
-              >
-                Order Now
-              </Link>
-            </div>
-          </div>
-        </section>
+        <LandingHero
+          title={restaurant?.name || 'Restaurant'}
+          subtitle={restaurant?.website_description ?? null}
+          isOpen={restaurant?.is_open ?? true}
+          ctaLabel="Order Now"
+          onCta={() => router.push(orderHref)}
+          imageUrl={headerImg || undefined}
+          logoUrl={restaurant?.logo_url ?? null}
+          accentHex={(brand?.brand as string) || (brand?.accentColor as string) || undefined}
+        />
 
         {/* Slide 2 — Opening Hours & Address */}
         <section className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center">
