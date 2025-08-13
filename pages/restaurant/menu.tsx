@@ -221,6 +221,8 @@ export default function RestaurantMenuPage() {
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
+    type CSSVars = React.CSSProperties & Record<string, string | number>;
+
     return (
       <div className="px-4 pb-28 max-w-6xl mx-auto">
         <div className="pt-4 space-y-8 scroll-smooth">
@@ -257,26 +259,34 @@ export default function RestaurantMenuPage() {
               style={{ transitionDelay: '100ms' }}
             >
               <div className="flex gap-3 overflow-x-auto no-scrollbar">
-                {categories.map((c: any) => (
-                  <button
-                    key={c.id}
-                    onClick={() => onChipSelect(c)}
-                    className={`px-4 py-2 rounded-full border whitespace-nowrap transition-all duration-200 ease-out hover:scale-[1.03] hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
-                      activeCat === String(c.id)
-                        ? 'scale-105 text-white'
-                        : 'bg-gray-100 border-gray-200 text-gray-700'
-                    }`}
-                    aria-pressed={activeCat === String(c.id)}
-                    aria-current={activeCat === String(c.id) ? 'true' : undefined}
-                    style={
-                      activeCat === String(c.id)
-                        ? { '--tw-ring-color': brand.brand, backgroundColor: brand.brand, borderColor: brand.brand }
-                        : { '--tw-ring-color': brand.brand }
-                    }
-                  >
-                    {c.name}
-                  </button>
-                ))}
+                {categories.map((c: any) => {
+                  const isActive = activeCat === String(c.id);
+                  const chipStyle: CSSVars = isActive
+                    ? {
+                        ['--tw-ring-color']: String(brand?.brand || 'currentColor'),
+                        backgroundColor: String(brand?.brand || ''),
+                        borderColor: String(brand?.brand || ''),
+                      }
+                    : {
+                        ['--tw-ring-color']: String(brand?.brand || 'currentColor'),
+                      };
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => onChipSelect(c)}
+                      className={`px-4 py-2 rounded-full border whitespace-nowrap transition-all duration-200 ease-out hover:scale-[1.03] hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+                        activeCat === String(c.id)
+                          ? 'scale-105 text-white'
+                          : 'bg-gray-100 border-gray-200 text-gray-700'
+                      }`}
+                      aria-pressed={activeCat === String(c.id)}
+                      aria-current={activeCat === String(c.id) ? 'true' : undefined}
+                      style={chipStyle}
+                    >
+                      {c.name}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
