@@ -1,5 +1,4 @@
 import React from 'react';
-import '@/styles/orders.css';
 
 const STEPS = [
   { key: 'created',  label: 'Created',  icon: '🧾' },

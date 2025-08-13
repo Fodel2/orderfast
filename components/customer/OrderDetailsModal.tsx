@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import OrderProgress from '@/components/customer/OrderProgress';
 import { useRouter } from 'next/router';
-import '@/styles/orders.css';
 
 export default function OrderDetailsModal({ order, onClose }: { order: any; onClose: () => void; }) {
   if (!order) return null;
