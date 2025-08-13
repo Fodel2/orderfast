@@ -3,6 +3,8 @@ import { useRouter } from 'next/router';
 import { useCart } from '../context/CartContext';
 import { XMarkIcon, ShoppingCartIcon } from '@heroicons/react/24/outline';
 import { Trash2 } from 'lucide-react';
+import PlateIcon from '@/components/icons/PlateIcon';
+import { randomEmptyPlateMessage } from '@/lib/uiCopy';
 
 interface CartDrawerProps {
   /**
@@ -19,7 +21,7 @@ function CartContent({ onClose }: { onClose?: () => void }) {
   return (
     <>
       <div className="p-4 flex justify-between items-center border-b">
-        <h2 className="text-lg font-semibold">Your Cart</h2>
+        <h2 className="text-lg font-semibold">Your Plate</h2>
         {onClose && (
           <button onClick={onClose} aria-label="Close" className="text-gray-500">
             <XMarkIcon className="w-5 h-5" />
@@ -31,7 +33,10 @@ function CartContent({ onClose }: { onClose?: () => void }) {
         style={onClose ? { maxHeight: 'calc(100vh - 9rem)' } : undefined}
       >
         {cart.items.length === 0 ? (
-          <p className="text-center text-gray-500">Your cart is empty.</p>
+          <div className="flex flex-col items-center gap-2 py-6">
+            <PlateIcon size={64} className="text-gray-300" />
+            <p className="text-center text-gray-500">{randomEmptyPlateMessage()}</p>
+          </div>
         ) : (
           cart.items.map((item) => {
             const addonsTotal = (item.addons || []).reduce(
