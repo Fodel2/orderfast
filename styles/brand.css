@@ -1,6 +1,9 @@
 /* brand: tokens */
 [data-brand-root] .btn-primary { background: var(--brand); color: #fff; }
 [data-brand-root] .btn-primary:hover { background: var(--brand-700); }
+[data-brand-root] .btn-icon { width: 44px; height: 44px; border-radius: 14px; display:flex; align-items:center; justify-content:center; background: color-mix(in oklab, var(--brand) 16%, white); color:#111827; }
+[data-brand-root] .btn-icon:active{ transform: translateY(1px); }
+[data-brand-root] .price { font-weight: 700; }
 [data-brand-root] .pill { background: color-mix(in oklab, var(--brand) 18%, white); color: var(--brand); }
 [data-brand-root] .fab { background: var(--brand); color: #fff; }
 [data-brand-root] .nav-active { color: var(--brand); }

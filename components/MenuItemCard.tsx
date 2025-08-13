@@ -3,7 +3,7 @@ import { useCart } from '../context/CartContext';
 import { getAddonsForItem } from '../utils/getAddonsForItem';
 import type { AddonGroup } from '../utils/types';
 import AddonGroups, { validateAddonSelections } from './AddonGroups';
-import PlateLick from '@/components/icons/PlateLick';
+import PlateAdd from '@/components/icons/PlateAdd';
 
 interface MenuItem {
   id: number;
@@ -102,52 +102,48 @@ export default function MenuItemCard({
   return (
     <>
       <div
-        className="bg-white rounded-2xl p-4 shadow-[0_1px_12px_rgba(0,0,0,0.06)] mb-4"
+        className="rounded-2xl border border-gray-100 p-4 flex gap-4 active:opacity-95"
         onClick={handleClick}
+        role="button"
+        tabIndex={0}
       >
-        <div className="flex items-start gap-4">
-          {item?.image_url ? (
-            <img
-              src={item.image_url}
-              alt={item.name}
-              className="w-[84px] h-[84px] rounded-xl object-cover flex-shrink-0"
-            />
-          ) : (
-            <div className="w-[84px] h-[84px] rounded-xl bg-gray-100 flex items-center justify-center text-gray-400 flex-shrink-0">
-              <PlateLick size={40} />
+        {item?.image_url ? (
+          <img
+            src={item.image_url}
+            alt={item.name}
+            className="w-[84px] h-[84px] rounded-xl object-cover flex-shrink-0"
+          />
+        ) : (
+          <div className="w-[84px] h-[84px] rounded-xl bg-gray-100 flex items-center justify-center text-gray-400 flex-shrink-0">
+            {/* placeholder icon */}
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
+              <circle cx="12" cy="12" r="6" stroke="currentColor" strokeWidth="2" />
+              <path d="M7.5 13.5c1.5 1.1 3.3 1.7 5 1.7s3.5-.6 5-1.7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </div>
+        )}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-3">
+            <h4 className="text-base font-semibold leading-6 truncate">{item.name}</h4>
+            <div className="price text-gray-900 whitespace-nowrap">
+              ${ (price / 100).toFixed(2) }
             </div>
+          </div>
+          {item.description && (
+            <p className="mt-1 text-sm text-gray-500 line-clamp-2">{item.description}</p>
           )}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-start justify-between gap-3">
-              <h4 className="text-base font-semibold leading-6 truncate">{item.name}</h4>
-              <div className="text-gray-900 font-semibold whitespace-nowrap">
-                ${ (price / 100).toFixed(2) }
-              </div>
-            </div>
-            {item.description && (
-              <p className="text-gray-500 text-sm mt-1 line-clamp-2">{item.description}</p>
-            )}
+          <div className="mt-3 flex justify-end">
             <button
               type="button"
-              className="btn-primary w-full mt-3 py-3 rounded-xl"
+              className="btn-icon"
               onClick={(e) => {
                 e.stopPropagation();
                 handleClick();
               }}
               aria-label={`Add ${item?.name} to plate`}
             >
-              <span className="inline-flex items-center gap-2 justify-center">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path
-                    d="M3 6h18M7 6l2 12h6l2-12"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-                Add to Plate
-              </span>
+              <PlateAdd size={22} />
             </button>
           </div>
         </div>
