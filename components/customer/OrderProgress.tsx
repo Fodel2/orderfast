@@ -1,24 +1,38 @@
 import React from 'react';
 
 const STEPS = [
-  { key: 'created',  label: 'Created',  icon: '🧾' },
-  { key: 'accepted', label: 'Accepted', icon: '✅' },
-  { key: 'ready',    label: 'Ready',    icon: '📦' },
-  { key: 'completed',label: 'Completed',icon: '🏁' },
+  { key: 'created',   label: 'Created',   icon: '🧾' },
+  { key: 'accepted',  label: 'Accepted',  icon: '✅' },
+  { key: 'preparing', label: 'Preparing', icon: '👨‍🍳' },
+  { key: 'ready',     label: 'Ready',     icon: '📦' },
+  { key: 'completed', label: 'Completed', icon: '🏁' },
 ] as const;
 
-type Status = 'created'|'accepted'|'ready'|'completed'|'cancelled'|'pending';
+type Status = 'created'|'accepted'|'preparing'|'ready'|'completed'|'cancelled'|'pending'|string;
+
+function normalizeStatus(s: string): Exclude<Status,'pending'|string> {
+  const x = (s || '').toLowerCase();
+  if (!x || x === 'pending' || x === 'new' || x === 'created') return 'created';
+  if (x.startsWith('accept')) return 'accepted';
+  if (x.startsWith('prep')) return 'preparing';
+  if (x.startsWith('ready')) return 'ready';
+  if (x.startsWith('complete')) return 'completed';
+  if (x.startsWith('cancel')) return 'cancelled';
+  return 'created';
+}
 
 export default function OrderProgress({ status }: { status: Status }) {
-  const norm = (status === 'pending' ? 'created' : status) as Status;
-  const idx = Math.max(0, STEPS.findIndex(s => s.key === norm) );
+  const norm = normalizeStatus(String(status));
+  if (norm === 'cancelled') return null; // handled by a different UI
+  const idx = Math.max(0, STEPS.findIndex(s => s.key === norm));
+  const pulse = norm !== 'completed';
   return (
     <div className="w-full">
       <div className="flex items-center gap-2">
         {STEPS.map((s,i)=> (
           <div key={s.key} className="flex-1 flex items-center gap-2">
-            <div className={`h-2 w-full rounded-full ${i<=idx ? 'bg-[var(--brand)]' : 'bg-gray-200'}`} />
-            <div className={`text-xs ${i===idx ? 'text-[var(--brand)] order-step--active' : 'text-gray-400'}`} title={s.label}>
+            <div className={`h-2 w-full rounded-full ${i<=idx ? 'bg-[var(--brand)]' : 'bg-gray-200'} ${i===idx && pulse ? 'order-step--active' : ''}`} />
+            <div className={`text-xs ${i===idx ? 'text-[var(--brand)]' : 'text-gray-400'}`} title={s.label}>
               {s.icon}
             </div>
           </div>
