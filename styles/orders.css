@@ -1,0 +1,6 @@
+@keyframes brandPulse { 0%{opacity:.4} 50%{opacity:1} 100%{opacity:.4} }
+.order-step--active { animation: brandPulse 1.2s ease-in-out infinite; }
+.ordersheet-enter { transform: translateY(16px); opacity: 0; }
+.ordersheet-enter-active { transform: translateY(0); opacity: 1; transition: transform 200ms ease, opacity 200ms ease; }
+.ordersheet-exit { transform: translateY(0); opacity: 1; }
+.ordersheet-exit-active { transform: translateY(16px); opacity: 0; transition: transform 180ms ease, opacity 180ms ease; }
