@@ -28,8 +28,8 @@ function normalizeStatus(s: string): OrderStatus {
   return 'created';
 }
 
-export default function OrderProgress({ status }: { status: OrderStatus }) {
-  const norm = normalizeStatus(String(status));
+export default function OrderProgress({ status }: { status: string }) {
+  const norm = normalizeStatus(status);
   if (norm === 'cancelled') return null; // handled by a different UI
   const idx = Math.max(0, STEPS.findIndex(s => s.key === norm));
   const pulse = norm !== 'completed';
