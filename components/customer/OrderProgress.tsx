@@ -8,20 +8,27 @@ const STEPS = [
   { key: 'completed', label: 'Completed', icon: '🏁' },
 ] as const;
 
-type Status = 'created'|'accepted'|'preparing'|'ready'|'completed'|'cancelled'|'pending'|string;
+type OrderStatus =
+  | 'created'
+  | 'accepted'
+  | 'preparing'
+  | 'ready'
+  | 'completed'
+  | 'cancelled'
+  | 'pending';
 
-function normalizeStatus(s: string): Exclude<Status,'pending'|string> {
+function normalizeStatus(s: string): OrderStatus {
   const x = (s || '').toLowerCase();
   if (!x || x === 'pending' || x === 'new' || x === 'created') return 'created';
-  if (x.startsWith('accept')) return 'accepted';
-  if (x.startsWith('prep')) return 'preparing';
-  if (x.startsWith('ready')) return 'ready';
+  if (x.startsWith('accept'))   return 'accepted';
+  if (x.startsWith('prep'))     return 'preparing';
+  if (x.startsWith('ready'))    return 'ready';
   if (x.startsWith('complete')) return 'completed';
-  if (x.startsWith('cancel')) return 'cancelled';
+  if (x.startsWith('cancel'))   return 'cancelled';
   return 'created';
 }
 
-export default function OrderProgress({ status }: { status: Status }) {
+export default function OrderProgress({ status }: { status: OrderStatus }) {
   const norm = normalizeStatus(String(status));
   if (norm === 'cancelled') return null; // handled by a different UI
   const idx = Math.max(0, STEPS.findIndex(s => s.key === norm));
