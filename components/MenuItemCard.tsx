@@ -162,7 +162,7 @@ export default function MenuItemCard({
             <button
               type="button"
               className="btn-icon min-w-[40px] min-h-[40px] transition-transform duration-150 ease-out hover:scale-[1.05] active:scale-[0.95] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-              style={{ '--tw-ring-color': brand.brand }}
+              style={{ ['--tw-ring-color' as any]: String(brand?.brand || 'currentColor') } as React.CSSProperties}
               onClick={(e) => {
                 e.stopPropagation();
                 handleClick();
