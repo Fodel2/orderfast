@@ -1,8 +1,7 @@
+import React, { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/router";
-import { useEffect, useState, useRef } from "react";
 import { motion } from "framer-motion";
 import { Search, ChevronUp } from "lucide-react";
-import CategoryIcon from "../../components/CategoryIcon";
 import { supabase } from "../../utils/supabaseClient";
 import MenuItemCard from "../../components/MenuItemCard";
 import { useCart } from "../../context/CartContext";
@@ -61,10 +60,6 @@ export default function RestaurantMenuPage() {
   const { cart } = useCart();
   const itemCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
 
-  const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  const navRef = useRef<HTMLDivElement | null>(null);
-  const btnRefs = useRef<Record<number, HTMLButtonElement | null>>({});
-
   useEffect(() => {
     const onScroll = () => {
       setShowTop(window.scrollY > 400);
@@ -72,19 +67,6 @@ export default function RestaurantMenuPage() {
     window.addEventListener('scroll', onScroll);
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
-
-  const scrollToCategoryBubble = (id: number) => {
-    const section = sectionRefs.current[id];
-    section?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    const btn = btnRefs.current[id];
-    const nav = navRef.current;
-    if (btn && nav) {
-      nav.scrollTo({
-        left: btn.offsetLeft - nav.clientWidth / 2 + btn.clientWidth / 2,
-        behavior: 'smooth',
-      });
-    }
-  };
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -188,16 +170,42 @@ export default function RestaurantMenuPage() {
 
   const Inner = () => {
     const { name } = useBrand();
-    // Helper: smooth scroll to section if it exists
-    function scrollToCategory(c: any) {
-      const id = c?.id
-        ? `cat-${c.id}`
-        : c?.name
-        ? `cat-${c.name.toLowerCase().replace(/\s+/g, '-')}`
-        : '';
+    const [activeCat, setActiveCat] = useState<string | undefined>(undefined);
+    const obsRef = useRef<IntersectionObserver | null>(null);
+
+    useEffect(() => {
+      if (!Array.isArray(categories) || categories.length === 0) return;
+      const sections = categories
+        .map((c: any) => document.getElementById(`cat-${c.id}`))
+        .filter(Boolean) as HTMLElement[];
+      if (obsRef.current) {
+        obsRef.current.disconnect();
+        obsRef.current = null;
+      }
+      const io = new IntersectionObserver(
+        (entries) => {
+          const topMost = entries
+            .filter((e) => e.isIntersecting)
+            .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+          if (topMost) {
+            const id = topMost.target.getAttribute('id') || '';
+            const catId = id.replace('cat-', '');
+            if (catId) setActiveCat(catId);
+          }
+        },
+        { rootMargin: '-72px 0px -70% 0px', threshold: [0, 0.2, 0.6] }
+      );
+      sections.forEach((el) => io.observe(el));
+      obsRef.current = io;
+      return () => io.disconnect();
+    }, [Array.isArray(categories) ? categories.length : 0]);
+
+    function onChipSelect(c: any) {
+      const id = c?.id ? `cat-${c.id}` : '';
       const el = id ? document.getElementById(id) : null;
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
+
     return (
       <div className="max-w-screen-sm mx-auto px-4 pb-28">
         <div className="pt-4 space-y-8 scroll-smooth">
@@ -223,39 +231,13 @@ export default function RestaurantMenuPage() {
             </div>
           </div>
 
-          <div
-            ref={navRef}
-            className="overflow-x-auto -mx-4 px-4 pb-2 scrollbar-hide snap-x snap-mandatory"
-          >
-            <div className="flex space-x-3 w-max">
-              {categories.map((c) => (
-                <button
-                  key={c.id}
-                  ref={(el) => (btnRefs.current[c.id] = el)}
-                  onClick={() => scrollToCategoryBubble(c.id)}
-                  className="flex flex-col items-center justify-center flex-shrink-0 w-20 h-20 bg-white rounded-full shadow hover:bg-gray-50 transition snap-start"
-                  aria-label={`View ${c.name}`}
-                >
-                  {c.image_url ? (
-                    <img
-                      src={c.image_url}
-                      alt={c.name}
-                      className="w-12 h-12 rounded-full object-cover"
-                    />
-                  ) : (
-                    <CategoryIcon category={c.name} />
-                  )}
-                  <span className="text-xs mt-1 whitespace-nowrap">{c.name}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Sticky chips (uses same categories data if available) */}
+          {/* Sticky chips using fetched categories */}
           {Array.isArray(categories) && categories.length > 0 && (
             <CategoryChips
-              categories={categories.map((c: any) => ({ id: c.id, name: c.name }))}
-              onSelect={scrollToCategory}
+              categories={categories.map((c: any) => ({ id: String(c.id), name: c.name }))}
+              activeId={activeCat}
+              onSelect={onChipSelect}
+              offset={56}
             />
           )}
 
@@ -279,12 +261,10 @@ export default function RestaurantMenuPage() {
                 if (catItems.length === 0) return null;
                 return (
                   <section
-                    id={cat?.id ? `cat-${cat.id}` : undefined}
                     key={cat.id}
-                    ref={(el) => {
-                      sectionRefs.current[cat.id] = el as HTMLDivElement;
-                    }}
-                    className="space-y-4 scroll-mt-24"
+                    id={`cat-${cat.id}`}
+                    style={{ scrollMarginTop: 64 }}
+                    className="space-y-4"
                   >
                     <h2 className="text-xl font-semibold text-left">{cat.name}</h2>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
