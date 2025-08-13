@@ -3,6 +3,7 @@ import { useSupabaseClient } from '@supabase/auth-helpers-react'
 import { useUser } from '@/lib/useUser'
 import { useRouter } from 'next/router'
 import CustomerLayout from '../../components/CustomerLayout'
+import OrderDetailsModal from '@/components/customer/OrderDetailsModal'
 
 export default function OrdersPage() {
   const router = useRouter()
@@ -17,14 +18,9 @@ export default function OrdersPage() {
   const [effectiveUserId, setEffectiveUserId] = useState<string | undefined>(undefined)
   const [resolvingUser, setResolvingUser] = useState<boolean>(true)
   const [activeOrder, setActiveOrder] = useState<any | null>(null)
-  const [details, setDetails] = useState<{
-    loading?: boolean
-    items?: Array<any>
-    itemSubtotal?: number
-  }>({})
 
-  const closeOrder = () => { setActiveOrder(null); setDetails({}) }
-  const openOrder = (o: any) => { setActiveOrder(o); loadOrderDetails(o.id, o) }
+  const closeOrder = () => setActiveOrder(null)
+  const openOrder = (o: any) => { setActiveOrder(o); loadOrderDetails(o.id) }
 
   console.debug(
     '[orders] ready=',
@@ -114,9 +110,7 @@ export default function OrdersPage() {
   }, [activeOrder])
 
   // Lazy-load items + add-ons for a given order
-  async function loadOrderDetails(orderId: string, orderObj: any) {
-    setDetails({ loading: true })
-
+  async function loadOrderDetails(orderId: string) {
     // 1) Items
     const { data: items, error: itemsErr } = await supabase
       .from('order_items')
@@ -125,7 +119,7 @@ export default function OrdersPage() {
 
     if (itemsErr) {
       console.error('[orders] items error', itemsErr)
-      setDetails({ loading: false, items: [], itemSubtotal: 0 })
+      setActiveOrder(o => (o && o.id === orderId ? { ...o, items: [], itemSubtotal: 0 } : o))
       return
     }
 
@@ -166,11 +160,7 @@ export default function OrdersPage() {
         return sum + q * p
       }, 0) + addonsSubtotal
 
-    setDetails({
-      loading: false,
-      items: withAddons,
-      itemSubtotal: itemsSubtotal,
-    })
+    setActiveOrder(o => (o && o.id === orderId ? { ...o, items: withAddons, itemSubtotal: itemsSubtotal } : o))
   }
 
   if (loading) return null
@@ -221,107 +211,7 @@ export default function OrdersPage() {
             ))}
           </ul>
         )}
-        {activeOrder && (
-          <div className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center">
-            <div className="absolute inset-0 bg-black/50" onClick={closeOrder} />
-            <div className="relative w-full sm:max-w-md bg-white rounded-t-2xl sm:rounded-2xl shadow-xl p-4 sm:p-6 z-[10000]">
-              {/* Header */}
-              <div className="flex items-center justify-between mb-3">
-                <div className="text-base sm:text-lg font-semibold">
-                  Order #{String(activeOrder.short_order_number ?? activeOrder.id).slice(0, 4)}
-                </div>
-                <button onClick={closeOrder} className="text-gray-500 hover:text-gray-700" aria-label="Close">✕</button>
-              </div>
-
-              {/* Status + Placed */}
-              <div className="flex items-center gap-2 mb-2">
-                {activeOrder.status && (
-                  <span className="text-xs rounded-full px-2 py-0.5 pill capitalize">
-                    {String(activeOrder.status).replace(/_/g, ' ')}
-                  </span>
-                )}
-                <div className="text-sm text-gray-600">
-                  Placed: {activeOrder.created_at ? new Date(activeOrder.created_at).toLocaleString() : '—'}
-                </div>
-              </div>
-
-              {/* Items */}
-              <div className="mt-3">
-                <div className="text-sm font-medium mb-2">Items</div>
-                {details.loading && <div className="text-sm text-gray-500">Loading items…</div>}
-                {!details.loading && (!details.items || details.items.length === 0) && (
-                  <div className="text-sm text-gray-500">No items found for this order.</div>
-                )}
-                {!details.loading && Array.isArray(details.items) && details.items.length > 0 && (
-                  <ul className="space-y-3">
-                    {details.items.map((it: any) => (
-                      <li key={it.id} className="text-sm text-gray-800">
-                        <div className="flex justify-between">
-                          <span>
-                            <span className="font-medium">{it.name ?? 'Item'}</span>
-                            {typeof it.quantity === 'number' && <span> × {it.quantity}</span>}
-                          </span>
-                          {typeof it.price === 'number' && (
-                            <span>£{Number(it.price).toFixed(2)}</span>
-                          )}
-                        </div>
-                        {it.notes && <div className="text-xs text-gray-500 mt-0.5">Notes: {it.notes}</div>}
-                        {Array.isArray(it.addons) && it.addons.length > 0 && (
-                          <ul className="mt-2 pl-3 border-l">
-                            {it.addons.map((a: any) => (
-                              <li key={a.id} className="flex justify-between text-xs text-gray-700">
-                                <span>{a.name ?? 'Addon'}{typeof a.quantity === 'number' && <> × {a.quantity}</>}</span>
-                                {typeof a.price === 'number' && <span>£{Number(a.price).toFixed(2)}</span>}
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-
-              {/* Totals */}
-              <div className="border-t pt-3 mt-4 text-sm">
-                {typeof details.itemSubtotal === 'number' && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Items subtotal</span>
-                    <span className="font-medium">£{details.itemSubtotal.toFixed(2)}</span>
-                  </div>
-                )}
-                {typeof activeOrder.delivery_fee === 'number' && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Delivery fee</span>
-                    <span className="font-medium">£{Number(activeOrder.delivery_fee).toFixed(2)}</span>
-                  </div>
-                )}
-                {typeof activeOrder.service_fee === 'number' && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Service fee</span>
-                    <span className="font-medium">£{Number(activeOrder.service_fee).toFixed(2)}</span>
-                  </div>
-                )}
-                {typeof activeOrder.total_price === 'number' && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-800">Total</span>
-                    <span className="font-semibold">£{Number(activeOrder.total_price).toFixed(2)}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Actions */}
-              <div className="mt-4 flex gap-2">
-                <button className="flex-1 py-2 rounded-xl border text-sm font-medium hover:bg-gray-50" onClick={closeOrder}>
-                  Close
-                </button>
-                <button className="flex-1 py-2 rounded-xl bg-black text-white text-sm font-medium hover:opacity-90" onClick={() => { closeOrder() }}>
-                  Track Order
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        {activeOrder && <OrderDetailsModal order={activeOrder} onClose={closeOrder} />}
       </div>
     </CustomerLayout>
   )
