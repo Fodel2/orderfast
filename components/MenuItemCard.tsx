@@ -4,6 +4,7 @@ import { getAddonsForItem } from '../utils/getAddonsForItem';
 import type { AddonGroup } from '../utils/types';
 import AddonGroups, { validateAddonSelections } from './AddonGroups';
 import PlateAdd from '@/components/icons/PlateAdd';
+import { useBrand } from '@/components/branding/BrandProvider';
 
 interface MenuItem {
   id: number;
@@ -34,6 +35,7 @@ export default function MenuItemCard({
     Record<string, Record<string, number>>
   >({});
   const { addToCart } = useCart();
+  const brand = useBrand();
 
   const price = typeof item?.price === 'number' ? item.price : Number(item?.price || 0);
 
@@ -102,7 +104,7 @@ export default function MenuItemCard({
   return (
     <>
       <div
-        className="tapcard rounded-2xl border border-gray-100 p-4 flex gap-4 active:opacity-95 hover:shadow-sm transition-shadow"
+        className="tapcard rounded-2xl border border-gray-100 p-4 flex gap-4 active:opacity-95 transition-transform duration-200 ease-out hover:scale-[1.02] hover:shadow-md active:scale-[0.98]"
         onClick={handleClick}
         role="button"
         tabIndex={0}
@@ -159,7 +161,8 @@ export default function MenuItemCard({
           <div className="mt-2 flex justify-end">
             <button
               type="button"
-              className="btn-icon min-w-[40px] min-h-[40px] transition duration-150 ease-out hover:scale-[1.05] hover:shadow-sm active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-current"
+              className="btn-icon min-w-[40px] min-h-[40px] transition-transform duration-150 ease-out hover:scale-[1.05] active:scale-[0.95] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+              style={{ '--tw-ring-color': brand.brand }}
               onClick={(e) => {
                 e.stopPropagation();
                 handleClick();

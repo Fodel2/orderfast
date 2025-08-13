@@ -17,6 +17,11 @@ export default function MenuHeader({
   accentHex,
 }: MenuHeaderProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     let ticking = false;
@@ -42,15 +47,16 @@ export default function MenuHeader({
       ? `linear-gradient(180deg, ${accentHex}22, ${accentHex}11, #00000022)`
       : 'linear-gradient(180deg, rgba(0,0,0,0.10), rgba(0,0,0,0.06), rgba(0,0,0,0.08))';
 
-  return (
-    <section
-      aria-label="Restaurant header"
-      className={[
-        'relative w-full overflow-hidden rounded-2xl',
-        'transition-[height,margin] duration-300 ease-out',
-        collapsed ? 'h-20 md:h-24 mt-2' : 'h-48 md:h-80 mt-0',
-      ].join(' ')}
-    >
+    return (
+      <section
+        aria-label="Restaurant header"
+        className={[
+          'relative w-full overflow-hidden rounded-2xl',
+          'transition-[height,margin,opacity,transform] duration-500 ease-out',
+          collapsed ? 'h-20 md:h-24 mt-2' : 'h-48 md:h-80 mt-0',
+          mounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2',
+        ].join(' ')}
+      >
       {/* Background image/gradient */}
       <div
         className={[
