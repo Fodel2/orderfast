@@ -123,20 +123,43 @@ export default function MenuItemCard({
             </svg>
           </div>
         )}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-3">
-            <h4 className="text-base font-semibold leading-6 truncate">{item.name}</h4>
-            <div className="price text-gray-900 whitespace-nowrap">
+        <div className="flex-1 min-w-0 flex flex-col gap-1">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center min-w-0">
+              <h4 className="text-base md:text-lg font-semibold leading-6 truncate">
+                {item.name}
+              </h4>
+              {(item.is_vegan || item.is_vegetarian || item.is_18_plus) && (
+                <span className="ml-1 flex text-sm">
+                  {item.is_vegan && (
+                    <span role="img" aria-label="vegan">
+                      🌱
+                    </span>
+                  )}
+                  {item.is_vegetarian && (
+                    <span role="img" aria-label="vegetarian">
+                      🧀
+                    </span>
+                  )}
+                  {item.is_18_plus && (
+                    <span role="img" aria-label="18 plus">
+                      🔞
+                    </span>
+                  )}
+                </span>
+              )}
+            </div>
+            <div className="price text-gray-900 whitespace-nowrap text-sm md:text-base font-medium">
               ${ (price / 100).toFixed(2) }
             </div>
           </div>
           {item.description && (
-            <p className="mt-1 text-sm text-gray-500 line-clamp-2">{item.description}</p>
+            <p className="text-sm text-gray-500 line-clamp-2">{item.description}</p>
           )}
-          <div className="mt-3 flex justify-end">
+          <div className="mt-2 flex justify-end">
             <button
               type="button"
-              className="btn-icon"
+              className="btn-icon min-w-[40px] min-h-[40px] transition duration-150 ease-out hover:scale-[1.05] hover:shadow-sm active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-current"
               onClick={(e) => {
                 e.stopPropagation();
                 handleClick();
