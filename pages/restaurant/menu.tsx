@@ -188,7 +188,7 @@ export default function RestaurantMenuPage() {
   const Inner = () => {
     const { name } = useBrand();
     return (
-      <div className="max-w-screen-sm mx-auto px-4 pb-24">
+      <div className="max-w-screen-sm mx-auto px-4 pb-28">
         <div className="pt-4 space-y-8 scroll-smooth">
           <div className="text-center space-y-4">
             <Logo size={96} className="mx-auto" />

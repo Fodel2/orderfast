@@ -1,6 +1,4 @@
 import { useState } from 'react';
-import { motion } from 'framer-motion';
-import { ShoppingCart } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { getAddonsForItem } from '../utils/getAddonsForItem';
 import type { AddonGroup } from '../utils/types';
@@ -34,10 +32,9 @@ export default function MenuItemCard({
   const [selections, setSelections] = useState<
     Record<string, Record<string, number>>
   >({});
-  const [recentlyAdded, setRecentlyAdded] = useState(false);
   const { addToCart } = useCart();
 
-  const descriptionTooLong = (item.description?.length || 0) > 150;
+  const price = typeof item?.price === 'number' ? item.price : Number(item?.price || 0);
 
   const loadAddons = async () => {
     setLoading(true);
@@ -89,14 +86,11 @@ export default function MenuItemCard({
     addToCart(String(restaurantId), {
       item_id: String(item.id),
       name: item.name,
-      price: item.price,
+      price: price,
       quantity: qty,
       notes: notes.trim() || undefined,
       addons: addons.length ? addons : undefined,
     });
-
-    setRecentlyAdded(true);
-    setTimeout(() => setRecentlyAdded(false), 1000);
 
     setQty(1);
     setNotes('');
@@ -106,64 +100,65 @@ export default function MenuItemCard({
 
   return (
     <>
-      <motion.div
-        whileInView={{ opacity: [0, 1], y: [20, 0] }}
-        viewport={{ once: true }}
-        className="rounded-2xl shadow-md hover:shadow-xl transition-all flex p-4 gap-4 min-h-[7rem]"
-        style={{ background: 'var(--card)', color: 'var(--ink)' }}
+      <div
+        className="bg-white rounded-2xl p-4 shadow-[0_1px_12px_rgba(0,0,0,0.06)] mb-4"
+        onClick={handleClick}
       >
-        {item.image_url && (
-          <img
-            src={item.image_url}
-            alt={item.name}
-            onClick={handleClick}
-            className="w-20 h-20 object-cover rounded-md flex-shrink-0 cursor-pointer"
-          />
-        )}
-        <div className="flex flex-col flex-1 text-left">
-          <div className="flex items-start justify-between gap-2">
-            <h3 onClick={handleClick} className="font-bold flex-1 cursor-pointer">
-              {item.name}
-            </h3>
-            <div className="flex items-center gap-1 whitespace-nowrap">
-              {item.is_vegan && (
-                <span title="Vegan" className="text-sm">🌱</span>
-              )}
-              {item.is_vegetarian && (
-                <span title="Vegetarian" className="text-sm">🧀</span>
-              )}
-              {item.is_18_plus && (
-                <span title="18+" className="text-sm">🔞</span>
-              )}
-              <span className="font-semibold text-sm">${(item.price / 100).toFixed(2)}</span>
+        <div className="flex items-start gap-4">
+          {item?.image_url ? (
+            <img
+              src={item.image_url}
+              alt={item.name}
+              className="w-[84px] h-[84px] rounded-xl object-cover flex-shrink-0"
+            />
+          ) : (
+            <div className="w-[84px] h-[84px] rounded-xl bg-gray-100 flex items-center justify-center text-gray-400 flex-shrink-0">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                <path
+                  d="M4 7h16M7 7l2 10h6l2-10"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
             </div>
-          </div>
-          {item.description && (
-            <p className="text-sm text-gray-600 line-clamp-2 mt-1">
-              {item.description}
-              {descriptionTooLong && (
-                <button onClick={handleClick} className="link-brand text-xs ml-1">More</button>
-              )}
-            </p>
           )}
-          {item.stock_status === 'out' && (
-            <span className="text-xs mt-1 text-gray-500">Out of stock</span>
-          )}
-          <div className="mt-auto pt-3">
-            <motion.button
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start justify-between gap-3">
+              <h4 className="text-base font-semibold leading-6 truncate">{item.name}</h4>
+              <div className="text-gray-900 font-semibold whitespace-nowrap">
+                ${ (price / 100).toFixed(2) }
+              </div>
+            </div>
+            {item.description && (
+              <p className="text-gray-500 text-sm mt-1 line-clamp-2">{item.description}</p>
+            )}
+            <button
               type="button"
-              aria-label="Add to Cart"
-              whileTap={{ scale: 0.95 }}
-              animate={recentlyAdded ? { scale: [1, 1.05, 1] } : {}}
-              onClick={handleClick}
-              className="text-sm h-9 px-4 rounded-full w-full sm:w-auto flex items-center justify-center gap-1 btn-primary"
+              className="btn-primary w-full mt-3 py-3 rounded-xl"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleClick();
+              }}
+              aria-label={`Add ${item?.name} to plate`}
             >
-              <ShoppingCart className="w-4 h-4" />
-              {recentlyAdded ? '✓ Added' : 'Add to Cart'}
-            </motion.button>
+              <span className="inline-flex items-center gap-2 justify-center">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path
+                    d="M3 6h18M7 6l2 12h6l2-12"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                Add to Plate
+              </span>
+            </button>
           </div>
         </div>
-      </motion.div>
+      </div>
 
       {showModal && (
         <div

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import MenuItemCard from '../components/MenuItemCard';
 import { useCart } from '../context/CartContext';
@@ -27,11 +27,10 @@ describe('MenuItemCard', () => {
   });
 
   it('opens modal and updates quantity inside', async () => {
-    render(
-      <MenuItemCard item={{ id: 1, name: 'Burger', price: 5 }} restaurantId="1" />
-    );
+    const item = { id: 1, name: 'Burger', price: 5 };
+    render(<MenuItemCard item={item} restaurantId="1" />);
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'Add to Cart' }));
+    await user.click(screen.getByRole('button', { name: `Add ${item.name} to plate` }));
     await user.click(screen.getByRole('button', { name: 'Increase quantity' }));
     expect(screen.getByTestId('qty').textContent).toBe('2');
   });
@@ -40,7 +39,7 @@ describe('MenuItemCard', () => {
     const item = { id: 2, name: 'Fries', price: 3 };
     render(<MenuItemCard item={item} restaurantId="1" />);
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'Add to Cart' }));
+    await user.click(screen.getByRole('button', { name: `Add ${item.name} to plate` }));
     await user.click(screen.getByRole('button', { name: 'Decrease quantity' }));
     expect(screen.getByTestId('qty').textContent).toBe('1');
   });
