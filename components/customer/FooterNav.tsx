@@ -19,6 +19,9 @@ export default function FooterNav({ cartCount = 0, hidden }: Props) {
 
   const current = (router.asPath || '').split('?')[0];
 
+  // label for the middle action (UI copy only)
+  const cartLabel = 'Plate';
+
   const NavLink = ({ href, Icon, label }: any) => (
     <Link
       href={build(href)}
@@ -43,6 +46,8 @@ export default function FooterNav({ cartCount = 0, hidden }: Props) {
         <div className="absolute -top-6 left-1/2 -translate-x-1/2">
           <Link
             href={build('cart')}
+            aria-label={cartLabel}
+            title={cartLabel}
             className="relative w-14 h-14 rounded-full fab flex items-center justify-center shadow-lg"
           >
             <ShoppingCart className="w-6 h-6" />
