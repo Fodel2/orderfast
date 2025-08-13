@@ -9,6 +9,7 @@ import { useCart } from "../../context/CartContext";
 import CustomerLayout from "../../components/CustomerLayout";
 import Logo from "../../components/branding/Logo";
 import { useBrand } from "../../components/branding/BrandProvider";
+import CategoryChips from "@/components/customer/CategoryChips";
 
 
 interface Restaurant {
@@ -72,7 +73,7 @@ export default function RestaurantMenuPage() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  const scrollToCategory = (id: number) => {
+  const scrollToCategoryBubble = (id: number) => {
     const section = sectionRefs.current[id];
     section?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     const btn = btnRefs.current[id];
@@ -187,6 +188,16 @@ export default function RestaurantMenuPage() {
 
   const Inner = () => {
     const { name } = useBrand();
+    // Helper: smooth scroll to section if it exists
+    function scrollToCategory(c: any) {
+      const id = c?.id
+        ? `cat-${c.id}`
+        : c?.name
+        ? `cat-${c.name.toLowerCase().replace(/\s+/g, '-')}`
+        : '';
+      const el = id ? document.getElementById(id) : null;
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
     return (
       <div className="max-w-screen-sm mx-auto px-4 pb-28">
         <div className="pt-4 space-y-8 scroll-smooth">
@@ -221,7 +232,7 @@ export default function RestaurantMenuPage() {
                 <button
                   key={c.id}
                   ref={(el) => (btnRefs.current[c.id] = el)}
-                  onClick={() => scrollToCategory(c.id)}
+                  onClick={() => scrollToCategoryBubble(c.id)}
                   className="flex flex-col items-center justify-center flex-shrink-0 w-20 h-20 bg-white rounded-full shadow hover:bg-gray-50 transition snap-start"
                   aria-label={`View ${c.name}`}
                 >
@@ -239,6 +250,14 @@ export default function RestaurantMenuPage() {
               ))}
             </div>
           </div>
+
+          {/* Sticky chips (uses same categories data if available) */}
+          {Array.isArray(categories) && categories.length > 0 && (
+            <CategoryChips
+              categories={categories.map((c: any) => ({ id: c.id, name: c.name }))}
+              onSelect={scrollToCategory}
+            />
+          )}
 
           <div className="space-y-8">
             {categories.length === 0 ? (
@@ -260,7 +279,7 @@ export default function RestaurantMenuPage() {
                 if (catItems.length === 0) return null;
                 return (
                   <section
-                    id={`cat-${cat.id}`}
+                    id={cat?.id ? `cat-${cat.id}` : undefined}
                     key={cat.id}
                     ref={(el) => {
                       sectionRefs.current[cat.id] = el as HTMLDivElement;
