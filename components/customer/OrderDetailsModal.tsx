@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import OrderProgress from '@/components/customer/OrderProgress';
 import { useRouter } from 'next/router';
+import { displayOrderNo } from '@/lib/orderDisplay';
 
 export default function OrderDetailsModal({ order, onClose }: { order: any; onClose: () => void; }) {
   if (!order) return null;
@@ -11,7 +12,7 @@ export default function OrderDetailsModal({ order, onClose }: { order: any; onCl
     // TODO: wire to real cancel/refund endpoint (Stripe Connect later).
     alert('Cancel & refund requested. (Stripe wiring coming soon.)');
   };
-  const shortNo = order?.number || order?.display_number || (order?.id ? String(order.id).slice(0,6) : '—');
+  const shortNo = displayOrderNo(order);
   const placed = order?.created_at_human || (order?.created_at ? new Date(order.created_at).toLocaleString(undefined, { weekday:'short', day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '');
   const [anim, setAnim] = useState<'enter'|'exit'|''>('');
   useEffect(()=>{ setAnim('enter'); },[]);
@@ -21,7 +22,7 @@ export default function OrderDetailsModal({ order, onClose }: { order: any; onCl
       {/* Desktop: centered dialog; Mobile: bottom sheet */}
       <div className={`w-full md:max-w-xl bg-white rounded-t-2xl md:rounded-2xl p-4 md:p-6 shadow-xl ${anim==='enter'?'ordersheet-enter ordersheet-enter-active':anim==='exit'?'ordersheet-exit ordersheet-exit-active':''}`} onClick={e=>e.stopPropagation()}>
         <div className="flex items-center justify-between">
-          <h3 className="text-lg md:text-xl font-bold">Order #{shortNo}</h3>
+          <h3 className="text-lg md:text-xl font-bold">Order {shortNo}</h3>
           <button onClick={closeWithAnim} aria-label="Close" className="p-2 rounded-md hover:bg-gray-100">✕</button>
         </div>
         {/* status pill + placed time */}

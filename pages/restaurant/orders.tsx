@@ -4,6 +4,7 @@ import { useUser } from '@/lib/useUser'
 import { useRouter } from 'next/router'
 import CustomerLayout from '../../components/CustomerLayout'
 import OrderDetailsModal from '@/components/customer/OrderDetailsModal'
+import { displayOrderNo } from '@/lib/orderDisplay'
 
 export default function OrdersPage() {
   const router = useRouter()
@@ -195,10 +196,10 @@ export default function OrdersPage() {
                     openOrder(order)
                   }
                 }}
-                aria-label={`Open details for order ${String(order.short_order_number ?? order.id).slice(0, 4)}`}
+                aria-label={`Open details for order ${displayOrderNo(order)}`}
               >
                 <div className="flex items-baseline justify-between">
-                  <div className="text-base font-semibold">Order #{String(order.short_order_number ?? order.id).slice(0, 4)}</div>
+                  <div className="text-base font-semibold">Order {displayOrderNo(order)}</div>
                   {order.status && (
                     <span className="ml-2 text-xs rounded-full px-2 py-0.5 pill capitalize">
                       {String(order.status).replace(/_/g, ' ')}
