@@ -1,6 +1,5 @@
 import Head from 'next/head';
 import { ReactNode } from 'react';
-import BrandProvider from './branding/BrandProvider'; // brand: provider mount
 import TopBar from './customer/TopBar';
 import FooterNav from './customer/FooterNav';
 
@@ -22,7 +21,7 @@ export default function CustomerLayout({
   hideFooter,
 }: CustomerLayoutProps) {
   return (
-    <BrandProvider restaurant={restaurant}> {/* brand: provider mount */}
+    <>
       {includePwaMeta && (
         <Head>
           <title>OrderFast – Restaurant</title>
@@ -42,6 +41,6 @@ export default function CustomerLayout({
       </main>
 
       {!hideFooter ? <FooterNav cartCount={cartCount} /> : null} {/* slides: footer hides on hero */}
-    </BrandProvider>
+    </>
   );
 }
