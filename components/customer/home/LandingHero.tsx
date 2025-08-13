@@ -34,11 +34,12 @@ export default function LandingHero({
       aria-label="Restaurant hero"
       className={[
         'relative w-full overflow-hidden',
-        'min-h-[68vh] md:min-h-[72vh]',
+        'min-h-screen',
         'rounded-none md:rounded-3xl',
         'transition-all duration-500 ease-out',
         mounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'
       ].join(' ')}
+      style={{ minHeight: '100svh' }}
     >
       {/* Background */}
       <div
@@ -52,7 +53,7 @@ export default function LandingHero({
       <div className="absolute inset-0" style={{ backgroundImage: overlay }} />
 
       {/* Content */}
-      <div className="relative z-10 flex flex-col items-center justify-center text-center px-6 py-16 md:py-20">
+      <div className="relative z-10 flex min-h-full flex-col items-center justify-center text-center px-6 py-16 md:py-20">
         {/* Avatar */}
         <div className="relative">
           <div
