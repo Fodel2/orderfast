@@ -8,7 +8,7 @@ export default function Slides({
 }: {
   children: React.ReactNode;
   onHeroInView?: (v: boolean) => void;
-  onProgress?: (p: number) => void; // 0..1 based on first slide scroll
+  onProgress?: (p: number) => void; // 0..1
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const heroRef = useRef<HTMLDivElement>(null);
@@ -23,18 +23,13 @@ export default function Slides({
     return () => obs.disconnect();
   }, [onHeroInView]);
 
-  // progress: 0 at top of hero, 1 at exactly one viewport scrolled
   useEffect(() => {
     if (!onProgress || !rootRef.current) return;
     const el = rootRef.current;
-    const handler = () => {
-      const h = el.clientHeight || 1;
-      const p = Math.max(0, Math.min(1, el.scrollTop / h));
-      onProgress(p);
-    };
-    handler();
-    el.addEventListener('scroll', handler, { passive: true });
-    return () => el.removeEventListener('scroll', handler);
+    const h = () => onProgress(Math.max(0, Math.min(1, el.scrollTop / (el.clientHeight || 1))));
+    h();
+    el.addEventListener('scroll', h, { passive: true });
+    return () => el.removeEventListener('scroll', h);
   }, [onProgress]);
 
   return (
