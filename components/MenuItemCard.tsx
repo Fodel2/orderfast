@@ -3,6 +3,7 @@ import { useCart } from '../context/CartContext';
 import { getAddonsForItem } from '../utils/getAddonsForItem';
 import type { AddonGroup } from '../utils/types';
 import AddonGroups, { validateAddonSelections } from './AddonGroups';
+import PlateLick from '@/components/icons/PlateLick';
 
 interface MenuItem {
   id: number;
@@ -113,15 +114,7 @@ export default function MenuItemCard({
             />
           ) : (
             <div className="w-[84px] h-[84px] rounded-xl bg-gray-100 flex items-center justify-center text-gray-400 flex-shrink-0">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M4 7h16M7 7l2 10h6l2-10"
-                  stroke="currentColor"
-                  strokeWidth="1.7"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
+              <PlateLick size={40} />
             </div>
           )}
           <div className="flex-1 min-w-0">
