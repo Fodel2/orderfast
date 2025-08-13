@@ -6,8 +6,8 @@ import { supabase } from "../../utils/supabaseClient";
 import MenuItemCard from "../../components/MenuItemCard";
 import { useCart } from "../../context/CartContext";
 import CustomerLayout from "../../components/CustomerLayout";
-import Logo from "../../components/branding/Logo";
 import { useBrand } from "../../components/branding/BrandProvider";
+import MenuHeader from '@/components/customer/menu/MenuHeader';
 
 
 interface Restaurant {
@@ -168,7 +168,7 @@ export default function RestaurantMenuPage() {
   }
 
   const Inner = () => {
-    const { name } = useBrand();
+    const brand = useBrand();
     const [activeCat, setActiveCat] = useState<string | undefined>(undefined);
     const sectionsRef = useRef<Record<string, HTMLElement | null>>({});
     const qp = router?.query || {};
@@ -193,10 +193,6 @@ export default function RestaurantMenuPage() {
       ) ||
       (typeof (qp as any).header === 'string' ? ((qp as any).header as string) : '') ||
       '';
-    const title =
-      restaurant?.name ||
-      (typeof qp.name === 'string' ? qp.name : name) ||
-      'Menu';
 
     useEffect(() => {
       if (!Array.isArray(categories) || categories.length === 0) return;
@@ -227,20 +223,13 @@ export default function RestaurantMenuPage() {
       <div className="px-4 pb-28 max-w-6xl mx-auto">
         <div className="pt-4 space-y-8 scroll-smooth">
           {/* Menu header hero */}
-          <div className="mt-3">
-            <div className="menu-hero">
-              {headerImg ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={headerImg} alt="" loading="lazy" />
-              ) : null}
-              <div className="menu-hero-inner">
-                <div className="menu-hero-title">
-                  <Logo size={28} />
-                  <span>{title}</span>
-                </div>
-              </div>
-            </div>
-          </div>
+          <MenuHeader
+            title={restaurant?.name || 'Restaurant'}
+            subtitle={restaurant?.website_description ?? null}
+            imageUrl={headerImg || undefined}
+            logoUrl={restaurant?.logo_url ?? null}
+            accentHex={(brand?.brand as string) || undefined}
+          />
           {restaurant.website_description && (
             <p className="text-gray-600 text-center">{restaurant.website_description}</p>
           )}
