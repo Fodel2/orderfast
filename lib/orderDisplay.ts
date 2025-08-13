@@ -13,3 +13,22 @@ export function displayOrderNo(order: any): string {
   const tail = id.replace(/[^0-9]/g,'').slice(-4) || id.slice(0,6);
   return `#${tail}`;
 }
+
+export function extractCancelReason(order: any): { reason?: string; note?: string } {
+  const reason =
+    order?.cancel_reason ??
+    order?.cancellation_reason ??
+    order?.reject_reason ??
+    order?.rejection_reason ??
+    order?.reason ??
+    undefined;
+  const note =
+    order?.cancel_comment ??
+    order?.cancellation_note ??
+    order?.reject_comment ??
+    order?.rejection_comment ??
+    order?.comment ??
+    order?.note ??
+    undefined;
+  return { reason, note };
+}

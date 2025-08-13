@@ -13,3 +13,14 @@ export const plateQuips = [
 export function randomEmptyPlateMessage() {
   return plateQuips[Math.floor(Math.random() * plateQuips.length)];
 }
+
+export const cancelledQuips = [
+  "This one’s been cancelled — sorry about that.",
+  "We’re sorry — your order was cancelled. We’ll make it right.",
+  "Order cancelled. Thanks for your patience and understanding.",
+  "This plate won’t be served today — our apologies.",
+  "Cancelled — sorry for the hassle. Hope to see you again soon."
+];
+export function randomCancelledMessage() {
+  return cancelledQuips[Math.floor(Math.random() * cancelledQuips.length)];
+}
