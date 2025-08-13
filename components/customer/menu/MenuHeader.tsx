@@ -52,7 +52,7 @@ export default function MenuHeader({
         aria-label="Restaurant header"
         className={[
           'relative w-full overflow-hidden rounded-2xl',
-          'transition-[height,margin,opacity,transform] duration-500 ease-out',
+          'transition-all duration-500 ease-out will-change-transform will-change-opacity',
           collapsed ? 'h-20 md:h-24 mt-2' : 'h-48 md:h-80 mt-0',
           mounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2',
         ].join(' ')}

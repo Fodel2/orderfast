@@ -255,7 +255,7 @@ export default function RestaurantMenuPage() {
           {/* sticky category chips */}
           {Array.isArray(categories) && categories.length > 0 && (
             <div
-              className={`sticky top-[60px] z-10 pt-2 pb-3 bg-white/70 backdrop-blur supports-[backdrop-filter]:backdrop-blur rounded-b-xl transition-all duration-500 ease-out ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'}`}
+              className={`sticky top-[60px] z-10 pt-2 pb-3 bg-white/70 backdrop-blur supports-[backdrop-filter]:backdrop-blur rounded-b-xl transition-all duration-400 ease-out will-change-transform will-change-opacity ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'}`}
               style={{ transitionDelay: '100ms' }}
             >
               <div className="flex gap-3 overflow-x-auto no-scrollbar">
@@ -274,7 +274,7 @@ export default function RestaurantMenuPage() {
                     <button
                       key={c.id}
                       onClick={() => onChipSelect(c)}
-                      className={`px-4 py-2 rounded-full border whitespace-nowrap transition-all duration-200 ease-out hover:scale-[1.03] hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+                      className={`px-4 py-2 rounded-full border whitespace-nowrap transition-transform duration-200 ease-out hover:scale-[1.03] active:scale-95 hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
                         activeCat === String(c.id)
                           ? 'scale-105 text-white'
                           : 'bg-gray-100 border-gray-200 text-gray-700'
@@ -320,20 +320,20 @@ export default function RestaurantMenuPage() {
                   >
                     <h2 className="text-xl font-semibold text-left">{cat.name}</h2>
                     <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-                      {catItems.map((item, idx) => (
-                        <div
-                          key={item.id}
-                          className={`opacity-0 translate-y-2 transition-all duration-500 ease-out ${mounted ? 'opacity-100 translate-y-0' : ''}`}
-                          style={{ transitionDelay: `${idx * 75}ms` }}
-                        >
-                          <MenuItemCard item={item} restaurantId={restaurantId as string} />
-                        </div>
-                      ))}
-                    </div>
-                  </section>
-                );
-              })
-            )}
+                        {catItems.map((item, idx) => (
+                          <div
+                            key={item.id}
+                            className={`opacity-0 translate-y-2 transition-all duration-500 ease-out will-change-transform will-change-opacity ${mounted ? 'opacity-100 translate-y-0' : ''}`}
+                            style={{ transitionDelay: `${idx * 75}ms` }}
+                          >
+                            <MenuItemCard item={item} restaurantId={restaurantId as string} />
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  );
+                })
+              )}
           </div>
           {showTop && (
             <motion.button

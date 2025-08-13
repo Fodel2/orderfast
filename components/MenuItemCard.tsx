@@ -104,7 +104,7 @@ export default function MenuItemCard({
   return (
     <>
       <div
-        className="tapcard rounded-2xl border border-gray-100 p-4 flex gap-4 active:opacity-95 transition-transform duration-200 ease-out hover:scale-[1.02] hover:shadow-md active:scale-[0.98]"
+        className="tapcard rounded-2xl border border-gray-100 p-4 flex gap-4 active:opacity-95 transition-transform duration-200 ease-out hover:scale-[1.02] hover:shadow-md active:scale-95 will-change-transform"
         onClick={handleClick}
         role="button"
         tabIndex={0}
@@ -161,7 +161,7 @@ export default function MenuItemCard({
           <div className="mt-2 flex justify-end">
             <button
               type="button"
-              className="btn-icon min-w-[40px] min-h-[40px] transition-transform duration-150 ease-out hover:scale-[1.05] active:scale-[0.95] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+              className="btn-icon min-w-[40px] min-h-[40px] transition-transform duration-150 ease-out hover:scale-[1.05] active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
               style={{ ['--tw-ring-color' as any]: String(brand?.brand || 'currentColor') } as React.CSSProperties}
               onClick={(e) => {
                 e.stopPropagation();
