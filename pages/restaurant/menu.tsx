@@ -169,6 +169,8 @@ export default function RestaurantMenuPage() {
 
   const Inner = () => {
     const brand = useBrand();
+    const [mounted, setMounted] = useState(false);
+    useEffect(() => setMounted(true), []);
     const [activeCat, setActiveCat] = useState<string | undefined>(undefined);
     const sectionsRef = useRef<Record<string, HTMLElement | null>>({});
     const qp = router?.query || {};
@@ -250,18 +252,27 @@ export default function RestaurantMenuPage() {
 
           {/* sticky category chips */}
           {Array.isArray(categories) && categories.length > 0 && (
-            <div className="sticky top-[60px] z-10 pt-2 pb-3 bg-white/70 backdrop-blur supports-[backdrop-filter]:backdrop-blur rounded-b-xl">
+            <div
+              className={`sticky top-[60px] z-10 pt-2 pb-3 bg-white/70 backdrop-blur supports-[backdrop-filter]:backdrop-blur rounded-b-xl transition-all duration-500 ease-out ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'}`}
+              style={{ transitionDelay: '100ms' }}
+            >
               <div className="flex gap-3 overflow-x-auto no-scrollbar">
                 {categories.map((c: any) => (
                   <button
                     key={c.id}
                     onClick={() => onChipSelect(c)}
-                    className={`px-4 py-2 rounded-full border whitespace-nowrap transition-colors ${
+                    className={`px-4 py-2 rounded-full border whitespace-nowrap transition-all duration-200 ease-out hover:scale-[1.03] hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
                       activeCat === String(c.id)
-                        ? 'bg-pink-100 border-pink-200 text-pink-700'
+                        ? 'scale-105 text-white'
                         : 'bg-gray-100 border-gray-200 text-gray-700'
                     }`}
                     aria-pressed={activeCat === String(c.id)}
+                    aria-current={activeCat === String(c.id) ? 'true' : undefined}
+                    style={
+                      activeCat === String(c.id)
+                        ? { '--tw-ring-color': brand.brand, backgroundColor: brand.brand, borderColor: brand.brand }
+                        : { '--tw-ring-color': brand.brand }
+                    }
                   >
                     {c.name}
                   </button>
@@ -299,12 +310,14 @@ export default function RestaurantMenuPage() {
                   >
                     <h2 className="text-xl font-semibold text-left">{cat.name}</h2>
                     <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-                      {catItems.map((item) => (
-                        <MenuItemCard
+                      {catItems.map((item, idx) => (
+                        <div
                           key={item.id}
-                          item={item}
-                          restaurantId={restaurantId as string}
-                        />
+                          className={`opacity-0 translate-y-2 transition-all duration-500 ease-out ${mounted ? 'opacity-100 translate-y-0' : ''}`}
+                          style={{ transitionDelay: `${idx * 75}ms` }}
+                        >
+                          <MenuItemCard item={item} restaurantId={restaurantId as string} />
+                        </div>
                       ))}
                     </div>
                   </section>
