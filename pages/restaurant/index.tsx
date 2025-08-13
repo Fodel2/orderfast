@@ -8,6 +8,17 @@ import { supabase } from '@/utils/supabaseClient';
 import { useCart } from '@/context/CartContext';
 import LandingHero from '@/components/customer/home/LandingHero';
 
+function getBrandAccentHex(brand: unknown): string | undefined {
+  if (!brand || typeof brand !== 'object') return undefined;
+  const b = brand as any;
+  if (typeof b.brand === 'string' && b.brand) return b.brand as string;
+  if ('accentColor' in b && typeof b.accentColor === 'string' && b.accentColor)
+    return b.accentColor as string;
+  if ('accent' in b && typeof b.accent === 'string' && b.accent)
+    return b.accent as string;
+  return undefined;
+}
+
 export default function RestaurantHomePage() {
   const router = useRouter();
   const { restaurant_id } = router.query;
@@ -79,7 +90,7 @@ export default function RestaurantHomePage() {
           onCta={() => router.push(orderHref)}
           imageUrl={headerImg || undefined}
           logoUrl={restaurant?.logo_url ?? null}
-          accentHex={(brand?.brand as string) || (brand?.accentColor as string) || undefined}
+          accentHex={getBrandAccentHex(brand)}
         />
 
         {/* Slide 2 — Opening Hours & Address */}
