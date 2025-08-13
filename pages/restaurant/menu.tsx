@@ -171,6 +171,16 @@ export default function RestaurantMenuPage() {
     const { name } = useBrand();
     const [activeCat, setActiveCat] = useState<string | undefined>(undefined);
     const sectionsRef = useRef<Record<string, HTMLElement | null>>({});
+    const qp = router?.query || {};
+    const headerImg =
+      restaurant?.header_image ||
+      restaurant?.hero_image ||
+      (typeof qp.header === 'string' ? qp.header : '') ||
+      '';
+    const title =
+      restaurant?.name ||
+      (typeof qp.name === 'string' ? qp.name : name) ||
+      'Menu';
 
     useEffect(() => {
       if (!Array.isArray(categories) || categories.length === 0) return;
@@ -200,13 +210,24 @@ export default function RestaurantMenuPage() {
     return (
       <div className="px-4 pb-28 max-w-6xl mx-auto">
         <div className="pt-4 space-y-8 scroll-smooth">
-          <div className="text-center space-y-4">
-            <Logo size={96} className="mx-auto" />
-            <h1 className="text-3xl font-bold">{name}</h1>
-            {restaurant.website_description && (
-              <p className="text-gray-600">{restaurant.website_description}</p>
-            )}
+          {/* Menu header hero */}
+          <div className="mt-3">
+            <div className="menu-hero">
+              {headerImg ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={headerImg} alt="" loading="lazy" />
+              ) : null}
+              <div className="menu-hero-inner">
+                <div className="menu-hero-title">
+                  <Logo size={28} />
+                  <span>{title}</span>
+                </div>
+              </div>
+            </div>
           </div>
+          {restaurant.website_description && (
+            <p className="text-gray-600 text-center">{restaurant.website_description}</p>
+          )}
 
           <div className="relative">
             <div className="relative">

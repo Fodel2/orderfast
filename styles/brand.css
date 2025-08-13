@@ -12,6 +12,16 @@
 [data-brand-root] .chip-active{background:color-mix(in oklab, var(--brand) 18%, white);color:var(--brand);box-shadow:0 0 0 1px color-mix(in oklab, var(--brand) 40%, white) inset}
 .no-scrollbar{scrollbar-width:none}.no-scrollbar::-webkit-scrollbar{display:none}
 
+[data-brand-root] .tapcard{transition:transform .14s ease, box-shadow .14s ease}
+[data-brand-root] .tapcard:active{transform:scale(.98); box-shadow:0 6px 20px rgba(0,0,0,.08)}
+
+/* menu header hero */
+[data-brand-root] .menu-hero{position:relative; height:200px; border-radius:20px; overflow:hidden; background:#f3f4f6}
+[data-brand-root] .menu-hero::before{content:""; position:absolute; inset:0; background:linear-gradient(to top, rgba(0,0,0,.35), rgba(0,0,0,.05))}
+[data-brand-root] .menu-hero img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover}
+[data-brand-root] .menu-hero .menu-hero-inner{position:relative; z-index:1; height:100%; display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-end; padding:16px}
+[data-brand-root] .menu-hero .menu-hero-title{display:flex; align-items:center; gap:10px; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,.35); font-weight:800; font-size:20px}
+
 /* Optional glass effect for headers/nav */
 [data-brand-root] .brand-glass {
   backdrop-filter: saturate(160%) blur(12px);
