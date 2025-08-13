@@ -68,9 +68,10 @@ export default function RestaurantHomePage() {
         style={{
           position: 'fixed',
           zIndex: 30,
-          top: `calc(12px + (34vh - 12px) * ${1 - p})`,
-          left: `calc(16px + (50vw - 16px) * ${1 - p})`,
-          transform: `translate(${(-50) * (1 - p)}%, ${(-50) * (1 - p)}%) scale(${1 + 1.25 * (1 - p)})`,
+          // start perfectly centered (50%/50%), then dock to (12px,16px)
+          top:  `calc(12px + (50% - 12px)  * ${1 - p})`,
+          left: `calc(16px + (50% - 16px)  * ${1 - p})`,
+          transform: `translate(-50%, -50%) scale(${1 + 1.25 * (1 - p)})`,
           transformOrigin: 'left center',
           transition: 'top 180ms cubic-bezier(.2,.7,.2,1), left 180ms cubic-bezier(.2,.7,.2,1), transform 180ms cubic-bezier(.2,.7,.2,1)',
           pointerEvents: 'none',
