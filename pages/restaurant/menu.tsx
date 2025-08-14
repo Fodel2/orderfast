@@ -129,6 +129,7 @@ export default function RestaurantMenuPage() {
 
       if (process.env.NODE_ENV === 'development') {
         console.debug('[customer:menu]', {
+          rid: restaurantId,
           cats: catData?.length || 0,
           items: itemData?.length || 0,
         });
