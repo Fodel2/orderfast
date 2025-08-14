@@ -34,6 +34,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const categories = Array.isArray(draft.categories) ? draft.categories : [];
   const items = Array.isArray(draft.items) ? draft.items : [];
 
+  if (process.env.NODE_ENV === 'development') {
+    console.debug('[publish] start', {
+      restaurantId,
+      categories,
+      items,
+    });
+  }
+
   const { data: liveItems, error: liveErr } = await supabase
     .from('menu_items')
     .select('id')
@@ -42,24 +50,49 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const liveItemIds = (liveItems || []).map((r: any) => r.id);
 
   if (liveItemIds.length) {
+    const { error: detachErr } = await supabase
+      .from('order_items')
+      .update({ item_id: null })
+      .in('item_id', liveItemIds);
+    if (detachErr) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('[publish] detach err', detachErr);
+      }
+      return res.status(500).json({ error: detachErr.message });
+    }
     const { error: delLinksErr } = await supabase
       .from('item_addon_links')
       .delete()
       .in('item_id', liveItemIds);
-    if (delLinksErr) return res.status(500).json({ error: delLinksErr.message });
+    if (delLinksErr) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('[publish] del links err', delLinksErr);
+      }
+      return res.status(500).json({ error: delLinksErr.message });
+    }
   }
 
   const { error: delItemsErr } = await supabase
     .from('menu_items')
     .delete()
     .eq('restaurant_id', restaurantId);
-  if (delItemsErr) return res.status(500).json({ error: delItemsErr.message });
+  if (delItemsErr) {
+    if (process.env.NODE_ENV === 'development') {
+      console.error('[publish] del items err', delItemsErr);
+    }
+    return res.status(500).json({ error: delItemsErr.message });
+  }
 
   const { error: delCatsErr } = await supabase
     .from('menu_categories')
     .delete()
     .eq('restaurant_id', restaurantId);
-  if (delCatsErr) return res.status(500).json({ error: delCatsErr.message });
+  if (delCatsErr) {
+    if (process.env.NODE_ENV === 'development') {
+      console.error('[publish] del cats err', delCatsErr);
+    }
+    return res.status(500).json({ error: delCatsErr.message });
+  }
 
   let categoriesInserted = 0;
   let itemsInserted = 0;
