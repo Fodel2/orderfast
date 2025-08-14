@@ -429,39 +429,6 @@ export default function MenuBuilder() {
     });
   };
 
-  const publishLiveMenu = async () => {
-    if (!restaurantId) return;
-    try {
-      await Promise.all(
-        categories.map((cat, idx) =>
-          supabase
-            .from('menu_categories')
-            .update({ name: cat.name, description: cat.description, sort_order: idx })
-            .eq('id', cat.id)
-        )
-      );
-      await Promise.all(
-        items.map((it) =>
-          supabase
-            .from('menu_items')
-            .update({
-              name: it.name,
-              description: it.description,
-              price: it.price,
-              sort_order: it.sort_order,
-            })
-            .eq('id', it.id)
-        )
-      );
-      setOrigCategories(categories);
-      setOrigItems(items);
-      setToastMessage('Menu published');
-    } catch (err) {
-      console.error(err);
-      setToastMessage('Failed to publish menu');
-    }
-  };
-
   // Publish draft menu via API that hard-replaces live menu
   const publishMenu = async () => {
     if (!restaurantId) return;
