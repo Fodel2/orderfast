@@ -38,7 +38,7 @@ export default function MenuItemCard({
   const { addToCart } = useCart();
   const brand = useBrand?.();
   const accent =
-    typeof brand?.brand === 'string' && brand.brand ? brand.brand : undefined;
+    typeof brand?.brand === 'string' && brand.brand ? brand.brand : '#EB2BB9';
   const [mounted, setMounted] = useState(false);
   const [modalAnim, setModalAnim] = useState(false);
 
@@ -152,7 +152,8 @@ export default function MenuItemCard({
             <div
               className="pointer-events-none absolute inset-x-0 bottom-0 h-20"
               style={{
-                background: `linear-gradient(to top, rgba(0,0,0,0.35), transparent)`,
+                background:
+                  'linear-gradient(to top, rgba(0,0,0,0.45), rgba(0,0,0,0.00))',
               }}
             />
             <div className="absolute inset-x-0 bottom-0 p-4 md:p-5 flex flex-col items-start">
@@ -210,7 +211,8 @@ export default function MenuItemCard({
                 type="button"
                 aria-label="Close"
                 onClick={() => setShowModal(false)}
-                className="p-2"
+                className="p-2 rounded transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                style={{ ['--tw-ring-color' as any]: accent } as React.CSSProperties}
               >
                 ×
               </button>
@@ -244,7 +246,8 @@ export default function MenuItemCard({
             <AddonGroups addons={groups} onChange={setSelections} />
           )}
           <textarea
-            className="w-full border rounded p-2"
+            className="w-full border rounded p-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+            style={{ ['--tw-ring-color' as any]: accent } as React.CSSProperties}
             placeholder="Add notes (optional)"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
@@ -257,7 +260,8 @@ export default function MenuItemCard({
                 type="button"
                 aria-label="Decrease quantity"
                 onClick={decrement}
-                className="w-8 h-8 flex items-center justify-center"
+                className="w-8 h-8 flex items-center justify-center rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                style={{ ['--tw-ring-color' as any]: accent } as React.CSSProperties}
               >
                 -
               </button>
@@ -268,7 +272,8 @@ export default function MenuItemCard({
                 type="button"
                 aria-label="Increase quantity"
                 onClick={increment}
-                className="w-8 h-8 flex items-center justify-center"
+                className="w-8 h-8 flex items-center justify-center rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                style={{ ['--tw-ring-color' as any]: accent } as React.CSSProperties}
               >
                 +
               </button>

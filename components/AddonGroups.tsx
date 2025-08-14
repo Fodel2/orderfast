@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import type { AddonGroup } from "../utils/types";
+import { useBrand } from "@/components/branding/BrandProvider";
 
 export function validateAddonSelections(
   addons: AddonGroup[],
@@ -61,6 +62,9 @@ export default function AddonGroups({
   >(initialSelections || {});
 
   const errors = validateAddonSelections(addons, selectedQuantities);
+  const brand = useBrand?.();
+  const accent =
+    typeof brand?.brand === 'string' && brand.brand ? brand.brand : '#EB2BB9';
 
   useEffect(() => {
     if (onChange) {
@@ -179,7 +183,10 @@ export default function AddonGroups({
                 <h3 className="text-lg font-semibold">
                   {group.name}
                   {group.required && (
-                    <span className="text-red-500 text-sm ml-2">
+                    <span
+                      className="text-sm ml-2"
+                      style={{ color: accent, opacity: 0.9 }}
+                    >
                       (Required)
                     </span>
                   )}
@@ -235,16 +242,23 @@ export default function AddonGroups({
                     <div
                       key={option.id}
                       onClick={handleTileClick}
-                      className={`min-w-[160px] max-w-[180px] border rounded-lg p-3 flex-shrink-0 transition cursor-pointer text-center ${
+                      data-selected={quantity > 0}
+                      tabIndex={0}
+                      className={`min-w-[160px] max-w-[180px] border rounded-lg p-3 flex-shrink-0 transition cursor-pointer text-center text-slate-900 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 data-[selected=true]:scale-[1.01] ${
                         quantity > 0
-                          ? "border-green-500 bg-green-50 shadow-sm"
-                          : "border-gray-300 bg-white hover:bg-gray-50"
+                          ? "border-green-500 shadow-sm"
+                          : "bg-slate-50 border-slate-200 hover:bg-slate-100"
                       } ${
                         multipleChoice &&
                         ((groupCapHit && quantity === 0) || maxQty === 0)
                           ? "pointer-events-none opacity-50"
                           : ""
                       }`}
+                      style={{
+                        backgroundColor: quantity > 0 ? `${accent}1F` : undefined,
+                        borderColor: quantity > 0 ? accent : undefined,
+                        ['--tw-ring-color' as any]: accent,
+                      } as React.CSSProperties}
                     >
                       {option.image_url && (
                         <img
@@ -277,7 +291,8 @@ export default function AddonGroups({
                                 multipleChoice,
                               );
                             }}
-                            className="w-8 h-8 rounded-full border border-gray-300 hover:bg-gray-100"
+                            className="w-8 h-8 rounded-full border border-gray-300 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                            style={{ ['--tw-ring-color' as any]: accent } as React.CSSProperties}
                           >
                             –
                           </button>
@@ -302,7 +317,8 @@ export default function AddonGroups({
                               maxQty === 0 ||
                               groupMax === 0
                             }
-                            className="w-8 h-8 rounded-full border border-gray-300 hover:bg-gray-100 disabled:opacity-50"
+                            className="w-8 h-8 rounded-full border border-gray-300 hover:bg-gray-100 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                            style={{ ['--tw-ring-color' as any]: accent } as React.CSSProperties}
                           >
                             +
                           </button>
