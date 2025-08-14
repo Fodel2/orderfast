@@ -38,7 +38,7 @@ export default function MenuItemCard({
   const { addToCart } = useCart();
   const brand = useBrand?.();
   const accent =
-    typeof brand?.brand === 'string' && brand.brand ? brand.brand : '#EB2BB9';
+    typeof brand?.brand === 'string' && brand.brand ? brand.brand : undefined;
   const [mounted, setMounted] = useState(false);
   const [modalAnim, setModalAnim] = useState(false);
 
@@ -178,9 +178,9 @@ export default function MenuItemCard({
                       className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium"
                       style={{
                         backgroundColor: accent
-                          ? `${accent}1A`
+                          ? `${accent}1F`
                           : 'rgba(0,0,0,0.06)',
-                        color: accent || undefined,
+                        color: accent || 'inherit',
                       }}
                     >
                       {b}
@@ -226,9 +226,9 @@ export default function MenuItemCard({
                   className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium"
                   style={{
                     backgroundColor: accent
-                      ? `${accent}1A`
+                      ? `${accent}1F`
                       : 'rgba(0,0,0,0.06)',
-                    color: accent || undefined,
+                    color: accent || 'inherit',
                   }}
                 >
                   {b}
