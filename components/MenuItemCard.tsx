@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useCart } from '../context/CartContext';
 import { getAddonsForItem } from '../utils/getAddonsForItem';
 import type { AddonGroup } from '../utils/types';
@@ -36,6 +36,17 @@ export default function MenuItemCard({
   >({});
   const { addToCart } = useCart();
   const brand = useBrand();
+
+  useEffect(() => {
+    if (showModal) {
+      document.documentElement.style.overflow = 'hidden';
+    } else {
+      document.documentElement.style.overflow = '';
+    }
+    return () => {
+      document.documentElement.style.overflow = '';
+    };
+  }, [showModal]);
 
   const price = typeof item?.price === 'number' ? item.price : Number(item?.price || 0);
 
@@ -180,68 +191,78 @@ export default function MenuItemCard({
           onClick={(e) => {
             if (e.target === e.currentTarget) setShowModal(false);
           }}
-          className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-[1000]"
+          className="fixed inset-0 z-[60]"
         >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto"
-          >
-            <h3 className="text-xl font-semibold mb-4">{item.name}</h3>
-            {loading ? (
-              <p className="text-center text-gray-500">Loading...</p>
-            ) : groups.length === 0 ? (
-              <p className="text-center text-gray-500">No add-ons available</p>
-            ) : (
-              <AddonGroups addons={groups} onChange={setSelections} />
-            )}
-
-            <div className="mt-4 flex items-center justify-between">
-              <div className="flex items-center border rounded">
-                <button
-                  type="button"
-                  aria-label="Decrease quantity"
-                  onClick={decrement}
-                  className="w-8 h-8 flex items-center justify-center"
-                >
-                  -
-                </button>
-                <span data-testid="qty" className="w-6 text-center">
-                  {qty}
-                </span>
-                <button
-                  type="button"
-                  aria-label="Increase quantity"
-                  onClick={increment}
-                  className="w-8 h-8 flex items-center justify-center"
-                >
-                  +
-                </button>
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-none" />
+          <div className="fixed bottom-0 inset-x-0 z-[70] md:inset-0 md:flex md:items-center md:justify-center">
+            <div
+              onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              className="flex flex-col bg-white rounded-t-2xl md:rounded-2xl shadow-lg w-full max-h-[92dvh] md:max-h-[88dvh] md:max-w-md"
+            >
+              <div className="sticky top-0 bg-white z-10 border-b px-4 py-3 flex items-center justify-between">
+                <h3 className="text-lg font-semibold">{item.name}</h3>
+                <div className="flex items-center gap-4">
+                  <span className="text-sm font-medium">${(price / 100).toFixed(2)}</span>
+                  <button
+                    type="button"
+                    aria-label="Close"
+                    onClick={() => setShowModal(false)}
+                    className="p-2"
+                  >
+                    ×
+                  </button>
+                </div>
               </div>
-            </div>
-
-            <textarea
-              className="mt-4 w-full border rounded p-2"
-              placeholder="Add notes (optional)"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-            />
-
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                type="button"
-                aria-label="Cancel"
-                onClick={() => setShowModal(false)}
-                className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
-              >
-                Cancel
-              </button>
-              <button
-                aria-label="Confirm Add to Cart"
-                onClick={handleFinalAdd}
-                className="px-4 py-2 rounded hover:opacity-90 btn-primary"
-              >
-                Add to Cart
-              </button>
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {loading ? (
+                  <p className="text-center text-gray-500">Loading...</p>
+                ) : groups.length === 0 ? (
+                  <p className="text-center text-gray-500">No add-ons available</p>
+                ) : (
+                  <AddonGroups addons={groups} onChange={setSelections} />
+                )}
+                <textarea
+                  className="w-full border rounded p-2"
+                  placeholder="Add notes (optional)"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                />
+              </div>
+              <div className="sticky bottom-0 bg-white z-10 border-t p-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center border rounded">
+                    <button
+                      type="button"
+                      aria-label="Decrease quantity"
+                      onClick={decrement}
+                      className="w-8 h-8 flex items-center justify-center"
+                    >
+                      -
+                    </button>
+                    <span data-testid="qty" className="w-6 text-center">
+                      {qty}
+                    </span>
+                    <button
+                      type="button"
+                      aria-label="Increase quantity"
+                      onClick={increment}
+                      className="w-8 h-8 flex items-center justify-center"
+                    >
+                      +
+                    </button>
+                  </div>
+                  <button
+                    aria-label="Confirm Add to Cart"
+                    onClick={handleFinalAdd}
+                    className="px-4 py-2 rounded hover:opacity-90 btn-primary"
+                  >
+                    Add to Cart
+                  </button>
+                </div>
+                <div className="pt-[env(safe-area-inset-bottom)]" />
+              </div>
             </div>
           </div>
         </div>
