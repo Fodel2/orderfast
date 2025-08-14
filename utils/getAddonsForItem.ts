@@ -14,6 +14,10 @@ export async function getAddonsForItem(
 
   if (error) throw error;
 
+  if (process.env.NODE_ENV === 'development') {
+    console.debug('[customer:addons]', { itemId, groups: data?.length || 0 });
+  }
+
   return (data || []).map((row: any) => {
     const g = row.addon_groups || {};
     return {
