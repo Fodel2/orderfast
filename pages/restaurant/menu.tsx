@@ -249,7 +249,7 @@ export default function RestaurantMenuPage() {
             logoUrl={restaurant?.logo_url ?? null}
             accentHex={(brand?.brand as string) || undefined}
           />
-          {restaurant.website_description && (
+          {restaurant?.website_description && (
             <p className="text-gray-600 text-center">{restaurant.website_description}</p>
           )}
 
