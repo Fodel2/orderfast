@@ -16,7 +16,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useRouter } from 'next/router';
 import { supabase } from '../../utils/supabaseClient';
-import { saveItemAddonLinks } from '../../utils/saveItemAddonLinks';
+import { loadDraft, saveDraft } from '../../lib/menuBuilderDraft';
 import AddItemModal from '../../components/AddItemModal';
 import AddCategoryModal from '../../components/AddCategoryModal';
 import Toast from '../../components/Toast';
@@ -109,6 +109,7 @@ export default function MenuBuilder() {
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
   const [showDraftCategoryModal, setShowDraftCategoryModal] = useState(false);
   const [draftCategory, setDraftCategory] = useState<any | null>(null);
+  const [draftLoaded, setDraftLoaded] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [confirmState, setConfirmState] = useState<
     | { title: string; message: string; action: () => void }
@@ -128,19 +129,25 @@ export default function MenuBuilder() {
     }
   }, [router.isReady, router.query.tab]);
 
-  // Load draft menu from localStorage
+  // Load draft menu from DB when restaurantId is known
   useEffect(() => {
-    const cats = localStorage.getItem('draftCategories');
-    const its = localStorage.getItem('draftItems');
-    if (cats) setBuildCategories(JSON.parse(cats));
-    if (its) setBuildItems(JSON.parse(its));
-  }, []);
+    if (!restaurantId) return;
+    (async () => {
+      const draft = await loadDraft(restaurantId);
+      setBuildCategories(draft.categories);
+      setBuildItems(draft.items);
+      setDraftLoaded(true);
+    })();
+  }, [restaurantId]);
 
-  // Auto-save draft menu to localStorage
+  // Auto-save draft menu to DB
   useEffect(() => {
-    localStorage.setItem('draftCategories', JSON.stringify(buildCategories));
-    localStorage.setItem('draftItems', JSON.stringify(buildItems));
-  }, [buildCategories, buildItems]);
+    if (!restaurantId || !draftLoaded) return;
+    saveDraft(restaurantId, {
+      categories: buildCategories,
+      items: buildItems,
+    });
+  }, [restaurantId, draftLoaded, buildCategories, buildItems]);
 
   // Load stock data when Stock tab is opened
   useEffect(() => {
@@ -271,13 +278,15 @@ export default function MenuBuilder() {
     if (!over || active.id === over.id) return;
     const oldIndex = buildCategories.findIndex((c) => c.id === active.id);
     const newIndex = buildCategories.findIndex((c) => c.id === over.id);
-    const newCats = arrayMove(buildCategories, oldIndex, newIndex);
+    const newCats = arrayMove(buildCategories, oldIndex, newIndex).map(
+      (c, idx) => ({ ...c, sort_order: idx })
+    );
     setBuildCategories(newCats);
   };
 
   // Reorder draft items locally
   const handleDraftItemDragEnd =
-    (categoryId: number) => async ({ active, over }: DragEndEvent) => {
+    (categoryId: number) => ({ active, over }: DragEndEvent) => {
       if (!over || active.id === over.id) return;
       const catItems = buildItems
         .filter((i) => i.category_id === categoryId)
@@ -287,19 +296,10 @@ export default function MenuBuilder() {
       const sorted = arrayMove(catItems, oldIndex, newIndex);
 
       const updated = [...buildItems];
-      await Promise.all(
-        sorted.map((it, idx) => {
-          const gi = updated.findIndex((i) => i.id === it.id);
-          updated[gi] = { ...it, sort_order: idx };
-          if (typeof it.id === 'number') {
-            return supabase
-              .from('draft_menu_items')
-              .update({ sort_order: idx })
-              .eq('id', it.id);
-          }
-          return Promise.resolve();
-        })
-      );
+      sorted.forEach((it, idx) => {
+        const gi = updated.findIndex((i) => i.id === it.id);
+        updated[gi] = { ...it, sort_order: idx };
+      });
       setBuildItems(updated);
     };
 
@@ -458,7 +458,7 @@ export default function MenuBuilder() {
     }
   };
 
-  // Publish draft menu to Supabase as the live menu
+  // Publish draft menu via API that hard-replaces live menu
   const publishMenu = async () => {
     if (!restaurantId) return;
     setConfirmState({
@@ -466,108 +466,16 @@ export default function MenuBuilder() {
       message: 'This will replace your live menu with the build menu. Continue?',
       action: async () => {
         try {
-          const { data: oldItems } = await supabase
-            .from('menu_items')
-            .select('id, category_id')
-            .eq('restaurant_id', restaurantId);
-
-          const oldItemIds = oldItems?.map((i) => i.id) || [];
-          let oldLinks: { item_id: number; group_id: number }[] = [];
-          if (oldItemIds.length) {
-            const { data } = await supabase
-              .from('item_addon_links')
-              .select('item_id, group_id')
-              .in('item_id', oldItemIds);
-            oldLinks = data || [];
-            await supabase.from('item_addon_links').delete().in('item_id', oldItemIds);
-          }
-
-          const itemsByCategory = new Map<number, number[]>();
-          oldItems?.forEach((it) => {
-            if (!itemsByCategory.has(it.category_id)) itemsByCategory.set(it.category_id, []);
-            itemsByCategory.get(it.category_id)!.push(it.id);
+          const res = await fetch('/api/publish-menu', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ restaurantId }),
           });
-
-          const groupsByItem = new Map<number, Set<number>>();
-          oldLinks.forEach((l) => {
-            if (!groupsByItem.has(l.item_id)) groupsByItem.set(l.item_id, new Set());
-            groupsByItem.get(l.item_id)!.add(l.group_id);
-          });
-
-          const allGroupIds = Array.from(new Set(oldLinks.map((l) => l.group_id)));
-          const categoryGroups = new Map<number, Set<number>>();
-          for (const [catId, ids] of itemsByCategory.entries()) {
-            if (!ids.length) continue;
-            for (const gid of allGroupIds) {
-              if (ids.every((id) => groupsByItem.get(id)?.has(gid))) {
-                if (!categoryGroups.has(catId)) categoryGroups.set(catId, new Set());
-                categoryGroups.get(catId)!.add(gid);
-              }
-            }
+          if (!res.ok) throw new Error('Failed');
+          const data = await res.json();
+          if (process.env.NODE_ENV === 'development') {
+            console.debug('[publish] replaced', data);
           }
-
-          await supabase.from('menu_items').delete().eq('restaurant_id', restaurantId);
-          await supabase.from('menu_categories').delete().eq('restaurant_id', restaurantId);
-
-          const idMap = new Map<number, number>();
-          for (let i = 0; i < buildCategories.length; i++) {
-            const bc = buildCategories[i];
-            const { data: cd, error: ce } = await supabase
-              .from('menu_categories')
-              .insert([
-                {
-                  name: bc.name,
-                  description: bc.description,
-                  restaurant_id: restaurantId,
-                  sort_order: i,
-                },
-              ])
-              .select()
-              .single();
-            if (ce || !cd) throw ce;
-            idMap.set(bc.id, cd.id);
-          }
-
-          const itemMap = new Map<number, number>();
-          for (let i = 0; i < buildItems.length; i++) {
-            const bi = buildItems[i];
-            const cid = idMap.get(bi.category_id);
-            if (!cid) continue;
-            const { data: inserted, error: ie } = await supabase
-              .from('menu_items')
-              .insert([
-                {
-                  restaurant_id: restaurantId,
-                  category_id: cid,
-                  name: bi.name,
-                  description: bi.description,
-                  price: bi.price,
-                  image_url: bi.image_url,
-                  sort_order: bi.sort_order || 0,
-                },
-              ])
-              .select('id')
-              .single();
-            if (ie || !inserted) throw ie;
-            itemMap.set(bi.id, inserted.id);
-          }
-
-          const addonData: { id: string; selectedAddonGroupIds: string[] }[] = [];
-          for (const bi of buildItems) {
-            const newId = itemMap.get(bi.id);
-            if (!newId) continue;
-            addonData.push({
-              id: String(newId),
-              selectedAddonGroupIds: Array.isArray(bi.addons)
-                ? bi.addons.map(String)
-                : [],
-            });
-          }
-
-          if (addonData.length) {
-            await saveItemAddonLinks(addonData);
-          }
-
           setToastMessage('Menu published');
           fetchData(restaurantId);
         } catch (err) {
