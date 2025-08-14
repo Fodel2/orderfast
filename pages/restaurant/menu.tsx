@@ -158,6 +158,18 @@ export default function RestaurantMenuPage() {
       console.log("Item data:", itms);
       console.log("Item link data:", links);
 
+      if (process.env.NODE_ENV === 'development') {
+        console.debug(
+          '[menu-items]',
+          itms.map((i) => ({
+            id: i.id,
+            vegan: i.is_vegan,
+            veggie: i.is_vegetarian,
+            adult: i.is_18_plus,
+          }))
+        );
+      }
+
       setRestaurant(restRes.data as Restaurant | null);
       setCategories(cats);
       setItems(itms);
