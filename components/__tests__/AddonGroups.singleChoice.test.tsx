@@ -26,13 +26,13 @@ describe('AddonGroups single choice', () => {
     const large = screen.getByText('Large');
 
     await userEvent.click(small);
-    let selected = container.querySelectorAll('.border-green-500');
+    let selected = container.querySelectorAll('[data-selected="true"]');
     expect(selected).toHaveLength(1);
     expect(screen.queryByText('+')).not.toBeInTheDocument();
     expect(screen.queryByText('–')).not.toBeInTheDocument();
 
     await userEvent.click(large);
-    selected = container.querySelectorAll('.border-green-500');
+    selected = container.querySelectorAll('[data-selected="true"]');
     expect(selected).toHaveLength(1);
     expect(selected[0]).toHaveTextContent('Large');
     expect(screen.queryByText('+')).not.toBeInTheDocument();

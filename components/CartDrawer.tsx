@@ -117,7 +117,7 @@ function CartContent({ onClose }: { onClose?: () => void }) {
           onClick={clearCart}
           className="w-full px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
         >
-          Clear Plate
+          Clean Plate
         </button>
         <button
           type="button"
