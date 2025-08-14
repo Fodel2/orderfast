@@ -5,6 +5,7 @@ import { Trash2 } from 'lucide-react';
 import { supabase } from '../utils/supabaseClient';
 import CategoryMultiSelect from './CategoryMultiSelect';
 import AddonMultiSelect from './AddonMultiSelect';
+import { updateItemAddonLinks } from '../utils/updateItemAddonLinks';
 
 interface AddItemModalProps {
   showModal: boolean;
@@ -249,6 +250,11 @@ export default function AddItemModal({
             category_id: String(cid),
           }))
         );
+      }
+      try {
+        await updateItemAddonLinks(String(data.id), selectedAddons);
+      } catch (err: any) {
+        alert('Failed to update addon links: ' + (err?.message || err));
       }
     }
 
