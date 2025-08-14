@@ -178,11 +178,12 @@ export default function MenuItemCard({
               </button>
             </div>
             <button
-              aria-label="Confirm Add to Cart"
+              aria-label="Confirm Add to Plate"
               onClick={handleFinalAdd}
-              className="px-4 py-2 rounded hover:opacity-90 btn-primary"
+              className="px-4 py-2 rounded hover:opacity-90 btn-primary flex items-center gap-2"
             >
-              Add to Cart
+              <PlateAdd size={18} />
+              Add to Plate
             </button>
           </div>
         </div>
