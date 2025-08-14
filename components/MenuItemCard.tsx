@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useCart } from '../context/CartContext';
 import { getAddonsForItem } from '../utils/getAddonsForItem';
 import type { AddonGroup } from '../utils/types';
@@ -36,6 +37,9 @@ export default function MenuItemCard({
   >({});
   const { addToCart } = useCart();
   const brand = useBrand();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     if (!showModal) return;
@@ -110,13 +114,85 @@ export default function MenuItemCard({
     setShowModal(false);
   };
 
-  return (
+  const modalNode = (
     <>
       <div
-        aria-hidden={showModal}
-        {...(showModal ? { inert: '' } : {})}
-        className={showModal ? 'pointer-events-none' : undefined}
+        className="fixed inset-0 z-[9998] bg-black/40 backdrop-blur-[2px]"
+        onClick={() => setShowModal(false)}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="fixed z-[9999] inset-x-0 bottom-0 md:inset-0 md:flex md:items-center md:justify-center w-full md:w-auto md:max-w-xl max-h-[92dvh] md:max-h-[88dvh] bg-white rounded-t-2xl md:rounded-2xl shadow-2xl flex flex-col"
       >
+        <div className="sticky top-0 z-10 bg-white border-b px-4 md:px-6 pt-4 pb-3 flex items-center justify-between">
+          <h3 className="text-lg font-semibold">{item.name}</h3>
+          <div className="flex items-center gap-4">
+            <span className="text-sm font-medium">${(price / 100).toFixed(2)}</span>
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={() => setShowModal(false)}
+              className="p-2"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto px-4 md:px-6 py-3 space-y-4">
+          {loading ? (
+            <p className="text-center text-gray-500">Loading...</p>
+          ) : groups.length === 0 ? (
+            <p className="text-center text-gray-500">No add-ons available</p>
+          ) : (
+            <AddonGroups addons={groups} onChange={setSelections} />
+          )}
+          <textarea
+            className="w-full border rounded p-2"
+            placeholder="Add notes (optional)"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+          />
+        </div>
+        <div className="sticky bottom-0 z-10 bg-white border-t px-4 md:px-6 py-3 pt-[env(safe-area-inset-bottom)]">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center border rounded">
+              <button
+                type="button"
+                aria-label="Decrease quantity"
+                onClick={decrement}
+                className="w-8 h-8 flex items-center justify-center"
+              >
+                -
+              </button>
+              <span data-testid="qty" className="w-6 text-center">
+                {qty}
+              </span>
+              <button
+                type="button"
+                aria-label="Increase quantity"
+                onClick={increment}
+                className="w-8 h-8 flex items-center justify-center"
+              >
+                +
+              </button>
+            </div>
+            <button
+              aria-label="Confirm Add to Cart"
+              onClick={handleFinalAdd}
+              className="px-4 py-2 rounded hover:opacity-90 btn-primary"
+            >
+              Add to Cart
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+
+  return (
+    <>
+      <div>
         <div
           className="tapcard rounded-2xl border border-gray-100 p-4 flex gap-4 active:opacity-95 transition-transform duration-200 ease-out hover:scale-[1.02] hover:shadow-md active:scale-95 will-change-transform"
           onClick={handleClick}
@@ -190,81 +266,7 @@ export default function MenuItemCard({
         </div>
       </div>
 
-      {showModal && (
-        <>
-          <div
-            className="fixed inset-0 z-[9998] bg-black/40 backdrop-blur-[2px] pointer-events-auto"
-            onClick={() => setShowModal(false)}
-          />
-          <div
-            role="dialog"
-            aria-modal="true"
-            className="fixed z-[9999] inset-x-0 bottom-0 md:inset-0 md:flex md:items-center md:justify-center w-full md:w-auto md:max-w-xl max-h-[92dvh] md:max-h-[88dvh] bg-white rounded-t-2xl md:rounded-2xl shadow-2xl flex flex-col pointer-events-auto"
-          >
-              <div className="sticky top-0 z-10 bg-white border-b px-4 md:px-6 pt-4 pb-3 flex items-center justify-between">
-                <h3 className="text-lg font-semibold">{item.name}</h3>
-                <div className="flex items-center gap-4">
-                  <span className="text-sm font-medium">${(price / 100).toFixed(2)}</span>
-                  <button
-                    type="button"
-                    aria-label="Close"
-                    onClick={() => setShowModal(false)}
-                    className="p-2"
-                  >
-                    ×
-                  </button>
-                </div>
-              </div>
-              <div className="flex-1 overflow-y-auto px-4 md:px-6 py-3 space-y-4">
-                {loading ? (
-                  <p className="text-center text-gray-500">Loading...</p>
-                ) : groups.length === 0 ? (
-                  <p className="text-center text-gray-500">No add-ons available</p>
-                ) : (
-                  <AddonGroups addons={groups} onChange={setSelections} />
-                )}
-                <textarea
-                  className="w-full border rounded p-2"
-                  placeholder="Add notes (optional)"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                />
-              </div>
-              <div className="sticky bottom-0 z-10 bg-white border-t px-4 md:px-6 py-3 pt-[env(safe-area-inset-bottom)]">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-center border rounded">
-                    <button
-                      type="button"
-                      aria-label="Decrease quantity"
-                      onClick={decrement}
-                      className="w-8 h-8 flex items-center justify-center"
-                    >
-                      -
-                    </button>
-                    <span data-testid="qty" className="w-6 text-center">
-                      {qty}
-                    </span>
-                    <button
-                      type="button"
-                      aria-label="Increase quantity"
-                      onClick={increment}
-                      className="w-8 h-8 flex items-center justify-center"
-                    >
-                      +
-                    </button>
-                  </div>
-                  <button
-                    aria-label="Confirm Add to Cart"
-                    onClick={handleFinalAdd}
-                    className="px-4 py-2 rounded hover:opacity-90 btn-primary"
-                  >
-                    Add to Cart
-                  </button>
-                </div>
-              </div>
-          </div>
-        </>
-      )}
+      {showModal && mounted ? createPortal(modalNode, document.body) : null}
     </>
   );
 }
