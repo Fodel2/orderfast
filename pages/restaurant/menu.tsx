@@ -101,79 +101,41 @@ export default function RestaurantMenuPage() {
         .maybeSingle();
 
       const { data: catData, error: catErr } = await supabase
-        .from("menu_categories")
-        .select(
-          `id,name,description,image_url,sort_order,restaurant_id,menu_items!inner(
-            id,name,description,price,image_url,is_vegetarian,is_vegan,is_18_plus,stock_status,available,category_id,sort_order,
-            menu_item_categories(category_id)
-          )`,
-        )
-        .eq("restaurant_id", restaurantId)
-        .order("sort_order", { ascending: true })
-        .order("sort_order", { foreignTable: "menu_items", ascending: true });
+        .from('menu_categories')
+        .select('id,name,description,image_url,sort_order,restaurant_id')
+        .eq('restaurant_id', restaurantId)
+        .is('archived_at', null)
+        .order('sort_order', { ascending: true })
+        .order('name', { ascending: true });
 
-      console.log('Raw category query data:', catData);
+      const { data: itemData, error: itemErr } = await supabase
+        .from('menu_items')
+        .select(
+          'id,name,description,price,image_url,is_vegetarian,is_vegan,is_18_plus,stock_status,available,category_id,sort_order'
+        )
+        .eq('restaurant_id', restaurantId)
+        .is('archived_at', null)
+        .eq('available', true)
+        .order('sort_order', { ascending: true })
+        .order('name', { ascending: true });
 
       if (restRes.error)
-        console.error("Failed to fetch restaurant", restRes.error);
-      if (catErr) console.error("Failed to fetch categories", catErr);
-
-      const cats: Category[] = [];
-      const itms: Item[] = [];
-      const links: { item_id: number; category_id: number }[] = [];
-
-      for (const row of catData || []) {
-        cats.push({
-          id: row.id,
-          name: row.name,
-          description: row.description,
-          image_url: row.image_url,
-          sort_order: row.sort_order,
-          restaurant_id: row.restaurant_id,
-        });
-        for (const it of row.menu_items || []) {
-          if (it.available && it.stock_status !== "out") {
-            itms.push({
-              id: it.id,
-              name: it.name,
-              description: it.description,
-              price: it.price,
-              image_url: it.image_url,
-              is_vegetarian: it.is_vegetarian,
-              is_vegan: it.is_vegan,
-              is_18_plus: it.is_18_plus,
-              available: it.available,
-              stock_status: it.stock_status,
-              category_id: it.category_id,
-            });
-            for (const l of it.menu_item_categories || []) {
-              links.push({ item_id: it.id, category_id: l.category_id });
-            }
-          }
-        }
-      }
-
-      console.log("Restaurant data:", restRes.data);
-      console.log("Category data:", cats);
-      console.log("Item data:", itms);
-      console.log("Item link data:", links);
-
-      if (process.env.NODE_ENV === 'development') {
-        console.debug(
-          '[menu-items]',
-          itms.map((i) => ({
-            id: i.id,
-            vegan: i.is_vegan,
-            veggie: i.is_vegetarian,
-            adult: i.is_18_plus,
-          }))
-        );
-      }
+        console.error('Failed to fetch restaurant', restRes.error);
+      if (catErr) console.error('Failed to fetch categories', catErr);
+      if (itemErr) console.error('Failed to fetch items', itemErr);
 
       setRestaurant(restRes.data as Restaurant | null);
-      setCategories(cats);
-      setItems(itms);
-      setItemLinks(links);
+      setCategories(catData || []);
+      setItems(itemData || []);
+      setItemLinks([]);
+
+      if (process.env.NODE_ENV === 'development') {
+        console.debug('[customer:menu]', {
+          rid: restaurantId,
+          cats: catData?.length || 0,
+          items: itemData?.length || 0,
+        });
+      }
       setLoading(false);
     };
 
