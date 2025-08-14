@@ -93,10 +93,12 @@ function ScrollRow({ children }: { children: ReactNode }) {
       )}
       <div
         ref={rowRef}
-        className="overflow-x-auto scroll-smooth snap-x snap-mandatory flex gap-3 px-2 pr-4 md:pr-6 pb-1"
+        className="addon-scroll overflow-x-auto scroll-smooth snap-x snap-mandatory flex gap-3 px-2 pr-4 md:pr-6 pb-1"
+        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
       >
         {children}
       </div>
+      <style>{`.addon-scroll::-webkit-scrollbar{display:none;}`}</style>
     </div>
   );
 }
@@ -266,25 +268,31 @@ export default function AddonGroups({
                     );
                   };
 
+                  const selectedStyle: CSSProperties =
+                    quantity > 0
+                      ? {
+                          backgroundColor: accent ? `${accent}14` : undefined,
+                          boxShadow: accent
+                            ? `inset 0 0 0 2px ${accent}`
+                            : undefined,
+                          borderColor: 'transparent',
+                        }
+                      : {};
+
                   return (
                     <div
                       key={option.id}
                       onClick={handleTileClick}
                       data-selected={quantity > 0}
                       tabIndex={0}
-                      className={`min-w-[152px] md:min-w-[168px] px-4 py-3 rounded-xl border flex-shrink-0 snap-start transition cursor-pointer text-center text-slate-900 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 data-[selected=true]:scale-[1.01] ${
-                        quantity > 0
-                          ? 'border-green-500'
-                          : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
-                      } ${
+                      className={`relative min-w-[152px] md:min-w-[168px] px-4 py-3 rounded-xl border bg-slate-50 border-slate-200 hover:bg-slate-100 flex-shrink-0 snap-start transition cursor-pointer text-center text-slate-900 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 data-[selected=true]:scale-[1.01] ${
                         multipleChoice &&
                         ((groupCapHit && quantity === 0) || maxQty === 0)
                           ? 'pointer-events-none opacity-50'
                           : ''
                       }`}
                       style={{
-                        backgroundColor: quantity > 0 ? `${accent}14` : undefined,
-                        borderColor: quantity > 0 ? accent : undefined,
+                        ...selectedStyle,
                         ['--tw-ring-color' as any]: accent,
                       } as CSSProperties}
                     >

@@ -28,7 +28,7 @@ describe("AddonGroups boolean string props", () => {
     await userEvent.click(small);
     await userEvent.click(large);
 
-    const selected = container.querySelectorAll(".border-green-500");
+    const selected = container.querySelectorAll("[data-selected='true']");
     expect(selected).toHaveLength(1);
     expect(selected[0]).toHaveTextContent("Large");
   });
