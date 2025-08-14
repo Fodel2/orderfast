@@ -1,5 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { AddonGroup } from "../utils/types";
+import { useBrand } from "@/components/branding/BrandProvider";
+import type { ReactNode, CSSProperties } from "react";
 
 export function validateAddonSelections(
   addons: AddonGroup[],
@@ -47,6 +49,60 @@ export function validateAddonSelections(
   return errors;
 }
 
+function ScrollRow({ children }: { children: ReactNode }) {
+  const rowRef = useRef<HTMLDivElement>(null);
+  const [canLeft, setCanLeft] = useState(false);
+  const [canRight, setCanRight] = useState(false);
+
+  useEffect(() => {
+    const el = rowRef.current;
+    if (!el) return;
+    const update = () => {
+      setCanLeft(el.scrollLeft > 2);
+      setCanRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
+    };
+    update();
+    el.addEventListener('scroll', update, { passive: true });
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null;
+    ro?.observe(el);
+    return () => {
+      el.removeEventListener('scroll', update);
+      ro?.disconnect();
+    };
+  }, []);
+
+  return (
+    <div className="relative">
+      {canLeft && (
+        <div
+          className="pointer-events-none absolute left-0 top-0 h-full w-6 md:w-8 z-[1]"
+          style={{
+            background:
+              'linear-gradient(to right, rgba(255,255,255,1), rgba(255,255,255,0))',
+          }}
+        />
+      )}
+      {canRight && (
+        <div
+          className="pointer-events-none absolute right-0 top-0 h-full w-6 md:w-8 z-[1]"
+          style={{
+            background:
+              'linear-gradient(to left, rgba(255,255,255,1), rgba(255,255,255,0))',
+          }}
+        />
+      )}
+      <div
+        ref={rowRef}
+        className="addon-scroll overflow-x-auto scroll-smooth snap-x snap-mandatory flex gap-3 px-2 pr-4 md:pr-6 pb-1"
+        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+      >
+        {children}
+      </div>
+      <style>{`.addon-scroll::-webkit-scrollbar{display:none;}`}</style>
+    </div>
+  );
+}
+
 export default function AddonGroups({
   addons,
   onChange,
@@ -61,6 +117,9 @@ export default function AddonGroups({
   >(initialSelections || {});
 
   const errors = validateAddonSelections(addons, selectedQuantities);
+  const brand = useBrand?.();
+  const accent =
+    typeof brand?.brand === 'string' && brand.brand ? brand.brand : '#EB2BB9';
 
   useEffect(() => {
     if (onChange) {
@@ -84,20 +143,9 @@ export default function AddonGroups({
       const distinctCount = quantities.filter((q) => q > 0).length;
       const totalCount = quantities.reduce((sum, q) => sum + q, 0);
 
-      console.log("updateQuantity", {
-        groupId,
-        optionId,
-        delta,
-        current,
-        maxQty,
-        groupMax,
-        distinctCount,
-        multipleChoice,
-      });
 
       // Block all interaction when either limit is zero
       if (maxQty === 0 || groupMax === 0) {
-        console.log("blocked: selection disabled by limits");
         return prev;
       }
 
@@ -109,7 +157,6 @@ export default function AddonGroups({
       }
 
       if (delta > 0 && current >= maxQty) {
-        console.log("blocked: option quantity cap");
         return prev;
       }
 
@@ -117,13 +164,11 @@ export default function AddonGroups({
       if (delta > 0) {
         // Block adding a new option when at the cap
         if (distinctCount >= groupMax && current === 0) {
-          console.log("blocked: group cap reached (new option)");
           return prev;
         }
 
         // Block any increase that would push total quantity past the cap
         if (totalCount >= groupMax) {
-          console.log("blocked: group total cap reached");
           return prev;
         }
       }
@@ -131,7 +176,6 @@ export default function AddonGroups({
       const newQty = Math.min(Math.max(current + delta, 0), maxQty);
       const proposedTotal = totalCount - current + newQty;
       if (proposedTotal > groupMax) {
-        console.log("blocked: proposed total exceeds cap");
         return prev;
       }
       if (newQty === current) return prev;
@@ -149,16 +193,6 @@ export default function AddonGroups({
   return (
     <div className="space-y-6">
       {addons.map((group) => {
-        console.log('[DEBUG] full group object:', group);
-        console.log("render group", {
-          id: group.group_id ?? group.id,
-          multiple_choice: group.multiple_choice,
-          max_option_quantity:
-            (group as any).max_option_quantity ?? (group as any).maxOptionQuantity,
-          max_group_select:
-            (group as any).max_group_select ?? (group as any).maxGroupSelect,
-          required: group.required,
-        });
 
         const gid = group.group_id ?? group.id;
         const multipleChoice =
@@ -173,13 +207,16 @@ export default function AddonGroups({
         return (
           <div
             key={gid}
-            className="bg-white border rounded-xl p-4 shadow-sm"
+            className="bg-white border rounded-2xl p-4 shadow-sm"
           >
               <div className="flex justify-between items-center mb-2">
                 <h3 className="text-lg font-semibold">
                   {group.name}
                   {group.required && (
-                    <span className="text-red-500 text-sm ml-2">
+                    <span
+                      className="text-sm ml-2"
+                      style={{ color: accent, opacity: 0.9 }}
+                    >
                       (Required)
                     </span>
                   )}
@@ -193,7 +230,7 @@ export default function AddonGroups({
                 </p>
               </div>
 
-              <div className="flex gap-3 overflow-x-auto pb-1">
+              <ScrollRow>
                 {group.addon_options.map((option) => {
                   const gid = group.group_id ?? group.id;
                   const quantity = selectedQuantities[gid]?.[option.id] || 0;
@@ -231,20 +268,33 @@ export default function AddonGroups({
                     );
                   };
 
+                  const selectedStyle: CSSProperties =
+                    quantity > 0
+                      ? {
+                          backgroundColor: accent ? `${accent}14` : undefined,
+                          boxShadow: accent
+                            ? `inset 0 0 0 2px ${accent}`
+                            : undefined,
+                          borderColor: 'transparent',
+                        }
+                      : {};
+
                   return (
                     <div
                       key={option.id}
                       onClick={handleTileClick}
-                      className={`min-w-[160px] max-w-[180px] border rounded-lg p-3 flex-shrink-0 transition cursor-pointer text-center ${
-                        quantity > 0
-                          ? "border-green-500 bg-green-50 shadow-sm"
-                          : "border-gray-300 bg-white hover:bg-gray-50"
-                      } ${
+                      data-selected={quantity > 0}
+                      tabIndex={0}
+                      className={`relative min-w-[152px] md:min-w-[168px] px-4 py-3 rounded-xl border bg-slate-50 border-slate-200 hover:bg-slate-100 flex-shrink-0 snap-start transition cursor-pointer text-center text-slate-900 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 data-[selected=true]:scale-[1.01] ${
                         multipleChoice &&
                         ((groupCapHit && quantity === 0) || maxQty === 0)
-                          ? "pointer-events-none opacity-50"
-                          : ""
+                          ? 'pointer-events-none opacity-50'
+                          : ''
                       }`}
+                      style={{
+                        ...selectedStyle,
+                        ['--tw-ring-color' as any]: accent,
+                      } as CSSProperties}
                     >
                       {option.image_url && (
                         <img
@@ -277,7 +327,8 @@ export default function AddonGroups({
                                 multipleChoice,
                               );
                             }}
-                            className="w-8 h-8 rounded-full border border-gray-300 hover:bg-gray-100"
+                            className="w-8 h-8 rounded-full border border-gray-300 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                            style={{ ['--tw-ring-color' as any]: accent } as CSSProperties}
                           >
                             –
                           </button>
@@ -302,7 +353,8 @@ export default function AddonGroups({
                               maxQty === 0 ||
                               groupMax === 0
                             }
-                            className="w-8 h-8 rounded-full border border-gray-300 hover:bg-gray-100 disabled:opacity-50"
+                            className="w-8 h-8 rounded-full border border-gray-300 hover:bg-gray-100 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                            style={{ ['--tw-ring-color' as any]: accent } as CSSProperties}
                           >
                             +
                           </button>
@@ -311,7 +363,7 @@ export default function AddonGroups({
                     </div>
                   );
                 })}
-              </div>
+              </ScrollRow>
               {errors[group.group_id ?? group.id] && (
                 <p className="text-red-600 text-sm mt-2">
                   {errors[group.group_id ?? group.id]}
