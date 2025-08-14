@@ -27,11 +27,11 @@ export async function updateItemAddonLinks(
         item_id: itemIdStr,
         group_id: groupId,
       }));
-      const { error: upsertError } = await supabase
+      const { error: insertError } = await supabase
         .from('item_addon_links')
-        .upsert(rows, { onConflict: 'item_id,group_id' });
+        .insert(rows);
 
-      if (upsertError) throw upsertError;
+      if (insertError) throw insertError;
     }
   } catch (err) {
     console.error('Failed to update item addon links', err);

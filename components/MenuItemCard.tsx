@@ -74,6 +74,13 @@ export default function MenuItemCard({
     try {
       const data = await getAddonsForItem(item.id);
       setGroups(data);
+      if (process.env.NODE_ENV === 'development') {
+        console.debug('[addons]', {
+          itemId: item.id,
+          groupsCount: data?.length,
+          groups: data,
+        });
+      }
     } catch (err) {
       console.error('Failed to load addons', err);
       setGroups([]);
