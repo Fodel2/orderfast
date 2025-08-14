@@ -8,6 +8,7 @@ import { useCart } from "../../context/CartContext";
 import CustomerLayout from "../../components/CustomerLayout";
 import { useBrand } from "../../components/branding/BrandProvider";
 import MenuHeader from '@/components/customer/menu/MenuHeader';
+import resolveRestaurantId from '@/lib/resolveRestaurantId';
 
 
 interface Restaurant {
@@ -41,10 +42,7 @@ interface Item {
 
 export default function RestaurantMenuPage() {
   const router = useRouter();
-  const { restaurant_id } = router.query;
-  const restaurantId = Array.isArray(restaurant_id)
-    ? restaurant_id[0]
-    : restaurant_id;
+  const brand = useBrand();
 
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -58,6 +56,7 @@ export default function RestaurantMenuPage() {
   const [showTop, setShowTop] = useState(false);
   const { cart } = useCart();
   const itemCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
+  const restaurantId = resolveRestaurantId(router, brand, restaurant);
 
   useEffect(() => {
     const onScroll = () => {
@@ -159,7 +158,7 @@ export default function RestaurantMenuPage() {
     return <div className="p-6 text-center text-[var(--muted)]">Loading...</div>;
   }
 
-  if (!restaurant) {
+  if (!restaurantId) {
     return (
       <div className="p-6 text-center text-red-500">
         No restaurant specified
@@ -168,7 +167,6 @@ export default function RestaurantMenuPage() {
   }
 
   const Inner = () => {
-    const brand = useBrand();
     const [mounted, setMounted] = useState(false);
     useEffect(() => setMounted(true), []);
     const [activeCat, setActiveCat] = useState<string | undefined>(undefined);
