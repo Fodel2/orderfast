@@ -44,6 +44,7 @@ interface Item {
   description: string | null;
   price: number;
   image_url: string | null;
+  is_vegan: boolean | null;
   is_vegetarian: boolean | null;
   is_18_plus: boolean | null;
   available?: boolean | null;
@@ -103,7 +104,7 @@ export default function RestaurantMenuPage() {
         .from("menu_categories")
         .select(
           `id,name,description,image_url,sort_order,restaurant_id,menu_items!inner(
-            id,name,description,price,image_url,is_vegetarian,is_18_plus,stock_status,available,category_id,sort_order,
+            id,name,description,price,image_url,is_vegetarian,is_vegan,is_18_plus,stock_status,available,category_id,sort_order,
             menu_item_categories(category_id)
           )`,
         )
@@ -139,6 +140,7 @@ export default function RestaurantMenuPage() {
               price: it.price,
               image_url: it.image_url,
               is_vegetarian: it.is_vegetarian,
+              is_vegan: it.is_vegan,
               is_18_plus: it.is_18_plus,
               available: it.available,
               stock_status: it.stock_status,
