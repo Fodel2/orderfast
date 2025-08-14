@@ -7,6 +7,7 @@ import { useBrand } from '@/components/branding/BrandProvider';
 import { supabase } from '@/utils/supabaseClient';
 import { useCart } from '@/context/CartContext';
 import LandingHero from '@/components/customer/home/LandingHero';
+import resolveRestaurantId from '@/lib/resolveRestaurantId';
 
 function getBrandAccentHex(brand: unknown): string | undefined {
   if (!brand || typeof brand !== 'object') return undefined;
@@ -21,13 +22,12 @@ function getBrandAccentHex(brand: unknown): string | undefined {
 
 export default function RestaurantHomePage() {
   const router = useRouter();
-  const { restaurant_id } = router.query;
-  const restaurantId = Array.isArray(restaurant_id) ? restaurant_id[0] : restaurant_id;
+  const brand = useBrand();
   const [restaurant, setRestaurant] = useState<any | null>(null);
   const { cart } = useCart();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
   const [heroInView, setHeroInView] = useState(true);
-  const brand = useBrand();
+  const restaurantId = resolveRestaurantId(router, brand, restaurant);
 
   useEffect(() => {
     // dev: prove this file renders in prod
