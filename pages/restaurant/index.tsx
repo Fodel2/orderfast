@@ -68,6 +68,7 @@ export default function RestaurantHomePage() {
     (typeof (qp as any).header === 'string' ? ((qp as any).header as string) : '') ||
     '';
 
+  // derive restaurant id from query so CTA retains context
   const rid = (() => {
     const qp = router?.query ?? {};
     const v: any = (qp as any).restaurant_id ?? (qp as any).id ?? (qp as any).r;
