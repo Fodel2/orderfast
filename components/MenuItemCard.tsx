@@ -193,13 +193,13 @@ export default function MenuItemCard({
       {showModal && (
         <>
           <div
-            className="fixed inset-0 z-[110] bg-black/40 backdrop-blur-[2px] pointer-events-auto"
+            className="fixed inset-0 z-[9998] bg-black/40 backdrop-blur-[2px] pointer-events-auto"
             onClick={() => setShowModal(false)}
           />
           <div
             role="dialog"
             aria-modal="true"
-            className="fixed z-[120] inset-x-0 bottom-0 md:inset-0 md:flex md:items-center md:justify-center w-full md:w-auto md:max-w-xl max-h-[92dvh] md:max-h-[88dvh] bg-white rounded-t-2xl md:rounded-2xl shadow-2xl flex flex-col pointer-events-auto"
+            className="fixed z-[9999] inset-x-0 bottom-0 md:inset-0 md:flex md:items-center md:justify-center w-full md:w-auto md:max-w-xl max-h-[92dvh] md:max-h-[88dvh] bg-white rounded-t-2xl md:rounded-2xl shadow-2xl flex flex-col pointer-events-auto"
           >
               <div className="sticky top-0 z-10 bg-white border-b px-4 md:px-6 pt-4 pb-3 flex items-center justify-between">
                 <h3 className="text-lg font-semibold">{item.name}</h3>
