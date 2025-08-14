@@ -270,7 +270,7 @@ export default function RestaurantMenuPage() {
           {/* sticky category chips */}
           {Array.isArray(categories) && categories.length > 0 && (
             <div
-              className={`sticky top-[60px] z-10 pt-2 pb-3 bg-white/70 backdrop-blur supports-[backdrop-filter]:backdrop-blur rounded-b-xl transition-all duration-400 ease-out will-change-transform will-change-opacity ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'}`}
+              className={`sticky top-[60px] z-20 pt-2 pb-3 bg-white/70 backdrop-blur supports-[backdrop-filter]:backdrop-blur rounded-b-xl transition-all duration-400 ease-out will-change-transform will-change-opacity ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'}`}
               style={{ transitionDelay: '100ms' }}
             >
               <div className="flex gap-3 overflow-x-auto no-scrollbar">
