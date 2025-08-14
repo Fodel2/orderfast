@@ -22,6 +22,7 @@ function getRestaurantId(router: any): string | undefined {
 
 export default function FooterNav({ cartCount = 0, hidden }: Props) {
   const router = useRouter();
+  // capture restaurant id so navigation preserves context
   const rid = getRestaurantId(router);
 
   const current = (router.asPath || '').split('?')[0];
