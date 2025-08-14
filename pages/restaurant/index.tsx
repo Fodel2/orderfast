@@ -68,9 +68,11 @@ export default function RestaurantHomePage() {
     (typeof (qp as any).header === 'string' ? ((qp as any).header as string) : '') ||
     '';
 
-  const params = new URLSearchParams(router.query as any);
-  if (restaurant?.id) params.set('restaurant_id', restaurant.id);
-  const orderHref = `/restaurant/menu?${params.toString()}`;
+  const rid = (() => {
+    const qp = router?.query ?? {};
+    const v: any = (qp as any).restaurant_id ?? (qp as any).id ?? (qp as any).r;
+    return Array.isArray(v) ? v[0] : v;
+  })();
 
   return (
     <CustomerLayout
@@ -87,7 +89,12 @@ export default function RestaurantHomePage() {
           subtitle={restaurant?.website_description ?? null}
           isOpen={restaurant?.is_open ?? true}
           ctaLabel="Order Now"
-          onCta={() => router.push(orderHref)}
+          onCta={() =>
+            router.push({
+              pathname: '/restaurant/menu',
+              query: rid ? { restaurant_id: String(rid) } : {},
+            })
+          }
           imageUrl={headerImg || undefined}
           logoUrl={restaurant?.logo_url ?? null}
           accentHex={getBrandAccentHex(brand)}

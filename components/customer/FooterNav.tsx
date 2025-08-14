@@ -9,14 +9,20 @@ interface Props {
   hidden?: boolean;
 }
 
+function getRestaurantId(router: any): string | undefined {
+  const qp = (router?.query ?? {}) as Record<string, unknown>;
+  const pick = (v: unknown) => (Array.isArray(v) ? v[0] : v);
+  const raw =
+    pick(qp['restaurant_id']) ||
+    pick(qp['id']) ||
+    pick(qp['r']) ||
+    undefined;
+  return typeof raw === 'string' && raw.trim() ? raw : undefined;
+}
+
 export default function FooterNav({ cartCount = 0, hidden }: Props) {
   const router = useRouter();
-  const build = (path: string) => {
-    const p = new URLSearchParams(router.query as any);
-    const qs = p.toString();
-    if (path === '/') return `/restaurant?${qs}`;
-    return `/restaurant/${path}?${qs}`;
-  };
+  const rid = getRestaurantId(router);
 
   const current = (router.asPath || '').split('?')[0];
 
@@ -25,7 +31,10 @@ export default function FooterNav({ cartCount = 0, hidden }: Props) {
 
   const NavLink = ({ href, Icon, label }: any) => (
     <Link
-      href={build(href)}
+      href={{
+        pathname: href === '/' ? '/restaurant' : `/restaurant/${href}`,
+        query: rid ? { restaurant_id: rid } : {},
+      }}
       className={`flex flex-col items-center justify-center text-xs transition-all ${
         current === (href === '/' ? '/restaurant' : `/restaurant/${href}`)
           ? 'nav-active'
@@ -46,7 +55,7 @@ export default function FooterNav({ cartCount = 0, hidden }: Props) {
         <NavLink href="menu" Icon={Utensils} label="Menu" />
         <div className="absolute -top-6 left-1/2 -translate-x-1/2">
           <Link
-            href={build('cart')}
+            href={{ pathname: '/restaurant/cart', query: rid ? { restaurant_id: rid } : {} }}
             aria-label={cartLabel}
             title={cartLabel}
             className="relative w-14 h-14 rounded-full fab flex items-center justify-center shadow-lg"
