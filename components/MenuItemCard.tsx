@@ -38,13 +38,11 @@ export default function MenuItemCard({
   const brand = useBrand();
 
   useEffect(() => {
-    if (showModal) {
-      document.documentElement.style.overflow = 'hidden';
-    } else {
-      document.documentElement.style.overflow = '';
-    }
+    if (!showModal) return;
+    const prev = document.documentElement.style.overflow;
+    document.documentElement.style.overflow = 'hidden';
     return () => {
-      document.documentElement.style.overflow = '';
+      document.documentElement.style.overflow = prev;
     };
   }, [showModal]);
 
@@ -195,16 +193,15 @@ export default function MenuItemCard({
       {showModal && (
         <>
           <div
-            className="fixed inset-0 z-[90] bg-black/40 backdrop-blur-[2px]"
+            className="fixed inset-0 z-[110] bg-black/40 backdrop-blur-[2px] pointer-events-auto"
             onClick={() => setShowModal(false)}
           />
-          <div className="fixed z-[100] inset-x-0 bottom-0 pointer-events-auto md:inset-0 md:flex md:items-center md:justify-center">
-            <div
-              role="dialog"
-              aria-modal="true"
-              className="w-full md:max-w-md max-h-[92dvh] md:max-h-[88dvh] flex flex-col rounded-t-2xl md:rounded-2xl bg-white shadow-2xl"
-            >
-              <div className="sticky top-0 bg-white z-10 border-b px-4 md:px-6 pt-4 pb-3 flex items-center justify-between">
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="fixed z-[120] inset-x-0 bottom-0 md:inset-0 md:flex md:items-center md:justify-center w-full md:w-auto md:max-w-xl max-h-[92dvh] md:max-h-[88dvh] bg-white rounded-t-2xl md:rounded-2xl shadow-2xl flex flex-col pointer-events-auto"
+          >
+              <div className="sticky top-0 z-10 bg-white border-b px-4 md:px-6 pt-4 pb-3 flex items-center justify-between">
                 <h3 className="text-lg font-semibold">{item.name}</h3>
                 <div className="flex items-center gap-4">
                   <span className="text-sm font-medium">${(price / 100).toFixed(2)}</span>
@@ -233,7 +230,7 @@ export default function MenuItemCard({
                   onChange={(e) => setNotes(e.target.value)}
                 />
               </div>
-              <div className="sticky bottom-0 bg-white z-10 border-t px-4 md:px-6 py-3 pt-[env(safe-area-inset-bottom)]">
+              <div className="sticky bottom-0 z-10 bg-white border-t px-4 md:px-6 py-3 pt-[env(safe-area-inset-bottom)]">
                 <div className="flex items-center justify-between gap-4">
                   <div className="flex items-center border rounded">
                     <button
@@ -265,7 +262,6 @@ export default function MenuItemCard({
                   </button>
                 </div>
               </div>
-            </div>
           </div>
         </>
       )}
