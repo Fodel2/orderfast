@@ -36,10 +36,21 @@ export default function MenuItemCard({
     Record<string, Record<string, number>>
   >({});
   const { addToCart } = useCart();
-  const brand = useBrand();
+  const brand = useBrand?.();
+  const accent =
+    typeof brand?.brand === 'string' && brand.brand ? brand.brand : undefined;
   const [mounted, setMounted] = useState(false);
+  const [modalAnim, setModalAnim] = useState(false);
 
   useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    if (showModal) {
+      setModalAnim(true);
+    } else {
+      setModalAnim(false);
+    }
+  }, [showModal]);
 
   useEffect(() => {
     if (!showModal) return;
@@ -50,7 +61,13 @@ export default function MenuItemCard({
     };
   }, [showModal]);
 
-  const price = typeof item?.price === 'number' ? item.price : Number(item?.price || 0);
+  const price =
+    typeof item?.price === 'number' ? item.price : Number(item?.price || 0);
+  const imageUrl = item?.image_url || undefined;
+  const badges: string[] = [];
+  if (item?.is_vegan) badges.push('Vegan');
+  if (item?.is_vegetarian) badges.push('Vegetarian');
+  if (item?.is_18_plus) badges.push('18+');
 
   const loadAddons = async () => {
     setLoading(true);
@@ -123,21 +140,100 @@ export default function MenuItemCard({
       <div
         role="dialog"
         aria-modal="true"
-        className="fixed z-[9999] inset-x-0 bottom-0 md:inset-0 md:flex md:items-center md:justify-center w-full md:w-auto md:max-w-xl max-h-[92dvh] md:max-h-[88dvh] bg-white rounded-t-2xl md:rounded-2xl shadow-2xl flex flex-col"
+        className={`fixed z-[9999] inset-x-0 bottom-0 md:inset-0 md:flex md:items-center md:justify-center w-full md:w-auto md:max-w-xl max-h-[92dvh] md:max-h-[88dvh] bg-white rounded-t-2xl md:rounded-2xl shadow-2xl flex flex-col transition-all duration-200 ease-out ${modalAnim ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1'}`}
       >
-        <div className="sticky top-0 z-10 bg-white border-b px-4 md:px-6 pt-4 pb-3 flex items-center justify-between">
-          <h3 className="text-lg font-semibold">{item.name}</h3>
-          <div className="flex items-center gap-4">
-            <span className="text-sm font-medium">${(price / 100).toFixed(2)}</span>
-            <button
-              type="button"
-              aria-label="Close"
-              onClick={() => setShowModal(false)}
-              className="p-2"
-            >
-              ×
-            </button>
+        {imageUrl && (
+          <div className="relative w-full overflow-hidden rounded-t-2xl">
+            <img
+              src={imageUrl}
+              alt={item?.name || ''}
+              className="w-full h-44 md:h-56 object-cover"
+            />
+            <div
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-20"
+              style={{
+                background: `linear-gradient(to top, rgba(0,0,0,0.35), transparent)`,
+              }}
+            />
+            <div className="absolute inset-x-0 bottom-0 p-4 md:p-5 flex flex-col items-start">
+              <div className="w-full flex items-end justify-between">
+                <div className="text-white drop-shadow-md text-lg md:text-xl font-semibold">
+                  {item?.name}
+                </div>
+                {typeof price === 'number' && (
+                  <div className="text-white/95 drop-shadow-md font-semibold">
+                    {((price) / 100).toLocaleString(undefined, {
+                      style: 'currency',
+                      currency: 'GBP',
+                    })}
+                  </div>
+                )}
+              </div>
+              {badges.length > 0 && (
+                <div className="mt-2 flex gap-2">
+                  {badges.map((b) => (
+                    <span
+                      key={b}
+                      className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium"
+                      style={{
+                        backgroundColor: accent
+                          ? `${accent}1A`
+                          : 'rgba(0,0,0,0.06)',
+                        color: accent || undefined,
+                      }}
+                    >
+                      {b}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
+        )}
+        <div
+          className="sticky top-0 z-10 bg-white/95 backdrop-blur border-b px-4 md:px-6 py-3"
+          style={{ borderColor: accent ? `${accent}33` : undefined }}
+        >
+          <div className="flex items-center justify-between">
+            {imageUrl ? (
+              <span className="text-sm font-medium">{item.name}</span>
+            ) : (
+              <h3 className="text-lg font-semibold">{item.name}</h3>
+            )}
+            <div className="flex items-center gap-4">
+              {!imageUrl && (
+                <span className="text-sm font-medium">
+                  ${(price / 100).toFixed(2)}
+                </span>
+              )}
+              <button
+                type="button"
+                aria-label="Close"
+                onClick={() => setShowModal(false)}
+                className="p-2"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+          {!imageUrl && badges.length > 0 && (
+            <div className="mt-2 flex gap-2">
+              {badges.map((b) => (
+                <span
+                  key={b}
+                  className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium"
+                  style={{
+                    backgroundColor: accent
+                      ? `${accent}1A`
+                      : 'rgba(0,0,0,0.06)',
+                    color: accent || undefined,
+                  }}
+                >
+                  {b}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
         <div className="flex-1 overflow-y-auto px-4 md:px-6 py-3 space-y-4">
           {loading ? (
@@ -154,7 +250,7 @@ export default function MenuItemCard({
             onChange={(e) => setNotes(e.target.value)}
           />
         </div>
-        <div className="sticky bottom-0 z-10 bg-white border-t px-4 md:px-6 py-3 pt-[env(safe-area-inset-bottom)]">
+        <div className="sticky bottom-0 z-10 bg-white border-t px-4 md:px-6 py-3 pt-[env(safe-area-inset-bottom)] shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center border rounded">
               <button
@@ -180,7 +276,8 @@ export default function MenuItemCard({
             <button
               aria-label="Confirm Add to Plate"
               onClick={handleFinalAdd}
-              className="px-4 py-2 rounded hover:opacity-90 btn-primary flex items-center gap-2"
+              className="px-4 py-2 rounded hover:opacity-90 btn-primary flex items-center gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition"
+              style={{ ['--tw-ring-color' as any]: accent || 'currentColor' } as React.CSSProperties}
             >
               <PlateAdd size={18} />
               Add to Plate
@@ -195,10 +292,11 @@ export default function MenuItemCard({
     <>
       <div>
         <div
-          className="tapcard rounded-2xl border border-gray-100 p-4 flex gap-4 active:opacity-95 transition-transform duration-200 ease-out hover:scale-[1.02] hover:shadow-md active:scale-95 will-change-transform"
+          className="tapcard rounded-2xl border border-gray-100 p-4 flex gap-4 active:opacity-95 transition-transform duration-200 ease-out hover:scale-[1.02] hover:shadow-md active:scale-95 will-change-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
           onClick={handleClick}
           role="button"
           tabIndex={0}
+          style={{ ['--tw-ring-color' as any]: accent || 'currentColor' } as React.CSSProperties}
         >
         {item?.image_url ? (
           <img
@@ -253,7 +351,7 @@ export default function MenuItemCard({
             <button
               type="button"
               className="btn-icon min-w-[40px] min-h-[40px] transition-transform duration-150 ease-out hover:scale-[1.05] active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-              style={{ ['--tw-ring-color' as any]: String(brand?.brand || 'currentColor') } as React.CSSProperties}
+              style={{ ['--tw-ring-color' as any]: accent || 'currentColor' } as React.CSSProperties}
               onClick={(e) => {
                 e.stopPropagation();
                 handleClick();
