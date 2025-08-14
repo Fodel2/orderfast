@@ -115,11 +115,16 @@ export default function MenuItemCard({
   return (
     <>
       <div
-        className="tapcard rounded-2xl border border-gray-100 p-4 flex gap-4 active:opacity-95 transition-transform duration-200 ease-out hover:scale-[1.02] hover:shadow-md active:scale-95 will-change-transform"
-        onClick={handleClick}
-        role="button"
-        tabIndex={0}
+        aria-hidden={showModal}
+        {...(showModal ? { inert: '' } : {})}
+        className={showModal ? 'pointer-events-none' : undefined}
       >
+        <div
+          className="tapcard rounded-2xl border border-gray-100 p-4 flex gap-4 active:opacity-95 transition-transform duration-200 ease-out hover:scale-[1.02] hover:shadow-md active:scale-95 will-change-transform"
+          onClick={handleClick}
+          role="button"
+          tabIndex={0}
+        >
         {item?.image_url ? (
           <img
             src={item.image_url}
@@ -184,24 +189,22 @@ export default function MenuItemCard({
             </button>
           </div>
         </div>
+        </div>
       </div>
 
       {showModal && (
-        <div
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setShowModal(false);
-          }}
-          className="fixed inset-0 z-[60]"
-        >
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-none" />
-          <div className="fixed bottom-0 inset-x-0 z-[70] md:inset-0 md:flex md:items-center md:justify-center">
+        <>
+          <div
+            className="fixed inset-0 z-[90] bg-black/40 backdrop-blur-[2px]"
+            onClick={() => setShowModal(false)}
+          />
+          <div className="fixed z-[100] inset-x-0 bottom-0 pointer-events-auto md:inset-0 md:flex md:items-center md:justify-center">
             <div
-              onClick={(e) => e.stopPropagation()}
               role="dialog"
               aria-modal="true"
-              className="flex flex-col bg-white rounded-t-2xl md:rounded-2xl shadow-lg w-full max-h-[92dvh] md:max-h-[88dvh] md:max-w-md"
+              className="w-full md:max-w-md max-h-[92dvh] md:max-h-[88dvh] flex flex-col rounded-t-2xl md:rounded-2xl bg-white shadow-2xl"
             >
-              <div className="sticky top-0 bg-white z-10 border-b px-4 py-3 flex items-center justify-between">
+              <div className="sticky top-0 bg-white z-10 border-b px-4 md:px-6 pt-4 pb-3 flex items-center justify-between">
                 <h3 className="text-lg font-semibold">{item.name}</h3>
                 <div className="flex items-center gap-4">
                   <span className="text-sm font-medium">${(price / 100).toFixed(2)}</span>
@@ -215,7 +218,7 @@ export default function MenuItemCard({
                   </button>
                 </div>
               </div>
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              <div className="flex-1 overflow-y-auto px-4 md:px-6 py-3 space-y-4">
                 {loading ? (
                   <p className="text-center text-gray-500">Loading...</p>
                 ) : groups.length === 0 ? (
@@ -230,7 +233,7 @@ export default function MenuItemCard({
                   onChange={(e) => setNotes(e.target.value)}
                 />
               </div>
-              <div className="sticky bottom-0 bg-white z-10 border-t p-4">
+              <div className="sticky bottom-0 bg-white z-10 border-t px-4 md:px-6 py-3 pt-[env(safe-area-inset-bottom)]">
                 <div className="flex items-center justify-between gap-4">
                   <div className="flex items-center border rounded">
                     <button
@@ -261,11 +264,10 @@ export default function MenuItemCard({
                     Add to Cart
                   </button>
                 </div>
-                <div className="pt-[env(safe-area-inset-bottom)]" />
               </div>
             </div>
           </div>
-        </div>
+        </>
       )}
     </>
   );
