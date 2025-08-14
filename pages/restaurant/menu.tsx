@@ -10,6 +10,17 @@ import { useBrand } from "../../components/branding/BrandProvider";
 import MenuHeader from '@/components/customer/menu/MenuHeader';
 import resolveRestaurantId from '@/lib/resolveRestaurantId';
 
+function getIdFromQuery(router: any): string | undefined {
+  const qp = (router?.query ?? {}) as Record<string, unknown>;
+  const pick = (v: unknown) => (Array.isArray(v) ? v[0] : v);
+  const raw =
+    pick(qp['restaurant_id']) ||
+    pick(qp['id']) ||
+    pick(qp['r']) ||
+    undefined;
+  return typeof raw === 'string' && raw.trim().length > 0 ? raw : undefined;
+}
+
 
 interface Restaurant {
   id: string | number;
@@ -43,6 +54,8 @@ interface Item {
 export default function RestaurantMenuPage() {
   const router = useRouter();
   const brand = useBrand();
+  const [routerReady, setRouterReady] = useState(false);
+  useEffect(() => { if (router?.isReady) setRouterReady(true); }, [router?.isReady]);
 
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -56,7 +69,11 @@ export default function RestaurantMenuPage() {
   const [showTop, setShowTop] = useState(false);
   const { cart } = useCart();
   const itemCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
-  const restaurantId = resolveRestaurantId(router, brand, restaurant);
+  const idFromResolver = typeof resolveRestaurantId === 'function'
+    ? resolveRestaurantId(router, brand, restaurant)
+    : undefined;
+  const idFromQuery = getIdFromQuery(router);
+  const restaurantId = idFromResolver || idFromQuery;
 
   useEffect(() => {
     const onScroll = () => {
@@ -67,12 +84,7 @@ export default function RestaurantMenuPage() {
   }, []);
 
   useEffect(() => {
-    if (!router.isReady) return;
-
-    if (!restaurantId) {
-      setLoading(false);
-      return;
-    }
+    if (!routerReady || !restaurantId) return;
 
     const load = async () => {
       console.log(
@@ -152,19 +164,8 @@ export default function RestaurantMenuPage() {
     };
 
     load();
-  }, [router.isReady, restaurantId]);
+  }, [routerReady, restaurantId]);
 
-  if (loading) {
-    return <div className="p-6 text-center text-[var(--muted)]">Loading...</div>;
-  }
-
-  if (!restaurantId) {
-    return (
-      <div className="p-6 text-center text-red-500">
-        No restaurant specified
-      </div>
-    );
-  }
 
   const Inner = () => {
     const [mounted, setMounted] = useState(false);
@@ -224,6 +225,22 @@ export default function RestaurantMenuPage() {
     return (
       <div className="px-4 pb-28 max-w-6xl mx-auto">
         <div className="pt-4 space-y-8 scroll-smooth">
+          {/* Inline guards rendered inside layout */}
+          {!routerReady ? (
+            <div className="p-6" />
+          ) : !restaurantId ? (
+            <div className="p-6 text-center text-red-500">No restaurant specified</div>
+          ) : !restaurant ? (
+            <div className="p-6">
+              <div className="h-24 bg-gray-100 rounded-lg mb-4 animate-pulse" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div className="h-36 bg-gray-100 rounded-lg animate-pulse" />
+                <div className="h-36 bg-gray-100 rounded-lg animate-pulse" />
+                <div className="h-36 bg-gray-100 rounded-lg animate-pulse" />
+              </div>
+            </div>
+          ) : null}
+
           {/* Menu header hero */}
           <MenuHeader
             title={restaurant?.name || 'Restaurant'}
