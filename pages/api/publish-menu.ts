@@ -61,7 +61,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (liveErr) return res.status(500).json({ error: liveErr.message });
     const liveItemIds = (liveItems || []).map((r: any) => r.id);
 
-    if (liveItemIds.length) {
+    if (liveItemIds.length > 0) {
       const { error: detachErr } = await supabase
         .from('order_items')
         .update({ item_id: null })
@@ -72,45 +72,48 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
         return res.status(500).json({ error: detachErr.message });
       }
-      const { error: delLinksErr, count: delLinksCount } = await supabase
+
+      const { data: delLinks, error: delLinksErr } = await supabase
         .from('item_addon_links')
         .delete()
         .in('item_id', liveItemIds)
-        .select('id', { count: 'exact' });
+        .select('id');
       if (delLinksErr) {
         if (process.env.NODE_ENV === 'development') {
           console.error('[publish] del links err', delLinksErr);
         }
         return res.status(500).json({ error: delLinksErr.message });
       }
-      deletedLinks = delLinksCount || 0;
+      deletedLinks = delLinks?.length ?? 0;
+    } else {
+      deletedLinks = 0;
     }
 
-    const { error: delItemsErr, count: delItemsCount } = await supabase
+    const { data: delItems, error: delItemsErr } = await supabase
       .from('menu_items')
       .delete()
       .eq('restaurant_id', restaurantId)
-      .select('id', { count: 'exact' });
+      .select('id');
     if (delItemsErr) {
       if (process.env.NODE_ENV === 'development') {
         console.error('[publish] del items err', delItemsErr);
       }
       return res.status(500).json({ error: delItemsErr.message });
     }
-    deletedItems = delItemsCount || 0;
+    deletedItems = delItems?.length ?? 0;
 
-    const { error: delCatsErr, count: delCatsCount } = await supabase
+    const { data: delCats, error: delCatsErr } = await supabase
       .from('menu_categories')
       .delete()
       .eq('restaurant_id', restaurantId)
-      .select('id', { count: 'exact' });
+      .select('id');
     if (delCatsErr) {
       if (process.env.NODE_ENV === 'development') {
         console.error('[publish] del cats err', delCatsErr);
       }
       return res.status(500).json({ error: delCatsErr.message });
     }
-    deletedCats = delCatsCount || 0;
+    deletedCats = delCats?.length ?? 0;
 
     let categoriesInserted = 0;
     let itemsInserted = 0;
@@ -181,8 +184,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         deletedItems,
         deletedLinks,
         insertedCats: categoriesInserted,
-        insertedItems,
-        insertedLinks,
+        insertedItems: itemsInserted,
+        insertedLinks: linksInserted,
       });
     }
 
