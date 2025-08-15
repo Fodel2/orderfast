@@ -1,13 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { createClient } from '@supabase/supabase-js';
+import { supaService } from '../../utils/supabaseServer';
 
-const serviceKey =
-  process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-// Uses service role to bypass RLS for dashboard operations if needed.
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  serviceKey
-);
+const supabase = supaService();
 
 export default async function handler(
   req: NextApiRequest,
