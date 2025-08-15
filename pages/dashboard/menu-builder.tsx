@@ -133,12 +133,13 @@ export default function MenuBuilder() {
   useEffect(() => {
     if (!restaurantId) return;
     (async () => {
-      const draft = await loadDraft(String(restaurantId));
-      setBuildCategories(draft.categories);
-      setBuildItems(draft.items);
+      const { data } = await loadDraft(supabase, String(restaurantId));
+      const payload = data?.payload || {};
+      setBuildCategories(Array.isArray(payload.categories) ? payload.categories : []);
+      setBuildItems(Array.isArray(payload.items) ? payload.items : []);
       setDraftLoaded(true);
       if (process.env.NODE_ENV === 'development') {
-        console.debug('[menu-builder] loaded draft', draft);
+        console.debug('[menu-builder] loaded draft', data);
       }
     })();
   }, [restaurantId]);
@@ -153,7 +154,7 @@ export default function MenuBuilder() {
     if (process.env.NODE_ENV === 'development') {
       console.debug('[menu-builder] saving draft', payload);
     }
-    saveDraft(String(restaurantId), payload);
+    saveDraft(supabase, String(restaurantId), payload);
   }, [restaurantId, draftLoaded, buildCategories, buildItems]);
 
   // Load stock data when Stock tab is opened

@@ -1,34 +1,29 @@
-import { supabase } from '../utils/supabaseClient';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 export type MenuBuilderDraft = { categories: any[]; items: any[] };
 
-export async function loadDraft(restaurantId: string): Promise<MenuBuilderDraft> {
-  const { data } = await supabase
+export async function loadDraft(
+  supabase: SupabaseClient,
+  restaurantId: string
+) {
+  return supabase
     .from('menu_builder_drafts')
     .select('id, restaurant_id, payload, updated_at')
     .eq('restaurant_id', restaurantId)
     .single();
-
-  if (!data || !data.payload) {
-    return { categories: [], items: [] };
-  }
-
-  const payload = data.payload as any;
-  return {
-    categories: Array.isArray(payload.categories) ? payload.categories : [],
-    items: Array.isArray(payload.items) ? payload.items : [],
-  };
 }
 
 export async function saveDraft(
+  supabase: SupabaseClient,
   restaurantId: string,
   payload: MenuBuilderDraft
-): Promise<void> {
-  await supabase
+) {
+  return supabase
     .from('menu_builder_drafts')
     .upsert(
       { restaurant_id: restaurantId, payload, updated_at: new Date().toISOString() },
       { onConflict: 'restaurant_id' }
     )
-    .select('id');
+    .select('id')
+    .single();
 }
