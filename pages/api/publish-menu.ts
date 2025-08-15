@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 
 const serviceKey =
   process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+// Uses service role to bypass RLS for dashboard operations if needed.
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   serviceKey
@@ -14,7 +15,7 @@ export default async function handler(
 ) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
-    return res.status(405).end('Method Not Allowed');
+    return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
   const { restaurantId } = req.body as { restaurantId?: string };
@@ -26,15 +27,15 @@ export default async function handler(
     // Load draft
     const { data: draftRow } = await supabase
       .from('menu_builder_drafts')
-      .select('draft')
+      .select('payload')
       .eq('restaurant_id', restaurantId)
       .maybeSingle();
 
-    if (!draftRow || !draftRow.draft) {
+    if (!draftRow || !draftRow.payload) {
       return res.status(400).json({ error: 'No draft' });
     }
 
-    const draft = draftRow.draft as any;
+    const draft = draftRow.payload as any;
     const categories = Array.isArray(draft.categories) ? draft.categories : [];
     const items = Array.isArray(draft.items) ? draft.items : [];
     if (categories.length === 0 && items.length === 0) {
@@ -134,15 +135,17 @@ export default async function handler(
       }
     }
 
-    console.debug('[publish] result', {
-      rid: restaurantId,
-      archivedCats,
-      archivedItems,
-      deletedLinks,
-      categoriesInserted,
-      itemsInserted,
-      linksInserted,
-    });
+    if (process.env.NODE_ENV === 'development') {
+      console.debug('[publish] result', {
+        rid: restaurantId,
+        archivedCats,
+        archivedItems,
+        deletedLinks,
+        categoriesInserted,
+        itemsInserted,
+        linksInserted,
+      });
+    }
 
     return res.status(200).json({
       archivedCats,

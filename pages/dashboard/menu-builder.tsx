@@ -137,16 +137,23 @@ export default function MenuBuilder() {
       setBuildCategories(draft.categories);
       setBuildItems(draft.items);
       setDraftLoaded(true);
+      if (process.env.NODE_ENV === 'development') {
+        console.debug('[menu-builder] loaded draft', draft);
+      }
     })();
   }, [restaurantId]);
 
   // Auto-save draft menu to DB
   useEffect(() => {
     if (!restaurantId || !draftLoaded) return;
-    saveDraft(String(restaurantId), {
+    const payload = {
       categories: buildCategories,
       items: buildItems,
-    });
+    };
+    if (process.env.NODE_ENV === 'development') {
+      console.debug('[menu-builder] saving draft', payload);
+    }
+    saveDraft(String(restaurantId), payload);
   }, [restaurantId, draftLoaded, buildCategories, buildItems]);
 
   // Load stock data when Stock tab is opened
@@ -426,7 +433,7 @@ export default function MenuBuilder() {
   };
 
   // Publish draft menu via API that hard-replaces live menu
-  const publishMenu = async () => {
+  const publishLiveMenu = async () => {
     if (!restaurantId) return;
     setConfirmState({
       title: 'Publish menu',
@@ -438,16 +445,25 @@ export default function MenuBuilder() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ restaurantId }),
           });
-          if (!res.ok) throw new Error('Failed');
+          if (!res.ok) {
+            let errMsg = 'Failed to publish menu';
+            try {
+              const errJson = await res.json();
+              if (errJson && errJson.error) errMsg = errJson.error;
+            } catch {
+              // ignore
+            }
+            throw new Error(errMsg);
+          }
           const data = await res.json();
           if (process.env.NODE_ENV === 'development') {
             console.debug('[publish] replaced', data);
           }
           setToastMessage('Menu published');
           fetchData(restaurantId);
-        } catch (err) {
+        } catch (err: any) {
           console.error(err);
-          setToastMessage('Failed to publish menu');
+          setToastMessage(err.message || 'Failed to publish menu');
         }
       },
     });
@@ -534,7 +550,7 @@ export default function MenuBuilder() {
             </button>
           </div>
           <button
-            onClick={publishMenu}
+            onClick={publishLiveMenu}
             disabled={!hasBuildChanges}
             className="flex items-center bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700 disabled:opacity-50"
           >
