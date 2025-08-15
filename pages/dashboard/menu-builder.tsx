@@ -135,8 +135,39 @@ export default function MenuBuilder() {
     (async () => {
       const { data } = await loadDraft(supabase, String(restaurantId));
       const payload = data?.payload || {};
-      setBuildCategories(Array.isArray(payload.categories) ? payload.categories : []);
-      setBuildItems(Array.isArray(payload.items) ? payload.items : []);
+      const cats = Array.isArray(payload.categories) ? payload.categories : [];
+      const itemsArr = Array.isArray(payload.items) ? payload.items : [];
+      const addonLinks = Array.isArray(payload.itemAddonLinks)
+        ? payload.itemAddonLinks
+        : [];
+      const itemCats = Array.isArray(payload.itemCategories)
+        ? payload.itemCategories
+        : [];
+
+      const addonMap: Record<any, string[]> = {};
+      addonLinks.forEach((l: any) => {
+        const key = l.itemTempIdOrId;
+        if (!addonMap[key]) addonMap[key] = [];
+        addonMap[key].push(String(l.addonGroupId));
+      });
+      const catMap: Record<any, any> = {};
+      itemCats.forEach((l: any) => {
+        if (catMap[l.itemTempIdOrId] === undefined) {
+          catMap[l.itemTempIdOrId] = l.categoryTempIdOrId;
+        }
+      });
+      const items = itemsArr.map((it: any) => {
+        const key = it.id ?? it.tempId;
+        return {
+          ...it,
+          id: key,
+          category_id: catMap[key] ?? null,
+          addons: addonMap[key] || [],
+        };
+      });
+
+      setBuildCategories(cats);
+      setBuildItems(items);
       setDraftLoaded(true);
       if (process.env.NODE_ENV === 'development') {
         console.debug('[menu-builder] loaded draft', data);
@@ -147,9 +178,36 @@ export default function MenuBuilder() {
   // Auto-save draft menu to DB
   useEffect(() => {
     if (!restaurantId || !draftLoaded) return;
+
+    const itemsPayload = buildItems.map(({ addons, category_id, ...rest }) => ({
+      ...rest,
+    }));
+
+    const itemAddonLinks: any[] = [];
+    const itemCategories: any[] = [];
+    buildItems.forEach((it) => {
+      const key = it.id;
+      if (it.category_id !== undefined && it.category_id !== null) {
+        itemCategories.push({
+          itemTempIdOrId: key,
+          categoryTempIdOrId: it.category_id,
+        });
+      }
+      if (Array.isArray(it.addons)) {
+        it.addons.forEach((gid: any) => {
+          itemAddonLinks.push({
+            itemTempIdOrId: key,
+            addonGroupId: gid,
+          });
+        });
+      }
+    });
+
     const payload = {
       categories: buildCategories,
-      items: buildItems,
+      items: itemsPayload,
+      itemAddonLinks,
+      itemCategories,
     };
     if (process.env.NODE_ENV === 'development') {
       console.debug('[menu-builder] saving draft', payload);
@@ -373,13 +431,34 @@ export default function MenuBuilder() {
       .eq('restaurant_id', rid)
       .order('sort_order', { ascending: true });
 
+    let itemsWithAddons = itemsData || [];
+    if (itemsData && itemsData.length) {
+      const { data: linkRows, error: linkErr } = await supabase
+        .from('item_addon_links')
+        .select('item_id,group_id')
+        .in('item_id', itemsData.map((i) => i.id));
+      if (linkErr) {
+        console.error('Error fetching addon links:', linkErr);
+      } else {
+        const map: Record<number, string[]> = {};
+        linkRows?.forEach((r) => {
+          if (!map[r.item_id]) map[r.item_id] = [];
+          map[r.item_id].push(String(r.group_id));
+        });
+        itemsWithAddons = itemsData.map((i) => ({
+          ...i,
+          addons: map[i.id] || [],
+        }));
+      }
+    }
+
     if (catError || itemsError) {
       console.error('Error fetching data:', catError || itemsError);
     } else {
       setCategories(categoriesData || []);
-      setItems(itemsData || []);
+      setItems(itemsWithAddons);
       setOrigCategories(categoriesData || []);
-      setOrigItems(itemsData || []);
+      setOrigItems(itemsWithAddons);
     }
 
     setLoading(false);

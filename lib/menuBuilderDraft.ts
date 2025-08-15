@@ -1,6 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-export type MenuBuilderDraft = { categories: any[]; items: any[] };
+export type MenuBuilderDraft = {
+  categories: any[];
+  items: any[];
+  itemAddonLinks: any[];
+  itemCategories: any[];
+};
 
 export async function loadDraft(
   supabase: SupabaseClient,
