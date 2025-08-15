@@ -5,26 +5,30 @@ export type MenuBuilderDraft = { categories: any[]; items: any[] };
 export async function loadDraft(restaurantId: string): Promise<MenuBuilderDraft> {
   const { data } = await supabase
     .from('menu_builder_drafts')
-    .select('draft')
+    .select('id, restaurant_id, payload, updated_at')
     .eq('restaurant_id', restaurantId)
-    .maybeSingle();
+    .single();
 
-  if (!data || !data.draft) {
+  if (!data || !data.payload) {
     return { categories: [], items: [] };
   }
 
-  const draft = data.draft as any;
+  const payload = data.payload as any;
   return {
-    categories: Array.isArray(draft.categories) ? draft.categories : [],
-    items: Array.isArray(draft.items) ? draft.items : [],
+    categories: Array.isArray(payload.categories) ? payload.categories : [],
+    items: Array.isArray(payload.items) ? payload.items : [],
   };
 }
 
 export async function saveDraft(
   restaurantId: string,
-  draft: MenuBuilderDraft
+  payload: MenuBuilderDraft
 ): Promise<void> {
   await supabase
     .from('menu_builder_drafts')
-    .upsert({ restaurant_id: restaurantId, draft });
+    .upsert(
+      { restaurant_id: restaurantId, payload, updated_at: new Date().toISOString() },
+      { onConflict: 'restaurant_id' }
+    )
+    .select('id');
 }
