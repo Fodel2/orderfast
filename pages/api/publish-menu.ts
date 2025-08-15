@@ -1,7 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { supaService } from '../../utils/supabaseServer';
-
-const supabase = supaService();
+import { getSupabaseAdmin } from '../../lib/supabaseAdmin';
 
 export default async function handler(
   req: NextApiRequest,
@@ -12,17 +10,35 @@ export default async function handler(
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  const { restaurantId } = req.body as { restaurantId?: string };
+  let supabase;
+  try {
+    supabase = getSupabaseAdmin();
+  } catch (err) {
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Missing service env', err);
+    }
+    return res.status(500).json({ error: 'Missing service env' });
+  }
+
+  const { restaurantId, userId } = req.body as {
+    restaurantId?: string;
+    userId?: string;
+  };
   if (!restaurantId) {
     return res.status(400).json({ error: 'Missing restaurantId' });
   }
 
   try {
-    const { data: draftRow, error: draftErr } = await supabase
+    let draftQuery = supabase
       .from('menu_builder_drafts')
       .select('payload')
-      .eq('restaurant_id', restaurantId)
-      .maybeSingle();
+      .eq('restaurant_id', restaurantId);
+    if (userId) {
+      draftQuery = draftQuery.eq('user_id', userId);
+    } else {
+      draftQuery = draftQuery.order('updated_at', { ascending: false }).limit(1);
+    }
+    const { data: draftRow, error: draftErr } = await draftQuery.maybeSingle();
     if (draftErr) throw draftErr;
     if (!draftRow || !draftRow.payload) {
       return res.status(400).json({ error: 'No draft to publish' });
@@ -136,13 +152,20 @@ export default async function handler(
     }
 
     if (process.env.NODE_ENV === 'development') {
-      console.debug('[publish] ok', { rid: restaurantId });
+      console.debug('[publish] ok', {
+        rid: restaurantId,
+        categories: categories.length,
+        items: items.length,
+        itemAddonLinks: itemAddonLinks.length,
+        itemCategories: itemCategories.length,
+      });
     }
 
     return res.status(200).json({ ok: true });
   } catch (err: any) {
-    console.error('[publish] error', err);
+    if (process.env.NODE_ENV === 'development') {
+      console.error('[publish] error', err);
+    }
     return res.status(500).json({ error: err.message });
   }
 }
-
