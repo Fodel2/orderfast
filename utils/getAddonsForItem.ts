@@ -8,35 +8,43 @@ export async function getAddonsForItem(
   itemId: number | string
 ): Promise<AddonGroup[]> {
   const { data, error } = await supabase
-    .from('view_addons_for_item')
-    .select('*')
+    .from('item_addon_links')
+    .select(
+      'addon_groups(id,name,required,multiple_choice,max_group_select,max_option_quantity, addon_options(id,name,price,is_vegetarian,is_vegan,is_18_plus,image_url))'
+    )
     .eq('item_id', itemId);
 
   if (error) throw error;
 
   const map = new Map<string, AddonGroup>();
   (data || []).forEach((row: any) => {
-    const gid = String(row.addon_group_id);
+    const g = row.addon_groups;
+    if (!g) return;
+    const gid = String(g.id);
     if (!map.has(gid)) {
       map.set(gid, {
         id: gid,
         group_id: gid,
-        name: row.addon_group_name,
-        required: row.required,
-        multiple_choice: row.multiple_choice,
-        max_group_select: row.max_group_select,
-        max_option_quantity: row.max_option_quantity,
+        name: g.name,
+        required: g.required,
+        multiple_choice: g.multiple_choice,
+        max_group_select: g.max_group_select,
+        max_option_quantity: g.max_option_quantity,
         addon_options: [],
       });
     }
-    if (row.addon_option_id) {
-      map.get(gid)!.addon_options.push({
-        id: String(row.addon_option_id),
-        name: row.addon_option_name,
-        price: row.price,
-        image_url: null,
+    const group = map.get(gid)!;
+    (g.addon_options || []).forEach((opt: any) => {
+      group.addon_options.push({
+        id: String(opt.id),
+        name: opt.name,
+        price: opt.price,
+        image_url: opt.image_url,
+        is_vegetarian: opt.is_vegetarian,
+        is_vegan: opt.is_vegan,
+        is_18_plus: opt.is_18_plus,
       });
-    }
+    });
   });
 
   if (process.env.NODE_ENV === 'development') {
@@ -45,3 +53,4 @@ export async function getAddonsForItem(
 
   return Array.from(map.values());
 }
+

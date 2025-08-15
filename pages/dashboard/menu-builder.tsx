@@ -16,7 +16,6 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useRouter } from 'next/router';
 import { supabase } from '../../lib/supabaseClient';
-import { loadDraft, saveDraft } from '../../lib/menuBuilderDraft';
 import AddItemModal from '../../components/AddItemModal';
 import AddCategoryModal from '../../components/AddCategoryModal';
 import Toast from '../../components/Toast';
@@ -119,6 +118,9 @@ export default function MenuBuilder() {
   const [stockAddons, setStockAddons] = useState<StockTabProps['addons']>([]);
   const [stockLoading, setStockLoading] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const saveTimer = useRef<NodeJS.Timeout | null>(null);
+  const draftErrorShown = useRef(false);
+  const [publishing, setPublishing] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -129,95 +131,72 @@ export default function MenuBuilder() {
     }
   }, [router.isReady, router.query.tab]);
 
-  // Load draft menu from DB when restaurantId is known
+  // Load draft menu from API when restaurantId is known
   useEffect(() => {
-    if (!restaurantId || !session?.user?.id) return;
+    if (!restaurantId) return;
     (async () => {
-      const { data } = await loadDraft(
-        supabase,
-        session.user.id,
-        String(restaurantId)
-      );
-      const payload = data?.payload || {};
-      const cats = Array.isArray(payload.categories) ? payload.categories : [];
-      const itemsArr = Array.isArray(payload.items) ? payload.items : [];
-      const addonLinks = Array.isArray(payload.itemAddonLinks)
-        ? payload.itemAddonLinks
-        : [];
-      const itemCats = Array.isArray(payload.itemCategories)
-        ? payload.itemCategories
-        : [];
-
-      const addonMap: Record<any, string[]> = {};
-      addonLinks.forEach((l: any) => {
-        const key = l.itemTempIdOrId;
-        if (!addonMap[key]) addonMap[key] = [];
-        addonMap[key].push(String(l.addonGroupId));
-      });
-      const catMap: Record<any, any> = {};
-      itemCats.forEach((l: any) => {
-        if (catMap[l.itemTempIdOrId] === undefined) {
-          catMap[l.itemTempIdOrId] = l.categoryTempIdOrId;
-        }
-      });
-      const items = itemsArr.map((it: any) => {
-        const key = it.id ?? it.tempId;
-        return {
+      try {
+        const res = await fetch(
+          `/api/menu-builder/draft?restaurant_id=${restaurantId}`
+        );
+        if (!res.ok) throw new Error('Failed to load draft');
+        const payload = await res.json();
+        const cats = Array.isArray(payload.categories)
+          ? payload.categories
+          : [];
+        const itemsArr = Array.isArray(payload.items) ? payload.items : [];
+        const items = itemsArr.map((it: any) => ({
           ...it,
-          id: key,
-          category_id: catMap[key] ?? null,
-          addons: addonMap[key] || [],
-        };
-      });
-
-      setBuildCategories(cats);
-      setBuildItems(items);
+          addons: Array.isArray(it.addons) ? it.addons : [],
+        }));
+        setBuildCategories(cats);
+        setBuildItems(items);
+      } catch (err) {
+        console.error(err);
+        setBuildCategories([]);
+        setBuildItems([]);
+      }
       setDraftLoaded(true);
       if (process.env.NODE_ENV === 'development') {
-        console.debug('[menu-builder] loaded draft', data);
+        console.debug('[menu-builder] draft loaded');
       }
     })();
-  }, [restaurantId, session?.user?.id]);
+  }, [restaurantId]);
 
-  // Auto-save draft menu to DB
+  // Auto-save draft menu to DB with debounce
   useEffect(() => {
-    if (!restaurantId || !draftLoaded || !session?.user?.id) return;
-
-    const itemsPayload = buildItems.map(({ addons, category_id, ...rest }) => ({
-      ...rest,
-    }));
-
-    const itemAddonLinks: any[] = [];
-    const itemCategories: any[] = [];
-    buildItems.forEach((it) => {
-      const key = it.id;
-      if (it.category_id !== undefined && it.category_id !== null) {
-        itemCategories.push({
-          itemTempIdOrId: key,
-          categoryTempIdOrId: it.category_id,
-        });
+    if (!restaurantId || !draftLoaded) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `/api/menu-builder/draft?restaurant_id=${restaurantId}`,
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              categories: buildCategories,
+              items: buildItems,
+            }),
+          }
+        );
+        if (!res.ok) throw new Error('Failed to save draft');
+        draftErrorShown.current = false;
+        if (process.env.NODE_ENV === 'development') {
+          console.debug('[menu-builder] draft saved');
+        }
+      } catch (err) {
+        if (!draftErrorShown.current) {
+          console.error(err);
+          setToastMessage('Failed to save draft');
+          draftErrorShown.current = true;
+        }
       }
-      if (Array.isArray(it.addons)) {
-        it.addons.forEach((gid: any) => {
-          itemAddonLinks.push({
-            itemTempIdOrId: key,
-            addonGroupId: gid,
-          });
-        });
-      }
-    });
-
-    const payload = {
-      categories: buildCategories,
-      items: itemsPayload,
-      itemAddonLinks,
-      itemCategories,
+    }, 600);
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
     };
-    if (process.env.NODE_ENV === 'development') {
-      console.debug('[menu-builder] saving draft', payload);
-    }
-    saveDraft(supabase, session.user.id, String(restaurantId), payload);
-  }, [restaurantId, draftLoaded, buildCategories, buildItems, session?.user?.id]);
+  }, [restaurantId, draftLoaded, buildCategories, buildItems]);
 
   // Load stock data when Stock tab is opened
   useEffect(() => {
@@ -524,33 +503,28 @@ export default function MenuBuilder() {
       message: 'This will replace your live menu with the build menu. Continue?',
       action: async () => {
         try {
+          setPublishing(true);
           const res = await fetch('/api/publish-menu', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              restaurantId,
-              userId: session?.user?.id,
-            }),
+            body: JSON.stringify({ restaurant_id: restaurantId }),
           });
+          const json = await res.json().catch(() => ({}));
           if (!res.ok) {
-            let errMsg = 'Failed to publish menu';
-            try {
-              const errJson = await res.json();
-              if (errJson && errJson.error) errMsg = errJson.error;
-            } catch {
-              // ignore
-            }
-            throw new Error(errMsg);
+            throw new Error(json.error || 'Failed to publish menu');
           }
-          const data = await res.json();
           if (process.env.NODE_ENV === 'development') {
-            console.debug('[publish] replaced', data);
+            console.debug('[publish] replaced', json);
           }
-          setToastMessage('Menu published');
+          setToastMessage(
+            `Published ${json.categoriesInserted} categories and ${json.itemsInserted} items`
+          );
           fetchData(restaurantId);
         } catch (err: any) {
           console.error(err);
           setToastMessage(err.message || 'Failed to publish menu');
+        } finally {
+          setPublishing(false);
         }
       },
     });
@@ -638,7 +612,7 @@ export default function MenuBuilder() {
           </div>
           <button
             onClick={publishLiveMenu}
-            disabled={!hasBuildChanges}
+            disabled={!hasBuildChanges || publishing}
             className="flex items-center bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700 disabled:opacity-50"
           >
             Publish Changes

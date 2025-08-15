@@ -133,7 +133,7 @@ export default function RestaurantMenuPage() {
         const { data: addData, error: addonErr } = await supabase
           .from('item_addon_links')
           .select(
-            'item_id, addon_groups(id,name,multiple_choice,required,max_group_select,max_option_quantity, addon_options(*))'
+            'item_id, addon_groups(id,name,multiple_choice,required,max_group_select,max_option_quantity, addon_options(id,name,price,is_vegetarian,is_vegan,is_18_plus,image_url))'
           )
           .in('item_id', liveItemIds);
         if (addonErr) console.error('Failed to fetch addons', addonErr);

@@ -3,6 +3,9 @@ export interface AddonOption {
   name: string;
   price: number | null;
   image_url?: string | null;
+  is_vegetarian?: boolean | null;
+  is_vegan?: boolean | null;
+  is_18_plus?: boolean | null;
 }
 
 export interface AddonGroup {
@@ -20,3 +23,4 @@ export interface AddonGroup {
   max_option_quantity?: number | null;
   addon_options: AddonOption[];
 }
+
