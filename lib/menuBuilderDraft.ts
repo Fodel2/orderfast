@@ -9,25 +9,33 @@ export type MenuBuilderDraft = {
 
 export async function loadDraft(
   supabase: SupabaseClient,
+  userId: string,
   restaurantId: string
 ) {
   return supabase
     .from('menu_builder_drafts')
     .select('id, restaurant_id, payload, updated_at')
+    .eq('user_id', userId)
     .eq('restaurant_id', restaurantId)
-    .single();
+    .maybeSingle();
 }
 
 export async function saveDraft(
   supabase: SupabaseClient,
+  userId: string,
   restaurantId: string,
   payload: MenuBuilderDraft
 ) {
   return supabase
     .from('menu_builder_drafts')
     .upsert(
-      { restaurant_id: restaurantId, payload, updated_at: new Date().toISOString() },
-      { onConflict: 'restaurant_id' }
+      {
+        user_id: userId,
+        restaurant_id: restaurantId,
+        payload,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id,restaurant_id' }
     )
     .select('id')
     .single();

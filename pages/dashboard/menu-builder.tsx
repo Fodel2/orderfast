@@ -15,7 +15,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useRouter } from 'next/router';
-import { supabase } from '../../utils/supabaseClient';
+import { supabase } from '../../lib/supabaseClient';
 import { loadDraft, saveDraft } from '../../lib/menuBuilderDraft';
 import AddItemModal from '../../components/AddItemModal';
 import AddCategoryModal from '../../components/AddCategoryModal';
@@ -131,9 +131,13 @@ export default function MenuBuilder() {
 
   // Load draft menu from DB when restaurantId is known
   useEffect(() => {
-    if (!restaurantId) return;
+    if (!restaurantId || !session?.user?.id) return;
     (async () => {
-      const { data } = await loadDraft(supabase, String(restaurantId));
+      const { data } = await loadDraft(
+        supabase,
+        session.user.id,
+        String(restaurantId)
+      );
       const payload = data?.payload || {};
       const cats = Array.isArray(payload.categories) ? payload.categories : [];
       const itemsArr = Array.isArray(payload.items) ? payload.items : [];
@@ -173,11 +177,11 @@ export default function MenuBuilder() {
         console.debug('[menu-builder] loaded draft', data);
       }
     })();
-  }, [restaurantId]);
+  }, [restaurantId, session?.user?.id]);
 
   // Auto-save draft menu to DB
   useEffect(() => {
-    if (!restaurantId || !draftLoaded) return;
+    if (!restaurantId || !draftLoaded || !session?.user?.id) return;
 
     const itemsPayload = buildItems.map(({ addons, category_id, ...rest }) => ({
       ...rest,
@@ -212,8 +216,8 @@ export default function MenuBuilder() {
     if (process.env.NODE_ENV === 'development') {
       console.debug('[menu-builder] saving draft', payload);
     }
-    saveDraft(supabase, String(restaurantId), payload);
-  }, [restaurantId, draftLoaded, buildCategories, buildItems]);
+    saveDraft(supabase, session.user.id, String(restaurantId), payload);
+  }, [restaurantId, draftLoaded, buildCategories, buildItems, session?.user?.id]);
 
   // Load stock data when Stock tab is opened
   useEffect(() => {
@@ -523,7 +527,10 @@ export default function MenuBuilder() {
           const res = await fetch('/api/publish-menu', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ restaurantId }),
+            body: JSON.stringify({
+              restaurantId,
+              userId: session?.user?.id,
+            }),
           });
           if (!res.ok) {
             let errMsg = 'Failed to publish menu';
