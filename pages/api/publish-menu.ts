@@ -18,58 +18,60 @@ export default async function handler(
   }
 
   try {
-    // Load draft
-    const { data: draftRow } = await supabase
+    const { data: draftRow, error: draftErr } = await supabase
       .from('menu_builder_drafts')
       .select('payload')
       .eq('restaurant_id', restaurantId)
       .maybeSingle();
-
+    if (draftErr) throw draftErr;
     if (!draftRow || !draftRow.payload) {
-      return res.status(400).json({ error: 'No draft' });
+      return res.status(400).json({ error: 'No draft to publish' });
     }
 
     const draft = draftRow.payload as any;
     const categories = Array.isArray(draft.categories) ? draft.categories : [];
     const items = Array.isArray(draft.items) ? draft.items : [];
-    if (categories.length === 0 && items.length === 0) {
-      return res.status(400).json({ error: 'Draft is empty' });
-    }
+    const itemAddonLinks = Array.isArray(draft.itemAddonLinks)
+      ? draft.itemAddonLinks
+      : [];
+    const itemCategories = Array.isArray(draft.itemCategories)
+      ? draft.itemCategories
+      : [];
 
-    // Archive existing live rows
-    const { data: archivedItemRows, error: archItemErr } = await supabase
+    const { data: existingItems, error: existingItemsErr } = await supabase
       .from('menu_items')
-      .update({ archived_at: new Date().toISOString() })
-      .eq('restaurant_id', restaurantId)
-      .is('archived_at', null)
-      .select('id');
-    if (archItemErr) throw archItemErr;
-    const archivedItemIds = (archivedItemRows || []).map((r) => r.id);
-    const archivedItems = archivedItemIds.length;
+      .select('id')
+      .eq('restaurant_id', restaurantId);
+    if (existingItemsErr) throw existingItemsErr;
+    const existingItemIds = (existingItems || []).map((r: any) => r.id);
 
-    const { data: archivedCatRows, error: archCatErr } = await supabase
-      .from('menu_categories')
-      .update({ archived_at: new Date().toISOString() })
-      .eq('restaurant_id', restaurantId)
-      .is('archived_at', null)
-      .select('id');
-    if (archCatErr) throw archCatErr;
-    const archivedCats = archivedCatRows?.length || 0;
-
-    let deletedLinks = 0;
-    if (archivedItemIds.length > 0) {
-      const { data: delLinkRows, error: delLinkErr } = await supabase
+    if (existingItemIds.length) {
+      const { error: delLinksErr } = await supabase
         .from('item_addon_links')
         .delete()
-        .in('item_id', archivedItemIds)
-        .select('id');
-      if (delLinkErr) throw delLinkErr;
-      deletedLinks = delLinkRows?.length || 0;
+        .in('item_id', existingItemIds);
+      if (delLinksErr) throw delLinksErr;
+
+      const { error: delItemCatsErr } = await supabase
+        .from('menu_item_categories')
+        .delete()
+        .in('item_id', existingItemIds);
+      if (delItemCatsErr) throw delItemCatsErr;
     }
 
-    // Insert categories
+    const { error: delItemsErr } = await supabase
+      .from('menu_items')
+      .delete()
+      .eq('restaurant_id', restaurantId);
+    if (delItemsErr) throw delItemsErr;
+
+    const { error: delCatsErr } = await supabase
+      .from('menu_categories')
+      .delete()
+      .eq('restaurant_id', restaurantId);
+    if (delCatsErr) throw delCatsErr;
+
     const catIdMap = new Map<any, any>();
-    let categoriesInserted = 0;
     for (const c of categories) {
       const { data: inserted, error } = await supabase
         .from('menu_categories')
@@ -78,28 +80,20 @@ export default async function handler(
           name: c.name,
           description: c.description,
           sort_order: c.sort_order,
-          archived_at: null,
+          image_url: c.image_url,
         })
         .select('id')
         .single();
       if (error || !inserted) throw error;
       catIdMap.set(c.tempId ?? c.id, inserted.id);
-      categoriesInserted++;
     }
 
-    // Insert items
     const itemIdMap = new Map<any, any>();
-    let itemsInserted = 0;
-    let linksInserted = 0;
     for (const it of items) {
-      const catTemp = it.categoryTempId ?? it.category_id;
-      const category_id = catIdMap.get(catTemp);
-      if (!category_id) continue;
       const { data: inserted, error } = await supabase
         .from('menu_items')
         .insert({
           restaurant_id: restaurantId,
-          category_id,
           name: it.name,
           description: it.description,
           price: it.price,
@@ -108,49 +102,47 @@ export default async function handler(
           is_vegan: it.is_vegan,
           is_18_plus: it.is_18_plus,
           available: it.available,
+          out_of_stock_until: it.out_of_stock_until,
           sort_order: it.sort_order,
-          archived_at: null,
+          stock_status: it.stock_status,
+          stock_return_date: it.stock_return_date,
         })
         .select('id')
         .single();
       if (error || !inserted) throw error;
       itemIdMap.set(it.tempId ?? it.id, inserted.id);
-      itemsInserted++;
+    }
 
-      const groupIds = Array.isArray(it.addon_group_ids) ? it.addon_group_ids : [];
-      if (groupIds.length > 0) {
-        for (const gid of groupIds) {
-          const { error: linkErr } = await supabase
-            .from('item_addon_links')
-            .insert({ item_id: inserted.id, group_id: gid });
-          if (linkErr) throw linkErr;
-          linksInserted++;
-        }
+    for (const link of itemCategories) {
+      const itemId = itemIdMap.get(link.itemTempIdOrId);
+      const catId = catIdMap.get(link.categoryTempIdOrId);
+      if (itemId && catId) {
+        const { error } = await supabase
+          .from('menu_item_categories')
+          .insert({ item_id: itemId, category_id: catId });
+        if (error) throw error;
+      }
+    }
+
+    for (const link of itemAddonLinks) {
+      const itemId = itemIdMap.get(link.itemTempIdOrId);
+      const groupId = link.addonGroupId;
+      if (itemId && groupId) {
+        const { error } = await supabase
+          .from('item_addon_links')
+          .insert({ item_id: itemId, group_id: groupId });
+        if (error) throw error;
       }
     }
 
     if (process.env.NODE_ENV === 'development') {
-      console.debug('[publish] result', {
-        rid: restaurantId,
-        archivedCats,
-        archivedItems,
-        deletedLinks,
-        categoriesInserted,
-        itemsInserted,
-        linksInserted,
-      });
+      console.debug('[publish] ok', { rid: restaurantId });
     }
 
-    return res.status(200).json({
-      archivedCats,
-      archivedItems,
-      deletedLinks,
-      categoriesInserted,
-      itemsInserted,
-      linksInserted,
-    });
+    return res.status(200).json({ ok: true });
   } catch (err: any) {
     console.error('[publish] error', err);
     return res.status(500).json({ error: err.message });
   }
 }
+

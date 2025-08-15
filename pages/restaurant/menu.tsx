@@ -48,8 +48,11 @@ interface Item {
   is_vegetarian: boolean | null;
   is_18_plus: boolean | null;
   available?: boolean | null;
-  stock_status: "in_stock" | "scheduled" | "out" | null;
-  category_id: number;
+  stock_status: 'in_stock' | 'scheduled' | 'out' | null;
+  out_of_stock_until?: string | null;
+  stock_return_date?: string | null;
+  category_id: number | null;
+  addon_groups?: any[];
 }
 
 export default function RestaurantMenuPage() {
@@ -104,28 +107,49 @@ export default function RestaurantMenuPage() {
         .from('menu_categories')
         .select('id,name,description,image_url,sort_order,restaurant_id')
         .eq('restaurant_id', restaurantId)
-        .is('archived_at', null)
-        .order('sort_order', { ascending: true })
+        .order('sort_order', { ascending: true, nullsFirst: false })
         .order('name', { ascending: true });
 
       const { data: itemData, error: itemErr } = await supabase
         .from('menu_items')
         .select(
-          'id,name,description,price,image_url,is_vegetarian,is_vegan,is_18_plus,available,stock_status,category_id,sort_order'
+          'id,name,description,price,image_url,is_vegetarian,is_vegan,is_18_plus,available,out_of_stock_until,sort_order,stock_status,stock_return_date,category_id'
         )
         .eq('restaurant_id', restaurantId)
-        .is('archived_at', null)
-        .order('sort_order', { ascending: true })
+        .order('sort_order', { ascending: true, nullsFirst: false })
         .order('name', { ascending: true });
 
       const liveItemIds = (itemData || []).map((r: any) => r.id);
+      let linkData: any[] = [];
+      let addonRows: any[] = [];
       if (liveItemIds.length > 0) {
-        const { error: addonErr } = await supabase
+        const { data: icData, error: icErr } = await supabase
+          .from('menu_item_categories')
+          .select('item_id,category_id')
+          .in('item_id', liveItemIds);
+        if (icErr) console.error('Failed to fetch item categories', icErr);
+        linkData = icData || [];
+
+        const { data: addData, error: addonErr } = await supabase
           .from('item_addon_links')
-          .select('item_id, addon_groups(*, addon_options(*))')
+          .select(
+            'item_id, addon_groups(id,name,multiple_choice,required,max_group_select,max_option_quantity, addon_options(*))'
+          )
           .in('item_id', liveItemIds);
         if (addonErr) console.error('Failed to fetch addons', addonErr);
+        addonRows = addData || [];
       }
+
+      const addonMap: Record<number, any[]> = {};
+      addonRows.forEach((row) => {
+        const arr = addonMap[row.item_id] || [];
+        if (row.addon_groups) arr.push(row.addon_groups);
+        addonMap[row.item_id] = arr;
+      });
+      const itemsWithAddons = (itemData || []).map((it: any) => ({
+        ...it,
+        addon_groups: addonMap[it.id] || [],
+      }));
 
       if (restRes.error)
         console.error('Failed to fetch restaurant', restRes.error);
@@ -142,8 +166,8 @@ export default function RestaurantMenuPage() {
 
       setRestaurant(restRes.data as Restaurant | null);
       setCategories(catData || []);
-      setItems(itemData || []);
-      setItemLinks([]);
+      setItems(itemsWithAddons);
+      setItemLinks(linkData);
 
       if (process.env.NODE_ENV === 'development') {
         console.debug('[customer:menu]', {
