@@ -104,23 +104,41 @@ export default function RestaurantMenuPage() {
         .from('menu_categories')
         .select('id,name,description,image_url,sort_order,restaurant_id')
         .eq('restaurant_id', restaurantId)
+        .is('archived_at', null)
         .order('sort_order', { ascending: true })
         .order('name', { ascending: true });
 
       const { data: itemData, error: itemErr } = await supabase
         .from('menu_items')
         .select(
-          'id,name,description,price,image_url,is_vegetarian,is_vegan,is_18_plus,stock_status,available,category_id,sort_order'
+          'id,name,description,price,image_url,is_vegetarian,is_vegan,is_18_plus,available,stock_status,category_id,sort_order'
         )
         .eq('restaurant_id', restaurantId)
-        .eq('available', true)
+        .is('archived_at', null)
         .order('sort_order', { ascending: true })
         .order('name', { ascending: true });
+
+      const liveItemIds = (itemData || []).map((r: any) => r.id);
+      if (liveItemIds.length > 0) {
+        const { error: addonErr } = await supabase
+          .from('item_addon_links')
+          .select('item_id, addon_groups(*, addon_options(*))')
+          .in('item_id', liveItemIds);
+        if (addonErr) console.error('Failed to fetch addons', addonErr);
+      }
 
       if (restRes.error)
         console.error('Failed to fetch restaurant', restRes.error);
       if (catErr) console.error('Failed to fetch categories', catErr);
       if (itemErr) console.error('Failed to fetch items', itemErr);
+
+      if (process.env.NODE_ENV === 'development') {
+        console.debug('[customer:menu]', {
+          rid: restaurantId,
+          cats: catData?.length || 0,
+          items: itemData?.length || 0,
+        });
+      }
 
       setRestaurant(restRes.data as Restaurant | null);
       setCategories(catData || []);
