@@ -1,7 +1,6 @@
 /** @jest-environment node */
 import { createMocks } from 'node-mocks-http';
-import draftHandler from '../pages/api/menu-builder';
-import publishHandler from '../pages/api/publish-menu';
+import handler from '../pages/api/menu-builder';
 import { getServerClient } from '../lib/supaServer';
 
 describe('menu builder API', () => {
@@ -47,16 +46,35 @@ describe('menu builder API', () => {
       method: 'PUT',
       body: { restaurantId: rid, payload },
     });
-    await draftHandler(req, res);
+    await handler(req, res);
     expect(res._getStatusCode()).toBe(200);
 
     ({ req, res } = createMocks({ method: 'POST', body: { restaurantId: rid } }));
-    await publishHandler(req, res);
+    await handler(req, res);
     expect(res._getStatusCode()).toBe(200);
     const data = JSON.parse(res._getData());
-    expect(data.itemsInserted).toBeGreaterThan(0);
-    expect(data.categoriesInserted).toBeGreaterThan(0);
-    expect(data.linksInserted).toBeGreaterThan(0);
+    expect(data.counts.insertedItems).toBeGreaterThan(0);
+    expect(data.counts.insertedCats).toBeGreaterThan(0);
+    expect(data.counts.insertedLinks).toBeGreaterThan(0);
+
+    const { data: liveCats } = await supa
+      .from('menu_categories')
+      .select('name')
+      .eq('restaurant_id', rid)
+      .is('archived_at', null);
+    const { data: liveItems } = await supa
+      .from('menu_items')
+      .select('name')
+      .eq('restaurant_id', rid)
+      .is('archived_at', null);
+    expect((liveCats || []).map((c: any) => c.name).sort()).toEqual([
+      'Cat1',
+      'Cat2',
+    ]);
+    expect((liveItems || []).map((i: any) => i.name).sort()).toEqual([
+      'Item1',
+      'Item2',
+    ]);
   });
 });
 
