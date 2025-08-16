@@ -1,8 +1,8 @@
 /** @jest-environment node */
 import { createMocks } from 'node-mocks-http';
-import draftHandler from '../pages/api/menu-builder/draft';
+import draftHandler from '../pages/api/menu-builder';
 import publishHandler from '../pages/api/publish-menu';
-import { supabaseServer } from '../lib/supabaseServer';
+import { getServerClient } from '../lib/supaServer';
 
 describe('menu builder API', () => {
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -11,7 +11,7 @@ describe('menu builder API', () => {
   }
 
   test('upsert draft then publish', async () => {
-    const supa = supabaseServer();
+    const supa = getServerClient();
     const { data: restaurant } = await supa
       .from('restaurants')
       .insert({ name: 'Test R' })
@@ -45,12 +45,12 @@ describe('menu builder API', () => {
     };
     let { req, res } = createMocks({
       method: 'PUT',
-      body: { ...payload, restaurant_id: rid },
+      body: { restaurantId: rid, payload },
     });
     await draftHandler(req, res);
     expect(res._getStatusCode()).toBe(200);
 
-    ({ req, res } = createMocks({ method: 'POST', body: { restaurant_id: rid } }));
+    ({ req, res } = createMocks({ method: 'POST', body: { restaurantId: rid } }));
     await publishHandler(req, res);
     expect(res._getStatusCode()).toBe(200);
     const data = JSON.parse(res._getData());
