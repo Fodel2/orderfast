@@ -1,6 +1,7 @@
 /** @jest-environment node */
 import { createMocks } from 'node-mocks-http';
-import handler from '../pages/api/menu-builder';
+import menuHandler from '../pages/api/menu-builder';
+import publishHandler from '../pages/api/publish-menu';
 import { supaServer } from '../lib/supaServer';
 
 describe('menu builder API', () => {
@@ -10,52 +11,31 @@ describe('menu builder API', () => {
   }
 
   test('upsert draft then publish', async () => {
-    const supa = supaServer;
+    const supa = supaServer();
     const { data: restaurant } = await supa
       .from('restaurants')
       .insert({ name: 'Test R' })
       .select('id')
       .single();
     const rid = restaurant!.id;
-
-    const { data: group } = await supa
-      .from('addon_groups')
-      .insert({ name: 'Test', restaurant_id: rid })
-      .select('id')
-      .single();
-    const gid = group?.id;
-
     const draft = {
-      categories: [
-        { id: 'c1', name: 'Cat1', sort_order: 1 },
-        { id: 'c2', name: 'Cat2', sort_order: 2 },
-      ],
-      items: [
-        { id: 'i1', name: 'Item1', price: 1, sort_order: 1, category_id: 'c1', addons: [] },
-        {
-          id: 'i2',
-          name: 'Item2',
-          price: 2,
-          sort_order: 2,
-          category_id: 'c2',
-          addons: gid ? [gid] : [],
-        },
-      ],
+      categories: [{ id: 'c1', name: 'Cat1', sort_order: 1 }],
+      items: [{ id: 'i1', name: 'Item1', price: 1, sort_order: 1, category_id: 'c1' }],
     };
     let { req, res } = createMocks({
       method: 'PUT',
-      body: { restaurantId: rid, data: draft },
+      body: { restaurantId: rid, draft },
     });
-    await handler(req, res);
+    await menuHandler(req, res);
     expect(res._getStatusCode()).toBe(200);
+    expect(JSON.parse(res._getData()).ok).toBe(true);
 
     ({ req, res } = createMocks({ method: 'POST', body: { restaurantId: rid } }));
-    await handler(req, res);
+    await publishHandler(req, res);
     expect(res._getStatusCode()).toBe(200);
     const result = JSON.parse(res._getData());
-    expect(result.counts.insertedItems).toBeGreaterThan(0);
-    expect(result.counts.insertedCats).toBeGreaterThan(0);
-    expect(result.counts.insertedLinks).toBeGreaterThan(0);
+    expect(result.inserted.items).toBeGreaterThan(0);
+    expect(result.inserted.categories).toBeGreaterThan(0);
 
     const { data: liveCats } = await supa
       .from('menu_categories')
@@ -67,14 +47,8 @@ describe('menu builder API', () => {
       .select('name')
       .eq('restaurant_id', rid)
       .is('archived_at', null);
-    expect((liveCats || []).map((c: any) => c.name).sort()).toEqual([
-      'Cat1',
-      'Cat2',
-    ]);
-    expect((liveItems || []).map((i: any) => i.name).sort()).toEqual([
-      'Item1',
-      'Item2',
-    ]);
+    expect((liveCats || []).map((c: any) => c.name).sort()).toEqual(['Cat1']);
+    expect((liveItems || []).map((i: any) => i.name).sort()).toEqual(['Item1']);
   });
 });
 

@@ -512,39 +512,31 @@ export default function MenuBuilder() {
       action: async () => {
         try {
           setPublishing(true);
-          // Save draft before publishing
+          const draft = { categories: buildCategories, items: buildItems };
           const saveRes = await fetch(`/api/menu-builder`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              restaurantId,
-              data: { categories: buildCategories, items: buildItems },
-            }),
+            body: JSON.stringify({ restaurantId, draft }),
           });
           const saveJson = await saveRes.json().catch(() => ({}));
           if (!saveRes.ok) {
-            throw new Error(saveJson.error || 'Failed to save draft');
+            setToastMessage(saveJson.error || saveJson.details || 'Failed to save draft');
+            return;
           }
-          setToastMessage('Draft saved');
 
-          const res = await fetch(`/api/menu-builder`, {
+          const res = await fetch(`/api/publish-menu`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ restaurantId }),
           });
           const json = await res.json().catch(() => ({}));
           if (!res.ok) {
-            const msg = isDev
-              ? `Publish failed: ${json.hint || json.error}`
-              : 'Failed to publish menu';
-            throw new Error(msg);
+            setToastMessage(`${json.where}: ${json.error || json.details || 'Failed to publish menu'}`);
+            return;
           }
-          if (process.env.NODE_ENV === 'development') {
-            console.debug('[publish] replaced', json);
-          }
-          const counts = json.counts || {};
+          const { deleted = {}, archived = {}, inserted = {} } = json;
           setToastMessage(
-            `Published ${counts.insertedCats} categories and ${counts.insertedItems} items`
+            `Deleted ${deleted.categories || 0}/${deleted.items || 0} Archived ${archived.categories || 0}/${archived.items || 0} Inserted ${inserted.categories || 0}/${inserted.items || 0}`
           );
           fetchData(restaurantId);
         } catch (err: any) {
@@ -620,18 +612,21 @@ export default function MenuBuilder() {
                 setDraftCategory(null);
                 setShowDraftCategoryModal(true);
               }}
+              disabled={!restaurantId}
               className="flex items-center bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700"
             >
               <PlusCircleIcon className="w-5 h-5 mr-1" /> Add Category
             </button>
             <button
               onClick={duplicateLiveMenu}
+              disabled={!restaurantId}
               className="flex items-center bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700"
             >
               Duplicate Live Menu
             </button>
             <button
               onClick={deleteAllDraft}
+              disabled={!restaurantId}
               className="flex items-center bg-red-600 text-white px-3 py-2 rounded-lg hover:bg-red-700"
             >
               Delete All
@@ -639,7 +634,7 @@ export default function MenuBuilder() {
           </div>
           <button
             onClick={publishLiveMenu}
-            disabled={!hasBuildChanges || publishing}
+            disabled={!restaurantId || !hasBuildChanges || publishing}
             className="flex items-center bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700 disabled:opacity-50"
           >
             Publish Changes
