@@ -12,3 +12,13 @@ export function getServerClient() {
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
+// Pre-initialized service-role client for server usage (may be null if env missing)
+let supa: ReturnType<typeof getServerClient> | null = null;
+try {
+  supa = getServerClient();
+} catch {
+  supa = null;
+}
+export const supaServer = supa;
+
+

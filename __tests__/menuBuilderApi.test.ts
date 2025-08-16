@@ -1,7 +1,7 @@
 /** @jest-environment node */
 import { createMocks } from 'node-mocks-http';
 import handler from '../pages/api/menu-builder';
-import { getServerClient } from '../lib/supaServer';
+import { supaServer } from '../lib/supaServer';
 
 describe('menu builder API', () => {
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -10,7 +10,7 @@ describe('menu builder API', () => {
   }
 
   test('upsert draft then publish', async () => {
-    const supa = getServerClient();
+    const supa = supaServer;
     const { data: restaurant } = await supa
       .from('restaurants')
       .insert({ name: 'Test R' })
@@ -25,7 +25,7 @@ describe('menu builder API', () => {
       .single();
     const gid = group?.id;
 
-    const payload = {
+    const draft = {
       categories: [
         { id: 'c1', name: 'Cat1', sort_order: 1 },
         { id: 'c2', name: 'Cat2', sort_order: 2 },
@@ -44,7 +44,7 @@ describe('menu builder API', () => {
     };
     let { req, res } = createMocks({
       method: 'PUT',
-      body: { restaurantId: rid, payload },
+      body: { restaurantId: rid, data: draft },
     });
     await handler(req, res);
     expect(res._getStatusCode()).toBe(200);
@@ -52,10 +52,10 @@ describe('menu builder API', () => {
     ({ req, res } = createMocks({ method: 'POST', body: { restaurantId: rid } }));
     await handler(req, res);
     expect(res._getStatusCode()).toBe(200);
-    const data = JSON.parse(res._getData());
-    expect(data.counts.insertedItems).toBeGreaterThan(0);
-    expect(data.counts.insertedCats).toBeGreaterThan(0);
-    expect(data.counts.insertedLinks).toBeGreaterThan(0);
+    const result = JSON.parse(res._getData());
+    expect(result.counts.insertedItems).toBeGreaterThan(0);
+    expect(result.counts.insertedCats).toBeGreaterThan(0);
+    expect(result.counts.insertedLinks).toBeGreaterThan(0);
 
     const { data: liveCats } = await supa
       .from('menu_categories')
