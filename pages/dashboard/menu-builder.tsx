@@ -122,6 +122,8 @@ export default function MenuBuilder() {
   const draftErrorShown = useRef(false);
   const [publishing, setPublishing] = useState(false);
   const router = useRouter();
+  const debug =
+    process.env.NODE_ENV !== 'production' && router.query.debug === '1';
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -137,10 +139,12 @@ export default function MenuBuilder() {
     (async () => {
       try {
         const res = await fetch(
-          `/api/menu-builder/draft?restaurant_id=${restaurantId}`
+          `/api/menu-builder?restaurant_id=${restaurantId}${
+            debug ? '&debug=1' : ''
+          }`
         );
         if (!res.ok) throw new Error('Failed to load draft');
-        const payload = await res.json();
+        const { payload } = await res.json();
         const cats = Array.isArray(payload.categories)
           ? payload.categories
           : [];
@@ -170,25 +174,34 @@ export default function MenuBuilder() {
     saveTimer.current = setTimeout(async () => {
       try {
         const res = await fetch(
-          `/api/menu-builder/draft?restaurant_id=${restaurantId}`,
+          `/api/menu-builder${debug ? '?debug=1' : ''}`,
           {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              categories: buildCategories,
-              items: buildItems,
+              restaurantId,
+              payload: {
+                categories: buildCategories,
+                items: buildItems,
+              },
             }),
           }
         );
-        if (!res.ok) throw new Error('Failed to save draft');
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(json.detail || json.error || 'Failed to save draft');
+        }
         draftErrorShown.current = false;
+        setToastMessage('Draft saved');
         if (process.env.NODE_ENV === 'development') {
           console.debug('[menu-builder] draft saved');
         }
-      } catch (err) {
+      } catch (err: any) {
         if (!draftErrorShown.current) {
           console.error(err);
-          setToastMessage('Failed to save draft');
+          setToastMessage(
+            debug && err.message ? `Draft save failed: ${err.message}` : 'Draft save failed'
+          );
           draftErrorShown.current = true;
         }
       }
@@ -504,14 +517,32 @@ export default function MenuBuilder() {
       action: async () => {
         try {
           setPublishing(true);
-          const res = await fetch('/api/publish-menu', {
+          // Save draft before publishing
+          const saveRes = await fetch(`/api/menu-builder${debug ? '?debug=1' : ''}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              restaurantId,
+              payload: { categories: buildCategories, items: buildItems },
+            }),
+          });
+          const saveJson = await saveRes.json().catch(() => ({}));
+          if (!saveRes.ok) {
+            throw new Error(saveJson.detail || saveJson.error || 'Failed to save draft');
+          }
+          setToastMessage('Draft saved');
+
+          const res = await fetch(`/api/publish-menu${debug ? '?debug=1' : ''}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ restaurant_id: restaurantId }),
+            body: JSON.stringify({ restaurantId }),
           });
           const json = await res.json().catch(() => ({}));
           if (!res.ok) {
-            throw new Error(json.error || 'Failed to publish menu');
+            const msg = debug && (json.detail || json.step)
+              ? `${json.step ? json.step + ': ' : ''}${json.detail || json.error}`
+              : json.error || 'Failed to publish menu';
+            throw new Error(msg);
           }
           if (process.env.NODE_ENV === 'development') {
             console.debug('[publish] replaced', json);
