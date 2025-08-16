@@ -122,8 +122,7 @@ export default function MenuBuilder() {
   const draftErrorShown = useRef(false);
   const [publishing, setPublishing] = useState(false);
   const router = useRouter();
-  const debug =
-    process.env.NODE_ENV !== 'production' && router.query.debug === '1';
+  const isDev = process.env.NODE_ENV !== 'production';
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -139,16 +138,14 @@ export default function MenuBuilder() {
     (async () => {
       try {
         const res = await fetch(
-          `/api/menu-builder?restaurant_id=${restaurantId}${
-            debug ? '&debug=1' : ''
-          }`
+          `/api/menu-builder?restaurant_id=${restaurantId}&withAddons=1`
         );
         if (!res.ok) throw new Error('Failed to load draft');
-        const { payload } = await res.json();
-        const cats = Array.isArray(payload.categories)
-          ? payload.categories
+        const { draft } = await res.json();
+        const cats = Array.isArray(draft?.categories)
+          ? draft.categories
           : [];
-        const itemsArr = Array.isArray(payload.items) ? payload.items : [];
+        const itemsArr = Array.isArray(draft?.items) ? draft.items : [];
         const items = itemsArr.map((it: any) => ({
           ...it,
           addons: Array.isArray(it.addons) ? it.addons : [],
@@ -173,23 +170,20 @@ export default function MenuBuilder() {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       try {
-        const res = await fetch(
-          `/api/menu-builder${debug ? '?debug=1' : ''}`,
-          {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              restaurantId,
-              payload: {
-                categories: buildCategories,
-                items: buildItems,
-              },
-            }),
-          }
-        );
+        const res = await fetch(`/api/menu-builder`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            restaurantId,
+            data: {
+              categories: buildCategories,
+              items: buildItems,
+            },
+          }),
+        });
         const json = await res.json().catch(() => ({}));
         if (!res.ok) {
-          throw new Error(json.detail || json.error || 'Failed to save draft');
+          throw new Error(json.error || 'Failed to save draft');
         }
         draftErrorShown.current = false;
         setToastMessage('Draft saved');
@@ -200,7 +194,7 @@ export default function MenuBuilder() {
         if (!draftErrorShown.current) {
           console.error(err);
           setToastMessage(
-            debug && err.message ? `Draft save failed: ${err.message}` : 'Draft save failed'
+            isDev && err.message ? `Draft save failed: ${err.message}` : 'Draft save failed'
           );
           draftErrorShown.current = true;
         }
@@ -431,14 +425,12 @@ export default function MenuBuilder() {
     if (itemsData && itemsData.length) {
       try {
         const linkRes = await fetch(
-          `/api/menu-builder?restaurant_id=${rid}&addons=1${
-            debug ? '&debug=1' : ''
-          }`
+          `/api/menu-builder?restaurant_id=${rid}&withAddons=1`
         );
         if (!linkRes.ok) throw new Error('Failed to fetch addon links');
-        const { links } = await linkRes.json();
+        const { addonLinks } = await linkRes.json();
         const map: Record<number, string[]> = {};
-        (links || []).forEach((r: any) => {
+        (addonLinks || []).forEach((r: any) => {
           if (!map[r.item_id]) map[r.item_id] = [];
           map[r.item_id].push(String(r.group_id));
         });
@@ -521,30 +513,30 @@ export default function MenuBuilder() {
         try {
           setPublishing(true);
           // Save draft before publishing
-          const saveRes = await fetch(`/api/menu-builder${debug ? '?debug=1' : ''}`, {
+          const saveRes = await fetch(`/api/menu-builder`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               restaurantId,
-              payload: { categories: buildCategories, items: buildItems },
+              data: { categories: buildCategories, items: buildItems },
             }),
           });
           const saveJson = await saveRes.json().catch(() => ({}));
           if (!saveRes.ok) {
-            throw new Error(saveJson.detail || saveJson.error || 'Failed to save draft');
+            throw new Error(saveJson.error || 'Failed to save draft');
           }
           setToastMessage('Draft saved');
 
-          const res = await fetch(`/api/menu-builder${debug ? '?debug=1' : ''}`, {
+          const res = await fetch(`/api/menu-builder`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ restaurantId }),
           });
           const json = await res.json().catch(() => ({}));
           if (!res.ok) {
-            const msg = debug && (json.detail || json.step)
-              ? `${json.step ? json.step + ': ' : ''}${json.detail || json.error}`
-              : json.error || 'Failed to publish menu';
+            const msg = isDev
+              ? `Publish failed: ${json.hint || json.error}`
+              : 'Failed to publish menu';
             throw new Error(msg);
           }
           if (process.env.NODE_ENV === 'development') {

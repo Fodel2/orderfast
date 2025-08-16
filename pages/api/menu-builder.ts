@@ -1,14 +1,10 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { getServerClient } from '../../lib/supaServer';
+import { supaServer } from '@/lib/supaServer';
 
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  const debug =
-    process.env.NODE_ENV !== 'production' &&
-    (req.query.debug === '1' || req.headers['x-debug'] === '1');
-
   const restaurantId =
     req.method === 'GET'
       ? (req.query.restaurant_id as string | undefined)
@@ -18,58 +14,58 @@ export default async function handler(
     return res.status(400).json({ error: 'missing_restaurant_id' });
   }
 
-  let supabase;
-  try {
-    supabase = getServerClient();
-  } catch (err: any) {
-    if (process.env.NODE_ENV !== 'production') {
-      console.error('[api/menu-builder]', err);
-    }
-    return res.status(500).json({ error: 'server_error', details: 'missing_env' });
-  }
-
+  const supabase = supaServer;
   let step = '';
 
   try {
     if (req.method === 'GET') {
-      if (req.query.addons === '1') {
-        step = 'load-addon-links';
-        const { data, error } = await supabase
-          .from('item_addon_links')
-          .select('item_id,group_id,menu_items!inner(restaurant_id)')
-          .eq('menu_items.restaurant_id', restaurantId);
-        if (error) throw { step, error };
-        const links = (data || []).map((r: any) => ({
-          item_id: r.item_id,
-          group_id: r.group_id,
-        }));
-        return res.status(200).json({ links });
-      }
-
       step = 'load-draft';
       const { data, error } = await supabase
         .from('menu_builder_drafts')
-        .select('payload')
+        .select('data')
         .eq('restaurant_id', restaurantId)
         .order('updated_at', { ascending: false })
         .limit(1)
         .maybeSingle();
       if (error) throw { step, error };
-      return res.status(200).json({ draft: data?.payload || null });
+      const draft = data?.data || null;
+      if (req.query.withAddons === '1') {
+        step = 'load-addon-groups';
+        const { data: groups, error: grpErr } = await supabase
+          .from('addon_groups')
+          .select('*')
+          .eq('restaurant_id', restaurantId)
+          .order('id');
+        if (grpErr) throw { step, error: grpErr };
+        step = 'load-addon-links';
+        const { data: linksData, error: linkErr } = await supabase
+          .from('item_addon_links')
+          .select('item_id,group_id,menu_items!inner(restaurant_id)')
+          .eq('menu_items.restaurant_id', restaurantId);
+        if (linkErr) throw { step, error: linkErr };
+        const addonLinks = (linksData || []).map((r: any) => ({
+          item_id: r.item_id,
+          group_id: r.group_id,
+        }));
+        return res
+          .status(200)
+          .json({ draft, addonGroups: groups || [], addonLinks });
+      }
+      return res.status(200).json({ draft });
     }
 
     if (req.method === 'PUT') {
       step = 'save-draft';
-      const payload = req.body?.payload;
-      if (!payload || typeof payload !== 'object') {
-        return res.status(400).json({ error: 'missing_payload' });
+      const data = req.body?.data;
+      if (!data || typeof data !== 'object') {
+        return res.status(400).json({ error: 'missing_data' });
       }
       const { error } = await supabase
         .from('menu_builder_drafts')
         .upsert(
           {
             restaurant_id: restaurantId,
-            payload,
+            data,
             updated_at: new Date().toISOString(),
           },
           { onConflict: 'restaurant_id' }
@@ -88,16 +84,16 @@ export default async function handler(
       step = 'load-draft';
       const { data: draftRow, error: draftErr } = await supabase
         .from('menu_builder_drafts')
-        .select('payload')
+        .select('data')
         .eq('restaurant_id', restaurantId)
         .order('updated_at', { ascending: false })
         .limit(1)
         .maybeSingle();
       if (draftErr) throw { step, error: draftErr };
-      if (!draftRow || !draftRow.payload) {
+      if (!draftRow || !draftRow.data) {
         return res.status(400).json({ error: 'no_draft' });
       }
-      const draft = draftRow.payload as any;
+      const draft = draftRow.data as any;
 
       step = 'load-live';
       const { data: existingItems, error: itemsErr } = await supabase
@@ -231,21 +227,17 @@ export default async function handler(
   } catch (err: any) {
     const stepName = err.step || step;
     const supErr = err.error || err;
+    console.error(err);
     if (process.env.NODE_ENV !== 'production') {
       console.error('[api/menu-builder]', stepName, supErr);
       if (req.method === 'POST') {
         console.error('[publish-menu]', stepName, supErr);
       }
+      return res
+        .status(500)
+        .json({ error: supErr?.message || 'server_error', hint: stepName });
     }
-    const body: any = { error: 'server_error' };
-    if (debug) {
-      body.details = {
-        step: stepName,
-        message: supErr?.message,
-        code: supErr?.code,
-      };
-    }
-    return res.status(500).json(body);
+    return res.status(500).json({ error: 'server_error' });
   }
 }
 
