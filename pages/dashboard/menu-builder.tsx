@@ -429,15 +429,16 @@ export default function MenuBuilder() {
 
     let itemsWithAddons = itemsData || [];
     if (itemsData && itemsData.length) {
-      const { data: linkRows, error: linkErr } = await supabase
-        .from('item_addon_links')
-        .select('item_id,group_id')
-        .in('item_id', itemsData.map((i) => i.id));
-      if (linkErr) {
-        console.error('Error fetching addon links:', linkErr);
-      } else {
+      try {
+        const linkRes = await fetch(
+          `/api/menu-builder?restaurant_id=${rid}&addons=1${
+            debug ? '&debug=1' : ''
+          }`
+        );
+        if (!linkRes.ok) throw new Error('Failed to fetch addon links');
+        const { links } = await linkRes.json();
         const map: Record<number, string[]> = {};
-        linkRows?.forEach((r) => {
+        (links || []).forEach((r: any) => {
           if (!map[r.item_id]) map[r.item_id] = [];
           map[r.item_id].push(String(r.group_id));
         });
@@ -445,6 +446,8 @@ export default function MenuBuilder() {
           ...i,
           addons: map[i.id] || [],
         }));
+      } catch (err) {
+        console.error('Error fetching addon links:', err);
       }
     }
 
@@ -532,7 +535,7 @@ export default function MenuBuilder() {
           }
           setToastMessage('Draft saved');
 
-          const res = await fetch(`/api/publish-menu${debug ? '?debug=1' : ''}`, {
+          const res = await fetch(`/api/menu-builder${debug ? '?debug=1' : ''}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ restaurantId }),
@@ -547,8 +550,9 @@ export default function MenuBuilder() {
           if (process.env.NODE_ENV === 'development') {
             console.debug('[publish] replaced', json);
           }
+          const counts = json.counts || {};
           setToastMessage(
-            `Published ${json.categoriesInserted} categories and ${json.itemsInserted} items`
+            `Published ${counts.insertedCats} categories and ${counts.insertedItems} items`
           );
           fetchData(restaurantId);
         } catch (err: any) {

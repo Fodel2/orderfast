@@ -4,8 +4,10 @@ export function getServerClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) {
-    console.error('[env] Missing Supabase server env');
-    throw new Error('Missing Supabase server env');
+    if (process.env.NODE_ENV !== 'production') {
+      console.error('[supaServer] missing env');
+    }
+    throw new Error('missing_env');
   }
   return createClient(url, key, { auth: { persistSession: false } });
 }
