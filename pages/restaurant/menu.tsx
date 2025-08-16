@@ -107,7 +107,8 @@ export default function RestaurantMenuPage() {
         .from('menu_categories')
         .select('id,name,description,image_url,sort_order,restaurant_id')
         .eq('restaurant_id', restaurantId)
-        .order('sort_order', { ascending: true, nullsFirst: false })
+        .is('archived_at', null)
+        .order('sort_order', { ascending: true })
         .order('name', { ascending: true });
 
       const { data: itemData, error: itemErr } = await supabase
@@ -116,7 +117,8 @@ export default function RestaurantMenuPage() {
           'id,name,description,price,image_url,is_vegetarian,is_vegan,is_18_plus,available,out_of_stock_until,sort_order,stock_status,stock_return_date,category_id'
         )
         .eq('restaurant_id', restaurantId)
-        .order('sort_order', { ascending: true, nullsFirst: false })
+        .is('archived_at', null)
+        .order('sort_order', { ascending: true })
         .order('name', { ascending: true });
 
       const liveItemIds = (itemData || []).map((r: any) => r.id);
