@@ -3,6 +3,7 @@ import Cropper, { Area } from 'react-easy-crop';
 import { CloudArrowUpIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { Trash2 } from 'lucide-react';
 import { supabase } from '../utils/supabaseClient';
+import { STORAGE_BUCKET } from '../lib/storage';
 import CategoryMultiSelect from './CategoryMultiSelect';
 import AddonMultiSelect from './AddonMultiSelect';
 import { updateItemAddonLinks } from '../utils/updateItemAddonLinks';
@@ -198,14 +199,17 @@ export default function AddItemModal({
     if (imageFile && imageUrl && imageUrl.startsWith('data:')) {
       const path = `menu-images/${Date.now()}-${imageFile.name}`;
       const { error: uploadError } = await supabase.storage
-        .from('menu-images')
+        .from(STORAGE_BUCKET)
         .upload(path, imageFile, { upsert: true });
       if (uploadError) {
-        alert('Failed to upload image: ' + uploadError.message);
+        const errText = [uploadError.name, uploadError.message]
+          .filter(Boolean)
+          .join(': ');
+        alert('Failed to upload image: ' + errText);
         return;
       }
       finalImageUrl =
-        supabase.storage.from('menu-images').getPublicUrl(path).data.publicUrl;
+        supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path).data.publicUrl;
     }
     const itemData = {
       restaurant_id: restaurantId,

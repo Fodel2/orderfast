@@ -16,6 +16,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useRouter } from 'next/router';
 import { supabase } from '../../lib/supabaseClient';
+import { STORAGE_BUCKET } from '../../lib/storage';
 import AddItemModal from '../../components/AddItemModal';
 import AddCategoryModal from '../../components/AddCategoryModal';
 import Toast from '../../components/Toast';
@@ -369,8 +370,13 @@ export default function MenuBuilder() {
     setUploadingHero(true);
     const ext = imageFile.name.split('.').pop() || 'jpg';
     const path = `restaurants/${restaurantId}/menu-header.${ext}`;
+    if (!STORAGE_BUCKET) {
+      setToastMessage('Storage bucket not configured');
+      setUploadingHero(false);
+      return;
+    }
     const { error: upErr } = await supabase.storage
-      .from('public-assets')
+      .from(STORAGE_BUCKET)
       .upload(path, imageFile, {
         upsert: true,
       });
@@ -378,12 +384,15 @@ export default function MenuBuilder() {
       setUploadPct(100);
     } else {
       console.error('upload failed', upErr);
-      setToastMessage('Upload failed');
+      const errText = [upErr.name, upErr.message]
+        .filter(Boolean)
+        .join(': ');
+      setToastMessage(errText);
       setUploadingHero(false);
       return;
     }
     const publicUrl = supabase.storage
-      .from('public-assets')
+      .from(STORAGE_BUCKET)
       .getPublicUrl(path).data.publicUrl;
     const res = await fetch('/api/restaurants/menu-header', {
       method: 'PUT',
