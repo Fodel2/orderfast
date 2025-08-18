@@ -27,6 +27,10 @@ interface Restaurant {
   name: string;
   logo_url: string | null;
   website_description: string | null;
+  menu_header_image_url?: string | null;
+  menu_header_focal_x?: number | null;
+  menu_header_focal_y?: number | null;
+  menu_header_image_updated_at?: string | null;
 }
 
 interface Category {
@@ -197,26 +201,15 @@ export default function RestaurantMenuPage() {
     const sectionsRef = useRef<Record<string, HTMLElement | null>>({});
     const qp = router?.query || {};
     const headerImg =
-      (
-        restaurant &&
-          typeof restaurant === 'object' &&
-          'header_image' in (restaurant as any) &&
-          typeof (restaurant as any).header_image === 'string' &&
-          (restaurant as any).header_image.length > 0
-          ? ((restaurant as any).header_image as string)
-          : ''
-      ) ||
-      (
-        restaurant &&
-          typeof restaurant === 'object' &&
-          'hero_image' in (restaurant as any) &&
-          typeof (restaurant as any).hero_image === 'string' &&
-          (restaurant as any).hero_image.length > 0
-          ? ((restaurant as any).hero_image as string)
-          : ''
-      ) ||
-      (typeof (qp as any).header === 'string' ? ((qp as any).header as string) : '') ||
-      '';
+      restaurant?.menu_header_image_url
+        ? `${restaurant.menu_header_image_url}${
+            restaurant.menu_header_image_updated_at
+              ? `?v=${new Date(restaurant.menu_header_image_updated_at).getTime()}`
+              : ''
+          }`
+        : '';
+    const headerFocalX = restaurant?.menu_header_focal_x ?? 0.5;
+    const headerFocalY = restaurant?.menu_header_focal_y ?? 0.5;
 
     useEffect(() => {
       if (!Array.isArray(categories) || categories.length === 0) return;
@@ -271,6 +264,8 @@ export default function RestaurantMenuPage() {
             imageUrl={headerImg || undefined}
             logoUrl={restaurant?.logo_url ?? null}
             accentHex={(brand?.brand as string) || undefined}
+            focalX={headerFocalX}
+            focalY={headerFocalY}
           />
           {restaurant?.website_description && (
             <p className="text-gray-600 text-center">{restaurant.website_description}</p>

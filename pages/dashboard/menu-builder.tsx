@@ -34,6 +34,7 @@ import {
   ArrowsUpDownIcon,
   TrashIcon,
 } from '@heroicons/react/24/outline';
+import ImageEditorModal from '@/components/ImageEditorModal';
 
 const normalizeCats = (arr: any[]) =>
   [...arr]
@@ -99,6 +100,11 @@ export default function MenuBuilder() {
   const [restaurantId, setRestaurantId] = useState<number | null>(null);
   const [collapsedCats, setCollapsedCats] = useState<Set<number>>(new Set());
   const [heroImage, setHeroImage] = useState<string | null>(null);
+  const [heroFocal, setHeroFocal] = useState<{ x: number; y: number }>({ x: 0.5, y: 0.5 });
+  const [editorImage, setEditorImage] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [uploadPct, setUploadPct] = useState(0);
+  const [uploadingHero, setUploadingHero] = useState(false);
   const [activeTab, setActiveTab] = useState<'menu' | 'addons' | 'stock' | 'build'>('menu');
   const [toastMessage, setToastMessage] = useState('');
   // Draft menu state for the Build tab
@@ -328,14 +334,72 @@ export default function MenuBuilder() {
 
   const handleHeroChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const url = URL.createObjectURL(file);
-      setHeroImage(url);
-    }
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      if (img.width < 1600 || img.height < 900) {
+        setToastMessage('Image must be at least 1600x900');
+        URL.revokeObjectURL(url);
+        if (fileRef.current) fileRef.current.value = '';
+        return;
+      }
+      setImageFile(file);
+      setEditorImage(url);
+    };
+    img.src = url;
   };
 
-  const removeHeroImage = () => {
+  const removeHeroImage = async () => {
+    if (!restaurantId) return;
+    setUploadingHero(true);
+    await fetch('/api/restaurants/menu-header', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ restaurantId, imageUrl: null, focalX: null, focalY: null }),
+    });
     setHeroImage(null);
+    setHeroFocal({ x: 0.5, y: 0.5 });
+    setUploadingHero(false);
+    if (fileRef.current) fileRef.current.value = '';
+  };
+
+  const handleHeroSave = async (coords: { x: number; y: number }) => {
+    if (!imageFile || !restaurantId) return;
+    setUploadingHero(true);
+    const ext = imageFile.name.split('.').pop() || 'jpg';
+    const path = `restaurants/${restaurantId}/menu-header.${ext}`;
+    const { error: upErr } = await supabase.storage
+      .from('public-assets')
+      .upload(path, imageFile, {
+        upsert: true,
+        onUploadProgress: (e) => setUploadPct(Math.round((e?.progress || 0) * 100)),
+      });
+    if (upErr) {
+      console.error('upload failed', upErr);
+      setToastMessage('Upload failed');
+      setUploadingHero(false);
+      return;
+    }
+    const publicUrl = supabase.storage
+      .from('public-assets')
+      .getPublicUrl(path).data.publicUrl;
+    const res = await fetch('/api/restaurants/menu-header', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ restaurantId, imageUrl: publicUrl, focalX: coords.x, focalY: coords.y }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: 'Failed to save' }));
+      setToastMessage(err.message);
+    } else {
+      setHeroImage(`${publicUrl}?v=${Date.now()}`);
+      setHeroFocal(coords);
+    }
+    setUploadingHero(false);
+    setEditorImage(null);
+    setImageFile(null);
+    setUploadPct(0);
     if (fileRef.current) fileRef.current.value = '';
   };
 
@@ -433,6 +497,26 @@ export default function MenuBuilder() {
 
   const fetchData = async (rid: number) => {
     setLoading(true);
+
+    const { data: rest } = await supabase
+      .from('restaurants')
+      .select(
+        'menu_header_image_url,menu_header_focal_x,menu_header_focal_y,menu_header_image_updated_at'
+      )
+      .eq('id', rid)
+      .maybeSingle();
+
+    if (rest) {
+      const url = rest.menu_header_image_url;
+      const updated = rest.menu_header_image_updated_at;
+      setHeroImage(
+        url ? `${url}${updated ? `?v=${new Date(updated).getTime()}` : ''}` : null
+      );
+      setHeroFocal({
+        x: typeof rest.menu_header_focal_x === 'number' ? rest.menu_header_focal_x : 0.5,
+        y: typeof rest.menu_header_focal_y === 'number' ? rest.menu_header_focal_y : 0.5,
+      });
+    }
 
     const { data: categoriesData, error: catError } = await supabase
       .from('menu_categories')
@@ -581,35 +665,52 @@ export default function MenuBuilder() {
   return (
     <DashboardLayout>
       {/* Top title and hero image */}
-      <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
-        <div>
-          <h1 className="text-3xl font-bold">Menu Manager</h1>
-          <p className="text-sm text-gray-600 mt-1">Build and manage your categories, items, add-ons, and stock in real time.</p>
-        </div>
-        <div className="shrink-0">
-          <div
-            onClick={() => fileRef.current?.click()}
-            className="relative w-40 h-24 border-2 border-dashed rounded-lg flex items-center justify-center cursor-pointer overflow-hidden text-gray-400"
-          >
-            {heroImage ? (
-              <>
-                <img src={heroImage} alt="Hero" className="object-cover w-full h-full" />
-                <button
-                  type="button"
-                  onClick={removeHeroImage}
-                  aria-label="Remove image"
-                  className="absolute top-1 right-1 bg-white/70 rounded-full p-1 hover:bg-white"
-                >
-                  <TrashIcon className="w-4 h-4 text-red-600" />
-                </button>
-              </>
-            ) : (
-              <span className="text-sm">Upload image</span>
-            )}
+        <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
+          <div>
+            <h1 className="text-3xl font-bold">Menu Manager</h1>
+            <p className="text-sm text-gray-600 mt-1">Build and manage your categories, items, add-ons, and stock in real time.</p>
           </div>
-          <input type="file" accept="image/*" ref={fileRef} onChange={handleHeroChange} className="hidden" aria-label="Upload hero image" />
+          <div className="shrink-0">
+            <div
+              onClick={() => !uploadingHero && fileRef.current?.click()}
+              className="relative w-40 h-24 border-2 border-dashed rounded-lg flex items-center justify-center cursor-pointer overflow-hidden text-gray-400"
+            >
+              {heroImage ? (
+                <>
+                  <img
+                    src={heroImage}
+                    alt="Hero"
+                    className="object-cover w-full h-full"
+                    style={{ objectPosition: `${heroFocal.x * 100}% ${heroFocal.y * 100}%` }}
+                  />
+                  <button
+                    type="button"
+                    onClick={removeHeroImage}
+                    aria-label="Remove image"
+                    className="absolute top-1 right-1 bg-white/70 rounded-full p-1 hover:bg-white"
+                  >
+                    <TrashIcon className="w-4 h-4 text-red-600" />
+                  </button>
+                </>
+              ) : (
+                <span className="text-sm">Upload image</span>
+              )}
+              {uploadingHero && (
+                <div className="absolute inset-0 bg-white/70 flex items-center justify-center text-sm">
+                  {uploadPct ? `${uploadPct}%` : 'Uploading...'}
+                </div>
+              )}
+            </div>
+            <input
+              type="file"
+              accept="image/*"
+              ref={fileRef}
+              onChange={handleHeroChange}
+              className="hidden"
+              aria-label="Upload hero image"
+            />
+          </div>
         </div>
-      </div>
 
       {/* Tab bar */}
       <div className="border-b border-gray-200 mb-4">
@@ -1079,19 +1180,30 @@ export default function MenuBuilder() {
           }}
         />
       )}
-      {confirmState && (
-        <ConfirmModal
-          show={true}
-          title={confirmState.title}
-          message={confirmState.message}
-          onConfirm={() => {
-            confirmState.action();
-            setConfirmState(null);
-          }}
-          onCancel={() => setConfirmState(null)}
-        />
-      )}
-      <Toast message={toastMessage} onClose={() => setToastMessage('')} />
+        {confirmState && (
+          <ConfirmModal
+            show={true}
+            title={confirmState.title}
+            message={confirmState.message}
+            onConfirm={() => {
+              confirmState.action();
+              setConfirmState(null);
+            }}
+            onCancel={() => setConfirmState(null)}
+          />
+        )}
+        {editorImage && (
+          <ImageEditorModal
+            src={editorImage}
+            open={true}
+            onCancel={() => {
+              setEditorImage(null);
+              setImageFile(null);
+            }}
+            onSave={handleHeroSave}
+          />
+        )}
+        <Toast message={toastMessage} onClose={() => setToastMessage('')} />
       <ViewItemModal
         showModal={showViewModal}
         item={selectedItem}
