@@ -1,6 +1,19 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { supaServer } from '@/lib/supaServer';
 
+const isProd = process.env.NODE_ENV === 'production';
+
+function resolveRestaurantId(req: NextApiRequest): string | undefined {
+  const q =
+    (typeof req.query.restaurant_id === 'string' && req.query.restaurant_id) ||
+    (typeof req.query.rid === 'string' && req.query.rid) ||
+    (typeof (req.body as any)?.restaurantId === 'string' && (req.body as any).restaurantId) ||
+    undefined;
+  if (q) return q;
+  if (!isProd) return process.env.NEXT_PUBLIC_DEMO_RESTAURANT_ID;
+  return undefined;
+}
+
 type DraftPayload = {
   categories: Array<{ id?: string; tempId?: string; name: string; description?: string|null; sort_order?: number; image_url?: string|null }>;
   items: Array<{
@@ -13,45 +26,65 @@ type DraftPayload = {
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const supabase = supaServer();
+  const restaurantId = resolveRestaurantId(req);
+  const path = req.url || '/api/menu-builder';
+
+  if (!restaurantId) {
+    return res.status(400).json({ message: 'restaurant_id is required' });
+  }
 
   try {
     if (req.method === 'GET') {
-      const restaurantId = (req.query.restaurant_id as string) || (req.query.rid as string);
-      if (!restaurantId) return res.status(400).json({ error: 'restaurant_id is required' });
-
       const { data, error } = await supabase
-        .from('menu_builder_drafts')
-        .select('payload')
+        .from('menu_drafts')
+        .select('draft, version, updated_at')
         .eq('restaurant_id', restaurantId)
         .maybeSingle();
 
       if (error) {
-        console.error('[draft:load]', error);
-        return res.status(500).json({ where: 'draft_load', error: error.message, code: error.code, details: error.details });
+        console.error('[draft:load]', { path, restaurantId, error });
+        return res
+          .status(500)
+          .json({ message: error.message });
       }
-      return res.status(200).json({ payload: data?.payload ?? null });
+
+      if (!data) {
+        const { data: inserted, error: insertErr } = await supabase
+          .from('menu_drafts')
+          .insert({ restaurant_id: restaurantId, draft: {} })
+          .select('draft, version, updated_at')
+          .single();
+        if (insertErr) {
+          console.error('[draft:init]', { path, restaurantId, error: insertErr });
+          return res.status(500).json({ message: insertErr.message });
+        }
+        return res.status(200).json(inserted);
+      }
+      return res.status(200).json(data);
     }
 
     if (req.method === 'PUT') {
-      const { restaurantId, draft } = req.body as { restaurantId?: string; draft?: DraftPayload };
-      if (!restaurantId || !draft) return res.status(400).json({ error: 'restaurantId and draft are required' });
+      const draft = (req.body as { draft?: DraftPayload }).draft;
+      if (!draft) return res.status(400).json({ message: 'draft is required' });
 
-      const { error } = await supabase
-        .from('menu_builder_drafts')
-        .upsert({ restaurant_id: restaurantId, payload: draft, updated_at: new Date().toISOString() }, { onConflict: 'restaurant_id' });
+      const { data, error } = await supabase
+        .from('menu_drafts')
+        .upsert({ restaurant_id: restaurantId, draft }, { onConflict: 'restaurant_id' })
+        .select('draft, version, updated_at')
+        .single();
 
       if (error) {
-        console.error('[draft:save]', error);
-        return res.status(500).json({ where: 'draft_save', error: error.message, code: error.code, details: error.details });
+        console.error('[draft:save]', { path, restaurantId, error });
+        return res.status(500).json({ message: error.message });
       }
-      return res.status(200).json({ ok: true });
+      return res.status(200).json(data);
     }
 
     res.setHeader('Allow', ['GET', 'PUT']);
     return res.status(405).end('Method Not Allowed');
   } catch (e: any) {
-    console.error('[draft:unhandled]', e);
-    return res.status(500).json({ where: 'draft_unhandled', error: e?.message || 'server_error' });
+    console.error('[draft:unhandled]', { path, restaurantId, error: e });
+    return res.status(500).json({ message: e?.message || 'server_error' });
   }
 }
 
