@@ -5,7 +5,10 @@ import publishHandler from '../pages/api/publish-menu';
 import { supaServer } from '../lib/supaServer';
 
 describe('menu builder API', () => {
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) {
+  if (
+    !process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    !(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL)
+  ) {
     test.skip('Supabase env not configured', () => {});
     return;
   }
@@ -26,9 +29,10 @@ describe('menu builder API', () => {
       method: 'PUT',
       body: { restaurantId: rid, draft },
     });
-    await menuHandler(req, res);
-    expect(res._getStatusCode()).toBe(200);
-    expect(JSON.parse(res._getData()).ok).toBe(true);
+      await menuHandler(req, res);
+      expect(res._getStatusCode()).toBe(200);
+      const saved = JSON.parse(res._getData());
+      expect(saved.draft).toBeDefined();
 
     ({ req, res } = createMocks({ method: 'POST', body: { restaurantId: rid } }));
     await publishHandler(req, res);

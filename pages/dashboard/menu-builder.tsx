@@ -121,6 +121,7 @@ export default function MenuBuilder() {
   const [stockLoading, setStockLoading] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const saveTimer = useRef<NodeJS.Timeout | null>(null);
+  const saveAbort = useRef<AbortController | null>(null);
   const draftErrorShown = useRef(false);
   const [publishing, setPublishing] = useState(false);
   const router = useRouter();
@@ -181,22 +182,25 @@ export default function MenuBuilder() {
   useEffect(() => {
     if (!restaurantId || !draftLoaded || !draftDirty) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
+    if (saveAbort.current) saveAbort.current.abort();
     saveTimer.current = setTimeout(async () => {
       try {
+        saveAbort.current = new AbortController();
         const res = await fetch(`/api/menu-builder`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             restaurantId,
-            data: {
+            draft: {
               categories: buildCategories,
               items: buildItems,
             },
           }),
+          signal: saveAbort.current.signal,
         });
         const json = await res.json().catch(() => ({}));
         if (!res.ok) {
-          throw new Error(json.error || 'Failed to save draft');
+          throw new Error(json.message || json.error || 'Failed to save draft');
         }
         draftErrorShown.current = false;
         setToastMessage('Draft saved');
@@ -206,6 +210,7 @@ export default function MenuBuilder() {
           console.debug('[menu-builder] draft saved');
         }
       } catch (err: any) {
+        if (err.name === 'AbortError') return;
         if (!draftErrorShown.current) {
           console.error(err);
           setToastMessage(
@@ -217,6 +222,7 @@ export default function MenuBuilder() {
     }, 600);
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveAbort.current?.abort();
     };
   }, [restaurantId, draftLoaded, buildCategories, buildItems, draftDirty]);
 
