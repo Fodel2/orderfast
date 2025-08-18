@@ -10,9 +10,14 @@ export async function getAddonsForItem(
   const { data, error } = await supabase
     .from('item_addon_links')
     .select(
-      'addon_groups(id,name,required,multiple_choice,max_group_select,max_option_quantity, addon_options(id,name,price,is_vegetarian,is_vegan,is_18_plus,image_url))'
+      `addon_groups!inner(
+        id,name,required,multiple_choice,max_group_select,max_option_quantity,
+        addon_options!inner(id,name,price,is_vegetarian,is_vegan,is_18_plus,image_url)
+      )`
     )
-    .eq('item_id', itemId);
+    .eq('item_id', itemId)
+    .is('addon_groups.archived_at', null)
+    .is('addon_groups.addon_options.archived_at', null);
 
   if (error) throw error;
 
