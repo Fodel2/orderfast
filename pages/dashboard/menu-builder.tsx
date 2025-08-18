@@ -373,9 +373,10 @@ export default function MenuBuilder() {
       .from('public-assets')
       .upload(path, imageFile, {
         upsert: true,
-        onUploadProgress: (e) => setUploadPct(Math.round((e?.progress || 0) * 100)),
       });
-    if (upErr) {
+    if (!upErr) {
+      setUploadPct(100);
+    } else {
       console.error('upload failed', upErr);
       setToastMessage('Upload failed');
       setUploadingHero(false);
