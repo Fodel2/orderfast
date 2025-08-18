@@ -234,11 +234,13 @@ export default function MenuBuilder() {
         .from('menu_categories')
         .select('*')
         .eq('restaurant_id', rid)
+        .is('archived_at', null)
         .order('sort_order', { ascending: true });
       const { data: itemData } = await supabase
         .from('menu_items')
         .select('id,name,category_id,stock_status,stock_return_date')
-        .eq('restaurant_id', rid);
+        .eq('restaurant_id', rid)
+        .is('archived_at', null);
       const mappedCats = (catData || []).map((c) => ({
         id: String(c.id),
         name: c.name,
@@ -255,13 +257,15 @@ export default function MenuBuilder() {
       const { data: groups } = await supabase
         .from('addon_groups')
         .select('id')
-        .eq('restaurant_id', rid);
+        .eq('restaurant_id', rid)
+        .is('archived_at', null);
       let mappedAddons: StockTabProps['addons'] = [];
       if (groups && groups.length) {
         const { data: opts } = await supabase
           .from('addon_options')
           .select('id,name,group_id,stock_status,stock_return_date')
-          .in('group_id', groups.map((g) => g.id));
+          .in('group_id', groups.map((g) => g.id))
+          .is('archived_at', null);
         mappedAddons = (opts || []).map((o) => ({
           id: String(o.id),
           name: o.name,
@@ -434,12 +438,14 @@ export default function MenuBuilder() {
       .from('menu_categories')
       .select('*')
       .eq('restaurant_id', rid)
+      .is('archived_at', null)
       .order('sort_order', { ascending: true });
 
     const { data: itemsData, error: itemsError } = await supabase
       .from('menu_items')
       .select('*')
       .eq('restaurant_id', rid)
+      .is('archived_at', null)
       .order('sort_order', { ascending: true });
 
     let itemsWithAddons = itemsData || [];

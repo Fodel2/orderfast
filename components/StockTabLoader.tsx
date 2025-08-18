@@ -28,7 +28,8 @@ SELECT
   i.stock_status,
   i.stock_return_date
 FROM menu_categories c
-JOIN menu_items i ON i.category_id = c.id;`;
+JOIN menu_items i ON i.category_id = c.id
+WHERE c.archived_at IS NULL AND i.archived_at IS NULL;`;
       const { data, error } = await supabase.rpc('sql', { query });
       if (error) {
         console.error('Failed to fetch stock data', error);
