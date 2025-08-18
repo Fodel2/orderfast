@@ -9,6 +9,10 @@ interface Restaurant {
   name: string;
   logo_url: string | null;
   website_description: string | null;
+  menu_header_image_url?: string | null;
+  menu_header_focal_x?: number | null;
+  menu_header_focal_y?: number | null;
+  menu_header_image_updated_at?: string | null;
 }
 
 export default function WebsitePreview() {

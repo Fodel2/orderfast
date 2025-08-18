@@ -7,6 +7,8 @@ type MenuHeaderProps = {
   imageUrl?: string;         // header/hero image (optional)
   logoUrl?: string | null;   // optional watermark/logo
   accentHex?: string | null; // optional brand accent for overlay
+  focalX?: number | null;
+  focalY?: number | null;
 };
 
 export default function MenuHeader({
@@ -15,6 +17,8 @@ export default function MenuHeader({
   imageUrl,
   logoUrl,
   accentHex,
+  focalX,
+  focalY,
 }: MenuHeaderProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -38,10 +42,6 @@ export default function MenuHeader({
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  const bgStyle: React.CSSProperties = imageUrl
-    ? { backgroundImage: `url(${imageUrl})` }
-    : {};
-
   const overlay =
     accentHex && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(accentHex)
       ? `linear-gradient(180deg, ${accentHex}22, ${accentHex}11, #00000022)`
@@ -58,14 +58,19 @@ export default function MenuHeader({
         ].join(' ')}
       >
       {/* Background image/gradient */}
-      <div
-        className={[
-          'absolute inset-0 bg-center bg-cover',
-          imageUrl ? '' : 'bg-gradient-to-br from-gray-200 via-gray-100 to-gray-200',
-          'opacity-100',
-        ].join(' ')}
-        style={bgStyle}
-      />
+      {imageUrl ? (
+        <img
+          src={imageUrl}
+          alt=""
+          aria-hidden="true"
+          className="absolute inset-0 w-full h-full object-cover"
+          style={{
+            objectPosition: `${((focalX ?? 0.5) * 100).toFixed(2)}% ${((focalY ?? 0.5) * 100).toFixed(2)}%`,
+          }}
+        />
+      ) : (
+        <div className="absolute inset-0 bg-gradient-to-br from-gray-200 via-gray-100 to-gray-200" />
+      )}
       {/* Overlay for contrast */}
       <div
         className="absolute inset-0"
