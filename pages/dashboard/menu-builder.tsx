@@ -104,6 +104,8 @@ export default function MenuBuilder() {
   // Draft menu state for the Build tab
   const [buildCategories, setBuildCategories] = useState<any[]>([]);
   const [buildItems, setBuildItems] = useState<any[]>([]);
+  const [origBuildCategories, setOrigBuildCategories] = useState<any[]>([]);
+  const [origBuildItems, setOrigBuildItems] = useState<any[]>([]);
   const [showDraftItemModal, setShowDraftItemModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
   const [showDraftCategoryModal, setShowDraftCategoryModal] = useState(false);
@@ -140,11 +142,11 @@ export default function MenuBuilder() {
         const res = await fetch(
           `/api/menu-builder?restaurant_id=${restaurantId}&withAddons=1`
         );
-        if (!res.ok) throw new Error('Failed to load draft');
-        const { draft } = await res.json();
-        const cats = Array.isArray(draft?.categories)
-          ? draft.categories
-          : [];
+        if (res.status < 200 || res.status >= 300)
+          throw new Error('Failed to load draft');
+        const json = await res.json().catch(() => ({}));
+        const draft = json.draft ?? json.payload ?? json.data ?? json.draft_json ?? {};
+        const cats = Array.isArray(draft?.categories) ? draft.categories : [];
         const itemsArr = Array.isArray(draft?.items) ? draft.items : [];
         const items = itemsArr.map((it: any) => ({
           ...it,
@@ -152,12 +154,16 @@ export default function MenuBuilder() {
         }));
         setBuildCategories(cats);
         setBuildItems(items);
+        setOrigBuildCategories(cats);
+        setOrigBuildItems(items);
+        setDraftLoaded(true);
       } catch (err) {
         console.error(err);
         setBuildCategories([]);
         setBuildItems([]);
+        setOrigBuildCategories([]);
+        setOrigBuildItems([]);
       }
-      setDraftLoaded(true);
       if (process.env.NODE_ENV === 'development') {
         console.debug('[menu-builder] draft loaded');
       }
@@ -165,8 +171,15 @@ export default function MenuBuilder() {
   }, [restaurantId]);
 
   // Auto-save draft menu to DB with debounce
+  const draftDirty = useMemo(() => {
+    return (
+      !deepEqual(normalizeCats(buildCategories), normalizeCats(origBuildCategories)) ||
+      !deepEqual(normalizeItems(buildItems), normalizeItems(origBuildItems))
+    );
+  }, [buildCategories, origBuildCategories, buildItems, origBuildItems]);
+
   useEffect(() => {
-    if (!restaurantId || !draftLoaded) return;
+    if (!restaurantId || !draftLoaded || !draftDirty) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       try {
@@ -187,6 +200,8 @@ export default function MenuBuilder() {
         }
         draftErrorShown.current = false;
         setToastMessage('Draft saved');
+        setOrigBuildCategories(buildCategories);
+        setOrigBuildItems(buildItems);
         if (process.env.NODE_ENV === 'development') {
           console.debug('[menu-builder] draft saved');
         }
@@ -203,7 +218,7 @@ export default function MenuBuilder() {
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
-  }, [restaurantId, draftLoaded, buildCategories, buildItems]);
+  }, [restaurantId, draftLoaded, buildCategories, buildItems, draftDirty]);
 
   // Load stock data when Stock tab is opened
   useEffect(() => {
