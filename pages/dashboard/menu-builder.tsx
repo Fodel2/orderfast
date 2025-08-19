@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import {
   DndContext,
   PointerSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   closestCenter,
@@ -62,20 +63,26 @@ const normalizeItems = (arr: any[]) =>
 const deepEqual = (a: any, b: any) => JSON.stringify(a) === JSON.stringify(b);
 
 // Small wrapper component used for dnd-kit sortable items
-function SortableWrapper({ id, children }: { id: number; children: React.ReactNode }) {
+function SortableWrapper({
+  id,
+  children,
+}: {
+  id: number;
+  children: (args: {
+    setNodeRef: (node: HTMLElement | null) => void;
+    style: React.CSSProperties;
+    attributes: any;
+    listeners: any;
+  }) => React.ReactNode;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.6 : undefined,
     background: isDragging ? '#f0f0f0' : undefined,
-    cursor: isDragging ? 'grabbing' : 'grab',
   } as React.CSSProperties;
-  return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="select-none">
-      {children}
-    </div>
-  );
+  return <>{children({ setNodeRef, style, attributes, listeners })}</>;
 }
 
 export default function MenuBuilder() {
@@ -84,6 +91,12 @@ export default function MenuBuilder() {
     useSensor(PointerSensor, {
       activationConstraint: {
         distance: 8,
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 200,
+        tolerance: 5,
       },
     })
   );
@@ -324,7 +337,8 @@ export default function MenuBuilder() {
   };
 
   const collapseAll = () => {
-    setCollapsedCats(new Set(categories.map((c) => c.id)));
+    const cats = activeTab === 'build' ? buildCategories : categories;
+    setCollapsedCats(new Set(cats.map((c) => c.id)));
   };
 
   const expandAll = () => {
@@ -593,6 +607,7 @@ export default function MenuBuilder() {
       .from('menu_categories')
       .select('*')
       .eq('restaurant_id', rid)
+      .is('archived_at', null)
       .order('archived_at', { ascending: true, nullsFirst: true })
       .order('sort_order', { ascending: true, nullsFirst: false })
       .order('name', { ascending: true });
@@ -601,6 +616,7 @@ export default function MenuBuilder() {
       .from('menu_items')
       .select('*')
       .eq('restaurant_id', rid)
+      .is('archived_at', null)
       .order('archived_at', { ascending: true, nullsFirst: true })
       .order('sort_order', { ascending: true, nullsFirst: false })
       .order('name', { ascending: true });
@@ -908,88 +924,106 @@ export default function MenuBuilder() {
                 <SortableContext items={categories.map((c) => c.id)} strategy={verticalListSortingStrategy}>
                   {categories.map((cat) => (
                     <SortableWrapper key={cat.id} id={cat.id}>
-                      <div className="bg-white rounded-xl shadow mb-4">
-                        <div className="flex items-start justify-between p-4">
-                    <div className="flex items-start space-x-3">
-                      <ArrowsUpDownIcon className="w-5 h-5 text-gray-400 mt-1" />
-                      <div>
-                        <div className="flex items-center space-x-2">
-                          <h2 className="font-semibold text-lg">{cat.name}</h2>
-                          <span className="text-xs bg-gray-200 rounded-full px-2">
-                            {items.filter((i) => i.category_id === cat.id).length}
-                          </span>
-                        </div>
-                        {cat.description && (
-                          <p className="text-sm text-gray-500">{cat.description}</p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <button
-                        onClick={() => toggleCollapse(cat.id)}
-                        className="p-2 rounded hover:bg-gray-100"
-                        aria-label="Toggle items"
-                        onPointerDown={(e) => e.stopPropagation()}
-                      >
-                        {collapsedCats.has(cat.id) ? (
-                          <ChevronDownIcon className="w-5 h-5" />
-                        ) : (
-                          <ChevronUpIcon className="w-5 h-5" />
-                        )}
-                      </button>
-                      {/* actions removed in read-only menu */}
-                    </div>
-                  </div>
-                  {!collapsedCats.has(cat.id) && (
-                    <div className="px-4 pb-4">
-                      <DndContext
-                        sensors={sensors}
-                        collisionDetection={closestCenter}
-                        onDragEnd={handleItemDragEnd(cat.id)}
-                      >
-                        <SortableContext
-                          items={items
-                            .filter((i) => i.category_id === cat.id)
-                            .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-                            .map((i) => i.id)}
-                          strategy={verticalListSortingStrategy}
-                        >
-                          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                            {items
-                              .filter((item) => item.category_id === cat.id)
-                              .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-                              .map((item) => (
-                                <SortableWrapper key={item.id} id={item.id}>
-                                  <div
-                                    onClick={() => handleItemClick(item)}
-                                    className="cursor-grab bg-gray-50 rounded-lg p-3 flex items-start justify-between"
-                                  >
-                                    <div className="flex items-start space-x-2 overflow-hidden">
-                                      <div className="w-12 h-12 bg-gray-200 rounded flex-shrink-0 overflow-hidden">
-                                        {item.image_url && (
-                                          <img src={item.image_url} alt="" className="w-full h-full object-cover" />
-                                        )}
-                                      </div>
-                                      <div className="truncate">
-                                        <p className="font-medium truncate text-sm">{item.name}</p>
-                                        <p className="text-xs text-gray-500 truncate">{item.description}</p>
-                                      </div>
-                                    </div>
-                                    <div className="flex items-center space-x-2">
-                                      <ArrowsUpDownIcon className="w-4 h-4 text-gray-400" />
-                                      <span className="text-sm font-semibold">${item.price.toFixed(2)}</span>
-                                    </div>
-                                  </div>
-                                </SortableWrapper>
-                              ))}
+                      {({ setNodeRef, style, attributes, listeners }) => (
+                        <div ref={setNodeRef} style={style} className="bg-white rounded-xl shadow mb-4">
+                          <div className="flex items-start justify-between p-4">
+                            <div className="flex items-start space-x-3">
+                              <ArrowsUpDownIcon
+                                {...attributes}
+                                {...listeners}
+                                className="w-5 h-5 text-gray-400 mt-1 cursor-grab active:cursor-grabbing touch-none"
+                              />
+                              <div>
+                                <div className="flex items-center space-x-2">
+                                  <h2 className="font-semibold text-lg">{cat.name}</h2>
+                                  <span className="text-xs bg-gray-200 rounded-full px-2">
+                                    {items.filter((i) => i.category_id === cat.id).length}
+                                  </span>
+                                </div>
+                                {cat.description && (
+                                  <p className="text-sm text-gray-500">{cat.description}</p>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <button
+                                onClick={() => toggleCollapse(cat.id)}
+                                className="p-2 rounded hover:bg-gray-100"
+                                aria-label="Toggle items"
+                                onPointerDown={(e) => e.stopPropagation()}
+                              >
+                                {collapsedCats.has(cat.id) ? (
+                                  <ChevronDownIcon className="w-5 h-5" />
+                                ) : (
+                                  <ChevronUpIcon className="w-5 h-5" />
+                                )}
+                              </button>
+                              {/* actions removed in read-only menu */}
+                            </div>
                           </div>
-                        </SortableContext>
-                      </DndContext>
-                    </div>
-                  )}
-                </div>
-              </SortableWrapper>
-            ))}
+                          {!collapsedCats.has(cat.id) && (
+                            <div className="px-4 pb-4">
+                              <DndContext
+                                sensors={sensors}
+                                collisionDetection={closestCenter}
+                                onDragEnd={handleItemDragEnd(cat.id)}
+                              >
+                                <SortableContext
+                                  items={items
+                                    .filter((i) => i.category_id === cat.id)
+                                    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+                                    .map((i) => i.id)}
+                                  strategy={verticalListSortingStrategy}
+                                >
+                                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                    {items
+                                      .filter((item) => item.category_id === cat.id)
+                                      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+                                      .map((item) => (
+                                        <SortableWrapper key={item.id} id={item.id}>
+                                          {({ setNodeRef, style, attributes, listeners }) => (
+                                            <div ref={setNodeRef} style={style}>
+                                              <div
+                                                onClick={() => handleItemClick(item)}
+                                                className="bg-gray-50 rounded-lg p-3 flex items-start justify-between cursor-pointer"
+                                              >
+                                                <div className="flex items-start space-x-2 overflow-hidden">
+                                                  <div className="w-12 h-12 bg-gray-200 rounded flex-shrink-0 overflow-hidden">
+                                                    {item.image_url && (
+                                                      <img
+                                                        src={item.image_url}
+                                                        alt=""
+                                                        className="w-full h-full object-cover"
+                                                      />
+                                                    )}
+                                                  </div>
+                                                  <div className="truncate">
+                                                    <p className="font-medium truncate text-sm">{item.name}</p>
+                                                    <p className="text-xs text-gray-500 truncate">{item.description}</p>
+                                                  </div>
+                                                </div>
+                                                <div className="flex items-center space-x-2">
+                                                  <ArrowsUpDownIcon
+                                                    {...attributes}
+                                                    {...listeners}
+                                                    className="w-4 h-4 text-gray-400 cursor-grab active:cursor-grabbing touch-none"
+                                                  />
+                                                  <span className="text-sm font-semibold">${item.price.toFixed(2)}</span>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          )}
+                                        </SortableWrapper>
+                                      ))}
+                                  </div>
+                                </SortableContext>
+                              </DndContext>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </SortableWrapper>
+                  ))}
           </SortableContext>
         </DndContext>
             )}
@@ -1053,117 +1087,139 @@ export default function MenuBuilder() {
                 >
                   {buildCategories.map((cat) => (
                     <SortableWrapper key={cat.id} id={cat.id}>
-                      <div className="bg-white rounded-xl shadow mb-4">
-                        <div className="flex items-start justify-between p-4">
-                          <div className="flex items-start space-x-3">
-                            <span className="cursor-grab select-none">☰</span>
-                            <div>
-                              <div className="flex items-center space-x-2">
-                                <h2 className="font-semibold text-lg">{cat.name}</h2>
-                                <span className="text-xs bg-gray-200 rounded-full px-2">
-                                  {buildItems.filter((i) => i.category_id === cat.id).length}
-                                </span>
+                      {({ setNodeRef, style, attributes, listeners }) => (
+                        <div ref={setNodeRef} style={style} className="bg-white rounded-xl shadow mb-4">
+                          <div className="flex items-start justify-between p-4">
+                            <div className="flex items-start space-x-3">
+                              <span
+                                {...attributes}
+                                {...listeners}
+                                className="cursor-grab active:cursor-grabbing select-none touch-none"
+                              >
+                                ☰
+                              </span>
+                              <div>
+                                <div className="flex items-center space-x-2">
+                                  <h2 className="font-semibold text-lg">{cat.name}</h2>
+                                  <span className="text-xs bg-gray-200 rounded-full px-2">
+                                    {buildItems.filter((i) => i.category_id === cat.id).length}
+                                  </span>
+                                </div>
+                                {cat.description && (
+                                  <p className="text-sm text-gray-500">{cat.description}</p>
+                                )}
                               </div>
-                              {cat.description && (
-                                <p className="text-sm text-gray-500">{cat.description}</p>
-                              )}
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <button
+                                onClick={() => toggleCollapse(cat.id)}
+                                className="p-2 rounded hover:bg-gray-100"
+                                aria-label="Toggle items"
+                                onPointerDown={(e) => e.stopPropagation()}
+                              >
+                                {collapsedCats.has(cat.id) ? (
+                                  <ChevronDownIcon className="w-5 h-5" />
+                                ) : (
+                                  <ChevronUpIcon className="w-5 h-5" />
+                                )}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setDraftCategory(cat);
+                                  setShowDraftCategoryModal(true);
+                                }}
+                                onPointerDown={(e) => e.stopPropagation()}
+                                className="p-2 rounded hover:bg-gray-100"
+                                aria-label="Edit category"
+                              >
+                                <PencilSquareIcon className="w-5 h-5" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setDefaultCategoryId(cat.id);
+                                  setSelectedItem(null);
+                                  setShowDraftItemModal(true);
+                                }}
+                                onPointerDown={(e) => e.stopPropagation()}
+                                className="p-2 rounded hover:bg-gray-100"
+                                aria-label="Add item"
+                              >
+                                <PlusCircleIcon className="w-5 h-5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteDraftCategory(cat.id)}
+                                onPointerDown={(e) => e.stopPropagation()}
+                                className="p-2 rounded hover:bg-red-100"
+                                aria-label="Delete category"
+                              >
+                                <TrashIcon className="w-5 h-5 text-red-600" />
+                              </button>
                             </div>
                           </div>
-                          <div className="flex items-center space-x-2">
-                            <button
-                              onClick={() => toggleCollapse(cat.id)}
-                              className="p-2 rounded hover:bg-gray-100"
-                              aria-label="Toggle items"
-                              onPointerDown={(e) => e.stopPropagation()}
-                            >
-                              {collapsedCats.has(cat.id) ? (
-                                <ChevronDownIcon className="w-5 h-5" />
-                              ) : (
-                                <ChevronUpIcon className="w-5 h-5" />
-                              )}
-                            </button>
-                            <button
-                              onClick={() => {
-                                setDraftCategory(cat);
-                                setShowDraftCategoryModal(true);
-                              }}
-                              onPointerDown={(e) => e.stopPropagation()}
-                              className="p-2 rounded hover:bg-gray-100"
-                              aria-label="Edit category"
-                            >
-                              <PencilSquareIcon className="w-5 h-5" />
-                            </button>
-                            <button
-                              onClick={() => {
-                                setDefaultCategoryId(cat.id);
-                                setSelectedItem(null);
-                                setShowDraftItemModal(true);
-                              }}
-                              onPointerDown={(e) => e.stopPropagation()}
-                              className="p-2 rounded hover:bg-gray-100"
-                              aria-label="Add item"
-                            >
-                              <PlusCircleIcon className="w-5 h-5" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteDraftCategory(cat.id)}
-                              onPointerDown={(e) => e.stopPropagation()}
-                              className="p-2 rounded hover:bg-red-100"
-                              aria-label="Delete category"
-                            >
-                              <TrashIcon className="w-5 h-5 text-red-600" />
-                            </button>
-                          </div>
-                        </div>
-                        {!collapsedCats.has(cat.id) && (
-                          <div className="px-4 pb-4">
-                            <DndContext
-                              sensors={sensors}
-                              collisionDetection={closestCenter}
-                              onDragEnd={handleDraftItemDragEnd(cat.id)}
-                            >
-                              <SortableContext
-                                items={buildItems
-                                  .filter((i) => i.category_id === cat.id)
-                                  .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-                                  .map((i) => i.id)}
-                                strategy={verticalListSortingStrategy}
+                          {!collapsedCats.has(cat.id) && (
+                            <div className="px-4 pb-4">
+                              <DndContext
+                                sensors={sensors}
+                                collisionDetection={closestCenter}
+                                onDragEnd={handleDraftItemDragEnd(cat.id)}
                               >
-                                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                                  {buildItems
-                                    .filter((item) => item.category_id === cat.id)
+                                <SortableContext
+                                  items={buildItems
+                                    .filter((i) => i.category_id === cat.id)
                                     .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-                                    .map((item) => (
-                                      <SortableWrapper key={item.id} id={item.id}>
-                                        <div
-                                          onClick={() => handleItemClick(item)}
-                                          className="cursor-grab bg-gray-50 rounded-lg p-3 flex items-start justify-between"
-                                        >
-                                          <div className="flex items-start space-x-2 overflow-hidden">
-                                            <span className="cursor-grab select-none mr-2">☰</span>
-                                          <div className="w-12 h-12 bg-gray-200 rounded flex-shrink-0 overflow-hidden">
-                                            {item.image_url && (
-                                              <img src={item.image_url} alt="" className="object-cover w-full h-full" />
-                                            )}
-                                          </div>
-                                            <div className="truncate">
-                                              <p className="font-medium truncate text-sm">{item.name}</p>
-                                              <p className="text-xs text-gray-500 truncate">{item.description}</p>
+                                    .map((i) => i.id)}
+                                  strategy={verticalListSortingStrategy}
+                                >
+                                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                    {buildItems
+                                      .filter((item) => item.category_id === cat.id)
+                                      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+                                      .map((item) => (
+                                        <SortableWrapper key={item.id} id={item.id}>
+                                          {({ setNodeRef, style, attributes, listeners }) => (
+                                            <div ref={setNodeRef} style={style}>
+                                              <div
+                                                onClick={() => handleItemClick(item)}
+                                                className="bg-gray-50 rounded-lg p-3 flex items-start justify-between cursor-pointer"
+                                              >
+                                                <div className="flex items-start space-x-2 overflow-hidden">
+                                                  <span
+                                                    {...attributes}
+                                                    {...listeners}
+                                                    className="cursor-grab active:cursor-grabbing select-none mr-2 touch-none"
+                                                  >
+                                                    ☰
+                                                  </span>
+                                                  <div className="w-12 h-12 bg-gray-200 rounded flex-shrink-0 overflow-hidden">
+                                                    {item.image_url && (
+                                                      <img
+                                                        src={item.image_url}
+                                                        alt=""
+                                                        className="object-cover w-full h-full"
+                                                      />
+                                                    )}
+                                                  </div>
+                                                  <div className="truncate">
+                                                    <p className="font-medium truncate text-sm">{item.name}</p>
+                                                    <p className="text-xs text-gray-500 truncate">{item.description}</p>
+                                                  </div>
+                                                </div>
+                                                <div className="flex items-center space-x-2">
+                                                  <span className="text-sm font-semibold">${item.price.toFixed(2)}</span>
+                                                  {/* Removed item-level delete button; delete now handled in modal */}
+                                                </div>
+                                              </div>
                                             </div>
-                                          </div>
-                                          <div className="flex items-center space-x-2">
-                                            <span className="text-sm font-semibold">${item.price.toFixed(2)}</span>
-                                            {/* Removed item-level delete button; delete now handled in modal */}
-                                          </div>
-                                        </div>
-                                      </SortableWrapper>
-                                    ))}
-                                </div>
-                              </SortableContext>
-                            </DndContext>
-                          </div>
-                        )}
-                      </div>
+                                          )}
+                                        </SortableWrapper>
+                                      ))}
+                                  </div>
+                                </SortableContext>
+                              </DndContext>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </SortableWrapper>
                   ))}
                 </SortableContext>
