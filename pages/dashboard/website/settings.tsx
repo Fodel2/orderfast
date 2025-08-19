@@ -7,16 +7,30 @@ import { supabase } from '../../../utils/supabaseClient';
 
 export default function WebsitePage() {
   const router = useRouter();
-  const [restaurantId, setRestaurantId] = useState<number | null>(null);
+  const [restaurantId, setRestaurantId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const [logo, setLogo] = useState<string | null>(null);
   const [cover, setCover] = useState<string | null>(null);
+  const [websiteTitle, setWebsiteTitle] = useState('');
+  const [menuDescription, setMenuDescription] = useState('');
   const [subdomain, setSubdomain] = useState('');
   const [customDomain, setCustomDomain] = useState('');
   const [address, setAddress] = useState('');
   const [contactNumber, setContactNumber] = useState('');
   const [description, setDescription] = useState('');
+  const [brandPrimary, setBrandPrimary] = useState('#008080');
+  const [brandSecondary, setBrandSecondary] = useState('#004c4c');
+  const [logoShape, setLogoShape] = useState<'square' | 'round' | 'rectangular'>('square');
+  const [colorExtracted, setColorExtracted] = useState(false);
+
+  const [contactEnabled, setContactEnabled] = useState(true);
+  const [contactEmail, setContactEmail] = useState('');
+  const [contactFields, setContactFields] = useState<{ name: boolean; phone: boolean; message: boolean }>({
+    name: true,
+    phone: false,
+    message: true,
+  });
 
   const [subdomainAvailable, setSubdomainAvailable] = useState<boolean | null>(null);
   const [toastMessage, setToastMessage] = useState('');
@@ -45,11 +59,27 @@ export default function WebsitePage() {
         if (rest) {
           setLogo(rest.logo_url || null);
           setCover(rest.cover_image_url || null);
+          setWebsiteTitle(rest.website_title || '');
+          setMenuDescription(rest.menu_description || '');
           setSubdomain(rest.subdomain || '');
           setCustomDomain(rest.custom_domain || '');
           setAddress(rest.address || '');
           setContactNumber(rest.contact_number || '');
           setDescription(rest.website_description || '');
+          setBrandPrimary(rest.brand_primary_color || '#008080');
+          setBrandSecondary(rest.brand_secondary_color || '#004c4c');
+          setLogoShape(rest.logo_shape || 'square');
+          setColorExtracted(!!rest.brand_color_extracted);
+        }
+        const { data: contact } = await supabase
+          .from('website_contact_settings')
+          .select('*')
+          .eq('restaurant_id', ru.restaurant_id)
+          .maybeSingle();
+        if (contact) {
+          setContactEnabled(contact.enabled);
+          setContactEmail(contact.recipient_email || '');
+          setContactFields(contact.fields || { name: true, phone: false, message: true });
         }
       }
       setLoading(false);
@@ -88,11 +118,42 @@ export default function WebsitePage() {
     });
   };
 
+  const extractDominantColor = (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.src = URL.createObjectURL(file);
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return resolve('#000000');
+        ctx.drawImage(img, 0, 0);
+        const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+        let r = 0, g = 0, b = 0, count = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          r += data[i];
+          g += data[i + 1];
+          b += data[i + 2];
+          count++;
+        }
+        r = Math.round(r / count);
+        g = Math.round(g / count);
+        b = Math.round(b / count);
+        resolve('#' + [r, g, b].map((x) => x.toString(16).padStart(2, '0')).join(''));
+      };
+    });
+  };
+
   const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const url = await fileToDataUrl(file);
       setLogo(url);
+      const col = await extractDominantColor(file);
+      setBrandPrimary(col);
+      setColorExtracted(true);
     }
   };
 
@@ -116,6 +177,12 @@ export default function WebsitePage() {
       .update({
         logo_url: logo,
         cover_image_url: cover,
+        website_title: websiteTitle,
+        menu_description: menuDescription,
+        logo_shape: logoShape,
+        brand_primary_color: brandPrimary,
+        brand_secondary_color: brandSecondary,
+        brand_color_extracted: colorExtracted,
         subdomain,
         custom_domain: customDomain,
         address,
@@ -123,8 +190,19 @@ export default function WebsitePage() {
         website_description: description,
       })
       .eq('id', restaurantId);
-    if (error) {
-      setToastMessage('Failed to save: ' + error.message);
+    const { error: contactErr } = await supabase
+      .from('website_contact_settings')
+      .upsert(
+        {
+          restaurant_id: restaurantId,
+          enabled: contactEnabled,
+          recipient_email: contactEmail,
+          fields: contactFields,
+        },
+        { onConflict: 'restaurant_id' }
+      );
+    if (error || contactErr) {
+      setToastMessage('Failed to save: ' + (error?.message || contactErr?.message));
     } else {
       setToastMessage('Website settings saved');
     }
@@ -157,6 +235,15 @@ export default function WebsitePage() {
               <input type="file" accept="image/*" onChange={handleCoverChange} />
             </div>
             <div>
+              <label className="block font-semibold">Website Title</label>
+              <input
+                type="text"
+                value={websiteTitle}
+                onChange={(e) => setWebsiteTitle(e.target.value)}
+                className="mt-1 w-full border border-gray-300 rounded p-2"
+              />
+            </div>
+            <div>
               <label className="block font-semibold">Subdomain</label>
               <input
                 type="text"
@@ -179,6 +266,39 @@ export default function WebsitePage() {
                 onChange={(e) => setCustomDomain(e.target.value)}
                 className="mt-1 w-full border border-gray-300 rounded p-2"
               />
+            </div>
+            <div className="flex space-x-4">
+              <div className="flex-1">
+                <label className="block font-semibold">Primary Color</label>
+                <input
+                  type="color"
+                  value={brandPrimary}
+                  onChange={(e) => {
+                    setBrandPrimary(e.target.value);
+                    setColorExtracted(false);
+                  }}
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block font-semibold">Secondary Color</label>
+                <input
+                  type="color"
+                  value={brandSecondary}
+                  onChange={(e) => setBrandSecondary(e.target.value)}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block font-semibold">Logo Shape</label>
+              <select
+                value={logoShape}
+                onChange={(e) => setLogoShape(e.target.value as any)}
+                className="mt-1 w-full border border-gray-300 rounded p-2"
+              >
+                <option value="square">Square</option>
+                <option value="round">Round</option>
+                <option value="rectangular">Rectangular</option>
+              </select>
             </div>
             <div>
               <label className="block font-semibold">Address</label>
@@ -205,6 +325,64 @@ export default function WebsitePage() {
                 onChange={(e) => setDescription(e.target.value)}
                 className="mt-1 w-full border border-gray-300 rounded p-2"
               />
+            </div>
+            <div>
+              <label className="block font-semibold">Menu Description</label>
+              <textarea
+                value={menuDescription}
+                onChange={(e) => setMenuDescription(e.target.value)}
+                className="mt-1 w-full border border-gray-300 rounded p-2"
+              />
+            </div>
+            <div className="border-t pt-4 mt-4">
+              <h2 className="text-xl font-semibold mb-2">Contact Form</h2>
+              <label className="flex items-center space-x-2 mb-2">
+                <input
+                  type="checkbox"
+                  checked={contactEnabled}
+                  onChange={(e) => setContactEnabled(e.target.checked)}
+                />
+                <span>Enable contact form</span>
+              </label>
+              {contactEnabled && (
+                <div className="space-y-2">
+                  <div>
+                    <label className="block font-semibold">Recipient Email</label>
+                    <input
+                      type="email"
+                      value={contactEmail}
+                      onChange={(e) => setContactEmail(e.target.value)}
+                      className="mt-1 w-full border border-gray-300 rounded p-2"
+                    />
+                  </div>
+                  <div className="flex space-x-4">
+                    <label className="flex items-center space-x-1">
+                      <input
+                        type="checkbox"
+                        checked={contactFields.name}
+                        onChange={(e) => setContactFields({ ...contactFields, name: e.target.checked })}
+                      />
+                      <span>Name</span>
+                    </label>
+                    <label className="flex items-center space-x-1">
+                      <input
+                        type="checkbox"
+                        checked={contactFields.phone}
+                        onChange={(e) => setContactFields({ ...contactFields, phone: e.target.checked })}
+                      />
+                      <span>Phone</span>
+                    </label>
+                    <label className="flex items-center space-x-1">
+                      <input
+                        type="checkbox"
+                        checked={contactFields.message}
+                        onChange={(e) => setContactFields({ ...contactFields, message: e.target.checked })}
+                      />
+                      <span>Message</span>
+                    </label>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="text-right">
               <button

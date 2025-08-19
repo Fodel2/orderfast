@@ -6,7 +6,7 @@ import { supabase } from "../../utils/supabaseClient";
 import MenuItemCard from "../../components/MenuItemCard";
 import { useCart } from "../../context/CartContext";
 import CustomerLayout from "../../components/CustomerLayout";
-import { useBrand } from "../../components/branding/BrandProvider";
+import { useBrand, BrandProvider } from "../../components/branding/BrandProvider";
 import MenuHeader from '@/components/customer/menu/MenuHeader';
 import resolveRestaurantId from '@/lib/resolveRestaurantId';
 
@@ -27,6 +27,7 @@ interface Restaurant {
   name: string;
   logo_url: string | null;
   website_description: string | null;
+  menu_description: string | null;
   menu_header_image_url?: string | null;
   menu_header_focal_x?: number | null;
   menu_header_focal_y?: number | null;
@@ -260,15 +261,15 @@ export default function RestaurantMenuPage() {
           {/* Menu header hero */}
           <MenuHeader
             title={restaurant?.name || 'Restaurant'}
-            subtitle={restaurant?.website_description ?? null}
+            subtitle={restaurant?.menu_description ?? null}
             imageUrl={headerImg || undefined}
             logoUrl={restaurant?.logo_url ?? null}
             accentHex={(brand?.brand as string) || undefined}
             focalX={headerFocalX}
             focalY={headerFocalY}
           />
-          {restaurant?.website_description && (
-            <p className="text-gray-600 text-center">{restaurant.website_description}</p>
+          {restaurant?.menu_description && (
+            <p className="text-gray-600 text-center">{restaurant.menu_description}</p>
           )}
 
           <div className="relative">
@@ -385,9 +386,11 @@ export default function RestaurantMenuPage() {
   };
 
   return (
-    <CustomerLayout cartCount={itemCount} restaurant={restaurant}>
-      <Inner />
-    </CustomerLayout>
+    <BrandProvider restaurant={restaurant}>
+      <CustomerLayout cartCount={itemCount} restaurant={restaurant}>
+        <Inner />
+      </CustomerLayout>
+    </BrandProvider>
   );
 }
 

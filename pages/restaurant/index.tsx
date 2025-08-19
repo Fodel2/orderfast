@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import CustomerLayout from '@/components/CustomerLayout';
 import Slides from '@/components/customer/Slides';
 import DebugFlag from '@/components/dev/DebugFlag';
-import { useBrand } from '@/components/branding/BrandProvider';
+import { useBrand, BrandProvider } from '@/components/branding/BrandProvider';
 import { supabase } from '@/utils/supabaseClient';
 import { useCart } from '@/context/CartContext';
 import LandingHero from '@/components/customer/home/LandingHero';
@@ -76,17 +76,18 @@ export default function RestaurantHomePage() {
   })();
 
   return (
-    <CustomerLayout
-      restaurant={restaurant}
-      cartCount={cartCount}
-      hideFooter={heroInView}
-      hideHeader={heroInView}
-    >
+    <BrandProvider restaurant={restaurant}>
+      <CustomerLayout
+        restaurant={restaurant}
+        cartCount={cartCount}
+        hideFooter={heroInView}
+        hideHeader={heroInView}
+      >
       {process.env.NEXT_PUBLIC_DEBUG === '1' && <DebugFlag label="HOME-A" />}
       <Slides onHeroInView={setHeroInView}>
         {/* Slide 1 — HERO */}
         <LandingHero
-          title={restaurant?.name || 'Restaurant'}
+          title={restaurant?.website_title || restaurant?.name || 'Restaurant'}
           subtitle={restaurant?.website_description ?? null}
           isOpen={restaurant?.is_open ?? true}
           ctaLabel="Order Now"
@@ -126,7 +127,8 @@ export default function RestaurantHomePage() {
           <p>Phone, email, and contact form will be displayed here.</p>
         </section>
       </Slides>
-    </CustomerLayout>
+      </CustomerLayout>
+    </BrandProvider>
   );
 }
 
