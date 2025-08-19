@@ -2,15 +2,15 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../utils/supabaseClient';
 
 export interface Page {
-  id: number;
+  id: string;
   title: string;
   slug: string;
-  content: string;
-  published: boolean;
+  content: any;
+  status: 'draft' | 'published' | 'archived';
 }
 
 interface PageModalProps {
-  restaurantId: number;
+  restaurantId: string | number;
   page?: Page;
   onClose: () => void;
   onSaved: () => void;
@@ -31,8 +31,10 @@ export default function PageModal({
 }: PageModalProps) {
   const [title, setTitle] = useState(page?.title || '');
   const [slug, setSlug] = useState(page?.slug || '');
-  const [content, setContent] = useState(page?.content || '');
-  const [published, setPublished] = useState(page?.published ?? true);
+  const [content, setContent] = useState(
+    page?.content ? JSON.stringify(page.content, null, 2) : ''
+  );
+  const [status, setStatus] = useState<Page['status']>(page?.status || 'draft');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -46,15 +48,14 @@ export default function PageModal({
     if (saving) return;
     setSaving(true);
     let error;
+    const payload = { title, slug, content: content ? JSON.parse(content) : {}, status };
     if (page) {
       ({ error } = await supabase
-        .from('restaurant_pages')
-        .update({ title, slug, content, published })
+        .from('website_pages')
+        .update(payload)
         .eq('id', page.id));
     } else {
-      ({ error } = await supabase.from('restaurant_pages').insert([
-        { restaurant_id: restaurantId, title, slug, content, published },
-      ]));
+      ({ error } = await supabase.from('website_pages').insert([{ restaurant_id: restaurantId, ...payload }]));
     }
     if (error) {
       alert('Failed to save page: ' + error.message);
@@ -99,21 +100,24 @@ export default function PageModal({
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Content</label>
+            <label className="block text-sm font-medium mb-1">Content (JSON)</label>
             <textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
               className="w-full border border-gray-300 rounded p-2 min-h-[150px]"
             />
           </div>
-          <label className="flex items-center space-x-2 text-sm">
-            <input
-              type="checkbox"
-              checked={published}
-              onChange={(e) => setPublished(e.target.checked)}
-            />
-            <span>Published</span>
-          </label>
+          <div>
+            <label className="block text-sm font-medium mb-1">Status</label>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value as any)}
+              className="w-full border border-gray-300 rounded p-2"
+            >
+              <option value="draft">Draft</option>
+              <option value="published">Published</option>
+            </select>
+          </div>
           <div className="flex justify-end space-x-2 pt-2">
             <button
               type="button"

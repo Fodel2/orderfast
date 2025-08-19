@@ -2,22 +2,44 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 import CustomerLayout from '../../components/CustomerLayout'
 import { useCart } from '../../context/CartContext'
-import { useBrand } from '@/components/branding/BrandProvider'
+import { useBrand, BrandProvider } from '@/components/branding/BrandProvider'
 import MoreCard from '@/components/customer/more/MoreCard'
 import MoreSection from '@/components/customer/more/MoreSection'
 import { UserIcon, ClipboardDocumentListIcon, InformationCircleIcon, ClockIcon, PhoneIcon } from '@heroicons/react/24/outline'
+import { useEffect, useState } from 'react'
+import { supabase } from '@/utils/supabaseClient'
+import resolveRestaurantId from '@/lib/resolveRestaurantId'
 
 export default function RestaurantMorePage() {
   const router = useRouter()
   const { cart } = useCart()
-  const brand = useBrand()
   const itemCount = cart.items.reduce((sum, it) => sum + it.quantity, 0)
+  const [restaurant, setRestaurant] = useState<any | null>(null)
+  const [pages, setPages] = useState<{ title: string; slug: string }[]>([])
+  const brand = useBrand()
+  const restaurantId = resolveRestaurantId(router, brand, restaurant)
 
-  const customPages: { title: string; slug: string }[] = []
+  useEffect(() => {
+    if (!router.isReady || !restaurantId) return
+    supabase
+      .from('restaurants')
+      .select('*')
+      .eq('id', restaurantId)
+      .maybeSingle()
+      .then(({ data }) => setRestaurant(data))
+    supabase
+      .from('website_pages')
+      .select('title,slug')
+      .eq('restaurant_id', restaurantId)
+      .eq('status', 'published')
+      .order('sort_order', { ascending: true, nullsFirst: true })
+      .then(({ data }) => setPages((data as any[]) || []))
+  }, [router.isReady, restaurantId])
 
   return (
-    <CustomerLayout cartCount={itemCount}>
-      <div className="container mx-auto max-w-5xl px-4 py-8">
+    <BrandProvider restaurant={restaurant}>
+      <CustomerLayout cartCount={itemCount}>
+        <div className="container mx-auto max-w-5xl px-4 py-8">
         <h1 className="text-3xl font-bold">More</h1>
         <div className="w-16 h-1 mt-2" style={{ backgroundColor: brand?.brand }} />
 
@@ -33,9 +55,9 @@ export default function RestaurantMorePage() {
         </MoreSection>
 
         <MoreSection title="Extras">
-          {customPages.length ? (
-            customPages.map((p, i) => (
-              <MoreCard key={p.slug} index={i} title={p.title} onClick={() => router.push(`/restaurant/${p.slug}`)} />
+          {pages.length ? (
+            pages.map((p, i) => (
+              <MoreCard key={p.slug} index={i} title={p.title} onClick={() => router.push(`/restaurant/p/${p.slug}`)} />
             ))
           ) : (
             <MoreCard index={0} title="Custom pages" description="Coming soon" />
@@ -47,7 +69,8 @@ export default function RestaurantMorePage() {
           <Link href="/restaurant/terms" className="hover:text-gray-700">Terms</Link>
         </div>
       </div>
-    </CustomerLayout>
+      </CustomerLayout>
+    </BrandProvider>
   )
 }
 

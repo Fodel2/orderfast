@@ -5,6 +5,7 @@ import { useRouter } from 'next/router';
 type BrandCtx = {
   brand: string; brand600: string; brand700: string;
   name: string; initials: string; logoUrl?: string | null;
+  logoShape?: string | null;
 };
 const Ctx = createContext<BrandCtx | null>(null);
 
@@ -26,13 +27,18 @@ export const useBrand = (): BrandCtx => {
 export const BrandProvider: React.FC<{ restaurant?: any; children: React.ReactNode; }> = ({ restaurant, children }) => {
   const router = useRouter();
   const qp = (k: string) => (router?.query?.[k] as string) || '';
-  const name = (restaurant?.name as string) || qp('name') || 'Restaurant';
+  const name = (restaurant?.website_title as string) || (restaurant?.name as string) || qp('name') || 'Restaurant';
   const logoUrl = (restaurant?.logo_url as string) || qp('logo') || null;
-  const color = (restaurant?.brand_color as string) || qp('brand') || '';
+  const logoShape = (restaurant?.logo_shape as string) || null;
+  const color =
+    (restaurant?.brand_primary_color as string) ||
+    (restaurant?.brand_color as string) ||
+    qp('brand') ||
+    '';
   const colors = color ? { brand: color, brand600: color, brand700: color } : hashHSL(name);
   const initials = name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase() || 'R';
 
-  const value = useMemo(() => ({ ...colors, name, initials, logoUrl }), [colors.brand, colors.brand600, colors.brand700, name, initials, logoUrl]);
+  const value = useMemo(() => ({ ...colors, name, initials, logoUrl, logoShape }), [colors.brand, colors.brand600, colors.brand700, name, initials, logoUrl, logoShape]);
 
   return (
     <Ctx.Provider value={value}>

@@ -12,7 +12,7 @@ import Toast from './Toast';
 export default function CustomPagesSection({
   restaurantId,
 }: {
-  restaurantId: number;
+  restaurantId: string | number;
 }) {
   const [pages, setPages] = useState<Page[]>([]);
   const [loading, setLoading] = useState(true);
@@ -23,10 +23,11 @@ export default function CustomPagesSection({
 
   const loadPages = async () => {
     const { data, error } = await supabase
-      .from('restaurant_pages')
+      .from('website_pages')
       .select('*')
       .eq('restaurant_id', restaurantId)
-      .order('id');
+      .neq('status', 'archived')
+      .order('sort_order', { ascending: true, nullsFirst: true });
     if (error) {
       console.error(error);
       setToastMessage('Failed to load pages');
@@ -50,7 +51,7 @@ export default function CustomPagesSection({
   const handleDelete = async () => {
     if (!confirmDel) return;
     const { error } = await supabase
-      .from('restaurant_pages')
+      .from('website_pages')
       .delete()
       .eq('id', confirmDel.id);
     if (error) {
@@ -63,10 +64,10 @@ export default function CustomPagesSection({
   };
 
   const togglePublished = async (p: Page, val: boolean) => {
-    setPages((prev) => prev.map((pg) => (pg.id === p.id ? { ...pg, published: val } : pg)));
+    setPages((prev) => prev.map((pg) => (pg.id === p.id ? { ...pg, status: val ? 'published' : 'draft' } : pg)));
     const { error } = await supabase
-      .from('restaurant_pages')
-      .update({ published: val })
+      .from('website_pages')
+      .update({ status: val ? 'published' : 'draft' })
       .eq('id', p.id);
     if (error) {
       setToastMessage('Failed to update');
@@ -101,7 +102,7 @@ export default function CustomPagesSection({
                 <label className="flex items-center space-x-1 text-sm">
                   <input
                     type="checkbox"
-                    checked={p.published}
+                    checked={p.status === 'published'}
                     onChange={(e) => togglePublished(p, e.target.checked)}
                   />
                   <span>Published</span>
