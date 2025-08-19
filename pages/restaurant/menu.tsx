@@ -112,7 +112,7 @@ export default function RestaurantMenuPage() {
         .select('id,name,description,image_url,sort_order,restaurant_id')
         .eq('restaurant_id', restaurantId)
         .is('archived_at', null)
-        .order('sort_order', { ascending: true })
+        .order('sort_order', { ascending: true, nullsFirst: false })
         .order('name', { ascending: true });
 
       const { data: itemData, error: itemErr } = await supabase
@@ -122,7 +122,7 @@ export default function RestaurantMenuPage() {
         )
         .eq('restaurant_id', restaurantId)
         .is('archived_at', null)
-        .order('sort_order', { ascending: true })
+        .order('sort_order', { ascending: true, nullsFirst: false })
         .order('name', { ascending: true });
 
       const liveItemIds = (itemData || []).map((r: any) => r.id);
