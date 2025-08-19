@@ -63,11 +63,17 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number }) {
       const { data: items } = await supabase
         .from('menu_items')
         .select('id,name,category_id')
-        .eq('restaurant_id', restaurantId);
+        .eq('restaurant_id', restaurantId)
+        .order('archived_at', { ascending: true, nullsFirst: true })
+        .order('sort_order', { ascending: true, nullsFirst: false })
+        .order('name', { ascending: true });
       const { data: cats } = await supabase
         .from('menu_categories')
         .select('id,name')
-        .eq('restaurant_id', restaurantId);
+        .eq('restaurant_id', restaurantId)
+        .order('archived_at', { ascending: true, nullsFirst: true })
+        .order('sort_order', { ascending: true, nullsFirst: false })
+        .order('name', { ascending: true });
 
       const itemMap = new Map<number, { name: string; category_id: number | null }>();
       items?.forEach((it) => {

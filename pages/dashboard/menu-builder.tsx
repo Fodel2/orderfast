@@ -129,6 +129,10 @@ export default function MenuBuilder() {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const saveTimer = useRef<NodeJS.Timeout | null>(null);
   const saveAbort = useRef<AbortController | null>(null);
+  const catOrderTimer = useRef<NodeJS.Timeout | null>(null);
+  const catOrderAbort = useRef<AbortController | null>(null);
+  const itemOrderTimer = useRef<NodeJS.Timeout | null>(null);
+  const itemOrderAbort = useRef<AbortController | null>(null);
   const draftErrorShown = useRef(false);
   const [publishing, setPublishing] = useState(false);
   const router = useRouter();
@@ -241,13 +245,16 @@ export default function MenuBuilder() {
         .from('menu_categories')
         .select('*')
         .eq('restaurant_id', rid)
-        .is('archived_at', null)
-        .order('sort_order', { ascending: true });
+        .order('archived_at', { ascending: true, nullsFirst: true })
+        .order('sort_order', { ascending: true, nullsFirst: false })
+        .order('name', { ascending: true });
       const { data: itemData } = await supabase
         .from('menu_items')
         .select('id,name,category_id,stock_status,stock_return_date')
         .eq('restaurant_id', rid)
-        .is('archived_at', null);
+        .order('archived_at', { ascending: true, nullsFirst: true })
+        .order('sort_order', { ascending: true, nullsFirst: false })
+        .order('name', { ascending: true });
       const mappedCats = (catData || []).map((c) => ({
         id: String(c.id),
         name: c.name,
@@ -414,18 +421,41 @@ export default function MenuBuilder() {
   };
 
   // Persist new ordering for categories
-  const handleCategoryDragEnd = async ({ active, over }: DragEndEvent) => {
+  const handleCategoryDragEnd = ({ active, over }: DragEndEvent) => {
     if (!over || active.id === over.id) return;
     const oldIndex = categories.findIndex((c) => c.id === active.id);
     const newIndex = categories.findIndex((c) => c.id === over.id);
-    const newCats = arrayMove(categories, oldIndex, newIndex);
+    const newCats = arrayMove(categories, oldIndex, newIndex).map((c, idx) => ({
+      ...c,
+      sort_order: idx,
+    }));
     setCategories(newCats);
-    await Promise.all(
-      newCats.map((cat, idx) =>
-        supabase.from('menu_categories').update({ sort_order: idx }).eq('id', cat.id)
-      )
-    );
-    setOrigCategories(newCats);
+
+    if (catOrderTimer.current) clearTimeout(catOrderTimer.current);
+    if (catOrderAbort.current) catOrderAbort.current.abort();
+    catOrderTimer.current = setTimeout(async () => {
+      try {
+        catOrderAbort.current = new AbortController();
+        const changed = newCats.filter((c, idx) => c.id !== origCategories[idx]?.id);
+        if (!restaurantId || changed.length === 0) {
+          setOrigCategories(newCats);
+          return;
+        }
+        const payload = changed.map((c) => ({ id: c.id, sort_order: c.sort_order }));
+        const res = await fetch('/api/menu-reorder', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ restaurantId, categories: payload }),
+          signal: catOrderAbort.current.signal,
+        });
+        if (!res.ok) throw new Error('failed');
+        setOrigCategories(newCats);
+      } catch (err) {
+        console.error(err);
+        setCategories(origCategories);
+        setToastMessage('Failed to save category order');
+      }
+    }, 300);
   };
 
   // Reorder draft categories locally
@@ -459,26 +489,57 @@ export default function MenuBuilder() {
     };
 
   // Persist new ordering for items within a category
-  const handleItemDragEnd = (categoryId: number) => async ({ active, over }: DragEndEvent) => {
+  const handleItemDragEnd = (categoryId: number) => ({ active, over }: DragEndEvent) => {
     if (!over || active.id === over.id) return;
-    const catItems = items.filter((i) => i.category_id === categoryId);
+    const catItems = items
+      .filter((i) => i.category_id === categoryId)
+      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
     const oldIndex = catItems.findIndex((i) => i.id === active.id);
     const newIndex = catItems.findIndex((i) => i.id === over.id);
-    const sorted = arrayMove(catItems, oldIndex, newIndex);
+    const sorted = arrayMove(catItems, oldIndex, newIndex).map((it, idx) => ({
+      ...it,
+      sort_order: idx,
+    }));
 
     const updated = [...items];
-    sorted.forEach((it, idx) => {
+    sorted.forEach((it) => {
       const gi = updated.findIndex((i) => i.id === it.id);
-      updated[gi] = { ...it, sort_order: idx };
+      updated[gi] = it;
     });
     setItems(updated);
 
-    await Promise.all(
-      sorted.map((it, idx) =>
-        supabase.from('menu_items').update({ sort_order: idx }).eq('id', it.id)
-      )
-    );
-    setOrigItems(updated);
+    if (itemOrderTimer.current) clearTimeout(itemOrderTimer.current);
+    if (itemOrderAbort.current) itemOrderAbort.current.abort();
+    itemOrderTimer.current = setTimeout(async () => {
+      try {
+        itemOrderAbort.current = new AbortController();
+        const changed = sorted.filter((it) => {
+          const orig = origItems.find((o) => o.id === it.id);
+          return !orig || orig.sort_order !== it.sort_order || orig.category_id !== it.category_id;
+        });
+        if (!restaurantId || changed.length === 0) {
+          setOrigItems(updated);
+          return;
+        }
+        const payload = changed.map((it) => ({
+          id: it.id,
+          sort_order: it.sort_order,
+          category_id: it.category_id,
+        }));
+        const res = await fetch('/api/menu-reorder', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ restaurantId, items: payload }),
+          signal: itemOrderAbort.current.signal,
+        });
+        if (!res.ok) throw new Error('failed');
+        setOrigItems(updated);
+      } catch (err) {
+        console.error(err);
+        setItems(origItems);
+        setToastMessage('Failed to save item order');
+      }
+    }, 300);
   };
 
   useEffect(() => {
@@ -532,15 +593,17 @@ export default function MenuBuilder() {
       .from('menu_categories')
       .select('*')
       .eq('restaurant_id', rid)
-      .is('archived_at', null)
-      .order('sort_order', { ascending: true });
+      .order('archived_at', { ascending: true, nullsFirst: true })
+      .order('sort_order', { ascending: true, nullsFirst: false })
+      .order('name', { ascending: true });
 
     const { data: itemsData, error: itemsError } = await supabase
       .from('menu_items')
       .select('*')
       .eq('restaurant_id', rid)
-      .is('archived_at', null)
-      .order('sort_order', { ascending: true });
+      .order('archived_at', { ascending: true, nullsFirst: true })
+      .order('sort_order', { ascending: true, nullsFirst: false })
+      .order('name', { ascending: true });
 
     let itemsWithAddons = itemsData || [];
     if (itemsData && itemsData.length) {
@@ -848,6 +911,7 @@ export default function MenuBuilder() {
                       <div className="bg-white rounded-xl shadow mb-4">
                         <div className="flex items-start justify-between p-4">
                     <div className="flex items-start space-x-3">
+                      <ArrowsUpDownIcon className="w-5 h-5 text-gray-400 mt-1" />
                       <div>
                         <div className="flex items-center space-x-2">
                           <h2 className="font-semibold text-lg">{cat.name}</h2>
@@ -912,6 +976,7 @@ export default function MenuBuilder() {
                                       </div>
                                     </div>
                                     <div className="flex items-center space-x-2">
+                                      <ArrowsUpDownIcon className="w-4 h-4 text-gray-400" />
                                       <span className="text-sm font-semibold">${item.price.toFixed(2)}</span>
                                     </div>
                                   </div>

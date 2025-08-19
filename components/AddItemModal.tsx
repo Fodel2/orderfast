@@ -105,9 +105,17 @@ export default function AddItemModal({
         const { data: catData } = await supabase
           .from('menu_categories')
           .select('*')
-          .eq('restaurant_id', restaurantId)
-          .order('sort_order', { ascending: true });
-        setCategories(catData || []);
+          .eq('restaurant_id', restaurantId);
+        const sortedCats = (catData || []).sort((a, b) => {
+          const aArch = a.archived_at ? 1 : 0;
+          const bArch = b.archived_at ? 1 : 0;
+          if (aArch !== bArch) return aArch - bArch;
+          const aOrder = typeof a.sort_order === 'number' ? a.sort_order : Number.MAX_SAFE_INTEGER;
+          const bOrder = typeof b.sort_order === 'number' ? b.sort_order : Number.MAX_SAFE_INTEGER;
+          if (aOrder !== bOrder) return aOrder - bOrder;
+          return (a.name || '').localeCompare(b.name || '');
+        });
+        setCategories(sortedCats);
       }
 
       if (onSaveData) {
