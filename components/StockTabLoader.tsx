@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../utils/supabaseClient';
 import StockTab, { StockTabProps } from './StockTab';
+import { STOCK_TAB_QUERY } from './stockTabQuery';
 
 interface Row {
   category_id: string;
@@ -19,19 +20,7 @@ export default function StockTabLoader() {
 
   useEffect(() => {
     const fetchData = async () => {
-      const query = `\
-SELECT
-  c.id AS category_id,
-  c.name AS category_name,
-  i.id AS item_id,
-  i.name AS item_name,
-  i.stock_status,
-  i.stock_return_date
-FROM menu_categories c
-JOIN menu_items i ON i.category_id = c.id
-WHERE c.archived_at IS NULL AND i.archived_at IS NULL
-ORDER BY c.sort_order NULLS LAST, c.name ASC, i.sort_order NULLS LAST, i.name ASC;`;
-      const { data, error } = await supabase.rpc('sql', { query });
+      const { data, error } = await supabase.rpc('sql', { query: STOCK_TAB_QUERY });
       if (error) {
         console.error('Failed to fetch stock data', error);
         setError(error.message);
