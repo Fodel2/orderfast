@@ -23,7 +23,7 @@ import AddCategoryModal from '../../components/AddCategoryModal';
 import Toast from '../../components/Toast';
 import ConfirmModal from '../../components/ConfirmModal';
 import DraftCategoryModal from '../../components/DraftCategoryModal';
-import ViewItemModal from '../../components/ViewItemModal';
+import MenuItemCard from '../../components/MenuItemCard';
 import DashboardLayout from '../../components/DashboardLayout';
 import AddonsTab from '../../components/AddonsTab';
 import StockTab, { StockTabProps } from '../../components/StockTab';
@@ -131,7 +131,6 @@ export default function MenuBuilder() {
   const [showDraftCategoryModal, setShowDraftCategoryModal] = useState(false);
   const [draftCategory, setDraftCategory] = useState<any | null>(null);
   const [draftLoaded, setDraftLoaded] = useState(false);
-  const [showViewModal, setShowViewModal] = useState(false);
   const [confirmState, setConfirmState] = useState<
     | { title: string; message: string; action: () => void }
     | null
@@ -142,10 +141,6 @@ export default function MenuBuilder() {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const saveTimer = useRef<NodeJS.Timeout | null>(null);
   const saveAbort = useRef<AbortController | null>(null);
-  const catOrderTimer = useRef<NodeJS.Timeout | null>(null);
-  const catOrderAbort = useRef<AbortController | null>(null);
-  const itemOrderTimer = useRef<NodeJS.Timeout | null>(null);
-  const itemOrderAbort = useRef<AbortController | null>(null);
   const draftErrorShown = useRef(false);
   const [publishing, setPublishing] = useState(false);
   const router = useRouter();
@@ -258,6 +253,7 @@ export default function MenuBuilder() {
         .from('menu_categories')
         .select('*')
         .eq('restaurant_id', rid)
+        .is('archived_at', null)
         .order('archived_at', { ascending: true, nullsFirst: true })
         .order('sort_order', { ascending: true, nullsFirst: false })
         .order('name', { ascending: true });
@@ -265,6 +261,7 @@ export default function MenuBuilder() {
         .from('menu_items')
         .select('id,name,category_id,stock_status,stock_return_date')
         .eq('restaurant_id', rid)
+        .is('archived_at', null)
         .order('archived_at', { ascending: true, nullsFirst: true })
         .order('sort_order', { ascending: true, nullsFirst: false })
         .order('name', { ascending: true });
@@ -347,11 +344,7 @@ export default function MenuBuilder() {
 
   const handleItemClick = (item: any) => {
     setSelectedItem(item);
-    if (activeTab === 'build') {
-      setShowDraftItemModal(true);
-    } else {
-      setShowViewModal(true);
-    }
+    setShowDraftItemModal(true);
   };
 
   const handleHeroChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -434,44 +427,6 @@ export default function MenuBuilder() {
     if (fileRef.current) fileRef.current.value = '';
   };
 
-  // Persist new ordering for categories
-  const handleCategoryDragEnd = ({ active, over }: DragEndEvent) => {
-    if (!over || active.id === over.id) return;
-    const oldIndex = categories.findIndex((c) => c.id === active.id);
-    const newIndex = categories.findIndex((c) => c.id === over.id);
-    const newCats = arrayMove(categories, oldIndex, newIndex).map((c, idx) => ({
-      ...c,
-      sort_order: idx,
-    }));
-    setCategories(newCats);
-
-    if (catOrderTimer.current) clearTimeout(catOrderTimer.current);
-    if (catOrderAbort.current) catOrderAbort.current.abort();
-    catOrderTimer.current = setTimeout(async () => {
-      try {
-        catOrderAbort.current = new AbortController();
-        const changed = newCats.filter((c, idx) => c.id !== origCategories[idx]?.id);
-        if (!restaurantId || changed.length === 0) {
-          setOrigCategories(newCats);
-          return;
-        }
-        const payload = changed.map((c) => ({ id: c.id, sort_order: c.sort_order }));
-        const res = await fetch('/api/menu-reorder', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ restaurantId, categories: payload }),
-          signal: catOrderAbort.current.signal,
-        });
-        if (!res.ok) throw new Error('failed');
-        setOrigCategories(newCats);
-      } catch (err) {
-        console.error(err);
-        setCategories(origCategories);
-        setToastMessage('Failed to save category order');
-      }
-    }, 300);
-  };
-
   // Reorder draft categories locally
   const handleDraftCategoryDragEnd = ({ active, over }: DragEndEvent) => {
     if (!over || active.id === over.id) return;
@@ -502,59 +457,7 @@ export default function MenuBuilder() {
       setBuildItems(updated);
     };
 
-  // Persist new ordering for items within a category
-  const handleItemDragEnd = (categoryId: number) => ({ active, over }: DragEndEvent) => {
-    if (!over || active.id === over.id) return;
-    const catItems = items
-      .filter((i) => i.category_id === categoryId)
-      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
-    const oldIndex = catItems.findIndex((i) => i.id === active.id);
-    const newIndex = catItems.findIndex((i) => i.id === over.id);
-    const sorted = arrayMove(catItems, oldIndex, newIndex).map((it, idx) => ({
-      ...it,
-      sort_order: idx,
-    }));
-
-    const updated = [...items];
-    sorted.forEach((it) => {
-      const gi = updated.findIndex((i) => i.id === it.id);
-      updated[gi] = it;
-    });
-    setItems(updated);
-
-    if (itemOrderTimer.current) clearTimeout(itemOrderTimer.current);
-    if (itemOrderAbort.current) itemOrderAbort.current.abort();
-    itemOrderTimer.current = setTimeout(async () => {
-      try {
-        itemOrderAbort.current = new AbortController();
-        const changed = sorted.filter((it) => {
-          const orig = origItems.find((o) => o.id === it.id);
-          return !orig || orig.sort_order !== it.sort_order || orig.category_id !== it.category_id;
-        });
-        if (!restaurantId || changed.length === 0) {
-          setOrigItems(updated);
-          return;
-        }
-        const payload = changed.map((it) => ({
-          id: it.id,
-          sort_order: it.sort_order,
-          category_id: it.category_id,
-        }));
-        const res = await fetch('/api/menu-reorder', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ restaurantId, items: payload }),
-          signal: itemOrderAbort.current.signal,
-        });
-        if (!res.ok) throw new Error('failed');
-        setOrigItems(updated);
-      } catch (err) {
-        console.error(err);
-        setItems(origItems);
-        setToastMessage('Failed to save item order');
-      }
-    }, 300);
-  };
+  // Persist new ordering for categories/items in live menu removed for read-only preview
 
   useEffect(() => {
     const getSession = async () => {
@@ -920,112 +823,49 @@ export default function MenuBuilder() {
                 No menu categories found. Use "Add Category" to get started.
               </div>
             ) : (
-              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleCategoryDragEnd}>
-                <SortableContext items={categories.map((c) => c.id)} strategy={verticalListSortingStrategy}>
-                  {categories.map((cat) => (
-                    <SortableWrapper key={cat.id} id={cat.id}>
-                      {({ setNodeRef, style, attributes, listeners }) => (
-                        <div ref={setNodeRef} style={style} className="bg-white rounded-xl shadow mb-4">
-                          <div className="flex items-start justify-between p-4">
-                            <div className="flex items-start space-x-3">
-                              <ArrowsUpDownIcon
-                                {...attributes}
-                                {...listeners}
-                                className="w-5 h-5 text-gray-400 mt-1 cursor-grab active:cursor-grabbing touch-none"
-                              />
-                              <div>
-                                <div className="flex items-center space-x-2">
-                                  <h2 className="font-semibold text-lg">{cat.name}</h2>
-                                  <span className="text-xs bg-gray-200 rounded-full px-2">
-                                    {items.filter((i) => i.category_id === cat.id).length}
-                                  </span>
-                                </div>
-                                {cat.description && (
-                                  <p className="text-sm text-gray-500">{cat.description}</p>
-                                )}
-                              </div>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              <button
-                                onClick={() => toggleCollapse(cat.id)}
-                                className="p-2 rounded hover:bg-gray-100"
-                                aria-label="Toggle items"
-                                onPointerDown={(e) => e.stopPropagation()}
-                              >
-                                {collapsedCats.has(cat.id) ? (
-                                  <ChevronDownIcon className="w-5 h-5" />
-                                ) : (
-                                  <ChevronUpIcon className="w-5 h-5" />
-                                )}
-                              </button>
-                              {/* actions removed in read-only menu */}
-                            </div>
-                          </div>
-                          {!collapsedCats.has(cat.id) && (
-                            <div className="px-4 pb-4">
-                              <DndContext
-                                sensors={sensors}
-                                collisionDetection={closestCenter}
-                                onDragEnd={handleItemDragEnd(cat.id)}
-                              >
-                                <SortableContext
-                                  items={items
-                                    .filter((i) => i.category_id === cat.id)
-                                    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-                                    .map((i) => i.id)}
-                                  strategy={verticalListSortingStrategy}
-                                >
-                                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                                    {items
-                                      .filter((item) => item.category_id === cat.id)
-                                      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-                                      .map((item) => (
-                                        <SortableWrapper key={item.id} id={item.id}>
-                                          {({ setNodeRef, style, attributes, listeners }) => (
-                                            <div ref={setNodeRef} style={style}>
-                                              <div
-                                                onClick={() => handleItemClick(item)}
-                                                className="bg-gray-50 rounded-lg p-3 flex items-start justify-between cursor-pointer"
-                                              >
-                                                <div className="flex items-start space-x-2 overflow-hidden">
-                                                  <div className="w-12 h-12 bg-gray-200 rounded flex-shrink-0 overflow-hidden">
-                                                    {item.image_url && (
-                                                      <img
-                                                        src={item.image_url}
-                                                        alt=""
-                                                        className="w-full h-full object-cover"
-                                                      />
-                                                    )}
-                                                  </div>
-                                                  <div className="truncate">
-                                                    <p className="font-medium truncate text-sm">{item.name}</p>
-                                                    <p className="text-xs text-gray-500 truncate">{item.description}</p>
-                                                  </div>
-                                                </div>
-                                                <div className="flex items-center space-x-2">
-                                                  <ArrowsUpDownIcon
-                                                    {...attributes}
-                                                    {...listeners}
-                                                    className="w-4 h-4 text-gray-400 cursor-grab active:cursor-grabbing touch-none"
-                                                  />
-                                                  <span className="text-sm font-semibold">${item.price.toFixed(2)}</span>
-                                                </div>
-                                              </div>
-                                            </div>
-                                          )}
-                                        </SortableWrapper>
-                                      ))}
-                                  </div>
-                                </SortableContext>
-                              </DndContext>
-                            </div>
-                          )}
+              <div>
+                {categories.map((cat) => (
+                  <div key={cat.id} className="bg-white rounded-xl shadow mb-4">
+                    <div className="flex items-start justify-between p-4">
+                      <div>
+                        <div className="flex items-center space-x-2">
+                          <h2 className="font-semibold text-lg">{cat.name}</h2>
+                          <span className="text-xs bg-gray-200 rounded-full px-2">
+                            {items.filter((i) => i.category_id === cat.id).length}
+                          </span>
                         </div>
-                      )}
-                    </SortableWrapper>
-                  ))}
-          </SortableContext>
-        </DndContext>
+                        {cat.description && (
+                          <p className="text-sm text-gray-500">{cat.description}</p>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => toggleCollapse(cat.id)}
+                        className="p-2 rounded hover:bg-gray-100"
+                        aria-label="Toggle items"
+                        onPointerDown={(e) => e.stopPropagation()}
+                      >
+                        {collapsedCats.has(cat.id) ? (
+                          <ChevronDownIcon className="w-5 h-5" />
+                        ) : (
+                          <ChevronUpIcon className="w-5 h-5" />
+                        )}
+                      </button>
+                    </div>
+                    {!collapsedCats.has(cat.id) && (
+                      <div className="px-4 pb-4">
+                        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                          {items
+                            .filter((item) => item.category_id === cat.id)
+                            .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+                            .map((item) => (
+                              <MenuItemCard key={item.id} item={item} restaurantId={restaurantId!} />
+                            ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             )}
           </motion.div>
         )}
@@ -1200,12 +1040,12 @@ export default function MenuBuilder() {
                                                     )}
                                                   </div>
                                                   <div className="truncate">
-                                                    <p className="font-medium truncate text-sm">{item.name}</p>
+                                                    <p className="font-semibold truncate text-sm">{item.name}</p>
                                                     <p className="text-xs text-gray-500 truncate">{item.description}</p>
                                                   </div>
                                                 </div>
                                                 <div className="flex items-center space-x-2">
-                                                  <span className="text-sm font-semibold">${item.price.toFixed(2)}</span>
+                                                  <span className="text-sm font-medium">${item.price.toFixed(2)}</span>
                                                   {/* Removed item-level delete button; delete now handled in modal */}
                                                 </div>
                                               </div>
@@ -1335,14 +1175,6 @@ export default function MenuBuilder() {
           />
         )}
         <Toast message={toastMessage} onClose={() => setToastMessage('')} />
-      <ViewItemModal
-        showModal={showViewModal}
-        item={selectedItem}
-        onClose={() => {
-          setShowViewModal(false);
-          setSelectedItem(null);
-        }}
-      />
     </DashboardLayout>
   );
 }
