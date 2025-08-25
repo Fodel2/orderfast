@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import DashboardLayout from '../../../components/DashboardLayout';
 import Toast from '../../../components/Toast';
@@ -12,6 +12,8 @@ export default function WebsitePage() {
 
   const [logo, setLogo] = useState<string | null>(null);
   const [cover, setCover] = useState<string | null>(null);
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const coverInputRef = useRef<HTMLInputElement>(null);
   const [websiteTitle, setWebsiteTitle] = useState('');
   const [menuDescription, setMenuDescription] = useState('');
   const [subdomain, setSubdomain] = useState('');
@@ -157,12 +159,19 @@ export default function WebsitePage() {
     }
   };
 
-  const handleCoverChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCoverChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const url = await fileToDataUrl(file);
-      setCover(url);
+      setCover(URL.createObjectURL(file));
+      setCoverFile(file);
     }
+  };
+
+  const handleRemoveCover = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setCover(null);
+    setCoverFile(null);
+    if (coverInputRef.current) coverInputRef.current.value = '';
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -172,11 +181,26 @@ export default function WebsitePage() {
       setToastMessage('Subdomain is not available');
       return;
     }
+    let finalCover = cover;
+    if (coverFile && cover && cover.startsWith('blob:')) {
+      const path = `cover-images/${restaurantId}-${Date.now()}-${coverFile.name}`;
+      const { error: uploadError } = await supabase.storage
+        .from('menu-images')
+        .upload(path, coverFile, { upsert: true });
+      if (uploadError) {
+        setToastMessage('Failed to upload cover: ' + uploadError.message);
+        return;
+      }
+      finalCover = supabase.storage
+        .from('menu-images')
+        .getPublicUrl(path).data.publicUrl;
+    }
+
     const { error } = await supabase
       .from('restaurants')
       .update({
         logo_url: logo,
-        cover_image_url: cover,
+        cover_image_url: finalCover,
         website_title: websiteTitle,
         menu_description: menuDescription,
         logo_shape: logoShape,
@@ -226,13 +250,27 @@ export default function WebsitePage() {
             <div>
               <label className="block font-semibold mb-1">Cover Image</label>
               {cover && (
-                <img
-                  src={cover}
-                  alt="Cover"
-                  className="h-32 w-full mb-2 object-cover"
-                />
+                <div className="mb-2">
+                  <img
+                    src={cover}
+                    alt="Cover"
+                    className="h-32 w-full object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleRemoveCover}
+                    className="mt-1 text-sm text-red-600 underline"
+                  >
+                    Remove
+                  </button>
+                </div>
               )}
-              <input type="file" accept="image/*" onChange={handleCoverChange} />
+              <input
+                ref={coverInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleCoverChange}
+              />
             </div>
             <div>
               <label className="block font-semibold">Website Title</label>

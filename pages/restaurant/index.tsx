@@ -45,28 +45,7 @@ export default function RestaurantHomePage({ initialBrand }: { initialBrand: any
       .then(({ data }) => setRestaurant(data));
   }, [router.isReady, restaurantId]);
 
-  const qp = router?.query || {};
-  const headerImg =
-    (
-      restaurant &&
-      typeof restaurant === 'object' &&
-      'header_image' in (restaurant as any) &&
-      typeof (restaurant as any).header_image === 'string' &&
-      (restaurant as any).header_image.length > 0
-        ? ((restaurant as any).header_image as string)
-        : ''
-    ) ||
-    (
-      restaurant &&
-      typeof restaurant === 'object' &&
-      'hero_image' in (restaurant as any) &&
-      typeof (restaurant as any).hero_image === 'string' &&
-      (restaurant as any).hero_image.length > 0
-        ? ((restaurant as any).hero_image as string)
-        : ''
-    ) ||
-    (typeof (qp as any).header === 'string' ? ((qp as any).header as string) : '') ||
-    '';
+  const coverImg = restaurant?.cover_image_url || '';
 
   // derive restaurant id from query so CTA retains context
   const rid = (() => {
@@ -96,7 +75,7 @@ export default function RestaurantHomePage({ initialBrand }: { initialBrand: any
               query: rid ? { restaurant_id: String(rid) } : {},
             })
           }
-          imageUrl={headerImg || undefined}
+          imageUrl={coverImg || undefined}
           logoUrl={restaurant?.logo_url ?? null}
           accentHex={getBrandAccentHex(brand)}
         />
@@ -144,7 +123,7 @@ export const getServerSideProps: GetServerSideProps = async ctx => {
   if (id) {
     const { data } = await supaServer()
       .from('restaurants')
-      .select('id,website_title,name,logo_url,logo_shape,brand_primary_color,brand_secondary_color')
+      .select('id,website_title,name,logo_url,logo_shape,brand_primary_color,brand_secondary_color,cover_image_url')
       .eq('id', id)
       .maybeSingle();
     initialBrand = data;

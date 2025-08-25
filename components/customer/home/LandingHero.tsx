@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import Skeleton from '../../ui/Skeleton';
 
 type LandingHeroProps = {
   title: string;
@@ -43,12 +44,15 @@ export default function LandingHero({
     >
       {/* Background */}
       <div
-        className={[
-          'absolute inset-0 bg-center bg-cover',
-          imageUrl ? '' : 'bg-gradient-to-b from-gray-200 via-gray-100 to-gray-300'
-        ].join(' ')}
-        style={imageUrl ? { backgroundImage: `url(${imageUrl})` } : undefined}
-      />
+        className="absolute inset-0 bg-center bg-cover"
+        style={
+          imageUrl
+            ? { backgroundImage: `url(${imageUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+            : undefined
+        }
+      >
+        {!imageUrl && <Skeleton className="w-full h-full rounded-none" />}
+      </div>
       {/* Overlay for contrast */}
       <div className="absolute inset-0" style={{ backgroundImage: overlay }} />
 
