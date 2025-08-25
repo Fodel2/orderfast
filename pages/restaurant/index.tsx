@@ -9,17 +9,6 @@ import { useCart } from '@/context/CartContext';
 import LandingHero from '@/components/customer/home/LandingHero';
 import resolveRestaurantId from '@/lib/resolveRestaurantId';
 
-function getBrandAccentHex(brand: unknown): string | undefined {
-  if (!brand || typeof brand !== 'object') return undefined;
-  const b = brand as any;
-  if (typeof b.brand === 'string' && b.brand) return b.brand as string;
-  if ('accentColor' in b && typeof b.accentColor === 'string' && b.accentColor)
-    return b.accentColor as string;
-  if ('accent' in b && typeof b.accent === 'string' && b.accent)
-    return b.accent as string;
-  return undefined;
-}
-
 export default function RestaurantHomePage({ initialBrand }: { initialBrand: any | null }) {
   const router = useRouter();
   const brand = useBrand();
@@ -53,6 +42,7 @@ export default function RestaurantHomePage({ initialBrand }: { initialBrand: any
     const v: any = (qp as any).restaurant_id ?? (qp as any).id ?? (qp as any).r;
     return Array.isArray(v) ? v[0] : v;
   })();
+  const orderHref = rid ? `/restaurant/menu?restaurant_id=${String(rid)}` : '/restaurant/menu';
 
   return (
       <CustomerLayout
@@ -67,17 +57,11 @@ export default function RestaurantHomePage({ initialBrand }: { initialBrand: any
         <LandingHero
           title={restaurant?.website_title || restaurant?.name || 'Restaurant'}
           subtitle={restaurant?.website_description ?? null}
-          isOpen={restaurant?.is_open ?? true}
           ctaLabel="Order Now"
-          onCta={() =>
-            router.push({
-              pathname: '/restaurant/menu',
-              query: rid ? { restaurant_id: String(rid) } : {},
-            })
-          }
+          ctaHref={orderHref}
           imageUrl={coverImg || undefined}
           logoUrl={restaurant?.logo_url ?? null}
-          accentHex={getBrandAccentHex(brand)}
+          logoShape={restaurant?.logo_shape ?? null}
         />
 
         {/* Slide 2 — Opening Hours & Address */}
@@ -123,7 +107,7 @@ export const getServerSideProps: GetServerSideProps = async ctx => {
   if (id) {
     const { data } = await supaServer()
       .from('restaurants')
-      .select('id,website_title,name,logo_url,logo_shape,brand_primary_color,brand_secondary_color,cover_image_url')
+      .select('id,website_title,name,logo_url,logo_shape,brand_primary_color,brand_secondary_color,cover_image_url,website_description')
       .eq('id', id)
       .maybeSingle();
     initialBrand = data;
