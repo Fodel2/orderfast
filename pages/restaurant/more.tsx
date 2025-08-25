@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 import CustomerLayout from '../../components/CustomerLayout'
 import { useCart } from '../../context/CartContext'
-import { useBrand, BrandProvider } from '@/components/branding/BrandProvider'
+import { useBrand } from '@/components/branding/BrandProvider'
 import MoreCard from '@/components/customer/more/MoreCard'
 import MoreSection from '@/components/customer/more/MoreSection'
 import { UserIcon, ClipboardDocumentListIcon, InformationCircleIcon, ClockIcon, PhoneIcon } from '@heroicons/react/24/outline'
@@ -10,11 +10,11 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/utils/supabaseClient'
 import resolveRestaurantId from '@/lib/resolveRestaurantId'
 
-export default function RestaurantMorePage() {
+export default function RestaurantMorePage({ initialBrand }: { initialBrand: any | null }) {
   const router = useRouter()
   const { cart } = useCart()
   const itemCount = cart.items.reduce((sum, it) => sum + it.quantity, 0)
-  const [restaurant, setRestaurant] = useState<any | null>(null)
+  const [restaurant, setRestaurant] = useState<any | null>(initialBrand)
   const [pages, setPages] = useState<{ title: string; slug: string }[]>([])
   const brand = useBrand()
   const restaurantId = resolveRestaurantId(router, brand, restaurant)
@@ -37,8 +37,7 @@ export default function RestaurantMorePage() {
   }, [router.isReady, restaurantId])
 
   return (
-    <BrandProvider restaurant={restaurant}>
-      <CustomerLayout cartCount={itemCount}>
+      <CustomerLayout cartCount={itemCount} restaurant={restaurant}>
         <div className="container mx-auto max-w-5xl px-4 py-8">
         <h1 className="text-3xl font-bold">More</h1>
         <div className="w-16 h-1 mt-2" style={{ backgroundColor: brand?.brand }} />
@@ -70,7 +69,28 @@ export default function RestaurantMorePage() {
         </div>
       </div>
       </CustomerLayout>
-    </BrandProvider>
   )
+}
+
+import { supaServer } from '@/lib/supaServer'
+import type { GetServerSideProps } from 'next'
+
+export const getServerSideProps: GetServerSideProps = async ctx => {
+  const pick = (v: any) => (Array.isArray(v) ? v[0] : v)
+  const id =
+    (pick(ctx.query.restaurant_id) as string) ||
+    (pick(ctx.query.id) as string) ||
+    (pick(ctx.query.r) as string) ||
+    null
+  let initialBrand = null
+  if (id) {
+    const { data } = await supaServer()
+      .from('restaurants')
+      .select('id,website_title,name,logo_url,logo_shape,brand_primary_color,brand_secondary_color')
+      .eq('id', id)
+      .maybeSingle()
+    initialBrand = data
+  }
+  return { props: { initialBrand } }
 }
 

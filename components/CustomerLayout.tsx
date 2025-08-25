@@ -31,7 +31,7 @@ export default function CustomerLayout({
         </Head>
       )}
 
-      <TopBar hidden={hideHeader} />
+      <TopBar hidden={hideHeader} restaurant={restaurant} />
 
       <main
         className={`min-h-screen ${hideFooter ? '' : 'pb-24'} ${hideHeader ? '' : 'pt-14'}`}

@@ -13,7 +13,11 @@ export default function App({ Component, pageProps }: AppProps) {
   const router = useRouter();
   const isRestaurantRoute = router.pathname.startsWith('/restaurant');
   const page = <Component {...pageProps} />;
-  const content = isRestaurantRoute ? <BrandProvider>{page}</BrandProvider> : page;
+  const content = isRestaurantRoute ? (
+    <BrandProvider initialBrand={pageProps.initialBrand}>{page}</BrandProvider>
+  ) : (
+    page
+  );
 
   return (
     <SessionContextProvider supabaseClient={supabase} initialSession={pageProps.initialSession}>

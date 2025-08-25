@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import CustomerLayout from '@/components/CustomerLayout';
 import Slides from '@/components/customer/Slides';
 import DebugFlag from '@/components/dev/DebugFlag';
-import { useBrand, BrandProvider } from '@/components/branding/BrandProvider';
+import { useBrand } from '@/components/branding/BrandProvider';
 import { supabase } from '@/utils/supabaseClient';
 import { useCart } from '@/context/CartContext';
 import LandingHero from '@/components/customer/home/LandingHero';
@@ -20,10 +20,10 @@ function getBrandAccentHex(brand: unknown): string | undefined {
   return undefined;
 }
 
-export default function RestaurantHomePage() {
+export default function RestaurantHomePage({ initialBrand }: { initialBrand: any | null }) {
   const router = useRouter();
   const brand = useBrand();
-  const [restaurant, setRestaurant] = useState<any | null>(null);
+  const [restaurant, setRestaurant] = useState<any | null>(initialBrand);
   const { cart } = useCart();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
   const [heroInView, setHeroInView] = useState(true);
@@ -76,7 +76,6 @@ export default function RestaurantHomePage() {
   })();
 
   return (
-    <BrandProvider restaurant={restaurant}>
       <CustomerLayout
         restaurant={restaurant}
         cartCount={cartCount}
@@ -128,16 +127,30 @@ export default function RestaurantHomePage() {
         </section>
       </Slides>
       </CustomerLayout>
-    </BrandProvider>
   );
 }
 
-export async function getStaticProps() {
+import { supaServer } from '@/lib/supaServer';
+import type { GetServerSideProps } from 'next';
+
+export const getServerSideProps: GetServerSideProps = async ctx => {
+  const pick = (v: any) => (Array.isArray(v) ? v[0] : v);
+  const id =
+    (pick(ctx.query.restaurant_id) as string) ||
+    (pick(ctx.query.id) as string) ||
+    (pick(ctx.query.r) as string) ||
+    null;
+  let initialBrand = null;
+  if (id) {
+    const { data } = await supaServer()
+      .from('restaurants')
+      .select('id,website_title,name,logo_url,logo_shape,brand_primary_color,brand_secondary_color')
+      .eq('id', id)
+      .maybeSingle();
+    initialBrand = data;
+  }
   return {
-    props: {
-      customerMode: true,
-      cartCount: 0,
-    },
+    props: { initialBrand },
   };
-}
+};
 
