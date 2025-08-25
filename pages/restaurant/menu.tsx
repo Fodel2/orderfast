@@ -6,7 +6,8 @@ import { supabase } from "../../utils/supabaseClient";
 import MenuItemCard from "../../components/MenuItemCard";
 import { useCart } from "../../context/CartContext";
 import CustomerLayout from "../../components/CustomerLayout";
-import { useBrand, BrandProvider } from "../../components/branding/BrandProvider";
+import { useBrand } from "../../components/branding/BrandProvider";
+import Skeleton from '@/components/ui/Skeleton';
 import MenuHeader from '@/components/customer/menu/MenuHeader';
 import resolveRestaurantId from '@/lib/resolveRestaurantId';
 
@@ -60,13 +61,13 @@ interface Item {
   addon_groups?: any[];
 }
 
-export default function RestaurantMenuPage() {
+export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any | null }) {
   const router = useRouter();
   const brand = useBrand();
   const [routerReady, setRouterReady] = useState(false);
   useEffect(() => { if (router?.isReady) setRouterReady(true); }, [router?.isReady]);
 
-  const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
+  const [restaurant, setRestaurant] = useState<Restaurant | null>(initialBrand);
   const [categories, setCategories] = useState<Category[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [itemLinks, setItemLinks] = useState<
@@ -249,11 +250,11 @@ export default function RestaurantMenuPage() {
             <div className="p-6 text-center text-red-500">No restaurant specified</div>
           ) : !restaurant ? (
             <div className="p-6">
-              <div className="h-24 bg-gray-100 rounded-lg mb-4 animate-pulse" />
+              <Skeleton className="h-24 rounded-lg mb-4" />
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                <div className="h-36 bg-gray-100 rounded-lg animate-pulse" />
-                <div className="h-36 bg-gray-100 rounded-lg animate-pulse" />
-                <div className="h-36 bg-gray-100 rounded-lg animate-pulse" />
+                <Skeleton className="h-36 rounded-lg" />
+                <Skeleton className="h-36 rounded-lg" />
+                <Skeleton className="h-36 rounded-lg" />
               </div>
             </div>
           ) : null}
@@ -386,19 +387,32 @@ export default function RestaurantMenuPage() {
   };
 
   return (
-    <BrandProvider restaurant={restaurant}>
       <CustomerLayout cartCount={itemCount} restaurant={restaurant}>
         <Inner />
       </CustomerLayout>
-    </BrandProvider>
   );
 }
 
-export async function getStaticProps() {
+import { supaServer } from '@/lib/supaServer';
+import type { GetServerSideProps } from 'next';
+
+export const getServerSideProps: GetServerSideProps = async ctx => {
+  const pick = (v: any) => (Array.isArray(v) ? v[0] : v);
+  const id =
+    (pick(ctx.query.restaurant_id) as string) ||
+    (pick(ctx.query.id) as string) ||
+    (pick(ctx.query.r) as string) ||
+    null;
+  let initialBrand = null;
+  if (id) {
+    const { data } = await supaServer()
+      .from('restaurants')
+      .select('id,website_title,name,logo_url,logo_shape,brand_primary_color,brand_secondary_color')
+      .eq('id', id)
+      .maybeSingle();
+    initialBrand = data;
+  }
   return {
-    props: {
-      customerMode: true,
-      cartCount: 0,
-    },
+    props: { initialBrand },
   };
-}
+};

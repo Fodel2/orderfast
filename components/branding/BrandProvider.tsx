@@ -28,18 +28,27 @@ export const useBrand = (): BrandCtx => {
   return React.useContext(Ctx) ?? { ...hashHSL('Restaurant'), name: 'Restaurant', initials: 'R', logoUrl: null };
 };
 
-export const BrandProvider: React.FC<{ restaurant?: any; children: React.ReactNode; }> = ({ restaurant, children }) => {
+export const BrandProvider: React.FC<{
+  restaurant?: any;
+  initialBrand?: any;
+  children: React.ReactNode;
+}> = ({ restaurant, initialBrand, children }) => {
   const router = useRouter();
   const qp = (k: string) => (router?.query?.[k] as string) || '';
-  const name = (restaurant?.website_title as string) || (restaurant?.name as string) || qp('name') || 'Restaurant';
-  const logoUrl = (restaurant?.logo_url as string) || qp('logo') || null;
-  const logoShape = (restaurant?.logo_shape as string) || null;
+  const source = restaurant || initialBrand || {};
+  const name =
+    (source as any)?.website_title ||
+    (source as any)?.name ||
+    qp('name') ||
+    'Restaurant';
+  const logoUrl = (source as any)?.logo_url || qp('logo') || null;
+  const logoShape = (source as any)?.logo_shape || null;
   const primary =
-    (restaurant?.brand_primary_color as string) ||
-    (restaurant?.brand_color as string) ||
+    (source as any)?.brand_primary_color ||
+    (source as any)?.brand_color ||
     qp('brand') ||
     '';
-  const secondary = (restaurant?.brand_secondary_color as string) || '';
+  const secondary = (source as any)?.brand_secondary_color || '';
   const colors = primary
     ? {
         brand: primary,
@@ -47,9 +56,17 @@ export const BrandProvider: React.FC<{ restaurant?: any; children: React.ReactNo
         brand700: secondary || primary,
       }
     : hashHSL(name);
-  const initials = name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase() || 'R';
+  const initials = name
+    .split(' ')
+    .map(p => p[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase() || 'R';
 
-  const value = useMemo(() => ({ ...colors, name, initials, logoUrl, logoShape }), [colors.brand, colors.brand600, colors.brand700, name, initials, logoUrl, logoShape]);
+  const value = useMemo(
+    () => ({ ...colors, name, initials, logoUrl, logoShape }),
+    [colors.brand, colors.brand600, colors.brand700, name, initials, logoUrl, logoShape]
+  );
 
   return (
     <Ctx.Provider value={value}>
@@ -59,6 +76,8 @@ export const BrandProvider: React.FC<{ restaurant?: any; children: React.ReactNo
           ['--brand' as any]: value.brand,
           ['--brand-600' as any]: value.brand600,
           ['--brand-700' as any]: value.brand700,
+          ['--brand-primary' as any]: value.brand,
+          ['--brand-secondary' as any]: value.brand600,
           ['--ink' as any]: '#111827',
           ['--surface' as any]: '#ffffff',
           ['--card' as any]: '#ffffff',

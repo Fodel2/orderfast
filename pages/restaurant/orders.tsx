@@ -6,7 +6,7 @@ import CustomerLayout from '../../components/CustomerLayout'
 import OrderDetailsModal from '@/components/customer/OrderDetailsModal'
 import { displayOrderNo } from '@/lib/orderDisplay'
 
-export default function OrdersPage() {
+export default function OrdersPage({ initialBrand }: { initialBrand: any | null }) {
   const router = useRouter()
   const supabase = useSupabaseClient()
   const { user, loading } = useUser()
@@ -167,7 +167,7 @@ export default function OrdersPage() {
   if (loading) return null
 
   return (
-    <CustomerLayout>
+    <CustomerLayout restaurant={initialBrand}>
       <div className="max-w-screen-sm mx-auto px-4 pb-24">
         {router.query.debug === '1' && (
           <div className="text-xs text-gray-500 mb-2">
@@ -216,4 +216,26 @@ export default function OrdersPage() {
       </div>
     </CustomerLayout>
   )
+}
+
+import { supaServer } from '@/lib/supaServer'
+import type { GetServerSideProps } from 'next'
+
+export const getServerSideProps: GetServerSideProps = async ctx => {
+  const pick = (v: any) => (Array.isArray(v) ? v[0] : v)
+  const id =
+    (pick(ctx.query.restaurant_id) as string) ||
+    (pick(ctx.query.id) as string) ||
+    (pick(ctx.query.r) as string) ||
+    null
+  let initialBrand = null
+  if (id) {
+    const { data } = await supaServer()
+      .from('restaurants')
+      .select('id,website_title,name,logo_url,logo_shape,brand_primary_color,brand_secondary_color')
+      .eq('id', id)
+      .maybeSingle()
+    initialBrand = data
+  }
+  return { props: { initialBrand } }
 }
