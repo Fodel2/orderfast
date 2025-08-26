@@ -5,6 +5,16 @@ import { supabase } from '@/utils/supabaseClient';
 import RestaurantLogo from '../../branding/RestaurantLogo';
 import Button from '../../ui/Button';
 import Skeleton from '../../ui/Skeleton';
+
+function readableText(hex?: string | null) {
+  if (!hex) return '#fff';
+  const h = hex.replace('#', '');
+  const r = parseInt(h.length === 3 ? h[0] + h[0] : h.slice(0, 2), 16);
+  const g = parseInt(h.length === 3 ? h[1] + h[1] : h.slice(2, 4), 16);
+  const b = parseInt(h.length === 3 ? h[2] + h[2] : h.slice(4, 6), 16);
+  const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+  return yiq >= 145 ? '#000' : '#fff';
+}
 type LandingHeroProps = {
   title: string;
   subtitle?: string | null;
@@ -28,6 +38,16 @@ export default function LandingHero({
 }: LandingHeroProps) {
   const router = useRouter();
   const [open, setOpen] = useState<boolean | null>(typeof isOpen === 'boolean' ? isOpen : null);
+  const [primary, setPrimary] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (!primary && typeof window !== 'undefined') {
+      const v = getComputedStyle(document.documentElement).getPropertyValue('--brand-primary').trim();
+      if (v) setPrimary(v);
+    }
+  }, [primary]);
+
+  const ctaText = readableText(primary);
 
   useEffect(() => {
     if (open !== null) return;
@@ -94,11 +114,11 @@ export default function LandingHero({
               )}
               <Link href={ctaHref} aria-label="Order Now" className="relative">
                 <Button
-                  className="px-6 py-3 text-base sm:text-lg rounded-xl border-0"
+                  className="rounded-full px-5 py-2 sm:px-6 sm:py-2.5 text-sm sm:text-base font-medium tracking-tight shadow-md hover:shadow-lg transition-all duration-150 ease-out hover:scale-[1.02] active:scale-[0.99] border-0 focus:outline-none focus:ring-2 focus:ring-white/40"
                   style={{
-                    backgroundColor: 'var(--brand-primary, #ff2eb8)',
+                    backgroundColor: primary || 'var(--brand-primary, #111827)',
+                    color: ctaText,
                     borderColor: 'transparent',
-                    color: '#fff',
                   }}
                 >
                   {ctaLabel}
