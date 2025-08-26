@@ -5,8 +5,6 @@ import { supabase } from '@/utils/supabaseClient';
 import RestaurantLogo from '../../branding/RestaurantLogo';
 import Button from '../../ui/Button';
 import Skeleton from '../../ui/Skeleton';
-import OpenBadge from '../OpenBadge';
-
 type LandingHeroProps = {
   title: string;
   subtitle?: string | null;
@@ -63,23 +61,40 @@ export default function LandingHero({
             alt={title}
             shape={logoShape ?? 'round'}
             size={72}
-            className="shadow-none ring-0 border-0"
+            className="ring-0 border-0 shadow-none"
           />
 
           {/* Text + CTA with overlay */}
           <div className="relative w-full">
             <div
-              className="absolute -inset-3 sm:-inset-4 rounded-2xl bg-black/40 md:bg-black/35 backdrop-blur-[2px]"
+              className="absolute -inset-3 sm:-inset-4 rounded-3xl bg-black/35 md:bg-black/30 backdrop-blur-md shadow-xl/20"
               aria-hidden="true"
             />
             <div className="relative flex flex-col items-center gap-3 sm:gap-4">
-              <h1 className="text-white text-2xl sm:text-3xl font-semibold leading-tight">{title}</h1>
+              <h1 className="text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.6)] text-2xl sm:text-3xl font-semibold leading-tight">
+                {title}
+              </h1>
               {subtitle ? (
                 <p className="text-white/90 text-sm sm:text-base leading-relaxed max-w-prose">{subtitle}</p>
               ) : null}
-              {open !== null && <OpenBadge isOpen={open} />}
+              {open !== null && (
+                <span
+                  className="px-3 py-1 rounded-full text-sm font-medium"
+                  style={{
+                    backgroundColor: 'var(--brand-secondary, rgba(255,255,255,0.15))',
+                    color: 'white',
+                  }}
+                >
+                  {open ? 'Open' : 'Closed'}
+                </span>
+              )}
               <Link href={ctaHref} aria-label="Order Now" className="relative">
-                <Button className="px-6 py-3 text-base sm:text-lg rounded-xl">{ctaLabel}</Button>
+                <Button
+                  className="px-6 py-3 text-base sm:text-lg rounded-xl border-0"
+                  style={{ backgroundColor: 'var(--brand-primary, #ff2eb8)' }}
+                >
+                  {ctaLabel}
+                </Button>
               </Link>
             </div>
           </div>
@@ -91,4 +106,3 @@ export default function LandingHero({
     </section>
   );
 }
-
