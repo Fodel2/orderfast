@@ -45,13 +45,12 @@ export default function LandingHero({
   }, [open, router.query]);
 
   return (
-    <section className="relative w-full min-h-[70vh] sm:min-h-[80vh] overflow-hidden rounded-2xl">
+    <section className="relative w-full min-h-screen overflow-hidden">
       <div
         className="absolute inset-0 bg-center bg-cover"
         style={imageUrl ? { backgroundImage: `url(${imageUrl})` } : undefined}
         aria-hidden="true"
       />
-      <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-black/15 via-black/10 to-black/20" />
 
       {/* Centered content */}
       <div className="absolute inset-0 flex items-center justify-center p-4">
@@ -64,13 +63,8 @@ export default function LandingHero({
             className="ring-0 border-0 shadow-none"
           />
 
-          {/* Text + CTA with overlay */}
-          <div className="relative w-full">
-            <div
-              className="absolute -inset-3 sm:-inset-4 rounded-3xl bg-black/35 md:bg-black/30 backdrop-blur-md shadow-xl/20"
-              aria-hidden="true"
-            />
-            <div className="relative flex flex-col items-center gap-3 sm:gap-4">
+            {/* Text + CTA */}
+            <div className="flex flex-col items-center gap-3 sm:gap-4">
               <h1 className="text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.6)] text-2xl sm:text-3xl font-semibold leading-tight">
                 {title}
               </h1>
@@ -97,12 +91,11 @@ export default function LandingHero({
                 </Button>
               </Link>
             </div>
-          </div>
         </div>
       </div>
 
       {/* Skeleton fallback if no image */}
-      {!imageUrl && <Skeleton className="absolute inset-0 rounded-2xl" />}
+      {!imageUrl && <Skeleton className="absolute inset-0" />}
     </section>
   );
 }
