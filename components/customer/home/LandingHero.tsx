@@ -63,34 +63,49 @@ export default function LandingHero({
             className="ring-0 border-0 shadow-none"
           />
 
-            {/* Text + CTA */}
-            <div className="flex flex-col items-center gap-3 sm:gap-4">
+          <div className="relative max-w-md w-full">
+            <div
+              className="absolute -inset-3 sm:-inset-4 rounded-2xl bg-black/25 md:bg-black/20 backdrop-blur-md shadow-lg"
+              aria-hidden="true"
+            ></div>
+            <div className="relative flex flex-col items-center text-center gap-3 sm:gap-4">
               <h1 className="text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.6)] text-2xl sm:text-3xl font-semibold leading-tight">
                 {title}
               </h1>
               {subtitle ? (
-                <p className="text-white/90 text-sm sm:text-base leading-relaxed max-w-prose">{subtitle}</p>
+                <p className="text-white/90 text-sm sm:text-base leading-relaxed line-clamp-2 max-w-prose">
+                  {subtitle}
+                </p>
               ) : null}
               {open !== null && (
                 <span
-                  className="px-3 py-1 rounded-full text-sm font-medium"
+                  className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium shadow-sm"
                   style={{
-                    backgroundColor: 'var(--brand-secondary, rgba(255,255,255,0.15))',
-                    color: 'white',
+                    backgroundColor: 'var(--brand-secondary, rgba(255,255,255,0.18))',
+                    color: '#fff',
                   }}
                 >
+                  <span
+                    className="inline-block w-2 h-2 rounded-full"
+                    style={{ backgroundColor: open ? '#22c55e' : '#ef4444' }}
+                  />
                   {open ? 'Open' : 'Closed'}
                 </span>
               )}
               <Link href={ctaHref} aria-label="Order Now" className="relative">
                 <Button
                   className="px-6 py-3 text-base sm:text-lg rounded-xl border-0"
-                  style={{ backgroundColor: 'var(--brand-primary, #ff2eb8)' }}
+                  style={{
+                    backgroundColor: 'var(--brand-primary, #ff2eb8)',
+                    borderColor: 'transparent',
+                    color: '#fff',
+                  }}
                 >
                   {ctaLabel}
                 </Button>
               </Link>
             </div>
+          </div>
         </div>
       </div>
 
