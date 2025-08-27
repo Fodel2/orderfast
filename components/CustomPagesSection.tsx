@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/utils/supabaseClient'; // keep your existing path
 import PageModal from './PageModal';
+import PageBuilderModal from './PageBuilderModal';
 import { toast } from '@/components/ui/toast'; // keep your existing toast
 
 type PageRow = {
@@ -17,6 +18,7 @@ export default function CustomPagesSection({ restaurantId }: { restaurantId: str
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editRow, setEditRow] = useState<PageRow | null>(null);
+  const [builderFor, setBuilderFor] = useState<string | null>(null);
 
   async function loadPages() {
     if (!restaurantId) {
@@ -158,6 +160,9 @@ export default function CustomPagesSection({ restaurantId }: { restaurantId: str
               <button onClick={() => openEdit(p)} className="ml-3 px-3 py-1 rounded border">
                 Edit
               </button>
+              <button onClick={() => setBuilderFor(p.id)} className="ml-2 px-3 py-1 rounded border">
+                Builder
+              </button>
               <button onClick={() => remove(p)} className="ml-2 px-3 py-1 rounded border text-red-600">
                 Delete
               </button>
@@ -172,6 +177,14 @@ export default function CustomPagesSection({ restaurantId }: { restaurantId: str
         initial={editRow ? editRow : { restaurant_id: restaurantId }}
         onSaved={() => loadPages()}
       />
+      {builderFor ? (
+        <PageBuilderModal
+          open={true}
+          onClose={() => setBuilderFor(null)}
+          pageId={builderFor}
+          restaurantId={restaurantId}
+        />
+      ) : null}
     </section>
   );
 }
