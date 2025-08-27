@@ -1,9 +1,27 @@
 import { LogOut, User, Percent, Mail, Info, FileText, Shield } from 'lucide-react';
 import CustomerLayout from '../components/CustomerLayout';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
+import { useEffect, useState } from 'react';
+import { supabase } from '@/utils/supabaseClient';
+import resolveRestaurantId from '@/lib/resolveRestaurantId';
 
 export default function MorePage() {
+  const router = useRouter();
+  const [pages, setPages] = useState<{ title: string; slug: string }[]>([]);
   const isLoggedIn = true; // TODO: replace with real auth check
+
+  useEffect(() => {
+    const rid = resolveRestaurantId(router, null, null);
+    if (!router.isReady || !rid) return;
+    supabase
+      .from('custom_pages')
+      .select('title,slug')
+      .eq('restaurant_id', rid)
+      .eq('show_in_nav', true)
+      .order('sort_order', { ascending: true, nullsFirst: true })
+      .then(({ data }) => setPages((data as any[]) || []));
+  }, [router.isReady]);
 
   const items = [
     isLoggedIn && {
@@ -26,6 +44,11 @@ export default function MorePage() {
       icon: <Info className="w-5 h-5" />,
       href: '/about',
     },
+    ...pages.map((p) => ({
+      title: p.title,
+      icon: <FileText className="w-5 h-5" />,
+      href: `/p/${p.slug}`,
+    })),
     {
       title: 'Terms & Conditions',
       icon: <FileText className="w-5 h-5" />,

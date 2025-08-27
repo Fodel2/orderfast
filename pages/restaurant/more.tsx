@@ -28,10 +28,10 @@ export default function RestaurantMorePage({ initialBrand }: { initialBrand: any
       .maybeSingle()
       .then(({ data }) => setRestaurant(data))
     supabase
-      .from('website_pages')
+      .from('custom_pages')
       .select('title,slug')
       .eq('restaurant_id', restaurantId)
-      .eq('status', 'published')
+      .eq('show_in_nav', true)
       .order('sort_order', { ascending: true, nullsFirst: true })
       .then(({ data }) => setPages((data as any[]) || []))
   }, [router.isReady, restaurantId])

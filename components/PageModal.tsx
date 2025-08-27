@@ -6,7 +6,8 @@ export interface Page {
   title: string;
   slug: string;
   content: any;
-  status: 'draft' | 'published' | 'archived';
+  show_in_nav: boolean;
+  sort_order: number;
 }
 
 interface PageModalProps {
@@ -34,7 +35,7 @@ export default function PageModal({
   const [content, setContent] = useState(
     page?.content ? JSON.stringify(page.content, null, 2) : ''
   );
-  const [status, setStatus] = useState<Page['status']>(page?.status || 'draft');
+  const [showInNav, setShowInNav] = useState<boolean>(page?.show_in_nav ?? true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -48,14 +49,21 @@ export default function PageModal({
     if (saving) return;
     setSaving(true);
     let error;
-    const payload = { title, slug, content: content ? JSON.parse(content) : {}, status };
+    const payload = {
+      title,
+      slug,
+      content: content ? JSON.parse(content) : {},
+      show_in_nav: showInNav,
+    };
     if (page) {
       ({ error } = await supabase
-        .from('website_pages')
+        .from('custom_pages')
         .update(payload)
         .eq('id', page.id));
     } else {
-      ({ error } = await supabase.from('website_pages').insert([{ restaurant_id: restaurantId, ...payload }]));
+      ({ error } = await supabase
+        .from('custom_pages')
+        .insert([{ restaurant_id: restaurantId, ...payload }]));
     }
     if (error) {
       alert('Failed to save page: ' + error.message);
@@ -107,16 +115,16 @@ export default function PageModal({
               className="w-full border border-gray-300 rounded p-2 min-h-[150px]"
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Status</label>
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value as any)}
-              className="w-full border border-gray-300 rounded p-2"
-            >
-              <option value="draft">Draft</option>
-              <option value="published">Published</option>
-            </select>
+          <div className="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              id="show-nav"
+              checked={showInNav}
+              onChange={(e) => setShowInNav(e.target.checked)}
+            />
+            <label htmlFor="show-nav" className="text-sm">
+              Show in navigation
+            </label>
           </div>
           <div className="flex justify-end space-x-2 pt-2">
             <button
