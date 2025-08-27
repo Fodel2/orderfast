@@ -1,148 +1,215 @@
-import { useEffect, useState } from 'react';
-import { supabase } from '../utils/supabaseClient';
+import React, { useEffect, useMemo, useState } from 'react';
+import { toast } from '@/components/ui/toast'; // use your existing toast util; if different, keep your import
+import { supabase } from '@/utils/supabaseClient'; // use your existing client path
 
-export interface Page {
-  id: string;
-  title: string;
-  slug: string;
-  content: any;
-  show_in_nav: boolean;
-  sort_order: number;
-}
-
-interface PageModalProps {
-  restaurantId: string | number;
-  page?: Page;
+type PageModalProps = {
+  open: boolean;
   onClose: () => void;
-  onSaved: () => void;
-}
+  initial?: {
+    id?: string;
+    restaurant_id: string;
+    title?: string;
+    slug?: string;
+    content?: string; // store plain text/JSON as you already do
+    show_in_nav?: boolean;
+    seo_title?: string;
+    seo_description?: string;
+  };
+  onSaved: (pageId: string) => void;
+};
 
-const slugify = (str: string) =>
-  str
+function slugify(v: string) {
+  return v
     .toLowerCase()
     .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)+/g, '');
+    .replace(/[^\w\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-');
+}
 
-export default function PageModal({
-  restaurantId,
-  page,
-  onClose,
-  onSaved,
-}: PageModalProps) {
-  const [title, setTitle] = useState(page?.title || '');
-  const [slug, setSlug] = useState(page?.slug || '');
-  const [content, setContent] = useState(
-    page?.content ? JSON.stringify(page.content, null, 2) : ''
-  );
-  const [showInNav, setShowInNav] = useState<boolean>(page?.show_in_nav ?? true);
+export default function PageModal({ open, onClose, initial, onSaved }: PageModalProps) {
+  const [title, setTitle] = useState(initial?.title ?? '');
+  const [slug, setSlug] = useState(initial?.slug ?? '');
+  const [content, setContent] = useState(initial?.content ?? '');
+  const [showInNav, setShowInNav] = useState(initial?.show_in_nav ?? true);
+  const [seoTitle, setSeoTitle] = useState(initial?.seo_title ?? '');
+  const [seoDescription, setSeoDescription] = useState(initial?.seo_description ?? '');
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (!page) {
-      setSlug(slugify(title));
-    }
-  }, [title, page]);
+  const isEdit = !!initial?.id;
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (saving) return;
-    setSaving(true);
-    let error;
-    const payload = {
-      title,
-      slug,
-      content: content ? JSON.parse(content) : {},
-      show_in_nav: showInNav,
-    };
-    if (page) {
-      ({ error } = await supabase
-        .from('custom_pages')
-        .update(payload)
-        .eq('id', page.id));
-    } else {
-      ({ error } = await supabase
-        .from('custom_pages')
-        .insert([{ restaurant_id: restaurantId, ...payload }]));
-    }
-    if (error) {
-      alert('Failed to save page: ' + error.message);
-      setSaving(false);
+  useEffect(() => {
+    if (!open) return;
+    setTitle(initial?.title ?? '');
+    setSlug(initial?.slug ?? '');
+    setContent(initial?.content ?? '');
+    setShowInNav(initial?.show_in_nav ?? true);
+    setSeoTitle(initial?.seo_title ?? '');
+    setSeoDescription(initial?.seo_description ?? '');
+  }, [open, initial]);
+
+  function ensureSlug(v: string) {
+    const s = slugify(v);
+    setSlug(s);
+  }
+
+  async function handleSave() {
+    if (!initial?.restaurant_id) {
+      toast.error('Missing restaurant_id. Please reload and try again.');
       return;
     }
-    onSaved();
-    onClose();
-    setSaving(false);
-  };
+    const cleanedTitle = title.trim();
+    const cleanedSlug = (slug || slugify(title)).trim();
 
-  if (!restaurantId) return null;
+    if (!cleanedTitle) {
+      toast.error('Please enter a title');
+      return;
+    }
+    if (!cleanedSlug) {
+      toast.error('Please enter a slug');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      if (isEdit && initial?.id) {
+        const { error } = await supabase
+          .from('custom_pages')
+          .update({
+            title: cleanedTitle,
+            slug: cleanedSlug,
+            content,
+            show_in_nav: showInNav,
+            seo_title: seoTitle || null,
+            seo_description: seoDescription || null,
+          })
+          .eq('id', initial.id)
+          .select('id')
+          .single();
+
+        if (error) throw error;
+        toast.success('Page updated');
+        onSaved(initial.id);
+      } else {
+        // sort_order = max+1
+        const { data: maxRow, error: maxErr } = await supabase
+          .from('custom_pages')
+          .select('sort_order')
+          .eq('restaurant_id', initial!.restaurant_id)
+          .order('sort_order', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (maxErr) throw maxErr;
+
+        const nextOrder = (maxRow?.sort_order ?? -1) + 1;
+
+        const { data, error } = await supabase
+          .from('custom_pages')
+          .insert({
+            restaurant_id: initial!.restaurant_id,
+            title: cleanedTitle,
+            slug: cleanedSlug,
+            content,
+            show_in_nav: showInNav,
+            sort_order: nextOrder,
+            seo_title: seoTitle || null,
+            seo_description: seoDescription || null,
+          })
+          .select('id')
+          .single();
+
+        if (error) throw error;
+        toast.success('Page created');
+        onSaved(data.id);
+      }
+      onClose();
+    } catch (e: any) {
+      console.error(e);
+      const msg =
+        e?.code === '23505'
+          ? 'That slug already exists. Please choose another.'
+          : e?.message || 'Failed to save page';
+      toast.error(msg);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!open) return null;
+
   return (
-    <div
-      className="fixed inset-0 bg-black/40 flex items-center justify-center z-[1000]"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <div
-        className="bg-white rounded-xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3 className="text-xl font-semibold mb-4">
-          {page ? 'Edit Page' : 'New Page'}
-        </h3>
-        <form onSubmit={handleSubmit} className="space-y-4">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative w-full max-w-xl rounded-2xl bg-white p-4 shadow-xl">
+        <h2 className="text-xl font-semibold mb-3">{isEdit ? 'Edit Page' : 'New Page'}</h2>
+
+        <label className="block text-sm font-medium mb-1">Title</label>
+        <input
+          value={title}
+          onChange={(e) => {
+            setTitle(e.target.value);
+            if (!isEdit) ensureSlug(e.target.value);
+          }}
+          className="w-full mb-3 rounded border px-3 py-2"
+          placeholder="e.g. About Us"
+        />
+
+        <label className="block text-sm font-medium mb-1">Slug</label>
+        <input
+          value={slug}
+          onChange={(e) => setSlug(slugify(e.target.value))}
+          className="w-full mb-3 rounded border px-3 py-2"
+          placeholder="about-us"
+        />
+
+        <label className="block text-sm font-medium mb-1">Content</label>
+        <textarea
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          rows={8}
+          className="w-full mb-3 rounded border px-3 py-2 font-mono"
+          placeholder="Write content or JSON (temporary)."
+        />
+
+        <div className="mb-3 flex items-center gap-2">
+          <input
+            id="show_in_nav"
+            type="checkbox"
+            checked={showInNav}
+            onChange={(e) => setShowInNav(e.target.checked)}
+          />
+          <label htmlFor="show_in_nav">Show in navigation</label>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
-            <label className="block text-sm font-medium mb-1">Title</label>
+            <label className="block text-sm font-medium mb-1">SEO Title (optional)</label>
             <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full border border-gray-300 rounded p-2"
+              value={seoTitle}
+              onChange={(e) => setSeoTitle(e.target.value)}
+              className="w-full rounded border px-3 py-2"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Slug</label>
+            <label className="block text-sm font-medium mb-1">SEO Description (optional)</label>
             <input
-              type="text"
-              value={slug}
-              onChange={(e) => setSlug(e.target.value)}
-              className="w-full border border-gray-300 rounded p-2"
+              value={seoDescription}
+              onChange={(e) => setSeoDescription(e.target.value)}
+              className="w-full rounded border px-3 py-2"
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Content (JSON)</label>
-            <textarea
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              className="w-full border border-gray-300 rounded p-2 min-h-[150px]"
-            />
-          </div>
-          <div className="flex items-center space-x-2">
-            <input
-              type="checkbox"
-              id="show-nav"
-              checked={showInNav}
-              onChange={(e) => setShowInNav(e.target.checked)}
-            />
-            <label htmlFor="show-nav" className="text-sm">
-              Show in navigation
-            </label>
-          </div>
-          <div className="flex justify-end space-x-2 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 border border-teal-600 text-teal-600 rounded hover:bg-teal-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 bg-teal-600 text-white rounded hover:bg-teal-700"
-              disabled={saving}
-            >
-              {saving ? 'Saving...' : 'Save'}
-            </button>
-          </div>
-        </form>
+        </div>
+
+        <div className="mt-4 flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 rounded border">Cancel</button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="px-4 py-2 rounded bg-emerald-600 text-white disabled:opacity-60"
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
       </div>
     </div>
   );
