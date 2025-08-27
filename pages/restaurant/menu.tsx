@@ -11,6 +11,16 @@ import Skeleton from '@/components/ui/Skeleton';
 import MenuHeader from '@/components/customer/menu/MenuHeader';
 import resolveRestaurantId from '@/lib/resolveRestaurantId';
 
+function readableText(hex?: string | null) {
+  if (!hex) return '#fff';
+  const h = hex.replace('#', '');
+  const r = parseInt(h.length === 3 ? h[0] + h[0] : h.slice(0, 2), 16);
+  const g = parseInt(h.length === 3 ? h[1] + h[1] : h.slice(2, 4), 16);
+  const b = parseInt(h.length === 3 ? h[2] + h[2] : h.slice(4, 6), 16);
+  const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+  return yiq >= 145 ? '#000' : '#fff';
+}
+
 function getIdFromQuery(router: any): string | undefined {
   const qp = (router?.query ?? {}) as Record<string, unknown>;
   const pick = (v: unknown) => (Array.isArray(v) ? v[0] : v);
@@ -238,10 +248,11 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
-    type CSSVars = React.CSSProperties & Record<string, string | number>;
 
+    const brandPrimary = brand?.brand as string | undefined;
+    const activeText = readableText(brandPrimary);
     return (
-      <div className="px-4 pb-28 max-w-6xl mx-auto">
+      <div className="px-4 sm:px-6 pb-28 max-w-6xl mx-auto">
         <div className="pt-4 space-y-8 scroll-smooth">
           {/* Inline guards rendered inside layout */}
           {!routerReady ? (
@@ -275,15 +286,17 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
 
           <div className="relative">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
               <input
                 type="text"
                 placeholder="Search menu..."
                 value={tempQuery}
                 onChange={(e) => setTempQuery(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && setSearchQuery(tempQuery)}
-                className="w-full rounded-full border bg-white pl-10 pr-4 h-9 text-sm shadow-md focus:outline-none focus:ring"
+                className="w-full rounded-full bg-white/70 backdrop-blur-md shadow-sm px-12 py-3 text-base placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)]"
               />
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none opacity-70">
+                <Search className="w-5 h-5" />
+              </span>
             </div>
           </div>
 
@@ -293,30 +306,24 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
               className={`sticky top-[60px] z-20 pt-2 pb-3 bg-white/70 backdrop-blur supports-[backdrop-filter]:backdrop-blur rounded-b-xl transition-all duration-400 ease-out will-change-transform will-change-opacity ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'}`}
               style={{ transitionDelay: '100ms' }}
             >
-              <div className="flex gap-3 overflow-x-auto no-scrollbar">
+              <div className="flex gap-3 overflow-x-auto no-scrollbar py-2">
                 {categories.map((c: any) => {
                   const isActive = activeCat === String(c.id);
-                  const chipStyle: CSSVars = isActive
-                    ? {
-                        ['--tw-ring-color']: String(brand?.brand || 'currentColor'),
-                        backgroundColor: String(brand?.brand || ''),
-                        borderColor: String(brand?.brand || ''),
-                      }
-                    : {
-                        ['--tw-ring-color']: String(brand?.brand || 'currentColor'),
-                      };
+                  const cls = isActive
+                    ? 'rounded-full px-5 py-2 text-sm font-semibold shadow-sm'
+                    : 'rounded-full border border-white/20 bg-white/60 backdrop-blur-md px-4 py-2 text-sm font-medium hover:bg-white/70 transition';
                   return (
                     <button
                       key={c.id}
                       onClick={() => onChipSelect(c)}
-                      className={`px-4 py-2 rounded-full border whitespace-nowrap transition-transform duration-200 ease-out hover:scale-[1.03] active:scale-95 hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
-                        activeCat === String(c.id)
-                          ? 'scale-105 text-white'
-                          : 'bg-gray-100 border-gray-200 text-gray-700'
-                      }`}
-                      aria-pressed={activeCat === String(c.id)}
-                      aria-current={activeCat === String(c.id) ? 'true' : undefined}
-                      style={chipStyle}
+                      className={cls}
+                      aria-pressed={isActive}
+                      aria-current={isActive ? 'true' : undefined}
+                      style={
+                        isActive
+                          ? { backgroundColor: 'var(--brand-primary)', color: activeText }
+                          : undefined
+                      }
                     >
                       {c.name}
                     </button>
@@ -351,9 +358,11 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
                     data-cat-id={cat.id}
                     ref={(el) => (sectionsRef.current[cat.id] = el)}
                     style={{ scrollMarginTop: 76 }}
-                    className="space-y-4"
                   >
-                    <h2 className="text-xl font-semibold text-left">{cat.name}</h2>
+                    <div className="mt-8 mb-3 flex items-center gap-3">
+                      <span className="inline-block h-1.5 w-8 rounded-full" style={{backgroundColor:'var(--brand-primary)'}} />
+                      <h2 className="text-xl font-semibold tracking-tight">{cat.name}</h2>
+                    </div>
                     <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
                         {catItems.map((item, idx) => (
                           <div

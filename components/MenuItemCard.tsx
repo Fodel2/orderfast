@@ -39,6 +39,7 @@ export default function MenuItemCard({
   const brand = useBrand?.();
   const accent =
     typeof brand?.brand === 'string' && brand.brand ? brand.brand : undefined;
+  const logo = brand?.logoUrl;
   const [mounted, setMounted] = useState(false);
   const [modalAnim, setModalAnim] = useState(false);
 
@@ -304,76 +305,76 @@ export default function MenuItemCard({
     <>
       <div>
         <div
-          className="tapcard rounded-2xl border border-gray-100 p-4 flex gap-4 active:opacity-95 transition-transform duration-200 ease-out hover:scale-[1.02] hover:shadow-md active:scale-95 will-change-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+          className="rounded-xl bg-white/70 backdrop-blur-md shadow-sm p-3 sm:p-4 flex gap-3 sm:gap-4 hover:shadow-md transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
           onClick={handleClick}
           role="button"
           tabIndex={0}
           style={{ ['--tw-ring-color' as any]: accent || 'currentColor' } as React.CSSProperties}
         >
-        {item?.image_url ? (
-          <img
-            src={item.image_url}
-            alt={item.name}
-            className="w-[84px] h-[84px] rounded-xl object-cover flex-shrink-0"
-          />
-        ) : (
-          <div className="w-[84px] h-[84px] rounded-xl bg-gray-100 flex items-center justify-center text-gray-400 flex-shrink-0">
-            {/* placeholder icon */}
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
-              <circle cx="12" cy="12" r="6" stroke="currentColor" strokeWidth="2" />
-              <path d="M7.5 13.5c1.5 1.1 3.3 1.7 5 1.7s3.5-.6 5-1.7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
+          <div className="w-24 h-24 sm:w-28 sm:h-28 shrink-0 overflow-hidden rounded-xl">
+            {item?.image_url ? (
+              <img
+                src={item.image_url}
+                alt={item.name}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <div className="h-full w-full bg-white/50 backdrop-blur-md flex items-center justify-center">
+                {logo ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={logo} alt="" className="w-12 h-12 opacity-40 filter grayscale object-contain" />
+                ) : null}
+              </div>
+            )}
           </div>
-        )}
-        <div className="flex-1 min-w-0 flex flex-col gap-1">
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex items-center min-w-0">
-              <h4 className="text-base md:text-lg font-semibold leading-6 truncate">
-                {item.name}
-              </h4>
-              {(item.is_vegan || item.is_vegetarian || item.is_18_plus) && (
-                <span className="ml-1 flex text-sm">
-                  {item.is_vegan && (
-                    <span role="img" aria-label="vegan">
-                      🌱
-                    </span>
-                  )}
-                  {item.is_vegetarian && (
-                    <span role="img" aria-label="vegetarian">
-                      🧀
-                    </span>
-                  )}
-                  {item.is_18_plus && (
-                    <span role="img" aria-label="18 plus">
-                      🔞
-                    </span>
-                  )}
-                </span>
-              )}
+          <div className="flex-1 min-w-0 flex flex-col gap-1">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center min-w-0">
+                <h4 className="text-base sm:text-lg font-semibold text-gray-900 truncate">
+                  {item.name}
+                </h4>
+                {(item.is_vegan || item.is_vegetarian || item.is_18_plus) && (
+                  <span className="ml-1 flex text-sm">
+                    {item.is_vegan && (
+                      <span role="img" aria-label="vegan">
+                        🌱
+                      </span>
+                    )}
+                    {item.is_vegetarian && (
+                      <span role="img" aria-label="vegetarian">
+                        🧀
+                      </span>
+                    )}
+                    {item.is_18_plus && (
+                      <span role="img" aria-label="18 plus">
+                        🔞
+                      </span>
+                    )}
+                  </span>
+                )}
+              </div>
+              <div className="price font-semibold text-gray-900 whitespace-nowrap text-sm sm:text-base">
+                ${ (price / 100).toFixed(2) }
+              </div>
             </div>
-            <div className="price text-gray-900 whitespace-nowrap text-sm md:text-base font-medium">
-              ${ (price / 100).toFixed(2) }
+            {item.description && (
+              <p className="text-sm text-gray-700 line-clamp-2 mt-0.5">{item.description}</p>
+            )}
+            <div className="mt-2 flex justify-end">
+              <button
+                type="button"
+                className="btn-icon min-w-[40px] min-h-[40px] transition-transform duration-150 ease-out hover:scale-[1.05] active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                style={{ ['--tw-ring-color' as any]: accent || 'currentColor' } as React.CSSProperties}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleClick();
+                }}
+                aria-label={`Add ${item?.name} to plate`}
+              >
+                <PlateAdd size={22} />
+              </button>
             </div>
           </div>
-          {item.description && (
-            <p className="text-sm text-gray-500 line-clamp-2">{item.description}</p>
-          )}
-          <div className="mt-2 flex justify-end">
-            <button
-              type="button"
-              className="btn-icon min-w-[40px] min-h-[40px] transition-transform duration-150 ease-out hover:scale-[1.05] active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-              style={{ ['--tw-ring-color' as any]: accent || 'currentColor' } as React.CSSProperties}
-              onClick={(e) => {
-                e.stopPropagation();
-                handleClick();
-              }}
-              aria-label={`Add ${item?.name} to plate`}
-            >
-              <PlateAdd size={22} />
-            </button>
-          </div>
-        </div>
         </div>
       </div>
 
