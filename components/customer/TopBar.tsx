@@ -1,5 +1,4 @@
 import React from 'react';
-import RestaurantLogo from '../branding/RestaurantLogo';
 import { useBrand } from '../branding/BrandProvider';
 import Skeleton from '../ui/Skeleton';
 
@@ -15,18 +14,33 @@ export default function TopBar({ hidden, restaurant }: Props) {
   const shape = restaurant?.logo_shape || 'round';
   const logoUrl = restaurant?.logo_url ?? null;
   const loading = !restaurant;
+
+  const dims =
+    shape === 'rectangular'
+      ? 'h-8 sm:h-10 w-[3.2rem] sm:w-[4rem]'
+      : 'h-8 w-8 sm:h-10 sm:w-10';
+  const rounding =
+    shape === 'round'
+      ? 'rounded-full'
+      : shape === 'square'
+      ? 'rounded-lg'
+      : 'rounded-md';
+  const wrapper = `${dims} ${rounding} overflow-visible p-0.5`;
   return (
     <header className="brand-glass fixed top-0 left-0 right-0 h-14 flex items-center px-4 z-40">
       {loading ? (
-        <RestaurantLogo isSkeleton size={28} shape="round" alt="" />
+        <Skeleton className={wrapper.replace('overflow-visible p-0.5', '')} />
       ) : (
-        <RestaurantLogo
-          src={logoUrl || undefined}
-          alt={title}
-          shape={shape}
-          size={28}
-          loading="eager"
-        />
+        <div className={wrapper}>
+          {logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={logoUrl}
+              alt={title}
+              className={`h-full w-full object-contain ${rounding}`}
+            />
+          ) : null}
+        </div>
       )}
       {loading ? (
         <Skeleton className="ml-2 h-5 w-40 rounded-md" />

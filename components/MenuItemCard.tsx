@@ -7,6 +7,17 @@ import AddonGroups, { validateAddonSelections } from './AddonGroups';
 import PlateAdd from '@/components/icons/PlateAdd';
 import { useBrand } from '@/components/branding/BrandProvider';
 
+function formatPrice(amount: number, currency = 'GBP') {
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency,
+    }).format(amount);
+  } catch {
+    return `£${Number(amount).toFixed(2)}`;
+  }
+}
+
 interface MenuItem {
   id: number;
   name: string;
@@ -65,6 +76,8 @@ export default function MenuItemCard({
   const price =
     typeof item?.price === 'number' ? item.price : Number(item?.price || 0);
   const imageUrl = item?.image_url || undefined;
+  const currency = 'GBP';
+  const formattedPrice = formatPrice(price / 100, currency);
   const badges: string[] = [];
   if (item?.is_vegan) badges.push('Vegan');
   if (item?.is_vegetarian) badges.push('Vegetarian');
@@ -157,13 +170,7 @@ export default function MenuItemCard({
               alt={item?.name || ''}
               className="w-full h-44 md:h-56 object-cover"
             />
-            <div
-              className="pointer-events-none absolute inset-x-0 bottom-0 h-20"
-              style={{
-                background:
-                  'linear-gradient(to top, rgba(0,0,0,0.45), rgba(0,0,0,0.00))',
-              }}
-            />
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/45 to-transparent" />
             <div className="absolute inset-x-0 bottom-0 p-4 md:p-5 flex flex-col items-start">
               <div className="w-full flex items-end justify-between">
                 <div className="text-white drop-shadow-md text-lg md:text-xl font-semibold">
@@ -171,10 +178,7 @@ export default function MenuItemCard({
                 </div>
                 {typeof price === 'number' && (
                   <div className="text-white/95 drop-shadow-md font-semibold">
-                    {((price) / 100).toLocaleString(undefined, {
-                      style: 'currency',
-                      currency: 'GBP',
-                    })}
+                    {formattedPrice}
                   </div>
                 )}
               </div>
@@ -248,11 +252,9 @@ export default function MenuItemCard({
         <div className="flex-1 overflow-y-auto px-4 md:px-6 py-3 space-y-4">
           {loading ? (
             <p className="text-center text-gray-500">Loading...</p>
-          ) : groups.length === 0 ? (
-            <p className="text-center text-gray-500">No add-ons available</p>
-          ) : (
+          ) : groups.length > 0 ? (
             <AddonGroups addons={groups} onChange={setSelections} />
-          )}
+          ) : null}
           <textarea
             className="w-full border rounded p-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
             style={{ ['--tw-ring-color' as any]: accent } as React.CSSProperties}
@@ -354,7 +356,7 @@ export default function MenuItemCard({
                 )}
               </div>
               <div className="price font-semibold text-gray-900 whitespace-nowrap text-sm sm:text-base">
-                ${ (price / 100).toFixed(2) }
+                {formattedPrice}
               </div>
             </div>
             {item.description && (
