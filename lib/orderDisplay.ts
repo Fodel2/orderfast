@@ -14,6 +14,17 @@ export function displayOrderNo(order: any): string {
   return `#${tail}`;
 }
 
+export function formatPrice(amount: number, currency = 'GBP') {
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency,
+    }).format(amount);
+  } catch {
+    return `£${Number(amount).toFixed(2)}`;
+  }
+}
+
 export function extractCancelReason(order: any): { reason?: string; note?: string } {
   const reason =
     order?.cancel_reason ??

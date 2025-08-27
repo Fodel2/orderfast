@@ -6,16 +6,16 @@ import type { AddonGroup } from '../utils/types';
 import AddonGroups, { validateAddonSelections } from './AddonGroups';
 import PlateAdd from '@/components/icons/PlateAdd';
 import { useBrand } from '@/components/branding/BrandProvider';
+import { formatPrice } from '@/lib/orderDisplay';
 
-function formatPrice(amount: number, currency = 'GBP') {
-  try {
-    return new Intl.NumberFormat(undefined, {
-      style: 'currency',
-      currency,
-    }).format(amount);
-  } catch {
-    return `£${Number(amount).toFixed(2)}`;
-  }
+function readableText(hex?: string | null) {
+  if (!hex) return '#000';
+  const h = hex.replace('#', '');
+  const r = parseInt(h.length === 3 ? h[0] + h[0] : h.slice(0, 2), 16);
+  const g = parseInt(h.length === 3 ? h[1] + h[1] : h.slice(2, 4), 16);
+  const b = parseInt(h.length === 3 ? h[2] + h[2] : h.slice(4, 6), 16);
+  const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+  return yiq >= 145 ? '#000' : '#fff';
 }
 
 interface MenuItem {
@@ -50,6 +50,8 @@ export default function MenuItemCard({
   const brand = useBrand?.();
   const accent =
     typeof brand?.brand === 'string' && brand.brand ? brand.brand : undefined;
+  const secondary =
+    typeof brand?.brand600 === 'string' && brand.brand600 ? brand.brand600 : undefined;
   const logo = brand?.logoUrl;
   const [mounted, setMounted] = useState(false);
   const [modalAnim, setModalAnim] = useState(false);
@@ -80,7 +82,7 @@ export default function MenuItemCard({
   const formattedPrice = formatPrice(price / 100, currency);
   const badges: string[] = [];
   if (item?.is_vegan) badges.push('Vegan');
-  if (item?.is_vegetarian) badges.push('Vegetarian');
+  else if (item?.is_vegetarian) badges.push('Vegetarian');
   if (item?.is_18_plus) badges.push('18+');
 
   const loadAddons = async () => {
@@ -187,12 +189,10 @@ export default function MenuItemCard({
                   {badges.map((b) => (
                     <span
                       key={b}
-                      className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium"
+                      className="px-2 py-0.5 rounded-full text-xs font-medium"
                       style={{
-                        backgroundColor: accent
-                          ? `${accent}1F`
-                          : 'rgba(0,0,0,0.06)',
-                        color: accent || 'inherit',
+                        backgroundColor: secondary || 'var(--brand-secondary)',
+                        color: readableText(secondary),
                       }}
                     >
                       {b}
@@ -215,9 +215,7 @@ export default function MenuItemCard({
             )}
             <div className="flex items-center gap-4">
               {!imageUrl && (
-                <span className="text-sm font-medium">
-                  ${(price / 100).toFixed(2)}
-                </span>
+                <span className="text-sm font-medium">{formatPrice(price / 100, currency)}</span>
               )}
               <button
                 type="button"
@@ -235,12 +233,10 @@ export default function MenuItemCard({
               {badges.map((b) => (
                 <span
                   key={b}
-                  className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium"
+                  className="px-2 py-0.5 rounded-full text-xs font-medium"
                   style={{
-                    backgroundColor: accent
-                      ? `${accent}1F`
-                      : 'rgba(0,0,0,0.06)',
-                    color: accent || 'inherit',
+                    backgroundColor: secondary || 'var(--brand-secondary)',
+                    color: readableText(secondary),
                   }}
                 >
                   {b}
@@ -307,7 +303,7 @@ export default function MenuItemCard({
     <>
       <div>
         <div
-          className="rounded-xl bg-white/70 backdrop-blur-md shadow-sm p-3 sm:p-4 flex gap-3 sm:gap-4 hover:shadow-md transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+          className="rounded-xl bg-white/60 backdrop-blur-md shadow-sm p-3 sm:p-4 flex gap-3 sm:gap-4 hover:shadow-md transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
           onClick={handleClick}
           role="button"
           tabIndex={0}
@@ -321,46 +317,41 @@ export default function MenuItemCard({
                 className="h-full w-full object-cover"
               />
             ) : (
-              <div className="h-full w-full bg-white/50 backdrop-blur-md flex items-center justify-center">
+              <div className="h-full w-full bg-white/40 backdrop-blur-md flex items-center justify-center">
                 {logo ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={logo} alt="" className="w-12 h-12 opacity-40 filter grayscale object-contain" />
+                  <img src={logo} alt="" className="w-12 h-12 opacity-20 grayscale object-contain" />
                 ) : null}
               </div>
             )}
           </div>
           <div className="flex-1 min-w-0 flex flex-col gap-1">
             <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center min-w-0">
-                <h4 className="text-base sm:text-lg font-semibold text-gray-900 truncate">
-                  {item.name}
-                </h4>
-                {(item.is_vegan || item.is_vegetarian || item.is_18_plus) && (
-                  <span className="ml-1 flex text-sm">
-                    {item.is_vegan && (
-                      <span role="img" aria-label="vegan">
-                        🌱
-                      </span>
-                    )}
-                    {item.is_vegetarian && (
-                      <span role="img" aria-label="vegetarian">
-                        🧀
-                      </span>
-                    )}
-                    {item.is_18_plus && (
-                      <span role="img" aria-label="18 plus">
-                        🔞
-                      </span>
-                    )}
-                  </span>
-                )}
-              </div>
+              <h4 className="text-base sm:text-lg font-semibold text-gray-900 truncate">
+                {item.name}
+              </h4>
               <div className="price font-semibold text-gray-900 whitespace-nowrap text-sm sm:text-base">
                 {formattedPrice}
               </div>
             </div>
             {item.description && (
-              <p className="text-sm text-gray-700 line-clamp-2 mt-0.5">{item.description}</p>
+              <p className="text-sm text-gray-600 line-clamp-2 mt-0.5">{item.description}</p>
+            )}
+            {badges.length > 0 && (
+              <div className="mt-1 flex flex-wrap gap-1">
+                {badges.map((b) => (
+                  <span
+                    key={b}
+                    className="px-2 py-0.5 rounded-full text-[10px] font-medium"
+                    style={{
+                      backgroundColor: secondary || 'var(--brand-secondary)',
+                      color: readableText(secondary),
+                    }}
+                  >
+                    {b}
+                  </span>
+                ))}
+              </div>
             )}
             <div className="mt-2 flex justify-end">
               <button
