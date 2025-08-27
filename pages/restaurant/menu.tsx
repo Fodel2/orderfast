@@ -36,7 +36,9 @@ function getIdFromQuery(router: any): string | undefined {
 interface Restaurant {
   id: string | number;
   name: string;
+  website_title?: string | null;
   logo_url: string | null;
+  logo_shape?: string | null;
   website_description: string | null;
   menu_description: string | null;
   menu_header_image_url?: string | null;
@@ -249,8 +251,6 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
     }
 
 
-    const brandPrimary = brand?.brand as string | undefined;
-    const activeText = readableText(brandPrimary);
     return (
       <div className="px-4 sm:px-6 pb-28 max-w-6xl mx-auto">
         <div className="pt-4 space-y-8 scroll-smooth">
@@ -271,17 +271,20 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
           ) : null}
 
           {/* Menu header hero */}
-          <MenuHeader
-            title={restaurant?.name || 'Restaurant'}
-            subtitle={restaurant?.menu_description ?? null}
-            imageUrl={headerImg || undefined}
-            logoUrl={restaurant?.logo_url ?? null}
-            accentHex={(brand?.brand as string) || undefined}
-            focalX={headerFocalX}
-            focalY={headerFocalY}
-          />
+          {(() => {
+            const menuTitle = restaurant?.website_title || restaurant?.name || 'Restaurant';
+            return (
+              <MenuHeader
+                title={menuTitle}
+                imageUrl={headerImg || undefined}
+                accentHex={(brand?.brand as string) || undefined}
+                focalX={headerFocalX}
+                focalY={headerFocalY}
+              />
+            );
+          })()}
           {restaurant?.menu_description && (
-            <p className="text-gray-600 text-center">{restaurant.menu_description}</p>
+            <p className="mt-4 text-gray-600 text-center">{restaurant.menu_description}</p>
           )}
 
           <div className="relative">
@@ -292,7 +295,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
                 value={tempQuery}
                 onChange={(e) => setTempQuery(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && setSearchQuery(tempQuery)}
-                className="w-full rounded-full bg-white/70 backdrop-blur-md shadow-sm px-12 py-3 text-base placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)]"
+                className="w-full rounded-full bg-white/50 backdrop-blur-md shadow px-12 py-3 text-base placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)]"
               />
               <span className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none opacity-70">
                 <Search className="w-5 h-5" />
@@ -310,8 +313,8 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
                 {categories.map((c: any) => {
                   const isActive = activeCat === String(c.id);
                   const cls = isActive
-                    ? 'rounded-full px-5 py-2 text-sm font-semibold shadow-sm'
-                    : 'rounded-full border border-white/20 bg-white/60 backdrop-blur-md px-4 py-2 text-sm font-medium hover:bg-white/70 transition';
+                    ? 'rounded-full px-5 py-2 text-sm font-semibold shadow-sm text-white'
+                    : 'rounded-full bg-white/40 backdrop-blur px-4 py-2 text-sm font-medium hover:bg-white/60 transition';
                   return (
                     <button
                       key={c.id}
@@ -319,11 +322,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
                       className={cls}
                       aria-pressed={isActive}
                       aria-current={isActive ? 'true' : undefined}
-                      style={
-                        isActive
-                          ? { backgroundColor: 'var(--brand-primary)', color: activeText }
-                          : undefined
-                      }
+                      style={isActive ? { backgroundColor: 'var(--brand-primary)' } : undefined}
                     >
                       {c.name}
                     </button>

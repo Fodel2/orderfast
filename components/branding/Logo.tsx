@@ -4,33 +4,25 @@ import { useBrand } from './BrandProvider';
 
 export default function Logo({ size = 28, className = '' }: { size?: number; className?: string }) {
   const { logoUrl, initials, name, logoShape } = useBrand();
-  const radius = logoShape === 'round' ? '9999px' : '0px';
-  const width = logoShape === 'rectangular' ? size * 1.6 : size;
-  const height = size;
+  const radiusClass = logoShape === 'round' ? 'rounded-full' : '';
+  const boxStyle = { width: size, height: size, padding: 2 } as React.CSSProperties;
+
   if (logoUrl) {
     return (
-      <span
-        className={className}
-        style={{ display: 'inline-flex', width, height, borderRadius: radius, overflow: 'hidden' }}
-      >
+      <span className={`${className} inline-flex overflow-visible ${radiusClass}`} style={boxStyle}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={logoUrl} alt={name} width={width} height={height} style={{ width, height, objectFit: 'cover' }} />
+        <img src={logoUrl} alt={name} className="w-full h-full object-contain" />
       </span>
     );
   }
+
   return (
     <span
-      className={className}
+      className={`${className} inline-flex items-center justify-center font-bold ${radiusClass}`}
       style={{
-        width,
-        height,
-        borderRadius: radius,
+        ...boxStyle,
         background: 'var(--brand)',
         color: 'white',
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontWeight: 700,
         letterSpacing: 0.5,
       }}
       aria-label={name}
