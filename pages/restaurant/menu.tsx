@@ -283,9 +283,15 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
               />
             );
           })()}
-          {restaurant?.menu_description && (
-            <p className="mt-4 text-gray-600 text-center">{restaurant.menu_description}</p>
-          )}
+          {(() => {
+            const desc =
+              restaurant?.menu_description ||
+              restaurant?.website_description ||
+              '';
+            return desc ? (
+              <p className="mt-3 text-[15px] leading-6 text-neutral-700 dark:text-neutral-300">{desc}</p>
+            ) : null;
+          })()}
 
           <div className="relative">
             <div className="relative">
@@ -358,24 +364,37 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
                     ref={(el) => (sectionsRef.current[cat.id] = el)}
                     style={{ scrollMarginTop: 76 }}
                   >
-                    <div className="mt-8 mb-3 flex items-center gap-3">
-                      <span className="inline-block h-1.5 w-8 rounded-full" style={{backgroundColor:'var(--brand-primary)'}} />
-                      <h2 className="text-xl font-semibold tracking-tight">{cat.name}</h2>
-                    </div>
-                    <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-                        {catItems.map((item, idx) => (
-                          <div
-                            key={item.id}
-                            className={`opacity-0 translate-y-2 transition-all duration-500 ease-out will-change-transform will-change-opacity ${mounted ? 'opacity-100 translate-y-0' : ''}`}
-                            style={{ transitionDelay: `${idx * 75}ms` }}
+                    {(() => {
+                      const isActive = activeCat === String(cat.id);
+                      return (
+                        <div className="mt-8 mb-3">
+                          <h2
+                            className="text-xl font-semibold tracking-tight pb-1 border-b-2"
+                            style={{
+                              borderColor: isActive
+                                ? 'var(--brand-secondary, var(--brand-primary))'
+                                : 'var(--brand-primary)',
+                            }}
                           >
-                            <MenuItemCard item={item} restaurantId={restaurantId as string} />
-                          </div>
-                        ))}
-                      </div>
-                    </section>
-                  );
-                })
+                            {cat.name}
+                          </h2>
+                        </div>
+                      );
+                    })()}
+                    <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+                      {catItems.map((item, idx) => (
+                        <div
+                          key={item.id}
+                          className={`opacity-0 translate-y-2 transition-all duration-500 ease-out will-change-transform will-change-opacity ${mounted ? 'opacity-100 translate-y-0' : ''}`}
+                          style={{ transitionDelay: `${idx * 75}ms` }}
+                        >
+                          <MenuItemCard item={item} restaurantId={restaurantId as string} />
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                );
+              })
               )}
           </div>
           {showTop && (

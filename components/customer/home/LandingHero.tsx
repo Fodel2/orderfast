@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { supabase } from '@/utils/supabaseClient';
-import RestaurantLogo from '../../branding/RestaurantLogo';
 import Button from '../../ui/Button';
 import Skeleton from '../../ui/Skeleton';
 
@@ -49,6 +48,18 @@ export default function LandingHero({
 
   const ctaText = readableText(primary);
 
+  const shape = logoShape || 'round';
+  const rounding =
+    shape === 'round'
+      ? 'rounded-full'
+      : shape === 'square'
+      ? 'rounded-lg'
+      : 'rounded-md';
+  const logoDims =
+    shape === 'rectangular'
+      ? { width: 72, height: 24 }
+      : { width: 72, height: 72 };
+
   useEffect(() => {
     if (open !== null) return;
     const pick = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
@@ -75,14 +86,18 @@ export default function LandingHero({
       {/* Centered content */}
       <div className="absolute inset-0 flex items-center justify-center p-4">
         <div className="flex flex-col items-center text-center gap-3 sm:gap-4 md:gap-5">
-          <div className="p-1">
-            <RestaurantLogo
-              src={logoUrl ?? undefined}
-              alt={title}
-              shape={logoShape ?? 'round'}
-              size={72}
-              className="object-contain ring-0 border-0 shadow-none"
-            />
+          <div
+            className={`relative overflow-visible p-0.5 ${rounding}`}
+            style={{ width: logoDims.width, height: logoDims.height }}
+          >
+            {logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={logoUrl}
+                alt={title}
+                className={`h-full w-full object-contain ${rounding}`}
+              />
+            ) : null}
           </div>
 
           <div className="relative max-w-[20rem] sm:max-w-[24rem] w-auto mx-auto">

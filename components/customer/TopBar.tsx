@@ -25,7 +25,7 @@ export default function TopBar({ hidden, restaurant }: Props) {
       : shape === 'square'
       ? 'rounded-lg'
       : 'rounded-md';
-  const wrapper = `${dims} ${rounding} overflow-visible p-0.5`;
+  const wrapper = `relative ${dims} ${rounding} overflow-visible p-0.5`;
   return (
     <header className="brand-glass fixed top-0 left-0 right-0 h-14 flex items-center px-4 z-40">
       {loading ? (
