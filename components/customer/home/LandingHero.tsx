@@ -74,21 +74,23 @@ export default function LandingHero({
 
       {/* Centered content */}
       <div className="absolute inset-0 flex items-center justify-center p-4">
-        <div className="flex flex-col items-center text-center gap-3 sm:gap-4 md:gap-5 max-w-md md:max-w-lg w-full">
-          <RestaurantLogo
-            src={logoUrl ?? undefined}
-            alt={title}
-            shape={logoShape ?? 'round'}
-            size={72}
-            className="ring-0 border-0 shadow-none"
-          />
+        <div className="flex flex-col items-center text-center gap-3 sm:gap-4 md:gap-5">
+          <div className="p-1">
+            <RestaurantLogo
+              src={logoUrl ?? undefined}
+              alt={title}
+              shape={logoShape ?? 'round'}
+              size={72}
+              className="object-contain ring-0 border-0 shadow-none"
+            />
+          </div>
 
-          <div className="relative max-w-md w-full">
+          <div className="relative max-w-[20rem] sm:max-w-[24rem] w-auto mx-auto">
             <div
-              className="absolute -inset-3 sm:-inset-4 rounded-2xl bg-black/25 md:bg-black/20 backdrop-blur-md shadow-lg"
+              className="absolute -inset-2 sm:-inset-3 rounded-2xl bg-black/12 md:bg-black/10 backdrop-blur-lg shadow-md"
               aria-hidden="true"
             ></div>
-            <div className="relative flex flex-col items-center text-center gap-3 sm:gap-4">
+            <div className="relative flex flex-col items-center text-center gap-3 sm:gap-4 px-4 py-3 sm:px-5 sm:py-4">
               <h1 className="text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.6)] text-2xl sm:text-3xl font-semibold leading-tight">
                 {title}
               </h1>
