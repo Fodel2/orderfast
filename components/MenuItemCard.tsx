@@ -8,14 +8,17 @@ import PlateAdd from '@/components/icons/PlateAdd';
 import { useBrand } from '@/components/branding/BrandProvider';
 import { formatPrice } from '@/lib/orderDisplay';
 
-function readableText(hex?: string | null) {
-  if (!hex) return '#000';
-  const h = hex.replace('#', '');
-  const r = parseInt(h.length === 3 ? h[0] + h[0] : h.slice(0, 2), 16);
-  const g = parseInt(h.length === 3 ? h[1] + h[1] : h.slice(2, 4), 16);
-  const b = parseInt(h.length === 3 ? h[2] + h[2] : h.slice(4, 6), 16);
-  const yiq = (r * 299 + g * 587 + b * 114) / 1000;
-  return yiq >= 145 ? '#000' : '#fff';
+function contrast(c?: string) {
+  try {
+    if (!c) return '#fff';
+    const h = c.replace('#', '');
+    const r = parseInt(h.length === 3 ? h[0] + h[0] : h.slice(0, 2), 16);
+    const g = parseInt(h.length === 3 ? h[1] + h[1] : h.slice(2, 4), 16);
+    const b = parseInt(h.length === 3 ? h[2] + h[2] : h.slice(4, 6), 16);
+    return (r * 299 + g * 587 + b * 114) / 1000 >= 145 ? '#000' : '#fff';
+  } catch {
+    return '#fff';
+  }
 }
 
 interface MenuItem {
@@ -50,8 +53,27 @@ export default function MenuItemCard({
   const brand = useBrand?.();
   const accent =
     typeof brand?.brand === 'string' && brand.brand ? brand.brand : undefined;
-  const secondary =
-    typeof brand?.brand600 === 'string' && brand.brand600 ? brand.brand600 : undefined;
+  const sec = 'var(--brand-secondary, var(--brand-primary))';
+  const [secText, setSecText] = useState('#fff');
+  const [mix, setMix] = useState(false);
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const v = getComputedStyle(document.documentElement)
+        .getPropertyValue('--brand-secondary')
+        ?.trim();
+      setSecText(contrast(v));
+      setMix(
+        !!(window.CSS && CSS.supports && CSS.supports('color', `color-mix(in oklab, ${sec} 50%, transparent)`))
+      );
+    }
+  }, []);
+  const badgeStyles = mix
+    ? {
+        background: `color-mix(in oklab, ${sec} 18%, transparent)`,
+        borderColor: `color-mix(in oklab, ${sec} 60%, transparent)`,
+        color: secText,
+      }
+    : { background: `${sec}1A`, borderColor: sec, color: secText };
   const logo = brand?.logoUrl;
   const [mounted, setMounted] = useState(false);
   const [modalAnim, setModalAnim] = useState(false);
@@ -186,20 +208,17 @@ export default function MenuItemCard({
               </div>
               {badges.length > 0 && (
                 <div className="mt-2 flex gap-2">
-                  {badges.map((b) => (
-                    <span
-                      key={b}
-                      className="px-2 py-0.5 rounded-full text-xs font-medium"
-                      style={{
-                        backgroundColor: secondary || 'var(--brand-secondary)',
-                        color: readableText(secondary),
-                      }}
-                    >
-                      {b}
-                    </span>
-                  ))}
-                </div>
-              )}
+                {badges.map((b) => (
+                  <span
+                    key={b}
+                    className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium border"
+                    style={badgeStyles}
+                  >
+                    {b}
+                  </span>
+                ))}
+              </div>
+            )}
             </div>
           </div>
         )}
@@ -233,11 +252,8 @@ export default function MenuItemCard({
               {badges.map((b) => (
                 <span
                   key={b}
-                  className="px-2 py-0.5 rounded-full text-xs font-medium"
-                  style={{
-                    backgroundColor: secondary || 'var(--brand-secondary)',
-                    color: readableText(secondary),
-                  }}
+                  className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium border"
+                  style={badgeStyles}
                 >
                   {b}
                 </span>
@@ -339,20 +355,17 @@ export default function MenuItemCard({
             )}
             {badges.length > 0 && (
               <div className="mt-1 flex flex-wrap gap-1">
-                {badges.map((b) => (
-                  <span
-                    key={b}
-                    className="px-2 py-0.5 rounded-full text-[10px] font-medium"
-                    style={{
-                      backgroundColor: secondary || 'var(--brand-secondary)',
-                      color: readableText(secondary),
-                    }}
-                  >
-                    {b}
-                  </span>
-                ))}
-              </div>
-            )}
+                  {badges.map((b) => (
+                    <span
+                      key={b}
+                      className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium border"
+                      style={badgeStyles}
+                    >
+                      {b}
+                    </span>
+                  ))}
+                </div>
+              )}
             <div className="mt-2 flex justify-end">
               <button
                 type="button"
