@@ -44,7 +44,7 @@ test('footer hidden on hero and appears after scroll', () => {
   function Wrapper() {
     const [visible, setVisible] = React.useState(true);
     return (
-      <CustomerLayout restaurant={restaurant} hideFooter={visible} hideHeader>
+      <CustomerLayout hideFooter={visible} hideHeader>
         <Slides onHeroInView={setVisible}>
           <Hero restaurant={restaurant} />
         </Slides>

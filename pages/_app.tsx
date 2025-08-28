@@ -8,6 +8,7 @@ import { SessionContextProvider } from '@supabase/auth-helpers-react';
 import { CartProvider } from '../context/CartContext';
 import { OrderTypeProvider } from '../context/OrderTypeContext';
 import { supabase } from '../utils/supabaseClient';
+import { RestaurantProvider } from '@/lib/restaurant-context';
 
 export default function App({ Component, pageProps }: AppProps) {
   const router = useRouter();
@@ -21,11 +22,13 @@ export default function App({ Component, pageProps }: AppProps) {
 
   return (
     <SessionContextProvider supabaseClient={supabase} initialSession={pageProps.initialSession}>
-      <OrderTypeProvider>
-        <CartProvider>
-          {content}
-        </CartProvider>
-      </OrderTypeProvider>
+      <RestaurantProvider>
+        <OrderTypeProvider>
+          <CartProvider>
+            {content}
+          </CartProvider>
+        </OrderTypeProvider>
+      </RestaurantProvider>
     </SessionContextProvider>
   );
 }

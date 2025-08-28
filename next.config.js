@@ -8,6 +8,7 @@ const nextConfig = {
       'res.cloudinary.com',
       'supabase.co',
     ],
+    remotePatterns: [{ protocol: 'https', hostname: '**.supabase.co' }],
   },
 };
 

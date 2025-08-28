@@ -7,8 +7,8 @@ import MoreCard from '@/components/customer/more/MoreCard'
 import MoreSection from '@/components/customer/more/MoreSection'
 import { UserIcon, ClipboardDocumentListIcon, InformationCircleIcon, ClockIcon, PhoneIcon } from '@heroicons/react/24/outline'
 import { useEffect, useState } from 'react'
-import { supabase } from '@/utils/supabaseClient'
-import resolveRestaurantId from '@/lib/resolveRestaurantId'
+import { supabase } from '@/lib/supabaseClient'
+import { useRestaurant } from '@/lib/restaurant-context'
 
 export default function RestaurantMorePage({ initialBrand }: { initialBrand: any | null }) {
   const router = useRouter()
@@ -17,10 +17,10 @@ export default function RestaurantMorePage({ initialBrand }: { initialBrand: any
   const [restaurant, setRestaurant] = useState<any | null>(initialBrand)
   const [pages, setPages] = useState<{ title: string; slug: string }[]>([])
   const brand = useBrand()
-  const restaurantId = resolveRestaurantId(router, brand, restaurant)
+  const { restaurantId, loading } = useRestaurant()
 
   useEffect(() => {
-    if (!router.isReady || !restaurantId) return
+    if (loading || !restaurantId) return
     supabase
       .from('restaurants')
       .select('*')
@@ -34,10 +34,18 @@ export default function RestaurantMorePage({ initialBrand }: { initialBrand: any
       .eq('show_in_nav', true)
       .order('sort_order', { ascending: true, nullsFirst: true })
       .then(({ data }) => setPages((data as any[]) || []))
-  }, [router.isReady, restaurantId])
+  }, [restaurantId, loading])
+
+  if (!loading && !restaurantId) {
+    return (
+      <CustomerLayout cartCount={itemCount}>
+        <div className="container mx-auto max-w-5xl px-4 py-8 text-center text-red-500">No restaurant specified</div>
+      </CustomerLayout>
+    )
+  }
 
   return (
-      <CustomerLayout cartCount={itemCount} restaurant={restaurant}>
+      <CustomerLayout cartCount={itemCount}>
         <div className="container mx-auto max-w-5xl px-4 py-8">
         <h1 className="text-3xl font-bold">More</h1>
         <div className="w-16 h-1 mt-2" style={{ backgroundColor: brand?.brand }} />

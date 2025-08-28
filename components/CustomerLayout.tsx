@@ -7,7 +7,6 @@ interface CustomerLayoutProps {
   children: ReactNode;
   cartCount?: number;
   includePwaMeta?: boolean;
-  restaurant?: any;
   hideHeader?: boolean;
   hideFooter?: boolean;
 }
@@ -16,7 +15,6 @@ export default function CustomerLayout({
   children,
   cartCount = 0,
   includePwaMeta = true,
-  restaurant,
   hideHeader,
   hideFooter,
 }: CustomerLayoutProps) {
@@ -31,7 +29,7 @@ export default function CustomerLayout({
         </Head>
       )}
 
-      <TopBar hidden={hideHeader} restaurant={restaurant} />
+      <TopBar hidden={hideHeader} />
 
       <main
         className={`min-h-screen ${hideFooter ? '' : 'pb-24'} ${hideHeader ? '' : 'pt-14'}`}

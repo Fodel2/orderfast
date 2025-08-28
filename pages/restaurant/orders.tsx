@@ -5,6 +5,7 @@ import { useRouter } from 'next/router'
 import CustomerLayout from '../../components/CustomerLayout'
 import OrderDetailsModal from '@/components/customer/OrderDetailsModal'
 import { displayOrderNo } from '@/lib/orderDisplay'
+import { useRestaurant } from '@/lib/restaurant-context'
 
 export default function OrdersPage({ initialBrand }: { initialBrand: any | null }) {
   const router = useRouter()
@@ -13,7 +14,7 @@ export default function OrdersPage({ initialBrand }: { initialBrand: any | null 
 
   const qUserIdRaw = router.query.user_id
   const qUserId = typeof qUserIdRaw === 'string' && qUserIdRaw.trim() !== '' ? qUserIdRaw : undefined
-  const qRestaurantId = typeof router.query.restaurant_id === 'string' ? router.query.restaurant_id : undefined
+  const { restaurantId, loading: ridLoading } = useRestaurant()
 
   const [orders, setOrders] = useState<any[]>([])
   const [effectiveUserId, setEffectiveUserId] = useState<string | undefined>(undefined)
@@ -89,9 +90,8 @@ export default function OrdersPage({ initialBrand }: { initialBrand: any | null 
         .select('*')
         .eq('user_id', effectiveUserId)
         .order('created_at', { ascending: false })
-
-      if (qRestaurantId) {
-        query = query.eq('restaurant_id', qRestaurantId)
+      if (restaurantId) {
+        query = query.eq('restaurant_id', restaurantId)
       }
 
       const { data, error } = await query
@@ -100,7 +100,7 @@ export default function OrdersPage({ initialBrand }: { initialBrand: any | null 
     }
 
     fetchOrders()
-  }, [router.isReady, resolvingUser, effectiveUserId, qRestaurantId, supabase])
+  }, [router.isReady, resolvingUser, effectiveUserId, restaurantId, supabase])
 
   // Lock body scroll while modal open
   useEffect(() => {
@@ -166,12 +166,20 @@ export default function OrdersPage({ initialBrand }: { initialBrand: any | null 
 
   if (loading) return null
 
+  if (!ridLoading && !restaurantId) {
+    return (
+      <CustomerLayout>
+        <div className="p-4 text-center text-red-500">No restaurant specified</div>
+      </CustomerLayout>
+    )
+  }
+
   return (
-    <CustomerLayout restaurant={initialBrand}>
+    <CustomerLayout>
       <div className="max-w-screen-sm mx-auto px-4 pb-24">
         {router.query.debug === '1' && (
           <div className="text-xs text-gray-500 mb-2">
-            Using user_id: {qUserId || user?.id || '—'} | restaurant_id: {qRestaurantId || '—'} | orders: {orders?.length ?? 0}
+            Using user_id: {qUserId || user?.id || '—'} | restaurant_id: {restaurantId || '—'} | orders: {orders?.length ?? 0}
           </div>
         )}
         <h1 className="text-xl font-semibold mb-4">Your Orders</h1>

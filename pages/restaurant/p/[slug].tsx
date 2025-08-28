@@ -2,11 +2,11 @@ import { useRouter } from 'next/router';
 import { useEffect, useState, useMemo } from 'react';
 import Head from 'next/head';
 import CustomerLayout from '@/components/CustomerLayout';
-import { supabase } from '@/utils/supabaseClient';
-import resolveRestaurantId from '@/lib/resolveRestaurantId';
+import { supabase } from '@/lib/supabaseClient';
 import { BrandProvider } from '@/components/branding/BrandProvider';
 import { useCart } from '@/context/CartContext';
 import PageRenderer, { Block } from '@/components/PageRenderer';
+import { useRestaurant } from '@/lib/restaurant-context';
 
 export default function CustomPage() {
   const router = useRouter();
@@ -14,30 +14,38 @@ export default function CustomPage() {
   const cartCount = cart.items.reduce((s, i) => s + i.quantity, 0);
   const [restaurant, setRestaurant] = useState<any | null>(null);
   const [page, setPage] = useState<any | null>(null);
-  const rid = resolveRestaurantId(router, null, restaurant);
+  const { restaurantId, loading } = useRestaurant();
   const { slug } = router.query;
 
   useEffect(() => {
-    if (!router.isReady || !rid || typeof slug !== 'string') return;
+    if (!router.isReady || loading || !restaurantId || typeof slug !== 'string') return;
     supabase
       .from('restaurants')
       .select('*')
-      .eq('id', rid)
+      .eq('id', restaurantId)
       .maybeSingle()
       .then(({ data }) => setRestaurant(data));
     supabase
       .from('custom_pages')
       .select('title, seo_title, seo_description, content, content_json')
-      .eq('restaurant_id', rid)
+      .eq('restaurant_id', restaurantId)
       .eq('slug', slug)
       .maybeSingle()
       .then(({ data }) => setPage(data));
-  }, [router.isReady, rid, slug]);
+  }, [router.isReady, loading, restaurantId, slug]);
   const blocks: Block[] = useMemo(() => {
     if (!page) return [];
     if (Array.isArray(page.content_json) && page.content_json.length) return page.content_json as any;
     return fallbackFromText(page.content);
   }, [page]);
+
+  if (!loading && !restaurantId) {
+    return (
+      <CustomerLayout cartCount={cartCount}>
+        <div className="p-4 text-center text-red-500">No restaurant specified</div>
+      </CustomerLayout>
+    );
+  }
 
   return (
     <BrandProvider restaurant={restaurant}>

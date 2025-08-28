@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import PageRenderer, { Block } from './PageRenderer';
-import { supabase } from '@/utils/supabaseClient';
+import { supabase } from '@/lib/supabaseClient';
 
 type Props = {
   open: boolean;
@@ -29,6 +29,8 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
   const [selection, setSelection] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [device, setDevice] = useState<'mobile'|'tablet'|'desktop'>('mobile');
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const history = useRef<Block[][]>([]);
   const future = useRef<Block[][]>([]);
 
@@ -48,6 +50,14 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
       }
     })();
   }, [open, pageId, restaurantId]);
+
+  // lock body scroll while open
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [open]);
 
   // undo stack helper
   const pushHistory = useCallback((next: Block[]) => {
@@ -85,6 +95,10 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
     pushHistory(blocks);
     setBlocks(next);
   }
+
+  useEffect(() => {
+    if (selection) setInspectorOpen(true);
+  }, [selection]);
 
   function undo() {
     const prev = history.current.pop();
@@ -124,12 +138,97 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
   return (
     <div role="dialog" aria-modal="true" className="fixed inset-0 z-[60] flex">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative z-[61] m-4 flex w-[calc(100%-2rem)] flex-1 rounded-2xl bg-white shadow-2xl overflow-hidden">
-        {/* Left palette */}
-        <aside className="w-60 border-r p-3 space-y-3">
-          <div className="text-sm font-semibold mb-2">Blocks</div>
+      <div className="relative z-[61] m-4 flex w-[calc(100%-2rem)] flex-1 rounded-2xl bg-white shadow-2xl overflow-hidden flex-col md:flex-row">
+        {/* Mobile toolbar */}
+        <div className="md:hidden flex items-center justify-between border-b p-2">
+          <button onClick={() => setPaletteOpen(true)} className="px-2 py-1 rounded border">Blocks</button>
+          <div className="space-x-2">
+            <button onClick={undo} className="px-2 py-1 rounded border">Undo</button>
+            <button onClick={redo} className="px-2 py-1 rounded border">Redo</button>
+          </div>
+          <div className="space-x-2">
+            <button onClick={save} disabled={saving} className="px-2 py-1 rounded bg-emerald-600 text-white disabled:opacity-60">{saving?'Saving…':'Save'}</button>
+            <button onClick={onClose} className="px-2 py-1 rounded border">Close</button>
+          </div>
+        </div>
+
+        <div className="flex flex-1 overflow-hidden">
+          {/* Left palette desktop */}
+          <aside className="w-60 border-r p-3 space-y-3 hidden md:block">
+            <div className="text-sm font-semibold mb-2">Blocks</div>
+            {(['heading','text','image','button','divider','spacer','two-col'] as const).map(k => (
+              <button key={k} onClick={() => addBlock(k)} className="w-full rounded border px-3 py-2 text-left">
+                + {k}
+              </button>
+            ))}
+            <div className="mt-6 text-sm font-semibold mb-2">Device</div>
+            <div className="flex gap-2">
+              {(['mobile','tablet','desktop'] as const).map(d => (
+                <button key={d} onClick={() => setDevice(d)}
+                  className={`px-2 py-1 rounded border ${device===d?'bg-emerald-50 border-emerald-600':''}`}>
+                  {d}
+                </button>
+              ))}
+            </div>
+            <div className="mt-6 space-x-2">
+              <button onClick={undo} className="px-2 py-1 rounded border">Undo</button>
+              <button onClick={redo} className="px-2 py-1 rounded border">Redo</button>
+            </div>
+          </aside>
+
+          {/* Canvas */}
+          <main className="flex-1 overflow-auto bg-neutral-50 flex justify-center p-6">
+            <div className="bg-white rounded-2xl shadow p-6" style={{ maxWidth: canvasWidth, width: '100%' }}>
+              {blocks.map((b) => (
+                <div key={b.id}
+                     className={`relative group rounded ${selection===b.id?'outline outline-2 outline-emerald-500':''}`}
+                     onClick={() => setSelection(b.id)}>
+                  {/* inline controls */}
+                  <div className="absolute -top-3 right-0 hidden group-hover:flex gap-1">
+                    <button className="px-2 py-0.5 rounded border bg-white" onClick={() => moveBlock(b.id, -1)}>↑</button>
+                    <button className="px-2 py-0.5 rounded border bg-white" onClick={() => moveBlock(b.id, 1)}>↓</button>
+                    <button className="px-2 py-0.5 rounded border bg-white text-red-600" onClick={() => removeBlock(b.id)}>✕</button>
+                  </div>
+                  <PageRenderer blocks={[b]} />
+                </div>
+              ))}
+              {blocks.length===0 && (
+                <div className="text-center text-neutral-500 py-12">Click a block on the left to start building.</div>
+              )}
+            </div>
+          </main>
+
+          {/* Inspector desktop */}
+          <aside className="w-72 border-l p-4 hidden md:block">
+            <div className="flex items-center justify-between mb-3">
+              <div className="font-semibold">Inspector</div>
+              <div className="space-x-2">
+                <button onClick={save} disabled={saving} className="px-3 py-1 rounded bg-emerald-600 text-white disabled:opacity-60">{saving?'Saving…':'Save'}</button>
+                <button onClick={onClose} className="px-3 py-1 rounded border">Close</button>
+              </div>
+            </div>
+            {!selection ? (
+              <div className="text-sm text-neutral-500">Select a block to edit its properties.</div>
+            ) : (
+              <Inspector
+                key={selection}
+                block={blocks.find(b => b.id===selection)!}
+                onChange={(patch) => updateBlock(selection, patch)}
+              />
+            )}
+          </aside>
+        </div>
+      </div>
+
+      {/* Mobile palette overlay */}
+      {paletteOpen && (
+        <aside className="fixed inset-y-0 left-0 w-60 bg-white border-r p-3 space-y-3 z-[62] md:hidden">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm font-semibold">Blocks</div>
+            <button onClick={() => setPaletteOpen(false)} className="px-2 py-1 rounded border">Close</button>
+          </div>
           {(['heading','text','image','button','divider','spacer','two-col'] as const).map(k => (
-            <button key={k} onClick={() => addBlock(k)} className="w-full rounded border px-3 py-2 text-left">
+            <button key={k} onClick={() => { addBlock(k); setPaletteOpen(false); }} className="w-full rounded border px-3 py-2 text-left">
               + {k}
             </button>
           ))}
@@ -147,49 +246,22 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
             <button onClick={redo} className="px-2 py-1 rounded border">Redo</button>
           </div>
         </aside>
+      )}
 
-        {/* Canvas */}
-        <main className="flex-1 overflow-auto bg-neutral-50 flex justify-center p-6">
-          <div className="bg-white rounded-2xl shadow p-6" style={{ width: canvasWidth }}>
-            {blocks.map((b) => (
-              <div key={b.id}
-                   className={`relative group rounded ${selection===b.id?'outline outline-2 outline-emerald-500':''}`}
-                   onClick={() => setSelection(b.id)}>
-                {/* inline controls */}
-                <div className="absolute -top-3 right-0 hidden group-hover:flex gap-1">
-                  <button className="px-2 py-0.5 rounded border bg-white" onClick={() => moveBlock(b.id, -1)}>↑</button>
-                  <button className="px-2 py-0.5 rounded border bg-white" onClick={() => moveBlock(b.id, 1)}>↓</button>
-                  <button className="px-2 py-0.5 rounded border bg-white text-red-600" onClick={() => removeBlock(b.id)}>✕</button>
-                </div>
-                <PageRenderer blocks={[b]} />
-              </div>
-            ))}
-            {blocks.length===0 && (
-              <div className="text-center text-neutral-500 py-12">Click a block on the left to start building.</div>
-            )}
-          </div>
-        </main>
-
-        {/* Inspector */}
-        <aside className="w-72 border-l p-4">
+      {/* Mobile inspector drawer */}
+      {selection && inspectorOpen && (
+        <div className="fixed bottom-0 left-0 right-0 max-h-[50%] bg-white border-t p-4 z-[62] overflow-y-auto md:hidden">
           <div className="flex items-center justify-between mb-3">
             <div className="font-semibold">Inspector</div>
-            <div className="space-x-2">
-              <button onClick={save} disabled={saving} className="px-3 py-1 rounded bg-emerald-600 text-white disabled:opacity-60">{saving?'Saving…':'Save'}</button>
-              <button onClick={onClose} className="px-3 py-1 rounded border">Close</button>
-            </div>
+            <button onClick={() => setInspectorOpen(false)} className="px-2 py-1 rounded border">Close</button>
           </div>
-          {!selection ? (
-            <div className="text-sm text-neutral-500">Select a block to edit its properties.</div>
-          ) : (
-            <Inspector
-              key={selection}
-              block={blocks.find(b => b.id===selection)!}
-              onChange={(patch) => updateBlock(selection, patch)}
-            />
-          )}
-        </aside>
-      </div>
+          <Inspector
+            key={selection}
+            block={blocks.find(b => b.id===selection)!}
+            onChange={(patch) => updateBlock(selection, patch)}
+          />
+        </div>
+      )}
     </div>
   );
 }

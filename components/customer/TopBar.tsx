@@ -1,54 +1,48 @@
-import React from 'react';
-import { useBrand } from '../branding/BrandProvider';
-import Skeleton from '../ui/Skeleton';
+import { useEffect, useState } from 'react';
+import { useRestaurant } from '@/lib/restaurant-context';
+import { supabase } from '@/lib/supabaseClient';
+import { getPublicUrl } from '@/lib/storage';
 
-interface Props {
-  hidden?: boolean;
-  restaurant?: any | null;
-}
+export default function TopBar({ hidden }: { hidden?: boolean }) {
+  const { restaurantId, loading } = useRestaurant();
+  const [name, setName] = useState<string>('Restaurant');
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
 
-export default function TopBar({ hidden, restaurant }: Props) {
-  const { name } = useBrand();
+  useEffect(() => {
+    let mounted = true;
+    if (loading) return;
+    if (!restaurantId) { setReady(true); return; }
+
+    (async () => {
+      const { data, error } = await supabase
+        .from('restaurants')
+        .select('name, logo, logo_path, cover, cover_path')
+        .eq('id', restaurantId)
+        .single();
+      if (!mounted) return;
+      if (!error && data) {
+        setName(data.name || 'Restaurant');
+        const logo = (data as any).logo_path || (data as any).logo;
+        const url = (logo && !/^https?:\/\//.test(logo)) ? getPublicUrl('public', logo) : logo || null;
+        setLogoUrl(url);
+      }
+      setReady(true);
+    })();
+
+    return () => { mounted = false; };
+  }, [restaurantId, loading]);
+
   if (hidden) return null;
-  const title = restaurant?.website_title || restaurant?.name || name;
-  const shape = restaurant?.logo_shape || 'round';
-  const logoUrl = restaurant?.logo_url ?? null;
-  const loading = !restaurant;
-
-  const dims =
-    shape === 'rectangular'
-      ? 'h-8 sm:h-10 w-[3.2rem] sm:w-[4rem]'
-      : 'h-8 w-8 sm:h-10 sm:w-10';
-  const rounding =
-    shape === 'round'
-      ? 'rounded-full'
-      : shape === 'square'
-      ? 'rounded-lg'
-      : 'rounded-md';
-  const wrapper = `relative ${dims} ${rounding} overflow-visible p-0.5`;
   return (
     <header className="brand-glass fixed top-0 left-0 right-0 h-14 flex items-center px-4 z-40">
-      {loading ? (
-        <Skeleton className={wrapper.replace('overflow-visible p-0.5', '')} />
-      ) : (
-        <div className={wrapper}>
-          {logoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={logoUrl}
-              alt={title}
-              className={`h-full w-full object-contain ${rounding}`}
-            />
-          ) : null}
-        </div>
-      )}
-      {loading ? (
-        <Skeleton className="ml-2 h-5 w-40 rounded-md" />
-      ) : (
-        <span className="ml-2 font-medium truncate" data-testid="header-name">
-          {title}
-        </span>
-      )}
+      {!ready ? (
+        <div className="animate-pulse h-8 w-8 rounded-full bg-neutral-200" />
+      ) : logoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={logoUrl} alt={name} className="h-8 w-8 rounded-full" />
+      ) : null}
+      <div className="ml-2 font-semibold truncate">{name}</div>
     </header>
   );
 }
