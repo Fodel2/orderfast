@@ -2,14 +2,14 @@ import React, { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/router";
 import { motion } from "framer-motion";
 import { Search, ChevronUp } from "lucide-react";
-import { supabase } from "../../utils/supabaseClient";
+import { supabase } from '@/lib/supabaseClient';
 import MenuItemCard from "../../components/MenuItemCard";
 import { useCart } from "../../context/CartContext";
 import CustomerLayout from "../../components/CustomerLayout";
 import { useBrand } from "../../components/branding/BrandProvider";
 import Skeleton from '@/components/ui/Skeleton';
 import MenuHeader from '@/components/customer/menu/MenuHeader';
-import resolveRestaurantId from '@/lib/resolveRestaurantId';
+import { useRestaurant } from '@/lib/restaurant-context';
 
 function readableText(hex?: string | null) {
   if (!hex) return '#fff';
@@ -21,16 +21,6 @@ function readableText(hex?: string | null) {
   return yiq >= 145 ? '#000' : '#fff';
 }
 
-function getIdFromQuery(router: any): string | undefined {
-  const qp = (router?.query ?? {}) as Record<string, unknown>;
-  const pick = (v: unknown) => (Array.isArray(v) ? v[0] : v);
-  const raw =
-    pick(qp['restaurant_id']) ||
-    pick(qp['id']) ||
-    pick(qp['r']) ||
-    undefined;
-  return typeof raw === 'string' && raw.trim().length > 0 ? raw : undefined;
-}
 
 
 interface Restaurant {
@@ -91,11 +81,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
   const [showTop, setShowTop] = useState(false);
   const { cart } = useCart();
   const itemCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
-  const idFromResolver = typeof resolveRestaurantId === 'function'
-    ? resolveRestaurantId(router, brand, restaurant)
-    : undefined;
-  const idFromQuery = getIdFromQuery(router);
-  const restaurantId = idFromResolver || idFromQuery;
+  const { restaurantId, loading: ridLoading } = useRestaurant();
 
   useEffect(() => {
     const onScroll = () => {
@@ -106,7 +92,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
   }, []);
 
   useEffect(() => {
-    if (!routerReady || !restaurantId) return;
+    if (!routerReady || ridLoading || !restaurantId) return;
 
     const load = async () => {
       console.log(
@@ -205,7 +191,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
     };
 
     load();
-  }, [routerReady, restaurantId]);
+  }, [routerReady, ridLoading, restaurantId]);
 
 
   const Inner = () => {
@@ -255,7 +241,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
       <div className="px-4 sm:px-6 pb-28 max-w-6xl mx-auto">
         <div className="pt-4 space-y-8 scroll-smooth">
           {/* Inline guards rendered inside layout */}
-          {!routerReady ? (
+          {!routerReady || ridLoading ? (
             <div className="p-6" />
           ) : !restaurantId ? (
             <div className="p-6 text-center text-red-500">No restaurant specified</div>
@@ -414,7 +400,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
   };
 
   return (
-      <CustomerLayout cartCount={itemCount} restaurant={restaurant}>
+      <CustomerLayout cartCount={itemCount}>
         <Inner />
       </CustomerLayout>
   );

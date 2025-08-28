@@ -46,7 +46,6 @@ export default function RestaurantHomePage({ initialBrand }: { initialBrand: any
 
   return (
       <CustomerLayout
-        restaurant={restaurant}
         cartCount={cartCount}
         hideFooter={heroInView}
         hideHeader={heroInView}

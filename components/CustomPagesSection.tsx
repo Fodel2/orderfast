@@ -1,158 +1,190 @@
-import { useEffect, useState } from 'react';
-import {
-  PencilSquareIcon,
-  TrashIcon,
-  PlusCircleIcon,
-} from '@heroicons/react/24/outline';
-import { supabase } from '../utils/supabaseClient';
-import PageModal, { Page } from './PageModal';
-import ConfirmModal from './ConfirmModal';
-import Toast from './Toast';
+import React, { useEffect, useMemo, useState } from 'react';
+import { supabase } from '@/utils/supabaseClient'; // keep your existing path
+import PageModal from './PageModal';
+import PageBuilderModal from './PageBuilderModal';
+import { toast } from '@/components/ui/toast'; // keep your existing toast
 
-export default function CustomPagesSection({
-  restaurantId,
-}: {
-  restaurantId: string | number;
-}) {
-  const [pages, setPages] = useState<Page[]>([]);
+type PageRow = {
+  id: string;
+  restaurant_id: string;
+  title: string;
+  slug: string;
+  show_in_nav: boolean;
+  sort_order: number;
+};
+
+export default function CustomPagesSection({ restaurantId }: { restaurantId: string }) {
+  const [pages, setPages] = useState<PageRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [editing, setEditing] = useState<Page | null>(null);
-  const [confirmDel, setConfirmDel] = useState<Page | null>(null);
-  const [toastMessage, setToastMessage] = useState('');
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editRow, setEditRow] = useState<PageRow | null>(null);
+  const [builderFor, setBuilderFor] = useState<string | null>(null);
 
-  const loadPages = async () => {
+  async function loadPages() {
+    if (!restaurantId) {
+      setLoading(false);
+      toast.error('Missing restaurant id');
+      return;
+    }
+    setLoading(true);
     const { data, error } = await supabase
-      .from('website_pages')
-      .select('*')
+      .from('custom_pages')
+      .select('id, restaurant_id, title, slug, show_in_nav, sort_order')
       .eq('restaurant_id', restaurantId)
-      .neq('status', 'archived')
-      .order('sort_order', { ascending: true, nullsFirst: true });
+      .order('sort_order', { ascending: true })
+      .order('title', { ascending: true });
+
     if (error) {
       console.error(error);
-      setToastMessage('Failed to load pages');
+      toast.error('Failed to load pages');
     } else {
-      setPages((data as Page[]) || []);
+      setPages(data || []);
     }
     setLoading(false);
-  };
+  }
 
   useEffect(() => {
-    if (restaurantId) loadPages();
+    loadPages();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
 
-  const handleSaved = () => {
-    setShowModal(false);
-    setEditing(null);
-    loadPages();
-    setToastMessage('Page saved');
-  };
+  function openCreate() {
+    setEditRow(null);
+    setModalOpen(true);
+  }
 
-  const handleDelete = async () => {
-    if (!confirmDel) return;
+  function openEdit(row: PageRow) {
+    setEditRow(row);
+    setModalOpen(true);
+  }
+
+  async function toggleVisibility(row: PageRow) {
+    const optimistic = pages.map(p => p.id === row.id ? { ...p, show_in_nav: !row.show_in_nav } : p);
+    setPages(optimistic);
     const { error } = await supabase
-      .from('website_pages')
-      .delete()
-      .eq('id', confirmDel.id);
+      .from('custom_pages')
+      .update({ show_in_nav: !row.show_in_nav })
+      .eq('id', row.id);
     if (error) {
-      setToastMessage('Failed to delete page');
+      console.error(error);
+      toast.error('Failed to update visibility');
+      setPages(pages); // rollback
+    }
+  }
+
+  async function remove(row: PageRow) {
+    if (!confirm('Delete this page? This cannot be undone.')) return;
+    const prev = pages;
+    setPages(prev.filter(p => p.id !== row.id));
+    const { error } = await supabase.from('custom_pages').delete().eq('id', row.id);
+    if (error) {
+      console.error(error);
+      toast.error('Failed to delete page');
+      setPages(prev); // rollback
     } else {
-      setPages((prev) => prev.filter((p) => p.id !== confirmDel.id));
-      setToastMessage('Page deleted');
+      toast.success('Page deleted');
     }
-    setConfirmDel(null);
-  };
+  }
 
-  const togglePublished = async (p: Page, val: boolean) => {
-    setPages((prev) => prev.map((pg) => (pg.id === p.id ? { ...pg, status: val ? 'published' : 'draft' } : pg)));
-    const { error } = await supabase
-      .from('website_pages')
-      .update({ status: val ? 'published' : 'draft' })
-      .eq('id', p.id);
-    if (error) {
-      setToastMessage('Failed to update');
+  async function move(row: PageRow, direction: -1 | 1) {
+    const idx = pages.findIndex(p => p.id === row.id);
+    const newIdx = idx + direction;
+    if (newIdx < 0 || newIdx >= pages.length) return;
+    const reordered = [...pages];
+    const [moved] = reordered.splice(idx, 1);
+    reordered.splice(newIdx, 0, moved);
+    // reindex
+    const withOrder = reordered.map((p, i) => ({ ...p, sort_order: i }));
+    setPages(withOrder);
+    // persist
+    const updates = withOrder.map(p =>
+      supabase.from('custom_pages').update({ sort_order: p.sort_order }).eq('id', p.id)
+    );
+    const results = await Promise.all(updates);
+    const anyError = results.find(r => (r as any)?.error);
+    if (anyError) {
+      console.error(anyError);
+      toast.error('Failed to reorder pages');
+      loadPages(); // reload authoritative order
+    } else {
+      toast.success('Order updated');
     }
-  };
+  }
 
   return (
-    <div className="max-w-2xl mx-auto mt-12">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-2xl font-bold">Custom Pages</h2>
-        <button
-          onClick={() => {
-            setEditing(null);
-            setShowModal(true);
-          }}
-          className="flex items-center bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700"
-        >
-          <PlusCircleIcon className="w-5 h-5 mr-1" /> New Page
+    <section className="mt-8">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-lg font-semibold">Custom Pages</h3>
+        <button onClick={openCreate} className="px-3 py-2 rounded bg-emerald-600 text-white">
+          + New Page
         </button>
       </div>
+
       {loading ? (
-        <p>Loading...</p>
+        <div className="text-sm text-neutral-500">Loading pages…</div>
+      ) : pages.length === 0 ? (
+        <div className="rounded border p-4 text-sm text-neutral-500">No pages yet.</div>
       ) : (
-        <div className="bg-white rounded-xl shadow divide-y">
-          {pages.map((p) => (
-            <div key={p.id} className="p-4 flex items-center justify-between">
-              <div>
-                <p className="font-semibold">{p.title}</p>
-                <p className="text-sm text-gray-500">{p.slug}</p>
+        <ul className="divide-y rounded border">
+          {pages.map((p, i) => (
+            <li key={p.id} className="flex items-center gap-3 p-3">
+              <div className="text-sm w-8 text-center select-none">
+                {i + 1}
               </div>
-              <div className="flex items-center space-x-4">
-                <label className="flex items-center space-x-1 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={p.status === 'published'}
-                    onChange={(e) => togglePublished(p, e.target.checked)}
-                  />
-                  <span>Published</span>
-                </label>
-                <button
-                  onClick={() => {
-                    setEditing(p);
-                    setShowModal(true);
-                  }}
-                  className="p-2 rounded hover:bg-gray-100"
-                  aria-label="Edit"
-                >
-                  <PencilSquareIcon className="w-5 h-5" />
-                </button>
-                <button
-                  onClick={() => setConfirmDel(p)}
-                  className="p-2 rounded hover:bg-gray-100"
-                  aria-label="Delete"
-                >
-                  <TrashIcon className="w-5 h-5 text-red-600" />
-                </button>
+              <div className="flex-1">
+                <div className="font-medium">{p.title}</div>
+                <div className="text-xs text-neutral-500">/{p.slug}</div>
               </div>
-            </div>
+              <button
+                onClick={() => move(p, -1)}
+                className="px-2 py-1 rounded border"
+                aria-label="Move up"
+              >
+                ↑
+              </button>
+              <button
+                onClick={() => move(p, 1)}
+                className="px-2 py-1 rounded border"
+                aria-label="Move down"
+              >
+                ↓
+              </button>
+              <label className="ml-3 inline-flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={p.show_in_nav}
+                  onChange={() => toggleVisibility(p)}
+                />
+                Visible
+              </label>
+              <button onClick={() => openEdit(p)} className="ml-3 px-3 py-1 rounded border">
+                Edit
+              </button>
+              <button onClick={() => setBuilderFor(p.id)} className="ml-2 px-3 py-1 rounded border">
+                Builder
+              </button>
+              <button onClick={() => remove(p)} className="ml-2 px-3 py-1 rounded border text-red-600">
+                Delete
+              </button>
+            </li>
           ))}
-          {!pages.length && (
-            <p className="p-4 text-gray-500 text-sm">No pages yet.</p>
-          )}
-        </div>
+        </ul>
       )}
-      {showModal && (
-        <PageModal
+
+      <PageModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        initial={editRow ? editRow : { restaurant_id: restaurantId }}
+        onSaved={() => loadPages()}
+      />
+      {builderFor ? (
+        <PageBuilderModal
+          open={true}
+          onClose={() => setBuilderFor(null)}
+          pageId={builderFor}
           restaurantId={restaurantId}
-          page={editing || undefined}
-          onClose={() => {
-            setShowModal(false);
-            setEditing(null);
-          }}
-          onSaved={handleSaved}
         />
-      )}
-      {confirmDel && (
-        <ConfirmModal
-          show={true}
-          title="Delete Page?"
-          message={`Are you sure you want to delete \"${confirmDel.title}\"?`}
-          onConfirm={handleDelete}
-          onCancel={() => setConfirmDel(null)}
-        />
-      )}
-      <Toast message={toastMessage} onClose={() => setToastMessage('')} />
-    </div>
+      ) : null}
+    </section>
   );
 }

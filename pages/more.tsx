@@ -1,9 +1,25 @@
 import { LogOut, User, Percent, Mail, Info, FileText, Shield } from 'lucide-react';
 import CustomerLayout from '../components/CustomerLayout';
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabaseClient';
+import { useRestaurant } from '@/lib/restaurant-context';
 
 export default function MorePage() {
+  const { restaurantId, loading } = useRestaurant();
+  const [pages, setPages] = useState<{ title: string; slug: string }[]>([]);
   const isLoggedIn = true; // TODO: replace with real auth check
+
+  useEffect(() => {
+    if (loading || !restaurantId) return;
+    supabase
+      .from('custom_pages')
+      .select('title,slug')
+      .eq('restaurant_id', restaurantId)
+      .eq('show_in_nav', true)
+      .order('sort_order', { ascending: true, nullsFirst: true })
+      .then(({ data }) => setPages((data as any[]) || []));
+  }, [restaurantId, loading]);
 
   const items = [
     isLoggedIn && {
@@ -26,6 +42,11 @@ export default function MorePage() {
       icon: <Info className="w-5 h-5" />,
       href: '/about',
     },
+    ...pages.map((p) => ({
+      title: p.title,
+      icon: <FileText className="w-5 h-5" />,
+      href: `/p/${p.slug}`,
+    })),
     {
       title: 'Terms & Conditions',
       icon: <FileText className="w-5 h-5" />,
@@ -42,6 +63,14 @@ export default function MorePage() {
       href: '/logout',
     },
   ].filter(Boolean) as { title: string; icon: JSX.Element; href: string }[];
+
+  if (!loading && !restaurantId) {
+    return (
+      <CustomerLayout cartCount={0}>
+        <div className="p-4 text-center text-red-500">No restaurant specified</div>
+      </CustomerLayout>
+    );
+  }
 
   return (
     <CustomerLayout cartCount={0}>
