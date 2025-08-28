@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react';
-import { useRestaurant } from '@/lib/restaurant-context';
 import { supabase } from '@/lib/supabaseClient';
-import { getPublicUrl } from '@/lib/storage';
+import { useRestaurant } from '@/lib/restaurant-context';
 
 export default function TopBar({ hidden }: { hidden?: boolean }) {
   const { restaurantId, loading } = useRestaurant();
-  const [restaurant, setRestaurant] = useState<any>(null);
+  const [title, setTitle] = useState<string | null>(null);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
     let mounted = true;
     if (loading) return;
+
     if (!restaurantId) {
       setReady(true);
       return;
@@ -19,12 +20,14 @@ export default function TopBar({ hidden }: { hidden?: boolean }) {
     (async () => {
       const { data, error } = await supabase
         .from('restaurants')
-        .select('id, name, logo, logo_path, cover, cover_path')
+        .select('website_title, name, logo_url')
         .eq('id', restaurantId)
         .single();
+
       if (!mounted) return;
       if (!error && data) {
-        setRestaurant(data);
+        setTitle(data.website_title ?? data.name ?? 'Restaurant');
+        setLogoUrl(data.logo_url ?? null);
       }
       setReady(true);
     })();
@@ -36,37 +39,23 @@ export default function TopBar({ hidden }: { hidden?: boolean }) {
 
   if (hidden) return null;
 
+  // skeleton while loading
   if (!ready) {
     return (
       <header className="brand-glass fixed top-0 left-0 right-0 h-14 flex items-center px-4 z-40 gap-3">
         <div className="h-8 w-8 rounded-full bg-neutral-200 animate-pulse" />
-        <div className="h-4 w-24 rounded bg-neutral-200 animate-pulse" />
+        <div className="h-4 w-28 rounded bg-neutral-200 animate-pulse" />
       </header>
     );
   }
-
-  if (!restaurant) {
-    return (
-      <header className="brand-glass fixed top-0 left-0 right-0 h-14 flex items-center px-4 z-40">
-        <div className="font-semibold">No restaurant specified</div>
-      </header>
-    );
-  }
-
-  const logo = restaurant.logo_path || restaurant.logo;
-  const logoUrl = logo && !/^https?:\/\//.test(logo) ? getPublicUrl('public', logo) : logo;
 
   return (
-    <header className="brand-glass fixed top-0 left-0 right-0 h-14 flex items-center px-4 z-40">
-      {logoUrl && (
+    <header className="brand-glass fixed top-0 left-0 right-0 h-14 flex items-center px-4 z-40 gap-3">
+      {logoUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={logoUrl}
-          alt={restaurant.name}
-          className="h-8 w-8 rounded-full object-cover"
-        />
-      )}
-      <div className="ml-2 font-semibold truncate">{restaurant.name}</div>
+        <img src={logoUrl} alt={title ?? 'Restaurant'} className="h-8 w-8 rounded-full object-cover" />
+      ) : null}
+      <div className="font-semibold text-lg">{title ?? 'Restaurant'}</div>
     </header>
   );
 }
