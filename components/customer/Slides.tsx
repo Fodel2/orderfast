@@ -1,5 +1,5 @@
 // slides: restored
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 export default function Slides({
   children,
@@ -12,6 +12,7 @@ export default function Slides({
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const heroRef = useRef<HTMLDivElement>(null);
+  const [prefersReduced, setPrefersReduced] = useState(false);
 
   useEffect(() => {
     if (!onHeroInView || !heroRef.current) return;
@@ -32,13 +33,38 @@ export default function Slides({
     return () => el.removeEventListener('scroll', h);
   }, [onProgress]);
 
+  useEffect(() => {
+    const mql = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setPrefersReduced(mql.matches);
+    const l = (e: MediaQueryListEvent) => setPrefersReduced(e.matches);
+    mql.addEventListener('change', l);
+    return () => mql.removeEventListener('change', l);
+  }, []);
+
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'ArrowDown' || e.key === 'PageDown') {
+        e.preventDefault();
+        el.scrollBy({ top: el.clientHeight, behavior: prefersReduced ? 'auto' : 'smooth' });
+      } else if (e.key === 'ArrowUp' || e.key === 'PageUp') {
+        e.preventDefault();
+        el.scrollBy({ top: -el.clientHeight, behavior: prefersReduced ? 'auto' : 'smooth' });
+      }
+    }
+    el.addEventListener('keydown', onKey);
+    return () => el.removeEventListener('keydown', onKey);
+  }, [prefersReduced]);
+
   return (
     <div
       ref={rootRef}
+      tabIndex={0}
       style={{
         height: '100vh',
         overflowY: 'auto',
-        scrollSnapType: 'y mandatory',
+        scrollSnapType: prefersReduced ? 'none' : 'y mandatory',
         WebkitOverflowScrolling: 'touch',
       }}
     >

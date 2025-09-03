@@ -23,6 +23,7 @@ type LandingHeroProps = {
   logoUrl?: string | null; // avatar/logo
   logoShape?: 'square' | 'round' | 'rectangular' | null;
   isOpen?: boolean; // optional open state
+  onCtaClick?: () => void;
 };
 
 export default function LandingHero({
@@ -34,6 +35,7 @@ export default function LandingHero({
   logoUrl,
   logoShape,
   isOpen,
+  onCtaClick,
 }: LandingHeroProps) {
   const router = useRouter();
   const [open, setOpen] = useState<boolean | null>(typeof isOpen === 'boolean' ? isOpen : null);
@@ -131,6 +133,7 @@ export default function LandingHero({
               )}
               <Link href={ctaHref} aria-label="Order Now" className="relative">
                 <Button
+                  onClick={onCtaClick}
                   className="rounded-full px-5 py-2 sm:px-6 sm:py-2.5 text-sm sm:text-base font-medium tracking-tight shadow-md hover:shadow-lg transition-all duration-150 ease-out hover:scale-[1.02] active:scale-[0.99] border-0 focus:outline-none focus:ring-2 focus:ring-white/40"
                   style={{
                     backgroundColor: primary || 'var(--brand-primary, #111827)',
