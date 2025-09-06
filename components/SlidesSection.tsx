@@ -103,13 +103,16 @@ export default function SlidesSection({ restaurantId }: { restaurantId: string }
       const heroes = prev.filter((s) => s.type === 'hero');
       return [...heroes, ...reordered].sort((a, b) => a.sort_order - b.sort_order);
     });
-    const updates = reordered.map((s, i) => ({
-      id: s.id,
-      restaurant_id: restaurantId,
-      sort_order: i,
-    }));
-    const { error } = await supabase.from('restaurant_slides').upsert(updates);
-    if (error) {
+    const responses = await Promise.all(
+      reordered.map((s, i) =>
+        supabase
+          .from('restaurant_slides')
+          .update({ sort_order: i })
+          .eq('id', s.id!)
+          .eq('restaurant_id', restaurantId)
+      )
+    );
+    if (responses.some((r) => r.error)) {
       toast.error('Failed to reorder');
       loadSlides();
     } else {
@@ -118,17 +121,13 @@ export default function SlidesSection({ restaurantId }: { restaurantId: string }
   }
 
   async function move(row: SlideRow, dir: 'up' | 'down') {
-    const nonHero = slides.filter((s) => s.type !== 'hero').sort(
-      (a, b) => a.sort_order - b.sort_order
-    );
+    const nonHero = slides
+      .filter((s) => s.type !== 'hero')
+      .sort((a, b) => a.sort_order - b.sort_order);
     const index = nonHero.findIndex((s) => s.id === row.id);
     const swapIndex = dir === 'up' ? index - 1 : index + 1;
     if (index === -1 || swapIndex < 0 || swapIndex >= nonHero.length) return;
     const target = nonHero[swapIndex];
-    const updates = [
-      { id: row.id!, restaurant_id: restaurantId, sort_order: swapIndex },
-      { id: target.id!, restaurant_id: restaurantId, sort_order: index },
-    ];
     const reordered = [...nonHero];
     [reordered[index], reordered[swapIndex]] = [
       reordered[swapIndex],
@@ -138,8 +137,19 @@ export default function SlidesSection({ restaurantId }: { restaurantId: string }
       const heroes = prev.filter((s) => s.type === 'hero');
       return [...heroes, ...reordered].sort((a, b) => a.sort_order - b.sort_order);
     });
-    const { error } = await supabase.from('restaurant_slides').upsert(updates);
-    if (error) {
+    const [resA, resB] = await Promise.all([
+      supabase
+        .from('restaurant_slides')
+        .update({ sort_order: swapIndex })
+        .eq('id', row.id!)
+        .eq('restaurant_id', restaurantId),
+      supabase
+        .from('restaurant_slides')
+        .update({ sort_order: index })
+        .eq('id', target.id!)
+        .eq('restaurant_id', restaurantId),
+    ]);
+    if (resA.error || resB.error) {
       toast.error('Failed to reorder');
       loadSlides();
     } else {

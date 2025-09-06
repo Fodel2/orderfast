@@ -56,6 +56,7 @@ export default function SlideModal({
   const fileRef = useRef<HTMLInputElement | null>(null);
   const isEdit = !!initial?.id;
   const [saving, setSaving] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   function applyTemplate(t: string) {
     setTemplate(t);
@@ -121,7 +122,8 @@ export default function SlideModal({
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const path = `slides/${initial.restaurant_id}/${Date.now()}-${file.name}`;
+    const ext = file.name.split('.').pop();
+    const path = `slides/${initial.restaurant_id}/${crypto.randomUUID()}${ext ? `.${ext}` : ''}`;
     const { error } = await supabase.storage
       .from(STORAGE_BUCKET)
       .upload(path, file, { upsert: true });
@@ -218,7 +220,10 @@ export default function SlideModal({
   return (
     <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative w-full max-w-lg rounded-2xl bg-white p-4 shadow-xl">
+      <div
+        className="relative w-full max-w-lg rounded-2xl bg-white p-4 shadow-xl"
+        style={{ maxHeight: '90vh', overflow: 'auto' }}
+      >
         <h2 className="text-xl font-semibold mb-3">
           {isEdit ? 'Edit Slide' : 'New Slide'}
         </h2>
@@ -344,13 +349,26 @@ export default function SlideModal({
           onChange={(e) => setVisibleUntil(e.target.value)}
           className="w-full mb-3 rounded border px-3 py-2"
         />
-        <label className="block text-sm font-medium mb-1">config_json</label>
-        <textarea
-          value={configText}
-          onChange={(e) => setConfigText(e.target.value)}
-          rows={4}
-          className="w-full mb-3 rounded border px-3 py-2 font-mono"
-        />
+        <details
+          className="mb-3"
+          open={showAdvanced}
+          onToggle={(e) => setShowAdvanced(e.currentTarget.open)}
+        >
+          <summary className="cursor-pointer text-sm font-medium">
+            Advanced options (JSON)
+          </summary>
+          <p className="text-xs mb-2">
+            Optional. Raw JSON for power users (styling, galleries). You can ignore this.
+          </p>
+          {showAdvanced && (
+            <textarea
+              value={configText}
+              onChange={(e) => setConfigText(e.target.value)}
+              rows={4}
+              className="w-full rounded border px-3 py-2 font-mono"
+            />
+          )}
+        </details>
         <div className="mb-3">
           <div className="flex gap-2 mb-2">
             {['mobile', 'tablet', 'desktop'].map((d) => (

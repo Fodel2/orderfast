@@ -15,8 +15,8 @@ export default function RestaurantHomePage({ initialBrand }: { initialBrand: any
   const [restaurant, setRestaurant] = useState<any | null>(initialBrand);
   const { cart } = useCart();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
-  const [heroInView, setHeroInView] = useState(true);
-  const heroRef = useRef<HTMLDivElement>(null);
+  const [isPastHero, setIsPastHero] = useState(false);
+  const sentinelRef = useRef<HTMLDivElement>(null);
   const restaurantId = resolveRestaurantId(router, brand, restaurant);
 
   useEffect(() => {
@@ -46,24 +46,22 @@ export default function RestaurantHomePage({ initialBrand }: { initialBrand: any
   const orderHref = rid ? `/restaurant/menu?restaurant_id=${String(rid)}` : '/restaurant/menu';
 
   useEffect(() => {
-    if (!heroRef.current) return;
-    const obs = new IntersectionObserver(
-      ([entry]) => setHeroInView(entry.isIntersecting),
-      { threshold: 0.95 }
-    );
-    obs.observe(heroRef.current);
+    if (!sentinelRef.current) return;
+    const obs = new IntersectionObserver(([entry]) => {
+      setIsPastHero(entry.isIntersecting);
+    });
+    obs.observe(sentinelRef.current);
     return () => obs.disconnect();
   }, []);
 
   return (
       <CustomerLayout
         cartCount={cartCount}
-        hideFooter={heroInView}
-        hideHeader={heroInView}
+        hideFooter={!isPastHero}
+        hideHeader={!isPastHero}
       >
       {process.env.NEXT_PUBLIC_DEBUG === '1' && <DebugFlag label="HOME-A" />}
-      <div ref={heroRef}>
-        <LandingHero
+      <LandingHero
           title={restaurant?.website_title || restaurant?.name || 'Restaurant'}
           subtitle={restaurant?.website_description ?? null}
           ctaLabel="Order Now"
@@ -71,8 +69,8 @@ export default function RestaurantHomePage({ initialBrand }: { initialBrand: any
           imageUrl={coverImg || undefined}
           logoUrl={restaurant?.logo_url ?? null}
           logoShape={restaurant?.logo_shape ?? null}
-        />
-      </div>
+      />
+      <div ref={sentinelRef} style={{ height: 1 }} />
       <SlidesContainer />
       </CustomerLayout>
   );

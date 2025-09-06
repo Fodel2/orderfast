@@ -45,7 +45,7 @@ export default function SlidesContainer() {
   if (!slides.length) return null;
 
   return (
-    <div className="snap-y snap-mandatory">
+    <div className="snap-y snap-mandatory" style={{ scrollSnapType: 'y mandatory' }}>
       {slides.map((s) => (
         <SlideRenderer
           key={s.id}
@@ -168,8 +168,8 @@ export function SlideRenderer({
 
   return (
     <section
-      className="min-h-screen flex flex-col items-center justify-center p-4 text-center snap-start"
-      style={{ height: '100dvh' }}
+      className="min-h-screen flex flex-col items-center justify-center p-4 text-center"
+      style={{ height: '100dvh', scrollSnapAlign: 'start' }}
     >
       {content}
     </section>
