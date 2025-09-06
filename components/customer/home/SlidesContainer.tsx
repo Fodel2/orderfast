@@ -117,58 +117,67 @@ export function SlideRenderer({
     />
   ) : null;
 
+  const renderBlock = (b: any) => {
+    switch (b.type) {
+      case 'heading':
+        return (
+          <h2 key={b.id} style={{ textAlign: b.align }} className="text-xl font-bold">
+            {b.text}
+          </h2>
+        );
+      case 'subheading':
+        return (
+          <p key={b.id} style={{ textAlign: b.align }} className="mb-3">
+            {b.text}
+          </p>
+        );
+      case 'button':
+        return (
+          <Button
+            key={b.id}
+            onClick={() => router.push(b.href || slide.cta_href || `/restaurant/menu?restaurant_id=${restaurantId}`)}
+            className="mb-2"
+          >
+            {b.text}
+          </Button>
+        );
+      case 'image':
+        return b.url ? (
+          <Image key={b.id} src={b.url} alt="" width={b.width || 400} height={b.height || 300} />
+        ) : null;
+      case 'quote':
+        return (
+          <blockquote key={b.id} className="mb-2">
+            <p>“{b.text}”</p>
+            {b.author && <cite className="block text-sm">- {b.author}</cite>}
+          </blockquote>
+        );
+      case 'gallery':
+        return (
+          <div key={b.id} className="flex gap-2 overflow-x-auto mb-2">
+            {b.images.map((src, i) => (
+              <Image key={i} src={src} alt="" width={200} height={150} />
+            ))}
+          </div>
+        );
+      case 'spacer':
+        const sizes: any = { sm: 32, md: 64, lg: 96 };
+        return <div key={b.id} style={{ height: sizes[b.size || 'md'] }} />;
+      default:
+        return null;
+    }
+  };
+
   let content: React.ReactNode = null;
-  if (cfg.blocks.length > 0) {
-    content = cfg.blocks.map((b) => {
-      switch (b.type) {
-        case 'heading':
-          return (
-            <h2 key={b.id} style={{ textAlign: b.align }} className="text-xl font-bold">
-              {b.text}
-            </h2>
-          );
-        case 'subheading':
-          return (
-            <p key={b.id} style={{ textAlign: b.align }} className="mb-3">
-              {b.text}
-            </p>
-          );
-        case 'button':
-          return (
-            <Button
-              key={b.id}
-              onClick={() => router.push(b.href || slide.cta_href || `/restaurant/menu?restaurant_id=${restaurantId}`)}
-              className="mb-2"
-            >
-              {b.text}
-            </Button>
-          );
-        case 'image':
-          return b.url ? (
-            <Image key={b.id} src={b.url} alt="" width={b.width || 400} height={b.height || 300} />
-          ) : null;
-        case 'quote':
-          return (
-            <blockquote key={b.id} className="mb-2">
-              <p>“{b.text}”</p>
-              {b.author && <cite className="block text-sm">- {b.author}</cite>}
-            </blockquote>
-          );
-        case 'gallery':
-          return (
-            <div key={b.id} className="flex gap-2 overflow-x-auto mb-2">
-              {b.images.map((src, i) => (
-                <Image key={i} src={src} alt="" width={200} height={150} />
-              ))}
-            </div>
-          );
-        case 'spacer':
-          const sizes: any = { sm: 32, md: 64, lg: 96 };
-          return <div key={b.id} style={{ height: sizes[b.size || 'md'] }} />;
-        default:
-          return null;
-      }
-    });
+  if (cfg.layout === 'split' && cfg.blocks.length >= 2) {
+    content = (
+      <div className="flex w-full max-w-5xl mx-auto gap-4 items-center justify-center">
+        <div className="flex-1 flex justify-center">{renderBlock(cfg.blocks[0])}</div>
+        <div className="flex-1">{renderBlock(cfg.blocks[1])}</div>
+      </div>
+    );
+  } else if (cfg.blocks.length > 0) {
+    content = cfg.blocks.map(renderBlock);
   } else {
     const href =
       slide.cta_href || `/restaurant/menu?restaurant_id=${restaurantId}`;

@@ -12,6 +12,7 @@ import { toast } from '@/components/ui/toast';
 import Button from '@/components/ui/Button';
 import { SlideRenderer, SlideRow } from '@/components/customer/home/SlidesContainer';
 import { STORAGE_BUCKET } from '@/lib/storage';
+import Skeleton from '@/components/ui/Skeleton';
 
 // slide config types
 export type SlideConfig = {
@@ -36,6 +37,7 @@ export type SlideConfig = {
     | { id: string; type: 'gallery'; images: string[] }
     | { id: string; type: 'spacer'; size?: 'sm' | 'md' | 'lg' }
   )[];
+  layout?: 'split';
 };
 
 const defaultConfig: SlideConfig = {
@@ -110,6 +112,7 @@ export default function SlideModal({
   const fileRef = useRef<HTMLInputElement | null>(null);
   const imageRef = useRef<HTMLInputElement | null>(null);
   const galleryRef = useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = useState(false);
   const isEdit = !!initial?.id;
   const restaurantId = initial.restaurant_id;
 
@@ -173,11 +176,13 @@ export default function SlideModal({
   }
 
   async function uploadFile(file: File, cb: (url: string) => void) {
+    setUploading(true);
     const ext = file.name.split('.').pop();
     const path = `slides/${restaurantId}/${crypto.randomUUID()}.${ext}`;
     const { data, error } = await supabase.storage
       .from(STORAGE_BUCKET)
       .upload(path, file, { upsert: true });
+    setUploading(false);
     if (error) {
       toast.error('Upload failed');
       return;
@@ -270,32 +275,7 @@ export default function SlideModal({
                   const t = e.target.value;
                   setTemplate(t);
                   switch (t) {
-                    case 'solid':
-                      setConfig({
-                        background: {
-                          kind: 'color',
-                          value: '#111',
-                          overlay: true,
-                          overlayColor: '#000',
-                          overlayOpacity: 0.25,
-                        },
-                        blocks: [
-                          { id: crypto.randomUUID(), type: 'heading', text: 'Welcome' },
-                          {
-                            id: crypto.randomUUID(),
-                            type: 'subheading',
-                            text: 'Fresh, local & fast',
-                          },
-                          {
-                            id: crypto.randomUUID(),
-                            type: 'button',
-                            text: 'Order Now',
-                            href: '/menu',
-                          },
-                        ],
-                      });
-                      break;
-                    case 'image':
+                    case 'hero':
                       setConfig({
                         background: {
                           kind: 'image',
@@ -321,30 +301,15 @@ export default function SlideModal({
                         ],
                       });
                       break;
-                    case 'video':
+                    case 'quote':
                       setConfig({
-                        background: {
-                          kind: 'video',
-                          fit: 'cover',
-                          muted: true,
-                          loop: true,
-                          autoplay: true,
-                          overlay: true,
-                          overlayColor: '#000',
-                          overlayOpacity: 0.25,
-                        },
+                        background: { kind: 'color', value: '#fff' },
                         blocks: [
-                          { id: crypto.randomUUID(), type: 'heading', text: 'Welcome' },
                           {
                             id: crypto.randomUUID(),
-                            type: 'subheading',
-                            text: 'Fresh, local & fast',
-                          },
-                          {
-                            id: crypto.randomUUID(),
-                            type: 'button',
-                            text: 'Order Now',
-                            href: '/menu',
+                            type: 'quote',
+                            text: 'Best food in town!',
+                            author: 'Happy Customer',
                           },
                         ],
                       });
@@ -353,8 +318,26 @@ export default function SlideModal({
                       setConfig({
                         background: { kind: 'color', value: '#fff' },
                         blocks: [
-                          { id: crypto.randomUUID(), type: 'gallery', images: [] },
+                          {
+                            id: crypto.randomUUID(),
+                            type: 'gallery',
+                            images: [
+                              'https://placehold.co/200',
+                              'https://placehold.co/200',
+                              'https://placehold.co/200',
+                            ],
+                          },
                         ],
+                      });
+                      break;
+                    case 'split':
+                      setConfig({
+                        background: { kind: 'color', value: '#fff' },
+                        blocks: [
+                          { id: crypto.randomUUID(), type: 'image', url: '' },
+                          { id: crypto.randomUUID(), type: 'heading', text: 'Your headline' },
+                        ],
+                        layout: 'split',
                       });
                       break;
                     case 'cta':
@@ -378,10 +361,10 @@ export default function SlideModal({
                 className="border p-1 rounded w-full mb-2"
               >
                 <option value="">Templates…</option>
-                <option value="solid">Solid Color</option>
-                <option value="image">Image Background</option>
-                <option value="video">Video Background</option>
+                <option value="hero">Hero with Button</option>
+                <option value="quote">Simple Quote</option>
                 <option value="gallery">Gallery Row</option>
+                <option value="split">Split Column</option>
                 <option value="cta">CTA Banner</option>
               </select>
             </div>
@@ -464,6 +447,7 @@ export default function SlideModal({
                   >
                     Upload
                   </button>
+                  {uploading && <Skeleton className="h-4 w-4 inline-block ml-2" />}
                   {config.background?.value && (
                     <div className="text-xs break-all">{config.background.value}</div>
                   )}
@@ -582,6 +566,7 @@ export default function SlideModal({
                     >
                       Upload
                     </button>
+                    {uploading && <Skeleton className="h-4 w-4 inline-block ml-2" />}
                     {selectedBlock.url && (
                       <div className="text-xs break-all">{selectedBlock.url}</div>
                     )}
@@ -612,6 +597,7 @@ export default function SlideModal({
                     >
                       Upload Images
                     </button>
+                    {uploading && <Skeleton className="h-4 w-4 inline-block ml-2" />}
                     {selectedBlock.images.map((img: string, i: number) => (
                       <div key={i} className="flex items-center gap-2 text-xs">
                         <span className="flex-1 break-all">{img}</span>
