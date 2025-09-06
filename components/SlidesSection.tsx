@@ -15,7 +15,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ArrowsUpDownIcon } from '@heroicons/react/24/outline';
+import { ArrowsUpDownIcon, ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
 import { supabase } from '@/utils/supabaseClient';
 import { toast } from '@/components/ui/toast';
 import SlideModal, { SlideRow } from './SlideModal';
@@ -94,19 +94,55 @@ export default function SlidesSection({ restaurantId }: { restaurantId: string }
   async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    const oldIndex = slides.findIndex((s) => s.id === active.id);
-    const newIndex = slides.findIndex((s) => s.id === over.id);
-    const reordered = arrayMove(slides, oldIndex, newIndex);
-    setSlides(reordered);
-    const withOrder = reordered.map((s, i) => ({ ...s, sort_order: i }));
-    const nonHero = withOrder.filter((s) => s.type !== 'hero');
-    const { error } = await supabase
-      .from('restaurant_slides')
-      .upsert(
-        nonHero.map((s) => ({ id: s.id, restaurant_id: restaurantId, sort_order: s.sort_order }))
-      );
+    const nonHero = slides.filter((s) => s.type !== 'hero');
+    const oldIndex = nonHero.findIndex((s) => s.id === active.id);
+    const newIndex = nonHero.findIndex((s) => s.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    const reordered = arrayMove(nonHero, oldIndex, newIndex);
+    setSlides((prev) => {
+      const heroes = prev.filter((s) => s.type === 'hero');
+      return [...heroes, ...reordered].sort((a, b) => a.sort_order - b.sort_order);
+    });
+    const updates = reordered.map((s, i) => ({
+      id: s.id,
+      restaurant_id: restaurantId,
+      sort_order: i,
+    }));
+    const { error } = await supabase.from('restaurant_slides').upsert(updates);
     if (error) {
       toast.error('Failed to reorder');
+      loadSlides();
+    } else {
+      loadSlides();
+    }
+  }
+
+  async function move(row: SlideRow, dir: 'up' | 'down') {
+    const nonHero = slides.filter((s) => s.type !== 'hero').sort(
+      (a, b) => a.sort_order - b.sort_order
+    );
+    const index = nonHero.findIndex((s) => s.id === row.id);
+    const swapIndex = dir === 'up' ? index - 1 : index + 1;
+    if (index === -1 || swapIndex < 0 || swapIndex >= nonHero.length) return;
+    const target = nonHero[swapIndex];
+    const updates = [
+      { id: row.id!, restaurant_id: restaurantId, sort_order: swapIndex },
+      { id: target.id!, restaurant_id: restaurantId, sort_order: index },
+    ];
+    const reordered = [...nonHero];
+    [reordered[index], reordered[swapIndex]] = [
+      reordered[swapIndex],
+      reordered[index],
+    ];
+    setSlides((prev) => {
+      const heroes = prev.filter((s) => s.type === 'hero');
+      return [...heroes, ...reordered].sort((a, b) => a.sort_order - b.sort_order);
+    });
+    const { error } = await supabase.from('restaurant_slides').upsert(updates);
+    if (error) {
+      toast.error('Failed to reorder');
+      loadSlides();
+    } else {
       loadSlides();
     }
   }
@@ -187,6 +223,11 @@ export default function SlidesSection({ restaurantId }: { restaurantId: string }
                   onEdit={openEdit}
                   onDelete={handleDelete}
                   onToggle={toggleActive}
+                  onMove={move}
+                  index={slides
+                    .filter((h) => h.type !== 'hero')
+                    .findIndex((n) => n.id === s.id)}
+                  lastIndex={slides.filter((h) => h.type !== 'hero').length - 1}
                 />
               ))}
             </ul>
@@ -210,11 +251,17 @@ function SortableRow({
   onEdit,
   onDelete,
   onToggle,
+  onMove,
+  index,
+  lastIndex,
 }: {
   row: SlideRow;
   onEdit: (r: SlideRow) => void;
   onDelete: (r: SlideRow) => void;
   onToggle: (r: SlideRow) => void;
+  onMove: (r: SlideRow, dir: 'up' | 'down') => void;
+  index: number;
+  lastIndex: number;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
     id: row.id!,
@@ -234,6 +281,20 @@ function SortableRow({
       >
         <ArrowsUpDownIcon className="h-5 w-5" />
       </span>
+      <div className="flex flex-col">
+        <button
+          disabled={locked || index <= 0}
+          onClick={() => onMove(row, 'up')}
+        >
+          <ChevronUpIcon className="h-4 w-4" />
+        </button>
+        <button
+          disabled={locked || index === lastIndex}
+          onClick={() => onMove(row, 'down')}
+        >
+          <ChevronDownIcon className="h-4 w-4" />
+        </button>
+      </div>
       <span className="text-xs px-2 py-1 rounded border">{row.type}</span>
       <div className="flex-1">{row.title}</div>
       {locked ? (

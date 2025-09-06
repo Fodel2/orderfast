@@ -6,7 +6,7 @@ import PageRenderer from '@/components/PageRenderer';
 import resolveRestaurantId from '@/lib/resolveRestaurantId';
 import { supabase } from '@/lib/supabaseClient';
 
-interface SlideRow {
+export interface SlideRow {
   id: string;
   restaurant_id: string;
   type: string;
@@ -45,45 +45,64 @@ export default function SlidesContainer() {
   if (!slides.length) return null;
 
   return (
-    <div>
+    <div className="snap-y snap-mandatory">
       {slides.map((s) => (
-        <SlideRenderer key={s.id} slide={s} restaurantId={restaurantId!} router={router} />
+        <SlideRenderer
+          key={s.id}
+          slide={s}
+          restaurantId={restaurantId!}
+          router={router}
+        />
       ))}
     </div>
   );
 }
-
-function SlideRenderer({ slide, restaurantId, router }: { slide: SlideRow; restaurantId: string; router: any }) {
+export function SlideRenderer({
+  slide,
+  restaurantId,
+  router,
+}: {
+  slide: SlideRow;
+  restaurantId: string;
+  router: any;
+}) {
   const cfg = slide.config_json || {};
+  let content: React.ReactNode = null;
 
   switch (slide.type) {
     case 'menu_highlight': {
-      const href = slide.cta_href || `/restaurant/menu?restaurant_id=${restaurantId}`;
-      return (
-        <section className="p-4 text-center">
+      const href =
+        slide.cta_href || `/restaurant/menu?restaurant_id=${restaurantId}`;
+      content = (
+        <>
           {slide.title && <h2 className="text-xl font-bold">{slide.title}</h2>}
           {slide.subtitle && <p className="mb-3">{slide.subtitle}</p>}
-          <Button onClick={() => router.push(href)}>{slide.cta_label || 'View Menu'}</Button>
-        </section>
+          <Button onClick={() => router.push(href)}>
+            {slide.cta_label || 'View Menu'}
+          </Button>
+        </>
       );
+      break;
     }
     case 'gallery': {
       const images: string[] = Array.isArray(cfg.images) ? cfg.images : [];
-      if (!images.length) return null;
-      return (
-        <div className="flex gap-2 overflow-x-auto p-4">
-          {images.map((src, i) => (
-            <Image key={i} src={src} alt="" width={200} height={150} />
-          ))}
-        </div>
-      );
+      if (images.length) {
+        content = (
+          <div className="flex gap-2 overflow-x-auto">
+            {images.map((src, i) => (
+              <Image key={i} src={src} alt="" width={200} height={150} />
+            ))}
+          </div>
+        );
+      }
+      break;
     }
     case 'reviews': {
       const quotes: { text: string; author?: string }[] = Array.isArray(cfg.quotes)
         ? cfg.quotes
         : [];
-      return (
-        <section className="p-4 text-center">
+      content = (
+        <>
           {slide.title && <h2 className="text-xl font-bold">{slide.title}</h2>}
           {slide.subtitle && <p className="mb-4">{slide.subtitle}</p>}
           {quotes.slice(0, 2).map((q, i) => (
@@ -92,51 +111,81 @@ function SlideRenderer({ slide, restaurantId, router }: { slide: SlideRow; resta
               {q.author && <cite className="block text-sm">- {q.author}</cite>}
             </blockquote>
           ))}
-        </section>
+        </>
       );
+      break;
     }
     case 'about': {
-      return (
-        <section className="p-4 text-center">
+      content = (
+        <>
           {slide.title && <h2 className="text-xl font-bold">{slide.title}</h2>}
           {slide.subtitle && <p className="mb-3">{slide.subtitle}</p>}
           {slide.media_url && (
             <Image src={slide.media_url} alt="" width={400} height={300} />
           )}
-        </section>
+        </>
       );
+      break;
     }
     case 'location_hours': {
-      const href = slide.cta_href || `/restaurant/p/contact?restaurant_id=${restaurantId}`;
-      return (
-        <section className="p-4 text-center">
+      const href =
+        slide.cta_href || `/restaurant/p/contact?restaurant_id=${restaurantId}`;
+      content = (
+        <>
           {slide.title && <h2 className="text-xl font-bold">{slide.title}</h2>}
           {slide.subtitle && <p className="mb-3">{slide.subtitle}</p>}
-          <Button onClick={() => router.push(href)}>{slide.cta_label || 'Get Directions'}</Button>
-        </section>
+          <Button onClick={() => router.push(href)}>
+            {slide.cta_label || 'Get Directions'}
+          </Button>
+        </>
       );
+      break;
     }
     case 'cta_banner': {
-      return (
-        <section className="p-4 text-center">
+      content = (
+        <>
           {slide.title && <h2 className="text-xl font-bold">{slide.title}</h2>}
-          {slide.subtitle && <p className="mb-3 font-semibold">{slide.subtitle}</p>}
-          {slide.cta_href && (
-            <Button onClick={() => router.push(slide.cta_href!)}>{slide.cta_label || 'Learn More'}</Button>
+          {slide.subtitle && (
+            <p className="mb-3 font-semibold">{slide.subtitle}</p>
           )}
-        </section>
+          {slide.cta_href && (
+            <Button onClick={() => router.push(slide.cta_href!)}>
+              {slide.cta_label || 'Learn More'}
+            </Button>
+          )}
+        </>
       );
+      break;
     }
     case 'custom_builder':
-      return <CustomBuilderSlide slide={slide} restaurantId={restaurantId} />;
+      content = <CustomBuilderSlide slide={slide} restaurantId={restaurantId} />;
+      break;
     default:
-      return null;
+      break;
   }
+
+  if (!content) return null;
+
+  return (
+    <section
+      className="min-h-screen flex flex-col items-center justify-center p-4 text-center snap-start"
+      style={{ height: '100dvh' }}
+    >
+      {content}
+    </section>
+  );
 }
 
-function CustomBuilderSlide({ slide, restaurantId }: { slide: SlideRow; restaurantId: string }) {
+function CustomBuilderSlide({
+  slide,
+  restaurantId,
+}: {
+  slide: SlideRow;
+  restaurantId: string;
+}) {
   const [blocks, setBlocks] = useState<any[]>([]);
   useEffect(() => {
+    if (!slide.id) return;
     supabase
       .from('restaurant_slide_blocks')
       .select('content_json')
@@ -148,19 +197,19 @@ function CustomBuilderSlide({ slide, restaurantId }: { slide: SlideRow; restaura
 
   if (!blocks.length) {
     return (
-      <section className="p-4 text-center">
+      <>
         {slide.title && <h2 className="text-xl font-bold">{slide.title}</h2>}
         {slide.subtitle && <p className="mb-3">{slide.subtitle}</p>}
         {/* TODO: render custom blocks */}
-      </section>
+      </>
     );
   }
   return (
-    <section className="p-4">
+    <div>
       {slide.title && <h2 className="text-xl font-bold text-center">{slide.title}</h2>}
       {slide.subtitle && <p className="mb-3 text-center">{slide.subtitle}</p>}
       <PageRenderer blocks={blocks as any} />
-    </section>
+    </div>
   );
 }
 

@@ -1,6 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/utils/supabaseClient';
 import { toast } from '@/components/ui/toast';
+import { InformationCircleIcon } from '@heroicons/react/24/outline';
+import { SlideRenderer } from '@/components/customer/home/SlidesContainer';
+import { STORAGE_BUCKET } from '@/lib/storage';
 
 const typeOptions = [
   'menu_highlight',
@@ -48,8 +51,89 @@ export default function SlideModal({
   const [visibleFrom, setVisibleFrom] = useState('');
   const [visibleUntil, setVisibleUntil] = useState('');
   const [configText, setConfigText] = useState('');
+  const [template, setTemplate] = useState('');
+  const [previewDevice, setPreviewDevice] = useState<'mobile' | 'tablet' | 'desktop'>('mobile');
+  const fileRef = useRef<HTMLInputElement | null>(null);
   const isEdit = !!initial?.id;
   const [saving, setSaving] = useState(false);
+
+  function applyTemplate(t: string) {
+    setTemplate(t);
+    switch (t) {
+      case 'Solid Color':
+        setConfigText(
+          JSON.stringify(
+            {
+              style: {
+                background: { kind: 'color', value: '#111111' },
+                overlay: true,
+              },
+            },
+            null,
+            2
+          )
+        );
+        break;
+      case 'Image Background':
+        setConfigText(
+          JSON.stringify(
+            {
+              style: {
+                background: { kind: 'image', fit: 'cover', position: 'center' },
+                overlay: true,
+              },
+            },
+            null,
+            2
+          )
+        );
+        break;
+      case 'Video Background':
+        setConfigText(
+          JSON.stringify(
+            {
+              style: {
+                background: {
+                  kind: 'video',
+                  muted: true,
+                  loop: true,
+                  autoplay: true,
+                  fit: 'cover',
+                },
+                overlay: true,
+              },
+            },
+            null,
+            2
+          )
+        );
+        break;
+      case 'Gallery Row':
+        setType('gallery');
+        setConfigText(JSON.stringify({ images: [] }, null, 2));
+        break;
+      case 'CTA Banner':
+        setType('cta_banner');
+        break;
+    }
+  }
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const path = `slides/${initial.restaurant_id}/${Date.now()}-${file.name}`;
+    const { error } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .upload(path, file, { upsert: true });
+    if (error) {
+      const errText = [error.name, error.message].filter(Boolean).join(': ');
+      toast.error('Upload failed: ' + errText);
+      return;
+    }
+    const url = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path).data
+      .publicUrl;
+    setMediaUrl(url);
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -62,6 +146,8 @@ export default function SlideModal({
     setVisibleFrom(initial.visible_from || '');
     setVisibleUntil(initial.visible_until || '');
     setConfigText(initial.config_json ? JSON.stringify(initial.config_json, null, 2) : '');
+    setTemplate('');
+    setPreviewDevice('mobile');
   }, [open, initial]);
 
   async function handleSave() {
@@ -133,32 +219,201 @@ export default function SlideModal({
     <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative w-full max-w-lg rounded-2xl bg-white p-4 shadow-xl">
-        <h2 className="text-xl font-semibold mb-3">{isEdit ? 'Edit Slide' : 'New Slide'}</h2>
+        <h2 className="text-xl font-semibold mb-3">
+          {isEdit ? 'Edit Slide' : 'New Slide'}
+        </h2>
+        <label className="block text-sm font-medium mb-1 flex items-center gap-1">
+          Templates
+          <InformationCircleIcon
+            className="w-4 h-4"
+            title="Pick a starting design. You can tweak the options below."
+          />
+        </label>
+        <select
+          value={template}
+          onChange={(e) => applyTemplate(e.target.value)}
+          className="w-full mb-3 rounded border px-3 py-2"
+        >
+          <option value="">--</option>
+          {['Solid Color', 'Image Background', 'Video Background', 'Gallery Row', 'CTA Banner'].map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
         <label className="block text-sm font-medium mb-1">Type</label>
-        <select value={type} onChange={(e)=>setType(e.target.value)} className="w-full mb-3 rounded border px-3 py-2">
-          {typeOptions.map(t => (
-            <option key={t} value={t}>{t}</option>
+        <select
+          value={type}
+          onChange={(e) => setType(e.target.value)}
+          className="w-full mb-3 rounded border px-3 py-2"
+        >
+          {typeOptions.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
           ))}
         </select>
         <label className="block text-sm font-medium mb-1">Title</label>
-        <input value={title} onChange={e=>setTitle(e.target.value)} className="w-full mb-3 rounded border px-3 py-2" />
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          className="w-full mb-3 rounded border px-3 py-2"
+        />
         <label className="block text-sm font-medium mb-1">Subtitle</label>
-        <input value={subtitle} onChange={e=>setSubtitle(e.target.value)} className="w-full mb-3 rounded border px-3 py-2" />
-        <label className="block text-sm font-medium mb-1">Media URL</label>
-        <input value={mediaUrl} onChange={e=>setMediaUrl(e.target.value)} className="w-full mb-3 rounded border px-3 py-2" />
-        <label className="block text-sm font-medium mb-1">CTA Label</label>
-        <input value={ctaLabel} onChange={e=>setCtaLabel(e.target.value)} className="w-full mb-3 rounded border px-3 py-2" />
-        <label className="block text-sm font-medium mb-1">CTA Href</label>
-        <input value={ctaHref} onChange={e=>setCtaHref(e.target.value)} className="w-full mb-3 rounded border px-3 py-2" />
-        <label className="block text-sm font-medium mb-1">Visible From</label>
-        <input type="datetime-local" value={visibleFrom} onChange={e=>setVisibleFrom(e.target.value)} className="w-full mb-3 rounded border px-3 py-2" />
-        <label className="block text-sm font-medium mb-1">Visible Until</label>
-        <input type="datetime-local" value={visibleUntil} onChange={e=>setVisibleUntil(e.target.value)} className="w-full mb-3 rounded border px-3 py-2" />
+        <input
+          value={subtitle}
+          onChange={(e) => setSubtitle(e.target.value)}
+          className="w-full mb-3 rounded border px-3 py-2"
+        />
+        <label className="block text-sm font-medium mb-1 flex items-center gap-1">
+          Background Image/Video
+          <InformationCircleIcon
+            className="w-4 h-4"
+            title="Upload an image or short video to fill the slide background. Large files may impact load speed."
+          />
+        </label>
+        <div className="flex gap-2 mb-3">
+          <input
+            value={mediaUrl}
+            onChange={(e) => setMediaUrl(e.target.value)}
+            className="flex-1 rounded border px-3 py-2"
+          />
+          <input
+            type="file"
+            ref={fileRef}
+            className="hidden"
+            accept="image/*,video/*"
+            onChange={handleFileChange}
+          />
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            className="px-3 py-2 rounded border"
+          >
+            Upload
+          </button>
+        </div>
+        {mediaUrl && (
+          mediaUrl.match(/\.mp4|\.webm/) ? (
+            <video src={mediaUrl} className="mb-3 w-full max-h-48" autoPlay muted loop />
+          ) : (
+            <img src={mediaUrl} alt="" className="mb-3 w-full max-h-48 object-cover" />
+          )
+        )}
+        <label className="block text-sm font-medium mb-1">Button Text</label>
+        <input
+          value={ctaLabel}
+          onChange={(e) => setCtaLabel(e.target.value)}
+          className="w-full mb-3 rounded border px-3 py-2"
+        />
+        <label className="block text-sm font-medium mb-1 flex items-center gap-1">
+          Button Link
+          <InformationCircleIcon
+            className="w-4 h-4"
+            title="Where to send customers when they tap the button. Example: /menu or https://…"
+          />
+        </label>
+        <input
+          value={ctaHref}
+          onChange={(e) => setCtaHref(e.target.value)}
+          className="w-full mb-3 rounded border px-3 py-2"
+        />
+        <label className="block text-sm font-medium mb-1 flex items-center gap-1">
+          Visible From
+          <InformationCircleIcon
+            className="w-4 h-4"
+            title="Start date/time when this slide should start appearing on your site. Leave empty to start immediately."
+          />
+        </label>
+        <input
+          type="datetime-local"
+          value={visibleFrom}
+          onChange={(e) => setVisibleFrom(e.target.value)}
+          className="w-full mb-3 rounded border px-3 py-2"
+        />
+        <label className="block text-sm font-medium mb-1 flex items-center gap-1">
+          Visible Until
+          <InformationCircleIcon
+            className="w-4 h-4"
+            title="End date/time when this slide should stop appearing. Leave empty for no end date."
+          />
+        </label>
+        <input
+          type="datetime-local"
+          value={visibleUntil}
+          onChange={(e) => setVisibleUntil(e.target.value)}
+          className="w-full mb-3 rounded border px-3 py-2"
+        />
         <label className="block text-sm font-medium mb-1">config_json</label>
-        <textarea value={configText} onChange={e=>setConfigText(e.target.value)} rows={4} className="w-full mb-3 rounded border px-3 py-2 font-mono" />
+        <textarea
+          value={configText}
+          onChange={(e) => setConfigText(e.target.value)}
+          rows={4}
+          className="w-full mb-3 rounded border px-3 py-2 font-mono"
+        />
+        <div className="mb-3">
+          <div className="flex gap-2 mb-2">
+            {['mobile', 'tablet', 'desktop'].map((d) => (
+              <button
+                key={d}
+                onClick={() => setPreviewDevice(d as any)}
+                className={`px-2 py-1 rounded border ${
+                  previewDevice === d ? 'bg-gray-200' : ''
+                }`}
+              >
+                {d}
+              </button>
+            ))}
+          </div>
+          <div className="border p-2 flex justify-center">
+            <div
+              style={{
+                width:
+                  previewDevice === 'mobile'
+                    ? 375
+                    : previewDevice === 'tablet'
+                    ? 768
+                    : 1280,
+                maxWidth: '100%',
+              }}
+            >
+              <SlideRenderer
+                slide={{
+                  id: initial.id || '',
+                  restaurant_id: initial.restaurant_id,
+                  type,
+                  title,
+                  subtitle,
+                  media_url: mediaUrl,
+                  cta_label: ctaLabel,
+                  cta_href: ctaHref,
+                  visible_from: visibleFrom || null,
+                  visible_until: visibleUntil || null,
+                  is_active: true,
+                  sort_order: initial.sort_order || 0,
+                  config_json: (() => {
+                    try {
+                      return configText ? JSON.parse(configText) : null;
+                    } catch {
+                      return null;
+                    }
+                  })(),
+                } as any}
+                restaurantId={initial.restaurant_id}
+                router={{ push: () => {} }}
+              />
+            </div>
+          </div>
+        </div>
         <div className="mt-4 flex justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2 rounded border">Cancel</button>
-          <button onClick={handleSave} disabled={saving} className="px-4 py-2 rounded bg-emerald-600 text-white disabled:opacity-60">
+          <button onClick={onClose} className="px-4 py-2 rounded border">
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="px-4 py-2 rounded bg-emerald-600 text-white disabled:opacity-60"
+          >
             {saving ? 'Saving…' : 'Save'}
           </button>
         </div>
