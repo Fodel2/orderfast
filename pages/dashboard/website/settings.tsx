@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import DashboardLayout from '../../../components/DashboardLayout';
 import Toast from '../../../components/Toast';
 import CustomPagesSection from '../../../components/CustomPagesSection';
+import SlidesSection from '../../../components/SlidesSection';
 import { supabase } from '../../../utils/supabaseClient';
 
 export default function WebsitePage() {
@@ -433,6 +434,7 @@ export default function WebsitePage() {
           </form>
         </div>
       </div>
+      {restaurantId && <SlidesSection restaurantId={restaurantId} />}
       {restaurantId && <CustomPagesSection restaurantId={restaurantId} />}
       <Toast message={toastMessage} onClose={() => setToastMessage('')} />
     </DashboardLayout>
