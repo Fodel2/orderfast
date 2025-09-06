@@ -47,9 +47,12 @@ export default function RestaurantHomePage({ initialBrand }: { initialBrand: any
 
   useEffect(() => {
     if (!sentinelRef.current) return;
-    const obs = new IntersectionObserver(([entry]) => {
-      setIsPastHero(entry.isIntersecting);
-    });
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        setIsPastHero(entry.isIntersecting);
+      },
+      { threshold: 0.1 }
+    );
     obs.observe(sentinelRef.current);
     return () => obs.disconnect();
   }, []);

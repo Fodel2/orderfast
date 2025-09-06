@@ -1,9 +1,17 @@
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/utils/supabaseClient';
 import { toast } from '@/components/ui/toast';
 import { InformationCircleIcon } from '@heroicons/react/24/outline';
 import { SlideRenderer } from '@/components/customer/home/SlidesContainer';
 import { STORAGE_BUCKET } from '@/lib/storage';
+import { DndContext, closestCenter } from '@dnd-kit/core';
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 const typeOptions = [
   'menu_highlight',
@@ -31,6 +39,42 @@ export type SlideRow = {
   is_active?: boolean;
 };
 
+function SortableImage({
+  id,
+  src,
+  onRemove,
+}: {
+  id: string;
+  src: string;
+  onRemove: (idx: number) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  } as React.CSSProperties;
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex items-center gap-2 mb-2"
+    >
+      <span {...attributes} {...listeners} className="cursor-move">
+        ⋮
+      </span>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={src} alt="" className="w-16 h-16 object-cover rounded" />
+      <button
+        type="button"
+        onClick={() => onRemove(Number(id))}
+        className="px-1 text-sm border rounded"
+      >
+        x
+      </button>
+    </div>
+  );
+}
+
 export default function SlideModal({
   open,
   onClose,
@@ -54,14 +98,28 @@ export default function SlideModal({
   const [template, setTemplate] = useState('');
   const [previewDevice, setPreviewDevice] = useState<'mobile' | 'tablet' | 'desktop'>('mobile');
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const galleryFileRef = useRef<HTMLInputElement | null>(null);
   const isEdit = !!initial?.id;
   const [saving, setSaving] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [galleryImages, setGalleryImages] = useState<string[]>([]);
+  const linkOptions = [
+    { value: '/menu', label: '/menu' },
+    { value: '/orders', label: '/orders' },
+    { value: '/p/contact', label: '/p/contact' },
+    { value: 'custom', label: 'Custom URL' },
+  ];
+  const [linkChoice, setLinkChoice] = useState<string>('custom');
 
   function applyTemplate(t: string) {
     setTemplate(t);
     switch (t) {
       case 'Solid Color':
+        setTitle('Welcome');
+        setSubtitle('What would you like today?');
+        setCtaLabel('Order Now');
+        setLinkChoice('/menu');
+        setCtaHref('/menu');
         setConfigText(
           JSON.stringify(
             {
@@ -76,6 +134,11 @@ export default function SlideModal({
         );
         break;
       case 'Image Background':
+        setTitle('Fresh & Tasty');
+        setSubtitle('Check out our menu');
+        setCtaLabel('Browse Menu');
+        setLinkChoice('/menu');
+        setCtaHref('/menu');
         setConfigText(
           JSON.stringify(
             {
@@ -90,6 +153,11 @@ export default function SlideModal({
         );
         break;
       case 'Video Background':
+        setTitle('See it in action');
+        setSubtitle('Our kitchen in motion');
+        setCtaLabel('Order Now');
+        setLinkChoice('/menu');
+        setCtaHref('/menu');
         setConfigText(
           JSON.stringify(
             {
@@ -111,10 +179,21 @@ export default function SlideModal({
         break;
       case 'Gallery Row':
         setType('gallery');
+        setTitle('Gallery');
+        setSubtitle('A peek inside');
+        setCtaLabel('');
+        setLinkChoice('custom');
+        setCtaHref('');
+        setGalleryImages([]);
         setConfigText(JSON.stringify({ images: [] }, null, 2));
         break;
       case 'CTA Banner':
         setType('cta_banner');
+        setTitle('Special Offer');
+        setSubtitle('Limited time only');
+        setCtaLabel('Learn More');
+        setLinkChoice('/menu');
+        setCtaHref('/menu');
         break;
     }
   }
@@ -137,6 +216,46 @@ export default function SlideModal({
     setMediaUrl(url);
   }
 
+  async function handleGalleryAdd(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const ext = file.name.split('.').pop();
+    const path = `slides/${initial.restaurant_id}/${crypto.randomUUID()}${ext ? `.${ext}` : ''}`;
+    const { error } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .upload(path, file, { upsert: true });
+    if (error) {
+      const errText = [error.name, error.message].filter(Boolean).join(': ');
+      toast.error('Upload failed: ' + errText);
+      return;
+    }
+    const url = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path).data
+      .publicUrl;
+    setGalleryImages((imgs) => {
+      const next = [...imgs, url];
+      setConfigText(JSON.stringify({ images: next }, null, 2));
+      return next;
+    });
+  }
+
+  function handleGalleryDragEnd(event: any) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setGalleryImages((imgs) => {
+      const next = arrayMove(imgs, Number(active.id), Number(over.id));
+      setConfigText(JSON.stringify({ images: next }, null, 2));
+      return next;
+    });
+  }
+
+  function removeGallery(idx: number) {
+    setGalleryImages((imgs) => {
+      const next = imgs.filter((_, i) => i !== idx);
+      setConfigText(JSON.stringify({ images: next }, null, 2));
+      return next;
+    });
+  }
+
   useEffect(() => {
     if (!open) return;
     setType(initial.type || 'menu_highlight');
@@ -145,12 +264,38 @@ export default function SlideModal({
     setMediaUrl(initial.media_url || '');
     setCtaLabel(initial.cta_label || '');
     setCtaHref(initial.cta_href || '');
+    const lc = linkOptions.find((o) => o.value === (initial.cta_href || ''))
+      ? (initial.cta_href || '')
+      : 'custom';
+    setLinkChoice(lc);
+    if (initial.type === 'gallery') {
+      const imgs = Array.isArray(initial.config_json?.images)
+        ? initial.config_json.images
+        : [];
+      setGalleryImages(imgs);
+      if (!imgs.length) setConfigText(JSON.stringify({ images: [] }, null, 2));
+    }
     setVisibleFrom(initial.visible_from || '');
     setVisibleUntil(initial.visible_until || '');
     setConfigText(initial.config_json ? JSON.stringify(initial.config_json, null, 2) : '');
     setTemplate('');
     setPreviewDevice('mobile');
   }, [open, initial]);
+
+  useEffect(() => {
+    if (linkChoice !== 'custom') setCtaHref('');
+  }, [linkChoice]);
+
+  useEffect(() => {
+    if (type === 'gallery') {
+      try {
+        const obj = configText ? JSON.parse(configText) : {};
+        if (Array.isArray(obj.images)) setGalleryImages(obj.images);
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [type, configText]);
 
   async function handleSave() {
     if (visibleFrom && visibleUntil && new Date(visibleUntil) < new Date(visibleFrom)) {
@@ -173,7 +318,7 @@ export default function SlideModal({
       subtitle: subtitle || null,
       media_url: mediaUrl || null,
       cta_label: ctaLabel || null,
-      cta_href: ctaHref || null,
+      cta_href: (linkChoice === 'custom' ? ctaHref : linkChoice) || null,
       visible_from: visibleFrom || null,
       visible_until: visibleUntil || null,
       config_json: cfg,
@@ -305,6 +450,45 @@ export default function SlideModal({
             <img src={mediaUrl} alt="" className="mb-3 w-full max-h-48 object-cover" />
           )
         )}
+        {type === 'gallery' && (
+          <div className="mb-3">
+            <label className="block text-sm font-medium mb-1">Gallery Images</label>
+            <div className="mb-2">
+              <input
+                type="file"
+                ref={galleryFileRef}
+                className="hidden"
+                accept="image/*"
+                onChange={handleGalleryAdd}
+              />
+              <button
+                type="button"
+                onClick={() => galleryFileRef.current?.click()}
+                className="px-3 py-2 rounded border"
+              >
+                Add Image
+              </button>
+            </div>
+            <DndContext
+              collisionDetection={closestCenter}
+              onDragEnd={handleGalleryDragEnd}
+            >
+              <SortableContext
+                items={galleryImages.map((_, i) => String(i))}
+                strategy={verticalListSortingStrategy}
+              >
+                {galleryImages.map((src, i) => (
+                  <SortableImage
+                    key={i}
+                    id={String(i)}
+                    src={src}
+                    onRemove={removeGallery}
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
+          </div>
+        )}
         <label className="block text-sm font-medium mb-1">Button Text</label>
         <input
           value={ctaLabel}
@@ -318,11 +502,25 @@ export default function SlideModal({
             title="Where to send customers when they tap the button. Example: /menu or https://…"
           />
         </label>
-        <input
-          value={ctaHref}
-          onChange={(e) => setCtaHref(e.target.value)}
-          className="w-full mb-3 rounded border px-3 py-2"
-        />
+        <select
+          value={linkChoice}
+          onChange={(e) => setLinkChoice(e.target.value)}
+          className="w-full mb-2 rounded border px-3 py-2"
+        >
+          {linkOptions.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        {linkChoice === 'custom' && (
+          <input
+            value={ctaHref}
+            onChange={(e) => setCtaHref(e.target.value)}
+            className="w-full mb-3 rounded border px-3 py-2"
+            placeholder="https://..."
+          />
+        )}
         <label className="block text-sm font-medium mb-1 flex items-center gap-1">
           Visible From
           <InformationCircleIcon
@@ -383,7 +581,7 @@ export default function SlideModal({
               </button>
             ))}
           </div>
-          <div className="border p-2 flex justify-center">
+          <div className="flex justify-center">
             <div
               style={{
                 width:
@@ -393,6 +591,10 @@ export default function SlideModal({
                     ? 768
                     : 1280,
                 maxWidth: '100%',
+                border: '4px solid #000',
+                borderRadius: previewDevice === 'desktop' ? 8 : 20,
+                overflow: 'hidden',
+                transition: 'width 0.3s',
               }}
             >
               <SlideRenderer
@@ -404,7 +606,7 @@ export default function SlideModal({
                   subtitle,
                   media_url: mediaUrl,
                   cta_label: ctaLabel,
-                  cta_href: ctaHref,
+                  cta_href: linkChoice === 'custom' ? ctaHref : linkChoice,
                   visible_from: visibleFrom || null,
                   visible_until: visibleUntil || null,
                   is_active: true,
