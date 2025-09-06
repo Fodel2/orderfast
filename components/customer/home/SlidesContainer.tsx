@@ -2,12 +2,12 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Image from 'next/image';
 import Button from '@/components/ui/Button';
-import PageRenderer from '@/components/PageRenderer';
 import resolveRestaurantId from '@/lib/resolveRestaurantId';
 import { supabase } from '@/lib/supabaseClient';
+import type { SlideConfig } from '@/components/SlideModal';
 
 export interface SlideRow {
-  id: string;
+  id?: string;
   restaurant_id: string;
   type: string;
   title?: string | null;
@@ -17,8 +17,8 @@ export interface SlideRow {
   cta_href?: string | null;
   visible_from?: string | null;
   visible_until?: string | null;
-  is_active: boolean;
-  sort_order: number;
+  is_active?: boolean;
+  sort_order?: number;
   config_json?: any;
 }
 
@@ -57,6 +57,7 @@ export default function SlidesContainer() {
     </div>
   );
 }
+
 export function SlideRenderer({
   slide,
   restaurantId,
@@ -66,150 +67,129 @@ export function SlideRenderer({
   restaurantId: string;
   router: any;
 }) {
-  const cfg = slide.config_json || {};
-  let content: React.ReactNode = null;
-
-  switch (slide.type) {
-    case 'menu_highlight': {
-      const href =
-        slide.cta_href || `/restaurant/menu?restaurant_id=${restaurantId}`;
-      content = (
-        <>
-          {slide.title && <h2 className="text-xl font-bold">{slide.title}</h2>}
-          {slide.subtitle && <p className="mb-3">{slide.subtitle}</p>}
-          <Button onClick={() => router.push(href)}>
-            {slide.cta_label || 'View Menu'}
-          </Button>
-        </>
-      );
-      break;
-    }
-    case 'gallery': {
-      const images: string[] = Array.isArray(cfg.images) ? cfg.images : [];
-      if (images.length) {
-        content = (
-          <div className="flex gap-2 overflow-x-auto">
-            {images.map((src, i) => (
-              <Image key={i} src={src} alt="" width={200} height={150} />
-            ))}
-          </div>
-        );
-      }
-      break;
-    }
-    case 'reviews': {
-      const quotes: { text: string; author?: string }[] = Array.isArray(cfg.quotes)
-        ? cfg.quotes
-        : [];
-      content = (
-        <>
-          {slide.title && <h2 className="text-xl font-bold">{slide.title}</h2>}
-          {slide.subtitle && <p className="mb-4">{slide.subtitle}</p>}
-          {quotes.slice(0, 2).map((q, i) => (
-            <blockquote key={i} className="mb-2">
-              <p>“{q.text}”</p>
-              {q.author && <cite className="block text-sm">- {q.author}</cite>}
-            </blockquote>
-          ))}
-        </>
-      );
-      break;
-    }
-    case 'about': {
-      content = (
-        <>
-          {slide.title && <h2 className="text-xl font-bold">{slide.title}</h2>}
-          {slide.subtitle && <p className="mb-3">{slide.subtitle}</p>}
-          {slide.media_url && (
-            <Image src={slide.media_url} alt="" width={400} height={300} />
-          )}
-        </>
-      );
-      break;
-    }
-    case 'location_hours': {
-      const href =
-        slide.cta_href || `/restaurant/p/contact?restaurant_id=${restaurantId}`;
-      content = (
-        <>
-          {slide.title && <h2 className="text-xl font-bold">{slide.title}</h2>}
-          {slide.subtitle && <p className="mb-3">{slide.subtitle}</p>}
-          <Button onClick={() => router.push(href)}>
-            {slide.cta_label || 'Get Directions'}
-          </Button>
-        </>
-      );
-      break;
-    }
-    case 'cta_banner': {
-      content = (
-        <>
-          {slide.title && <h2 className="text-xl font-bold">{slide.title}</h2>}
-          {slide.subtitle && (
-            <p className="mb-3 font-semibold">{slide.subtitle}</p>
-          )}
-          {slide.cta_href && (
-            <Button onClick={() => router.push(slide.cta_href!)}>
-              {slide.cta_label || 'Learn More'}
-            </Button>
-          )}
-        </>
-      );
-      break;
-    }
-    case 'custom_builder':
-      content = <CustomBuilderSlide slide={slide} restaurantId={restaurantId} />;
-      break;
-    default:
-      break;
+  const cfg: SlideConfig = (slide.config_json as SlideConfig) || { blocks: [] };
+  if (!cfg.blocks) cfg.blocks = [];
+  const bg = cfg.background;
+  const style: React.CSSProperties = {
+    minHeight: '100vh',
+    height: '100dvh',
+    scrollSnapAlign: 'start',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  };
+  if (bg?.kind === 'color' && bg.value) {
+    style.backgroundColor = bg.value;
+  }
+  if (bg?.kind === 'image' && bg.value) {
+    style.backgroundImage = `url(${bg.value})`;
+    style.backgroundSize = bg.fit || 'cover';
+    style.backgroundPosition = bg.position || 'center';
   }
 
-  if (!content) return null;
+  let media: React.ReactNode = null;
+  if (bg?.kind === 'video' && bg.value) {
+    media = (
+      <video
+        src={bg.value}
+        muted={bg.muted ?? true}
+        loop={bg.loop ?? true}
+        autoPlay={bg.autoplay ?? true}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          objectFit: bg.fit || 'cover',
+        }}
+      />
+    );
+  }
+  const overlay = bg?.overlay ? (
+    <div
+      style={{
+        position: 'absolute',
+        inset: 0,
+        background: bg.overlayColor || '#000',
+        opacity: bg.overlayOpacity ?? 0.25,
+      }}
+    />
+  ) : null;
 
-  return (
-    <section
-      className="min-h-screen flex flex-col items-center justify-center p-4 text-center"
-      style={{ height: '100dvh', scrollSnapAlign: 'start' }}
-    >
-      {content}
-    </section>
-  );
-}
-
-function CustomBuilderSlide({
-  slide,
-  restaurantId,
-}: {
-  slide: SlideRow;
-  restaurantId: string;
-}) {
-  const [blocks, setBlocks] = useState<any[]>([]);
-  useEffect(() => {
-    if (!slide.id) return;
-    supabase
-      .from('restaurant_slide_blocks')
-      .select('content_json')
-      .eq('slide_id', slide.id)
-      .eq('restaurant_id', restaurantId)
-      .order('sort_order', { ascending: true })
-      .then(({ data }) => setBlocks(data?.map((b: any) => b.content_json) || []));
-  }, [slide.id, restaurantId]);
-
-  if (!blocks.length) {
-    return (
+  let content: React.ReactNode = null;
+  if (cfg.blocks.length > 0) {
+    content = cfg.blocks.map((b) => {
+      switch (b.type) {
+        case 'heading':
+          return (
+            <h2 key={b.id} style={{ textAlign: b.align }} className="text-xl font-bold">
+              {b.text}
+            </h2>
+          );
+        case 'subheading':
+          return (
+            <p key={b.id} style={{ textAlign: b.align }} className="mb-3">
+              {b.text}
+            </p>
+          );
+        case 'button':
+          return (
+            <Button
+              key={b.id}
+              onClick={() => router.push(b.href || slide.cta_href || `/restaurant/menu?restaurant_id=${restaurantId}`)}
+              className="mb-2"
+            >
+              {b.text}
+            </Button>
+          );
+        case 'image':
+          return b.url ? (
+            <Image key={b.id} src={b.url} alt="" width={b.width || 400} height={b.height || 300} />
+          ) : null;
+        case 'quote':
+          return (
+            <blockquote key={b.id} className="mb-2">
+              <p>“{b.text}”</p>
+              {b.author && <cite className="block text-sm">- {b.author}</cite>}
+            </blockquote>
+          );
+        case 'gallery':
+          return (
+            <div key={b.id} className="flex gap-2 overflow-x-auto mb-2">
+              {b.images.map((src, i) => (
+                <Image key={i} src={src} alt="" width={200} height={150} />
+              ))}
+            </div>
+          );
+        case 'spacer':
+          const sizes: any = { sm: 32, md: 64, lg: 96 };
+          return <div key={b.id} style={{ height: sizes[b.size || 'md'] }} />;
+        default:
+          return null;
+      }
+    });
+  } else {
+    const href =
+      slide.cta_href || `/restaurant/menu?restaurant_id=${restaurantId}`;
+    content = (
       <>
         {slide.title && <h2 className="text-xl font-bold">{slide.title}</h2>}
         {slide.subtitle && <p className="mb-3">{slide.subtitle}</p>}
-        {/* TODO: render custom blocks */}
+        {slide.cta_label && (
+          <Button onClick={() => router.push(href)}>{slide.cta_label}</Button>
+        )}
       </>
     );
   }
+
   return (
-    <div>
-      {slide.title && <h2 className="text-xl font-bold text-center">{slide.title}</h2>}
-      {slide.subtitle && <p className="mb-3 text-center">{slide.subtitle}</p>}
-      <PageRenderer blocks={blocks as any} />
-    </div>
+    <section style={style} className="w-full text-center p-4">
+      {media}
+      {overlay}
+      <div style={{ position: 'relative', zIndex: 1 }} className="flex flex-col items-center w-full">
+        {content}
+      </div>
+    </section>
   );
 }
-

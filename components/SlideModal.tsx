@@ -1,9 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { supabase } from '@/utils/supabaseClient';
-import { toast } from '@/components/ui/toast';
-import { InformationCircleIcon } from '@heroicons/react/24/outline';
-import { SlideRenderer } from '@/components/customer/home/SlidesContainer';
-import { STORAGE_BUCKET } from '@/lib/storage';
 import { DndContext, closestCenter } from '@dnd-kit/core';
 import {
   SortableContext,
@@ -12,43 +7,54 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { supabase } from '@/utils/supabaseClient';
+import { toast } from '@/components/ui/toast';
+import Button from '@/components/ui/Button';
+import { SlideRenderer, SlideRow } from '@/components/customer/home/SlidesContainer';
+import { STORAGE_BUCKET } from '@/lib/storage';
 
-const typeOptions = [
-  'menu_highlight',
-  'gallery',
-  'reviews',
-  'about',
-  'location_hours',
-  'cta_banner',
-  'custom_builder',
-];
-
-export type SlideRow = {
-  id?: string;
-  restaurant_id: string;
-  type: string;
-  title?: string | null;
-  subtitle?: string | null;
-  media_url?: string | null;
-  cta_label?: string | null;
-  cta_href?: string | null;
-  visible_from?: string | null;
-  visible_until?: string | null;
-  config_json?: any;
-  sort_order?: number;
-  is_active?: boolean;
+// slide config types
+export type SlideConfig = {
+  background?: {
+    kind: 'color' | 'image' | 'video';
+    value?: string;
+    fit?: 'cover' | 'contain';
+    position?: 'center' | 'top' | 'bottom';
+    muted?: boolean;
+    loop?: boolean;
+    autoplay?: boolean;
+    overlay?: boolean;
+    overlayColor?: string;
+    overlayOpacity?: number;
+  };
+  blocks: (
+    | { id: string; type: 'heading'; text: string; align?: 'left' | 'center' | 'right' }
+    | { id: string; type: 'subheading'; text: string; align?: 'left' | 'center' | 'right' }
+    | { id: string; type: 'button'; text: string; href: string }
+    | { id: string; type: 'image'; url: string; width?: number; height?: number }
+    | { id: string; type: 'quote'; text: string; author?: string }
+    | { id: string; type: 'gallery'; images: string[] }
+    | { id: string; type: 'spacer'; size?: 'sm' | 'md' | 'lg' }
+  )[];
 };
 
-function SortableImage({
-  id,
-  src,
-  onRemove,
-}: {
-  id: string;
-  src: string;
-  onRemove: (idx: number) => void;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
+const defaultConfig: SlideConfig = {
+  background: {
+    kind: 'color',
+    value: '#111',
+    overlay: true,
+    overlayColor: '#000',
+    overlayOpacity: 0.25,
+  },
+  blocks: [],
+};
+
+const knownRoutes = ['/menu', '/orders', '/p/contact'];
+
+function SortableBlock({ block, onSelect, selected, onDelete }: any) {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
+    id: block.id,
+  });
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -57,17 +63,19 @@ function SortableImage({
     <div
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-2 mb-2"
+      className={`flex items-center justify-between p-2 border rounded mb-2 ${selected ? 'bg-neutral-100' : ''}`}
+      onClick={() => onSelect(block.id)}
+      {...attributes}
+      {...listeners}
     >
-      <span {...attributes} {...listeners} className="cursor-move">
-        ⋮
-      </span>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={src} alt="" className="w-16 h-16 object-cover rounded" />
+      <span>{block.type}</span>
       <button
         type="button"
-        onClick={() => onRemove(Number(id))}
-        className="px-1 text-sm border rounded"
+        onClick={(e) => {
+          e.stopPropagation();
+          onDelete(block.id);
+        }}
+        className="text-sm px-1 border rounded"
       >
         x
       </button>
@@ -89,556 +97,608 @@ export default function SlideModal({
   const [type, setType] = useState<string>('menu_highlight');
   const [title, setTitle] = useState('');
   const [subtitle, setSubtitle] = useState('');
-  const [mediaUrl, setMediaUrl] = useState('');
   const [ctaLabel, setCtaLabel] = useState('');
   const [ctaHref, setCtaHref] = useState('');
   const [visibleFrom, setVisibleFrom] = useState('');
   const [visibleUntil, setVisibleUntil] = useState('');
-  const [configText, setConfigText] = useState('');
+  const [config, setConfig] = useState<SlideConfig>(defaultConfig);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [device, setDevice] = useState<'mobile' | 'tablet' | 'desktop'>('mobile');
+  const [linkChoice, setLinkChoice] = useState('custom');
+  const [customPages, setCustomPages] = useState<string[]>([]);
   const [template, setTemplate] = useState('');
-  const [previewDevice, setPreviewDevice] = useState<'mobile' | 'tablet' | 'desktop'>('mobile');
   const fileRef = useRef<HTMLInputElement | null>(null);
-  const galleryFileRef = useRef<HTMLInputElement | null>(null);
+  const imageRef = useRef<HTMLInputElement | null>(null);
+  const galleryRef = useRef<HTMLInputElement | null>(null);
   const isEdit = !!initial?.id;
-  const [saving, setSaving] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [galleryImages, setGalleryImages] = useState<string[]>([]);
-  const linkOptions = [
-    { value: '/menu', label: '/menu' },
-    { value: '/orders', label: '/orders' },
-    { value: '/p/contact', label: '/p/contact' },
-    { value: 'custom', label: 'Custom URL' },
-  ];
-  const [linkChoice, setLinkChoice] = useState<string>('custom');
-
-  function applyTemplate(t: string) {
-    setTemplate(t);
-    switch (t) {
-      case 'Solid Color':
-        setTitle('Welcome');
-        setSubtitle('What would you like today?');
-        setCtaLabel('Order Now');
-        setLinkChoice('/menu');
-        setCtaHref('/menu');
-        setConfigText(
-          JSON.stringify(
-            {
-              style: {
-                background: { kind: 'color', value: '#111111' },
-                overlay: true,
-              },
-            },
-            null,
-            2
-          )
-        );
-        break;
-      case 'Image Background':
-        setTitle('Fresh & Tasty');
-        setSubtitle('Check out our menu');
-        setCtaLabel('Browse Menu');
-        setLinkChoice('/menu');
-        setCtaHref('/menu');
-        setConfigText(
-          JSON.stringify(
-            {
-              style: {
-                background: { kind: 'image', fit: 'cover', position: 'center' },
-                overlay: true,
-              },
-            },
-            null,
-            2
-          )
-        );
-        break;
-      case 'Video Background':
-        setTitle('See it in action');
-        setSubtitle('Our kitchen in motion');
-        setCtaLabel('Order Now');
-        setLinkChoice('/menu');
-        setCtaHref('/menu');
-        setConfigText(
-          JSON.stringify(
-            {
-              style: {
-                background: {
-                  kind: 'video',
-                  muted: true,
-                  loop: true,
-                  autoplay: true,
-                  fit: 'cover',
-                },
-                overlay: true,
-              },
-            },
-            null,
-            2
-          )
-        );
-        break;
-      case 'Gallery Row':
-        setType('gallery');
-        setTitle('Gallery');
-        setSubtitle('A peek inside');
-        setCtaLabel('');
-        setLinkChoice('custom');
-        setCtaHref('');
-        setGalleryImages([]);
-        setConfigText(JSON.stringify({ images: [] }, null, 2));
-        break;
-      case 'CTA Banner':
-        setType('cta_banner');
-        setTitle('Special Offer');
-        setSubtitle('Limited time only');
-        setCtaLabel('Learn More');
-        setLinkChoice('/menu');
-        setCtaHref('/menu');
-        break;
-    }
-  }
-
-  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const ext = file.name.split('.').pop();
-    const path = `slides/${initial.restaurant_id}/${crypto.randomUUID()}${ext ? `.${ext}` : ''}`;
-    const { error } = await supabase.storage
-      .from(STORAGE_BUCKET)
-      .upload(path, file, { upsert: true });
-    if (error) {
-      const errText = [error.name, error.message].filter(Boolean).join(': ');
-      toast.error('Upload failed: ' + errText);
-      return;
-    }
-    const url = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path).data
-      .publicUrl;
-    setMediaUrl(url);
-  }
-
-  async function handleGalleryAdd(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const ext = file.name.split('.').pop();
-    const path = `slides/${initial.restaurant_id}/${crypto.randomUUID()}${ext ? `.${ext}` : ''}`;
-    const { error } = await supabase.storage
-      .from(STORAGE_BUCKET)
-      .upload(path, file, { upsert: true });
-    if (error) {
-      const errText = [error.name, error.message].filter(Boolean).join(': ');
-      toast.error('Upload failed: ' + errText);
-      return;
-    }
-    const url = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path).data
-      .publicUrl;
-    setGalleryImages((imgs) => {
-      const next = [...imgs, url];
-      setConfigText(JSON.stringify({ images: next }, null, 2));
-      return next;
-    });
-  }
-
-  function handleGalleryDragEnd(event: any) {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    setGalleryImages((imgs) => {
-      const next = arrayMove(imgs, Number(active.id), Number(over.id));
-      setConfigText(JSON.stringify({ images: next }, null, 2));
-      return next;
-    });
-  }
-
-  function removeGallery(idx: number) {
-    setGalleryImages((imgs) => {
-      const next = imgs.filter((_, i) => i !== idx);
-      setConfigText(JSON.stringify({ images: next }, null, 2));
-      return next;
-    });
-  }
+  const restaurantId = initial.restaurant_id;
 
   useEffect(() => {
     if (!open) return;
-    setType(initial.type || 'menu_highlight');
+    setType(initial.type);
     setTitle(initial.title || '');
     setSubtitle(initial.subtitle || '');
-    setMediaUrl(initial.media_url || '');
     setCtaLabel(initial.cta_label || '');
     setCtaHref(initial.cta_href || '');
-    const lc = linkOptions.find((o) => o.value === (initial.cta_href || ''))
-      ? (initial.cta_href || '')
-      : 'custom';
-    setLinkChoice(lc);
-    if (initial.type === 'gallery') {
-      const imgs = Array.isArray(initial.config_json?.images)
-        ? initial.config_json.images
-        : [];
-      setGalleryImages(imgs);
-      if (!imgs.length) setConfigText(JSON.stringify({ images: [] }, null, 2));
-    }
     setVisibleFrom(initial.visible_from || '');
     setVisibleUntil(initial.visible_until || '');
-    setConfigText(initial.config_json ? JSON.stringify(initial.config_json, null, 2) : '');
-    setTemplate('');
-    setPreviewDevice('mobile');
+    let cfg = (initial.config_json as SlideConfig) || defaultConfig;
+    if (!cfg.blocks) cfg.blocks = [];
+    if (!cfg.background) cfg.background = defaultConfig.background;
+    setConfig(cfg);
+    setSelectedId(null);
   }, [open, initial]);
 
   useEffect(() => {
-    if (linkChoice !== 'custom') setCtaHref('');
-  }, [linkChoice]);
+    if (!restaurantId) return;
+    supabase
+      .from('custom_pages')
+      .select('slug')
+      .eq('restaurant_id', restaurantId)
+      .then(({ data }) => setCustomPages(data?.map((d) => `/p/${d.slug}`) || []));
+  }, [restaurantId]);
 
-  useEffect(() => {
-    if (type === 'gallery') {
-      try {
-        const obj = configText ? JSON.parse(configText) : {};
-        if (Array.isArray(obj.images)) setGalleryImages(obj.images);
-      } catch {
-        /* ignore */
-      }
-    }
-  }, [type, configText]);
+  function addBlock(type: any) {
+    const id = crypto.randomUUID();
+    const block: any = { id, type };
+    if (type === 'heading' || type === 'subheading') block.text = type;
+    if (type === 'button') block.text = 'Click Me';
+    if (type === 'button') block.href = '/menu';
+    if (type === 'image') block.url = '';
+    if (type === 'quote') block.text = 'Quote';
+    if (type === 'gallery') block.images = [];
+    if (type === 'spacer') block.size = 'md';
+    setConfig((c) => ({ ...c, blocks: [...c.blocks, block] }));
+    setSelectedId(id);
+  }
 
-  async function handleSave() {
-    if (visibleFrom && visibleUntil && new Date(visibleUntil) < new Date(visibleFrom)) {
-      toast.error('visible_until must be after visible_from');
+  function updateBlock(id: string, patch: any) {
+    setConfig((c) => ({
+      ...c,
+      blocks: c.blocks.map((b) => (b.id === id ? { ...b, ...patch } : b)),
+    }));
+  }
+
+  function deleteBlock(id: string) {
+    setConfig((c) => ({ ...c, blocks: c.blocks.filter((b) => b.id !== id) }));
+    if (selectedId === id) setSelectedId(null);
+  }
+
+  function handleDragEnd(event: any) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = config.blocks.findIndex((b) => b.id === active.id);
+    const newIndex = config.blocks.findIndex((b) => b.id === over.id);
+    setConfig((c) => ({ ...c, blocks: arrayMove(c.blocks, oldIndex, newIndex) }));
+  }
+
+  async function uploadFile(file: File, cb: (url: string) => void) {
+    const ext = file.name.split('.').pop();
+    const path = `slides/${restaurantId}/${crypto.randomUUID()}.${ext}`;
+    const { data, error } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .upload(path, file, { upsert: true });
+    if (error) {
+      toast.error('Upload failed');
       return;
     }
-    let cfg: any = null;
-    if (configText.trim()) {
-      try {
-        cfg = JSON.parse(configText);
-      } catch (e) {
-        toast.error('config_json must be valid JSON');
+    const { data: pub } = supabase.storage
+      .from(STORAGE_BUCKET)
+      .getPublicUrl(data.path);
+    cb(pub.publicUrl);
+  }
+
+  async function handleSave() {
+    if (visibleFrom && visibleUntil && visibleUntil < visibleFrom) {
+      toast.error('Visible Until must be after Visible From');
+      return;
+    }
+    const payload: Partial<SlideRow> = {
+      restaurant_id: restaurantId,
+      type,
+      title,
+      subtitle,
+      cta_label: ctaLabel,
+      cta_href: ctaHref,
+      visible_from: visibleFrom || null,
+      visible_until: visibleUntil || null,
+      config_json: config,
+    };
+    if (isEdit) {
+      const { error } = await supabase
+        .from('restaurant_slides')
+        .update(payload)
+        .eq('id', initial.id!)
+        .eq('restaurant_id', restaurantId);
+      if (error) {
+        toast.error('Failed to save');
+        return;
+      }
+    } else {
+      const { data: max, error: maxErr } = await supabase
+        .from('restaurant_slides')
+        .select('sort_order')
+        .eq('restaurant_id', restaurantId)
+        .order('sort_order', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (maxErr) {
+        toast.error('Failed');
+        return;
+      }
+      const sort_order = (max?.sort_order ?? -1) + 1;
+      const { error } = await supabase
+        .from('restaurant_slides')
+        .insert({ ...payload, sort_order });
+      if (error) {
+        toast.error('Failed to create');
         return;
       }
     }
-    const payload: SlideRow = {
-      restaurant_id: initial.restaurant_id,
-      type,
-      title: title || null,
-      subtitle: subtitle || null,
-      media_url: mediaUrl || null,
-      cta_label: ctaLabel || null,
-      cta_href: (linkChoice === 'custom' ? ctaHref : linkChoice) || null,
-      visible_from: visibleFrom || null,
-      visible_until: visibleUntil || null,
-      config_json: cfg,
-      is_active: true,
-    };
-    setSaving(true);
-    try {
-      if (isEdit && initial.id) {
-        const { error } = await supabase
-          .from('restaurant_slides')
-          .update(payload)
-          .eq('id', initial.id)
-          .eq('restaurant_id', initial.restaurant_id);
-        if (error) throw error;
-      } else {
-        const { data: maxRow, error: maxErr } = await supabase
-          .from('restaurant_slides')
-          .select('sort_order')
-          .eq('restaurant_id', initial.restaurant_id)
-          .order('sort_order', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (maxErr) throw maxErr;
-        const nextOrder = (maxRow?.sort_order ?? -1) + 1;
-        const { error } = await supabase.from('restaurant_slides').insert({
-          ...payload,
-          sort_order: nextOrder,
-        });
-        if (error) throw error;
-      }
-      toast.success('Saved');
-      onSaved();
-      onClose();
-    } catch (e: any) {
-      console.error(e);
-      toast.error(e.message || 'Failed to save');
-    } finally {
-      setSaving(false);
-    }
+    onSaved();
+    onClose();
   }
+
+  const selectedBlock = config.blocks.find((b) => b.id === selectedId);
+
+  const linkOptions = [...knownRoutes, ...customPages, 'custom'];
+  useEffect(() => {
+    if (linkOptions.includes(ctaHref)) {
+      setLinkChoice(ctaHref);
+    } else {
+      setLinkChoice('custom');
+    }
+  }, [ctaHref, customPages]);
 
   if (!open) return null;
 
+  const widthMap: any = { mobile: 375, tablet: 768, desktop: 1280 };
+
   return (
-    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div
-        className="relative w-full max-w-lg rounded-2xl bg-white p-4 shadow-xl"
-        style={{ maxHeight: '90vh', overflow: 'auto' }}
-      >
-        <h2 className="text-xl font-semibold mb-3">
-          {isEdit ? 'Edit Slide' : 'New Slide'}
-        </h2>
-        <label className="block text-sm font-medium mb-1 flex items-center gap-1">
-          Templates
-          <InformationCircleIcon
-            className="w-4 h-4"
-            title="Pick a starting design. You can tweak the options below."
-          />
-        </label>
-        <select
-          value={template}
-          onChange={(e) => applyTemplate(e.target.value)}
-          className="w-full mb-3 rounded border px-3 py-2"
-        >
-          <option value="">--</option>
-          {['Solid Color', 'Image Background', 'Video Background', 'Gallery Row', 'CTA Banner'].map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
-        <label className="block text-sm font-medium mb-1">Type</label>
-        <select
-          value={type}
-          onChange={(e) => setType(e.target.value)}
-          className="w-full mb-3 rounded border px-3 py-2"
-        >
-          {typeOptions.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
-        <label className="block text-sm font-medium mb-1">Title</label>
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          className="w-full mb-3 rounded border px-3 py-2"
-        />
-        <label className="block text-sm font-medium mb-1">Subtitle</label>
-        <input
-          value={subtitle}
-          onChange={(e) => setSubtitle(e.target.value)}
-          className="w-full mb-3 rounded border px-3 py-2"
-        />
-        <label className="block text-sm font-medium mb-1 flex items-center gap-1">
-          Background Image/Video
-          <InformationCircleIcon
-            className="w-4 h-4"
-            title="Upload an image or short video to fill the slide background. Large files may impact load speed."
-          />
-        </label>
-        <div className="flex gap-2 mb-3">
-          <input
-            value={mediaUrl}
-            onChange={(e) => setMediaUrl(e.target.value)}
-            className="flex-1 rounded border px-3 py-2"
-          />
-          <input
-            type="file"
-            ref={fileRef}
-            className="hidden"
-            accept="image/*,video/*"
-            onChange={handleFileChange}
-          />
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            className="px-3 py-2 rounded border"
-          >
-            Upload
-          </button>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded p-4 w-full max-w-5xl" style={{ maxHeight: '90vh', overflow: 'auto' }}>
+        <div className="flex justify-between mb-4">
+          <h2 className="text-lg font-semibold">Slide Editor</h2>
+          <button onClick={onClose}>×</button>
         </div>
-        {mediaUrl && (
-          mediaUrl.match(/\.mp4|\.webm/) ? (
-            <video src={mediaUrl} className="mb-3 w-full max-h-48" autoPlay muted loop />
-          ) : (
-            <img src={mediaUrl} alt="" className="mb-3 w-full max-h-48 object-cover" />
-          )
-        )}
-        {type === 'gallery' && (
-          <div className="mb-3">
-            <label className="block text-sm font-medium mb-1">Gallery Images</label>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
             <div className="mb-2">
-              <input
-                type="file"
-                ref={galleryFileRef}
-                className="hidden"
-                accept="image/*"
-                onChange={handleGalleryAdd}
-              />
-              <button
-                type="button"
-                onClick={() => galleryFileRef.current?.click()}
-                className="px-3 py-2 rounded border"
+              <select
+                value={template}
+                onChange={(e) => {
+                  const t = e.target.value;
+                  setTemplate(t);
+                  switch (t) {
+                    case 'solid':
+                      setConfig({
+                        background: {
+                          kind: 'color',
+                          value: '#111',
+                          overlay: true,
+                          overlayColor: '#000',
+                          overlayOpacity: 0.25,
+                        },
+                        blocks: [
+                          { id: crypto.randomUUID(), type: 'heading', text: 'Welcome' },
+                          {
+                            id: crypto.randomUUID(),
+                            type: 'subheading',
+                            text: 'Fresh, local & fast',
+                          },
+                          {
+                            id: crypto.randomUUID(),
+                            type: 'button',
+                            text: 'Order Now',
+                            href: '/menu',
+                          },
+                        ],
+                      });
+                      break;
+                    case 'image':
+                      setConfig({
+                        background: {
+                          kind: 'image',
+                          fit: 'cover',
+                          position: 'center',
+                          overlay: true,
+                          overlayColor: '#000',
+                          overlayOpacity: 0.25,
+                        },
+                        blocks: [
+                          { id: crypto.randomUUID(), type: 'heading', text: 'Welcome' },
+                          {
+                            id: crypto.randomUUID(),
+                            type: 'subheading',
+                            text: 'Fresh, local & fast',
+                          },
+                          {
+                            id: crypto.randomUUID(),
+                            type: 'button',
+                            text: 'Order Now',
+                            href: '/menu',
+                          },
+                        ],
+                      });
+                      break;
+                    case 'video':
+                      setConfig({
+                        background: {
+                          kind: 'video',
+                          fit: 'cover',
+                          muted: true,
+                          loop: true,
+                          autoplay: true,
+                          overlay: true,
+                          overlayColor: '#000',
+                          overlayOpacity: 0.25,
+                        },
+                        blocks: [
+                          { id: crypto.randomUUID(), type: 'heading', text: 'Welcome' },
+                          {
+                            id: crypto.randomUUID(),
+                            type: 'subheading',
+                            text: 'Fresh, local & fast',
+                          },
+                          {
+                            id: crypto.randomUUID(),
+                            type: 'button',
+                            text: 'Order Now',
+                            href: '/menu',
+                          },
+                        ],
+                      });
+                      break;
+                    case 'gallery':
+                      setConfig({
+                        background: { kind: 'color', value: '#fff' },
+                        blocks: [
+                          { id: crypto.randomUUID(), type: 'gallery', images: [] },
+                        ],
+                      });
+                      break;
+                    case 'cta':
+                      setConfig({
+                        background: { kind: 'color', value: '#111', overlay: false },
+                        blocks: [
+                          { id: crypto.randomUUID(), type: 'heading', text: 'Specials Tonight' },
+                          {
+                            id: crypto.randomUUID(),
+                            type: 'button',
+                            text: 'Browse Menu',
+                            href: '/menu',
+                          },
+                        ],
+                      });
+                      break;
+                    default:
+                      break;
+                  }
+                }}
+                className="border p-1 rounded w-full mb-2"
               >
-                Add Image
-              </button>
+                <option value="">Templates…</option>
+                <option value="solid">Solid Color</option>
+                <option value="image">Image Background</option>
+                <option value="video">Video Background</option>
+                <option value="gallery">Gallery Row</option>
+                <option value="cta">CTA Banner</option>
+              </select>
             </div>
-            <DndContext
-              collisionDetection={closestCenter}
-              onDragEnd={handleGalleryDragEnd}
-            >
-              <SortableContext
-                items={galleryImages.map((_, i) => String(i))}
-                strategy={verticalListSortingStrategy}
-              >
-                {galleryImages.map((src, i) => (
-                  <SortableImage
-                    key={i}
-                    id={String(i)}
-                    src={src}
-                    onRemove={removeGallery}
+            <div className="mb-2 flex flex-wrap gap-2">
+              {[
+                'heading',
+                'subheading',
+                'button',
+                'image',
+                'quote',
+                'gallery',
+                'spacer',
+              ].map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => addBlock(t)}
+                  className="px-2 py-1 border rounded text-sm"
+                >
+                  Add {t}
+                </button>
+              ))}
+            </div>
+            <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={config.blocks.map((b) => b.id)} strategy={verticalListSortingStrategy}>
+                {config.blocks.map((b) => (
+                  <SortableBlock
+                    key={b.id}
+                    block={b}
+                    onSelect={setSelectedId}
+                    selected={b.id === selectedId}
+                    onDelete={deleteBlock}
                   />
                 ))}
               </SortableContext>
             </DndContext>
           </div>
-        )}
-        <label className="block text-sm font-medium mb-1">Button Text</label>
-        <input
-          value={ctaLabel}
-          onChange={(e) => setCtaLabel(e.target.value)}
-          className="w-full mb-3 rounded border px-3 py-2"
-        />
-        <label className="block text-sm font-medium mb-1 flex items-center gap-1">
-          Button Link
-          <InformationCircleIcon
-            className="w-4 h-4"
-            title="Where to send customers when they tap the button. Example: /menu or https://…"
-          />
-        </label>
-        <select
-          value={linkChoice}
-          onChange={(e) => setLinkChoice(e.target.value)}
-          className="w-full mb-2 rounded border px-3 py-2"
-        >
-          {linkOptions.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-        {linkChoice === 'custom' && (
-          <input
-            value={ctaHref}
-            onChange={(e) => setCtaHref(e.target.value)}
-            className="w-full mb-3 rounded border px-3 py-2"
-            placeholder="https://..."
-          />
-        )}
-        <label className="block text-sm font-medium mb-1 flex items-center gap-1">
-          Visible From
-          <InformationCircleIcon
-            className="w-4 h-4"
-            title="Start date/time when this slide should start appearing on your site. Leave empty to start immediately."
-          />
-        </label>
-        <input
-          type="datetime-local"
-          value={visibleFrom}
-          onChange={(e) => setVisibleFrom(e.target.value)}
-          className="w-full mb-3 rounded border px-3 py-2"
-        />
-        <label className="block text-sm font-medium mb-1 flex items-center gap-1">
-          Visible Until
-          <InformationCircleIcon
-            className="w-4 h-4"
-            title="End date/time when this slide should stop appearing. Leave empty for no end date."
-          />
-        </label>
-        <input
-          type="datetime-local"
-          value={visibleUntil}
-          onChange={(e) => setVisibleUntil(e.target.value)}
-          className="w-full mb-3 rounded border px-3 py-2"
-        />
-        <details
-          className="mb-3"
-          open={showAdvanced}
-          onToggle={(e) => setShowAdvanced(e.currentTarget.open)}
-        >
-          <summary className="cursor-pointer text-sm font-medium">
-            Advanced options (JSON)
-          </summary>
-          <p className="text-xs mb-2">
-            Optional. Raw JSON for power users (styling, galleries). You can ignore this.
-          </p>
-          {showAdvanced && (
-            <textarea
-              value={configText}
-              onChange={(e) => setConfigText(e.target.value)}
-              rows={4}
-              className="w-full rounded border px-3 py-2 font-mono"
-            />
-          )}
-        </details>
-        <div className="mb-3">
-          <div className="flex gap-2 mb-2">
-            {['mobile', 'tablet', 'desktop'].map((d) => (
-              <button
-                key={d}
-                onClick={() => setPreviewDevice(d as any)}
-                className={`px-2 py-1 rounded border ${
-                  previewDevice === d ? 'bg-gray-200' : ''
-                }`}
+          <div className="space-y-4">
+            {/* Background controls */}
+            <div className="border p-2 rounded">
+              <h3 className="font-medium mb-2">Background</h3>
+              <select
+                value={config.background?.kind}
+                onChange={(e) =>
+                  setConfig({ ...config, background: { ...config.background!, kind: e.target.value as any } })
+                }
+                className="border p-1 rounded w-full mb-2"
               >
-                {d}
-              </button>
-            ))}
-          </div>
-          <div className="flex justify-center">
-            <div
-              style={{
-                width:
-                  previewDevice === 'mobile'
-                    ? 375
-                    : previewDevice === 'tablet'
-                    ? 768
-                    : 1280,
-                maxWidth: '100%',
-                border: '4px solid #000',
-                borderRadius: previewDevice === 'desktop' ? 8 : 20,
-                overflow: 'hidden',
-                transition: 'width 0.3s',
-              }}
-            >
-              <SlideRenderer
-                slide={{
-                  id: initial.id || '',
-                  restaurant_id: initial.restaurant_id,
-                  type,
-                  title,
-                  subtitle,
-                  media_url: mediaUrl,
-                  cta_label: ctaLabel,
-                  cta_href: linkChoice === 'custom' ? ctaHref : linkChoice,
-                  visible_from: visibleFrom || null,
-                  visible_until: visibleUntil || null,
-                  is_active: true,
-                  sort_order: initial.sort_order || 0,
-                  config_json: (() => {
-                    try {
-                      return configText ? JSON.parse(configText) : null;
-                    } catch {
-                      return null;
+                <option value="color">Color</option>
+                <option value="image">Image</option>
+                <option value="video">Video</option>
+              </select>
+              {config.background?.kind === 'color' && (
+                <input
+                  type="text"
+                  value={config.background?.value || ''}
+                  onChange={(e) =>
+                    setConfig({ ...config, background: { ...config.background!, value: e.target.value } })
+                  }
+                  className="border p-1 rounded w-full"
+                />
+              )}
+              {config.background?.kind !== 'color' && (
+                <div className="space-y-1">
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) uploadFile(f, (url) =>
+                        setConfig({ ...config, background: { ...config.background!, value: url } })
+                      );
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    className="px-2 py-1 border rounded text-sm"
+                  >
+                    Upload
+                  </button>
+                  {config.background?.value && (
+                    <div className="text-xs break-all">{config.background.value}</div>
+                  )}
+                </div>
+              )}
+              <label className="mt-2 flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={config.background?.overlay || false}
+                  onChange={(e) =>
+                    setConfig({
+                      ...config,
+                      background: { ...config.background!, overlay: e.target.checked },
+                    })
+                  }
+                />
+                Overlay
+              </label>
+              {config.background?.overlay && (
+                <div className="flex gap-2 mt-1">
+                  <input
+                    type="text"
+                    placeholder="#000"
+                    value={config.background?.overlayColor || ''}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        background: { ...config.background!, overlayColor: e.target.value },
+                      })
                     }
-                  })(),
-                } as any}
-                restaurantId={initial.restaurant_id}
-                router={{ push: () => {} }}
-              />
+                    className="border p-1 rounded flex-1"
+                  />
+                  <input
+                    type="number"
+                    step="0.05"
+                    min="0"
+                    max="0.6"
+                    value={config.background?.overlayOpacity ?? 0.25}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        background: {
+                          ...config.background!,
+                          overlayOpacity: parseFloat(e.target.value),
+                        },
+                      })
+                    }
+                    className="border p-1 rounded w-20"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Block properties */}
+            {selectedBlock && (
+              <div className="border p-2 rounded">
+                <h3 className="font-medium mb-2">Block</h3>
+                {selectedBlock.type === 'heading' || selectedBlock.type === 'subheading' ? (
+                  <input
+                    type="text"
+                    value={selectedBlock.text}
+                    onChange={(e) => updateBlock(selectedBlock.id, { text: e.target.value })}
+                    className="border p-1 rounded w-full mb-2"
+                  />
+                ) : null}
+                {selectedBlock.type === 'button' && (
+                  <>
+                    <input
+                      type="text"
+                      value={selectedBlock.text}
+                      onChange={(e) => updateBlock(selectedBlock.id, { text: e.target.value })}
+                      className="border p-1 rounded w-full mb-2"
+                    />
+                    <select
+                      value={linkChoice}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setLinkChoice(v);
+                        if (v === 'custom') updateBlock(selectedBlock.id, { href: '' });
+                        else updateBlock(selectedBlock.id, { href: v });
+                      }}
+                      className="border p-1 rounded w-full mb-2"
+                    >
+                      {linkOptions.map((o) => (
+                        <option key={o} value={o}>
+                          {o === 'custom' ? 'Custom URL…' : o}
+                        </option>
+                      ))}
+                    </select>
+                    {linkChoice === 'custom' && (
+                      <input
+                        type="text"
+                        value={selectedBlock.href}
+                        onChange={(e) => updateBlock(selectedBlock.id, { href: e.target.value })}
+                        className="border p-1 rounded w-full mb-2"
+                      />
+                    )}
+                  </>
+                )}
+                {selectedBlock.type === 'image' && (
+                  <div className="space-y-2">
+                    <input
+                      ref={imageRef}
+                      type="file"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f)
+                          uploadFile(f, (url) => updateBlock(selectedBlock.id, { url }));
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => imageRef.current?.click()}
+                      className="px-2 py-1 border rounded text-sm"
+                    >
+                      Upload
+                    </button>
+                    {selectedBlock.url && (
+                      <div className="text-xs break-all">{selectedBlock.url}</div>
+                    )}
+                  </div>
+                )}
+                {selectedBlock.type === 'gallery' && (
+                  <div className="space-y-2">
+                    <input
+                      ref={galleryRef}
+                      type="file"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files || []);
+                        files.forEach((f) =>
+                          uploadFile(f, (url) =>
+                            updateBlock(selectedBlock.id, {
+                              images: [...selectedBlock.images, url],
+                            })
+                          )
+                        );
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => galleryRef.current?.click()}
+                      className="px-2 py-1 border rounded text-sm"
+                    >
+                      Upload Images
+                    </button>
+                    {selectedBlock.images.map((img: string, i: number) => (
+                      <div key={i} className="flex items-center gap-2 text-xs">
+                        <span className="flex-1 break-all">{img}</span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateBlock(selectedBlock.id, {
+                              images: selectedBlock.images.filter((_: any, idx: number) => idx !== i),
+                            })
+                          }
+                          className="border px-1 rounded"
+                        >
+                          x
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {selectedBlock.type === 'quote' && (
+                  <>
+                    <input
+                      type="text"
+                      value={selectedBlock.text}
+                      onChange={(e) => updateBlock(selectedBlock.id, { text: e.target.value })}
+                      className="border p-1 rounded w-full mb-2"
+                    />
+                    <input
+                      type="text"
+                      value={selectedBlock.author || ''}
+                      placeholder="Author"
+                      onChange={(e) => updateBlock(selectedBlock.id, { author: e.target.value })}
+                      className="border p-1 rounded w-full mb-2"
+                    />
+                  </>
+                )}
+                {selectedBlock.type === 'spacer' && (
+                  <select
+                    value={selectedBlock.size}
+                    onChange={(e) => updateBlock(selectedBlock.id, { size: e.target.value })}
+                    className="border p-1 rounded w-full"
+                  >
+                    <option value="sm">Small</option>
+                    <option value="md">Medium</option>
+                    <option value="lg">Large</option>
+                  </select>
+                )}
+              </div>
+            )}
+
+            {/* Preview */}
+            <div className="border p-2 rounded">
+              <div className="mb-2 flex gap-2">
+                {['mobile', 'tablet', 'desktop'].map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setDevice(m as any)}
+                    className={`px-2 py-1 border rounded text-sm ${device === m ? 'bg-neutral-200' : ''}`}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+              <div
+                style={{ width: widthMap[device], maxWidth: '100%', margin: '0 auto', border: '1px solid #eee', borderRadius: 12, overflow: 'hidden' }}
+              >
+                <SlideRenderer
+                  slide={{
+                    ...initial,
+                    type,
+                    title,
+                    subtitle,
+                    cta_label: ctaLabel,
+                    cta_href: ctaHref,
+                    config_json: config,
+                  }}
+                  restaurantId={restaurantId}
+                  router={{ push: () => {} }}
+                />
+              </div>
             </div>
           </div>
         </div>
         <div className="mt-4 flex justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2 rounded border">
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="px-4 py-2 rounded bg-emerald-600 text-white disabled:opacity-60"
-          >
-            {saving ? 'Saving…' : 'Save'}
-          </button>
+          <Button onClick={handleSave}>{isEdit ? 'Save' : 'Create'}</Button>
         </div>
       </div>
     </div>
   );
 }
-

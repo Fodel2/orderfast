@@ -18,7 +18,8 @@ import { CSS } from '@dnd-kit/utilities';
 import { ArrowsUpDownIcon, ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
 import { supabase } from '@/utils/supabaseClient';
 import { toast } from '@/components/ui/toast';
-import SlideModal, { SlideRow } from './SlideModal';
+import SlideModal from './SlideModal';
+import { SlideRow } from '@/components/customer/home/SlidesContainer';
 
 export default function SlidesSection({ restaurantId }: { restaurantId: string }) {
   const [slides, setSlides] = useState<SlideRow[]>([]);
