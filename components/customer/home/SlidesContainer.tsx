@@ -67,8 +67,13 @@ export function SlideRenderer({
   restaurantId: string;
   router: any;
 }) {
-  const cfg: SlideConfig = (slide.config_json as SlideConfig) || { blocks: [] };
-  if (!cfg.blocks) cfg.blocks = [];
+  function coerceConfig(raw: any): SlideConfig {
+    const cfg = raw && typeof raw === 'object' ? raw : {};
+    if (!cfg.background) cfg.background = { kind: 'color', value: '#111', overlay: false };
+    if (!Array.isArray(cfg.blocks)) cfg.blocks = [];
+    return cfg as SlideConfig;
+  }
+  const cfg = coerceConfig(slide.config_json);
   const bg = cfg.background;
   const style: React.CSSProperties = {
     minHeight: '100vh',

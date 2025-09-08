@@ -13,6 +13,7 @@ import Button from '@/components/ui/Button';
 import { SlideRenderer, SlideRow } from '@/components/customer/home/SlidesContainer';
 import { STORAGE_BUCKET } from '@/lib/storage';
 import Skeleton from '@/components/ui/Skeleton';
+import { ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
 
 // slide config types
 export type SlideConfig = {
@@ -40,20 +41,19 @@ export type SlideConfig = {
   layout?: 'split';
 };
 
-const defaultConfig: SlideConfig = {
-  background: {
-    kind: 'color',
-    value: '#111',
-    overlay: true,
-    overlayColor: '#000',
-    overlayOpacity: 0.25,
-  },
-  blocks: [],
-};
+export function coerceConfig(raw: any): SlideConfig {
+  const cfg = raw && typeof raw === 'object' ? raw : {};
+  if (!cfg.background)
+    cfg.background = { kind: 'color', value: '#111', overlay: false };
+  if (!Array.isArray(cfg.blocks)) cfg.blocks = [];
+  return cfg as SlideConfig;
+}
+
+const defaultConfig: SlideConfig = coerceConfig({});
 
 const knownRoutes = ['/menu', '/orders', '/p/contact'];
 
-function SortableBlock({ block, onSelect, selected, onDelete }: any) {
+function SortableBlock({ block, onSelect, selected, onDelete, onMove, index, lastIndex }: any) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
     id: block.id,
   });
@@ -70,7 +70,31 @@ function SortableBlock({ block, onSelect, selected, onDelete }: any) {
       {...attributes}
       {...listeners}
     >
-      <span>{block.type}</span>
+      <span className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onMove(block.id, 'up');
+          }}
+          disabled={index === 0}
+          className="p-0.5"
+        >
+          <ChevronUpIcon className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onMove(block.id, 'down');
+          }}
+          disabled={index === lastIndex}
+          className="p-0.5"
+        >
+          <ChevronDownIcon className="h-4 w-4" />
+        </button>
+        {block.type}
+      </span>
       <button
         type="button"
         onClick={(e) => {
@@ -113,6 +137,7 @@ export default function SlideModal({
   const imageRef = useRef<HTMLInputElement | null>(null);
   const galleryRef = useRef<HTMLInputElement | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadPct, setUploadPct] = useState<number | null>(null);
   const isEdit = !!initial?.id;
   const restaurantId = initial.restaurant_id;
 
@@ -125,9 +150,8 @@ export default function SlideModal({
     setCtaHref(initial.cta_href || '');
     setVisibleFrom(initial.visible_from || '');
     setVisibleUntil(initial.visible_until || '');
-    let cfg = (initial.config_json as SlideConfig) || defaultConfig;
-    if (!cfg.blocks) cfg.blocks = [];
-    if (!cfg.background) cfg.background = defaultConfig.background;
+    const cfg = coerceConfig(initial.config_json);
+    console.log('open cfg', cfg);
     setConfig(cfg);
     setSelectedId(null);
   }, [open, initial]);
@@ -167,6 +191,17 @@ export default function SlideModal({
     if (selectedId === id) setSelectedId(null);
   }
 
+  function moveBlock(id: string, dir: 'up' | 'down') {
+    setConfig((c) => {
+      const idx = c.blocks.findIndex((b) => b.id === id);
+      const swap = dir === 'up' ? idx - 1 : idx + 1;
+      if (idx === -1 || swap < 0 || swap >= c.blocks.length) return c;
+      const blocks = [...c.blocks];
+      [blocks[idx], blocks[swap]] = [blocks[swap], blocks[idx]];
+      return { ...c, blocks };
+    });
+  }
+
   function handleDragEnd(event: any) {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
@@ -177,20 +212,27 @@ export default function SlideModal({
 
   async function uploadFile(file: File, cb: (url: string) => void) {
     setUploading(true);
+    setUploadPct(0);
     const ext = file.name.split('.').pop();
     const path = `slides/${restaurantId}/${crypto.randomUUID()}.${ext}`;
-    const { data, error } = await supabase.storage
-      .from(STORAGE_BUCKET)
-      .upload(path, file, { upsert: true });
-    setUploading(false);
-    if (error) {
-      toast.error('Upload failed');
-      return;
+    try {
+      const { data, error } = await supabase.storage
+        .from(STORAGE_BUCKET)
+        .upload(path, file, {
+          upsert: true,
+        });
+      if (error) throw error;
+      const { data: pub } = supabase.storage
+        .from(STORAGE_BUCKET)
+        .getPublicUrl(data.path);
+      setUploadPct(100);
+      cb(pub.publicUrl);
+    } catch (err: any) {
+      toast.error('Upload failed: ' + err.message);
+    } finally {
+      setUploading(false);
+      setUploadPct(null);
     }
-    const { data: pub } = supabase.storage
-      .from(STORAGE_BUCKET)
-      .getPublicUrl(data.path);
-    cb(pub.publicUrl);
   }
 
   async function handleSave() {
@@ -207,6 +249,10 @@ export default function SlideModal({
       cta_href: ctaHref,
       visible_from: visibleFrom || null,
       visible_until: visibleUntil || null,
+      media_url:
+        config.background?.kind && config.background.kind !== 'color'
+          ? config.background.value || null
+          : null,
       config_json: config,
     };
     if (isEdit) {
@@ -240,6 +286,7 @@ export default function SlideModal({
         return;
       }
     }
+    console.log({ id: initial.id, type, blocks: config.blocks.map((b) => b.type), bg: config.background?.kind });
     onSaved();
     onClose();
   }
@@ -248,12 +295,11 @@ export default function SlideModal({
 
   const linkOptions = [...knownRoutes, ...customPages, 'custom'];
   useEffect(() => {
-    if (linkOptions.includes(ctaHref)) {
-      setLinkChoice(ctaHref);
-    } else {
-      setLinkChoice('custom');
+    if (selectedBlock && selectedBlock.type === 'button') {
+      if (linkOptions.includes(selectedBlock.href)) setLinkChoice(selectedBlock.href);
+      else setLinkChoice('custom');
     }
-  }, [ctaHref, customPages]);
+  }, [selectedBlock, linkOptions]);
 
   if (!open) return null;
 
@@ -390,13 +436,16 @@ export default function SlideModal({
             </div>
             <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <SortableContext items={config.blocks.map((b) => b.id)} strategy={verticalListSortingStrategy}>
-                {config.blocks.map((b) => (
+                {config.blocks.map((b, i) => (
                   <SortableBlock
                     key={b.id}
                     block={b}
                     onSelect={setSelectedId}
                     selected={b.id === selectedId}
                     onDelete={deleteBlock}
+                    onMove={moveBlock}
+                    index={i}
+                    lastIndex={config.blocks.length - 1}
                   />
                 ))}
               </SortableContext>
@@ -448,6 +497,7 @@ export default function SlideModal({
                     Upload
                   </button>
                   {uploading && <Skeleton className="h-4 w-4 inline-block ml-2" />}
+                  {uploadPct !== null && <span className="text-xs ml-1">{uploadPct}%</span>}
                   {config.background?.value && (
                     <div className="text-xs break-all">{config.background.value}</div>
                   )}
@@ -540,7 +590,7 @@ export default function SlideModal({
                     {linkChoice === 'custom' && (
                       <input
                         type="text"
-                        value={selectedBlock.href}
+                        value={selectedBlock.href || ''}
                         onChange={(e) => updateBlock(selectedBlock.id, { href: e.target.value })}
                         className="border p-1 rounded w-full mb-2"
                       />
@@ -567,6 +617,7 @@ export default function SlideModal({
                       Upload
                     </button>
                     {uploading && <Skeleton className="h-4 w-4 inline-block ml-2" />}
+                    {uploadPct !== null && <span className="text-xs ml-1">{uploadPct}%</span>}
                     {selectedBlock.url && (
                       <div className="text-xs break-all">{selectedBlock.url}</div>
                     )}
@@ -598,6 +649,7 @@ export default function SlideModal({
                       Upload Images
                     </button>
                     {uploading && <Skeleton className="h-4 w-4 inline-block ml-2" />}
+                    {uploadPct !== null && <span className="text-xs ml-1">{uploadPct}%</span>}
                     {selectedBlock.images.map((img: string, i: number) => (
                       <div key={i} className="flex items-center gap-2 text-xs">
                         <span className="flex-1 break-all">{img}</span>
@@ -672,6 +724,10 @@ export default function SlideModal({
                     subtitle,
                     cta_label: ctaLabel,
                     cta_href: ctaHref,
+                    media_url:
+                      config.background?.kind && config.background.kind !== 'color'
+                        ? config.background.value || null
+                        : null,
                     config_json: config,
                   }}
                   restaurantId={restaurantId}
