@@ -133,15 +133,57 @@ export function SlideRenderer({
   const renderBlockContent = (b: any) => {
     switch (b.type) {
       case 'heading':
-        return (
-          <h2 key={b.id} style={{ textAlign: b.align }} className="text-xl font-bold">
+        const hStyle: React.CSSProperties = {
+          textAlign: b.align,
+          fontSize: b.fontSize ? `${b.fontSize}px` : undefined,
+          fontFamily: b.fontFamily,
+          color: b.color,
+          transform: b.rotateDeg ? `rotate(${b.rotateDeg}deg)` : undefined,
+        };
+        const hContent = b.overlay ? (
+          <span
+            style={{
+              background: b.overlay.color,
+              opacity: b.overlay.opacity,
+              padding: '0 0.25em',
+              display: 'inline-block',
+            }}
+          >
             {b.text}
+          </span>
+        ) : (
+          b.text
+        );
+        return (
+          <h2 key={b.id} style={hStyle} className="font-bold">
+            {hContent}
           </h2>
         );
       case 'subheading':
-        return (
-          <p key={b.id} style={{ textAlign: b.align }} className="mb-3">
+        const pStyle: React.CSSProperties = {
+          textAlign: b.align,
+          fontSize: b.fontSize ? `${b.fontSize}px` : undefined,
+          fontFamily: b.fontFamily,
+          color: b.color,
+          transform: b.rotateDeg ? `rotate(${b.rotateDeg}deg)` : undefined,
+        };
+        const pContent = b.overlay ? (
+          <span
+            style={{
+              background: b.overlay.color,
+              opacity: b.overlay.opacity,
+              padding: '0 0.25em',
+              display: 'inline-block',
+            }}
+          >
             {b.text}
+          </span>
+        ) : (
+          b.text
+        );
+        return (
+          <p key={b.id} style={pStyle} className="mb-3">
+            {pContent}
           </p>
         );
       case 'button':
@@ -155,9 +197,30 @@ export function SlideRenderer({
           </Button>
         );
       case 'image':
-        return b.url ? (
+        if (!b.url) return null;
+        const img = (
           <Image key={b.id} src={b.url} alt="" width={b.width || 400} height={b.height || 300} />
-        ) : null;
+        );
+        const imgWrapperStyle: React.CSSProperties = {
+          position: 'relative',
+          display: 'inline-block',
+          transform: b.rotateDeg ? `rotate(${b.rotateDeg}deg)` : undefined,
+        };
+        return (
+          <div key={b.id} style={imgWrapperStyle}>
+            {img}
+            {b.overlay && (
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  background: b.overlay.color,
+                  opacity: b.overlay.opacity,
+                }}
+              />
+            )}
+          </div>
+        );
       case 'quote':
         return (
           <blockquote key={b.id} className="mb-2">

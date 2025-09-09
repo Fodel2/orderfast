@@ -31,10 +31,38 @@ export type SlideConfig = {
     overlayOpacity?: number;
   };
   blocks: (
-    | { id: string; type: 'heading'; text: string; align?: 'left' | 'center' | 'right' }
-    | { id: string; type: 'subheading'; text: string; align?: 'left' | 'center' | 'right' }
+    | {
+        id: string;
+        type: 'heading';
+        text: string;
+        align?: 'left' | 'center' | 'right';
+        fontSize?: number;
+        fontFamily?: string;
+        color?: string;
+        overlay?: { color: string; opacity: number };
+        rotateDeg?: number;
+      }
+    | {
+        id: string;
+        type: 'subheading';
+        text: string;
+        align?: 'left' | 'center' | 'right';
+        fontSize?: number;
+        fontFamily?: string;
+        color?: string;
+        overlay?: { color: string; opacity: number };
+        rotateDeg?: number;
+      }
     | { id: string; type: 'button'; text: string; href: string }
-    | { id: string; type: 'image'; url: string; width?: number; height?: number }
+    | {
+        id: string;
+        type: 'image';
+        url: string;
+        width?: number;
+        height?: number;
+        overlay?: { color: string; opacity: number };
+        rotateDeg?: number;
+      }
     | { id: string; type: 'quote'; text: string; author?: string }
     | { id: string; type: 'gallery'; images: string[] }
     | { id: string; type: 'spacer'; size?: 'sm' | 'md' | 'lg' }
@@ -592,12 +620,96 @@ export default function SlideModal({
               <div className="border p-2 rounded">
                 <h3 className="font-medium mb-2">Block</h3>
                 {selectedBlock.type === 'heading' || selectedBlock.type === 'subheading' ? (
-                  <input
-                    type="text"
-                    value={selectedBlock.text}
-                    onChange={(e) => updateBlock(selectedBlock.id, { text: e.target.value })}
-                    className="border p-1 rounded w-full mb-2"
-                  />
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      value={selectedBlock.text}
+                      onChange={(e) => updateBlock(selectedBlock.id, { text: e.target.value })}
+                      className="border p-1 rounded w-full"
+                    />
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs">Size</label>
+                      <input
+                        type="number"
+                        value={selectedBlock.fontSize || ''}
+                        onChange={(e) => updateBlock(selectedBlock.id, { fontSize: parseInt(e.target.value) || undefined })}
+                        className="border p-1 rounded w-20"
+                      />
+                      <label className="text-xs">Font</label>
+                      <select
+                        value={selectedBlock.fontFamily || ''}
+                        onChange={(e) => updateBlock(selectedBlock.id, { fontFamily: e.target.value || undefined })}
+                        className="border p-1 rounded"
+                      >
+                        <option value="">Default</option>
+                        <option value="serif">Serif</option>
+                        <option value="monospace">Mono</option>
+                      </select>
+                      <label className="text-xs">Color</label>
+                      <input
+                        type="color"
+                        value={selectedBlock.color || '#000000'}
+                        onChange={(e) => updateBlock(selectedBlock.id, { color: e.target.value })}
+                        className="border rounded w-10 h-6 p-0"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs">Rotate</label>
+                      <input
+                        type="number"
+                        min="-45"
+                        max="45"
+                        value={selectedBlock.rotateDeg || 0}
+                        onChange={(e) => updateBlock(selectedBlock.id, { rotateDeg: parseInt(e.target.value) || 0 })}
+                        className="border p-1 rounded w-20"
+                      />
+                      <label className="text-xs">Overlay</label>
+                      <input
+                        type="checkbox"
+                        checked={!!selectedBlock.overlay}
+                        onChange={(e) =>
+                          updateBlock(selectedBlock.id, {
+                            overlay: e.target.checked
+                              ? { color: '#000000', opacity: 0.25 }
+                              : undefined,
+                          })
+                        }
+                      />
+                      {selectedBlock.overlay && (
+                        <>
+                          <input
+                            type="color"
+                            value={selectedBlock.overlay.color}
+                            onChange={(e) =>
+                              updateBlock(selectedBlock.id, {
+                                overlay: {
+                                  ...selectedBlock.overlay!,
+                                  color: e.target.value,
+                                },
+                              })
+                            }
+                            className="border rounded w-10 h-6 p-0"
+                          />
+                          <input
+                            type="number"
+                            step="0.05"
+                            min="0"
+                            max="0.6"
+                            value={selectedBlock.overlay.opacity}
+                            onChange={(e) =>
+                              updateBlock(selectedBlock.id, {
+                                overlay: {
+                                  ...selectedBlock.overlay!,
+                                  opacity: parseFloat(e.target.value),
+                                },
+                              })
+                            }
+                            className="border p-1 rounded w-20"
+                          />
+                        </>
+                      )}
+                    </div>
+                  </div>
                 ) : null}
                 {selectedBlock.type === 'button' && (
                   <>
@@ -657,6 +769,64 @@ export default function SlideModal({
                     {selectedBlock.url && (
                       <div className="text-xs break-all">{selectedBlock.url}</div>
                     )}
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs">Rotate</label>
+                      <input
+                        type="number"
+                        min="-45"
+                        max="45"
+                        value={selectedBlock.rotateDeg || 0}
+                        onChange={(e) =>
+                          updateBlock(selectedBlock.id, { rotateDeg: parseInt(e.target.value) || 0 })
+                        }
+                        className="border p-1 rounded w-20"
+                      />
+                      <label className="text-xs">Overlay</label>
+                      <input
+                        type="checkbox"
+                        checked={!!selectedBlock.overlay}
+                        onChange={(e) =>
+                          updateBlock(selectedBlock.id, {
+                            overlay: e.target.checked
+                              ? { color: '#000000', opacity: 0.25 }
+                              : undefined,
+                          })
+                        }
+                      />
+                      {selectedBlock.overlay && (
+                        <>
+                          <input
+                            type="color"
+                            value={selectedBlock.overlay.color}
+                            onChange={(e) =>
+                              updateBlock(selectedBlock.id, {
+                                overlay: {
+                                  ...selectedBlock.overlay!,
+                                  color: e.target.value,
+                                },
+                              })
+                            }
+                            className="border rounded w-10 h-6 p-0"
+                          />
+                          <input
+                            type="number"
+                            step="0.05"
+                            min="0"
+                            max="0.6"
+                            value={selectedBlock.overlay.opacity}
+                            onChange={(e) =>
+                              updateBlock(selectedBlock.id, {
+                                overlay: {
+                                  ...selectedBlock.overlay!,
+                                  opacity: parseFloat(e.target.value),
+                                },
+                              })
+                            }
+                            className="border p-1 rounded w-20"
+                          />
+                        </>
+                      )}
+                    </div>
                   </div>
                 )}
                 {selectedBlock.type === 'gallery' && (
