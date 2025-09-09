@@ -65,13 +65,23 @@ export function SlideRenderer({
   editable = false,
   onBlockSelect,
   onPosChange,
+  selectedId,
+  onTextChange,
+  blockWrapper,
 }: {
   slide: SlideRow;
   restaurantId: string;
   router: any;
   editable?: boolean;
   onBlockSelect?: (id: string) => void;
-  onPosChange?: (id: string, pos: { xPct: number; yPct: number }) => void;
+  onPosChange?: (id: string, pos: { xPct: number; yPct: number; wPct?: number; hPct?: number; z?: number; rotateDeg?: number }) => void;
+  selectedId?: string | null;
+  onTextChange?: (id: string, text: string) => void;
+  blockWrapper?: (
+    b: any,
+    content: ReactNode,
+    pos: { xPct: number; yPct: number; wPct?: number; hPct?: number; z?: number; rotateDeg?: number }
+  ) => ReactNode;
 }) {
   function coerceConfig(raw: any): SlideConfig {
     const cfg = raw && typeof raw === 'object' ? raw : {};
@@ -154,8 +164,17 @@ export function SlideRenderer({
         ) : (
           b.text
         );
+        const hProps =
+          editable && selectedId === b.id
+            ? {
+                contentEditable: true,
+                suppressContentEditableWarning: true,
+                onInput: (e: any) =>
+                  onTextChange?.(b.id, e.currentTarget.textContent || ''),
+              }
+            : {};
         return (
-          <h2 key={b.id} style={hStyle} className="font-bold">
+          <h2 key={b.id} style={hStyle} className="font-bold" {...hProps}>
             {hContent}
           </h2>
         );
@@ -181,8 +200,17 @@ export function SlideRenderer({
         ) : (
           b.text
         );
+        const pProps =
+          editable && selectedId === b.id
+            ? {
+                contentEditable: true,
+                suppressContentEditableWarning: true,
+                onInput: (e: any) =>
+                  onTextChange?.(b.id, e.currentTarget.textContent || ''),
+              }
+            : {};
         return (
-          <p key={b.id} style={pStyle} className="mb-3">
+          <p key={b.id} style={pStyle} className="mb-3" {...pProps}>
             {pContent}
           </p>
         );
@@ -222,8 +250,17 @@ export function SlideRenderer({
           </div>
         );
       case 'quote':
+        const qProps =
+          editable && selectedId === b.id
+            ? {
+                contentEditable: true,
+                suppressContentEditableWarning: true,
+                onInput: (e: any) =>
+                  onTextChange?.(b.id, e.currentTarget.textContent || ''),
+              }
+            : {};
         return (
-          <blockquote key={b.id} className="mb-2">
+          <blockquote key={b.id} className="mb-2" {...qProps}>
             <p>“{b.text}”</p>
             {b.author && <cite className="block text-sm">- {b.author}</cite>}
           </blockquote>
@@ -269,15 +306,18 @@ export function SlideRenderer({
   const renderBlock = (b: any) => {
     if (cfg.mode === 'freeform') {
       const pos = cfg.positions[b.id] || { xPct: 50, yPct: 50 };
+      const rot = pos.rotateDeg ?? b.rotateDeg;
       const style: CSSProperties = {
         position: 'absolute',
         left: `${pos.xPct}%`,
         top: `${pos.yPct}%`,
-        transform: 'translate(-50%, -50%)',
+        transform: `translate(-50%, -50%)${rot ? ` rotate(${rot}deg)` : ''}`,
+        width: pos.wPct ? `${pos.wPct}%` : undefined,
+        height: pos.hPct ? `${pos.hPct}%` : undefined,
         zIndex: pos.z || 1,
         cursor: editable ? 'move' : 'default',
       };
-      return (
+      const defaultNode = (
         <div
           key={b.id}
           style={style}
@@ -292,10 +332,18 @@ export function SlideRenderer({
           {renderBlockContent(b)}
         </div>
       );
+      return blockWrapper
+        ? blockWrapper(
+            b,
+            renderBlockContent(b),
+            { xPct: pos.xPct, yPct: pos.yPct, wPct: pos.wPct, hPct: pos.hPct, z: pos.z, rotateDeg: rot }
+          )
+        : defaultNode;
     }
-    return (
+    const inner = renderBlockContent(b);
+    return blockWrapper ? blockWrapper(b, inner, { xPct: 0, yPct: 0 }) : (
       <div key={b.id} onClick={() => onBlockSelect?.(b.id)}>
-        {renderBlockContent(b)}
+        {inner}
       </div>
     );
   };

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { DndContext, closestCenter } from '@dnd-kit/core';
 import {
   SortableContext,
@@ -14,6 +15,148 @@ import { SlideRenderer, SlideRow } from '@/components/customer/home/SlidesContai
 import { STORAGE_BUCKET } from '@/lib/storage';
 import Skeleton from '@/components/ui/Skeleton';
 import { ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
+
+// ---------- InteractiveBox helper ----------
+type InteractiveBoxProps = {
+  id: string;
+  selected: boolean;
+  deviceFrameRef: React.RefObject<HTMLDivElement>;
+  pos: { xPct: number; yPct: number; wPct?: number; hPct?: number; z?: number; rotateDeg?: number };
+  onChange: (next: { xPct: number; yPct: number; wPct?: number; hPct?: number; z?: number; rotateDeg?: number }) => void;
+  children: React.ReactNode;
+};
+
+function InteractiveBox({ selected, deviceFrameRef, pos, onChange, children }: InteractiveBoxProps) {
+  const startRef = React.useRef<{
+    type: 'move' | 'resize' | 'rotate';
+    x: number;
+    y: number;
+    rect: DOMRect;
+    pos: any;
+    corner?: string;
+  } | null>(null);
+  const getFrame = () => deviceFrameRef.current!;
+  const clampPct = (v: number) => Math.min(100, Math.max(0, v));
+  const pct = (px: number, total: number) => clampPct((px / total) * 100);
+
+  const onPointerDownMove = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const rect = getFrame().getBoundingClientRect();
+    startRef.current = { type: 'move', x: e.clientX, y: e.clientY, rect, pos: { ...pos } };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  const onPointerDownResize = (corner: string) => (e: React.PointerEvent) => {
+    e.preventDefault();
+    const rect = getFrame().getBoundingClientRect();
+    startRef.current = { type: 'resize', corner, x: e.clientX, y: e.clientY, rect, pos: { ...pos } };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  const onPointerDownRotate = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const rect = getFrame().getBoundingClientRect();
+    startRef.current = { type: 'rotate', x: e.clientX, y: e.clientY, rect, pos: { ...pos } };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    const s = startRef.current;
+    if (!s) return;
+    const rect = s.rect;
+    if (s.type === 'move') {
+      const dx = e.clientX - s.x;
+      const dy = e.clientY - s.y;
+      const newX = (s.pos.xPct / 100) * rect.width + dx;
+      const newY = (s.pos.yPct / 100) * rect.height + dy;
+      onChange({ ...s.pos, xPct: pct(newX, rect.width), yPct: pct(newY, rect.height) });
+    } else if (s.type === 'resize') {
+      const baseW = ((s.pos.wPct ?? 40) / 100) * rect.width;
+      const baseH = ((s.pos.hPct ?? 20) / 100) * rect.height;
+      const dx = e.clientX - s.x;
+      const dy = e.clientY - s.y;
+      let w = baseW,
+        h = baseH;
+      if (s.corner?.includes('e')) w = baseW + dx;
+      if (s.corner?.includes('w')) w = baseW - dx;
+      if (s.corner?.includes('s')) h = baseH + dy;
+      if (s.corner?.includes('n')) h = baseH - dy;
+      onChange({ ...s.pos, wPct: pct(Math.max(40, w), rect.width), hPct: pct(Math.max(20, h), rect.height) });
+    } else if (s.type === 'rotate') {
+      const cx = rect.left + (s.pos.xPct / 100) * rect.width;
+      const cy = rect.top + (s.pos.yPct / 100) * rect.height;
+      const ang = (Math.atan2(e.clientY - cy, e.clientX - cx) * 180) / Math.PI;
+      onChange({ ...s.pos, rotateDeg: Math.round(ang) });
+    }
+  };
+  const onPointerUp = (e: React.PointerEvent) => {
+    (e.target as HTMLElement).releasePointerCapture?.(e.pointerId);
+    startRef.current = null;
+  };
+
+  const boxStyle: React.CSSProperties = {
+    position: 'absolute',
+    left: `${pos.xPct}%`,
+    top: `${pos.yPct}%`,
+    transform: `translate(-50%, -50%) rotate(${pos.rotateDeg ?? 0}deg)`,
+    width: pos.wPct ? `${pos.wPct}%` : 'auto',
+    height: pos.hPct ? `${pos.hPct}%` : 'auto',
+    zIndex: pos.z ?? 1,
+    touchAction: 'none',
+  };
+  const handle: React.CSSProperties = {
+    position: 'absolute',
+    width: 10,
+    height: 10,
+    borderRadius: 9999,
+    background: '#fff',
+    border: '1px solid #111',
+  };
+
+  return (
+    <div
+      style={boxStyle}
+      onPointerDown={onPointerDownMove}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+    >
+      {children}
+      {selected && (
+        <>
+          <div
+            onPointerDown={onPointerDownRotate}
+            style={{
+              position: 'absolute',
+              left: '50%',
+              top: -24,
+              transform: 'translateX(-50%)',
+              width: 14,
+              height: 14,
+              borderRadius: 9999,
+              background: '#fff',
+              border: '1px solid #111',
+            }}
+          />
+          {[
+            ['nw', { left: -5, top: -5 }],
+            ['n', { left: '50%', top: -5, transform: 'translateX(-50%)' }],
+            ['ne', { right: -5, top: -5 }],
+            ['e', { right: -5, top: '50%', transform: 'translateY(-50%)' }],
+            ['se', { right: -5, bottom: -5 }],
+            ['s', { left: '50%', bottom: -5, transform: 'translateX(-50%)' }],
+            ['sw', { left: -5, bottom: -5 }],
+            ['w', { left: -5, top: '50%', transform: 'translateY(-50%)' }],
+          ].map(([corner, style]) => (
+            <div
+              key={corner as string}
+              onPointerDown={onPointerDownResize(corner as string)}
+              style={{ ...handle, ...(style as CSSProperties) }}
+            />
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+// ---------- end InteractiveBox ----------
 
 // slide config types
 export type SlideConfig = {
@@ -68,7 +211,7 @@ export type SlideConfig = {
     | { id: string; type: 'spacer'; size?: 'sm' | 'md' | 'lg' }
   )[];
   layout?: 'split';
-  positions?: Record<string, { xPct: number; yPct: number; wPct?: number; hPct?: number; z?: number }>;
+  positions?: Record<string, { xPct: number; yPct: number; wPct?: number; hPct?: number; z?: number; rotateDeg?: number }>;
   structuredGroupAlign?: { v: 'top' | 'center' | 'bottom'; h: 'left' | 'center' | 'right' };
 };
 
@@ -173,8 +316,14 @@ export default function SlideModal({
   const galleryRef = useRef<HTMLInputElement | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
+  const deviceFrameRef = useRef<HTMLDivElement>(null);
   const isEdit = !!initial?.id;
   const restaurantId = initial.restaurant_id;
+
+  function select(id: string | null) {
+    console.log('Select', id);
+    setSelectedId(id);
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -186,9 +335,9 @@ export default function SlideModal({
     setVisibleFrom(initial.visible_from || '');
     setVisibleUntil(initial.visible_until || '');
     const cfg = coerceConfig(initial.config_json);
-    console.log('open cfg', cfg);
+    console.log('SlideEditor mount', { mode: cfg.mode, blocks: cfg.blocks.length });
     setConfig(cfg);
-    setSelectedId(null);
+    select(null);
   }, [open, initial]);
 
   useEffect(() => {
@@ -215,12 +364,12 @@ export default function SlideModal({
       if (c.mode === 'freeform') {
         next.positions = {
           ...next.positions,
-          [id]: { xPct: 50, yPct: 40 },
+          [id]: { xPct: 50, yPct: 45, rotateDeg: 0 },
         };
       }
       return next;
     });
-    setSelectedId(id);
+    select(id);
   }
 
   function updateBlock(id: string, patch: any) {
@@ -236,7 +385,7 @@ export default function SlideModal({
       delete pos[id];
       return { ...c, blocks: c.blocks.filter((b) => b.id !== id), positions: pos };
     });
-    if (selectedId === id) setSelectedId(null);
+    if (selectedId === id) select(null);
   }
 
   function moveBlock(id: string, dir: 'up' | 'down') {
@@ -507,7 +656,7 @@ export default function SlideModal({
                   <SortableBlock
                     key={b.id}
                     block={b}
-                    onSelect={setSelectedId}
+                    onSelect={select}
                     selected={b.id === selectedId}
                     onDelete={deleteBlock}
                     onMove={moveBlock}
@@ -969,7 +1118,8 @@ export default function SlideModal({
                 ))}
               </div>
               <div
-                style={{ width: widthMap[device], maxWidth: '100%', margin: '0 auto', border: '1px solid #eee', borderRadius: 12, overflow: 'hidden' }}
+                ref={deviceFrameRef}
+                style={{ position: 'relative', width: widthMap[device], maxWidth: '100%', margin: '0 auto', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}
               >
                 <SlideRenderer
                   slide={{
@@ -987,13 +1137,30 @@ export default function SlideModal({
                   }}
                   restaurantId={restaurantId}
                   router={{ push: () => {} }}
-                  editable={config.mode === 'freeform'}
-                  onBlockSelect={setSelectedId}
-                  onPosChange={(id, pos) =>
-                    setConfig((c) => ({
-                      ...c,
-                      positions: { ...c.positions, [id]: pos },
-                    }))
+                  editable={true}
+                  selectedId={selectedId}
+                  onTextChange={(id, text) => updateBlock(id, { text })}
+                  blockWrapper={
+                    config.mode === 'freeform'
+                      ? (b, content, pos) => (
+                          <InteractiveBox
+                            key={b.id}
+                            id={b.id}
+                            selected={selectedId === b.id}
+                            deviceFrameRef={deviceFrameRef}
+                            pos={pos}
+                            onChange={(next) => {
+                              console.log('Move/Resize/Rotate', b.id, next);
+                              setConfig((c) => ({
+                                ...c,
+                                positions: { ...c.positions, [b.id]: next },
+                              }));
+                            }}
+                          >
+                            <div onClick={() => select(b.id)}>{content}</div>
+                          </InteractiveBox>
+                        )
+                      : undefined
                   }
                 />
               </div>
