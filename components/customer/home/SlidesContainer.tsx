@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/router';
 import Image from 'next/image';
 import Button from '@/components/ui/Button';
@@ -62,15 +62,23 @@ export function SlideRenderer({
   slide,
   restaurantId,
   router,
+  editable = false,
+  onBlockSelect,
+  onPosChange,
 }: {
   slide: SlideRow;
   restaurantId: string;
   router: any;
+  editable?: boolean;
+  onBlockSelect?: (id: string) => void;
+  onPosChange?: (id: string, pos: { xPct: number; yPct: number }) => void;
 }) {
   function coerceConfig(raw: any): SlideConfig {
     const cfg = raw && typeof raw === 'object' ? raw : {};
+    if (!cfg.mode) cfg.mode = 'structured';
     if (!cfg.background) cfg.background = { kind: 'color', value: '#111', overlay: false };
     if (!Array.isArray(cfg.blocks)) cfg.blocks = [];
+    if (!cfg.positions) cfg.positions = {};
     return cfg as SlideConfig;
   }
   const cfg = coerceConfig(slide.config_json);
@@ -122,7 +130,7 @@ export function SlideRenderer({
     />
   ) : null;
 
-  const renderBlock = (b: any) => {
+  const renderBlockContent = (b: any) => {
     switch (b.type) {
       case 'heading':
         return (
@@ -173,8 +181,64 @@ export function SlideRenderer({
     }
   };
 
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const draggingRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    function onMove(e: MouseEvent) {
+      if (!draggingRef.current || !containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const xPct = ((e.clientX - rect.left) / rect.width) * 100;
+      const yPct = ((e.clientY - rect.top) / rect.height) * 100;
+      onPosChange?.(draggingRef.current, { xPct, yPct });
+    }
+    function onUp() {
+      draggingRef.current = null;
+    }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [onPosChange]);
+
+  const renderBlock = (b: any) => {
+    if (cfg.mode === 'freeform') {
+      const pos = cfg.positions[b.id] || { xPct: 50, yPct: 50 };
+      const style: React.CSSProperties = {
+        position: 'absolute',
+        left: `${pos.xPct}%`,
+        top: `${pos.yPct}%`,
+        transform: 'translate(-50%, -50%)',
+        zIndex: pos.z || 1,
+        cursor: editable ? 'move' : 'default',
+      };
+      return (
+        <div
+          key={b.id}
+          style={style}
+          onMouseDown={(e) => {
+            if (!editable) return;
+            draggingRef.current = b.id;
+            e.preventDefault();
+            onBlockSelect?.(b.id);
+          }}
+          onClick={() => onBlockSelect?.(b.id)}
+        >
+          {renderBlockContent(b)}
+        </div>
+      );
+    }
+    return (
+      <div key={b.id} onClick={() => onBlockSelect?.(b.id)}>
+        {renderBlockContent(b)}
+      </div>
+    );
+  };
+
   let content: React.ReactNode = null;
-  if (cfg.layout === 'split' && cfg.blocks.length >= 2) {
+  if (cfg.layout === 'split' && cfg.blocks.length >= 2 && cfg.mode === 'structured') {
     content = (
       <div className="flex w-full max-w-5xl mx-auto gap-4 items-center justify-center">
         <div className="flex-1 flex justify-center">{renderBlock(cfg.blocks[0])}</div>
@@ -182,7 +246,11 @@ export function SlideRenderer({
       </div>
     );
   } else if (cfg.blocks.length > 0) {
-    content = cfg.blocks.map(renderBlock);
+    if (cfg.mode === 'freeform') {
+      content = cfg.blocks.map(renderBlock);
+    } else {
+      content = cfg.blocks.map((b) => renderBlock(b));
+    }
   } else {
     const href =
       slide.cta_href || `/restaurant/menu?restaurant_id=${restaurantId}`;
@@ -198,10 +266,13 @@ export function SlideRenderer({
   }
 
   return (
-    <section style={style} className="w-full text-center p-4">
+    <section ref={containerRef} style={style} className="w-full text-center p-4">
       {media}
       {overlay}
-      <div style={{ position: 'relative', zIndex: 1 }} className="flex flex-col items-center w-full">
+      <div
+        style={{ position: 'relative', zIndex: 1, width: '100%', height: '100%' }}
+        className={cfg.mode === 'freeform' ? '' : 'flex flex-col items-center'}
+      >
         {content}
       </div>
     </section>

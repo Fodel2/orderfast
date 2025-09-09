@@ -17,6 +17,7 @@ import { ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
 
 // slide config types
 export type SlideConfig = {
+  mode?: 'structured' | 'freeform';
   background?: {
     kind: 'color' | 'image' | 'video';
     value?: string;
@@ -39,13 +40,16 @@ export type SlideConfig = {
     | { id: string; type: 'spacer'; size?: 'sm' | 'md' | 'lg' }
   )[];
   layout?: 'split';
+  positions?: Record<string, { xPct: number; yPct: number; wPct?: number; hPct?: number; z?: number }>;
 };
 
 export function coerceConfig(raw: any): SlideConfig {
   const cfg = raw && typeof raw === 'object' ? raw : {};
+  if (!cfg.mode) cfg.mode = 'structured';
   if (!cfg.background)
     cfg.background = { kind: 'color', value: '#111', overlay: false };
   if (!Array.isArray(cfg.blocks)) cfg.blocks = [];
+  if (!cfg.positions) cfg.positions = {};
   return cfg as SlideConfig;
 }
 
@@ -175,7 +179,16 @@ export default function SlideModal({
     if (type === 'quote') block.text = 'Quote';
     if (type === 'gallery') block.images = [];
     if (type === 'spacer') block.size = 'md';
-    setConfig((c) => ({ ...c, blocks: [...c.blocks, block] }));
+    setConfig((c) => {
+      const next = { ...c, blocks: [...c.blocks, block] };
+      if (c.mode === 'freeform') {
+        next.positions = {
+          ...next.positions,
+          [id]: { xPct: 50, yPct: 40 },
+        };
+      }
+      return next;
+    });
     setSelectedId(id);
   }
 
@@ -187,7 +200,11 @@ export default function SlideModal({
   }
 
   function deleteBlock(id: string) {
-    setConfig((c) => ({ ...c, blocks: c.blocks.filter((b) => b.id !== id) }));
+    setConfig((c) => {
+      const pos = { ...c.positions };
+      delete pos[id];
+      return { ...c, blocks: c.blocks.filter((b) => b.id !== id), positions: pos };
+    });
     if (selectedId === id) setSelectedId(null);
   }
 
@@ -323,6 +340,7 @@ export default function SlideModal({
                   switch (t) {
                     case 'hero':
                       setConfig({
+                        mode: 'structured',
                         background: {
                           kind: 'image',
                           fit: 'cover',
@@ -345,10 +363,12 @@ export default function SlideModal({
                             href: '/menu',
                           },
                         ],
+                        positions: {},
                       });
                       break;
                     case 'quote':
                       setConfig({
+                        mode: 'structured',
                         background: { kind: 'color', value: '#fff' },
                         blocks: [
                           {
@@ -358,10 +378,12 @@ export default function SlideModal({
                             author: 'Happy Customer',
                           },
                         ],
+                        positions: {},
                       });
                       break;
                     case 'gallery':
                       setConfig({
+                        mode: 'structured',
                         background: { kind: 'color', value: '#fff' },
                         blocks: [
                           {
@@ -374,20 +396,24 @@ export default function SlideModal({
                             ],
                           },
                         ],
+                        positions: {},
                       });
                       break;
                     case 'split':
                       setConfig({
+                        mode: 'structured',
                         background: { kind: 'color', value: '#fff' },
                         blocks: [
                           { id: crypto.randomUUID(), type: 'image', url: '' },
                           { id: crypto.randomUUID(), type: 'heading', text: 'Your headline' },
                         ],
                         layout: 'split',
+                        positions: {},
                       });
                       break;
                     case 'cta':
                       setConfig({
+                        mode: 'structured',
                         background: { kind: 'color', value: '#111', overlay: false },
                         blocks: [
                           { id: crypto.randomUUID(), type: 'heading', text: 'Specials Tonight' },
@@ -398,6 +424,15 @@ export default function SlideModal({
                             href: '/menu',
                           },
                         ],
+                        positions: {},
+                      });
+                      break;
+                    case 'freeform':
+                      setConfig({
+                        mode: 'freeform',
+                        background: { kind: 'color', value: '#111', overlay: false },
+                        blocks: [],
+                        positions: {},
                       });
                       break;
                     default:
@@ -412,6 +447,7 @@ export default function SlideModal({
                 <option value="gallery">Gallery Row</option>
                 <option value="split">Split Column</option>
                 <option value="cta">CTA Banner</option>
+                <option value="freeform">Custom (Freeform)</option>
               </select>
             </div>
             <div className="mb-2 flex flex-wrap gap-2">
@@ -732,6 +768,14 @@ export default function SlideModal({
                   }}
                   restaurantId={restaurantId}
                   router={{ push: () => {} }}
+                  editable={config.mode === 'freeform'}
+                  onBlockSelect={setSelectedId}
+                  onPosChange={(id, pos) =>
+                    setConfig((c) => ({
+                      ...c,
+                      positions: { ...c.positions, [id]: pos },
+                    }))
+                  }
                 />
               </div>
             </div>
