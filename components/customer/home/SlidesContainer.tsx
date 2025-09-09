@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, type CSSProperties, type ReactNode } from 'react';
 import { useRouter } from 'next/router';
 import Image from 'next/image';
 import Button from '@/components/ui/Button';
@@ -83,7 +83,7 @@ export function SlideRenderer({
   }
   const cfg = coerceConfig(slide.config_json);
   const bg = cfg.background;
-  const style: React.CSSProperties = {
+  const style: CSSProperties = {
     minHeight: '100vh',
     height: '100dvh',
     scrollSnapAlign: 'start',
@@ -101,7 +101,7 @@ export function SlideRenderer({
     style.backgroundPosition = bg.position || 'center';
   }
 
-  let media: React.ReactNode = null;
+  let media: ReactNode = null;
   if (bg?.kind === 'video' && bg.value) {
     media = (
       <video
@@ -133,7 +133,7 @@ export function SlideRenderer({
   const renderBlockContent = (b: any) => {
     switch (b.type) {
       case 'heading':
-        const hStyle: React.CSSProperties = {
+        const hStyle: CSSProperties = {
           textAlign: b.align,
           fontSize: b.fontSize ? `${b.fontSize}px` : undefined,
           fontFamily: b.fontFamily,
@@ -160,7 +160,7 @@ export function SlideRenderer({
           </h2>
         );
       case 'subheading':
-        const pStyle: React.CSSProperties = {
+        const pStyle: CSSProperties = {
           textAlign: b.align,
           fontSize: b.fontSize ? `${b.fontSize}px` : undefined,
           fontFamily: b.fontFamily,
@@ -201,7 +201,7 @@ export function SlideRenderer({
         const img = (
           <Image key={b.id} src={b.url} alt="" width={b.width || 400} height={b.height || 300} />
         );
-        const imgWrapperStyle: React.CSSProperties = {
+        const imgWrapperStyle: CSSProperties = {
           position: 'relative',
           display: 'inline-block',
           transform: b.rotateDeg ? `rotate(${b.rotateDeg}deg)` : undefined,
@@ -269,7 +269,7 @@ export function SlideRenderer({
   const renderBlock = (b: any) => {
     if (cfg.mode === 'freeform') {
       const pos = cfg.positions[b.id] || { xPct: 50, yPct: 50 };
-      const style: React.CSSProperties = {
+      const style: CSSProperties = {
         position: 'absolute',
         left: `${pos.xPct}%`,
         top: `${pos.yPct}%`,
@@ -300,7 +300,7 @@ export function SlideRenderer({
     );
   };
 
-  let content: React.ReactNode = null;
+  let content: ReactNode = null;
   if (cfg.layout === 'split' && cfg.blocks.length >= 2 && cfg.mode === 'structured') {
     content = (
       <div className="flex w-full max-w-5xl mx-auto gap-4 items-center justify-center">
@@ -328,16 +328,36 @@ export function SlideRenderer({
     );
   }
 
+  const groupAlign = cfg.structuredGroupAlign || { v: 'center', h: 'center' };
+  const wrapperStyle: CSSProperties =
+    cfg.mode === 'freeform'
+      ? { position: 'relative', zIndex: 1, width: '100%', height: '100%' }
+      : {
+          position: 'relative',
+          zIndex: 1,
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent:
+            groupAlign.v === 'top'
+              ? 'flex-start'
+              : groupAlign.v === 'bottom'
+              ? 'flex-end'
+              : 'center',
+          alignItems:
+            groupAlign.h === 'left'
+              ? 'flex-start'
+              : groupAlign.h === 'right'
+              ? 'flex-end'
+              : 'center',
+        };
+
   return (
     <section ref={containerRef} style={style} className="w-full text-center p-4">
       {media}
       {overlay}
-      <div
-        style={{ position: 'relative', zIndex: 1, width: '100%', height: '100%' }}
-        className={cfg.mode === 'freeform' ? '' : 'flex flex-col items-center'}
-      >
-        {content}
-      </div>
+      <div style={wrapperStyle}>{content}</div>
     </section>
   );
 }

@@ -69,6 +69,7 @@ export type SlideConfig = {
   )[];
   layout?: 'split';
   positions?: Record<string, { xPct: number; yPct: number; wPct?: number; hPct?: number; z?: number }>;
+  structuredGroupAlign?: { v: 'top' | 'center' | 'bottom'; h: 'left' | 'center' | 'right' };
 };
 
 export function coerceConfig(raw: any): SlideConfig {
@@ -78,6 +79,8 @@ export function coerceConfig(raw: any): SlideConfig {
     cfg.background = { kind: 'color', value: '#111', overlay: false };
   if (!Array.isArray(cfg.blocks)) cfg.blocks = [];
   if (!cfg.positions) cfg.positions = {};
+  if (!cfg.structuredGroupAlign)
+    cfg.structuredGroupAlign = { v: 'center', h: 'center' };
   return cfg as SlideConfig;
 }
 
@@ -614,6 +617,52 @@ export default function SlideModal({
                 </div>
               )}
             </div>
+
+            {config.mode === 'structured' && (
+              <div className="border p-2 rounded mt-2">
+                <h3 className="font-medium mb-2">Group Position</h3>
+                <div className="flex items-center gap-2 mb-2">
+                  <label className="text-xs">Vertical</label>
+                  <select
+                    value={config.structuredGroupAlign?.v || 'center'}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        structuredGroupAlign: {
+                          ...(config.structuredGroupAlign || { h: 'center' }),
+                          v: e.target.value as any,
+                        },
+                      })
+                    }
+                    className="border p-1 rounded flex-1"
+                  >
+                    <option value="top">Top</option>
+                    <option value="center">Center</option>
+                    <option value="bottom">Bottom</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs">Horizontal</label>
+                  <select
+                    value={config.structuredGroupAlign?.h || 'center'}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        structuredGroupAlign: {
+                          ...(config.structuredGroupAlign || { v: 'center' }),
+                          h: e.target.value as any,
+                        },
+                      })
+                    }
+                    className="border p-1 rounded flex-1"
+                  >
+                    <option value="left">Left</option>
+                    <option value="center">Center</option>
+                    <option value="right">Right</option>
+                  </select>
+                </div>
+              </div>
+            )}
 
             {/* Block properties */}
             {selectedBlock && (
