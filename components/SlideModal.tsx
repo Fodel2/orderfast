@@ -386,8 +386,16 @@ export default function SlideModal({
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded p-4 w-full max-w-5xl" style={{ maxHeight: '90vh', overflow: 'auto' }}>
-        <div className="flex justify-between mb-4">
-          <h2 className="text-lg font-semibold">Slide Editor</h2>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold">Blocks</span>
+            <button type="button" disabled className="px-2 py-1 border rounded text-sm opacity-50">
+              Undo
+            </button>
+            <button type="button" disabled className="px-2 py-1 border rounded text-sm opacity-50">
+              Redo
+            </button>
+          </div>
           <div className="flex items-center gap-3">
             <label className="text-sm flex items-center gap-1">
               <input
@@ -405,7 +413,10 @@ export default function SlideModal({
               />
               Show debug
             </label>
-            <button onClick={onClose}>×</button>
+            <Button onClick={handleSave}>Save</Button>
+            <button onClick={onClose} className="px-2 py-1 border rounded">
+              Close
+            </button>
           </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

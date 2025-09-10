@@ -612,30 +612,33 @@ export function SlidesSection({
         </div>
       )}
       {editingEnabled && showEditorDebug && selectedId && selPos && (
-        <div
-          style={{
-            position: 'absolute',
-            left: 8,
-            top: 8,
-            zIndex: 9999,
-            background: 'rgba(17,17,17,.85)',
-            color: '#fff',
-            fontSize: 11,
-            padding: '6px 8px',
-            borderRadius: 6,
-            lineHeight: 1.2,
-            maxWidth: 260,
-          }}
-        >
-          <div>{selectedId}</div>
-          <div>
-            x:{selPos.xPct.toFixed(1)} y:{selPos.yPct.toFixed(1)}
+        <>
+          {/* TODO: remove debug HUD once verified */}
+          <div
+            style={{
+              position: 'absolute',
+              left: 8,
+              top: 8,
+              zIndex: 9999,
+              background: 'rgba(17,17,17,.85)',
+              color: '#fff',
+              fontSize: 11,
+              padding: '6px 8px',
+              borderRadius: 6,
+              lineHeight: 1.2,
+              maxWidth: 260,
+            }}
+          >
+            <div>{selectedId}</div>
+            <div>
+              x:{selPos.xPct.toFixed(1)} y:{selPos.yPct.toFixed(1)}
+            </div>
+            <div>
+              w:{selPos.wPct?.toFixed(1) ?? '-'} h:{selPos.hPct?.toFixed(1) ?? '-'}
+            </div>
+            <div>rot:{selPos.rotateDeg ?? 0}</div>
           </div>
-          <div>
-            w:{selPos.wPct?.toFixed(1) ?? '-'} h:{selPos.hPct?.toFixed(1) ?? '-'}
-          </div>
-          <div>rot:{selPos.rotateDeg ?? 0}</div>
-        </div>
+        </>
       )}
       {media}
       {overlay}
