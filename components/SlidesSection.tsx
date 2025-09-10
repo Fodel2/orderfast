@@ -1,340 +1,457 @@
-import { useEffect, useState } from 'react';
-import {
-  DndContext,
-  PointerSensor,
-  TouchSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-  DragEndEvent,
-} from '@dnd-kit/core';
-import {
-  arrayMove,
-  SortableContext,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
-import { ArrowsUpDownIcon, ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
-import { supabase } from '@/utils/supabaseClient';
-import { toast } from '@/components/ui/toast';
-import SlideModal from './SlideModal';
-import { SlideRow } from '@/components/customer/home/SlidesContainer';
+import React, { useState } from 'react';
+import type { CSSProperties } from 'react';
+import Image from 'next/image';
+import Button from '@/components/ui/Button';
+import type { SlideConfig } from './SlideModal';
+import type { SlideRow } from '@/components/customer/home/SlidesContainer';
 
-export default function SlidesSection({ restaurantId }: { restaurantId: string }) {
-  const [slides, setSlides] = useState<SlideRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editRow, setEditRow] = useState<SlideRow | null>(null);
+type InteractiveBoxProps = {
+  id: string;
+  selected: boolean;
+  debug: boolean;
+  deviceFrameRef: React.RefObject<HTMLDivElement>;
+  pos: { xPct: number; yPct: number; wPct?: number; hPct?: number; z?: number; rotateDeg?: number };
+  onChange: (next: {
+    xPct: number;
+    yPct: number;
+    wPct?: number;
+    hPct?: number;
+    z?: number;
+    rotateDeg?: number;
+  }) => void;
+  children: React.ReactNode;
+};
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
-  );
+function InteractiveBox({ id, selected, debug, deviceFrameRef, pos, onChange, children }: InteractiveBoxProps) {
+  const startRef = React.useRef<{
+    type: 'move' | 'resize' | 'rotate';
+    x: number;
+    y: number;
+    rect: DOMRect;
+    pos: any;
+    corner?: string;
+  } | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const getFrame = () => deviceFrameRef.current!;
+  const clampPct = (v: number) => Math.min(100, Math.max(0, v));
+  const pct = (px: number, total: number) => clampPct((px / total) * 100);
 
-  async function loadSlides() {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from('restaurant_slides')
-      .select('*')
-      .eq('restaurant_id', restaurantId)
-      .order('sort_order', { ascending: true });
-    if (error) {
-      toast.error('Failed to load slides');
-    } else {
-      setSlides(data || []);
+  const onPointerDownMove = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const rect = getFrame().getBoundingClientRect();
+    startRef.current = { type: 'move', x: e.clientX, y: e.clientY, rect, pos: { ...pos } };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    setDragging(true);
+  };
+  const onPointerDownResize = (corner: string) => (e: React.PointerEvent) => {
+    e.preventDefault();
+    const rect = getFrame().getBoundingClientRect();
+    startRef.current = { type: 'resize', corner, x: e.clientX, y: e.clientY, rect, pos: { ...pos } };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    setDragging(true);
+  };
+  const onPointerDownRotate = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const rect = getFrame().getBoundingClientRect();
+    startRef.current = { type: 'rotate', x: e.clientX, y: e.clientY, rect, pos: { ...pos } };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    setDragging(true);
+  };
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    const s = startRef.current;
+    if (!s) return;
+    const rect = s.rect;
+    if (s.type === 'move') {
+      const dx = e.clientX - s.x;
+      const dy = e.clientY - s.y;
+      const newX = (s.pos.xPct / 100) * rect.width + dx;
+      const newY = (s.pos.yPct / 100) * rect.height + dy;
+      onChange({ ...s.pos, xPct: pct(newX, rect.width), yPct: pct(newY, rect.height) });
+    } else if (s.type === 'resize') {
+      const baseW = ((s.pos.wPct ?? 40) / 100) * rect.width;
+      const baseH = ((s.pos.hPct ?? 20) / 100) * rect.height;
+      const dx = e.clientX - s.x;
+      const dy = e.clientY - s.y;
+      let w = baseW,
+        h = baseH;
+      if (s.corner?.includes('e')) w = baseW + dx;
+      if (s.corner?.includes('w')) w = baseW - dx;
+      if (s.corner?.includes('s')) h = baseH + dy;
+      if (s.corner?.includes('n')) h = baseH - dy;
+      onChange({ ...s.pos, wPct: pct(Math.max(40, w), rect.width), hPct: pct(Math.max(20, h), rect.height) });
+    } else if (s.type === 'rotate') {
+      const cx = rect.left + (s.pos.xPct / 100) * rect.width;
+      const cy = rect.top + (s.pos.yPct / 100) * rect.height;
+      const ang = (Math.atan2(e.clientY - cy, e.clientX - cx) * 180) / Math.PI;
+      onChange({ ...s.pos, rotateDeg: Math.round(ang) });
     }
-    setLoading(false);
-  }
+  };
+  const onPointerUp = (e: React.PointerEvent) => {
+    (e.target as HTMLElement).releasePointerCapture?.(e.pointerId);
+    startRef.current = null;
+    setDragging(false);
+  };
 
-  useEffect(() => {
-    if (restaurantId) loadSlides();
-  }, [restaurantId]);
-
-  function openCreate() {
-    setEditRow({ restaurant_id: restaurantId, type: 'menu_highlight' });
-    setModalOpen(true);
-  }
-
-  function openEdit(row: SlideRow) {
-    setEditRow(row);
-    setModalOpen(true);
-  }
-
-  async function handleDelete(row: SlideRow) {
-    if (!confirm('Delete this slide?')) return;
-    const prev = slides;
-    setSlides(prev.filter((s) => s.id !== row.id));
-    const { error } = await supabase
-      .from('restaurant_slides')
-      .delete()
-      .eq('id', row.id)
-      .eq('restaurant_id', restaurantId);
-    if (error) {
-      toast.error('Failed to delete');
-      setSlides(prev);
-    }
-  }
-
-  async function toggleActive(row: SlideRow) {
-    const updated = slides.map((s) =>
-      s.id === row.id ? { ...s, is_active: !row.is_active } : s
-    );
-    setSlides(updated);
-    const { error } = await supabase
-      .from('restaurant_slides')
-      .update({ is_active: !row.is_active })
-      .eq('id', row.id)
-      .eq('restaurant_id', restaurantId);
-    if (error) {
-      toast.error('Failed to update');
-      setSlides(slides);
-    }
-  }
-
-  async function handleDragEnd(event: DragEndEvent) {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const nonHero = slides.filter((s) => s.type !== 'hero');
-    const oldIndex = nonHero.findIndex((s) => s.id === active.id);
-    const newIndex = nonHero.findIndex((s) => s.id === over.id);
-    if (oldIndex === -1 || newIndex === -1) return;
-    const reordered = arrayMove(nonHero, oldIndex, newIndex);
-    setSlides((prev) => {
-      const heroes = prev.filter((s) => s.type === 'hero');
-      return [...heroes, ...reordered].sort((a, b) => a.sort_order - b.sort_order);
-    });
-    const responses = await Promise.all(
-      reordered.map((s, i) =>
-        supabase
-          .from('restaurant_slides')
-          .update({ sort_order: i })
-          .eq('id', s.id!)
-          .eq('restaurant_id', restaurantId)
-      )
-    );
-    if (responses.some((r) => r.error)) {
-      toast.error('Failed to reorder');
-      loadSlides();
-    } else {
-      loadSlides();
-    }
-  }
-
-  async function move(row: SlideRow, dir: 'up' | 'down') {
-    const nonHero = slides
-      .filter((s) => s.type !== 'hero')
-      .sort((a, b) => a.sort_order - b.sort_order);
-    const index = nonHero.findIndex((s) => s.id === row.id);
-    const swapIndex = dir === 'up' ? index - 1 : index + 1;
-    if (index === -1 || swapIndex < 0 || swapIndex >= nonHero.length) return;
-    const target = nonHero[swapIndex];
-    const reordered = [...nonHero];
-    [reordered[index], reordered[swapIndex]] = [
-      reordered[swapIndex],
-      reordered[index],
-    ];
-    setSlides((prev) => {
-      const heroes = prev.filter((s) => s.type === 'hero');
-      return [...heroes, ...reordered].sort((a, b) => a.sort_order - b.sort_order);
-    });
-    const [resA, resB] = await Promise.all([
-      supabase
-        .from('restaurant_slides')
-        .update({ sort_order: swapIndex })
-        .eq('id', row.id!)
-        .eq('restaurant_id', restaurantId),
-      supabase
-        .from('restaurant_slides')
-        .update({ sort_order: index })
-        .eq('id', target.id!)
-        .eq('restaurant_id', restaurantId),
-    ]);
-    if (resA.error || resB.error) {
-      toast.error('Failed to reorder');
-      loadSlides();
-    } else {
-      loadSlides();
-    }
-  }
-
-  async function addStarter() {
-    const { data: maxRow, error: maxErr } = await supabase
-      .from('restaurant_slides')
-      .select('sort_order')
-      .eq('restaurant_id', restaurantId)
-      .order('sort_order', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (maxErr) {
-      toast.error('Failed');
-      return;
-    }
-    const base = (maxRow?.sort_order ?? -1) + 1;
-    const rows: SlideRow[] = [
-      {
-        restaurant_id: restaurantId,
-        type: 'menu_highlight',
-        title: 'Customer Favourites',
-        subtitle: 'What locals love most',
-        cta_label: 'Browse Menu',
-        cta_href: '/menu',
-        sort_order: base,
-        is_active: true,
-      },
-      {
-        restaurant_id: restaurantId,
-        type: 'reviews',
-        title: 'Loved by the community',
-        subtitle: '4.8 ★ average',
-        sort_order: base + 1,
-        is_active: true,
-      },
-      {
-        restaurant_id: restaurantId,
-        type: 'location_hours',
-        title: 'Find Us',
-        subtitle: 'Open today',
-        cta_label: 'Get Directions',
-        cta_href: '/p/contact',
-        sort_order: base + 2,
-        is_active: true,
-      },
-    ];
-    const { error } = await supabase.from('restaurant_slides').insert(rows);
-    if (error) {
-      toast.error('Failed to insert');
-    } else {
-      toast.success('Starter slides added');
-      loadSlides();
-    }
-  }
+  const boxStyle: CSSProperties = {
+    position: 'absolute',
+    left: `${pos.xPct}%`,
+    top: `${pos.yPct}%`,
+    transform: `translate(-50%, -50%) rotate(${pos.rotateDeg ?? 0}deg)`,
+    width: pos.wPct ? `${pos.wPct}%` : 'auto',
+    height: pos.hPct ? `${pos.hPct}%` : 'auto',
+    zIndex: pos.z || 3,
+    touchAction: 'none',
+    boxShadow: dragging ? '0 0 0 3px rgba(99,102,241,.45)' : undefined,
+    opacity: dragging ? 0.95 : undefined,
+    outline: '2px dashed #ec4899',
+    outlineOffset: 0,
+  };
+  const handle: CSSProperties = {
+    position: 'absolute',
+    width: 10,
+    height: 10,
+    borderRadius: 9999,
+    background: '#fff',
+    border: '1px solid #111',
+  };
 
   return (
-    <section className="mt-8">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-lg font-semibold">Slides (beta)</h3>
-        <div className="flex gap-2">
-          <button onClick={addStarter} className="px-3 py-2 rounded border">Add Starter Slides</button>
-          <button onClick={openCreate} className="px-3 py-2 rounded bg-emerald-600 text-white">New Slide</button>
-        </div>
+    <div
+      style={boxStyle}
+      onPointerDown={onPointerDownMove}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+    >
+      <div
+        style={{
+          position: 'absolute',
+          left: -2,
+          top: -18,
+          fontSize: 10,
+          background: '#ec4899',
+          color: '#fff',
+          padding: '1px 4px',
+          borderRadius: 4,
+        }}
+      >
+        {id.slice(0, 6)}
       </div>
-      {loading ? (
-        <div className="text-sm text-neutral-500">Loading…</div>
-      ) : slides.length === 0 ? (
-        <div className="rounded border p-4 text-sm text-neutral-500">No slides yet.</div>
-      ) : (
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={slides.map((s) => s.id!)} strategy={verticalListSortingStrategy}>
-            <ul className="divide-y rounded border">
-              {slides.map((s) => (
-                <SortableRow
-                  key={s.id}
-                  row={s}
-                  onEdit={openEdit}
-                  onDelete={handleDelete}
-                  onToggle={toggleActive}
-                  onMove={move}
-                  index={slides
-                    .filter((h) => h.type !== 'hero')
-                    .findIndex((n) => n.id === s.id)}
-                  lastIndex={slides.filter((h) => h.type !== 'hero').length - 1}
-                />
-              ))}
-            </ul>
-          </SortableContext>
-        </DndContext>
+      {children}
+      {selected && (
+        <>
+          <div
+            onPointerDown={onPointerDownRotate}
+            style={{
+              position: 'absolute',
+              left: '50%',
+              top: -24,
+              transform: 'translateX(-50%)',
+              width: 14,
+              height: 14,
+              borderRadius: 9999,
+              background: '#fff',
+              border: '1px solid #111',
+            }}
+          />
+          {[
+            ['nw', { left: -5, top: -5 }],
+            ['n', { left: '50%', top: -5, transform: 'translateX(-50%)' }],
+            ['ne', { right: -5, top: -5 }],
+            ['e', { right: -5, top: '50%', transform: 'translateY(-50%)' }],
+            ['se', { right: -5, bottom: -5 }],
+            ['s', { left: '50%', bottom: -5, transform: 'translateX(-50%)' }],
+            ['sw', { left: -5, bottom: -5 }],
+            ['w', { left: -5, top: '50%', transform: 'translateY(-50%)' }],
+          ].map(([corner, style]) => (
+            <div
+              key={corner as string}
+              onPointerDown={onPointerDownResize(corner as string)}
+              style={{ ...handle, ...(style as CSSProperties) }}
+            />
+          ))}
+        </>
       )}
-      {editRow && (
-        <SlideModal
-          open={modalOpen}
-          onClose={() => setModalOpen(false)}
-          initial={editRow}
-          onSaved={loadSlides}
-        />
+      {debug && (
+        <div
+          style={{
+            position: 'absolute',
+            right: -2,
+            bottom: -2,
+            fontSize: 10,
+            background: '#111',
+            color: '#fff',
+            padding: '1px 4px',
+            borderRadius: 4,
+          }}
+        >{`x:${pos.xPct.toFixed(1)} y:${pos.yPct.toFixed(1)} w:${pos.wPct?.toFixed(1) ?? '-'} h:${
+          pos.hPct?.toFixed(1) ?? '-'
+        } r:${pos.rotateDeg ?? 0}`}</div>
       )}
-    </section>
+    </div>
   );
 }
 
-function SortableRow({
-  row,
-  onEdit,
-  onDelete,
-  onToggle,
-  onMove,
-  index,
-  lastIndex,
+export default function SlidesSection({
+  slide,
+  cfg,
+  setCfg,
+  editingEnabled = false,
+  showEditorDebug = false,
+  deviceFrameRef,
 }: {
-  row: SlideRow;
-  onEdit: (r: SlideRow) => void;
-  onDelete: (r: SlideRow) => void;
-  onToggle: (r: SlideRow) => void;
-  onMove: (r: SlideRow, dir: 'up' | 'down') => void;
-  index: number;
-  lastIndex: number;
+  slide: SlideRow;
+  cfg: SlideConfig;
+  setCfg: React.Dispatch<React.SetStateAction<SlideConfig>>;
+  editingEnabled?: boolean;
+  showEditorDebug?: boolean;
+  deviceFrameRef?: React.RefObject<HTMLDivElement>;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
-    id: row.id!,
-    disabled: row.type === 'hero',
-  });
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  } as React.CSSProperties;
-  const locked = row.type === 'hero';
-  return (
-    <li ref={setNodeRef} style={style} className="flex items-center gap-3 p-3">
-      <span
-        {...attributes}
-        {...listeners}
-        className={`cursor-grab ${locked ? 'opacity-50' : ''}`}
-      >
-        <ArrowsUpDownIcon className="h-5 w-5" />
-      </span>
-      <div className="flex flex-col">
-        <button
-          disabled={locked || index <= 0}
-          onClick={() => onMove(row, 'up')}
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const bg = cfg.background;
+  const style: CSSProperties = {
+    position: 'relative',
+    minHeight: '100vh',
+    height: '100dvh',
+    scrollSnapAlign: 'start',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  };
+  if (bg?.kind === 'color' && bg.value) {
+    style.backgroundColor = bg.value;
+  }
+  if (bg?.kind === 'image' && bg.value) {
+    style.backgroundImage = `url(${bg.value})`;
+    style.backgroundSize = bg.fit || 'cover';
+    style.backgroundPosition = bg.position || 'center';
+  }
+
+  const media = bg?.kind === 'video' && bg.value ? (
+    <video
+      src={bg.value}
+      muted={bg.muted ?? true}
+      loop={bg.loop ?? true}
+      autoPlay={bg.autoplay ?? true}
+      style={{
+        position: 'absolute',
+        inset: 0,
+        width: '100%',
+        height: '100%',
+        objectFit: bg.fit || 'cover',
+        pointerEvents: 'none',
+        zIndex: 0,
+      }}
+    />
+  ) : null;
+
+  const overlay = bg?.overlay ? (
+    <div
+      style={{
+        position: 'absolute',
+        inset: 0,
+        background: bg.overlayColor || '#000',
+        opacity: bg.overlayOpacity ?? 0.25,
+        pointerEvents: 'none',
+        zIndex: 0,
+      }}
+    />
+  ) : null;
+
+  const renderBlockContent = (b: any) => {
+    switch (b.type) {
+      case 'heading':
+      case 'subheading': {
+        const Comp = b.type === 'heading' ? 'h2' : 'p';
+        const st: CSSProperties = {
+          textAlign: b.align,
+          fontSize: b.fontSize ? `${b.fontSize}px` : undefined,
+          fontFamily: b.fontFamily,
+          color: b.color,
+          transform: b.rotateDeg ? `rotate(${b.rotateDeg}deg)` : undefined,
+        };
+        const content = b.overlay ? (
+          <span
+            style={{
+              background: b.overlay.color,
+              opacity: b.overlay.opacity,
+              padding: '0 0.25em',
+              display: 'inline-block',
+            }}
+          >
+            {b.text}
+          </span>
+        ) : (
+          b.text
+        );
+        const editableProps =
+          editingEnabled && selectedId === b.id
+            ? {
+                contentEditable: true,
+                suppressContentEditableWarning: true,
+                onInput: (e: any) =>
+                  setCfg((p) => ({
+                    ...p,
+                    blocks: p.blocks.map((x) =>
+                      x.id === b.id ? { ...x, text: e.currentTarget.textContent || '' } : x
+                    ),
+                  })),
+              }
+            : {};
+        return (
+          <Comp
+            key={b.id}
+            style={st}
+            {...editableProps}
+            className={b.type === 'heading' ? 'font-bold' : 'mb-3'}
+          >
+            {content}
+          </Comp>
+        );
+      }
+      case 'button':
+        return (
+          <Button key={b.id} className="mb-2" onClick={(e) => e.preventDefault()}>
+            {b.text}
+          </Button>
+        );
+      case 'image':
+        if (!b.url) return null;
+        const img = <Image key={b.id} src={b.url} alt="" width={b.width || 400} height={b.height || 300} />;
+        const wrap: CSSProperties = {
+          position: 'relative',
+          display: 'inline-block',
+          transform: b.rotateDeg ? `rotate(${b.rotateDeg}deg)` : undefined,
+        };
+        return (
+          <div key={b.id} style={wrap}>
+            {img}
+            {b.overlay && (
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  background: b.overlay.color,
+                  opacity: b.overlay.opacity,
+                }}
+              />
+            )}
+          </div>
+        );
+      case 'quote':
+        return (
+          <blockquote key={b.id} className="mb-2">
+            <p>“{b.text}”</p>
+            {b.author && <cite className="block text-sm">- {b.author}</cite>}
+          </blockquote>
+        );
+      case 'gallery':
+        return (
+          <div key={b.id} className="flex gap-2 overflow-x-auto mb-2">
+            {b.images.map((src: string, i: number) => (
+              <Image key={i} src={src} alt="" width={200} height={150} />
+            ))}
+          </div>
+        );
+      case 'spacer':
+        const sizes: any = { sm: 32, md: 64, lg: 96 };
+        return <div key={b.id} style={{ height: sizes[b.size || 'md'] }} />;
+      default:
+        return null;
+    }
+  };
+
+  const renderBlock = (b: any) => {
+    const pos = cfg.positions?.[b.id] ?? {
+      xPct: 50,
+      yPct: 45,
+      wPct: undefined,
+      hPct: undefined,
+      z: 3,
+      rotateDeg: 0,
+    };
+    if (editingEnabled) {
+      return (
+        <InteractiveBox
+          key={b.id}
+          id={b.id}
+          selected={selectedId === b.id}
+          debug={showEditorDebug}
+          deviceFrameRef={deviceFrameRef!}
+          pos={pos}
+          onChange={(next) =>
+            setCfg((p) => ({ ...p, positions: { ...(p.positions || {}), [b.id]: next } }))
+          }
         >
-          <ChevronUpIcon className="h-4 w-4" />
-        </button>
-        <button
-          disabled={locked || index === lastIndex}
-          onClick={() => onMove(row, 'down')}
-        >
-          <ChevronDownIcon className="h-4 w-4" />
-        </button>
+          {renderBlockContent(b)}
+        </InteractiveBox>
+      );
+    }
+    const st: CSSProperties = {
+      position: 'absolute',
+      left: `${pos.xPct}%`,
+      top: `${pos.yPct}%`,
+      transform: `translate(-50%, -50%) rotate(${pos.rotateDeg ?? 0}deg)`,
+      width: pos.wPct ? `${pos.wPct}%` : undefined,
+      height: pos.hPct ? `${pos.hPct}%` : undefined,
+      zIndex: pos.z || 3,
+    };
+    return (
+      <div key={b.id} style={st}>
+        {renderBlockContent(b)}
       </div>
-      <span className="text-xs px-2 py-1 rounded border">{row.type}</span>
-      <div className="flex-1">{row.title}</div>
-      {locked ? (
-        <span className="px-2 py-1 text-xs border rounded">Locked</span>
-      ) : (
-        <label className="inline-flex items-center gap-1 text-sm">
-          <input
-            type="checkbox"
-            checked={row.is_active ?? true}
-            onChange={() => onToggle(row)}
-          />
-          Active
-        </label>
+    );
+  };
+
+  return (
+    <section style={style} onClick={() => setSelectedId(null)}>
+      {media}
+      {overlay}
+      <div style={{ position: 'relative', zIndex: 2 }}>
+        {(cfg.blocks || []).map((b) => (
+          <div key={b.id} onClick={(e) => { e.stopPropagation(); setSelectedId(b.id); }}>
+            {renderBlock(b)}
+          </div>
+        ))}
+      </div>
+      {editingEnabled && showEditorDebug && (
+        <>
+          <div
+            style={{
+              position: 'absolute',
+              right: 8,
+              top: 8,
+              zIndex: 9999,
+              background: '#111',
+              color: '#fff',
+              fontSize: 10,
+              padding: '2px 6px',
+              borderRadius: 6,
+              opacity: 0.75,
+            }}
+          >
+            EDITOR MODE
+          </div>
+          <div
+            style={{
+              position: 'absolute',
+              left: 8,
+              top: 8,
+              zIndex: 9999,
+              background: 'rgba(17,17,17,.85)',
+              color: '#fff',
+              fontSize: 11,
+              padding: '6px 8px',
+              borderRadius: 6,
+              lineHeight: 1.2,
+              maxWidth: 260,
+            }}
+          >
+            {selectedId || 'none'}
+          </div>
+        </>
       )}
-      <button
-        onClick={() => onEdit(row)}
-        className="ml-2 px-3 py-1 rounded border"
-        disabled={locked}
-      >
-        Edit
-      </button>
-      <button
-        onClick={() => onDelete(row)}
-        className="ml-2 px-3 py-1 rounded border text-red-600"
-        disabled={locked}
-      >
-        Delete
-      </button>
-    </li>
+    </section>
   );
 }
 

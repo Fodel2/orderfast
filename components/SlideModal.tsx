@@ -11,7 +11,8 @@ import { CSS } from '@dnd-kit/utilities';
 import { supabase } from '@/utils/supabaseClient';
 import { toast } from '@/components/ui/toast';
 import Button from '@/components/ui/Button';
-import { SlidesSection, SlideRow } from '@/components/customer/home/SlidesContainer';
+import { SlideRow } from '@/components/customer/home/SlidesContainer';
+import SlidesSection from '@/components/SlidesSection';
 import { STORAGE_BUCKET } from '@/lib/storage';
 import Skeleton from '@/components/ui/Skeleton';
 import { ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
@@ -146,15 +147,17 @@ function SortableBlock({ block, onSelect, selected, onDelete, onMove, index, las
 }
 
 export default function SlideModal({
-  open,
+  slide,
+  cfg,
+  setCfg,
   onClose,
-  initial,
-  onSaved,
+  onSave,
 }: {
-  open: boolean;
+  slide: SlideRow;
+  cfg: SlideConfig;
+  setCfg: React.Dispatch<React.SetStateAction<SlideConfig>>;
   onClose: () => void;
-  initial: SlideRow;
-  onSaved: () => void;
+  onSave: () => void;
 }) {
   const [type, setType] = useState<string>('menu_highlight');
   const [title, setTitle] = useState('');
@@ -163,7 +166,6 @@ export default function SlideModal({
   const [ctaHref, setCtaHref] = useState('');
   const [visibleFrom, setVisibleFrom] = useState('');
   const [visibleUntil, setVisibleUntil] = useState('');
-  const [config, setConfig] = useState<SlideConfig>(defaultConfig);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [device, setDevice] = useState<'mobile' | 'tablet' | 'desktop'>('mobile');
   const [editInPreview, setEditInPreview] = useState(true);
@@ -177,50 +179,50 @@ export default function SlideModal({
   const [uploading, setUploading] = useState(false);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
   const deviceFrameRef = useRef<HTMLDivElement>(null);
-  const isEdit = !!initial?.id;
-  const restaurantId = initial.restaurant_id;
+  const isEdit = !!slide?.id;
+  const restaurantId = slide.restaurant_id;
 
   function select(id: string | null) {
     setSelectedId(id);
   }
 
   useEffect(() => {
-    if (!open) return;
-    setType(initial.type);
-    setTitle(initial.title || '');
-    setSubtitle(initial.subtitle || '');
-    setCtaLabel(initial.cta_label || '');
-    setCtaHref(initial.cta_href || '');
-    setVisibleFrom(initial.visible_from || '');
-    setVisibleUntil(initial.visible_until || '');
-    const cfg = coerceConfig(initial.config_json);
-    if (!cfg.blocks || cfg.blocks.length === 0) {
+    if (!slide) return;
+    setType(slide.type);
+    setTitle(slide.title || '');
+    setSubtitle(slide.subtitle || '');
+    setCtaLabel(slide.cta_label || '');
+    setCtaHref(slide.cta_href || '');
+    setVisibleFrom(slide.visible_from || '');
+    setVisibleUntil(slide.visible_until || '');
+    const cfg0 = coerceConfig(slide.config_json);
+    if (!cfg0.blocks || cfg0.blocks.length === 0) {
       const blocks: any[] = [];
       const positions: Record<string, any> = {};
       let y = 45;
-      if (initial.title) {
+      if (slide.title) {
         const id = crypto.randomUUID();
-        blocks.push({ id, type: 'heading', text: initial.title });
+        blocks.push({ id, type: 'heading', text: slide.title });
         positions[id] = { xPct: 50, yPct: y, rotateDeg: 0 };
         y += 10;
       }
-      if (initial.subtitle) {
+      if (slide.subtitle) {
         const id = crypto.randomUUID();
-        blocks.push({ id, type: 'subheading', text: initial.subtitle });
+        blocks.push({ id, type: 'subheading', text: slide.subtitle });
         positions[id] = { xPct: 50, yPct: y, rotateDeg: 0 };
         y += 10;
       }
-      if (initial.cta_label) {
+      if (slide.cta_label) {
         const id = crypto.randomUUID();
-        blocks.push({ id, type: 'button', text: initial.cta_label, href: initial.cta_href || '/menu' });
+        blocks.push({ id, type: 'button', text: slide.cta_label, href: slide.cta_href || '/menu' });
         positions[id] = { xPct: 50, yPct: y, rotateDeg: 0 };
       }
-      cfg.blocks = blocks;
-      cfg.positions = { ...(cfg.positions || {}), ...positions };
+      cfg0.blocks = blocks;
+      cfg0.positions = { ...(cfg0.positions || {}), ...positions };
     }
-    setConfig(cfg);
+    setCfg(cfg0);
     select(null);
-  }, [open, initial]);
+  }, [slide, setCfg]);
 
   useEffect(() => {
     if (!restaurantId) return;
@@ -241,7 +243,7 @@ export default function SlideModal({
     if (type === 'quote') block.text = 'Quote';
     if (type === 'gallery') block.images = [];
     if (type === 'spacer') block.size = 'md';
-    setConfig((c) => {
+    setCfg((c) => {
       const next = { ...c, blocks: [...c.blocks, block] };
       if (c.mode === 'freeform') {
         next.positions = {
@@ -255,14 +257,14 @@ export default function SlideModal({
   }
 
   function updateBlock(id: string, patch: any) {
-    setConfig((c) => ({
+    setCfg((c) => ({
       ...c,
       blocks: c.blocks.map((b) => (b.id === id ? { ...b, ...patch } : b)),
     }));
   }
 
   function deleteBlock(id: string) {
-    setConfig((c) => {
+    setCfg((c) => {
       const pos = { ...c.positions };
       delete pos[id];
       return { ...c, blocks: c.blocks.filter((b) => b.id !== id), positions: pos };
@@ -271,7 +273,7 @@ export default function SlideModal({
   }
 
   function moveBlock(id: string, dir: 'up' | 'down') {
-    setConfig((c) => {
+    setCfg((c) => {
       const idx = c.blocks.findIndex((b) => b.id === id);
       const swap = dir === 'up' ? idx - 1 : idx + 1;
       if (idx === -1 || swap < 0 || swap >= c.blocks.length) return c;
@@ -284,9 +286,9 @@ export default function SlideModal({
   function handleDragEnd(event: any) {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    const oldIndex = config.blocks.findIndex((b) => b.id === active.id);
-    const newIndex = config.blocks.findIndex((b) => b.id === over.id);
-    setConfig((c) => ({ ...c, blocks: arrayMove(c.blocks, oldIndex, newIndex) }));
+    const oldIndex = cfg.blocks.findIndex((b) => b.id === active.id);
+    const newIndex = cfg.blocks.findIndex((b) => b.id === over.id);
+    setCfg((c) => ({ ...c, blocks: arrayMove(c.blocks, oldIndex, newIndex) }));
   }
 
   async function uploadFile(file: File, cb: (url: string) => void) {
@@ -329,16 +331,16 @@ export default function SlideModal({
       visible_from: visibleFrom || null,
       visible_until: visibleUntil || null,
       media_url:
-        config.background?.kind && config.background.kind !== 'color'
-          ? config.background.value || null
+        cfg.background?.kind && cfg.background.kind !== 'color'
+          ? cfg.background.value || null
           : null,
-      config_json: config,
+      config_json: cfg,
     };
     if (isEdit) {
       const { error } = await supabase
         .from('restaurant_slides')
         .update(payload)
-        .eq('id', initial.id!)
+        .eq('id', slide.id!)
         .eq('restaurant_id', restaurantId);
       if (error) {
         toast.error('Failed to save');
@@ -365,11 +367,11 @@ export default function SlideModal({
         return;
       }
     }
-    onSaved();
+    onSave();
     onClose();
   }
 
-  const selectedBlock = config.blocks.find((b) => b.id === selectedId);
+  const selectedBlock = cfg.blocks.find((b) => b.id === selectedId);
 
   const linkOptions = [...knownRoutes, ...customPages, 'custom'];
   useEffect(() => {
@@ -378,8 +380,6 @@ export default function SlideModal({
       else setLinkChoice('custom');
     }
   }, [selectedBlock, linkOptions]);
-
-  if (!open) return null;
 
   const widthMap: any = { mobile: 375, tablet: 768, desktop: 1280 };
 
@@ -429,7 +429,7 @@ export default function SlideModal({
                   setTemplate(t);
                   switch (t) {
                     case 'hero':
-                      setConfig({
+                      setCfg({
                         mode: 'structured',
                         background: {
                           kind: 'image',
@@ -457,7 +457,7 @@ export default function SlideModal({
                       });
                       break;
                     case 'quote':
-                      setConfig({
+                      setCfg({
                         mode: 'structured',
                         background: { kind: 'color', value: '#fff' },
                         blocks: [
@@ -472,7 +472,7 @@ export default function SlideModal({
                       });
                       break;
                     case 'gallery':
-                      setConfig({
+                      setCfg({
                         mode: 'structured',
                         background: { kind: 'color', value: '#fff' },
                         blocks: [
@@ -490,7 +490,7 @@ export default function SlideModal({
                       });
                       break;
                     case 'split':
-                      setConfig({
+                      setCfg({
                         mode: 'structured',
                         background: { kind: 'color', value: '#fff' },
                         blocks: [
@@ -502,7 +502,7 @@ export default function SlideModal({
                       });
                       break;
                     case 'cta':
-                      setConfig({
+                      setCfg({
                         mode: 'structured',
                         background: { kind: 'color', value: '#111', overlay: false },
                         blocks: [
@@ -518,7 +518,7 @@ export default function SlideModal({
                       });
                       break;
                     case 'freeform':
-                      setConfig({
+                      setCfg({
                         mode: 'freeform',
                         background: { kind: 'color', value: '#111', overlay: false },
                         blocks: [],
@@ -561,8 +561,8 @@ export default function SlideModal({
               ))}
             </div>
             <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext items={config.blocks.map((b) => b.id)} strategy={verticalListSortingStrategy}>
-                {config.blocks.map((b, i) => (
+          <SortableContext items={cfg.blocks.map((b) => b.id)} strategy={verticalListSortingStrategy}>
+                {cfg.blocks.map((b, i) => (
                   <SortableBlock
                     key={b.id}
                     block={b}
@@ -571,7 +571,7 @@ export default function SlideModal({
                     onDelete={deleteBlock}
                     onMove={moveBlock}
                     index={i}
-                    lastIndex={config.blocks.length - 1}
+                    lastIndex={cfg.blocks.length - 1}
                   />
                 ))}
               </SortableContext>
@@ -582,9 +582,9 @@ export default function SlideModal({
             <div className="border p-2 rounded">
               <h3 className="font-medium mb-2">Background</h3>
               <select
-                value={config.background?.kind}
+                value={cfg.background?.kind}
                 onChange={(e) =>
-                  setConfig({ ...config, background: { ...config.background!, kind: e.target.value as any } })
+                  setCfg({ ...cfg, background: { ...cfg.background!, kind: e.target.value as any } })
                 }
                 className="border p-1 rounded w-full mb-2"
               >
@@ -592,17 +592,17 @@ export default function SlideModal({
                 <option value="image">Image</option>
                 <option value="video">Video</option>
               </select>
-              {config.background?.kind === 'color' && (
+              {cfg.background?.kind === 'color' && (
                 <input
                   type="text"
-                  value={config.background?.value || ''}
+                  value={cfg.background?.value || ''}
                   onChange={(e) =>
-                    setConfig({ ...config, background: { ...config.background!, value: e.target.value } })
+                    setCfg({ ...cfg, background: { ...cfg.background!, value: e.target.value } })
                   }
                   className="border p-1 rounded w-full"
                 />
               )}
-              {config.background?.kind !== 'color' && (
+              {cfg.background?.kind !== 'color' && (
                 <div className="space-y-1">
                   <input
                     ref={fileRef}
@@ -611,7 +611,7 @@ export default function SlideModal({
                     onChange={(e) => {
                       const f = e.target.files?.[0];
                       if (f) uploadFile(f, (url) =>
-                        setConfig({ ...config, background: { ...config.background!, value: url } })
+                        setCfg({ ...cfg, background: { ...cfg.background!, value: url } })
                       );
                     }}
                   />
@@ -624,34 +624,34 @@ export default function SlideModal({
                   </button>
                   {uploading && <Skeleton className="h-4 w-4 inline-block ml-2" />}
                   {uploadPct !== null && <span className="text-xs ml-1">{uploadPct}%</span>}
-                  {config.background?.value && (
-                    <div className="text-xs break-all">{config.background.value}</div>
+                  {cfg.background?.value && (
+                    <div className="text-xs break-all">{cfg.background.value}</div>
                   )}
                 </div>
               )}
               <label className="mt-2 flex items-center gap-2">
                 <input
                   type="checkbox"
-                  checked={config.background?.overlay || false}
+                  checked={cfg.background?.overlay || false}
                   onChange={(e) =>
-                    setConfig({
-                      ...config,
-                      background: { ...config.background!, overlay: e.target.checked },
+                    setCfg({
+                      ...cfg,
+                      background: { ...cfg.background!, overlay: e.target.checked },
                     })
                   }
                 />
                 Overlay
               </label>
-              {config.background?.overlay && (
+              {cfg.background?.overlay && (
                 <div className="flex gap-2 mt-1">
                   <input
                     type="text"
                     placeholder="#000"
-                    value={config.background?.overlayColor || ''}
+                    value={cfg.background?.overlayColor || ''}
                     onChange={(e) =>
-                      setConfig({
-                        ...config,
-                        background: { ...config.background!, overlayColor: e.target.value },
+                      setCfg({
+                        ...cfg,
+                        background: { ...cfg.background!, overlayColor: e.target.value },
                       })
                     }
                     className="border p-1 rounded flex-1"
@@ -661,12 +661,12 @@ export default function SlideModal({
                     step="0.05"
                     min="0"
                     max="0.6"
-                    value={config.background?.overlayOpacity ?? 0.25}
+                    value={cfg.background?.overlayOpacity ?? 0.25}
                     onChange={(e) =>
-                      setConfig({
-                        ...config,
+                      setCfg({
+                        ...cfg,
                         background: {
-                          ...config.background!,
+                          ...cfg.background!,
                           overlayOpacity: parseFloat(e.target.value),
                         },
                       })
@@ -677,18 +677,18 @@ export default function SlideModal({
               )}
             </div>
 
-            {config.mode === 'structured' && (
+            {cfg.mode === 'structured' && (
               <div className="border p-2 rounded mt-2">
                 <h3 className="font-medium mb-2">Group Position</h3>
                 <div className="flex items-center gap-2 mb-2">
                   <label className="text-xs">Vertical</label>
                   <select
-                    value={config.structuredGroupAlign?.v || 'center'}
+                    value={cfg.structuredGroupAlign?.v || 'center'}
                     onChange={(e) =>
-                      setConfig({
-                        ...config,
+                      setCfg({
+                        ...cfg,
                         structuredGroupAlign: {
-                          ...(config.structuredGroupAlign || { h: 'center' }),
+                          ...(cfg.structuredGroupAlign || { h: 'center' }),
                           v: e.target.value as any,
                         },
                       })
@@ -703,12 +703,12 @@ export default function SlideModal({
                 <div className="flex items-center gap-2">
                   <label className="text-xs">Horizontal</label>
                   <select
-                    value={config.structuredGroupAlign?.h || 'center'}
+                    value={cfg.structuredGroupAlign?.h || 'center'}
                     onChange={(e) =>
-                      setConfig({
-                        ...config,
+                      setCfg({
+                        ...cfg,
                         structuredGroupAlign: {
-                          ...(config.structuredGroupAlign || { v: 'center' }),
+                          ...(cfg.structuredGroupAlign || { v: 'center' }),
                           h: e.target.value as any,
                         },
                       })
@@ -1041,27 +1041,11 @@ export default function SlideModal({
                 }}
               >
                 <SlidesSection
-                  slide={{
-                    ...initial,
-                    type,
-                    title,
-                    subtitle,
-                    cta_label: ctaLabel,
-                    cta_href: ctaHref,
-                    media_url:
-                      config.background?.kind && config.background.kind !== 'color'
-                        ? config.background.value || null
-                        : null,
-                    config_json: config,
-                  }}
-                  restaurantId={restaurantId}
-                  router={{ push: () => {} }}
-                  cfg={config}
-                  setCfg={setConfig}
+                  slide={{ ...slide, type, title, subtitle, cta_label: ctaLabel, cta_href: ctaHref, media_url: cfg.background?.kind && cfg.background.kind !== 'color' ? cfg.background.value || null : null, config_json: cfg }}
+                  cfg={cfg}
+                  setCfg={setCfg}
                   editingEnabled={editInPreview}
                   showEditorDebug={showDebug}
-                  selectedId={selectedId}
-                  onSelect={select}
                   deviceFrameRef={deviceFrameRef}
                 />
               </div>
