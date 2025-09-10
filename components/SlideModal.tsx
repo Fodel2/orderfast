@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import type { CSSProperties } from 'react';
 import { DndContext, closestCenter } from '@dnd-kit/core';
 import {
@@ -11,152 +11,10 @@ import { CSS } from '@dnd-kit/utilities';
 import { supabase } from '@/utils/supabaseClient';
 import { toast } from '@/components/ui/toast';
 import Button from '@/components/ui/Button';
-import { SlideRenderer, SlideRow } from '@/components/customer/home/SlidesContainer';
+import { SlidesSection, SlideRow } from '@/components/customer/home/SlidesContainer';
 import { STORAGE_BUCKET } from '@/lib/storage';
 import Skeleton from '@/components/ui/Skeleton';
 import { ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
-
-// ---------- InteractiveBox helper ----------
-type InteractiveBoxProps = {
-  id: string;
-  selected: boolean;
-  deviceFrameRef: React.RefObject<HTMLDivElement>;
-  pos: { xPct: number; yPct: number; wPct?: number; hPct?: number; z?: number; rotateDeg?: number };
-  onChange: (next: { xPct: number; yPct: number; wPct?: number; hPct?: number; z?: number; rotateDeg?: number }) => void;
-  children: React.ReactNode;
-};
-
-function InteractiveBox({ selected, deviceFrameRef, pos, onChange, children }: InteractiveBoxProps) {
-  const startRef = React.useRef<{
-    type: 'move' | 'resize' | 'rotate';
-    x: number;
-    y: number;
-    rect: DOMRect;
-    pos: any;
-    corner?: string;
-  } | null>(null);
-  const getFrame = () => deviceFrameRef.current!;
-  const clampPct = (v: number) => Math.min(100, Math.max(0, v));
-  const pct = (px: number, total: number) => clampPct((px / total) * 100);
-
-  const onPointerDownMove = (e: React.PointerEvent) => {
-    e.preventDefault();
-    const rect = getFrame().getBoundingClientRect();
-    startRef.current = { type: 'move', x: e.clientX, y: e.clientY, rect, pos: { ...pos } };
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  };
-  const onPointerDownResize = (corner: string) => (e: React.PointerEvent) => {
-    e.preventDefault();
-    const rect = getFrame().getBoundingClientRect();
-    startRef.current = { type: 'resize', corner, x: e.clientX, y: e.clientY, rect, pos: { ...pos } };
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  };
-  const onPointerDownRotate = (e: React.PointerEvent) => {
-    e.preventDefault();
-    const rect = getFrame().getBoundingClientRect();
-    startRef.current = { type: 'rotate', x: e.clientX, y: e.clientY, rect, pos: { ...pos } };
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  };
-
-  const onPointerMove = (e: React.PointerEvent) => {
-    const s = startRef.current;
-    if (!s) return;
-    const rect = s.rect;
-    if (s.type === 'move') {
-      const dx = e.clientX - s.x;
-      const dy = e.clientY - s.y;
-      const newX = (s.pos.xPct / 100) * rect.width + dx;
-      const newY = (s.pos.yPct / 100) * rect.height + dy;
-      onChange({ ...s.pos, xPct: pct(newX, rect.width), yPct: pct(newY, rect.height) });
-    } else if (s.type === 'resize') {
-      const baseW = ((s.pos.wPct ?? 40) / 100) * rect.width;
-      const baseH = ((s.pos.hPct ?? 20) / 100) * rect.height;
-      const dx = e.clientX - s.x;
-      const dy = e.clientY - s.y;
-      let w = baseW,
-        h = baseH;
-      if (s.corner?.includes('e')) w = baseW + dx;
-      if (s.corner?.includes('w')) w = baseW - dx;
-      if (s.corner?.includes('s')) h = baseH + dy;
-      if (s.corner?.includes('n')) h = baseH - dy;
-      onChange({ ...s.pos, wPct: pct(Math.max(40, w), rect.width), hPct: pct(Math.max(20, h), rect.height) });
-    } else if (s.type === 'rotate') {
-      const cx = rect.left + (s.pos.xPct / 100) * rect.width;
-      const cy = rect.top + (s.pos.yPct / 100) * rect.height;
-      const ang = (Math.atan2(e.clientY - cy, e.clientX - cx) * 180) / Math.PI;
-      onChange({ ...s.pos, rotateDeg: Math.round(ang) });
-    }
-  };
-  const onPointerUp = (e: React.PointerEvent) => {
-    (e.target as HTMLElement).releasePointerCapture?.(e.pointerId);
-    startRef.current = null;
-  };
-
-  const boxStyle: React.CSSProperties = {
-    position: 'absolute',
-    left: `${pos.xPct}%`,
-    top: `${pos.yPct}%`,
-    transform: `translate(-50%, -50%) rotate(${pos.rotateDeg ?? 0}deg)`,
-    width: pos.wPct ? `${pos.wPct}%` : 'auto',
-    height: pos.hPct ? `${pos.hPct}%` : 'auto',
-    zIndex: pos.z ?? 1,
-    touchAction: 'none',
-  };
-  const handle: React.CSSProperties = {
-    position: 'absolute',
-    width: 10,
-    height: 10,
-    borderRadius: 9999,
-    background: '#fff',
-    border: '1px solid #111',
-  };
-
-  return (
-    <div
-      style={boxStyle}
-      onPointerDown={onPointerDownMove}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-    >
-      {children}
-      {selected && (
-        <>
-          <div
-            onPointerDown={onPointerDownRotate}
-            style={{
-              position: 'absolute',
-              left: '50%',
-              top: -24,
-              transform: 'translateX(-50%)',
-              width: 14,
-              height: 14,
-              borderRadius: 9999,
-              background: '#fff',
-              border: '1px solid #111',
-            }}
-          />
-          {[
-            ['nw', { left: -5, top: -5 }],
-            ['n', { left: '50%', top: -5, transform: 'translateX(-50%)' }],
-            ['ne', { right: -5, top: -5 }],
-            ['e', { right: -5, top: '50%', transform: 'translateY(-50%)' }],
-            ['se', { right: -5, bottom: -5 }],
-            ['s', { left: '50%', bottom: -5, transform: 'translateX(-50%)' }],
-            ['sw', { left: -5, bottom: -5 }],
-            ['w', { left: -5, top: '50%', transform: 'translateY(-50%)' }],
-          ].map(([corner, style]) => (
-            <div
-              key={corner as string}
-              onPointerDown={onPointerDownResize(corner as string)}
-              style={{ ...handle, ...(style as CSSProperties) }}
-            />
-          ))}
-        </>
-      )}
-    </div>
-  );
-}
-// ---------- end InteractiveBox ----------
 
 // slide config types
 export type SlideConfig = {
@@ -308,6 +166,7 @@ export default function SlideModal({
   const [config, setConfig] = useState<SlideConfig>(defaultConfig);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [device, setDevice] = useState<'mobile' | 'tablet' | 'desktop'>('mobile');
+  const [debugOn, setDebugOn] = useState(true);
   const [linkChoice, setLinkChoice] = useState('custom');
   const [customPages, setCustomPages] = useState<string[]>([]);
   const [template, setTemplate] = useState('');
@@ -317,11 +176,18 @@ export default function SlideModal({
   const [uploading, setUploading] = useState(false);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
   const deviceFrameRef = useRef<HTMLDivElement>(null);
+  const setCfgPositions = useCallback(
+    (id: string, next: any) =>
+      setConfig((p) => ({
+        ...p,
+        positions: { ...(p.positions || {}), [id]: next },
+      })),
+    []
+  );
   const isEdit = !!initial?.id;
   const restaurantId = initial.restaurant_id;
 
   function select(id: string | null) {
-    console.log('Select', id);
     setSelectedId(id);
   }
 
@@ -335,7 +201,6 @@ export default function SlideModal({
     setVisibleFrom(initial.visible_from || '');
     setVisibleUntil(initial.visible_until || '');
     const cfg = coerceConfig(initial.config_json);
-    console.log('SlideEditor mount', { mode: cfg.mode, blocks: cfg.blocks.length });
     setConfig(cfg);
     select(null);
   }, [open, initial]);
@@ -483,7 +348,6 @@ export default function SlideModal({
         return;
       }
     }
-    console.log({ id: initial.id, type, blocks: config.blocks.map((b) => b.type), bg: config.background?.kind });
     onSaved();
     onClose();
   }
@@ -507,7 +371,17 @@ export default function SlideModal({
       <div className="bg-white rounded p-4 w-full max-w-5xl" style={{ maxHeight: '90vh', overflow: 'auto' }}>
         <div className="flex justify-between mb-4">
           <h2 className="text-lg font-semibold">Slide Editor</h2>
-          <button onClick={onClose}>×</button>
+          <div className="flex items-center gap-3">
+            <label className="text-sm flex items-center gap-1">
+              <input
+                type="checkbox"
+                checked={debugOn}
+                onChange={(e) => setDebugOn(e.target.checked)}
+              />
+              Show debug
+            </label>
+            <button onClick={onClose}>×</button>
+          </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
@@ -1119,9 +993,18 @@ export default function SlideModal({
               </div>
               <div
                 ref={deviceFrameRef}
-                style={{ position: 'relative', width: widthMap[device], maxWidth: '100%', margin: '0 auto', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}
+                style={{
+                  position: 'relative',
+                  width: widthMap[device],
+                  maxWidth: '100%',
+                  margin: '0 auto',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: 12,
+                  overflow: 'hidden',
+                  background: '#fff',
+                }}
               >
-                <SlideRenderer
+                <SlidesSection
                   slide={{
                     ...initial,
                     type,
@@ -1137,31 +1020,13 @@ export default function SlideModal({
                   }}
                   restaurantId={restaurantId}
                   router={{ push: () => {} }}
-                  editable={true}
+                  editingEnabled={true}
+                  showEditorDebug={debugOn}
                   selectedId={selectedId}
+                  onSelect={select}
                   onTextChange={(id, text) => updateBlock(id, { text })}
-                  blockWrapper={
-                    config.mode === 'freeform'
-                      ? (b, content, pos) => (
-                          <InteractiveBox
-                            key={b.id}
-                            id={b.id}
-                            selected={selectedId === b.id}
-                            deviceFrameRef={deviceFrameRef}
-                            pos={pos}
-                            onChange={(next) => {
-                              console.log('Move/Resize/Rotate', b.id, next);
-                              setConfig((c) => ({
-                                ...c,
-                                positions: { ...c.positions, [b.id]: next },
-                              }));
-                            }}
-                          >
-                            <div onClick={() => select(b.id)}>{content}</div>
-                          </InteractiveBox>
-                        )
-                      : undefined
-                  }
+                  deviceFrameRef={deviceFrameRef}
+                  onPositionsChange={setCfgPositions}
                 />
               </div>
             </div>
