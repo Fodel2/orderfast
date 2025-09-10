@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { DndContext, closestCenter } from '@dnd-kit/core';
 import {
@@ -166,7 +166,8 @@ export default function SlideModal({
   const [config, setConfig] = useState<SlideConfig>(defaultConfig);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [device, setDevice] = useState<'mobile' | 'tablet' | 'desktop'>('mobile');
-  const [debugOn, setDebugOn] = useState(true);
+  const [editInPreview, setEditInPreview] = useState(true);
+  const [showDebug, setShowDebug] = useState(false);
   const [linkChoice, setLinkChoice] = useState('custom');
   const [customPages, setCustomPages] = useState<string[]>([]);
   const [template, setTemplate] = useState('');
@@ -176,14 +177,6 @@ export default function SlideModal({
   const [uploading, setUploading] = useState(false);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
   const deviceFrameRef = useRef<HTMLDivElement>(null);
-  const setCfgPositions = useCallback(
-    (id: string, next: any) =>
-      setConfig((p) => ({
-        ...p,
-        positions: { ...(p.positions || {}), [id]: next },
-      })),
-    []
-  );
   const isEdit = !!initial?.id;
   const restaurantId = initial.restaurant_id;
 
@@ -201,6 +194,30 @@ export default function SlideModal({
     setVisibleFrom(initial.visible_from || '');
     setVisibleUntil(initial.visible_until || '');
     const cfg = coerceConfig(initial.config_json);
+    if (!cfg.blocks || cfg.blocks.length === 0) {
+      const blocks: any[] = [];
+      const positions: Record<string, any> = {};
+      let y = 45;
+      if (initial.title) {
+        const id = crypto.randomUUID();
+        blocks.push({ id, type: 'heading', text: initial.title });
+        positions[id] = { xPct: 50, yPct: y, rotateDeg: 0 };
+        y += 10;
+      }
+      if (initial.subtitle) {
+        const id = crypto.randomUUID();
+        blocks.push({ id, type: 'subheading', text: initial.subtitle });
+        positions[id] = { xPct: 50, yPct: y, rotateDeg: 0 };
+        y += 10;
+      }
+      if (initial.cta_label) {
+        const id = crypto.randomUUID();
+        blocks.push({ id, type: 'button', text: initial.cta_label, href: initial.cta_href || '/menu' });
+        positions[id] = { xPct: 50, yPct: y, rotateDeg: 0 };
+      }
+      cfg.blocks = blocks;
+      cfg.positions = { ...(cfg.positions || {}), ...positions };
+    }
     setConfig(cfg);
     select(null);
   }, [open, initial]);
@@ -375,8 +392,16 @@ export default function SlideModal({
             <label className="text-sm flex items-center gap-1">
               <input
                 type="checkbox"
-                checked={debugOn}
-                onChange={(e) => setDebugOn(e.target.checked)}
+                checked={editInPreview}
+                onChange={(e) => setEditInPreview(e.target.checked)}
+              />
+              Edit in preview
+            </label>
+            <label className="text-sm flex items-center gap-1">
+              <input
+                type="checkbox"
+                checked={showDebug}
+                onChange={(e) => setShowDebug(e.target.checked)}
               />
               Show debug
             </label>
@@ -1020,13 +1045,13 @@ export default function SlideModal({
                   }}
                   restaurantId={restaurantId}
                   router={{ push: () => {} }}
-                  editingEnabled={true}
-                  showEditorDebug={debugOn}
+                  cfg={config}
+                  setCfg={setConfig}
+                  editingEnabled={editInPreview}
+                  showEditorDebug={showDebug}
                   selectedId={selectedId}
                   onSelect={select}
-                  onTextChange={(id, text) => updateBlock(id, { text })}
                   deviceFrameRef={deviceFrameRef}
-                  onPositionsChange={setCfgPositions}
                 />
               </div>
             </div>

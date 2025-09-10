@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useState, useRef, type CSSProperties, type ReactNode, type Dispatch, type SetStateAction } from 'react';
 import { useRouter } from 'next/router';
 import Image from 'next/image';
 import Button from '@/components/ui/Button';
@@ -101,7 +101,7 @@ function InteractiveBox({ selected, debug, deviceFrameRef, pos, onChange, childr
     transform: `translate(-50%, -50%) rotate(${pos.rotateDeg ?? 0}deg)`,
     width: pos.wPct ? `${pos.wPct}%` : 'auto',
     height: pos.hPct ? `${pos.hPct}%` : 'auto',
-    zIndex: pos.z ?? 1,
+    zIndex: pos.z || 3,
     touchAction: 'none',
     boxShadow: dragging ? '0 0 0 3px rgba(99,102,241,.45)' : undefined,
     opacity: dragging ? 0.95 : undefined,
@@ -231,24 +231,24 @@ export function SlidesSection({
   slide,
   restaurantId,
   router,
+  cfg: cfgProp,
+  setCfg,
   editingEnabled = false,
   showEditorDebug = false,
   selectedId,
   onSelect,
-  onTextChange,
   deviceFrameRef,
-  onPositionsChange,
 }: {
   slide: SlideRow;
   restaurantId: string;
   router: any;
+  cfg?: SlideConfig;
+  setCfg?: Dispatch<SetStateAction<SlideConfig>>;
   editingEnabled?: boolean;
   showEditorDebug?: boolean;
   selectedId?: string | null;
   onSelect?: (id: string) => void;
-  onTextChange?: (id: string, text: string) => void;
   deviceFrameRef?: React.RefObject<HTMLDivElement>;
-  onPositionsChange?: (id: string, next: any) => void;
 }) {
   function coerceConfig(raw: any): SlideConfig {
     const cfg = raw && typeof raw === 'object' ? raw : {};
@@ -258,17 +258,22 @@ export function SlidesSection({
     if (!cfg.positions) cfg.positions = {};
     return cfg as SlideConfig;
   }
-  const cfg = coerceConfig(slide.config_json);
+  const cfg = coerceConfig(cfgProp ?? slide.config_json);
   const editable = editingEnabled;
+  const updateBlock = (id: string, patch: any) =>
+    setCfg?.((p) => ({
+      ...p,
+      blocks: p.blocks.map((b: any) => (b.id === id ? { ...b, ...patch } : b)),
+    }));
   const bg = cfg.background;
   const style: CSSProperties = {
+    position: 'relative',
     minHeight: '100vh',
     height: '100dvh',
     scrollSnapAlign: 'start',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'relative',
   };
   if (bg?.kind === 'color' && bg.value) {
     style.backgroundColor = bg.value;
@@ -294,6 +299,7 @@ export function SlidesSection({
           height: '100%',
           objectFit: bg.fit || 'cover',
           pointerEvents: 'none',
+          zIndex: 0,
         }}
       />
     );
@@ -306,6 +312,7 @@ export function SlidesSection({
         background: bg.overlayColor || '#000',
         opacity: bg.overlayOpacity ?? 0.25,
         pointerEvents: 'none',
+        zIndex: 0,
       }}
     />
   ) : null;
@@ -340,7 +347,7 @@ export function SlidesSection({
                 contentEditable: true,
                 suppressContentEditableWarning: true,
                 onInput: (e: any) =>
-                  onTextChange?.(b.id, e.currentTarget.textContent || ''),
+                  updateBlock(b.id, { text: e.currentTarget.textContent || '' }),
               }
             : {};
         return (
@@ -376,7 +383,7 @@ export function SlidesSection({
                 contentEditable: true,
                 suppressContentEditableWarning: true,
                 onInput: (e: any) =>
-                  onTextChange?.(b.id, e.currentTarget.textContent || ''),
+                  updateBlock(b.id, { text: e.currentTarget.textContent || '' }),
               }
             : {};
         return (
@@ -426,7 +433,7 @@ export function SlidesSection({
                 contentEditable: true,
                 suppressContentEditableWarning: true,
                 onInput: (e: any) =>
-                  onTextChange?.(b.id, e.currentTarget.textContent || ''),
+                  updateBlock(b.id, { text: e.currentTarget.textContent || '' }),
               }
             : {};
         return (
@@ -476,14 +483,23 @@ export function SlidesSection({
             debug={!!showEditorDebug}
             deviceFrameRef={deviceFrameRef!}
             pos={{ xPct: pos.xPct, yPct: pos.yPct, wPct: pos.wPct, hPct: pos.hPct, z: pos.z, rotateDeg: rot }}
-            onChange={(next) => onPositionsChange?.(b.id, next)}
+            onChange={(next) =>
+              setCfg?.((p) => ({
+                ...p,
+                positions: { ...(p.positions || {}), [b.id]: next },
+              }))
+            }
           >
             <div onClick={() => onSelect?.(b.id)}>{content}</div>
           </InteractiveBox>
         );
       }
       return (
-        <div key={b.id} style={style} onClick={() => onSelect?.(b.id)}>
+        <div
+          key={b.id}
+          style={style}
+          onClick={editingEnabled ? () => onSelect?.(b.id) : undefined}
+        >
           {content}
         </div>
       );
@@ -499,14 +515,19 @@ export function SlidesSection({
           debug={!!showEditorDebug}
           deviceFrameRef={deviceFrameRef!}
           pos={pos}
-          onChange={(next) => onPositionsChange?.(b.id, next)}
+          onChange={(next) =>
+            setCfg?.((p) => ({
+              ...p,
+              positions: { ...(p.positions || {}), [b.id]: next },
+            }))
+          }
         >
           <div onClick={() => onSelect?.(b.id)}>{inner}</div>
         </InteractiveBox>
       );
     }
     return (
-      <div key={b.id} onClick={() => onSelect?.(b.id)}>
+      <div key={b.id} onClick={editingEnabled ? () => onSelect?.(b.id) : undefined}>
         {inner}
       </div>
     );
@@ -526,7 +547,7 @@ export function SlidesSection({
     } else {
       content = cfg.blocks.map((b) => renderBlock(b));
     }
-  } else {
+  } else if (!editingEnabled) {
     const href =
       slide.cta_href || `/restaurant/menu?restaurant_id=${restaurantId}`;
     content = (
@@ -538,17 +559,20 @@ export function SlidesSection({
         )}
       </>
     );
+  } else {
+    content = null;
   }
 
   const groupAlign = cfg.structuredGroupAlign || { v: 'center', h: 'center' };
   const wrapperStyle: CSSProperties =
     cfg.mode === 'freeform'
-      ? { position: 'relative', zIndex: 1, width: '100%', height: '100%' }
+      ? { position: 'relative', zIndex: 2, width: '100%', height: '100%', pointerEvents: 'auto' }
       : {
           position: 'relative',
-          zIndex: 1,
+          zIndex: 2,
           width: '100%',
           height: '100%',
+          pointerEvents: 'auto',
           display: 'flex',
           flexDirection: 'column',
           justifyContent:
@@ -569,7 +593,7 @@ export function SlidesSection({
 
   return (
     <section style={style} className="w-full text-center p-4">
-      {editingEnabled && (
+      {editingEnabled && showEditorDebug && (
         <div
           style={{
             position: 'absolute',
