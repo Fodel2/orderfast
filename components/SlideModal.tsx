@@ -148,14 +148,14 @@ function SortableBlock({ block, onSelect, selected, onDelete, onMove, index, las
 
 export default function SlideModal({
   slide,
-  cfg: initialCfg,
+  initialCfg,
   onClose,
   onSave,
 }: {
   slide: SlideRow;
-  cfg: SlideConfig;
+  initialCfg: SlideConfig;
   onClose: () => void;
-  onSave: () => void;
+  onSave: (cfg: SlideConfig) => void;
 }) {
   const [drawerOpen, setDrawerOpen] = useState(true);
   const [inspectorOpen, setInspectorOpen] = useState(true);
@@ -381,7 +381,7 @@ export default function SlideModal({
         return;
       }
     }
-    onSave();
+    onSave(cfg);
     onClose();
   }
 

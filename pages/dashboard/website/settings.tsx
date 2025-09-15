@@ -449,9 +449,9 @@ export default function WebsitePage() {
           {editingSlide && (
             <SlideModal
               slide={editingSlide}
-              cfg={editingSlide.config_json}
+              initialCfg={editingSlide.config_json}
               onClose={() => setEditingSlide(null)}
-              onSave={() => {
+              onSave={(newCfg) => {
                 setEditingSlide(null);
                 setRefreshSlides((k) => k + 1);
               }}
