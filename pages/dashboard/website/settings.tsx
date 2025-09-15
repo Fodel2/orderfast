@@ -451,7 +451,13 @@ export default function WebsitePage() {
               slide={editingSlide}
               initialCfg={editingSlide.config_json}
               onClose={() => setEditingSlide(null)}
-              onSave={(newCfg) => {
+              onSave={async (newCfg) => {
+                if (!restaurantId || !editingSlide?.id) return;
+                await supabase
+                  .from('restaurant_slides')
+                  .update({ config_json: newCfg })
+                  .eq('id', editingSlide.id)
+                  .eq('restaurant_id', restaurantId);
                 setEditingSlide(null);
                 setRefreshSlides((k) => k + 1);
               }}

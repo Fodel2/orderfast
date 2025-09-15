@@ -331,56 +331,6 @@ export default function SlideModal({
   }
 
   async function handleSave() {
-    if (visibleFrom && visibleUntil && visibleUntil < visibleFrom) {
-      toast.error('Visible Until must be after Visible From');
-      return;
-    }
-    const payload: Partial<SlideRow> = {
-      restaurant_id: restaurantId,
-      type,
-      title,
-      subtitle,
-      cta_label: ctaLabel,
-      cta_href: ctaHref,
-      visible_from: visibleFrom || null,
-      visible_until: visibleUntil || null,
-      media_url:
-        cfg.background?.kind && cfg.background.kind !== 'color'
-          ? cfg.background.value || null
-          : null,
-      config_json: cfg,
-    };
-    if (isEdit) {
-      const { error } = await supabase
-        .from('restaurant_slides')
-        .update(payload)
-        .eq('id', slide.id!)
-        .eq('restaurant_id', restaurantId);
-      if (error) {
-        toast.error('Failed to save');
-        return;
-      }
-    } else {
-      const { data: max, error: maxErr } = await supabase
-        .from('restaurant_slides')
-        .select('sort_order')
-        .eq('restaurant_id', restaurantId)
-        .order('sort_order', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (maxErr) {
-        toast.error('Failed');
-        return;
-      }
-      const sort_order = (max?.sort_order ?? -1) + 1;
-      const { error } = await supabase
-        .from('restaurant_slides')
-        .insert({ ...payload, sort_order });
-      if (error) {
-        toast.error('Failed to create');
-        return;
-      }
-    }
     onSave(cfg);
     onClose();
   }
