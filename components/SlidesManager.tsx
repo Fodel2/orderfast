@@ -52,15 +52,26 @@ export type SlideBlock = {
   fit?: 'cover' | 'contain';
   author?: string;
   height?: number;
+  locked?: boolean;
+};
+
+export type SlideBackground = {
+  type: 'none' | 'color' | 'image' | 'video';
+  color?: string;
+  opacity?: number;
+  url?: string;
+  fit?: 'cover' | 'contain';
+  focal?: { x: number; y: number };
+  overlay?: { color: string; opacity: number };
+  blur?: number;
+  poster?: string;
+  loop?: boolean;
+  mute?: boolean;
+  autoplay?: boolean;
 };
 
 export type SlideCfg = {
-  background?: {
-    type: 'color' | 'image' | 'video';
-    color?: string;
-    url?: string;
-    overlay?: { color: string; opacity: number };
-  };
+  background?: SlideBackground;
   blocks: SlideBlock[];
 };
 
@@ -73,11 +84,13 @@ type SlidesManagerProps = {
   onChange: (cfg: SlideCfg, options?: SlidesManagerChangeOptions) => void;
   editable: boolean;
   selectedId?: string | null;
-  onSelect?: (id: string | null) => void;
+  onSelectBlock?: (id: string | null) => void;
+  openInspector?: () => void;
+  onCanvasClick?: () => void;
   activeDevice?: DeviceKind;
   editInPreview?: boolean;
   scale?: number;
-  onDraggingChange?: (dragging: boolean) => void;
+  onManipulationChange?: (manipulating: boolean) => void;
 };
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
@@ -94,17 +107,17 @@ export default function SlidesManager({
   onChange,
   editable,
   selectedId,
-  onSelect,
+  onSelectBlock,
+  openInspector,
+  onCanvasClick,
   activeDevice = 'desktop',
   editInPreview = true,
   scale = 1,
-  onDraggingChange,
+  onManipulationChange,
 }: SlidesManagerProps) {
   const frameRef = useRef<HTMLDivElement>(null);
   const cfg = useMemo(() => initialCfg, [initialCfg]);
   const deviceSize = DEVICE_DIMENSIONS[activeDevice] ?? DEVICE_DIMENSIONS.desktop;
-  const scaledWidth = deviceSize.width * scale;
-  const scaledHeight = deviceSize.height * scale;
 
   const handleFrameChange = (blockId: string, frame: Frame, options?: SlidesManagerChangeOptions) => {
     const next: SlideCfg = {
@@ -223,27 +236,29 @@ export default function SlidesManager({
     }
   };
 
+  const clampedScale = Math.min(Math.max(scale || 1, 0.05), 1);
+
   return (
-    <div
-      className="relative"
-      style={{ width: scaledWidth, height: scaledHeight }}
-    >
+    <div className="flex h-full w-full items-start justify-center overflow-hidden">
       <div
-        className="absolute left-1/2 top-0"
+        className="relative"
         style={{
-          transform: `translateX(-50%) scale(${scale})`,
+          width: deviceSize.width,
+          height: deviceSize.height,
+          transform: `scale(${clampedScale})`,
           transformOrigin: 'top center',
+          margin: '0 auto',
         }}
       >
         <div
           ref={frameRef}
           className="relative overflow-hidden rounded-2xl bg-white shadow-xl"
-          style={{
-            width: deviceSize.width,
-            height: deviceSize.height,
-          }}
+          style={{ width: deviceSize.width, height: deviceSize.height }}
           onClick={() => {
-            if (editable && editInPreview) onSelect?.(null);
+            if (editable && editInPreview) {
+              onSelectBlock?.(null);
+              onCanvasClick?.();
+            }
           }}
         >
           <SlideBackground cfg={cfg} />
@@ -253,6 +268,7 @@ export default function SlidesManager({
           >
             {cfg.blocks.map((block) => {
               const frame = ensureFrame(block, activeDevice);
+              const locked = Boolean(block.locked);
               return (
                 <InteractiveBox
                   key={block.id}
@@ -261,10 +277,15 @@ export default function SlidesManager({
                   containerRef={frameRef}
                   selected={selectedId === block.id}
                   editable={editable && editInPreview}
-                  onSelect={() => onSelect?.(block.id)}
+                  onSelect={() => onSelectBlock?.(block.id)}
+                  onTap={() => {
+                    onSelectBlock?.(block.id);
+                    openInspector?.();
+                  }}
                   onChange={(nextFrame, opts) => handleFrameChange(block.id, nextFrame, opts)}
-                  scale={scale}
-                  onDraggingChange={onDraggingChange}
+                  scale={clampedScale}
+                  locked={locked}
+                  onManipulationChange={onManipulationChange}
                 >
                   {renderBlockContent(block)}
                 </InteractiveBox>
@@ -284,20 +305,29 @@ type InteractiveBoxProps = {
   selected: boolean;
   editable: boolean;
   onSelect: () => void;
+  onTap: () => void;
   onChange: (frame: Frame, options?: SlidesManagerChangeOptions) => void;
   children: ReactNode;
   scale: number;
-  onDraggingChange?: (dragging: boolean) => void;
+  locked?: boolean;
+  onManipulationChange?: (manipulating: boolean) => void;
 };
 
 type PointerState = {
   type: 'move' | 'resize' | 'rotate';
   startX: number;
   startY: number;
+  startTime: number;
   startFrame: Frame;
   corner?: string;
   scale: number;
+  moved: boolean;
+  hasManipulated: boolean;
+  locked: boolean;
 };
+
+const TAP_MAX_MOVEMENT = 4;
+const TAP_MAX_DURATION = 300;
 
 function InteractiveBox({
   frame,
@@ -305,10 +335,12 @@ function InteractiveBox({
   selected,
   editable,
   onSelect,
+  onTap,
   onChange,
   children,
   scale,
-  onDraggingChange,
+  locked = false,
+  onManipulationChange,
 }: InteractiveBoxProps) {
   const localRef = useRef<HTMLDivElement>(null);
   const pointerState = useRef<PointerState | null>(null);
@@ -320,17 +352,29 @@ function InteractiveBox({
     e.stopPropagation();
     const rect = getContainerRect();
     if (!rect) return;
-    pointerState.current = {
+    if (locked && type !== 'move') {
+      onSelect();
+      return;
+    }
+    const state: PointerState = {
       type,
       startX: e.clientX,
       startY: e.clientY,
+      startTime: performance.now(),
       startFrame: { ...frame },
       corner,
       scale,
+      moved: false,
+      hasManipulated: false,
+      locked,
     };
+    if (type === 'rotate' && !locked) {
+      state.hasManipulated = true;
+      onManipulationChange?.(true);
+    }
+    pointerState.current = state;
     localRef.current?.setPointerCapture?.(e.pointerId);
     onSelect();
-    onDraggingChange?.(true);
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
@@ -339,12 +383,26 @@ function InteractiveBox({
     if (!ps) return;
     const rect = getContainerRect();
     if (!rect) return;
-    const width = rect.width / (ps.scale || 1);
-    const height = rect.height / (ps.scale || 1);
-    const deltaX = (e.clientX - ps.startX) / (ps.scale || 1);
-    const deltaY = (e.clientY - ps.startY) / (ps.scale || 1);
-    const dx = (deltaX / width) * 100;
-    const dy = (deltaY / height) * 100;
+    const deltaX = e.clientX - ps.startX;
+    const deltaY = e.clientY - ps.startY;
+    const distance = Math.max(Math.abs(deltaX), Math.abs(deltaY));
+    if (distance > TAP_MAX_MOVEMENT) {
+      ps.moved = true;
+    }
+    if (ps.locked) return;
+    const effectiveScale = ps.scale || 1;
+    const width = rect.width / effectiveScale;
+    const height = rect.height / effectiveScale;
+    const scaledX = deltaX / effectiveScale;
+    const scaledY = deltaY / effectiveScale;
+    const dx = (scaledX / width) * 100;
+    const dy = (scaledY / height) * 100;
+
+    if ((ps.type === 'move' || ps.type === 'resize') && !ps.hasManipulated && distance > TAP_MAX_MOVEMENT) {
+      ps.hasManipulated = true;
+      onManipulationChange?.(true);
+    }
+
     if (ps.type === 'move') {
       const next: Frame = {
         ...ps.startFrame,
@@ -363,20 +421,24 @@ function InteractiveBox({
       }
       if (ps.corner?.includes('w')) {
         const newX = clamp(ps.startFrame.x + dx, 0, ps.startFrame.x + ps.startFrame.w - min);
-        const deltaX = ps.startFrame.x - newX;
+        const delta = ps.startFrame.x - newX;
         next.x = newX;
-        next.w = clamp(ps.startFrame.w + deltaX, min, 100 - newX);
+        next.w = clamp(ps.startFrame.w + delta, min, 100 - newX);
       }
       if (ps.corner?.includes('n')) {
         const newY = clamp(ps.startFrame.y + dy, 0, ps.startFrame.y + ps.startFrame.h - min);
-        const deltaY = ps.startFrame.y - newY;
+        const delta = ps.startFrame.y - newY;
         next.y = newY;
-        next.h = clamp(ps.startFrame.h + deltaY, min, 100 - newY);
+        next.h = clamp(ps.startFrame.h + delta, min, 100 - newY);
       }
       onChange(next, { commit: false });
     } else if (ps.type === 'rotate') {
       const el = localRef.current;
       if (!el) return;
+      if (!ps.hasManipulated) {
+        ps.hasManipulated = true;
+        onManipulationChange?.(true);
+      }
       const box = el.getBoundingClientRect();
       const cx = box.left + box.width / 2;
       const cy = box.top + box.height / 2;
@@ -386,21 +448,42 @@ function InteractiveBox({
     }
   };
 
-  const handlePointerUp = (e: React.PointerEvent) => {
+  const handlePointerEnd = (e: React.PointerEvent) => {
     if (!editable) return;
     const ps = pointerState.current;
     if (!ps) return;
     pointerState.current = null;
     localRef.current?.releasePointerCapture?.(e.pointerId);
-    onChange(frame, { commit: true });
-    onDraggingChange?.(false);
+    const duration = performance.now() - ps.startTime;
+    const deltaX = e.clientX - ps.startX;
+    const deltaY = e.clientY - ps.startY;
+    const distance = Math.max(Math.abs(deltaX), Math.abs(deltaY));
+    const isTap =
+      ps.type === 'move' &&
+      !ps.hasManipulated &&
+      distance < TAP_MAX_MOVEMENT &&
+      duration < TAP_MAX_DURATION;
+
+    if (ps.hasManipulated && !ps.locked) {
+      onChange(frame, { commit: true });
+    } else if (isTap) {
+      onTap();
+    }
+
+    if (ps.hasManipulated) {
+      onManipulationChange?.(false);
+    }
   };
 
   const handlePointerCancel = (e: React.PointerEvent) => {
     if (!editable) return;
+    const ps = pointerState.current;
+    if (!ps) return;
     pointerState.current = null;
     localRef.current?.releasePointerCapture?.(e.pointerId);
-    onDraggingChange?.(false);
+    if (ps.hasManipulated) {
+      onManipulationChange?.(false);
+    }
   };
 
   const style: CSSProperties = {
@@ -414,7 +497,7 @@ function InteractiveBox({
     border: selected && editable ? '1px dashed rgba(56,189,248,0.8)' : undefined,
     borderRadius: 8,
     touchAction: 'none',
-    cursor: editable ? 'move' : 'default',
+    cursor: editable && !locked ? 'move' : 'default',
   };
 
   return (
@@ -423,7 +506,7 @@ function InteractiveBox({
       style={style}
       onPointerDown={handlePointerDown('move')}
       onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
+      onPointerUp={handlePointerEnd}
       onPointerCancel={handlePointerCancel}
       onClick={(e) => {
         if (!editable) return;
@@ -467,13 +550,14 @@ function InteractiveBox({
 
 function SlideBackground({ cfg }: { cfg: SlideCfg }) {
   const bg = cfg.background;
-  if (!bg) return null;
+  if (!bg || bg.type === 'none') return null;
   if (bg.type === 'color') {
+    const opacity = typeof bg.opacity === 'number' ? clamp(bg.opacity, 0, 1) : 1;
     return (
       <>
         <div
           className="absolute inset-0"
-          style={{ background: bg.color || '#111', pointerEvents: 'none' }}
+          style={{ background: bg.color || '#111', opacity, pointerEvents: 'none' }}
         />
         {bg.overlay && (
           <div
@@ -489,14 +573,18 @@ function SlideBackground({ cfg }: { cfg: SlideCfg }) {
     );
   }
   if (bg.type === 'image') {
+    const focalX = clamp(bg.focal?.x ?? 0.5, 0, 1);
+    const focalY = clamp(bg.focal?.y ?? 0.5, 0, 1);
+    const blur = typeof bg.blur === 'number' ? clamp(bg.blur, 0, 12) : 0;
     return (
       <>
         <div
           className="absolute inset-0"
           style={{
             backgroundImage: bg.url ? `url(${bg.url})` : undefined,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
+            backgroundSize: bg.fit || 'cover',
+            backgroundPosition: `${(focalX * 100).toFixed(2)}% ${(focalY * 100).toFixed(2)}%`,
+            filter: blur ? `blur(${blur}px)` : undefined,
             pointerEvents: 'none',
           }}
         />
@@ -514,15 +602,24 @@ function SlideBackground({ cfg }: { cfg: SlideCfg }) {
     );
   }
   if (bg.type === 'video' && bg.url) {
+    const focalX = clamp(bg.focal?.x ?? 0.5, 0, 1);
+    const focalY = clamp(bg.focal?.y ?? 0.5, 0, 1);
+    const blur = typeof bg.blur === 'number' ? clamp(bg.blur, 0, 12) : 0;
     return (
       <>
         <video
           src={bg.url}
-          autoPlay
-          loop
-          muted
+          poster={bg.poster}
+          loop={bg.loop ?? true}
+          muted={bg.mute ?? true}
+          autoPlay={bg.autoplay ?? true}
           playsInline
           className="absolute inset-0 h-full w-full object-cover"
+          style={{
+            objectFit: bg.fit || 'cover',
+            objectPosition: `${(focalX * 100).toFixed(2)}% ${(focalY * 100).toFixed(2)}%`,
+            filter: blur ? `blur(${blur}px)` : undefined,
+          }}
         />
         {bg.overlay && (
           <div
