@@ -23,6 +23,12 @@ import type { SlideRow } from '@/components/customer/home/SlidesContainer';
 
 export type DeviceKind = 'mobile' | 'tablet' | 'desktop';
 
+export const DEVICE_DIMENSIONS: Record<DeviceKind, { width: number; height: number }> = {
+  mobile: { width: 390, height: 844 },
+  tablet: { width: 834, height: 1112 },
+  desktop: { width: 1280, height: 800 },
+};
+
 export type Frame = {
   x: number;
   y: number;
@@ -70,12 +76,8 @@ type SlidesManagerProps = {
   onSelect?: (id: string | null) => void;
   activeDevice?: DeviceKind;
   editInPreview?: boolean;
-};
-
-const DEVICE_SIZES: Record<DeviceKind, number> = {
-  mobile: 375,
-  tablet: 768,
-  desktop: 1280,
+  scale?: number;
+  onDraggingChange?: (dragging: boolean) => void;
 };
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
@@ -95,10 +97,14 @@ export default function SlidesManager({
   onSelect,
   activeDevice = 'desktop',
   editInPreview = true,
+  scale = 1,
+  onDraggingChange,
 }: SlidesManagerProps) {
   const frameRef = useRef<HTMLDivElement>(null);
   const cfg = useMemo(() => initialCfg, [initialCfg]);
-  const width = DEVICE_SIZES[activeDevice] ?? DEVICE_SIZES.desktop;
+  const deviceSize = DEVICE_DIMENSIONS[activeDevice] ?? DEVICE_DIMENSIONS.desktop;
+  const scaledWidth = deviceSize.width * scale;
+  const scaledHeight = deviceSize.height * scale;
 
   const handleFrameChange = (blockId: string, frame: Frame, options?: SlidesManagerChangeOptions) => {
     const next: SlideCfg = {
@@ -218,21 +224,33 @@ export default function SlidesManager({
   };
 
   return (
-    <div className="flex-1 overflow-auto bg-neutral-50">
-      <div className="flex justify-center p-6">
+    <div
+      className="relative"
+      style={{ width: scaledWidth, height: scaledHeight }}
+    >
+      <div
+        className="absolute left-1/2 top-0"
+        style={{
+          transform: `translateX(-50%) scale(${scale})`,
+          transformOrigin: 'top center',
+        }}
+      >
         <div
           ref={frameRef}
-          className="relative bg-white shadow-xl rounded-2xl overflow-hidden"
+          className="relative overflow-hidden rounded-2xl bg-white shadow-xl"
           style={{
-            width,
-            maxWidth: '100%',
-            height: '100dvh',
-            minHeight: '100dvh',
+            width: deviceSize.width,
+            height: deviceSize.height,
           }}
-          onClick={() => onSelect?.(null)}
+          onClick={() => {
+            if (editable && editInPreview) onSelect?.(null);
+          }}
         >
           <SlideBackground cfg={cfg} />
-          <div className="absolute inset-0" style={{ pointerEvents: editable && editInPreview ? 'auto' : 'none' }}>
+          <div
+            className="absolute inset-0"
+            style={{ pointerEvents: editable && editInPreview ? 'auto' : 'none' }}
+          >
             {cfg.blocks.map((block) => {
               const frame = ensureFrame(block, activeDevice);
               return (
@@ -245,6 +263,8 @@ export default function SlidesManager({
                   editable={editable && editInPreview}
                   onSelect={() => onSelect?.(block.id)}
                   onChange={(nextFrame, opts) => handleFrameChange(block.id, nextFrame, opts)}
+                  scale={scale}
+                  onDraggingChange={onDraggingChange}
                 >
                   {renderBlockContent(block)}
                 </InteractiveBox>
@@ -266,6 +286,8 @@ type InteractiveBoxProps = {
   onSelect: () => void;
   onChange: (frame: Frame, options?: SlidesManagerChangeOptions) => void;
   children: ReactNode;
+  scale: number;
+  onDraggingChange?: (dragging: boolean) => void;
 };
 
 type PointerState = {
@@ -274,6 +296,7 @@ type PointerState = {
   startY: number;
   startFrame: Frame;
   corner?: string;
+  scale: number;
 };
 
 function InteractiveBox({
@@ -284,6 +307,8 @@ function InteractiveBox({
   onSelect,
   onChange,
   children,
+  scale,
+  onDraggingChange,
 }: InteractiveBoxProps) {
   const localRef = useRef<HTMLDivElement>(null);
   const pointerState = useRef<PointerState | null>(null);
@@ -301,9 +326,11 @@ function InteractiveBox({
       startY: e.clientY,
       startFrame: { ...frame },
       corner,
+      scale,
     };
     localRef.current?.setPointerCapture?.(e.pointerId);
     onSelect();
+    onDraggingChange?.(true);
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
@@ -312,8 +339,12 @@ function InteractiveBox({
     if (!ps) return;
     const rect = getContainerRect();
     if (!rect) return;
-    const dx = ((e.clientX - ps.startX) / rect.width) * 100;
-    const dy = ((e.clientY - ps.startY) / rect.height) * 100;
+    const width = rect.width / (ps.scale || 1);
+    const height = rect.height / (ps.scale || 1);
+    const deltaX = (e.clientX - ps.startX) / (ps.scale || 1);
+    const deltaY = (e.clientY - ps.startY) / (ps.scale || 1);
+    const dx = (deltaX / width) * 100;
+    const dy = (deltaY / height) * 100;
     if (ps.type === 'move') {
       const next: Frame = {
         ...ps.startFrame,
@@ -362,6 +393,14 @@ function InteractiveBox({
     pointerState.current = null;
     localRef.current?.releasePointerCapture?.(e.pointerId);
     onChange(frame, { commit: true });
+    onDraggingChange?.(false);
+  };
+
+  const handlePointerCancel = (e: React.PointerEvent) => {
+    if (!editable) return;
+    pointerState.current = null;
+    localRef.current?.releasePointerCapture?.(e.pointerId);
+    onDraggingChange?.(false);
   };
 
   const style: CSSProperties = {
@@ -385,6 +424,7 @@ function InteractiveBox({
       onPointerDown={handlePointerDown('move')}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
       onClick={(e) => {
         if (!editable) return;
         e.stopPropagation();
