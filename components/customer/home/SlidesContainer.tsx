@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import SlidesSection from '@/components/SlidesSection';
 import resolveRestaurantId from '@/lib/resolveRestaurantId';
 import { supabase } from '@/lib/supabaseClient';
-import type { SlideConfig } from '@/components/SlideModal';
+import type { SlideCfg } from '@/components/SlideModal';
 
 export interface SlideRow {
   id?: string;
@@ -46,16 +46,32 @@ export default function SlidesContainer() {
   return (
     <div className="snap-y snap-mandatory" style={{ scrollSnapType: 'y mandatory' }}>
       {slides.map((s) => {
-        const cfg: SlideConfig = coerceConfig(s.config_json);
-        return <SlidesSection key={s.id} slide={s} cfg={cfg} setCfg={() => {}} />;
+        const cfg: SlideCfg = coerceConfig(s.config_json, s);
+        return <SlidesSection key={s.id} slide={s} cfg={cfg} />;
       })}
     </div>
   );
 }
 
-function coerceConfig(raw: any): SlideConfig {
-  const cfg = raw && typeof raw === 'object' ? raw : {};
-  if (!cfg.background) cfg.background = { kind: 'color', value: '#111', overlay: false };
-  if (!Array.isArray(cfg.blocks)) cfg.blocks = [];
-  return cfg as SlideConfig;
+function coerceConfig(raw: any, slide: SlideRow): SlideCfg {
+  const source = raw && typeof raw === 'object' ? raw : {};
+  const background = source.background?.type ? source.background : normalizeLegacyBackground(source.background);
+  const blocks = Array.isArray(source.blocks) ? source.blocks : Array.isArray(slide.config_json?.blocks) ? slide.config_json.blocks : [];
+  return {
+    background: background ?? { type: 'color', color: '#111' },
+    blocks,
+  } as SlideCfg;
+}
+
+function normalizeLegacyBackground(raw: any) {
+  if (!raw) return { type: 'color', color: '#111', overlay: { color: '#000', opacity: 0.25 } };
+  if (raw.type === 'color' || raw.type === 'image' || raw.type === 'video') return raw;
+  if (raw.kind === 'image' || raw.kind === 'video') {
+    return {
+      type: raw.kind,
+      url: raw.value,
+      overlay: raw.overlay ? { color: raw.overlayColor || '#000', opacity: raw.overlayOpacity ?? 0.25 } : undefined,
+    };
+  }
+  return { type: 'color', color: raw.value || '#111' };
 }
