@@ -9,6 +9,7 @@ import SlidesManager, {
   DEVICE_DIMENSIONS,
   type DeviceKind,
   type Frame,
+  type SlideBackground,
   type SlideBlock,
   type SlideCfg,
   type SlidesManagerChangeOptions,
@@ -39,8 +40,8 @@ const TEXT_SIZES: { value: NonNullable<SlideBlock["size"]>; label: string }[] =
     { value: "xl", label: "Extra large" },
   ];
 
-const PREVIEW_PADDING_X = 32;
-const PREVIEW_PADDING_Y = 24;
+const PREVIEW_PADDING_X = 16;
+const PREVIEW_PADDING_Y = 16;
 
 const cloneCfg = (cfg: SlideCfg): SlideCfg => JSON.parse(JSON.stringify(cfg));
 
@@ -48,6 +49,7 @@ function defaultBackground(): SlideCfg["background"] {
   return {
     type: "color",
     color: "#111",
+    opacity: 1,
     overlay: { color: "#000", opacity: 0.25 },
   };
 }
@@ -55,6 +57,16 @@ function defaultBackground(): SlideCfg["background"] {
 function clampPct(v: number) {
   if (Number.isNaN(v)) return 0;
   return Math.min(100, Math.max(0, v));
+}
+
+function clamp01(v: number) {
+  if (Number.isNaN(v)) return 0;
+  return Math.min(1, Math.max(0, v));
+}
+
+function clampRange(v: number, min: number, max: number) {
+  if (Number.isNaN(v)) return min;
+  return Math.min(max, Math.max(min, v));
 }
 
 function getDefaultFrame(kind: SlideBlock["kind"]): Frame {
@@ -79,39 +91,137 @@ function convertLegacyFrame(pos: any): Frame {
 }
 
 function normalizeBackground(raw: any): SlideCfg["background"] {
+  if (raw === null) return { type: "none" };
   if (!raw) return defaultBackground();
-  if (raw.type === "color" || raw.type === "image" || raw.type === "video") {
-    return {
-      type: raw.type,
-      color: raw.color,
-      url: raw.url,
-      overlay: raw.overlay
-        ? { color: raw.overlay.color, opacity: raw.overlay.opacity ?? 0.25 }
-        : undefined,
-    };
-  }
-  if (raw.kind === "image" || raw.kind === "video") {
-    return {
-      type: raw.kind,
-      url: raw.value ?? undefined,
-      overlay: raw.overlay
-        ? {
-            color: raw.overlayColor || "#000",
-            opacity: raw.overlayOpacity ?? 0.25,
-          }
-        : undefined,
-    };
-  }
-  return {
-    type: "color",
-    color: raw.value || "#111",
-    overlay: raw.overlay
-      ? {
-          color: raw.overlayColor || "#000",
-          opacity: raw.overlayOpacity ?? 0.25,
-        }
-      : undefined,
+  const overlayFrom = (source: any) => {
+    if (!source) return undefined;
+    const overlay = source.overlay ?? source;
+    const hasOverlay =
+      overlay &&
+      (typeof overlay.color === "string" ||
+        typeof overlay.opacity === "number" ||
+        typeof overlay.overlayColor === "string" ||
+        typeof overlay.overlayOpacity === "number");
+    if (!hasOverlay) return undefined;
+    const color =
+      typeof overlay.color === "string"
+        ? overlay.color
+        : typeof overlay.overlayColor === "string"
+          ? overlay.overlayColor
+          : "#000000";
+    const opacitySource =
+      typeof overlay.opacity === "number"
+        ? overlay.opacity
+        : typeof overlay.overlayOpacity === "number"
+          ? overlay.overlayOpacity
+          : 0.25;
+    return { color, opacity: clamp01(opacitySource) };
   };
+
+  const type: SlideCfg["background"]["type"] =
+    raw.type ?? raw.kind ?? "color";
+  if (type === "none") {
+    return { type: "none" };
+  }
+  if (type === "color") {
+    const color =
+      typeof raw.color === "string"
+        ? raw.color
+        : typeof raw.value === "string"
+          ? raw.value
+          : "#111111";
+    const opacity =
+      typeof raw.opacity === "number"
+        ? clamp01(raw.opacity)
+        : undefined;
+    return {
+      type: "color",
+      color,
+      opacity,
+      overlay: overlayFrom(raw.overlay ? raw.overlay : undefined),
+    };
+  }
+  const url =
+    typeof raw.url === "string"
+      ? raw.url
+      : typeof raw.src === "string"
+        ? raw.src
+        : typeof raw.value === "string"
+          ? raw.value
+          : undefined;
+  const fit: NonNullable<SlideCfg["background"]>["fit"] =
+    raw.fit === "contain" ? "contain" : "cover";
+  const focalX =
+    typeof raw.focal?.x === "number"
+      ? raw.focal.x
+      : typeof raw.focal_x === "number"
+        ? raw.focal_x
+        : typeof raw.focalX === "number"
+          ? raw.focalX
+          : undefined;
+  const focalY =
+    typeof raw.focal?.y === "number"
+      ? raw.focal.y
+      : typeof raw.focal_y === "number"
+        ? raw.focal_y
+        : typeof raw.focalY === "number"
+          ? raw.focalY
+          : undefined;
+  const focal =
+    typeof focalX === "number" || typeof focalY === "number"
+      ? { x: clamp01(focalX ?? 0.5), y: clamp01(focalY ?? 0.5) }
+      : undefined;
+  const blur =
+    typeof raw.blur === "number" ? clampRange(raw.blur, 0, 12) : undefined;
+  if (type === "image") {
+    return {
+      type: "image",
+      url,
+      fit,
+      focal,
+      blur,
+      overlay: overlayFrom(raw.overlay ? raw.overlay : raw),
+    };
+  }
+  if (type === "video") {
+    const poster =
+      typeof raw.poster === "string"
+        ? raw.poster
+        : typeof raw.thumbnail === "string"
+          ? raw.thumbnail
+          : undefined;
+    const loop =
+      typeof raw.loop === "boolean"
+        ? raw.loop
+        : typeof raw.autoloop === "boolean"
+          ? raw.autoloop
+          : true;
+    const mute =
+      typeof raw.mute === "boolean"
+        ? raw.mute
+        : typeof raw.muted === "boolean"
+          ? raw.muted
+          : true;
+    const autoplay =
+      typeof raw.autoplay === "boolean"
+        ? raw.autoplay
+        : typeof raw.autoPlay === "boolean"
+          ? raw.autoPlay
+          : true;
+    return {
+      type: "video",
+      url,
+      fit,
+      focal,
+      blur,
+      poster,
+      loop,
+      mute,
+      autoplay,
+      overlay: overlayFrom(raw.overlay ? raw.overlay : raw),
+    };
+  }
+  return defaultBackground();
 }
 
 function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
@@ -167,6 +277,7 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
         ? raw.images.map((src: string) => ({ src }))
         : undefined,
     height: raw.height,
+    locked: Boolean(raw.locked),
   };
 
   if (kind === "gallery" && !block.items) block.items = [];
@@ -260,11 +371,11 @@ export default function SlideModal({
     normalizeConfig(initialCfg ?? {}, slide),
   );
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const [activeDevice, setActiveDevice] = useState<DeviceKind>("desktop");
   const [editInPreview, setEditInPreview] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [previewSize, setPreviewSize] = useState({ width: 0, height: 0 });
-  const [isDragging, setIsDragging] = useState(false);
   const [customPages, setCustomPages] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -275,11 +386,15 @@ export default function SlideModal({
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const blockImageInputRef = useRef<HTMLInputElement | null>(null);
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
-  const dragTimeoutRef = useRef<number | null>(null);
+  const videoPosterInputRef = useRef<HTMLInputElement | null>(null);
+  const isManipulatingRef = useRef(false);
+  const selectedIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     setCfg(normalizeConfig(initialCfg ?? {}, slide));
     setSelectedId(null);
+    setInspectorOpen(false);
+    isManipulatingRef.current = false;
     pastRef.current = [];
     futureRef.current = [];
     forceHistoryTick((v) => v + 1);
@@ -323,14 +438,6 @@ export default function SlideModal({
     observer.observe(node);
     return () => {
       observer.disconnect();
-    };
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (dragTimeoutRef.current) {
-        window.clearTimeout(dragTimeoutRef.current);
-      }
     };
   }, []);
 
@@ -425,7 +532,8 @@ export default function SlideModal({
       items: kind === "gallery" ? [] : undefined,
     };
     updateCfg((prev) => ({ ...prev, blocks: [...prev.blocks, block] }));
-    setSelectedId(id);
+    handleSelectBlock(id);
+    setInspectorOpen(true);
   };
 
   const removeBlock = (id: string) => {
@@ -433,7 +541,9 @@ export default function SlideModal({
       ...prev,
       blocks: prev.blocks.filter((b) => b.id !== id),
     }));
-    setSelectedId((prev) => (prev === id ? null : prev));
+    if (selectedIdRef.current === id) {
+      handleSelectBlock(null);
+    }
   };
 
   const moveBlock = (id: string, direction: -1 | 1) => {
@@ -484,32 +594,149 @@ export default function SlideModal({
     }));
   };
 
-  const setBackground = (
-    patch: Partial<NonNullable<SlideCfg["background"]>>,
-  ) => {
-    updateCfg((prev) => ({
-      ...prev,
-      background: { ...prev.background, ...patch },
-    }));
-  };
+  const updateBackground = useCallback(
+    (
+      mutator: (
+        prev: SlideCfg["background"] | undefined,
+      ) => SlideCfg["background"] | undefined,
+      commit = true,
+    ) => {
+      updateCfg(
+        (prev) => ({
+          ...prev,
+          background: mutator(prev.background),
+        }),
+        commit,
+      );
+    },
+    [updateCfg],
+  );
 
-  const handleDraggingChange = useCallback((dragging: boolean) => {
-    if (dragging) {
-      if (dragTimeoutRef.current) {
-        window.clearTimeout(dragTimeoutRef.current);
-        dragTimeoutRef.current = null;
-      }
-      setIsDragging(true);
-      return;
+  const handleManipulationChange = useCallback((manipulating: boolean) => {
+    isManipulatingRef.current = manipulating;
+    if (manipulating) {
+      setInspectorOpen(false);
     }
-    if (dragTimeoutRef.current) {
-      window.clearTimeout(dragTimeoutRef.current);
-    }
-    dragTimeoutRef.current = window.setTimeout(() => {
-      setIsDragging(false);
-      dragTimeoutRef.current = null;
-    }, 150);
   }, []);
+
+  const handleSelectBlock = useCallback((id: string | null) => {
+    setSelectedId(id);
+    selectedIdRef.current = id;
+    if (!id) {
+      setInspectorOpen(false);
+    }
+  }, []);
+
+  const openInspectorForSelection = useCallback(() => {
+    if (isManipulatingRef.current) return;
+    if (!selectedIdRef.current) return;
+    setInspectorOpen(true);
+  }, []);
+
+  const handleCanvasClick = useCallback(() => {
+    handleSelectBlock(null);
+  }, [handleSelectBlock]);
+
+  const handleLayerSelect = useCallback(
+    (id: string) => {
+      handleSelectBlock(id);
+      if (!isManipulatingRef.current) {
+        setInspectorOpen(true);
+      }
+    },
+    [handleSelectBlock],
+  );
+
+  const handleDuplicateBlock = useCallback(
+    (id: string) => {
+      const newId = crypto.randomUUID();
+      updateCfg((prev) => {
+        const index = prev.blocks.findIndex((b) => b.id === id);
+        if (index === -1) return prev;
+        const source = prev.blocks[index];
+        const clone: SlideBlock = JSON.parse(JSON.stringify(source));
+        clone.id = newId;
+        clone.locked = false;
+        const blocks = [...prev.blocks];
+        blocks.splice(index + 1, 0, clone);
+        return { ...prev, blocks };
+      });
+      handleSelectBlock(newId);
+      setInspectorOpen(true);
+    },
+    [handleSelectBlock, updateCfg],
+  );
+
+  const toggleBlockLock = useCallback(
+    (id: string) => {
+      updateCfg((prev) => ({
+        ...prev,
+        blocks: prev.blocks.map((block) =>
+          block.id === id ? { ...block, locked: !block.locked } : block,
+        ),
+      }));
+    },
+    [updateCfg],
+  );
+
+  const handleInspectorDone = useCallback(() => {
+    setInspectorOpen(false);
+  }, []);
+
+  const handleBackgroundTypeChange = useCallback(
+    (type: SlideBackground["type"]) => {
+      updateBackground((prev) => {
+        if (type === "none") {
+          return { type: "none" };
+        }
+        if (type === "color") {
+          const prevColor = prev?.type === "color" ? prev : undefined;
+          return {
+            type: "color",
+            color: prevColor?.color || "#111111",
+            opacity:
+              typeof prevColor?.opacity === "number"
+                ? clamp01(prevColor.opacity)
+                : 1,
+          };
+        }
+        if (type === "image") {
+          const prevImage = prev?.type === "image" ? prev : undefined;
+          return {
+            type: "image",
+            url: prevImage?.url,
+            fit: prevImage?.fit || "cover",
+            focal: prevImage?.focal || { x: 0.5, y: 0.5 },
+            overlay: prevImage?.overlay,
+            blur:
+              typeof prevImage?.blur === "number"
+                ? clampRange(prevImage.blur, 0, 12)
+                : 0,
+          };
+        }
+        if (type === "video") {
+          const prevVideo = prev?.type === "video" ? prev : undefined;
+          return {
+            type: "video",
+            url: prevVideo?.url,
+            fit: prevVideo?.fit || "cover",
+            focal: prevVideo?.focal || { x: 0.5, y: 0.5 },
+            overlay: prevVideo?.overlay,
+            blur:
+              typeof prevVideo?.blur === "number"
+                ? clampRange(prevVideo.blur, 0, 12)
+                : 0,
+            poster: prevVideo?.poster,
+            loop: prevVideo?.loop ?? true,
+            mute: prevVideo?.mute ?? true,
+            autoplay: prevVideo?.autoplay ?? true,
+          };
+        }
+        return prev ?? defaultBackground();
+      });
+    },
+    [updateBackground],
+  );
 
   const handleUpload = async (file: File, onUrl: (url: string) => void) => {
     if (!restaurantId) return;
@@ -548,7 +775,7 @@ export default function SlideModal({
     if (availableWidth <= 0 || availableHeight <= 0) return 1;
     const widthScale = availableWidth / deviceWidth;
     const heightScale = availableHeight / deviceHeight;
-    const computed = Math.min(widthScale, heightScale);
+    const computed = Math.min(widthScale, heightScale, 1);
     if (!Number.isFinite(computed) || computed <= 0) return 1;
     return computed;
   }, [availableWidth, availableHeight, deviceHeight, deviceWidth]);
@@ -559,13 +786,26 @@ export default function SlideModal({
   );
 
   useEffect(() => {
-    if (selectedBlock) return;
-    if (dragTimeoutRef.current) {
-      window.clearTimeout(dragTimeoutRef.current);
-      dragTimeoutRef.current = null;
+    if (!selectedBlock) {
+      setInspectorOpen(false);
     }
-    setIsDragging(false);
   }, [selectedBlock]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        handleSelectBlock(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [handleSelectBlock]);
+
+  useEffect(() => {
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
 
   const frame = selectedBlock ? ensureFrame(selectedBlock, activeDevice) : null;
 
@@ -575,7 +815,11 @@ export default function SlideModal({
   );
 
   const selectionLabel = selectedBlock ? `${selectedBlock.kind}` : "None";
-  const inspectorVisible = Boolean(selectedBlock) && !isDragging;
+  const background = cfg.background;
+  const backgroundType = background?.type ?? "color";
+  const colorBackground = background?.type === "color" ? background : undefined;
+  const imageBackground = background?.type === "image" ? background : undefined;
+  const videoBackground = background?.type === "video" ? background : undefined;
   const hasPreviewBounds = previewSize.width > 0 && previewSize.height > 0;
 
   return (
@@ -632,9 +876,32 @@ export default function SlideModal({
           </header>
           <div className="flex flex-1 overflow-hidden">
             {drawerOpen && (
-              <aside className="w-64 shrink-0 border-r bg-white">
-                <div className="h-full space-y-4 overflow-y-auto p-4">
-                  <div>
+              <aside className="w-72 shrink-0 border-r bg-white">
+                <div className="h-full space-y-6 overflow-y-auto p-4">
+                  <section>
+                    <h3 className="mb-2 text-sm font-semibold text-neutral-600">
+                      Device
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {(["mobile", "tablet", "desktop"] as DeviceKind[]).map(
+                        (device) => (
+                          <button
+                            key={device}
+                            type="button"
+                            onClick={() => setActiveDevice(device)}
+                            className={`rounded border px-2 py-1 text-xs capitalize ${
+                              activeDevice === device
+                                ? "border-emerald-500 bg-emerald-50"
+                                : "border-neutral-200"
+                            }`}
+                          >
+                            {device}
+                          </button>
+                        ),
+                      )}
+                    </div>
+                  </section>
+                  <section>
                     <h3 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
                       Blocks
                     </h3>
@@ -661,16 +928,16 @@ export default function SlideModal({
                         </button>
                       ))}
                     </div>
-                  </div>
-                  <div>
+                  </section>
+                  <section>
                     <h3 className="mb-2 text-sm font-semibold text-neutral-600">
                       Layers
                     </h3>
-                    <div className="space-y-2">
+                    <div className="space-y-1">
                       {cfg.blocks.map((block, index) => (
                         <div
                           key={block.id}
-                          className={`rounded border px-2 py-2 text-sm transition hover:border-emerald-400 ${
+                          className={`flex h-10 items-center gap-2 rounded border px-2 text-xs transition ${
                             block.id === selectedId
                               ? "border-emerald-500 bg-emerald-50"
                               : "border-neutral-200"
@@ -678,50 +945,663 @@ export default function SlideModal({
                         >
                           <button
                             type="button"
-                            onClick={() => setSelectedId(block.id)}
-                            className="flex w-full items-center justify-between text-left"
+                            onClick={() => handleLayerSelect(block.id)}
+                            className="flex h-full flex-1 items-center gap-2 overflow-hidden text-left capitalize"
                           >
-                            <span className="capitalize">{block.kind}</span>
-                            <span className="text-xs text-neutral-500">
-                              {index + 1}
+                            <span className="truncate">{block.kind}</span>
+                            <span className="ml-auto text-[11px] text-neutral-500">
+                              #{index + 1}
                             </span>
                           </button>
-                          <div className="mt-2 flex justify-end text-xs">
-                            <button
-                              type="button"
-                              onClick={() => removeBlock(block.id)}
-                              className="rounded border px-2 py-1 text-red-600"
-                            >
-                              Delete
-                            </button>
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeBlock(block.id)}
+                            className="rounded border px-2 py-1 text-[11px] text-red-600"
+                          >
+                            Delete
+                          </button>
                         </div>
                       ))}
                     </div>
-                  </div>
-                  <div>
+                  </section>
+                  <section>
                     <h3 className="mb-2 text-sm font-semibold text-neutral-600">
-                      Device
+                      Background
                     </h3>
-                    <div className="flex gap-2">
-                      {(["mobile", "tablet", "desktop"] as DeviceKind[]).map(
-                        (device) => (
-                          <button
-                            key={device}
-                            type="button"
-                            onClick={() => setActiveDevice(device)}
-                            className={`rounded border px-2 py-1 text-xs capitalize ${
-                              activeDevice === device
-                                ? "border-emerald-500 bg-emerald-50"
-                                : "border-neutral-200"
-                            }`}
-                          >
-                            {device}
-                          </button>
-                        ),
+                    <div className="space-y-3 text-sm">
+                      <label className="block text-xs font-medium text-neutral-500">
+                        Type
+                        <select
+                          value={backgroundType}
+                          onChange={(e) =>
+                            handleBackgroundTypeChange(
+                              e.target.value as SlideBackground["type"],
+                            )
+                          }
+                          className="mt-1 w-full rounded border px-2 py-1 text-sm"
+                        >
+                          <option value="none">None</option>
+                          <option value="color">Color</option>
+                          <option value="image">Image</option>
+                          <option value="video">Video</option>
+                        </select>
+                      </label>
+                      {backgroundType === "color" && (
+                        <div className="space-y-2">
+                          <label className="block text-xs font-medium text-neutral-500">
+                            Color
+                            <div className="mt-1 flex items-center gap-2">
+                              <input
+                                type="color"
+                                value={colorBackground?.color || "#111111"}
+                                onChange={(e) =>
+                                  updateBackground((prev) => {
+                                    const next: SlideBackground =
+                                      prev?.type === "color"
+                                        ? { ...prev }
+                                        : { type: "color", color: "#111111", opacity: 1 };
+                                    next.color = e.target.value;
+                                    return next;
+                                  })
+                                }
+                                className="h-9 w-9 rounded border"
+                              />
+                              <input
+                                type="text"
+                                value={colorBackground?.color || "#111111"}
+                                onChange={(e) =>
+                                  updateBackground((prev) => {
+                                    const next: SlideBackground =
+                                      prev?.type === "color"
+                                        ? { ...prev }
+                                        : { type: "color", color: "#111111", opacity: 1 };
+                                    next.color = e.target.value;
+                                    return next;
+                                  })
+                                }
+                                className="flex-1 rounded border px-2 py-1 text-xs uppercase"
+                              />
+                            </div>
+                          </label>
+                          <label className="block text-xs font-medium text-neutral-500">
+                            Opacity
+                            <div className="mt-1 flex items-center gap-2">
+                              <input
+                                type="range"
+                                min={0}
+                                max={1}
+                                step={0.05}
+                                value={colorBackground?.opacity ?? 1}
+                                onChange={(e) =>
+                                  updateBackground((prev) => {
+                                    const next: SlideBackground =
+                                      prev?.type === "color"
+                                        ? { ...prev }
+                                        : { type: "color", color: "#111111", opacity: 1 };
+                                    next.opacity = clamp01(Number(e.target.value));
+                                    return next;
+                                  })
+                                }
+                                className="flex-1"
+                              />
+                              <span className="w-12 text-right text-xs text-neutral-500">
+                                {(colorBackground?.opacity ?? 1).toFixed(2)}
+                              </span>
+                            </div>
+                          </label>
+                        </div>
+                      )}
+                      {backgroundType === "image" && (
+                        <div className="space-y-3">
+                          <label className="block text-xs font-medium text-neutral-500">
+                            Image URL
+                            <input
+                              type="text"
+                              value={imageBackground?.url || ""}
+                              onChange={(e) =>
+                                updateBackground((prev) => {
+                                  const next: SlideBackground =
+                                    prev?.type === "image"
+                                      ? { ...prev }
+                                      : {
+                                          type: "image",
+                                          url: "",
+                                          fit: "cover",
+                                          focal: { x: 0.5, y: 0.5 },
+                                          blur: 0,
+                                        };
+                                  next.url = e.target.value;
+                                  return next;
+                                })
+                              }
+                              className="mt-1 w-full rounded border px-2 py-1"
+                              placeholder="https://"
+                            />
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              ref={imageInputRef}
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  handleUpload(file, (url) =>
+                                    updateBackground((prev) => {
+                                      const next: SlideBackground =
+                                        prev?.type === "image"
+                                          ? { ...prev }
+                                          : {
+                                              type: "image",
+                                              url: "",
+                                              fit: "cover",
+                                              focal: { x: 0.5, y: 0.5 },
+                                              blur: 0,
+                                            };
+                                      next.url = url;
+                                      return next;
+                                    }),
+                                  );
+                                  e.target.value = "";
+                                }
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => imageInputRef.current?.click()}
+                              className="rounded border px-3 py-1 text-xs"
+                            >
+                              Upload
+                            </button>
+                            {uploading && (
+                              <span className="text-xs text-neutral-500">
+                                Uploading…
+                              </span>
+                            )}
+                          </div>
+                          <label className="block text-xs font-medium text-neutral-500">
+                            Fit
+                            <select
+                              value={imageBackground?.fit || "cover"}
+                              onChange={(e) =>
+                                updateBackground((prev) => {
+                                  if (prev?.type !== "image")
+                                    return {
+                                      type: "image",
+                                      url: "",
+                                      fit: e.target.value as "cover" | "contain",
+                                      focal: { x: 0.5, y: 0.5 },
+                                      blur: 0,
+                                    };
+                                  return { ...prev, fit: e.target.value as "cover" | "contain" };
+                                })
+                              }
+                              className="mt-1 w-full rounded border px-2 py-1"
+                            >
+                              <option value="cover">Cover</option>
+                              <option value="contain">Contain</option>
+                            </select>
+                          </label>
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <label className="block font-medium text-neutral-500">
+                              Focal X
+                              <input
+                                type="number"
+                                min={0}
+                                max={1}
+                                step={0.01}
+                                value={imageBackground?.focal?.x ?? 0.5}
+                                onChange={(e) =>
+                                  updateBackground((prev) => {
+                                    if (prev?.type !== "image") return prev;
+                                    const nextFocal = {
+                                      ...(prev.focal || { x: 0.5, y: 0.5 }),
+                                      x: clamp01(Number(e.target.value)),
+                                    };
+                                    return { ...prev, focal: nextFocal };
+                                  })
+                                }
+                                className="mt-1 w-full rounded border px-2 py-1"
+                              />
+                            </label>
+                            <label className="block font-medium text-neutral-500">
+                              Focal Y
+                              <input
+                                type="number"
+                                min={0}
+                                max={1}
+                                step={0.01}
+                                value={imageBackground?.focal?.y ?? 0.5}
+                                onChange={(e) =>
+                                  updateBackground((prev) => {
+                                    if (prev?.type !== "image") return prev;
+                                    const nextFocal = {
+                                      ...(prev.focal || { x: 0.5, y: 0.5 }),
+                                      y: clamp01(Number(e.target.value)),
+                                    };
+                                    return { ...prev, focal: nextFocal };
+                                  })
+                                }
+                                className="mt-1 w-full rounded border px-2 py-1"
+                              />
+                            </label>
+                          </div>
+                          <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(imageBackground?.overlay)}
+                              onChange={(e) =>
+                                updateBackground((prev) => {
+                                  if (prev?.type !== "image") return prev;
+                                  if (!e.target.checked) {
+                                    return { ...prev, overlay: undefined };
+                                  }
+                                  return {
+                                    ...prev,
+                                    overlay: {
+                                      color: prev.overlay?.color || "#000000",
+                                      opacity: prev.overlay?.opacity ?? 0.25,
+                                    },
+                                  };
+                                })
+                              }
+                            />
+                            Overlay
+                          </label>
+                          {imageBackground?.overlay && (
+                            <div className="grid grid-cols-2 gap-2">
+                              <input
+                                type="color"
+                                value={imageBackground.overlay.color}
+                                onChange={(e) =>
+                                  updateBackground((prev) => {
+                                    if (prev?.type !== "image") return prev;
+                                    return {
+                                      ...prev,
+                                      overlay: {
+                                        color: e.target.value,
+                                        opacity: prev.overlay?.opacity ?? 0.25,
+                                      },
+                                    };
+                                  })
+                                }
+                                className="h-9 w-full rounded border"
+                              />
+                              <input
+                                type="number"
+                                min={0}
+                                max={1}
+                                step={0.05}
+                                value={imageBackground.overlay.opacity ?? 0.25}
+                                onChange={(e) =>
+                                  updateBackground((prev) => {
+                                    if (prev?.type !== "image") return prev;
+                                    return {
+                                      ...prev,
+                                      overlay: {
+                                        color: prev.overlay?.color || "#000000",
+                                        opacity: clamp01(Number(e.target.value)),
+                                      },
+                                    };
+                                  })
+                                }
+                                className="rounded border px-2 py-1"
+                              />
+                            </div>
+                          )}
+                          <label className="block text-xs font-medium text-neutral-500">
+                            Blur
+                            <input
+                              type="number"
+                              min={0}
+                              max={12}
+                              value={imageBackground?.blur ?? 0}
+                              onChange={(e) =>
+                                updateBackground((prev) => {
+                                  if (prev?.type !== "image") return prev;
+                                  return {
+                                    ...prev,
+                                    blur: clampRange(Number(e.target.value), 0, 12),
+                                  };
+                                })
+                              }
+                              className="mt-1 w-full rounded border px-2 py-1"
+                            />
+                          </label>
+                        </div>
+                      )}
+                      {backgroundType === "video" && (
+                        <div className="space-y-3">
+                          <label className="block text-xs font-medium text-neutral-500">
+                            Video URL
+                            <input
+                              type="text"
+                              value={videoBackground?.url || ""}
+                              onChange={(e) =>
+                                updateBackground((prev) => {
+                                  const next: SlideBackground =
+                                    prev?.type === "video"
+                                      ? { ...prev }
+                                      : {
+                                          type: "video",
+                                          url: "",
+                                          fit: "cover",
+                                          focal: { x: 0.5, y: 0.5 },
+                                          blur: 0,
+                                          loop: true,
+                                          mute: true,
+                                          autoplay: true,
+                                        };
+                                  next.url = e.target.value;
+                                  return next;
+                                })
+                              }
+                              className="mt-1 w-full rounded border px-2 py-1"
+                              placeholder="https://"
+                            />
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              ref={imageInputRef}
+                              type="file"
+                              accept="video/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  handleUpload(file, (url) =>
+                                    updateBackground((prev) => {
+                                      const next: SlideBackground =
+                                        prev?.type === "video"
+                                          ? { ...prev }
+                                          : {
+                                              type: "video",
+                                              url: "",
+                                              fit: "cover",
+                                              focal: { x: 0.5, y: 0.5 },
+                                              blur: 0,
+                                              loop: true,
+                                              mute: true,
+                                              autoplay: true,
+                                            };
+                                      next.url = url;
+                                      return next;
+                                    }),
+                                  );
+                                  e.target.value = "";
+                                }
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => imageInputRef.current?.click()}
+                              className="rounded border px-3 py-1 text-xs"
+                            >
+                              Upload
+                            </button>
+                            {uploading && (
+                              <span className="text-xs text-neutral-500">
+                                Uploading…
+                              </span>
+                            )}
+                          </div>
+                          <label className="block text-xs font-medium text-neutral-500">
+                            Poster URL
+                            <input
+                              type="text"
+                              value={videoBackground?.poster || ""}
+                              onChange={(e) =>
+                                updateBackground((prev) => {
+                                  if (prev?.type !== "video")
+                                    return {
+                                      type: "video",
+                                      url: "",
+                                      fit: "cover",
+                                      focal: { x: 0.5, y: 0.5 },
+                                      blur: 0,
+                                      loop: true,
+                                      mute: true,
+                                      autoplay: true,
+                                      poster: e.target.value,
+                                    };
+                                  return { ...prev, poster: e.target.value };
+                                })
+                              }
+                              className="mt-1 w-full rounded border px-2 py-1"
+                              placeholder="https://"
+                            />
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              ref={videoPosterInputRef}
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  handleUpload(file, (url) =>
+                                    updateBackground((prev) => {
+                                      if (prev?.type !== "video") return prev;
+                                      return { ...prev, poster: url };
+                                    }),
+                                  );
+                                  e.target.value = "";
+                                }
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => videoPosterInputRef.current?.click()}
+                              className="rounded border px-3 py-1 text-xs"
+                            >
+                              Upload poster
+                            </button>
+                          </div>
+                          <label className="block text-xs font-medium text-neutral-500">
+                            Fit
+                            <select
+                              value={videoBackground?.fit || "cover"}
+                              onChange={(e) =>
+                                updateBackground((prev) => {
+                                  if (prev?.type !== "video")
+                                    return {
+                                      type: "video",
+                                      url: prev?.url,
+                                      fit: e.target.value as "cover" | "contain",
+                                      focal: { x: 0.5, y: 0.5 },
+                                      blur: 0,
+                                      loop: true,
+                                      mute: true,
+                                      autoplay: true,
+                                      poster: prev?.poster,
+                                    };
+                                  return { ...prev, fit: e.target.value as "cover" | "contain" };
+                                })
+                              }
+                              className="mt-1 w-full rounded border px-2 py-1"
+                            >
+                              <option value="cover">Cover</option>
+                              <option value="contain">Contain</option>
+                            </select>
+                          </label>
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <label className="block font-medium text-neutral-500">
+                              Focal X
+                              <input
+                                type="number"
+                                min={0}
+                                max={1}
+                                step={0.01}
+                                value={videoBackground?.focal?.x ?? 0.5}
+                                onChange={(e) =>
+                                  updateBackground((prev) => {
+                                    if (prev?.type !== "video") return prev;
+                                    const nextFocal = {
+                                      ...(prev.focal || { x: 0.5, y: 0.5 }),
+                                      x: clamp01(Number(e.target.value)),
+                                    };
+                                    return { ...prev, focal: nextFocal };
+                                  })
+                                }
+                                className="mt-1 w-full rounded border px-2 py-1"
+                              />
+                            </label>
+                            <label className="block font-medium text-neutral-500">
+                              Focal Y
+                              <input
+                                type="number"
+                                min={0}
+                                max={1}
+                                step={0.01}
+                                value={videoBackground?.focal?.y ?? 0.5}
+                                onChange={(e) =>
+                                  updateBackground((prev) => {
+                                    if (prev?.type !== "video") return prev;
+                                    const nextFocal = {
+                                      ...(prev.focal || { x: 0.5, y: 0.5 }),
+                                      y: clamp01(Number(e.target.value)),
+                                    };
+                                    return { ...prev, focal: nextFocal };
+                                  })
+                                }
+                                className="mt-1 w-full rounded border px-2 py-1"
+                              />
+                            </label>
+                          </div>
+                          <div className="flex flex-wrap gap-3 text-xs font-medium text-neutral-500">
+                            <label className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={videoBackground?.loop ?? true}
+                                onChange={(e) =>
+                                  updateBackground((prev) => {
+                                    if (prev?.type !== "video") return prev;
+                                    return { ...prev, loop: e.target.checked };
+                                  })
+                                }
+                              />
+                              Loop
+                            </label>
+                            <label className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={videoBackground?.mute ?? true}
+                                onChange={(e) =>
+                                  updateBackground((prev) => {
+                                    if (prev?.type !== "video") return prev;
+                                    return { ...prev, mute: e.target.checked };
+                                  })
+                                }
+                              />
+                              Mute
+                            </label>
+                            <label className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={videoBackground?.autoplay ?? true}
+                                onChange={(e) =>
+                                  updateBackground((prev) => {
+                                    if (prev?.type !== "video") return prev;
+                                    return { ...prev, autoplay: e.target.checked };
+                                  })
+                                }
+                              />
+                              Autoplay
+                            </label>
+                          </div>
+                          <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(videoBackground?.overlay)}
+                              onChange={(e) =>
+                                updateBackground((prev) => {
+                                  if (prev?.type !== "video") return prev;
+                                  if (!e.target.checked) {
+                                    return { ...prev, overlay: undefined };
+                                  }
+                                  return {
+                                    ...prev,
+                                    overlay: {
+                                      color: prev.overlay?.color || "#000000",
+                                      opacity: prev.overlay?.opacity ?? 0.25,
+                                    },
+                                  };
+                                })
+                              }
+                            />
+                            Overlay
+                          </label>
+                          {videoBackground?.overlay && (
+                            <div className="grid grid-cols-2 gap-2">
+                              <input
+                                type="color"
+                                value={videoBackground.overlay.color}
+                                onChange={(e) =>
+                                  updateBackground((prev) => {
+                                    if (prev?.type !== "video") return prev;
+                                    return {
+                                      ...prev,
+                                      overlay: {
+                                        color: e.target.value,
+                                        opacity: prev.overlay?.opacity ?? 0.25,
+                                      },
+                                    };
+                                  })
+                                }
+                                className="h-9 w-full rounded border"
+                              />
+                              <input
+                                type="number"
+                                min={0}
+                                max={1}
+                                step={0.05}
+                                value={videoBackground.overlay.opacity ?? 0.25}
+                                onChange={(e) =>
+                                  updateBackground((prev) => {
+                                    if (prev?.type !== "video") return prev;
+                                    return {
+                                      ...prev,
+                                      overlay: {
+                                        color: prev.overlay?.color || "#000000",
+                                        opacity: clamp01(Number(e.target.value)),
+                                      },
+                                    };
+                                  })
+                                }
+                                className="rounded border px-2 py-1"
+                              />
+                            </div>
+                          )}
+                          <label className="block text-xs font-medium text-neutral-500">
+                            Blur
+                            <input
+                              type="number"
+                              min={0}
+                              max={12}
+                              value={videoBackground?.blur ?? 0}
+                              onChange={(e) =>
+                                updateBackground((prev) => {
+                                  if (prev?.type !== "video") return prev;
+                                  return {
+                                    ...prev,
+                                    blur: clampRange(Number(e.target.value), 0, 12),
+                                  };
+                                })
+                              }
+                              className="mt-1 w-full rounded border px-2 py-1"
+                            />
+                          </label>
+                        </div>
+                      )}
+                      {backgroundType === "none" && (
+                        <p className="text-xs text-neutral-500">
+                          No background will be displayed for this slide.
+                        </p>
                       )}
                     </div>
-                  </div>
+                  </section>
                 </div>
               </aside>
             )}
@@ -746,163 +1626,21 @@ export default function SlideModal({
                         onChange={handlePreviewChange}
                         editable={true}
                         selectedId={selectedId}
-                        onSelect={setSelectedId}
+                        onSelectBlock={handleSelectBlock}
+                        openInspector={openInspectorForSelection}
+                        onCanvasClick={handleCanvasClick}
                         activeDevice={activeDevice}
                         editInPreview={editInPreview}
                         scale={scale}
-                        onDraggingChange={handleDraggingChange}
+                        onManipulationChange={handleManipulationChange}
                       />
                     )}
                   </div>
                 </div>
               </main>
-              {inspectorVisible && (
+              {inspectorOpen && selectedBlock && (
                 <div className="border-t bg-white">
-                  <div className="max-h-[60vh] overflow-y-auto p-4 space-y-6">
-                    <section>
-                      <h3 className="text-sm font-semibold text-neutral-600">
-                        Background
-                      </h3>
-                      <div className="mt-3 space-y-3 text-sm">
-                        <label className="block">
-                          <span className="text-xs font-medium text-neutral-500">
-                            Type
-                          </span>
-                          <select
-                            value={cfg.background?.type || "color"}
-                            onChange={(e) =>
-                              setBackground({
-                                type: e.target
-                                  .value as SlideCfg["background"]["type"],
-                                url: undefined,
-                              })
-                            }
-                            className="mt-1 w-full rounded border px-2 py-1"
-                          >
-                            <option value="color">Color</option>
-                            <option value="image">Image</option>
-                            <option value="video">Video</option>
-                          </select>
-                        </label>
-                        {cfg.background?.type === "color" && (
-                          <label className="block">
-                            <span className="text-xs font-medium text-neutral-500">
-                              Color
-                            </span>
-                            <input
-                              type="color"
-                              value={cfg.background?.color || "#111111"}
-                              onChange={(e) =>
-                                setBackground({ color: e.target.value })
-                              }
-                              className="mt-1 h-10 w-full rounded border"
-                            />
-                          </label>
-                        )}
-                        {cfg.background?.type !== "color" && (
-                          <div className="space-y-2">
-                            <label className="block text-xs font-medium text-neutral-500">
-                              Media URL
-                            </label>
-                            <input
-                              type="text"
-                              value={cfg.background?.url || ""}
-                              onChange={(e) =>
-                                setBackground({ url: e.target.value })
-                              }
-                              className="w-full rounded border px-2 py-1 text-sm"
-                              placeholder="https://"
-                            />
-                            <input
-                              ref={imageInputRef}
-                              type="file"
-                              accept={
-                                cfg.background?.type === "video"
-                                  ? "video/*"
-                                  : "image/*"
-                              }
-                              className="hidden"
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) {
-                                  handleUpload(file, (url) =>
-                                    setBackground({ url }),
-                                  );
-                                  e.target.value = "";
-                                }
-                              }}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => imageInputRef.current?.click()}
-                              className="rounded border px-3 py-1 text-xs"
-                            >
-                              Upload
-                            </button>
-                            {uploading && (
-                              <div className="text-xs text-neutral-500">
-                                Uploading…
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        <label className="flex items-center gap-2 text-xs">
-                          <input
-                            type="checkbox"
-                            checked={!!cfg.background?.overlay}
-                            onChange={(e) =>
-                              setBackground(
-                                e.target.checked
-                                  ? {
-                                      overlay: {
-                                        color: "#000000",
-                                        opacity: 0.25,
-                                      },
-                                    }
-                                  : { overlay: undefined },
-                              )
-                            }
-                          />
-                          Overlay
-                        </label>
-                        {cfg.background?.overlay && (
-                          <div className="flex gap-2">
-                            <input
-                              type="color"
-                              value={cfg.background.overlay.color || "#000000"}
-                              onChange={(e) =>
-                                setBackground({
-                                  overlay: {
-                                    color: e.target.value,
-                                    opacity:
-                                      cfg.background?.overlay?.opacity ?? 0.25,
-                                  },
-                                })
-                              }
-                              className="h-10 w-1/2 rounded border"
-                            />
-                            <input
-                              type="number"
-                              min={0}
-                              max={0.9}
-                              step={0.05}
-                              value={cfg.background.overlay.opacity ?? 0.25}
-                              onChange={(e) =>
-                                setBackground({
-                                  overlay: {
-                                    color:
-                                      cfg.background?.overlay?.color ??
-                                      "#000000",
-                                    opacity: Number(e.target.value),
-                                  },
-                                })
-                              }
-                              className="w-1/2 rounded border px-2 py-1 text-sm"
-                            />
-                          </div>
-                        )}
-                      </div>
-                    </section>
+                  <div className="max-h-[60vh] overflow-y-auto p-4 pb-24 space-y-6">
                     <section>
                       <div className="flex items-center justify-between">
                         <h3 className="text-sm font-semibold text-neutral-600">
@@ -912,13 +1650,7 @@ export default function SlideModal({
                           Selected: {selectionLabel}
                         </span>
                       </div>
-                      {!selectedBlock ? (
-                        <p className="mt-3 text-xs text-neutral-500">
-                          Choose a block from the preview or layers list to edit
-                          its properties.
-                        </p>
-                      ) : (
-                        <div className="mt-3 space-y-4 text-sm">
+                      <div className="mt-3 space-y-4 text-sm">
                           {(selectedBlock.kind === "heading" ||
                             selectedBlock.kind === "subheading" ||
                             selectedBlock.kind === "text") && (
@@ -1373,8 +2105,41 @@ export default function SlideModal({
                             </div>
                           </div>
                         </div>
-                      )}
                     </section>
+                  </div>
+                  <div className="sticky bottom-0 border-t bg-white px-4 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => handleDuplicateBlock(selectedBlock.id)}
+                          className="rounded border px-3 py-1"
+                        >
+                          Duplicate
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeBlock(selectedBlock.id)}
+                          className="rounded border px-3 py-1 text-red-600"
+                        >
+                          Delete
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => toggleBlockLock(selectedBlock.id)}
+                          className="rounded border px-3 py-1"
+                        >
+                          {selectedBlock.locked ? "Unlock" : "Lock"}
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleInspectorDone}
+                        className="rounded border px-3 py-1"
+                      >
+                        Done
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
