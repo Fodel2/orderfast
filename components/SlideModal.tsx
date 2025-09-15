@@ -6,6 +6,7 @@ import React, {
   useState,
 } from "react";
 import SlidesManager, {
+  DEVICE_DIMENSIONS,
   type DeviceKind,
   type Frame,
   type SlideBlock,
@@ -37,6 +38,9 @@ const TEXT_SIZES: { value: NonNullable<SlideBlock["size"]>; label: string }[] =
     { value: "lg", label: "Large" },
     { value: "xl", label: "Extra large" },
   ];
+
+const PREVIEW_PADDING_X = 32;
+const PREVIEW_PADDING_Y = 24;
 
 const cloneCfg = (cfg: SlideCfg): SlideCfg => JSON.parse(JSON.stringify(cfg));
 
@@ -259,16 +263,19 @@ export default function SlideModal({
   const [activeDevice, setActiveDevice] = useState<DeviceKind>("desktop");
   const [editInPreview, setEditInPreview] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [previewSize, setPreviewSize] = useState({ width: 0, height: 0 });
+  const [isDragging, setIsDragging] = useState(false);
   const [customPages, setCustomPages] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const pastRef = useRef<SlideCfg[]>([]);
   const futureRef = useRef<SlideCfg[]>([]);
   const [, forceHistoryTick] = useState(0);
+  const previewContainerRef = useRef<HTMLDivElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const blockImageInputRef = useRef<HTMLInputElement | null>(null);
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
+  const dragTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     setCfg(normalizeConfig(initialCfg ?? {}, slide));
@@ -295,6 +302,35 @@ export default function SlideModal({
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = prevOverflow;
+    };
+  }, []);
+
+  useEffect(() => {
+    const node = previewContainerRef.current;
+    if (!node) return;
+    const measure = () => {
+      const rect = node.getBoundingClientRect();
+      setPreviewSize({ width: rect.width, height: rect.height });
+    };
+    measure();
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) {
+        const { width, height } = entry.contentRect;
+        setPreviewSize({ width, height });
+      }
+    });
+    observer.observe(node);
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (dragTimeoutRef.current) {
+        window.clearTimeout(dragTimeoutRef.current);
+      }
     };
   }, []);
 
@@ -457,6 +493,24 @@ export default function SlideModal({
     }));
   };
 
+  const handleDraggingChange = useCallback((dragging: boolean) => {
+    if (dragging) {
+      if (dragTimeoutRef.current) {
+        window.clearTimeout(dragTimeoutRef.current);
+        dragTimeoutRef.current = null;
+      }
+      setIsDragging(true);
+      return;
+    }
+    if (dragTimeoutRef.current) {
+      window.clearTimeout(dragTimeoutRef.current);
+    }
+    dragTimeoutRef.current = window.setTimeout(() => {
+      setIsDragging(false);
+      dragTimeoutRef.current = null;
+    }, 150);
+  }, []);
+
   const handleUpload = async (file: File, onUrl: (url: string) => void) => {
     if (!restaurantId) return;
     setUploading(true);
@@ -486,10 +540,32 @@ export default function SlideModal({
     }
   };
 
+  const { width: deviceWidth, height: deviceHeight } =
+    DEVICE_DIMENSIONS[activeDevice] ?? DEVICE_DIMENSIONS.desktop;
+  const availableWidth = Math.max(previewSize.width - PREVIEW_PADDING_X * 2, 0);
+  const availableHeight = Math.max(previewSize.height - PREVIEW_PADDING_Y * 2, 0);
+  const scale = useMemo(() => {
+    if (availableWidth <= 0 || availableHeight <= 0) return 1;
+    const widthScale = availableWidth / deviceWidth;
+    const heightScale = availableHeight / deviceHeight;
+    const computed = Math.min(widthScale, heightScale);
+    if (!Number.isFinite(computed) || computed <= 0) return 1;
+    return computed;
+  }, [availableWidth, availableHeight, deviceHeight, deviceWidth]);
+
   const selectedBlock = useMemo(
     () => cfg.blocks.find((b) => b.id === selectedId) || null,
     [cfg.blocks, selectedId],
   );
+
+  useEffect(() => {
+    if (selectedBlock) return;
+    if (dragTimeoutRef.current) {
+      window.clearTimeout(dragTimeoutRef.current);
+      dragTimeoutRef.current = null;
+    }
+    setIsDragging(false);
+  }, [selectedBlock]);
 
   const frame = selectedBlock ? ensureFrame(selectedBlock, activeDevice) : null;
 
@@ -499,6 +575,8 @@ export default function SlideModal({
   );
 
   const selectionLabel = selectedBlock ? `${selectedBlock.kind}` : "None";
+  const inspectorVisible = Boolean(selectedBlock) && !isDragging;
+  const hasPreviewBounds = previewSize.width > 0 && previewSize.height > 0;
 
   return (
     <div className="fixed inset-0 z-[80] flex">
@@ -530,14 +608,6 @@ export default function SlideModal({
                 className="rounded border px-3 py-1 text-sm disabled:opacity-50"
               >
                 Redo
-              </button>
-              <button
-                type="button"
-                onClick={() => setInspectorOpen((v) => !v)}
-                className={`rounded border border-neutral-200 px-3 py-1 text-sm ${inspectorOpen ? "border-emerald-500 bg-emerald-50" : ""}`}
-                aria-pressed={inspectorOpen}
-              >
-                Inspector
               </button>
             </div>
             <div className="flex items-center gap-4">
@@ -616,23 +686,7 @@ export default function SlideModal({
                               {index + 1}
                             </span>
                           </button>
-                          <div className="mt-2 flex gap-2 text-xs">
-                            <button
-                              type="button"
-                              onClick={() => moveBlock(block.id, -1)}
-                              className="rounded border px-2 py-1 disabled:opacity-40"
-                              disabled={index === 0}
-                            >
-                              Up
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => moveBlock(block.id, 1)}
-                              className="rounded border px-2 py-1 disabled:opacity-40"
-                              disabled={index === cfg.blocks.length - 1}
-                            >
-                              Down
-                            </button>
+                          <div className="mt-2 flex justify-end text-xs">
                             <button
                               type="button"
                               onClick={() => removeBlock(block.id)}
@@ -672,20 +726,37 @@ export default function SlideModal({
               </aside>
             )}
             <div className="flex flex-1 flex-col overflow-hidden">
-              <main className="flex-1 overflow-hidden bg-neutral-50">
-                <div className="flex h-full w-full items-center justify-center overflow-auto">
-                  <SlidesManager
-                    initialCfg={cfg}
-                    onChange={handlePreviewChange}
-                    editable={true}
-                    selectedId={selectedId}
-                    onSelect={setSelectedId}
-                    activeDevice={activeDevice}
-                    editInPreview={editInPreview}
-                  />
+              <main className="flex flex-1 overflow-hidden bg-neutral-50">
+                <div
+                  ref={previewContainerRef}
+                  className="flex h-full w-full min-h-0 overflow-hidden"
+                >
+                  <div
+                    className="flex h-full w-full min-h-0 items-start justify-center overflow-hidden"
+                    style={{
+                      paddingTop: PREVIEW_PADDING_Y,
+                      paddingBottom: PREVIEW_PADDING_Y,
+                      paddingLeft: PREVIEW_PADDING_X,
+                      paddingRight: PREVIEW_PADDING_X,
+                    }}
+                  >
+                    {hasPreviewBounds && (
+                      <SlidesManager
+                        initialCfg={cfg}
+                        onChange={handlePreviewChange}
+                        editable={true}
+                        selectedId={selectedId}
+                        onSelect={setSelectedId}
+                        activeDevice={activeDevice}
+                        editInPreview={editInPreview}
+                        scale={scale}
+                        onDraggingChange={handleDraggingChange}
+                      />
+                    )}
+                  </div>
                 </div>
               </main>
-              {inspectorOpen && (
+              {inspectorVisible && (
                 <div className="border-t bg-white">
                   <div className="max-h-[60vh] overflow-y-auto p-4 space-y-6">
                     <section>
