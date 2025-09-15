@@ -1,12 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import CustomerLayout from '@/components/CustomerLayout';
-import Slides from '@/components/customer/Slides';
 import DebugFlag from '@/components/dev/DebugFlag';
 import { useBrand } from '@/components/branding/BrandProvider';
 import { supabase } from '@/utils/supabaseClient';
 import { useCart } from '@/context/CartContext';
 import LandingHero from '@/components/customer/home/LandingHero';
+import SlidesContainer from '@/components/customer/home/SlidesContainer';
 import resolveRestaurantId from '@/lib/resolveRestaurantId';
 
 export default function RestaurantHomePage({ initialBrand }: { initialBrand: any | null }) {
@@ -15,7 +15,8 @@ export default function RestaurantHomePage({ initialBrand }: { initialBrand: any
   const [restaurant, setRestaurant] = useState<any | null>(initialBrand);
   const { cart } = useCart();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
-  const [heroInView, setHeroInView] = useState(true);
+  const [isPastHero, setIsPastHero] = useState(false);
+  const sentinelRef = useRef<HTMLDivElement>(null);
   const restaurantId = resolveRestaurantId(router, brand, restaurant);
 
   useEffect(() => {
@@ -44,16 +45,26 @@ export default function RestaurantHomePage({ initialBrand }: { initialBrand: any
   })();
   const orderHref = rid ? `/restaurant/menu?restaurant_id=${String(rid)}` : '/restaurant/menu';
 
+  useEffect(() => {
+    if (!sentinelRef.current) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        setIsPastHero(entry.isIntersecting);
+      },
+      { threshold: 0.1 }
+    );
+    obs.observe(sentinelRef.current);
+    return () => obs.disconnect();
+  }, []);
+
   return (
       <CustomerLayout
         cartCount={cartCount}
-        hideFooter={heroInView}
-        hideHeader={heroInView}
+        hideFooter={!isPastHero}
+        hideHeader={!isPastHero}
       >
       {process.env.NEXT_PUBLIC_DEBUG === '1' && <DebugFlag label="HOME-A" />}
-      <Slides onHeroInView={setHeroInView}>
-        {/* Slide 1 — HERO */}
-        <LandingHero
+      <LandingHero
           title={restaurant?.website_title || restaurant?.name || 'Restaurant'}
           subtitle={restaurant?.website_description ?? null}
           ctaLabel="Order Now"
@@ -61,33 +72,9 @@ export default function RestaurantHomePage({ initialBrand }: { initialBrand: any
           imageUrl={coverImg || undefined}
           logoUrl={restaurant?.logo_url ?? null}
           logoShape={restaurant?.logo_shape ?? null}
-        />
-
-        {/* Slide 2 — Opening Hours & Address */}
-        <section className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center">
-          <h2 className="text-xl font-bold">Opening Hours & Address</h2>
-          <p>Opening hours will be displayed here.</p>
-          <p>Address details will be displayed here.</p>
-        </section>
-
-        {/* Slide 3 — Menu Preview */}
-        <section className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center">
-          <h2 className="text-xl font-bold">Menu Preview</h2>
-          <p>Menu preview coming soon.</p>
-        </section>
-
-        {/* Slide 4 — Gallery */}
-        <section className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center">
-          <h2 className="text-xl font-bold">Gallery</h2>
-          <p>Photos will be displayed here.</p>
-        </section>
-
-        {/* Slide 5 — Contact Us */}
-        <section className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center">
-          <h2 className="text-xl font-bold">Contact Us</h2>
-          <p>Phone, email, and contact form will be displayed here.</p>
-        </section>
-      </Slides>
+      />
+      <div ref={sentinelRef} style={{ height: 1 }} />
+      <SlidesContainer />
       </CustomerLayout>
   );
 }

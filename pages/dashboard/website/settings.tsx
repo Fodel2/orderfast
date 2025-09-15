@@ -3,6 +3,9 @@ import { useRouter } from 'next/router';
 import DashboardLayout from '../../../components/DashboardLayout';
 import Toast from '../../../components/Toast';
 import CustomPagesSection from '../../../components/CustomPagesSection';
+import SlidesManager from '../../../components/SlidesManager';
+import SlideModal from '../../../components/SlideModal';
+import type { SlideRow } from '../../../components/customer/home/SlidesContainer';
 import { supabase } from '../../../utils/supabaseClient';
 
 export default function WebsitePage() {
@@ -33,6 +36,9 @@ export default function WebsitePage() {
     phone: false,
     message: true,
   });
+
+  const [editingSlide, setEditingSlide] = useState<SlideRow | null>(null);
+  const [refreshSlides, setRefreshSlides] = useState(0);
 
   const [subdomainAvailable, setSubdomainAvailable] = useState<boolean | null>(null);
   const [toastMessage, setToastMessage] = useState('');
@@ -147,6 +153,10 @@ export default function WebsitePage() {
       };
     });
   };
+
+  function handleEditSlide(row: SlideRow) {
+    setEditingSlide(row);
+  }
 
   const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -433,6 +443,28 @@ export default function WebsitePage() {
           </form>
         </div>
       </div>
+      {restaurantId && (
+        <>
+          <SlidesManager restaurantId={restaurantId} onEdit={handleEditSlide} refreshKey={refreshSlides} />
+          {editingSlide && (
+            <SlideModal
+              slide={editingSlide}
+              initialCfg={editingSlide.config_json}
+              onClose={() => setEditingSlide(null)}
+              onSave={async (newCfg) => {
+                if (!restaurantId || !editingSlide?.id) return;
+                await supabase
+                  .from('restaurant_slides')
+                  .update({ config_json: newCfg })
+                  .eq('id', editingSlide.id)
+                  .eq('restaurant_id', restaurantId);
+                setEditingSlide(null);
+                setRefreshSlides((k) => k + 1);
+              }}
+            />
+          )}
+        </>
+      )}
       {restaurantId && <CustomPagesSection restaurantId={restaurantId} />}
       <Toast message={toastMessage} onClose={() => setToastMessage('')} />
     </DashboardLayout>

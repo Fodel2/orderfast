@@ -47,10 +47,18 @@ export default function FooterNav({ cartCount = 0, hidden }: Props) {
     </Link>
   );
 
-  if (hidden) return null;
+  const style = {
+    opacity: hidden ? 0 : 1,
+    transition: 'opacity 0.6s',
+    pointerEvents: hidden ? 'none' : 'auto',
+  } as React.CSSProperties;
 
   return (
-    <nav role="navigation" className="fixed bottom-2 left-1/2 -translate-x-1/2 w-[calc(100%-1rem)] md:hidden z-40">
+    <nav
+      role="navigation"
+      className="fixed bottom-2 left-1/2 -translate-x-1/2 w-[calc(100%-1rem)] md:hidden z-40"
+      style={style}
+    >
       <div className="relative brand-glass rounded-2xl h-14 flex items-center justify-around px-4">
         <NavLink href="/" Icon={Home} label="Home" />
         <NavLink href="menu" Icon={Utensils} label="Menu" />
