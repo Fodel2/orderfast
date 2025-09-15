@@ -141,6 +141,21 @@ function InteractiveBox({ id, selected, debug, deviceFrameRef, pos, onChange, ch
       {selected && (
         <>
           <div
+            style={{
+              position: 'absolute',
+              left: '50%',
+              top: -38,
+              transform: 'translateX(-50%)',
+              background: '#ec4899',
+              color: '#fff',
+              fontSize: 10,
+              padding: '2px 6px',
+              borderRadius: 4,
+            }}
+          >
+            Drag me
+          </div>
+          <div
             onPointerDown={onPointerDownRotate}
             style={{
               position: 'absolute',

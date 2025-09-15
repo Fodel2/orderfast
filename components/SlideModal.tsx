@@ -170,6 +170,8 @@ export default function SlideModal({
   const [device, setDevice] = useState<'mobile' | 'tablet' | 'desktop'>('mobile');
   const [editInPreview, setEditInPreview] = useState(true);
   const [showDebug, setShowDebug] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(true);
+  const [inspectorOpen, setInspectorOpen] = useState(true);
   const [linkChoice, setLinkChoice] = useState('custom');
   const [customPages, setCustomPages] = useState<string[]>([]);
   const [template, setTemplate] = useState('');
@@ -388,7 +390,13 @@ export default function SlideModal({
       <div className="bg-white rounded p-4 w-full max-w-5xl" style={{ maxHeight: '90vh', overflow: 'auto' }}>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <span className="font-semibold">Blocks</span>
+            <button
+              type="button"
+              onClick={() => setDrawerOpen((o) => !o)}
+              className="font-semibold"
+            >
+              Blocks
+            </button>
             <button type="button" disabled className="px-2 py-1 border rounded text-sm opacity-50">
               Undo
             </button>
@@ -419,13 +427,14 @@ export default function SlideModal({
             </button>
           </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <div className="mb-2">
-              <select
-                value={template}
-                onChange={(e) => {
-                  const t = e.target.value;
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {drawerOpen && (
+            <div>
+              <div className="mb-2">
+                <select
+                  value={template}
+                  onChange={(e) => {
+                    const t = e.target.value;
                   setTemplate(t);
                   switch (t) {
                     case 'hero':
@@ -576,14 +585,67 @@ export default function SlideModal({
                 ))}
               </SortableContext>
             </DndContext>
-          </div>
-          <div className="space-y-4">
-            {/* Background controls */}
+            </div>
+          )}
+          <div>
+            {/* Preview */}
             <div className="border p-2 rounded">
-              <h3 className="font-medium mb-2">Background</h3>
-              <select
-                value={cfg.background?.kind}
-                onChange={(e) =>
+              <div className="mb-2 flex gap-2">
+                {['mobile', 'tablet', 'desktop'].map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setDevice(m as any)}
+                    className={`px-2 py-1 border rounded text-sm ${device === m ? 'bg-neutral-200' : ''}`}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+              <div
+                ref={deviceFrameRef}
+                style={{
+                  position: 'relative',
+                  width: widthMap[device],
+                  maxWidth: '100%',
+                  margin: '0 auto',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: 12,
+                  overflow: 'hidden',
+                  background: '#fff',
+                }}
+              >
+                <SlidesSection
+                  slide={{
+                    ...slide,
+                    type,
+                    title,
+                    subtitle,
+                    cta_label: ctaLabel,
+                    cta_href: ctaHref,
+                    media_url:
+                      cfg.background?.kind && cfg.background.kind !== 'color'
+                        ? cfg.background.value || null
+                        : null,
+                    config_json: cfg,
+                  }}
+                  cfg={cfg}
+                  setCfg={setCfg}
+                  editingEnabled={editInPreview}
+                  showEditorDebug={showDebug}
+                  deviceFrameRef={deviceFrameRef}
+                />
+              </div>
+            </div>
+          </div>
+          {inspectorOpen && (
+            <div className="space-y-4">
+            {/* Background controls */}
+              <div className="border p-2 rounded">
+                <h3 className="font-medium mb-2">Background</h3>
+                <select
+                  value={cfg.background?.kind}
+                  onChange={(e) =>
                   setCfg({ ...cfg, background: { ...cfg.background!, kind: e.target.value as any } })
                 }
                 className="border p-1 rounded w-full mb-2"
@@ -675,7 +737,7 @@ export default function SlideModal({
                   />
                 </div>
               )}
-            </div>
+              </div>
 
             {cfg.mode === 'structured' && (
               <div className="border p-2 rounded mt-2">
@@ -1012,45 +1074,8 @@ export default function SlideModal({
                 )}
               </div>
             )}
-
-            {/* Preview */}
-            <div className="border p-2 rounded">
-              <div className="mb-2 flex gap-2">
-                {['mobile', 'tablet', 'desktop'].map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    onClick={() => setDevice(m as any)}
-                    className={`px-2 py-1 border rounded text-sm ${device === m ? 'bg-neutral-200' : ''}`}
-                  >
-                    {m}
-                  </button>
-                ))}
-              </div>
-              <div
-                ref={deviceFrameRef}
-                style={{
-                  position: 'relative',
-                  width: widthMap[device],
-                  maxWidth: '100%',
-                  margin: '0 auto',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: 12,
-                  overflow: 'hidden',
-                  background: '#fff',
-                }}
-              >
-                <SlidesSection
-                  slide={{ ...slide, type, title, subtitle, cta_label: ctaLabel, cta_href: ctaHref, media_url: cfg.background?.kind && cfg.background.kind !== 'color' ? cfg.background.value || null : null, config_json: cfg }}
-                  cfg={cfg}
-                  setCfg={setCfg}
-                  editingEnabled={editInPreview}
-                  showEditorDebug={showDebug}
-                  deviceFrameRef={deviceFrameRef}
-                />
-              </div>
             </div>
-          </div>
+          )}
         </div>
         <div className="mt-4 flex justify-end gap-2">
           <Button onClick={handleSave}>{isEdit ? 'Save' : 'Create'}</Button>
