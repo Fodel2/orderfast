@@ -4,7 +4,7 @@ import DashboardLayout from '../../../components/DashboardLayout';
 import Toast from '../../../components/Toast';
 import CustomPagesSection from '../../../components/CustomPagesSection';
 import SlidesManager from '../../../components/SlidesManager';
-import SlideModal, { coerceConfig, type SlideConfig } from '../../../components/SlideModal';
+import SlideModal from '../../../components/SlideModal';
 import type { SlideRow } from '../../../components/customer/home/SlidesContainer';
 import { supabase } from '../../../utils/supabaseClient';
 
@@ -38,7 +38,6 @@ export default function WebsitePage() {
   });
 
   const [editingSlide, setEditingSlide] = useState<SlideRow | null>(null);
-  const [cfg, setCfg] = useState<SlideConfig>(coerceConfig({}));
   const [refreshSlides, setRefreshSlides] = useState(0);
 
   const [subdomainAvailable, setSubdomainAvailable] = useState<boolean | null>(null);
@@ -157,7 +156,6 @@ export default function WebsitePage() {
 
   function handleEditSlide(row: SlideRow) {
     setEditingSlide(row);
-    setCfg(coerceConfig(row.config_json));
   }
 
   const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -451,8 +449,7 @@ export default function WebsitePage() {
           {editingSlide && (
             <SlideModal
               slide={editingSlide}
-              cfg={cfg}
-              setCfg={setCfg}
+              cfg={editingSlide.config_json}
               onClose={() => setEditingSlide(null)}
               onSave={() => {
                 setEditingSlide(null);

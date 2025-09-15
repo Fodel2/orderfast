@@ -19,10 +19,12 @@ type InteractiveBoxProps = {
     z?: number;
     rotateDeg?: number;
   }) => void;
+  enabled?: boolean;
+  onSelect?: () => void;
   children: React.ReactNode;
 };
 
-function InteractiveBox({ id, selected, debug, deviceFrameRef, pos, onChange, children }: InteractiveBoxProps) {
+function InteractiveBox({ id, selected, debug, deviceFrameRef, pos, onChange, enabled, onSelect, children }: InteractiveBoxProps) {
   const startRef = React.useRef<{
     type: 'move' | 'resize' | 'rotate';
     x: number;
@@ -36,12 +38,15 @@ function InteractiveBox({ id, selected, debug, deviceFrameRef, pos, onChange, ch
   const clampPct = (v: number) => Math.min(100, Math.max(0, v));
   const pct = (px: number, total: number) => clampPct((px / total) * 100);
 
+  const log = (msg: string) => (window as any).__slideLog?.(msg);
+
   const onPointerDownMove = (e: React.PointerEvent) => {
     e.preventDefault();
     const rect = getFrame().getBoundingClientRect();
     startRef.current = { type: 'move', x: e.clientX, y: e.clientY, rect, pos: { ...pos } };
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     setDragging(true);
+    log('drag start ' + id);
   };
   const onPointerDownResize = (corner: string) => (e: React.PointerEvent) => {
     e.preventDefault();
@@ -49,6 +54,7 @@ function InteractiveBox({ id, selected, debug, deviceFrameRef, pos, onChange, ch
     startRef.current = { type: 'resize', corner, x: e.clientX, y: e.clientY, rect, pos: { ...pos } };
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     setDragging(true);
+    log('resize start ' + id);
   };
   const onPointerDownRotate = (e: React.PointerEvent) => {
     e.preventDefault();
@@ -56,6 +62,7 @@ function InteractiveBox({ id, selected, debug, deviceFrameRef, pos, onChange, ch
     startRef.current = { type: 'rotate', x: e.clientX, y: e.clientY, rect, pos: { ...pos } };
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     setDragging(true);
+    log('rotate start ' + id);
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
@@ -67,7 +74,10 @@ function InteractiveBox({ id, selected, debug, deviceFrameRef, pos, onChange, ch
       const dy = e.clientY - s.y;
       const newX = (s.pos.xPct / 100) * rect.width + dx;
       const newY = (s.pos.yPct / 100) * rect.height + dy;
-      onChange({ ...s.pos, xPct: pct(newX, rect.width), yPct: pct(newY, rect.height) });
+      const nx = pct(newX, rect.width);
+      const ny = pct(newY, rect.height);
+      onChange({ ...s.pos, xPct: nx, yPct: ny });
+      log(`move ${id} ${nx.toFixed(1)} ${ny.toFixed(1)}`);
     } else if (s.type === 'resize') {
       const baseW = ((s.pos.wPct ?? 40) / 100) * rect.width;
       const baseH = ((s.pos.hPct ?? 20) / 100) * rect.height;
@@ -79,18 +89,24 @@ function InteractiveBox({ id, selected, debug, deviceFrameRef, pos, onChange, ch
       if (s.corner?.includes('w')) w = baseW - dx;
       if (s.corner?.includes('s')) h = baseH + dy;
       if (s.corner?.includes('n')) h = baseH - dy;
-      onChange({ ...s.pos, wPct: pct(Math.max(40, w), rect.width), hPct: pct(Math.max(20, h), rect.height) });
+      const nw = pct(Math.max(40, w), rect.width);
+      const nh = pct(Math.max(20, h), rect.height);
+      onChange({ ...s.pos, wPct: nw, hPct: nh });
+      log(`resize ${id} ${nw.toFixed(1)} ${nh.toFixed(1)}`);
     } else if (s.type === 'rotate') {
       const cx = rect.left + (s.pos.xPct / 100) * rect.width;
       const cy = rect.top + (s.pos.yPct / 100) * rect.height;
       const ang = (Math.atan2(e.clientY - cy, e.clientX - cx) * 180) / Math.PI;
-      onChange({ ...s.pos, rotateDeg: Math.round(ang) });
+      const deg = Math.round(ang);
+      onChange({ ...s.pos, rotateDeg: deg });
+      log(`rotate ${id} ${deg}`);
     }
   };
   const onPointerUp = (e: React.PointerEvent) => {
     (e.target as HTMLElement).releasePointerCapture?.(e.pointerId);
     startRef.current = null;
     setDragging(false);
+    log('pointer up ' + id);
   };
 
   const boxStyle: CSSProperties = {
@@ -104,8 +120,10 @@ function InteractiveBox({ id, selected, debug, deviceFrameRef, pos, onChange, ch
     touchAction: 'none',
     boxShadow: dragging ? '0 0 0 3px rgba(99,102,241,.45)' : undefined,
     opacity: dragging ? 0.95 : undefined,
-    outline: '2px dashed #ec4899',
+    outline: enabled && selected ? '2px dashed #ec4899' : 'none',
     outlineOffset: 0,
+    pointerEvents: 'auto',
+    userSelect: 'none',
   };
   const handle: CSSProperties = {
     position: 'absolute',
@@ -122,6 +140,10 @@ function InteractiveBox({ id, selected, debug, deviceFrameRef, pos, onChange, ch
       onPointerDown={onPointerDownMove}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (enabled) onSelect?.();
+      }}
     >
       <div
         style={{
@@ -214,6 +236,8 @@ export default function SlidesSection({
   editingEnabled = false,
   showEditorDebug = false,
   deviceFrameRef,
+  selectedId,
+  onSelect,
 }: {
   slide: SlideRow;
   cfg: SlideConfig;
@@ -221,8 +245,12 @@ export default function SlidesSection({
   editingEnabled?: boolean;
   showEditorDebug?: boolean;
   deviceFrameRef?: React.RefObject<HTMLDivElement>;
+  selectedId?: string | null;
+  onSelect?: (id: string | null) => void;
 }) {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  React.useEffect(() => {
+    (window as any).__slideLog?.('SlidesSection mount');
+  }, []);
   const bg = cfg.background;
   const style: CSSProperties = {
     position: 'relative',
@@ -233,13 +261,34 @@ export default function SlidesSection({
     alignItems: 'center',
     justifyContent: 'center',
   };
+  let bgEl: React.ReactNode = null;
   if (bg?.kind === 'color' && bg.value) {
-    style.backgroundColor = bg.value;
+    bgEl = (
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background: bg.value,
+          pointerEvents: 'none',
+          zIndex: 0,
+        }}
+      />
+    );
   }
   if (bg?.kind === 'image' && bg.value) {
-    style.backgroundImage = `url(${bg.value})`;
-    style.backgroundSize = bg.fit || 'cover';
-    style.backgroundPosition = bg.position || 'center';
+    bgEl = (
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          backgroundImage: `url(${bg.value})`,
+          backgroundSize: bg.fit || 'cover',
+          backgroundPosition: bg.position || 'center',
+          pointerEvents: 'none',
+          zIndex: 0,
+        }}
+      />
+    );
   }
 
   const media = bg?.kind === 'video' && bg.value ? (
@@ -394,6 +443,11 @@ export default function SlidesSection({
           debug={showEditorDebug}
           deviceFrameRef={deviceFrameRef!}
           pos={pos}
+          enabled={editingEnabled}
+          onSelect={() => {
+            onSelect?.(b.id);
+            (window as any).__slideLog?.('select ' + b.id);
+          }}
           onChange={(next) =>
             setCfg((p) => ({ ...p, positions: { ...(p.positions || {}), [b.id]: next } }))
           }
@@ -419,15 +473,12 @@ export default function SlidesSection({
   };
 
   return (
-    <section style={style} onClick={() => setSelectedId(null)}>
+    <section style={style} onClick={() => onSelect?.(null)}>
+      {bgEl}
       {media}
       {overlay}
-      <div style={{ position: 'relative', zIndex: 2 }}>
-        {(cfg.blocks || []).map((b) => (
-          <div key={b.id} onClick={(e) => { e.stopPropagation(); setSelectedId(b.id); }}>
-            {renderBlock(b)}
-          </div>
-        ))}
+      <div style={{ position: 'relative', zIndex: 2, pointerEvents: 'auto' }}>
+        {(cfg.blocks || []).map((b) => renderBlock(b))}
       </div>
       {editingEnabled && showEditorDebug && (
         <>

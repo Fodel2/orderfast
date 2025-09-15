@@ -148,17 +148,28 @@ function SortableBlock({ block, onSelect, selected, onDelete, onMove, index, las
 
 export default function SlideModal({
   slide,
-  cfg,
-  setCfg,
+  cfg: initialCfg,
   onClose,
   onSave,
 }: {
   slide: SlideRow;
   cfg: SlideConfig;
-  setCfg: React.Dispatch<React.SetStateAction<SlideConfig>>;
   onClose: () => void;
   onSave: () => void;
 }) {
+  const [drawerOpen, setDrawerOpen] = useState(true);
+  const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [editInPreview, setEditInPreview] = useState(true);
+  const [showDebug, setShowDebug] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [device, setDevice] = useState<'mobile' | 'tablet' | 'desktop'>('mobile');
+  const deviceFrameRef = useRef<HTMLDivElement>(null);
+  const [cfg, setCfg] = useState<SlideConfig>(initialCfg || {
+    blocks: [],
+    positions: {},
+    background: { kind: 'color', value: '#111', overlay: false },
+  });
+  const [logs, setLogs] = useState<string[]>([]);
   const [type, setType] = useState<string>('menu_highlight');
   const [title, setTitle] = useState('');
   const [subtitle, setSubtitle] = useState('');
@@ -166,12 +177,6 @@ export default function SlideModal({
   const [ctaHref, setCtaHref] = useState('');
   const [visibleFrom, setVisibleFrom] = useState('');
   const [visibleUntil, setVisibleUntil] = useState('');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [device, setDevice] = useState<'mobile' | 'tablet' | 'desktop'>('mobile');
-  const [editInPreview, setEditInPreview] = useState(true);
-  const [showDebug, setShowDebug] = useState(false);
-  const [drawerOpen, setDrawerOpen] = useState(true);
-  const [inspectorOpen, setInspectorOpen] = useState(true);
   const [linkChoice, setLinkChoice] = useState('custom');
   const [customPages, setCustomPages] = useState<string[]>([]);
   const [template, setTemplate] = useState('');
@@ -180,13 +185,20 @@ export default function SlideModal({
   const galleryRef = useRef<HTMLInputElement | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
-  const deviceFrameRef = useRef<HTMLDivElement>(null);
   const isEdit = !!slide?.id;
   const restaurantId = slide.restaurant_id;
 
   function select(id: string | null) {
     setSelectedId(id);
   }
+
+  useEffect(() => {
+    (window as any).__slideLog = (msg: string) =>
+      setLogs((l) => [...l.slice(-20), String(msg)]);
+    return () => {
+      delete (window as any).__slideLog;
+    };
+  }, []);
 
   useEffect(() => {
     if (!slide) return;
@@ -201,23 +213,23 @@ export default function SlideModal({
     if (!cfg0.blocks || cfg0.blocks.length === 0) {
       const blocks: any[] = [];
       const positions: Record<string, any> = {};
-      let y = 45;
+      let y = 40;
       if (slide.title) {
         const id = crypto.randomUUID();
         blocks.push({ id, type: 'heading', text: slide.title });
-        positions[id] = { xPct: 50, yPct: y, rotateDeg: 0 };
+        positions[id] = { xPct: 50, yPct: y, z: 3, rotateDeg: 0 };
         y += 10;
       }
       if (slide.subtitle) {
         const id = crypto.randomUUID();
         blocks.push({ id, type: 'subheading', text: slide.subtitle });
-        positions[id] = { xPct: 50, yPct: y, rotateDeg: 0 };
+        positions[id] = { xPct: 50, yPct: y, z: 3, rotateDeg: 0 };
         y += 10;
       }
       if (slide.cta_label) {
         const id = crypto.randomUUID();
         blocks.push({ id, type: 'button', text: slide.cta_label, href: slide.cta_href || '/menu' });
-        positions[id] = { xPct: 50, yPct: y, rotateDeg: 0 };
+        positions[id] = { xPct: 50, yPct: y, z: 3, rotateDeg: 0 };
       }
       cfg0.blocks = blocks;
       cfg0.positions = { ...(cfg0.positions || {}), ...positions };
@@ -386,8 +398,8 @@ export default function SlideModal({
   const widthMap: any = { mobile: 375, tablet: 768, desktop: 1280 };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded p-4 w-full max-w-5xl" style={{ maxHeight: '90vh', overflow: 'auto' }}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" style={{ position: 'fixed' }}>
+      <div className="bg-white rounded p-4 w-full max-w-5xl" style={{ maxHeight: '90vh', overflow: 'auto', position: 'relative' }}>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <button
@@ -396,6 +408,13 @@ export default function SlideModal({
               className="font-semibold"
             >
               Blocks
+            </button>
+            <button
+              type="button"
+              onClick={() => setInspectorOpen((o) => !o)}
+              className="font-semibold"
+            >
+              Inspector
             </button>
             <button type="button" disabled className="px-2 py-1 border rounded text-sm opacity-50">
               Undo
@@ -427,7 +446,13 @@ export default function SlideModal({
             </button>
           </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: `${drawerOpen ? 280 : 0}px 1fr ${inspectorOpen ? 320 : 0}px`,
+            gap: 16,
+          }}
+        >
           {drawerOpen && (
             <div>
               <div className="mb-2">
@@ -613,8 +638,9 @@ export default function SlideModal({
                   borderRadius: 12,
                   overflow: 'hidden',
                   background: '#fff',
+                  minHeight: '100dvh',
                 }}
-              >
+                >
                 <SlidesSection
                   slide={{
                     ...slide,
@@ -634,6 +660,8 @@ export default function SlideModal({
                   editingEnabled={editInPreview}
                   showEditorDebug={showDebug}
                   deviceFrameRef={deviceFrameRef}
+                  selectedId={selectedId}
+                  onSelect={setSelectedId}
                 />
               </div>
             </div>
@@ -1081,6 +1109,27 @@ export default function SlideModal({
           <Button onClick={handleSave}>{isEdit ? 'Save' : 'Create'}</Button>
         </div>
       </div>
+      {showDebug && (
+        <div
+          style={{
+            position: 'absolute',
+            left: 8,
+            bottom: 8,
+            background: '#000',
+            color: '#0f0',
+            fontSize: 10,
+            padding: '4px 6px',
+            borderRadius: 4,
+            maxWidth: 300,
+            maxHeight: '40%',
+            overflowY: 'auto',
+          }}
+        >
+          {logs.map((l, i) => (
+            <div key={i}>{l}</div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
