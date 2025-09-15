@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import DashboardLayout from '../../../components/DashboardLayout';
 import Toast from '../../../components/Toast';
 import CustomPagesSection from '../../../components/CustomPagesSection';
-import SlidesManager from '../../../components/SlidesManager';
+import { SlidesDashboardList } from '../../../components/SlidesManager';
 import SlideModal from '../../../components/SlideModal';
 import type { SlideRow } from '../../../components/customer/home/SlidesContainer';
 import { supabase } from '../../../utils/supabaseClient';
@@ -445,7 +445,7 @@ export default function WebsitePage() {
       </div>
       {restaurantId && (
         <>
-          <SlidesManager restaurantId={restaurantId} onEdit={handleEditSlide} refreshKey={refreshSlides} />
+          <SlidesDashboardList restaurantId={restaurantId} onEdit={handleEditSlide} refreshKey={refreshSlides} />
           {editingSlide && (
             <SlideModal
               slide={editingSlide}

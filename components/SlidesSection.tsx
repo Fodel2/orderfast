@@ -1,522 +1,193 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
-import Image from 'next/image';
-import Button from '@/components/ui/Button';
-import type { SlideConfig } from './SlideModal';
+import type { SlideCfg, SlideBlock, DeviceKind } from './SlidesManager';
 import type { SlideRow } from '@/components/customer/home/SlidesContainer';
 
-type InteractiveBoxProps = {
-  id: string;
-  selected: boolean;
-  debug: boolean;
-  deviceFrameRef: React.RefObject<HTMLDivElement>;
-  pos: { xPct: number; yPct: number; wPct?: number; hPct?: number; z?: number; rotateDeg?: number };
-  onChange: (next: {
-    xPct: number;
-    yPct: number;
-    wPct?: number;
-    hPct?: number;
-    z?: number;
-    rotateDeg?: number;
-  }) => void;
-  enabled?: boolean;
-  onSelect?: () => void;
-  children: React.ReactNode;
+const TEXT_SIZE_MAP: Record<string, string> = {
+  sm: '1.125rem',
+  md: '1.5rem',
+  lg: '2.5rem',
+  xl: '3.5rem',
 };
 
-function InteractiveBox({ id, selected, debug, deviceFrameRef, pos, onChange, enabled, onSelect, children }: InteractiveBoxProps) {
-  const startRef = React.useRef<{
-    type: 'move' | 'resize' | 'rotate';
-    x: number;
-    y: number;
-    rect: DOMRect;
-    pos: any;
-    corner?: string;
-  } | null>(null);
-  const [dragging, setDragging] = useState(false);
-  const getFrame = () => deviceFrameRef.current!;
-  const clampPct = (v: number) => Math.min(100, Math.max(0, v));
-  const pct = (px: number, total: number) => clampPct((px / total) * 100);
+const BUTTON_CLASS = 'inline-flex items-center justify-center rounded-full px-5 py-3 text-base font-semibold shadow';
 
-  const log = (msg: string) => (window as any).__slideLog?.(msg);
+function useDeviceKind(): DeviceKind {
+  const [device, setDevice] = useState<DeviceKind>('desktop');
+  useEffect(() => {
+    const update = () => {
+      const width = window.innerWidth;
+      if (width < 640) setDevice('mobile');
+      else if (width < 1024) setDevice('tablet');
+      else setDevice('desktop');
+    };
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+  return device;
+}
 
-  const onPointerDownMove = (e: React.PointerEvent) => {
-    e.preventDefault();
-    const rect = getFrame().getBoundingClientRect();
-    startRef.current = { type: 'move', x: e.clientX, y: e.clientY, rect, pos: { ...pos } };
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    setDragging(true);
-    log('drag start ' + id);
-  };
-  const onPointerDownResize = (corner: string) => (e: React.PointerEvent) => {
-    e.preventDefault();
-    const rect = getFrame().getBoundingClientRect();
-    startRef.current = { type: 'resize', corner, x: e.clientX, y: e.clientY, rect, pos: { ...pos } };
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    setDragging(true);
-    log('resize start ' + id);
-  };
-  const onPointerDownRotate = (e: React.PointerEvent) => {
-    e.preventDefault();
-    const rect = getFrame().getBoundingClientRect();
-    startRef.current = { type: 'rotate', x: e.clientX, y: e.clientY, rect, pos: { ...pos } };
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    setDragging(true);
-    log('rotate start ' + id);
-  };
-
-  const onPointerMove = (e: React.PointerEvent) => {
-    const s = startRef.current;
-    if (!s) return;
-    const rect = s.rect;
-    if (s.type === 'move') {
-      const dx = e.clientX - s.x;
-      const dy = e.clientY - s.y;
-      const newX = (s.pos.xPct / 100) * rect.width + dx;
-      const newY = (s.pos.yPct / 100) * rect.height + dy;
-      const nx = pct(newX, rect.width);
-      const ny = pct(newY, rect.height);
-      onChange({ ...s.pos, xPct: nx, yPct: ny });
-      log(`move ${id} ${nx.toFixed(1)} ${ny.toFixed(1)}`);
-    } else if (s.type === 'resize') {
-      const baseW = ((s.pos.wPct ?? 40) / 100) * rect.width;
-      const baseH = ((s.pos.hPct ?? 20) / 100) * rect.height;
-      const dx = e.clientX - s.x;
-      const dy = e.clientY - s.y;
-      let w = baseW,
-        h = baseH;
-      if (s.corner?.includes('e')) w = baseW + dx;
-      if (s.corner?.includes('w')) w = baseW - dx;
-      if (s.corner?.includes('s')) h = baseH + dy;
-      if (s.corner?.includes('n')) h = baseH - dy;
-      const nw = pct(Math.max(40, w), rect.width);
-      const nh = pct(Math.max(20, h), rect.height);
-      onChange({ ...s.pos, wPct: nw, hPct: nh });
-      log(`resize ${id} ${nw.toFixed(1)} ${nh.toFixed(1)}`);
-    } else if (s.type === 'rotate') {
-      const cx = rect.left + (s.pos.xPct / 100) * rect.width;
-      const cy = rect.top + (s.pos.yPct / 100) * rect.height;
-      const ang = (Math.atan2(e.clientY - cy, e.clientX - cx) * 180) / Math.PI;
-      const deg = Math.round(ang);
-      onChange({ ...s.pos, rotateDeg: deg });
-      log(`rotate ${id} ${deg}`);
-    }
-  };
-  const onPointerUp = (e: React.PointerEvent) => {
-    (e.target as HTMLElement).releasePointerCapture?.(e.pointerId);
-    startRef.current = null;
-    setDragging(false);
-    log('pointer up ' + id);
-  };
-
-  const boxStyle: CSSProperties = {
-    position: 'absolute',
-    left: `${pos.xPct}%`,
-    top: `${pos.yPct}%`,
-    transform: `translate(-50%, -50%) rotate(${pos.rotateDeg ?? 0}deg)`,
-    width: pos.wPct ? `${pos.wPct}%` : 'auto',
-    height: pos.hPct ? `${pos.hPct}%` : 'auto',
-    zIndex: pos.z || 3,
-    touchAction: 'none',
-    boxShadow: dragging ? '0 0 0 3px rgba(99,102,241,.45)' : undefined,
-    opacity: dragging ? 0.95 : undefined,
-    outline: enabled && selected ? '2px dashed #ec4899' : 'none',
-    outlineOffset: 0,
-    pointerEvents: 'auto',
-    userSelect: 'none',
-  };
-  const handle: CSSProperties = {
-    position: 'absolute',
-    width: 10,
-    height: 10,
-    borderRadius: 9999,
-    background: '#fff',
-    border: '1px solid #111',
-  };
-
+function pickFrame(block: SlideBlock, device: DeviceKind) {
+  const frames = block.frames || {};
   return (
-    <div
-      style={boxStyle}
-      onPointerDown={onPointerDownMove}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onClick={(e) => {
-        e.stopPropagation();
-        if (enabled) onSelect?.();
-      }}
-    >
-      <div
-        style={{
-          position: 'absolute',
-          left: -2,
-          top: -18,
-          fontSize: 10,
-          background: '#ec4899',
-          color: '#fff',
-          padding: '1px 4px',
-          borderRadius: 4,
-        }}
-      >
-        {id.slice(0, 6)}
-      </div>
-      {children}
-      {selected && (
-        <>
-          <div
-            style={{
-              position: 'absolute',
-              left: '50%',
-              top: -38,
-              transform: 'translateX(-50%)',
-              background: '#ec4899',
-              color: '#fff',
-              fontSize: 10,
-              padding: '2px 6px',
-              borderRadius: 4,
-            }}
-          >
-            Drag me
-          </div>
-          <div
-            onPointerDown={onPointerDownRotate}
-            style={{
-              position: 'absolute',
-              left: '50%',
-              top: -24,
-              transform: 'translateX(-50%)',
-              width: 14,
-              height: 14,
-              borderRadius: 9999,
-              background: '#fff',
-              border: '1px solid #111',
-            }}
-          />
-          {[
-            ['nw', { left: -5, top: -5 }],
-            ['n', { left: '50%', top: -5, transform: 'translateX(-50%)' }],
-            ['ne', { right: -5, top: -5 }],
-            ['e', { right: -5, top: '50%', transform: 'translateY(-50%)' }],
-            ['se', { right: -5, bottom: -5 }],
-            ['s', { left: '50%', bottom: -5, transform: 'translateX(-50%)' }],
-            ['sw', { left: -5, bottom: -5 }],
-            ['w', { left: -5, top: '50%', transform: 'translateY(-50%)' }],
-          ].map(([corner, style]) => (
-            <div
-              key={corner as string}
-              onPointerDown={onPointerDownResize(corner as string)}
-              style={{ ...handle, ...(style as CSSProperties) }}
-            />
-          ))}
-        </>
-      )}
-      {debug && (
-        <div
-          style={{
-            position: 'absolute',
-            right: -2,
-            bottom: -2,
-            fontSize: 10,
-            background: '#111',
-            color: '#fff',
-            padding: '1px 4px',
-            borderRadius: 4,
-          }}
-        >{`x:${pos.xPct.toFixed(1)} y:${pos.yPct.toFixed(1)} w:${pos.wPct?.toFixed(1) ?? '-'} h:${
-          pos.hPct?.toFixed(1) ?? '-'
-        } r:${pos.rotateDeg ?? 0}`}</div>
-      )}
-    </div>
+    frames[device] ||
+    frames.desktop ||
+    frames.tablet ||
+    frames.mobile || {
+      x: 10,
+      y: 10,
+      w: 40,
+      h: 20,
+      r: 0,
+    }
   );
 }
 
-export default function SlidesSection({
-  slide,
-  cfg,
-  setCfg,
-  editingEnabled = false,
-  showEditorDebug = false,
-  deviceFrameRef,
-  selectedId,
-  onSelect,
-}: {
-  slide: SlideRow;
-  cfg: SlideConfig;
-  setCfg: React.Dispatch<React.SetStateAction<SlideConfig>>;
-  editingEnabled?: boolean;
-  showEditorDebug?: boolean;
-  deviceFrameRef?: React.RefObject<HTMLDivElement>;
-  selectedId?: string | null;
-  onSelect?: (id: string | null) => void;
-}) {
-  React.useEffect(() => {
-    (window as any).__slideLog?.('SlidesSection mount');
-  }, []);
-  const bg = cfg.background;
-  const style: CSSProperties = {
-    position: 'relative',
-    minHeight: '100vh',
-    height: '100dvh',
-    scrollSnapAlign: 'start',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  };
-  let bgEl: React.ReactNode = null;
-  if (bg?.kind === 'color' && bg.value) {
-    bgEl = (
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background: bg.value,
-          pointerEvents: 'none',
-          zIndex: 0,
-        }}
-      />
-    );
-  }
-  if (bg?.kind === 'image' && bg.value) {
-    bgEl = (
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          backgroundImage: `url(${bg.value})`,
-          backgroundSize: bg.fit || 'cover',
-          backgroundPosition: bg.position || 'center',
-          pointerEvents: 'none',
-          zIndex: 0,
-        }}
-      />
-    );
-  }
-
-  const media = bg?.kind === 'video' && bg.value ? (
-    <video
-      src={bg.value}
-      muted={bg.muted ?? true}
-      loop={bg.loop ?? true}
-      autoPlay={bg.autoplay ?? true}
-      style={{
-        position: 'absolute',
-        inset: 0,
-        width: '100%',
-        height: '100%',
-        objectFit: bg.fit || 'cover',
-        pointerEvents: 'none',
-        zIndex: 0,
-      }}
-    />
-  ) : null;
-
-  const overlay = bg?.overlay ? (
-    <div
-      style={{
-        position: 'absolute',
-        inset: 0,
-        background: bg.overlayColor || '#000',
-        opacity: bg.overlayOpacity ?? 0.25,
-        pointerEvents: 'none',
-        zIndex: 0,
-      }}
-    />
-  ) : null;
-
-  const renderBlockContent = (b: any) => {
-    switch (b.type) {
-      case 'heading':
-      case 'subheading': {
-        const Comp = b.type === 'heading' ? 'h2' : 'p';
-        const st: CSSProperties = {
-          textAlign: b.align,
-          fontSize: b.fontSize ? `${b.fontSize}px` : undefined,
-          fontFamily: b.fontFamily,
-          color: b.color,
-          transform: b.rotateDeg ? `rotate(${b.rotateDeg}deg)` : undefined,
-        };
-        const content = b.overlay ? (
-          <span
-            style={{
-              background: b.overlay.color,
-              opacity: b.overlay.opacity,
-              padding: '0 0.25em',
-              display: 'inline-block',
-            }}
-          >
-            {b.text}
-          </span>
-        ) : (
-          b.text
-        );
-        const editableProps =
-          editingEnabled && selectedId === b.id
-            ? {
-                contentEditable: true,
-                suppressContentEditableWarning: true,
-                onInput: (e: any) =>
-                  setCfg((p) => ({
-                    ...p,
-                    blocks: p.blocks.map((x) =>
-                      x.id === b.id ? { ...x, text: e.currentTarget.textContent || '' } : x
-                    ),
-                  })),
-              }
-            : {};
-        return (
-          <Comp
-            key={b.id}
-            style={st}
-            {...editableProps}
-            className={b.type === 'heading' ? 'font-bold' : 'mb-3'}
-          >
-            {content}
-          </Comp>
-        );
-      }
-      case 'button':
-        return (
-          <Button key={b.id} className="mb-2" onClick={(e) => e.preventDefault()}>
-            {b.text}
-          </Button>
-        );
-      case 'image':
-        if (!b.url) return null;
-        const img = <Image key={b.id} src={b.url} alt="" width={b.width || 400} height={b.height || 300} />;
-        const wrap: CSSProperties = {
-          position: 'relative',
-          display: 'inline-block',
-          transform: b.rotateDeg ? `rotate(${b.rotateDeg}deg)` : undefined,
-        };
-        return (
-          <div key={b.id} style={wrap}>
-            {img}
-            {b.overlay && (
-              <div
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  background: b.overlay.color,
-                  opacity: b.overlay.opacity,
-                }}
-              />
-            )}
-          </div>
-        );
-      case 'quote':
-        return (
-          <blockquote key={b.id} className="mb-2">
-            <p>“{b.text}”</p>
-            {b.author && <cite className="block text-sm">- {b.author}</cite>}
-          </blockquote>
-        );
-      case 'gallery':
-        return (
-          <div key={b.id} className="flex gap-2 overflow-x-auto mb-2">
-            {b.images.map((src: string, i: number) => (
-              <Image key={i} src={src} alt="" width={200} height={150} />
-            ))}
-          </div>
-        );
-      case 'spacer':
-        const sizes: any = { sm: 32, md: 64, lg: 96 };
-        return <div key={b.id} style={{ height: sizes[b.size || 'md'] }} />;
-      default:
-        return null;
+function renderBlock(block: SlideBlock) {
+  switch (block.kind) {
+    case 'heading':
+    case 'subheading':
+    case 'text': {
+      const Tag = block.kind === 'heading' ? 'h2' : block.kind === 'subheading' ? 'h3' : 'p';
+      const style: CSSProperties = {
+        color: block.color || '#ffffff',
+        textAlign: block.align ?? 'left',
+        fontSize: block.size ? TEXT_SIZE_MAP[block.size] ?? TEXT_SIZE_MAP.md : undefined,
+        fontWeight: block.kind === 'heading' ? 700 : block.kind === 'subheading' ? 600 : 400,
+        margin: 0,
+      };
+      return <Tag style={style}>{block.text}</Tag>;
     }
-  };
-
-  const renderBlock = (b: any) => {
-    const pos = cfg.positions?.[b.id] ?? {
-      xPct: 50,
-      yPct: 45,
-      wPct: undefined,
-      hPct: undefined,
-      z: 3,
-      rotateDeg: 0,
-    };
-    if (editingEnabled) {
+    case 'button':
       return (
-        <InteractiveBox
-          key={b.id}
-          id={b.id}
-          selected={selectedId === b.id}
-          debug={showEditorDebug}
-          deviceFrameRef={deviceFrameRef!}
-          pos={pos}
-          enabled={editingEnabled}
-          onSelect={() => {
-            onSelect?.(b.id);
-            (window as any).__slideLog?.('select ' + b.id);
-          }}
-          onChange={(next) =>
-            setCfg((p) => ({ ...p, positions: { ...(p.positions || {}), [b.id]: next } }))
-          }
-        >
-          {renderBlockContent(b)}
-        </InteractiveBox>
+        <a href={block.href || '#'} className={`${BUTTON_CLASS} bg-white text-black`}>
+          {block.text || 'Button'}
+        </a>
       );
-    }
-    const st: CSSProperties = {
-      position: 'absolute',
-      left: `${pos.xPct}%`,
-      top: `${pos.yPct}%`,
-      transform: `translate(-50%, -50%) rotate(${pos.rotateDeg ?? 0}deg)`,
-      width: pos.wPct ? `${pos.wPct}%` : undefined,
-      height: pos.hPct ? `${pos.hPct}%` : undefined,
-      zIndex: pos.z || 3,
-    };
+    case 'image':
+      if (!block.src) return <div className="h-full w-full rounded-lg bg-neutral-200" />;
+      return (
+        <img
+          src={block.src}
+          alt=""
+          className="h-full w-full rounded-xl"
+          style={{ objectFit: block.fit || 'cover' }}
+        />
+      );
+    case 'quote':
+      return (
+        <blockquote className="text-white">
+          <p className="text-lg italic">“{block.text}”</p>
+          {block.author && <cite className="mt-2 block text-sm">— {block.author}</cite>}
+        </blockquote>
+      );
+    case 'gallery':
+      return (
+        <div className="flex h-full w-full gap-2 overflow-hidden rounded-xl">
+          {(block.items || []).map((item) => (
+            <img key={item.src} src={item.src} alt={item.alt || ''} className="h-full flex-1 object-cover" />
+          ))}
+        </div>
+      );
+    case 'spacer':
+      return <div className="h-full w-full" />;
+    default:
+      return null;
+  }
+}
+
+function Background({ cfg }: { cfg: SlideCfg }) {
+  const bg = cfg.background;
+  if (!bg) return null;
+  if (bg.type === 'color') {
     return (
-      <div key={b.id} style={st}>
-        {renderBlockContent(b)}
-      </div>
+      <>
+        <div className="absolute inset-0" style={{ background: bg.color || '#111', pointerEvents: 'none' }} />
+        {bg.overlay && (
+          <div
+            className="absolute inset-0"
+            style={{
+              background: bg.overlay.color,
+              opacity: bg.overlay.opacity,
+              pointerEvents: 'none',
+            }}
+          />
+        )}
+      </>
     );
-  };
+  }
+  if (bg.type === 'image') {
+    return (
+      <>
+        <div
+          className="absolute inset-0"
+          style={{
+            backgroundImage: bg.url ? `url(${bg.url})` : undefined,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            pointerEvents: 'none',
+          }}
+        />
+        {bg.overlay && (
+          <div
+            className="absolute inset-0"
+            style={{ background: bg.overlay.color, opacity: bg.overlay.opacity, pointerEvents: 'none' }}
+          />
+        )}
+      </>
+    );
+  }
+  if (bg.type === 'video' && bg.url) {
+    return (
+      <>
+        <video
+          src={bg.url}
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+        {bg.overlay && (
+          <div
+            className="absolute inset-0"
+            style={{ background: bg.overlay.color, opacity: bg.overlay.opacity, pointerEvents: 'none' }}
+          />
+        )}
+      </>
+    );
+  }
+  return null;
+}
+
+export default function SlidesSection({ slide, cfg }: { slide: SlideRow; cfg: SlideCfg }) {
+  const device = useDeviceKind();
+  const blocks = useMemo(() => cfg.blocks || [], [cfg.blocks]);
 
   return (
-    <section style={style} onClick={() => onSelect?.(null)}>
-      {bgEl}
-      {media}
-      {overlay}
-      <div style={{ position: 'relative', zIndex: 2, pointerEvents: 'auto' }}>
-        {(cfg.blocks || []).map((b) => renderBlock(b))}
+    <section className="relative flex min-h-screen snap-start items-center justify-center" style={{ height: '100dvh' }}>
+      <Background cfg={cfg} />
+      <div className="relative h-full w-full" style={{ pointerEvents: 'none' }}>
+        {blocks.map((block) => {
+          const frame = pickFrame(block, device);
+          const style: CSSProperties = {
+            position: 'absolute',
+            left: `${frame.x}%`,
+            top: `${frame.y}%`,
+            width: `${frame.w}%`,
+            height: `${frame.h}%`,
+            transform: `rotate(${frame.r ?? 0}deg)`,
+            transformOrigin: 'top left',
+            pointerEvents: 'auto',
+          };
+          return (
+            <div key={block.id} style={style} className="flex h-full w-full items-center justify-center">
+              {renderBlock(block)}
+            </div>
+          );
+        })}
       </div>
-      {editingEnabled && showEditorDebug && (
-        <>
-          <div
-            style={{
-              position: 'absolute',
-              right: 8,
-              top: 8,
-              zIndex: 9999,
-              background: '#111',
-              color: '#fff',
-              fontSize: 10,
-              padding: '2px 6px',
-              borderRadius: 6,
-              opacity: 0.75,
-            }}
-          >
-            EDITOR MODE
-          </div>
-          <div
-            style={{
-              position: 'absolute',
-              left: 8,
-              top: 8,
-              zIndex: 9999,
-              background: 'rgba(17,17,17,.85)',
-              color: '#fff',
-              fontSize: 11,
-              padding: '6px 8px',
-              borderRadius: 6,
-              lineHeight: 1.2,
-              maxWidth: 260,
-            }}
-          >
-            {selectedId || 'none'}
-          </div>
-        </>
-      )}
     </section>
   );
 }
