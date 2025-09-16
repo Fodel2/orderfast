@@ -40,6 +40,35 @@ const TEXT_SIZES: { value: NonNullable<SlideBlock["size"]>; label: string }[] =
     { value: "xl", label: "Extra large" },
   ];
 
+const FONT_FAMILY_OPTIONS: { value: NonNullable<SlideBlock["fontFamily"]>; label: string }[] = [
+  { value: "default", label: "Default" },
+  { value: "serif", label: "Serif" },
+  { value: "sans", label: "Sans" },
+  { value: "mono", label: "Mono" },
+];
+
+const FONT_WEIGHT_OPTIONS = [100, 200, 300, 400, 500, 600, 700, 800, 900];
+
+const BACKGROUND_STYLE_OPTIONS: { value: NonNullable<SlideBlock["bgStyle"]>; label: string }[] = [
+  { value: "none", label: "None" },
+  { value: "solid", label: "Solid" },
+  { value: "glass", label: "Glass" },
+];
+
+const SIZE_TO_FONT_SIZE_PX: Record<NonNullable<SlideBlock["size"]>, number> = {
+  sm: 18,
+  md: 24,
+  lg: 40,
+  xl: 56,
+};
+
+const DEFAULT_TEXT_SHADOW: NonNullable<SlideBlock["textShadow"]> = {
+  x: 0,
+  y: 2,
+  blur: 6,
+  color: "#000000",
+};
+
 const BLOCK_KIND_LABELS: Record<SlideBlock["kind"], string> = {
   heading: "Heading",
   subheading: "Subheading",
@@ -304,6 +333,115 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
     block.color = "#ffffff";
   }
 
+  if (
+    kind === "heading" ||
+    kind === "subheading" ||
+    kind === "text"
+  ) {
+    const content =
+      typeof raw.content === "string"
+        ? raw.content
+        : typeof block.text === "string"
+          ? block.text
+          : "";
+    block.content = content;
+    block.text = content;
+  }
+
+  if (kind === "heading" || kind === "text") {
+    const fontFamilyValue =
+      typeof raw.fontFamily === "string"
+        ? (raw.fontFamily.toLowerCase() as SlideBlock["fontFamily"])
+        : block.fontFamily;
+    block.fontFamily =
+      fontFamilyValue &&
+      FONT_FAMILY_OPTIONS.some((opt) => opt.value === fontFamilyValue)
+        ? fontFamilyValue
+        : "default";
+    const fallbackWeight = kind === "heading" ? 700 : 400;
+    block.fontWeight =
+      typeof raw.fontWeight === "number"
+        ? raw.fontWeight
+        : typeof block.fontWeight === "number"
+          ? block.fontWeight
+          : fallbackWeight;
+    const fontSizeFallback =
+      typeof raw.fontSize === "number"
+        ? raw.fontSize
+        : block.size
+          ? SIZE_TO_FONT_SIZE_PX[block.size]
+          : kind === "heading"
+            ? 56
+            : 16;
+    block.fontSize = fontSizeFallback;
+    if (typeof raw.lineHeight === "number") {
+      block.lineHeight = raw.lineHeight;
+    }
+    block.lineHeightUnit =
+      raw.lineHeightUnit === "px" || raw.lineHeightUnit === "em"
+        ? raw.lineHeightUnit
+        : block.lineHeightUnit ?? "em";
+    if (typeof raw.letterSpacing === "number") {
+      block.letterSpacing = raw.letterSpacing;
+    }
+    const textColor =
+      typeof raw.textColor === "string"
+        ? raw.textColor
+        : block.color || "#000000";
+    block.textColor = textColor;
+    block.color = textColor;
+    if (raw.textShadow && typeof raw.textShadow === "object") {
+      const shadow = raw.textShadow;
+      const x = typeof shadow.x === "number" ? shadow.x : DEFAULT_TEXT_SHADOW.x;
+      const y = typeof shadow.y === "number" ? shadow.y : DEFAULT_TEXT_SHADOW.y;
+      const blur =
+        typeof shadow.blur === "number" ? shadow.blur : DEFAULT_TEXT_SHADOW.blur;
+      const color =
+        typeof shadow.color === "string"
+          ? shadow.color
+          : DEFAULT_TEXT_SHADOW.color;
+      block.textShadow = { x, y, blur, color };
+    } else if (raw.textShadow === null || raw.textShadow === false) {
+      block.textShadow = null;
+    } else if (block.textShadow === undefined) {
+      block.textShadow = null;
+    }
+    const bgStyleValue = raw.bgStyle;
+    const normalizedBgStyle: SlideBlock["bgStyle"] =
+      bgStyleValue === "solid" || bgStyleValue === "glass"
+        ? bgStyleValue
+        : "none";
+    block.bgStyle = normalizedBgStyle;
+    const bgColor =
+      typeof raw.bgColor === "string"
+        ? raw.bgColor
+        : typeof raw.backgroundColor === "string"
+          ? raw.backgroundColor
+          : block.bgColor ?? "#000000";
+    block.bgColor = bgColor;
+    const opacitySource =
+      typeof raw.bgOpacity === "number"
+        ? raw.bgOpacity
+        : typeof raw.opacity === "number"
+          ? raw.opacity
+          : block.bgOpacity ?? (normalizedBgStyle === "glass" ? 0.5 : 1);
+    block.bgOpacity = clamp01(opacitySource);
+    const radiusSource =
+      typeof raw.radius === "number"
+        ? raw.radius
+        : typeof raw.cornerRadius === "number"
+          ? raw.cornerRadius
+          : block.radius ?? 0;
+    block.radius = radiusSource;
+    const paddingSource =
+      typeof raw.padding === "number"
+        ? raw.padding
+        : typeof raw.pad === "number"
+          ? raw.pad
+          : block.padding ?? 0;
+    block.padding = paddingSource;
+  }
+
   return block;
 }
 
@@ -542,6 +680,26 @@ export default function SlideModal({
       fit: kind === "image" ? "cover" : undefined,
       items: kind === "gallery" ? [] : undefined,
     };
+    if (kind === "heading" || kind === "text") {
+      const initialContent = block.text ?? "";
+      block.content = initialContent;
+      block.fontFamily = "default";
+      block.fontWeight = kind === "heading" ? 700 : 400;
+      block.fontSize = block.size
+        ? SIZE_TO_FONT_SIZE_PX[block.size]
+        : kind === "heading"
+          ? 56
+          : 16;
+      block.lineHeightUnit = "em";
+      block.textColor = block.color ?? "#ffffff";
+      block.color = block.textColor;
+      block.textShadow = null;
+      block.bgStyle = "none";
+      block.bgColor = "#000000";
+      block.bgOpacity = 1;
+      block.radius = 0;
+      block.padding = 0;
+    }
     updateCfg((prev) => ({ ...prev, blocks: [...prev.blocks, block] }));
     handleSelectBlock(id);
     setInspectorOpen(true);
@@ -1715,8 +1873,486 @@ export default function SlideModal({
                       </div>
                       <div className="mt-3 space-y-4 text-sm">
                           {(selectedBlock.kind === "heading" ||
-                            selectedBlock.kind === "subheading" ||
                             selectedBlock.kind === "text") && (
+                            <>
+                              <label className="block">
+                                <span className="text-xs font-medium text-neutral-500">
+                                  Content
+                                </span>
+                                <textarea
+                                  rows={4}
+                                  value={
+                                    selectedBlock.content ?? selectedBlock.text ?? ""
+                                  }
+                                  onChange={(e) =>
+                                    patchBlock(selectedBlock.id, {
+                                      content: e.target.value,
+                                      text: e.target.value,
+                                    })
+                                  }
+                                  className="mt-1 w-full rounded border px-2 py-1"
+                                />
+                              </label>
+                              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                <label className="block">
+                                  <span className="text-xs font-medium text-neutral-500">
+                                    Font family
+                                  </span>
+                                  <select
+                                    value={selectedBlock.fontFamily ?? "default"}
+                                    onChange={(e) =>
+                                      patchBlock(selectedBlock.id, {
+                                        fontFamily: e.target.value as SlideBlock["fontFamily"],
+                                      })
+                                    }
+                                    className="mt-1 w-full rounded border px-2 py-1"
+                                  >
+                                    {FONT_FAMILY_OPTIONS.map((opt) => (
+                                      <option key={opt.value} value={opt.value}>
+                                        {opt.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <label className="block">
+                                  <span className="text-xs font-medium text-neutral-500">
+                                    Font weight
+                                  </span>
+                                  <select
+                                    value={String(
+                                      selectedBlock.fontWeight ??
+                                        (selectedBlock.kind === "heading" ? 700 : 400),
+                                    )}
+                                    onChange={(e) =>
+                                      patchBlock(selectedBlock.id, {
+                                        fontWeight: Number(e.target.value) || 400,
+                                      })
+                                    }
+                                    className="mt-1 w-full rounded border px-2 py-1"
+                                  >
+                                    {FONT_WEIGHT_OPTIONS.map((weight) => (
+                                      <option key={weight} value={weight}>
+                                        {weight}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              </div>
+                              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                <label className="block">
+                                  <span className="text-xs font-medium text-neutral-500">
+                                    Font size (px)
+                                  </span>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    value={
+                                      selectedBlock.fontSize ??
+                                      (selectedBlock.size
+                                        ? SIZE_TO_FONT_SIZE_PX[selectedBlock.size]
+                                        : selectedBlock.kind === "heading"
+                                          ? 56
+                                          : 16)
+                                    }
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      if (value === "") {
+                                        patchBlock(selectedBlock.id, {
+                                          fontSize: undefined,
+                                        });
+                                        return;
+                                      }
+                                      const parsed = Number(value);
+                                      patchBlock(selectedBlock.id, {
+                                        fontSize: Number.isNaN(parsed)
+                                          ? undefined
+                                          : parsed,
+                                      });
+                                    }}
+                                    className="mt-1 w-full rounded border px-2 py-1"
+                                  />
+                                </label>
+                                <label className="block">
+                                  <span className="text-xs font-medium text-neutral-500">
+                                    Line height
+                                  </span>
+                                  <div className="mt-1 flex items-center gap-2">
+                                    <input
+                                      type="number"
+                                      step={0.1}
+                                      value={selectedBlock.lineHeight ?? ""}
+                                      onChange={(e) => {
+                                        const value = e.target.value;
+                                        if (value === "") {
+                                          patchBlock(selectedBlock.id, {
+                                            lineHeight: undefined,
+                                          });
+                                          return;
+                                        }
+                                        const parsed = Number(value);
+                                        patchBlock(selectedBlock.id, {
+                                          lineHeight: Number.isNaN(parsed)
+                                            ? undefined
+                                            : parsed,
+                                        });
+                                      }}
+                                      className="w-full rounded border px-2 py-1"
+                                    />
+                                    <select
+                                      value={selectedBlock.lineHeightUnit ?? "em"}
+                                      onChange={(e) =>
+                                        patchBlock(selectedBlock.id, {
+                                          lineHeightUnit: e.target.value as SlideBlock["lineHeightUnit"],
+                                        })
+                                      }
+                                      className="rounded border px-2 py-1 text-xs"
+                                    >
+                                      <option value="em">em</option>
+                                      <option value="px">px</option>
+                                    </select>
+                                  </div>
+                                </label>
+                              </div>
+                              <label className="block">
+                                <span className="text-xs font-medium text-neutral-500">
+                                  Letter spacing (px)
+                                </span>
+                                <input
+                                  type="number"
+                                  step={0.1}
+                                  value={selectedBlock.letterSpacing ?? ""}
+                                  onChange={(e) => {
+                                    const value = e.target.value;
+                                    if (value === "") {
+                                      patchBlock(selectedBlock.id, {
+                                        letterSpacing: undefined,
+                                      });
+                                      return;
+                                    }
+                                    const parsed = Number(value);
+                                    patchBlock(selectedBlock.id, {
+                                      letterSpacing: Number.isNaN(parsed)
+                                        ? undefined
+                                        : parsed,
+                                    });
+                                  }}
+                                  className="mt-1 w-full rounded border px-2 py-1"
+                                />
+                              </label>
+                              <div>
+                                <span className="text-xs font-medium text-neutral-500">
+                                  Text color
+                                </span>
+                                <div className="mt-1 flex items-center gap-2">
+                                  <input
+                                    type="color"
+                                    value={
+                                      selectedBlock.textColor ??
+                                      selectedBlock.color ??
+                                      "#000000"
+                                    }
+                                    onChange={(e) =>
+                                      patchBlock(selectedBlock.id, {
+                                        textColor: e.target.value,
+                                        color: e.target.value,
+                                      })
+                                    }
+                                    className="h-10 w-16 rounded border"
+                                  />
+                                  <input
+                                    type="text"
+                                    value={
+                                      selectedBlock.textColor ??
+                                      selectedBlock.color ??
+                                      "#000000"
+                                    }
+                                    onChange={(e) =>
+                                      patchBlock(selectedBlock.id, {
+                                        textColor: e.target.value,
+                                        color: e.target.value,
+                                      })
+                                    }
+                                    className="w-full rounded border px-2 py-1 text-xs uppercase"
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
+                                  <input
+                                    type="checkbox"
+                                    checked={Boolean(selectedBlock.textShadow)}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        patchBlock(selectedBlock.id, {
+                                          textShadow:
+                                            selectedBlock.textShadow ?? {
+                                              ...DEFAULT_TEXT_SHADOW,
+                                            },
+                                        });
+                                      } else {
+                                        patchBlock(selectedBlock.id, {
+                                          textShadow: null,
+                                        });
+                                      }
+                                    }}
+                                  />
+                                  Text shadow
+                                </label>
+                                {selectedBlock.textShadow && (
+                                  <div className="mt-2 grid grid-cols-2 gap-2">
+                                    {([
+                                      ["x", "X"],
+                                      ["y", "Y"],
+                                      ["blur", "Blur"],
+                                    ] as const).map(([key, label]) => (
+                                      <label key={key} className="block text-xs">
+                                        <span className="font-medium text-neutral-500">
+                                          {label}
+                                        </span>
+                                        <input
+                                          type="number"
+                                          value={selectedBlock.textShadow?.[key] ?? DEFAULT_TEXT_SHADOW[key]}
+                                          onChange={(e) => {
+                                            const value = Number(e.target.value);
+                                            const current =
+                                              selectedBlock.textShadow ?? {
+                                                ...DEFAULT_TEXT_SHADOW,
+                                              };
+                                            patchBlock(selectedBlock.id, {
+                                              textShadow: {
+                                                ...current,
+                                                [key]: Number.isNaN(value)
+                                                  ? current[key]
+                                                  : value,
+                                              },
+                                            });
+                                          }}
+                                          className="mt-1 w-full rounded border px-2 py-1"
+                                        />
+                                      </label>
+                                    ))}
+                                    <label className="col-span-2 block text-xs">
+                                      <span className="font-medium text-neutral-500">
+                                        Color
+                                      </span>
+                                      <div className="mt-1 flex items-center gap-2">
+                                        <input
+                                          type="color"
+                                          value={
+                                            selectedBlock.textShadow?.color ??
+                                            DEFAULT_TEXT_SHADOW.color
+                                          }
+                                          onChange={(e) => {
+                                            const current =
+                                              selectedBlock.textShadow ?? {
+                                                ...DEFAULT_TEXT_SHADOW,
+                                              };
+                                            patchBlock(selectedBlock.id, {
+                                              textShadow: {
+                                                ...current,
+                                                color: e.target.value,
+                                              },
+                                            });
+                                          }}
+                                          className="h-10 w-16 rounded border"
+                                        />
+                                        <input
+                                          type="text"
+                                          value={
+                                            selectedBlock.textShadow?.color ??
+                                            DEFAULT_TEXT_SHADOW.color
+                                          }
+                                          onChange={(e) => {
+                                            const current =
+                                              selectedBlock.textShadow ?? {
+                                                ...DEFAULT_TEXT_SHADOW,
+                                              };
+                                            patchBlock(selectedBlock.id, {
+                                              textShadow: {
+                                                ...current,
+                                                color: e.target.value,
+                                              },
+                                            });
+                                          }}
+                                          className="w-full rounded border px-2 py-1 text-xs uppercase"
+                                        />
+                                      </div>
+                                    </label>
+                                  </div>
+                                )}
+                              </div>
+                              <label className="block">
+                                <span className="text-xs font-medium text-neutral-500">
+                                  Background style
+                                </span>
+                                <select
+                                  value={selectedBlock.bgStyle ?? "none"}
+                                  onChange={(e) => {
+                                    const value = e.target.value as SlideBlock["bgStyle"];
+                                    if (value === "none") {
+                                      patchBlock(selectedBlock.id, {
+                                        bgStyle: "none",
+                                      });
+                                      return;
+                                    }
+                                    patchBlock(selectedBlock.id, {
+                                      bgStyle: value,
+                                      bgColor:
+                                        selectedBlock.bgColor ?? "#000000",
+                                      bgOpacity:
+                                        selectedBlock.bgOpacity ??
+                                        (value === "glass" ? 0.5 : 1),
+                                      radius: selectedBlock.radius ?? 0,
+                                      padding: selectedBlock.padding ?? 0,
+                                    });
+                                  }}
+                                  className="mt-1 w-full rounded border px-2 py-1"
+                                >
+                                  {BACKGROUND_STYLE_OPTIONS.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>
+                                      {opt.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              {selectedBlock.bgStyle &&
+                                selectedBlock.bgStyle !== "none" && (
+                                  <div className="space-y-3">
+                                    <div>
+                                      <span className="text-xs font-medium text-neutral-500">
+                                        Background color
+                                      </span>
+                                      <div className="mt-1 flex items-center gap-2">
+                                        <input
+                                          type="color"
+                                          value={
+                                            selectedBlock.bgColor ?? "#000000"
+                                          }
+                                          onChange={(e) =>
+                                            patchBlock(selectedBlock.id, {
+                                              bgColor: e.target.value,
+                                            })
+                                          }
+                                          className="h-10 w-16 rounded border"
+                                        />
+                                        <input
+                                          type="text"
+                                          value={
+                                            selectedBlock.bgColor ?? "#000000"
+                                          }
+                                          onChange={(e) =>
+                                            patchBlock(selectedBlock.id, {
+                                              bgColor: e.target.value,
+                                            })
+                                          }
+                                          className="w-full rounded border px-2 py-1 text-xs uppercase"
+                                        />
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <span className="text-xs font-medium text-neutral-500">
+                                        Opacity ({
+                                          (selectedBlock.bgOpacity ??
+                                            (selectedBlock.bgStyle === "glass"
+                                              ? 0.5
+                                              : 1)
+                                          ).toFixed(2)
+                                        })
+                                      </span>
+                                      <input
+                                        type="range"
+                                        min={0}
+                                        max={1}
+                                        step={0.05}
+                                        value={
+                                          selectedBlock.bgOpacity ??
+                                          (selectedBlock.bgStyle === "glass"
+                                            ? 0.5
+                                            : 1)
+                                        }
+                                        onChange={(e) => {
+                                          const value = Number(e.target.value);
+                                          patchBlock(
+                                            selectedBlock.id,
+                                            {
+                                              bgOpacity: clamp01(value),
+                                            },
+                                            false,
+                                          );
+                                        }}
+                                        className="mt-1 w-full"
+                                      />
+                                    </div>
+                                    <label className="block">
+                                      <span className="text-xs font-medium text-neutral-500">
+                                        Corner radius (px)
+                                      </span>
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        value={selectedBlock.radius ?? 0}
+                                        onChange={(e) => {
+                                          const value = Number(e.target.value);
+                                          patchBlock(selectedBlock.id, {
+                                            radius: Number.isNaN(value)
+                                              ? 0
+                                              : value,
+                                          });
+                                        }}
+                                        className="mt-1 w-full rounded border px-2 py-1"
+                                      />
+                                    </label>
+                                    <label className="block">
+                                      <span className="text-xs font-medium text-neutral-500">
+                                        Padding (px)
+                                      </span>
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        value={selectedBlock.padding ?? 0}
+                                        onChange={(e) => {
+                                          const value = Number(e.target.value);
+                                          patchBlock(selectedBlock.id, {
+                                            padding: Number.isNaN(value)
+                                              ? 0
+                                              : value,
+                                          });
+                                        }}
+                                        className="mt-1 w-full rounded border px-2 py-1"
+                                      />
+                                    </label>
+                                  </div>
+                                )}
+                              <div>
+                                <span className="text-xs font-medium text-neutral-500">
+                                  Alignment
+                                </span>
+                                <div className="mt-1 flex gap-2">
+                                  {(["left", "center", "right"] as const).map(
+                                    (align) => (
+                                      <button
+                                        key={align}
+                                        type="button"
+                                        onClick={() =>
+                                          patchBlock(selectedBlock.id, {
+                                            align,
+                                          })
+                                        }
+                                        className={`rounded border px-2 py-1 text-xs capitalize ${
+                                          selectedBlock.align === align
+                                            ? "border-emerald-500 bg-emerald-50"
+                                            : ""
+                                        }`}
+                                      >
+                                        {align}
+                                      </button>
+                                    ),
+                                  )}
+                                </div>
+                              </div>
+                            </>
+                          )}
+                          {selectedBlock.kind === "subheading" && (
                             <>
                               <label className="block">
                                 <span className="text-xs font-medium text-neutral-500">
@@ -1728,6 +2364,7 @@ export default function SlideModal({
                                   onChange={(e) =>
                                     patchBlock(selectedBlock.id, {
                                       text: e.target.value,
+                                      content: e.target.value,
                                     })
                                   }
                                   className="mt-1 w-full rounded border px-2 py-1"
@@ -1743,6 +2380,7 @@ export default function SlideModal({
                                   onChange={(e) =>
                                     patchBlock(selectedBlock.id, {
                                       color: e.target.value,
+                                      textColor: e.target.value,
                                     })
                                   }
                                   className="mt-1 h-10 w-full rounded border"
