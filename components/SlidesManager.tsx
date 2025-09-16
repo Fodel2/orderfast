@@ -41,6 +41,7 @@ export type SlideBlock = {
   id: string;
   kind: 'heading' | 'subheading' | 'text' | 'button' | 'image' | 'quote' | 'gallery' | 'spacer';
   text?: string;
+  content?: string;
   href?: string;
   src?: string;
   items?: { src: string; alt?: string }[];
@@ -48,6 +49,19 @@ export type SlideBlock = {
   color?: string;
   align?: 'left' | 'center' | 'right';
   size?: 'sm' | 'md' | 'lg' | 'xl';
+  fontFamily?: 'default' | 'serif' | 'sans' | 'mono';
+  fontWeight?: number;
+  fontSize?: number;
+  lineHeight?: number;
+  lineHeightUnit?: 'em' | 'px';
+  letterSpacing?: number;
+  textColor?: string;
+  textShadow?: { x: number; y: number; blur: number; color: string } | null;
+  bgStyle?: 'none' | 'solid' | 'glass';
+  bgColor?: string;
+  bgOpacity?: number;
+  radius?: number;
+  padding?: number;
   buttonVariant?: 'primary' | 'secondary';
   fit?: 'cover' | 'contain';
   author?: string;
@@ -95,6 +109,52 @@ type SlidesManagerProps = {
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 
+const FONT_FAMILY_MAP: Record<'default' | 'serif' | 'sans' | 'mono', string | undefined> = {
+  default: undefined,
+  serif: 'Georgia, Cambria, "Times New Roman", serif',
+  sans: '"Inter", "Segoe UI", system-ui, sans-serif',
+  mono: '"Roboto Mono", "Courier New", monospace',
+};
+
+const SIZE_TO_FONT_SIZE: Record<NonNullable<SlideBlock['size']>, number> = {
+  sm: 18,
+  md: 24,
+  lg: 40,
+  xl: 56,
+};
+
+const hexToRgba = (hex: string, opacity: number) => {
+  if (!hex) return undefined;
+  const normalized = hex.trim();
+  if (!normalized.startsWith('#')) {
+    return normalized;
+  }
+  let value = normalized.slice(1);
+  if (value.length === 3) {
+    value = value
+      .split('')
+      .map((c) => c + c)
+      .join('');
+  }
+  if (value.length !== 6 && value.length !== 8) {
+    return normalized;
+  }
+  const r = parseInt(value.slice(0, 2), 16);
+  const g = parseInt(value.slice(2, 4), 16);
+  const b = parseInt(value.slice(4, 6), 16);
+  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) {
+    return normalized;
+  }
+  let alpha = typeof opacity === 'number' ? opacity : 1;
+  if (value.length === 8) {
+    const rawAlpha = parseInt(value.slice(6, 8), 16);
+    if (!Number.isNaN(rawAlpha)) {
+      alpha = rawAlpha / 255;
+    }
+  }
+  return `rgba(${r}, ${g}, ${b}, ${clamp(alpha, 0, 1)})`;
+};
+
 function ensureFrame(block: SlideBlock, device: DeviceKind): Frame {
   const fallback: Frame = { x: 10, y: 10, w: 40, h: 20, r: 0 };
   if (block.frames?.[device]) return block.frames[device]!;
@@ -140,7 +200,15 @@ export default function SlidesManager({
   const handleInlineText = (blockId: string, text: string) => {
     const next: SlideCfg = {
       ...cfg,
-      blocks: cfg.blocks.map((b) => (b.id === blockId ? { ...b, text } : b)),
+      blocks: cfg.blocks.map((b) =>
+        b.id === blockId
+          ? {
+              ...b,
+              text,
+              content: text,
+            }
+          : b,
+      ),
     };
     onChange(next, { commit: true });
   };
@@ -151,18 +219,40 @@ export default function SlidesManager({
       case 'subheading':
       case 'text': {
         const Tag = block.kind === 'heading' ? 'h2' : block.kind === 'subheading' ? 'h3' : 'p';
-        const sizes: Record<NonNullable<SlideBlock['size']>, string> = {
-          sm: '1.125rem',
-          md: '1.5rem',
-          lg: '2.5rem',
-          xl: '3.5rem',
-        };
+        const align = block.align ?? 'left';
+        const fallbackWeight = block.kind === 'heading' ? 700 : block.kind === 'subheading' ? 600 : 400;
+        const fontFamilyKey = block.fontFamily ?? 'default';
+        const resolvedFontFamily = FONT_FAMILY_MAP[fontFamilyKey];
+        const fontSizePx =
+          typeof block.fontSize === 'number'
+            ? block.fontSize
+            : block.size
+              ? SIZE_TO_FONT_SIZE[block.size]
+              : undefined;
+        const lineHeightValue =
+          typeof block.lineHeight === 'number'
+            ? `${block.lineHeight}${block.lineHeightUnit === 'px' ? 'px' : 'em'}`
+            : undefined;
+        const letterSpacingValue =
+          typeof block.letterSpacing === 'number' ? `${block.letterSpacing}px` : undefined;
+        const textShadowValue = block.textShadow
+          ? `${block.textShadow.x ?? 0}px ${block.textShadow.y ?? 0}px ${block.textShadow.blur ?? 0}px ${
+              block.textShadow.color ?? '#000000'
+            }`
+          : undefined;
+        const textColor = block.textColor ?? block.color ?? '#ffffff';
         const style: CSSProperties = {
-          color: block.color || '#ffffff',
-          textAlign: block.align ?? 'left',
-          fontSize: block.size ? sizes[block.size] ?? undefined : undefined,
-          fontWeight: block.kind === 'heading' ? 700 : block.kind === 'subheading' ? 600 : 400,
+          color: textColor,
+          textAlign: align,
+          fontWeight: block.fontWeight ?? fallbackWeight,
+          fontSize: fontSizePx ? `${fontSizePx}px` : undefined,
+          lineHeight: lineHeightValue,
+          letterSpacing: letterSpacingValue,
+          textShadow: textShadowValue,
         };
+        if (resolvedFontFamily) {
+          style.fontFamily = resolvedFontFamily;
+        }
         const editableProps =
           editable && editInPreview
             ? {
@@ -172,15 +262,41 @@ export default function SlidesManager({
                   handleInlineText(block.id, e.currentTarget.textContent || ''),
               }
             : {};
-        return (
+        const content = block.content ?? block.text ?? '';
+        const textElement = (
           <Tag
             {...editableProps}
             style={style}
             className="leading-tight"
           >
-            {block.text ?? ''}
+            {content}
           </Tag>
         );
+        if (
+          (block.kind === 'heading' || block.kind === 'text') &&
+          block.bgStyle &&
+          block.bgStyle !== 'none'
+        ) {
+          const resolvedOpacity = block.bgOpacity ?? (block.bgStyle === 'glass' ? 0.5 : 1);
+          const backgroundColor =
+            hexToRgba(block.bgColor ?? '#000000', resolvedOpacity) ??
+            hexToRgba('#000000', resolvedOpacity);
+          const backgroundStyle: CSSProperties = {
+            display: 'inline-block',
+            borderRadius: block.radius ?? 0,
+            padding: block.padding ?? 0,
+            backgroundColor,
+          };
+          if (block.bgStyle === 'glass') {
+            backgroundStyle.backdropFilter = 'blur(8px)';
+          }
+          return (
+            <div style={{ width: '100%', textAlign: align }}>
+              <div style={backgroundStyle}>{textElement}</div>
+            </div>
+          );
+        }
+        return textElement;
       }
       case 'button': {
         return (
