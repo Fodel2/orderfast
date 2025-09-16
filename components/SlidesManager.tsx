@@ -37,6 +37,36 @@ export type Frame = {
   r: number;
 };
 
+export type ButtonBlockVariant = 'Primary' | 'Outline' | 'Ghost';
+export type ButtonBlockSize = 'Small' | 'Medium' | 'Large';
+
+export type ButtonBlockConfig = {
+  label: string;
+  href: string;
+  variant: ButtonBlockVariant;
+  size: ButtonBlockSize;
+  fullWidth: boolean;
+  radius: number;
+  shadow: boolean;
+  textColor: string;
+  bgColor: string;
+};
+
+export const BUTTON_VARIANTS: ButtonBlockVariant[] = ['Primary', 'Outline', 'Ghost'];
+export const BUTTON_SIZES: ButtonBlockSize[] = ['Small', 'Medium', 'Large'];
+
+export const DEFAULT_BUTTON_CONFIG: ButtonBlockConfig = {
+  label: 'Button',
+  href: '/menu',
+  variant: 'Primary',
+  size: 'Medium',
+  fullWidth: false,
+  radius: 4,
+  shadow: false,
+  textColor: '#ffffff',
+  bgColor: '#000000',
+};
+
 export type SlideBlock = {
   id: string;
   kind: 'heading' | 'subheading' | 'text' | 'button' | 'image' | 'quote' | 'gallery' | 'spacer';
@@ -63,6 +93,7 @@ export type SlideBlock = {
   radius?: number;
   padding?: number;
   buttonVariant?: 'primary' | 'secondary';
+  config?: (Partial<ButtonBlockConfig> & Record<string, any>) | null;
   fit?: 'cover' | 'contain';
   author?: string;
   height?: number;
@@ -154,6 +185,83 @@ const hexToRgba = (hex: string, opacity: number) => {
   }
   return `rgba(${r}, ${g}, ${b}, ${clamp(alpha, 0, 1)})`;
 };
+
+export function resolveButtonConfig(block: SlideBlock): ButtonBlockConfig {
+  const raw = (block.config ?? {}) as Partial<ButtonBlockConfig>;
+  const labelFromBlock =
+    typeof block.text === 'string' && block.text.trim().length > 0
+      ? block.text
+      : DEFAULT_BUTTON_CONFIG.label;
+  const rawLabel = typeof raw.label === 'string' ? raw.label.trim() : undefined;
+  const label = rawLabel && rawLabel.length > 0 ? rawLabel : labelFromBlock;
+
+  const hrefFromBlock =
+    typeof block.href === 'string' && block.href.length > 0
+      ? block.href
+      : DEFAULT_BUTTON_CONFIG.href;
+  const href =
+    typeof raw.href === 'string'
+      ? raw.href
+      : hrefFromBlock;
+
+  const legacyVariant: ButtonBlockVariant =
+    block.buttonVariant === 'secondary' ? 'Outline' : DEFAULT_BUTTON_CONFIG.variant;
+  const variant = (() => {
+    const value = typeof raw.variant === 'string' ? raw.variant : undefined;
+    if (!value) return legacyVariant;
+    const match = BUTTON_VARIANTS.find((item) => item.toLowerCase() === value.toLowerCase());
+    return match ?? legacyVariant;
+  })();
+
+  const size = (() => {
+    const value = typeof raw.size === 'string' ? raw.size : undefined;
+    if (!value) return DEFAULT_BUTTON_CONFIG.size;
+    const match = BUTTON_SIZES.find((item) => item.toLowerCase() === value.toLowerCase());
+    return match ?? DEFAULT_BUTTON_CONFIG.size;
+  })();
+
+  const fullWidth =
+    typeof raw.fullWidth === 'boolean' ? raw.fullWidth : DEFAULT_BUTTON_CONFIG.fullWidth;
+
+  const radiusSource =
+    typeof raw.radius === 'number'
+      ? raw.radius
+      : typeof block.radius === 'number'
+        ? block.radius
+        : DEFAULT_BUTTON_CONFIG.radius;
+  const radius = Number.isFinite(radiusSource) ? Math.max(0, radiusSource) : DEFAULT_BUTTON_CONFIG.radius;
+
+  const shadow = typeof raw.shadow === 'boolean' ? raw.shadow : DEFAULT_BUTTON_CONFIG.shadow;
+
+  const textColor = (() => {
+    if (typeof raw.textColor === 'string' && raw.textColor.trim().length > 0) {
+      return raw.textColor;
+    }
+    if (block.buttonVariant === 'secondary') return '#000000';
+    if (typeof block.color === 'string' && block.color.trim().length > 0) return block.color;
+    return DEFAULT_BUTTON_CONFIG.textColor;
+  })();
+
+  const bgColor = (() => {
+    if (typeof raw.bgColor === 'string' && raw.bgColor.trim().length > 0) {
+      return raw.bgColor;
+    }
+    if (block.buttonVariant === 'secondary') return '#ffffff';
+    return DEFAULT_BUTTON_CONFIG.bgColor;
+  })();
+
+  return {
+    label,
+    href,
+    variant,
+    size,
+    fullWidth,
+    radius,
+    shadow,
+    textColor,
+    bgColor,
+  };
+}
 
 function ensureFrame(block: SlideBlock, device: DeviceKind): Frame {
   const fallback: Frame = { x: 10, y: 10, w: 40, h: 20, r: 0 };
@@ -299,16 +407,48 @@ export default function SlidesManager({
         return textElement;
       }
       case 'button': {
+        const button = resolveButtonConfig(block);
+        const sizeClassMap: Record<ButtonBlockSize, string> = {
+          Small: 'px-3 py-2 text-sm',
+          Medium: 'px-5 py-3 text-base',
+          Large: 'px-6 py-3.5 text-lg',
+        };
+        const sizeClasses = sizeClassMap[button.size] ?? sizeClassMap.Medium;
+        const variantClasses =
+          button.variant === 'Primary'
+            ? 'btn-primary'
+            : button.variant === 'Outline'
+              ? 'btn-outline bg-transparent border'
+              : 'btn-ghost bg-transparent';
+        const shadowClass = button.shadow ? 'shadow-lg' : 'shadow-none';
+        const classes = [
+          'inline-flex items-center justify-center font-semibold no-underline transition duration-150 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
+          sizeClasses,
+          button.fullWidth ? 'w-full' : undefined,
+          variantClasses,
+          shadowClass,
+        ]
+          .filter(Boolean)
+          .join(' ');
+        const style: CSSProperties = {
+          borderRadius: button.radius,
+          color: button.textColor,
+          backgroundColor: button.variant === 'Primary' ? button.bgColor : 'transparent',
+          borderColor: button.variant === 'Outline' ? button.bgColor : 'transparent',
+          borderWidth: button.variant === 'Outline' ? 1 : 0,
+          borderStyle: 'solid',
+        };
+        if (button.fullWidth) {
+          style.width = '100%';
+        }
         return (
           <a
-            href={block.href || '#'}
+            href={button.href || '#'}
             onClick={(e) => e.preventDefault()}
-            className={`btn-primary inline-flex items-center justify-center px-5 py-3 ${
-              block.buttonVariant === 'secondary' ? 'bg-white text-black' : ''
-            }`}
-            style={{ textAlign: 'center' }}
+            className={classes}
+            style={style}
           >
-            {block.text || 'Button'}
+            {button.label || 'Button'}
           </a>
         );
       }

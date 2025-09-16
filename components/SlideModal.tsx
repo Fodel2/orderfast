@@ -7,12 +7,19 @@ import React, {
 } from "react";
 import SlidesManager, {
   DEVICE_DIMENSIONS,
+  DEFAULT_BUTTON_CONFIG,
+  BUTTON_SIZES,
+  BUTTON_VARIANTS,
+  type ButtonBlockConfig,
+  type ButtonBlockSize,
+  type ButtonBlockVariant,
   type DeviceKind,
   type Frame,
   type SlideBackground,
   type SlideBlock,
   type SlideCfg,
   type SlidesManagerChangeOptions,
+  resolveButtonConfig,
 } from "./SlidesManager";
 import Button from "@/components/ui/Button";
 import { supabase } from "@/utils/supabaseClient";
@@ -309,6 +316,10 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
     align: raw.align,
     size: raw.size,
     buttonVariant: raw.buttonVariant,
+    config:
+      raw.config && typeof raw.config === "object"
+        ? { ...(raw.config as Record<string, any>) }
+        : undefined,
     fit: raw.fit,
     author: raw.author,
     items: Array.isArray(raw.items)
@@ -326,6 +337,14 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
   if (kind === "subheading" && !block.size) block.size = "md";
   if (kind === "text" && !block.size) block.size = "sm";
   if (kind === "button" && !block.text) block.text = "Button";
+  if (kind === "button") {
+    const normalizedConfig = resolveButtonConfig(block);
+    block.config = normalizedConfig;
+    block.text = normalizedConfig.label;
+    block.href = normalizedConfig.href;
+    block.buttonVariant =
+      normalizedConfig.variant === "Outline" ? "secondary" : "primary";
+  }
   if (
     (kind === "heading" || kind === "subheading" || kind === "text") &&
     !block.color
@@ -477,11 +496,19 @@ function normalizeConfig(raw: any, slide: SlideRow): SlideCfg {
       });
     }
     if (slide.cta_label) {
+      const buttonConfig: ButtonBlockConfig = {
+        ...DEFAULT_BUTTON_CONFIG,
+        label: slide.cta_label,
+        href: slide.cta_href ?? DEFAULT_BUTTON_CONFIG.href,
+      };
       blocks.push({
         id: crypto.randomUUID(),
         kind: "button",
-        text: slide.cta_label,
-        href: slide.cta_href ?? "/menu",
+        text: buttonConfig.label,
+        href: buttonConfig.href,
+        config: buttonConfig,
+        buttonVariant:
+          buttonConfig.variant === "Outline" ? "secondary" : "primary",
         frames: { desktop: getDefaultFrame("button") },
       });
     }
@@ -659,7 +686,7 @@ export default function SlideModal({
             : kind === "text"
               ? "Write some supporting text"
               : kind === "button"
-                ? "Tap me"
+                ? "Button"
                 : kind === "quote"
                   ? "Add a quote from a happy guest"
                   : "",
@@ -680,6 +707,14 @@ export default function SlideModal({
       fit: kind === "image" ? "cover" : undefined,
       items: kind === "gallery" ? [] : undefined,
     };
+    if (kind === "button") {
+      const buttonConfig: ButtonBlockConfig = { ...DEFAULT_BUTTON_CONFIG };
+      block.config = buttonConfig;
+      block.text = buttonConfig.label;
+      block.href = buttonConfig.href;
+      block.buttonVariant =
+        buttonConfig.variant === "Outline" ? "secondary" : "primary";
+    }
     if (kind === "heading" || kind === "text") {
       const initialContent = block.text ?? "";
       block.content = initialContent;
@@ -737,6 +772,32 @@ export default function SlideModal({
       (prev) => ({
         ...prev,
         blocks: prev.blocks.map((b) => (b.id === id ? { ...b, ...patch } : b)),
+      }),
+      commit,
+    );
+  };
+
+  const updateButtonConfig = (
+    id: string,
+    mutator: (prev: ButtonBlockConfig) => ButtonBlockConfig,
+    commit = true,
+  ) => {
+    updateCfg(
+      (prev) => ({
+        ...prev,
+        blocks: prev.blocks.map((b) => {
+          if (b.id !== id) return b;
+          const current = resolveButtonConfig(b);
+          const nextConfig = mutator({ ...current });
+          return {
+            ...b,
+            config: nextConfig,
+            text: nextConfig.label,
+            href: nextConfig.href,
+            buttonVariant:
+              nextConfig.variant === "Outline" ? "secondary" : "primary",
+          };
+        }),
       }),
       commit,
     );
@@ -952,6 +1013,14 @@ export default function SlideModal({
   const selectedBlock = useMemo(
     () => cfg.blocks.find((b) => b.id === selectedId) || null,
     [cfg.blocks, selectedId],
+  );
+
+  const selectedButtonConfig = useMemo(
+    () =>
+      selectedBlock?.kind === "button"
+        ? resolveButtonConfig(selectedBlock)
+        : null,
+    [selectedBlock],
   );
 
   useEffect(() => {
@@ -2435,71 +2504,223 @@ export default function SlideModal({
                               </div>
                             </>
                           )}
-                          {selectedBlock.kind === "button" && (
-                            <>
+                          {selectedBlock.kind === "button" && selectedButtonConfig && (
+                            <div className="space-y-4">
                               <label className="block">
                                 <span className="text-xs font-medium text-neutral-500">
                                   Label
                                 </span>
                                 <input
                                   type="text"
-                                  value={selectedBlock.text || ""}
+                                  value={selectedButtonConfig.label}
                                   onChange={(e) =>
-                                    patchBlock(selectedBlock.id, {
-                                      text: e.target.value,
-                                    })
+                                    updateButtonConfig(selectedBlock.id, (config) => ({
+                                      ...config,
+                                      label: e.target.value,
+                                    }))
                                   }
                                   className="mt-1 w-full rounded border px-2 py-1"
                                 />
                               </label>
-                              <label className="block">
+                              <div>
                                 <span className="text-xs font-medium text-neutral-500">
                                   Link
                                 </span>
-                                <select
-                                  value={
-                                    linkOptions.includes(
-                                      selectedBlock.href ?? "",
-                                    )
-                                      ? selectedBlock.href
-                                      : "custom"
-                                  }
-                                  onChange={(e) => {
-                                    const value = e.target.value;
-                                    if (value === "custom") return;
-                                    patchBlock(selectedBlock.id, {
-                                      href: value,
-                                    });
-                                  }}
-                                  className="mt-1 w-full rounded border px-2 py-1"
-                                >
-                                  {linkOptions.map((opt) => (
-                                    <option key={opt} value={opt}>
-                                      {opt === "custom" ? "Custom URL" : opt}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-                              {(!selectedBlock.href ||
-                                !linkOptions.includes(selectedBlock.href)) && (
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Custom URL
-                                  </span>
+                                <div className="mt-1 space-y-2">
+                                  <select
+                                    value={
+                                      linkOptions.includes(selectedButtonConfig.href)
+                                        ? selectedButtonConfig.href
+                                        : "custom"
+                                    }
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      if (value === "custom") {
+                                        updateButtonConfig(selectedBlock.id, (config) => ({
+                                          ...config,
+                                          href:
+                                            config.href && !linkOptions.includes(config.href)
+                                              ? config.href
+                                              : "",
+                                        }));
+                                        return;
+                                      }
+                                      updateButtonConfig(selectedBlock.id, (config) => ({
+                                        ...config,
+                                        href: value,
+                                      }));
+                                    }}
+                                    className="w-full rounded border px-2 py-1"
+                                  >
+                                    {linkOptions.map((opt) => (
+                                      <option key={opt} value={opt}>
+                                        {opt === "custom" ? "Custom URL" : opt}
+                                      </option>
+                                    ))}
+                                  </select>
                                   <input
                                     type="text"
-                                    value={selectedBlock.href || ""}
+                                    value={selectedButtonConfig.href}
                                     onChange={(e) =>
-                                      patchBlock(selectedBlock.id, {
+                                      updateButtonConfig(selectedBlock.id, (config) => ({
+                                        ...config,
                                         href: e.target.value,
-                                      })
+                                      }))
                                     }
-                                    className="mt-1 w-full rounded border px-2 py-1"
+                                    className="w-full rounded border px-2 py-1"
                                     placeholder="https://"
                                   />
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                <label className="block">
+                                  <span className="text-xs font-medium text-neutral-500">
+                                    Variant
+                                  </span>
+                                  <select
+                                    value={selectedButtonConfig.variant}
+                                    onChange={(e) =>
+                                      updateButtonConfig(selectedBlock.id, (config) => ({
+                                        ...config,
+                                        variant: e.target.value as ButtonBlockVariant,
+                                      }))
+                                    }
+                                    className="mt-1 w-full rounded border px-2 py-1"
+                                  >
+                                    {BUTTON_VARIANTS.map((variant) => (
+                                      <option key={variant} value={variant}>
+                                        {variant}
+                                      </option>
+                                    ))}
+                                  </select>
                                 </label>
-                              )}
-                            </>
+                                <label className="block">
+                                  <span className="text-xs font-medium text-neutral-500">
+                                    Size
+                                  </span>
+                                  <select
+                                    value={selectedButtonConfig.size}
+                                    onChange={(e) =>
+                                      updateButtonConfig(selectedBlock.id, (config) => ({
+                                        ...config,
+                                        size: e.target.value as ButtonBlockSize,
+                                      }))
+                                    }
+                                    className="mt-1 w-full rounded border px-2 py-1"
+                                  >
+                                    {BUTTON_SIZES.map((size) => (
+                                      <option key={size} value={size}>
+                                        {size}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              </div>
+                              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedButtonConfig.fullWidth}
+                                    onChange={(e) =>
+                                      updateButtonConfig(selectedBlock.id, (config) => ({
+                                        ...config,
+                                        fullWidth: e.target.checked,
+                                      }))
+                                    }
+                                  />
+                                  Full width
+                                </label>
+                                <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedButtonConfig.shadow}
+                                    onChange={(e) =>
+                                      updateButtonConfig(selectedBlock.id, (config) => ({
+                                        ...config,
+                                        shadow: e.target.checked,
+                                      }))
+                                    }
+                                  />
+                                  Shadow
+                                </label>
+                              </div>
+                              <label className="block">
+                                <span className="text-xs font-medium text-neutral-500">
+                                  Corner radius (px)
+                                </span>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={selectedButtonConfig.radius}
+                                  onChange={(e) => {
+                                    const value = Number(e.target.value);
+                                    updateButtonConfig(selectedBlock.id, (config) => ({
+                                      ...config,
+                                      radius: Number.isNaN(value) ? 0 : Math.max(0, value),
+                                    }));
+                                  }}
+                                  className="mt-1 w-full rounded border px-2 py-1"
+                                />
+                              </label>
+                              <div>
+                                <span className="text-xs font-medium text-neutral-500">
+                                  Text color
+                                </span>
+                                <div className="mt-1 flex items-center gap-2">
+                                  <input
+                                    type="color"
+                                    value={selectedButtonConfig.textColor}
+                                    onChange={(e) =>
+                                      updateButtonConfig(selectedBlock.id, (config) => ({
+                                        ...config,
+                                        textColor: e.target.value,
+                                      }))
+                                    }
+                                    className="h-10 w-16 rounded border"
+                                  />
+                                  <input
+                                    type="text"
+                                    value={selectedButtonConfig.textColor}
+                                    onChange={(e) =>
+                                      updateButtonConfig(selectedBlock.id, (config) => ({
+                                        ...config,
+                                        textColor: e.target.value,
+                                      }))
+                                    }
+                                    className="w-full rounded border px-2 py-1 text-xs uppercase"
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <span className="text-xs font-medium text-neutral-500">
+                                  Background color
+                                </span>
+                                <div className="mt-1 flex items-center gap-2">
+                                  <input
+                                    type="color"
+                                    value={selectedButtonConfig.bgColor}
+                                    onChange={(e) =>
+                                      updateButtonConfig(selectedBlock.id, (config) => ({
+                                        ...config,
+                                        bgColor: e.target.value,
+                                      }))
+                                    }
+                                    className="h-10 w-16 rounded border"
+                                  />
+                                  <input
+                                    type="text"
+                                    value={selectedButtonConfig.bgColor}
+                                    onChange={(e) =>
+                                      updateButtonConfig(selectedBlock.id, (config) => ({
+                                        ...config,
+                                        bgColor: e.target.value,
+                                      }))
+                                    }
+                                    className="w-full rounded border px-2 py-1 text-xs uppercase"
+                                  />
+                                </div>
+                              </div>
+                            </div>
                           )}
                           {selectedBlock.kind === "image" && (
                             <>
