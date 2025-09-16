@@ -40,6 +40,17 @@ const TEXT_SIZES: { value: NonNullable<SlideBlock["size"]>; label: string }[] =
     { value: "xl", label: "Extra large" },
   ];
 
+const BLOCK_KIND_LABELS: Record<SlideBlock["kind"], string> = {
+  heading: "Heading",
+  subheading: "Subheading",
+  text: "Text",
+  button: "Button",
+  image: "Image",
+  quote: "Quote",
+  gallery: "Gallery",
+  spacer: "Spacer",
+};
+
 const PREVIEW_PADDING_X = 16;
 const PREVIEW_PADDING_Y = 16;
 
@@ -814,7 +825,9 @@ export default function SlideModal({
     [customPages],
   );
 
-  const selectionLabel = selectedBlock ? `${selectedBlock.kind}` : "None";
+  const selectionLabel = selectedBlock
+    ? BLOCK_KIND_LABELS[selectedBlock.kind] ?? selectedBlock.kind
+    : "None";
   const background = cfg.background;
   const backgroundType = background?.type ?? "color";
   const colorBackground = background?.type === "color" ? background : undefined;
@@ -1640,8 +1653,58 @@ export default function SlideModal({
               </main>
               {inspectorOpen && selectedBlock && (
                 <div className="border-t bg-white">
-                  <div className="max-h-[60vh] overflow-y-auto p-4 pb-24 space-y-6">
-                    <section>
+                  <div className="max-h-[60vh] overflow-y-auto">
+                    <div className="sticky top-0 z-10 border-b bg-white px-4 py-3">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                            Block
+                          </div>
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
+                            <span className="text-sm font-semibold text-neutral-900">
+                              {selectionLabel}
+                            </span>
+                            {selectedBlock.locked && (
+                              <span className="rounded bg-neutral-100 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-neutral-600">
+                                Locked
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleDuplicateBlock(selectedBlock.id)}
+                            className="rounded border px-3 py-1 text-sm"
+                          >
+                            Duplicate
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeBlock(selectedBlock.id)}
+                            className="rounded border px-3 py-1 text-sm text-red-600"
+                          >
+                            Delete
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => toggleBlockLock(selectedBlock.id)}
+                            className="rounded border px-3 py-1 text-sm"
+                          >
+                            {selectedBlock.locked ? "Unlock" : "Lock"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleInspectorDone}
+                            className="rounded border px-3 py-1 text-sm"
+                          >
+                            Done
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="space-y-6 px-4 pb-6 pt-4">
+                      <section>
                       <div className="flex items-center justify-between">
                         <h3 className="text-sm font-semibold text-neutral-600">
                           Inspector
@@ -2107,41 +2170,8 @@ export default function SlideModal({
                         </div>
                     </section>
                   </div>
-                  <div className="sticky bottom-0 border-t bg-white px-4 py-3">
-                    <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-                      <div className="flex items-center gap-3">
-                        <button
-                          type="button"
-                          onClick={() => handleDuplicateBlock(selectedBlock.id)}
-                          className="rounded border px-3 py-1"
-                        >
-                          Duplicate
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => removeBlock(selectedBlock.id)}
-                          className="rounded border px-3 py-1 text-red-600"
-                        >
-                          Delete
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => toggleBlockLock(selectedBlock.id)}
-                          className="rounded border px-3 py-1"
-                        >
-                          {selectedBlock.locked ? "Unlock" : "Lock"}
-                        </button>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleInspectorDone}
-                        className="rounded border px-3 py-1"
-                      >
-                        Done
-                      </button>
-                    </div>
-                  </div>
                 </div>
+              </div>
               )}
             </div>
           </div>
