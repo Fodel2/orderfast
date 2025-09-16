@@ -87,6 +87,26 @@ export const DEFAULT_IMAGE_CONFIG: ImageBlockConfig = {
   alt: '',
 };
 
+export type GalleryBlockItem = { url: string; alt?: string };
+
+export type GalleryBlockConfig = {
+  items: GalleryBlockItem[];
+  layout: 'grid' | 'carousel';
+  autoplay: boolean;
+  interval: number;
+  radius: number;
+  shadow: boolean;
+};
+
+export const DEFAULT_GALLERY_CONFIG: GalleryBlockConfig = {
+  items: [],
+  layout: 'grid',
+  autoplay: false,
+  interval: 3000,
+  radius: 0,
+  shadow: false,
+};
+
 export type SlideBlock = {
   id: string;
   kind: 'heading' | 'subheading' | 'text' | 'button' | 'image' | 'quote' | 'gallery' | 'spacer';
@@ -114,7 +134,12 @@ export type SlideBlock = {
   radius?: number;
   padding?: number;
   buttonVariant?: 'primary' | 'secondary';
-  config?: (Partial<ButtonBlockConfig> & Partial<ImageBlockConfig> & Record<string, any>) | null;
+  config?:
+    | (Partial<ButtonBlockConfig> &
+        Partial<ImageBlockConfig> &
+        Partial<GalleryBlockConfig> &
+        Record<string, any>)
+    | null;
   fit?: 'cover' | 'contain';
   author?: string;
   height?: number;
@@ -348,6 +373,109 @@ export function resolveImageConfig(block: SlideBlock): ImageBlockConfig {
   };
 }
 
+const parseBoolean = (value: unknown): boolean | undefined => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
+  }
+  return undefined;
+};
+
+const parseNumber = (value: unknown): number | undefined => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+};
+
+export function resolveGalleryConfig(block: SlideBlock): GalleryBlockConfig {
+  const raw = (block.config ?? {}) as Record<string, any>;
+  const rawItems = Array.isArray(raw.items)
+    ? raw.items
+    : Array.isArray((raw as any).images)
+      ? (raw as any).images
+      : undefined;
+  const fallbackItems = Array.isArray(block.items)
+    ? block.items
+    : Array.isArray((block as any).images)
+      ? (block as any).images
+      : undefined;
+  const sourceItems = rawItems ?? fallbackItems ?? [];
+
+  const items: GalleryBlockItem[] = sourceItems
+    .map((item) => {
+      if (!item) return null;
+      if (typeof item === 'string') {
+        const url = item.trim();
+        return url ? { url } : null;
+      }
+      if (typeof item === 'object') {
+        const urlCandidate =
+          typeof (item as any).url === 'string'
+            ? (item as any).url
+            : typeof (item as any).src === 'string'
+              ? (item as any).src
+              : typeof (item as any).image === 'string'
+                ? (item as any).image
+                : undefined;
+        if (typeof urlCandidate === 'string') {
+          const trimmed = urlCandidate.trim();
+          if (trimmed.length > 0) {
+            const alt =
+              typeof (item as any).alt === 'string' && (item as any).alt.trim().length > 0
+                ? (item as any).alt
+                : undefined;
+            return { url: trimmed, alt };
+          }
+        }
+      }
+      return null;
+    })
+    .filter((value): value is GalleryBlockItem => Boolean(value));
+
+  const rawLayout =
+    typeof raw.layout === 'string'
+      ? raw.layout
+      : typeof (raw as any).mode === 'string'
+        ? (raw as any).mode
+        : typeof (block as any).layout === 'string'
+          ? (block as any).layout
+          : undefined;
+  const normalizedLayout = typeof rawLayout === 'string' ? rawLayout.trim().toLowerCase() : undefined;
+  const layout: GalleryBlockConfig['layout'] =
+    normalizedLayout === 'carousel' ? 'carousel' : 'grid';
+
+  const autoplayRaw =
+    parseBoolean(raw.autoplay) ??
+    parseBoolean((raw as any).autoPlay) ??
+    parseBoolean((block as any).autoplay);
+  const intervalRaw =
+    parseNumber(raw.interval) ??
+    parseNumber((raw as any).delay) ??
+    parseNumber((block as any).interval);
+  const radiusRaw = parseNumber(raw.radius) ?? parseNumber(block.radius);
+  const shadowRaw =
+    parseBoolean(raw.shadow) ??
+    parseBoolean((raw as any).hasShadow) ??
+    parseBoolean((block as any).shadow);
+
+  const intervalCandidate = intervalRaw && intervalRaw > 0 ? intervalRaw : undefined;
+  const radiusCandidate = typeof radiusRaw === 'number' && radiusRaw >= 0 ? radiusRaw : undefined;
+
+  return {
+    items,
+    layout,
+    autoplay: layout === 'carousel' ? Boolean(autoplayRaw) : false,
+    interval: intervalCandidate ? Math.round(intervalCandidate) : DEFAULT_GALLERY_CONFIG.interval,
+    radius: radiusCandidate ?? DEFAULT_GALLERY_CONFIG.radius,
+    shadow: Boolean(shadowRaw),
+  };
+}
+
 function ensureFrame(block: SlideBlock, device: DeviceKind): Frame {
   const fallback: Frame = { x: 10, y: 10, w: 40, h: 20, r: 0 };
   if (block.frames?.[device]) return block.frames[device]!;
@@ -574,18 +702,7 @@ export default function SlidesManager({
         );
       }
       case 'gallery': {
-        return (
-          <div className="flex h-full w-full gap-2 overflow-hidden rounded">
-            {(block.items || []).map((item) => (
-              <img
-                key={item.src}
-                src={item.src}
-                alt={item.alt || ''}
-                className="h-full flex-1 object-cover"
-              />
-            ))}
-          </div>
-        );
+        return <GalleryBlockPreview block={block} />;
       }
       case 'spacer':
         return <div className="w-full h-full" />;
@@ -651,6 +768,109 @@ export default function SlidesManager({
             })}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function GalleryBlockPreview({ block }: { block: SlideBlock }) {
+  const config = useMemo(() => resolveGalleryConfig(block), [block]);
+  const items = config.items;
+  const [activeIndex, setActiveIndex] = useState(0);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [block.id, config.layout, items.length]);
+
+  useEffect(() => {
+    if (config.layout !== 'carousel') return;
+    const container = scrollRef.current;
+    if (!container) return;
+    const width = container.clientWidth;
+    container.scrollTo({ left: width * activeIndex, behavior: 'smooth' });
+  }, [activeIndex, config.layout]);
+
+  useEffect(() => {
+    if (config.layout !== 'carousel') return;
+    if (!config.autoplay) return;
+    if (items.length <= 1) return;
+    const interval = Math.max(200, Number.isFinite(config.interval) ? config.interval : DEFAULT_GALLERY_CONFIG.interval);
+    const id = window.setInterval(() => {
+      setActiveIndex((prev) => {
+        const next = prev + 1;
+        return next >= items.length ? 0 : next;
+      });
+    }, interval);
+    return () => window.clearInterval(id);
+  }, [config.autoplay, config.interval, config.layout, items.length]);
+
+  useEffect(() => {
+    if (activeIndex >= items.length) {
+      setActiveIndex(items.length > 0 ? Math.max(0, items.length - 1) : 0);
+    }
+  }, [activeIndex, items.length]);
+
+  const wrapperClasses = ['h-full', 'w-full', 'overflow-hidden'];
+  if (config.shadow) wrapperClasses.push('shadow-lg');
+  const wrapperStyle: CSSProperties = { borderRadius: config.radius };
+
+  if (items.length === 0) {
+    return (
+      <div className={wrapperClasses.join(' ')} style={wrapperStyle}>
+        <div className="flex h-full items-center justify-center text-xs text-neutral-400">
+          No images yet
+        </div>
+      </div>
+    );
+  }
+
+  if (config.layout === 'carousel') {
+    return (
+      <div className={wrapperClasses.join(' ')} style={wrapperStyle}>
+        <div
+          ref={scrollRef}
+          className="flex h-full w-full snap-x snap-mandatory overflow-x-auto"
+          style={{ scrollBehavior: 'smooth' }}
+        >
+          {items.map((item, index) => (
+            <div
+              key={`${item.url}-${index}`}
+              className="flex h-full w-full flex-none snap-center"
+              style={{ minWidth: '100%' }}
+            >
+              <img
+                src={item.url}
+                alt={item.alt || ''}
+                className="h-full w-full object-cover"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const columns = Math.min(items.length, 3) || 1;
+
+  return (
+    <div className={wrapperClasses.join(' ')} style={wrapperStyle}>
+      <div
+        className="grid h-full w-full gap-2"
+        style={{
+          gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+          gridAutoRows: '1fr',
+        }}
+      >
+        {items.map((item, index) => (
+          <div key={`${item.url}-${index}`} className="relative h-full w-full overflow-hidden">
+            <img
+              src={item.url}
+              alt={item.alt || ''}
+              className="h-full w-full object-cover"
+            />
+          </div>
+        ))}
       </div>
     </div>
   );

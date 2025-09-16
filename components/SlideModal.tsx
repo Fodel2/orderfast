@@ -14,7 +14,10 @@ import SlidesManager, {
   type ButtonBlockSize,
   type ButtonBlockVariant,
   DEFAULT_IMAGE_CONFIG,
+  type GalleryBlockItem,
+  DEFAULT_GALLERY_CONFIG,
   type ImageBlockConfig,
+  type GalleryBlockConfig,
   type DeviceKind,
   type Frame,
   type SlideBackground,
@@ -23,6 +26,7 @@ import SlidesManager, {
   type SlidesManagerChangeOptions,
   resolveButtonConfig,
   resolveImageConfig,
+  resolveGalleryConfig,
 } from "./SlidesManager";
 import Button from "@/components/ui/Button";
 import { supabase } from "@/utils/supabaseClient";
@@ -342,7 +346,12 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
     block.radius = imageConfig.radius;
     block.alt = imageConfig.alt;
   }
-  if (kind === "gallery" && !block.items) block.items = [];
+  if (kind === "gallery") {
+    const galleryConfig = resolveGalleryConfig(block);
+    block.items = galleryConfig.items.map((item) => ({ src: item.url, alt: item.alt }));
+    block.config = { ...(block.config ?? {}), ...galleryConfig };
+    block.radius = galleryConfig.radius;
+  }
   if (kind === "heading" && !block.size) block.size = "xl";
   if (kind === "subheading" && !block.size) block.size = "md";
   if (kind === "text" && !block.size) block.size = "sm";
@@ -354,6 +363,9 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
     block.href = normalizedConfig.href;
     block.buttonVariant =
       normalizedConfig.variant === "Outline" ? "secondary" : "primary";
+  }
+  if (kind === "gallery") {
+    block.config = { ...DEFAULT_GALLERY_CONFIG };
   }
   if (
     (kind === "heading" || kind === "subheading" || kind === "text") &&
@@ -564,6 +576,8 @@ export default function SlideModal({
   const [previewSize, setPreviewSize] = useState({ width: 0, height: 0 });
   const [customPages, setCustomPages] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [showGalleryAddOptions, setShowGalleryAddOptions] = useState(false);
+  const [galleryUrlInput, setGalleryUrlInput] = useState("");
   const [saving, setSaving] = useState(false);
   const pastRef = useRef<SlideCfg[]>([]);
   const futureRef = useRef<SlideCfg[]>([]);
@@ -872,6 +886,80 @@ export default function SlideModal({
     );
   };
 
+  const updateGalleryConfig = (
+    id: string,
+    mutator: (prev: GalleryBlockConfig) => GalleryBlockConfig,
+    commit = true,
+  ) => {
+    updateCfg(
+      (prev) => ({
+        ...prev,
+        blocks: prev.blocks.map((b) => {
+          if (b.id !== id) return b;
+          if (b.kind !== "gallery") return b;
+          const current = resolveGalleryConfig(b);
+          const next = mutator({ ...current });
+          const sanitizedItems = Array.isArray(next.items)
+            ? next.items
+                .map((item): GalleryBlockItem | null => {
+                  if (!item) return null;
+                  const urlSource =
+                    typeof item.url === "string"
+                      ? item.url
+                      : typeof (item as any).src === "string"
+                        ? (item as any).src
+                        : "";
+                  const url = urlSource.trim();
+                  if (!url) return null;
+                  const alt =
+                    typeof item.alt === "string" && item.alt.trim().length > 0
+                      ? item.alt
+                      : undefined;
+                  const normalized: GalleryBlockItem = alt ? { url, alt } : { url };
+                  return normalized;
+                })
+                .filter((item): item is GalleryBlockItem => Boolean(item))
+            : [];
+          const intervalRaw =
+            typeof next.interval === "number"
+              ? next.interval
+              : Number(next.interval);
+          const radiusRaw =
+            typeof next.radius === "number"
+              ? next.radius
+              : Number(next.radius);
+          const intervalCandidate =
+            Number.isFinite(intervalRaw) && intervalRaw > 0
+              ? Math.round(intervalRaw)
+              : DEFAULT_GALLERY_CONFIG.interval;
+          const radiusCandidate =
+            Number.isFinite(radiusRaw) && radiusRaw >= 0
+              ? radiusRaw
+              : DEFAULT_GALLERY_CONFIG.radius;
+          const sanitized: GalleryBlockConfig = {
+            items: sanitizedItems,
+            layout: next.layout === "carousel" ? "carousel" : "grid",
+            autoplay:
+              next.layout === "carousel" ? Boolean(next.autoplay) : false,
+            interval: Math.max(200, intervalCandidate),
+            radius: radiusCandidate,
+            shadow: Boolean(next.shadow),
+          };
+          return {
+            ...b,
+            config: { ...(b.config ?? {}), ...sanitized },
+            items: sanitized.items.map((item) => ({
+              src: item.url,
+              alt: item.alt,
+            })),
+            radius: sanitized.radius,
+          };
+        }),
+      }),
+      commit,
+    );
+  };
+
   const updateFrameField = (id: string, field: keyof Frame, value: number) => {
     updateCfg((prev) => ({
       ...prev,
@@ -1100,11 +1188,24 @@ export default function SlideModal({
     [selectedBlock],
   );
 
+  const selectedGalleryConfig = useMemo(
+    () =>
+      selectedBlock?.kind === "gallery"
+        ? resolveGalleryConfig(selectedBlock)
+        : null,
+    [selectedBlock],
+  );
+
   useEffect(() => {
     if (!selectedBlock) {
       setInspectorOpen(false);
     }
   }, [selectedBlock]);
+
+  useEffect(() => {
+    setShowGalleryAddOptions(false);
+    setGalleryUrlInput("");
+  }, [selectedBlock?.id]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -2993,127 +3094,301 @@ export default function SlideModal({
                                 </label>
                               </div>
                             )}
-                          {selectedBlock.kind === "gallery" && (
-                            <div className="space-y-3">
-                              <div className="flex items-center justify-between text-xs text-neutral-500">
-                                <span>
-                                  {selectedBlock.items?.length || 0} images
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    galleryInputRef.current?.click()
-                                  }
-                                  className="rounded border px-2 py-1"
-                                >
-                                  Upload
-                                </button>
-                              </div>
-                              <input
-                                ref={galleryInputRef}
-                                type="file"
-                                accept="image/*"
-                                multiple
-                                className="hidden"
-                                onChange={async (e) => {
-                                  const files = Array.from(
-                                    e.target.files || [],
-                                  );
-                                  if (!files.length) return;
-                                  const current = cfg.blocks.find(
-                                    (b) => b.id === selectedBlock.id,
-                                  );
-                                  const nextItems = [...(current?.items || [])];
-                                  for (const file of files) {
-                                    // eslint-disable-next-line no-await-in-loop
-                                    await handleUpload(file, (url) => {
-                                      nextItems.push({ src: url });
-                                    });
-                                  }
-                                  patchBlock(selectedBlock.id, {
-                                    items: nextItems,
-                                  });
-                                  e.target.value = "";
-                                }}
-                              />
-                              <div className="space-y-2">
-                                {(selectedBlock.items || []).map(
-                                  (item, index) => (
-                                    <div
-                                      key={item.src}
-                                      className="flex items-center gap-2 text-xs"
+                          {selectedBlock.kind === "gallery" &&
+                            selectedGalleryConfig && (
+                              <div className="space-y-4">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                                    Gallery images ({selectedGalleryConfig.items.length})
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setShowGalleryAddOptions((prev) => !prev)
+                                    }
+                                    className="rounded border px-3 py-1 text-xs font-medium"
+                                  >
+                                    + Add image
+                                  </button>
+                                </div>
+                                {uploading && (
+                                  <div className="text-[11px] text-neutral-500">
+                                    Uploading…
+                                  </div>
+                                )}
+                                {showGalleryAddOptions && (
+                                  <div className="space-y-3 rounded border px-3 py-3 text-xs">
+                                    <button
+                                      type="button"
+                                      className="w-full rounded border px-3 py-2 text-xs font-medium"
+                                      onClick={() => {
+                                        galleryInputRef.current?.click();
+                                      }}
                                     >
-                                      <img
-                                        src={item.src}
-                                        alt=""
-                                        className="h-12 w-12 rounded object-cover"
-                                      />
-                                      <div className="flex gap-1">
-                                        <button
-                                          type="button"
-                                          className="rounded border px-2 py-1"
-                                          disabled={index === 0}
-                                          onClick={() => {
-                                            const next = [
-                                              ...(selectedBlock.items || []),
-                                            ];
-                                            const [moved] = next.splice(
-                                              index,
-                                              1,
-                                            );
-                                            next.splice(index - 1, 0, moved);
-                                            patchBlock(selectedBlock.id, {
-                                              items: next,
-                                            });
-                                          }}
-                                        >
-                                          Up
-                                        </button>
-                                        <button
-                                          type="button"
-                                          className="rounded border px-2 py-1"
-                                          disabled={
-                                            index ===
-                                            (selectedBlock.items || []).length -
-                                              1
+                                      Upload from device
+                                    </button>
+                                    <div className="space-y-1">
+                                      <span className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
+                                        Image URL
+                                      </span>
+                                      <div className="flex gap-2">
+                                        <input
+                                          type="text"
+                                          value={galleryUrlInput}
+                                          onChange={(e) =>
+                                            setGalleryUrlInput(e.target.value)
                                           }
-                                          onClick={() => {
-                                            const next = [
-                                              ...(selectedBlock.items || []),
-                                            ];
-                                            const [moved] = next.splice(
-                                              index,
-                                              1,
-                                            );
-                                            next.splice(index + 1, 0, moved);
-                                            patchBlock(selectedBlock.id, {
-                                              items: next,
-                                            });
-                                          }}
-                                        >
-                                          Down
-                                        </button>
+                                          className="flex-1 rounded border px-2 py-1 text-xs"
+                                          placeholder="https://example.com/image.jpg"
+                                        />
                                         <button
                                           type="button"
-                                          className="rounded border px-2 py-1 text-red-600"
+                                          className="rounded border px-3 py-1 text-xs font-medium"
+                                          disabled={!galleryUrlInput.trim()}
                                           onClick={() => {
-                                            const next = (
-                                              selectedBlock.items || []
-                                            ).filter((_, i) => i !== index);
-                                            patchBlock(selectedBlock.id, {
-                                              items: next,
-                                            });
+                                            const url = galleryUrlInput.trim();
+                                            if (!url) return;
+                                            updateGalleryConfig(
+                                              selectedBlock.id,
+                                              (config) => ({
+                                                ...config,
+                                                items: [
+                                                  ...config.items,
+                                                  { url },
+                                                ],
+                                              }),
+                                            );
+                                            setGalleryUrlInput("");
                                           }}
                                         >
-                                          Remove
+                                          Add
                                         </button>
                                       </div>
                                     </div>
-                                  ),
+                                  </div>
                                 )}
+                                <input
+                                  ref={galleryInputRef}
+                                  type="file"
+                                  accept="image/*"
+                                  multiple
+                                  className="hidden"
+                                  onChange={async (e) => {
+                                    const files = Array.from(
+                                      e.target.files || [],
+                                    );
+                                    if (!files.length) return;
+                                    const uploaded: string[] = [];
+                                    for (const file of files) {
+                                      // eslint-disable-next-line no-await-in-loop
+                                      await handleUpload(file, (url) => {
+                                        if (url) uploaded.push(url);
+                                      });
+                                    }
+                                    if (uploaded.length) {
+                                      updateGalleryConfig(
+                                        selectedBlock.id,
+                                        (config) => ({
+                                          ...config,
+                                          items: [
+                                            ...config.items,
+                                            ...uploaded.map((url) => ({ url })),
+                                          ],
+                                        }),
+                                      );
+                                    }
+                                    e.target.value = "";
+                                  }}
+                                />
+                                <div className="space-y-2">
+                                  {selectedGalleryConfig.items.length === 0 ? (
+                                    <div className="flex h-24 items-center justify-center rounded border border-dashed text-xs text-neutral-500">
+                                      No images yet
+                                    </div>
+                                  ) : (
+                                    selectedGalleryConfig.items.map(
+                                      (item, index) => (
+                                        <div
+                                          key={`${item.url}-${index}`}
+                                          className="flex items-center gap-3 rounded border px-2 py-2 text-xs"
+                                        >
+                                          <img
+                                            src={item.url}
+                                            alt={item.alt || ""}
+                                            className="h-12 w-12 rounded object-cover"
+                                          />
+                                          <div className="ml-auto flex items-center gap-1">
+                                            <button
+                                              type="button"
+                                              className="rounded border px-2 py-1"
+                                              disabled={index === 0}
+                                              onClick={() =>
+                                                updateGalleryConfig(
+                                                  selectedBlock.id,
+                                                  (config) => {
+                                                    const items = [...config.items];
+                                                    const [moved] = items.splice(index, 1);
+                                                    items.splice(index - 1, 0, moved);
+                                                    return { ...config, items };
+                                                  },
+                                                )
+                                              }
+                                            >
+                                              Up
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="rounded border px-2 py-1"
+                                              disabled={
+                                                index ===
+                                                selectedGalleryConfig.items.length - 1
+                                              }
+                                              onClick={() =>
+                                                updateGalleryConfig(
+                                                  selectedBlock.id,
+                                                  (config) => {
+                                                    const items = [...config.items];
+                                                    const [moved] = items.splice(index, 1);
+                                                    items.splice(index + 1, 0, moved);
+                                                    return { ...config, items };
+                                                  },
+                                                )
+                                              }
+                                            >
+                                              Down
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="rounded border px-2 py-1 text-red-600"
+                                              onClick={() =>
+                                                updateGalleryConfig(
+                                                  selectedBlock.id,
+                                                  (config) => ({
+                                                    ...config,
+                                                    items: config.items.filter(
+                                                      (_, i) => i !== index,
+                                                    ),
+                                                  }),
+                                                )
+                                              }
+                                            >
+                                              Remove
+                                            </button>
+                                          </div>
+                                        </div>
+                                      ),
+                                    )
+                                  )}
+                                </div>
+                                <div className="space-y-3">
+                                  <label className="block">
+                                    <span className="text-xs font-medium text-neutral-500">
+                                      Layout
+                                    </span>
+                                    <select
+                                      value={selectedGalleryConfig.layout}
+                                      onChange={(e) =>
+                                        updateGalleryConfig(
+                                          selectedBlock.id,
+                                          (config) => ({
+                                            ...config,
+                                            layout: e.target.value as GalleryBlockConfig["layout"],
+                                          }),
+                                        )
+                                      }
+                                      className="mt-1 w-full rounded border px-2 py-1 text-xs"
+                                    >
+                                      <option value="grid">Grid</option>
+                                      <option value="carousel">Carousel</option>
+                                    </select>
+                                  </label>
+                                  {selectedGalleryConfig.layout === "carousel" && (
+                                    <div className="space-y-2 rounded border px-3 py-2 text-xs">
+                                      <label className="flex items-center justify-between text-xs text-neutral-500">
+                                        <span>Autoplay</span>
+                                        <input
+                                          type="checkbox"
+                                          checked={selectedGalleryConfig.autoplay}
+                                          onChange={(e) =>
+                                            updateGalleryConfig(
+                                              selectedBlock.id,
+                                              (config) => ({
+                                                ...config,
+                                                autoplay: e.target.checked,
+                                              }),
+                                            )
+                                          }
+                                        />
+                                      </label>
+                                      <label className="block">
+                                        <span className="text-xs font-medium text-neutral-500">
+                                          Interval (ms)
+                                        </span>
+                                        <input
+                                          type="number"
+                                          min={200}
+                                          step={100}
+                                          value={selectedGalleryConfig.interval}
+                                          onChange={(e) => {
+                                            const value = Number(e.target.value);
+                                            updateGalleryConfig(
+                                              selectedBlock.id,
+                                              (config) => ({
+                                                ...config,
+                                                interval: Number.isNaN(value)
+                                                  ? config.interval
+                                                  : value,
+                                              }),
+                                            );
+                                          }}
+                                          className="mt-1 w-full rounded border px-2 py-1"
+                                          disabled={!selectedGalleryConfig.autoplay}
+                                        />
+                                      </label>
+                                    </div>
+                                  )}
+                                  <label className="block">
+                                    <span className="text-xs font-medium text-neutral-500">
+                                      Corner radius (px)
+                                    </span>
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      value={selectedGalleryConfig.radius}
+                                      onChange={(e) => {
+                                        const value = Number(e.target.value);
+                                        updateGalleryConfig(
+                                          selectedBlock.id,
+                                          (config) => ({
+                                            ...config,
+                                            radius: Number.isNaN(value)
+                                              ? config.radius
+                                              : value,
+                                          }),
+                                        );
+                                      }}
+                                      className="mt-1 w-full rounded border px-2 py-1"
+                                    />
+                                  </label>
+                                  <label className="flex items-center justify-between text-xs text-neutral-500">
+                                    <span>Shadow</span>
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedGalleryConfig.shadow}
+                                      onChange={(e) =>
+                                        updateGalleryConfig(
+                                          selectedBlock.id,
+                                          (config) => ({
+                                            ...config,
+                                            shadow: e.target.checked,
+                                          }),
+                                        )
+                                      }
+                                    />
+                                  </label>
+                                </div>
                               </div>
-                            </div>
-                          )}
+                            )}
                           {selectedBlock.kind === "quote" && (
                             <>
                               <label className="block">
