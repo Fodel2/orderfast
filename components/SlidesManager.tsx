@@ -107,6 +107,28 @@ export const DEFAULT_GALLERY_CONFIG: GalleryBlockConfig = {
   shadow: false,
 };
 
+export type QuoteBlockConfig = {
+  text: string;
+  author: string;
+  style: 'plain' | 'emphasis' | 'card';
+  bgColor: string;
+  bgOpacity: number;
+  radius: number;
+  padding: number;
+  align: 'left' | 'center' | 'right';
+};
+
+export const DEFAULT_QUOTE_CONFIG: QuoteBlockConfig = {
+  text: '',
+  author: '',
+  style: 'plain',
+  bgColor: '#ffffff',
+  bgOpacity: 1,
+  radius: 0,
+  padding: 0,
+  align: 'left',
+};
+
 export type SlideBlock = {
   id: string;
   kind: 'heading' | 'subheading' | 'text' | 'button' | 'image' | 'quote' | 'gallery' | 'spacer';
@@ -138,6 +160,7 @@ export type SlideBlock = {
     | (Partial<ButtonBlockConfig> &
         Partial<ImageBlockConfig> &
         Partial<GalleryBlockConfig> &
+        Partial<QuoteBlockConfig> &
         Record<string, any>)
     | null;
   fit?: 'cover' | 'contain';
@@ -476,6 +499,81 @@ export function resolveGalleryConfig(block: SlideBlock): GalleryBlockConfig {
   };
 }
 
+export function resolveQuoteConfig(block: SlideBlock): QuoteBlockConfig {
+  const raw = (block.config ?? {}) as Partial<QuoteBlockConfig>;
+
+  const textSource =
+    typeof raw.text === 'string'
+      ? raw.text
+      : typeof block.text === 'string'
+        ? block.text
+        : DEFAULT_QUOTE_CONFIG.text;
+
+  const authorSource =
+    typeof raw.author === 'string'
+      ? raw.author
+      : typeof block.author === 'string'
+        ? block.author
+        : DEFAULT_QUOTE_CONFIG.author;
+
+  const styleCandidate =
+    typeof raw.style === 'string'
+      ? raw.style.toLowerCase()
+      : undefined;
+  const style: QuoteBlockConfig['style'] =
+    styleCandidate === 'emphasis' || styleCandidate === 'card'
+      ? styleCandidate
+      : 'plain';
+
+  const bgColorSource =
+    typeof raw.bgColor === 'string' && raw.bgColor.trim().length > 0
+      ? raw.bgColor.trim()
+      : typeof block.bgColor === 'string' && block.bgColor.trim().length > 0
+        ? block.bgColor.trim()
+        : DEFAULT_QUOTE_CONFIG.bgColor;
+
+  const bgOpacitySource =
+    parseNumber(raw.bgOpacity) ??
+    parseNumber(block.bgOpacity) ??
+    DEFAULT_QUOTE_CONFIG.bgOpacity;
+
+  const radiusSource =
+    parseNumber(raw.radius) ??
+    parseNumber(block.radius) ??
+    DEFAULT_QUOTE_CONFIG.radius;
+
+  const paddingSource =
+    parseNumber(raw.padding) ??
+    parseNumber(block.padding) ??
+    DEFAULT_QUOTE_CONFIG.padding;
+
+  const alignCandidate =
+    typeof raw.align === 'string'
+      ? raw.align
+      : typeof block.align === 'string'
+        ? block.align
+        : DEFAULT_QUOTE_CONFIG.align;
+  const alignNormalized =
+    typeof alignCandidate === 'string'
+      ? alignCandidate.toLowerCase()
+      : DEFAULT_QUOTE_CONFIG.align;
+  const align: QuoteBlockConfig['align'] =
+    alignNormalized === 'center' || alignNormalized === 'right'
+      ? (alignNormalized as QuoteBlockConfig['align'])
+      : 'left';
+
+  return {
+    text: textSource,
+    author: authorSource,
+    style,
+    bgColor: bgColorSource,
+    bgOpacity: clamp(bgOpacitySource, 0, 1),
+    radius: Math.max(0, radiusSource),
+    padding: Math.max(0, paddingSource),
+    align,
+  };
+}
+
 function ensureFrame(block: SlideBlock, device: DeviceKind): Frame {
   const fallback: Frame = { x: 10, y: 10, w: 40, h: 20, r: 0 };
   if (block.frames?.[device]) return block.frames[device]!;
@@ -694,10 +792,46 @@ export default function SlidesManager({
         );
       }
       case 'quote': {
+        const quote = resolveQuoteConfig(block);
+        const defaultTextColor = quote.style === 'plain' ? '#ffffff' : '#111111';
+        const textColor = block.textColor ?? block.color ?? defaultTextColor;
+        const wrapperStyle: CSSProperties = {
+          width: '100%',
+          textAlign: quote.align,
+        };
+        const innerStyle: CSSProperties = {
+          color: textColor,
+          textAlign: quote.align,
+        };
+        const innerClasses = ['max-w-full'];
+        if (quote.style === 'emphasis' || quote.style === 'card') {
+          const backgroundColor = hexToRgba(quote.bgColor, quote.bgOpacity);
+          if (backgroundColor) {
+            innerStyle.backgroundColor = backgroundColor;
+          }
+          innerStyle.borderRadius = quote.radius;
+          innerStyle.padding = quote.padding;
+          innerStyle.display = 'inline-block';
+        }
+        if (quote.style === 'card') {
+          innerClasses.push('shadow-lg');
+        }
+        const textClasses = ['whitespace-pre-line'];
+        if (quote.style === 'emphasis') {
+          textClasses.push('italic', 'text-2xl', 'font-semibold');
+        } else {
+          textClasses.push('italic');
+        }
+        const authorClasses = ['mt-3', 'text-sm', 'opacity-80', 'whitespace-pre-line'];
+        const trimmedAuthor = quote.author.trim();
         return (
-          <div className="text-white">
-            <p className="italic">“{block.text ?? ''}”</p>
-            {block.author && <p className="mt-2 text-sm">— {block.author}</p>}
+          <div style={wrapperStyle}>
+            <div className={innerClasses.join(' ')} style={innerStyle}>
+              <p className={textClasses.join(' ')}>“{quote.text}”</p>
+              {trimmedAuthor.length > 0 ? (
+                <p className={authorClasses.join(' ')}>— {trimmedAuthor}</p>
+              ) : null}
+            </div>
           </div>
         );
       }

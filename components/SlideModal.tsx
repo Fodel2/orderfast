@@ -18,6 +18,8 @@ import SlidesManager, {
   DEFAULT_GALLERY_CONFIG,
   type ImageBlockConfig,
   type GalleryBlockConfig,
+  DEFAULT_QUOTE_CONFIG,
+  type QuoteBlockConfig,
   type DeviceKind,
   type Frame,
   type SlideBackground,
@@ -27,6 +29,7 @@ import SlidesManager, {
   resolveButtonConfig,
   resolveImageConfig,
   resolveGalleryConfig,
+  resolveQuoteConfig,
 } from "./SlidesManager";
 import Button from "@/components/ui/Button";
 import { supabase } from "@/utils/supabaseClient";
@@ -67,6 +70,18 @@ const BACKGROUND_STYLE_OPTIONS: { value: NonNullable<SlideBlock["bgStyle"]>; lab
   { value: "none", label: "None" },
   { value: "solid", label: "Solid" },
   { value: "glass", label: "Glass" },
+];
+
+const QUOTE_STYLE_OPTIONS: { value: QuoteBlockConfig["style"]; label: string }[] = [
+  { value: "plain", label: "Plain" },
+  { value: "emphasis", label: "Emphasis" },
+  { value: "card", label: "Card" },
+];
+
+const QUOTE_ALIGNMENT_OPTIONS: { value: QuoteBlockConfig["align"]; label: string }[] = [
+  { value: "left", label: "Left" },
+  { value: "center", label: "Center" },
+  { value: "right", label: "Right" },
 ];
 
 const SIZE_TO_FONT_SIZE_PX: Record<NonNullable<SlideBlock["size"]>, number> = {
@@ -747,6 +762,20 @@ export default function SlideModal({
       block.radius = imageConfig.radius;
       block.alt = imageConfig.alt;
     }
+    if (kind === "quote") {
+      const quoteConfig: QuoteBlockConfig = {
+        ...DEFAULT_QUOTE_CONFIG,
+        text: block.text ?? DEFAULT_QUOTE_CONFIG.text,
+      };
+      block.config = quoteConfig;
+      block.text = quoteConfig.text;
+      block.author = quoteConfig.author;
+      block.align = quoteConfig.align;
+      block.bgColor = quoteConfig.bgColor;
+      block.bgOpacity = quoteConfig.bgOpacity;
+      block.radius = quoteConfig.radius;
+      block.padding = quoteConfig.padding;
+    }
     if (kind === "heading" || kind === "text") {
       const initialContent = block.text ?? "";
       block.content = initialContent;
@@ -953,6 +982,47 @@ export default function SlideModal({
               alt: item.alt,
             })),
             radius: sanitized.radius,
+          };
+        }),
+      }),
+      commit,
+    );
+  };
+
+  const updateQuoteConfig = (
+    id: string,
+    mutator: (prev: QuoteBlockConfig) => QuoteBlockConfig,
+    commit = true,
+  ) => {
+    updateCfg(
+      (prev) => ({
+        ...prev,
+        blocks: prev.blocks.map((b) => {
+          if (b.id !== id) return b;
+          if (b.kind !== "quote") return b;
+          const current = resolveQuoteConfig(b);
+          const next = mutator({ ...current });
+          const normalized = resolveQuoteConfig({
+            ...b,
+            config: next,
+            text: next.text,
+            author: next.author,
+            align: next.align,
+            bgColor: next.bgColor,
+            bgOpacity: next.bgOpacity,
+            radius: next.radius,
+            padding: next.padding,
+          });
+          return {
+            ...b,
+            text: normalized.text,
+            author: normalized.author,
+            align: normalized.align,
+            bgColor: normalized.bgColor,
+            bgOpacity: normalized.bgOpacity,
+            radius: normalized.radius,
+            padding: normalized.padding,
+            config: { ...normalized },
           };
         }),
       }),
@@ -1192,6 +1262,14 @@ export default function SlideModal({
     () =>
       selectedBlock?.kind === "gallery"
         ? resolveGalleryConfig(selectedBlock)
+        : null,
+    [selectedBlock],
+  );
+
+  const selectedQuoteConfig = useMemo(
+    () =>
+      selectedBlock?.kind === "quote"
+        ? resolveQuoteConfig(selectedBlock)
         : null,
     [selectedBlock],
   );
@@ -3389,39 +3467,178 @@ export default function SlideModal({
                                 </div>
                               </div>
                             )}
-                          {selectedBlock.kind === "quote" && (
-                            <>
+                          {selectedBlock.kind === "quote" && selectedQuoteConfig && (
+                            <div className="space-y-4">
                               <label className="block">
                                 <span className="text-xs font-medium text-neutral-500">
-                                  Quote
+                                  Quote text
                                 </span>
                                 <textarea
-                                  rows={3}
-                                  value={selectedBlock.text || ""}
+                                  rows={4}
+                                  value={selectedQuoteConfig.text}
                                   onChange={(e) =>
-                                    patchBlock(selectedBlock.id, {
+                                    updateQuoteConfig(selectedBlock.id, (config) => ({
+                                      ...config,
                                       text: e.target.value,
-                                    })
+                                    }))
                                   }
                                   className="mt-1 w-full rounded border px-2 py-1"
                                 />
                               </label>
                               <label className="block">
                                 <span className="text-xs font-medium text-neutral-500">
-                                  Author
+                                  Author (optional)
                                 </span>
                                 <input
                                   type="text"
-                                  value={selectedBlock.author || ""}
+                                  value={selectedQuoteConfig.author}
                                   onChange={(e) =>
-                                    patchBlock(selectedBlock.id, {
+                                    updateQuoteConfig(selectedBlock.id, (config) => ({
+                                      ...config,
                                       author: e.target.value,
-                                    })
+                                    }))
                                   }
                                   className="mt-1 w-full rounded border px-2 py-1"
                                 />
                               </label>
-                            </>
+                              <label className="block">
+                                <span className="text-xs font-medium text-neutral-500">
+                                  Style
+                                </span>
+                                <select
+                                  value={selectedQuoteConfig.style}
+                                  onChange={(e) =>
+                                    updateQuoteConfig(selectedBlock.id, (config) => ({
+                                      ...config,
+                                      style: e.target.value as QuoteBlockConfig["style"],
+                                    }))
+                                  }
+                                  className="mt-1 w-full rounded border px-2 py-1 text-xs"
+                                >
+                                  {QUOTE_STYLE_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              {(selectedQuoteConfig.style === "emphasis" ||
+                                selectedQuoteConfig.style === "card") && (
+                                <div className="space-y-3 rounded border px-3 py-3">
+                                  <label className="block text-xs font-medium text-neutral-500">
+                                    Background color
+                                    <div className="mt-1 flex items-center gap-2">
+                                      <input
+                                        type="color"
+                                        value={selectedQuoteConfig.bgColor}
+                                        onChange={(e) =>
+                                          updateQuoteConfig(selectedBlock.id, (config) => ({
+                                            ...config,
+                                            bgColor: e.target.value,
+                                          }))
+                                        }
+                                        className="h-9 w-9 rounded border"
+                                      />
+                                      <input
+                                        type="text"
+                                        value={selectedQuoteConfig.bgColor}
+                                        onChange={(e) =>
+                                          updateQuoteConfig(selectedBlock.id, (config) => ({
+                                            ...config,
+                                            bgColor: e.target.value,
+                                          }))
+                                        }
+                                        className="flex-1 rounded border px-2 py-1 text-xs uppercase"
+                                      />
+                                    </div>
+                                  </label>
+                                  <label className="block text-xs font-medium text-neutral-500">
+                                    Background opacity
+                                    <div className="mt-1 flex items-center gap-2">
+                                      <input
+                                        type="range"
+                                        min={0}
+                                        max={1}
+                                        step={0.05}
+                                        value={selectedQuoteConfig.bgOpacity}
+                                        onChange={(e) => {
+                                          const value = Number(e.target.value);
+                                          updateQuoteConfig(selectedBlock.id, (config) => ({
+                                            ...config,
+                                            bgOpacity: Number.isNaN(value)
+                                              ? config.bgOpacity
+                                              : value,
+                                          }));
+                                        }}
+                                        className="flex-1"
+                                      />
+                                      <span className="w-12 text-right text-xs text-neutral-500">
+                                        {selectedQuoteConfig.bgOpacity.toFixed(2)}
+                                      </span>
+                                    </div>
+                                  </label>
+                                  <label className="block text-xs font-medium text-neutral-500">
+                                    Corner radius (px)
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      value={selectedQuoteConfig.radius}
+                                      onChange={(e) => {
+                                        const value = Number(e.target.value);
+                                        updateQuoteConfig(selectedBlock.id, (config) => ({
+                                          ...config,
+                                          radius: Number.isNaN(value) ? config.radius : value,
+                                        }));
+                                      }}
+                                      className="mt-1 w-full rounded border px-2 py-1"
+                                    />
+                                  </label>
+                                  <label className="block text-xs font-medium text-neutral-500">
+                                    Padding (px)
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      value={selectedQuoteConfig.padding}
+                                      onChange={(e) => {
+                                        const value = Number(e.target.value);
+                                        updateQuoteConfig(selectedBlock.id, (config) => ({
+                                          ...config,
+                                          padding: Number.isNaN(value) ? config.padding : value,
+                                        }));
+                                      }}
+                                      className="mt-1 w-full rounded border px-2 py-1"
+                                    />
+                                  </label>
+                                </div>
+                              )}
+                              <div>
+                                <span className="text-xs font-medium text-neutral-500">
+                                  Alignment
+                                </span>
+                                <div className="mt-1 flex gap-3 text-xs">
+                                  {QUOTE_ALIGNMENT_OPTIONS.map((option) => (
+                                    <label
+                                      key={option.value}
+                                      className="flex items-center gap-1"
+                                    >
+                                      <input
+                                        type="radio"
+                                        name={`quote-align-${selectedBlock.id}`}
+                                        value={option.value}
+                                        checked={selectedQuoteConfig.align === option.value}
+                                        onChange={() =>
+                                          updateQuoteConfig(selectedBlock.id, (config) => ({
+                                            ...config,
+                                            align: option.value,
+                                          }))
+                                        }
+                                      />
+                                      <span className="capitalize">{option.label}</span>
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
                           )}
                           <div className="rounded border px-3 py-3">
                             <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
