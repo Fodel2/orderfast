@@ -13,6 +13,8 @@ import SlidesManager, {
   type ButtonBlockConfig,
   type ButtonBlockSize,
   type ButtonBlockVariant,
+  DEFAULT_IMAGE_CONFIG,
+  type ImageBlockConfig,
   type DeviceKind,
   type Frame,
   type SlideBackground,
@@ -20,6 +22,7 @@ import SlidesManager, {
   type SlideCfg,
   type SlidesManagerChangeOptions,
   resolveButtonConfig,
+  resolveImageConfig,
 } from "./SlidesManager";
 import Button from "@/components/ui/Button";
 import { supabase } from "@/utils/supabaseClient";
@@ -331,8 +334,15 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
     locked: Boolean(raw.locked),
   };
 
+  if (kind === "image") {
+    const imageConfig = resolveImageConfig(block);
+    block.config = { ...imageConfig };
+    block.src = imageConfig.url;
+    block.fit = imageConfig.fit;
+    block.radius = imageConfig.radius;
+    block.alt = imageConfig.alt;
+  }
   if (kind === "gallery" && !block.items) block.items = [];
-  if (kind === "image" && !block.fit) block.fit = "cover";
   if (kind === "heading" && !block.size) block.size = "xl";
   if (kind === "subheading" && !block.size) block.size = "md";
   if (kind === "text" && !block.size) block.size = "sm";
@@ -715,6 +725,14 @@ export default function SlideModal({
       block.buttonVariant =
         buttonConfig.variant === "Outline" ? "secondary" : "primary";
     }
+    if (kind === "image") {
+      const imageConfig: ImageBlockConfig = { ...DEFAULT_IMAGE_CONFIG };
+      block.config = imageConfig;
+      block.src = imageConfig.url;
+      block.fit = imageConfig.fit;
+      block.radius = imageConfig.radius;
+      block.alt = imageConfig.alt;
+    }
     if (kind === "heading" || kind === "text") {
       const initialContent = block.text ?? "";
       block.content = initialContent;
@@ -796,6 +814,57 @@ export default function SlideModal({
             href: nextConfig.href,
             buttonVariant:
               nextConfig.variant === "Outline" ? "secondary" : "primary",
+          };
+        }),
+      }),
+      commit,
+    );
+  };
+
+  const updateImageConfig = (
+    id: string,
+    mutator: (prev: ImageBlockConfig) => ImageBlockConfig,
+    commit = true,
+  ) => {
+    updateCfg(
+      (prev) => ({
+        ...prev,
+        blocks: prev.blocks.map((b) => {
+          if (b.id !== id) return b;
+          if (b.kind !== "image") return b;
+          const current = resolveImageConfig(b);
+          const next = mutator({ ...current });
+          const sanitized: ImageBlockConfig = {
+            url:
+              typeof next.url === "string"
+                ? next.url.trim()
+                : DEFAULT_IMAGE_CONFIG.url,
+            fit: next.fit === "contain" ? "contain" : "cover",
+            focalX:
+              typeof next.focalX === "number"
+                ? clamp01(next.focalX)
+                : DEFAULT_IMAGE_CONFIG.focalX,
+            focalY:
+              typeof next.focalY === "number"
+                ? clamp01(next.focalY)
+                : DEFAULT_IMAGE_CONFIG.focalY,
+            radius:
+              typeof next.radius === "number"
+                ? Math.max(0, next.radius)
+                : DEFAULT_IMAGE_CONFIG.radius,
+            shadow: Boolean(next.shadow),
+            alt:
+              typeof next.alt === "string"
+                ? next.alt
+                : DEFAULT_IMAGE_CONFIG.alt,
+          };
+          return {
+            ...b,
+            src: sanitized.url,
+            fit: sanitized.fit,
+            radius: sanitized.radius,
+            alt: sanitized.alt,
+            config: { ...sanitized },
           };
         }),
       }),
@@ -1019,6 +1088,14 @@ export default function SlideModal({
     () =>
       selectedBlock?.kind === "button"
         ? resolveButtonConfig(selectedBlock)
+        : null,
+    [selectedBlock],
+  );
+
+  const selectedImageConfig = useMemo(
+    () =>
+      selectedBlock?.kind === "image"
+        ? resolveImageConfig(selectedBlock)
         : null,
     [selectedBlock],
   );
@@ -2722,19 +2799,51 @@ export default function SlideModal({
                               </div>
                             </div>
                           )}
-                          {selectedBlock.kind === "image" && (
-                            <>
-                              <div className="space-y-2">
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Image
-                                </span>
-                                {selectedBlock.src && (
-                                  <img
-                                    src={selectedBlock.src}
-                                    alt=""
-                                    className="h-28 w-full rounded object-cover"
+                          {selectedBlock.kind === "image" &&
+                            selectedImageConfig && (
+                              <div className="space-y-4">
+                                <div className="space-y-2">
+                                  <span className="text-xs font-medium text-neutral-500">
+                                    Preview
+                                  </span>
+                                  {selectedImageConfig.url ? (
+                                    <img
+                                      src={selectedImageConfig.url}
+                                      alt={selectedImageConfig.alt || ""}
+                                      className={`h-28 w-full rounded ${selectedImageConfig.shadow ? "shadow-lg" : ""}`}
+                                      style={{
+                                        objectFit: selectedImageConfig.fit,
+                                        objectPosition: `${selectedImageConfig.focalX * 100}% ${selectedImageConfig.focalY * 100}%`,
+                                        borderRadius: selectedImageConfig.radius,
+                                      }}
+                                    />
+                                  ) : (
+                                    <div
+                                      className={`flex h-28 w-full items-center justify-center rounded bg-neutral-200 text-xs text-neutral-500 ${selectedImageConfig.shadow ? "shadow-lg" : ""}`}
+                                      style={{ borderRadius: selectedImageConfig.radius }}
+                                    >
+                                      No image selected
+                                    </div>
+                                  )}
+                                </div>
+                                <label className="block">
+                                  <span className="text-xs font-medium text-neutral-500">
+                                    Image URL
+                                  </span>
+                                  <input
+                                    type="text"
+                                    value={selectedImageConfig.url}
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      updateImageConfig(selectedBlock.id, (config) => ({
+                                        ...config,
+                                        url: value,
+                                      }));
+                                    }}
+                                    className="mt-1 w-full rounded border px-2 py-1 text-xs"
+                                    placeholder="https://example.com/image.jpg"
                                   />
-                                )}
+                                </label>
                                 <input
                                   ref={blockImageInputRef}
                                   type="file"
@@ -2743,11 +2852,12 @@ export default function SlideModal({
                                   onChange={(e) => {
                                     const file = e.target.files?.[0];
                                     if (file) {
-                                      handleUpload(file, (url) =>
-                                        patchBlock(selectedBlock.id, {
-                                          src: url,
-                                        }),
-                                      );
+                                      handleUpload(file, (url) => {
+                                        updateImageConfig(selectedBlock.id, (config) => ({
+                                          ...config,
+                                          url,
+                                        }));
+                                      });
                                       e.target.value = "";
                                     }
                                   }}
@@ -2759,22 +2869,21 @@ export default function SlideModal({
                                   }
                                   className="rounded border px-3 py-1 text-xs"
                                 >
-                                  {selectedBlock.src
+                                  {selectedImageConfig.url
                                     ? "Replace image"
                                     : "Upload image"}
                                 </button>
                                 <label className="block">
                                   <span className="text-xs font-medium text-neutral-500">
-                                    Fit
+                                    Object fit
                                   </span>
                                   <select
-                                    value={selectedBlock.fit || "cover"}
+                                    value={selectedImageConfig.fit}
                                     onChange={(e) =>
-                                      patchBlock(selectedBlock.id, {
-                                        fit: e.target.value as
-                                          | "cover"
-                                          | "contain",
-                                      })
+                                      updateImageConfig(selectedBlock.id, (config) => ({
+                                        ...config,
+                                        fit: e.target.value as "cover" | "contain",
+                                      }))
                                     }
                                     className="mt-1 w-full rounded border px-2 py-1"
                                   >
@@ -2782,9 +2891,108 @@ export default function SlideModal({
                                     <option value="contain">Contain</option>
                                   </select>
                                 </label>
+                                <div>
+                                  <span className="text-xs font-medium text-neutral-500">
+                                    Focal point
+                                  </span>
+                                  <div className="mt-2 space-y-2">
+                                    <label className="block text-xs text-neutral-500">
+                                      <div className="flex items-center justify-between">
+                                        <span>X axis</span>
+                                        <span>{selectedImageConfig.focalX.toFixed(2)}</span>
+                                      </div>
+                                      <input
+                                        type="range"
+                                        min={0}
+                                        max={1}
+                                        step={0.01}
+                                        value={selectedImageConfig.focalX}
+                                        onChange={(e) => {
+                                          const value = Number(e.target.value);
+                                          updateImageConfig(selectedBlock.id, (config) => ({
+                                            ...config,
+                                            focalX: value,
+                                          }));
+                                        }}
+                                        className="mt-1 w-full"
+                                      />
+                                    </label>
+                                    <label className="block text-xs text-neutral-500">
+                                      <div className="flex items-center justify-between">
+                                        <span>Y axis</span>
+                                        <span>{selectedImageConfig.focalY.toFixed(2)}</span>
+                                      </div>
+                                      <input
+                                        type="range"
+                                        min={0}
+                                        max={1}
+                                        step={0.01}
+                                        value={selectedImageConfig.focalY}
+                                        onChange={(e) => {
+                                          const value = Number(e.target.value);
+                                          updateImageConfig(selectedBlock.id, (config) => ({
+                                            ...config,
+                                            focalY: value,
+                                          }));
+                                        }}
+                                        className="mt-1 w-full"
+                                      />
+                                    </label>
+                                  </div>
+                                </div>
+                                <label className="block">
+                                  <span className="text-xs font-medium text-neutral-500">
+                                    Corner radius (px)
+                                  </span>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    value={selectedImageConfig.radius}
+                                    onChange={(e) => {
+                                      const value = Number(e.target.value);
+                                      updateImageConfig(selectedBlock.id, (config) => ({
+                                        ...config,
+                                        radius: Number.isNaN(value)
+                                          ? config.radius
+                                          : value,
+                                      }));
+                                    }}
+                                    className="mt-1 w-full rounded border px-2 py-1"
+                                  />
+                                </label>
+                                <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedImageConfig.shadow}
+                                    onChange={(e) =>
+                                      updateImageConfig(selectedBlock.id, (config) => ({
+                                        ...config,
+                                        shadow: e.target.checked,
+                                      }))
+                                    }
+                                  />
+                                  Shadow
+                                </label>
+                                <label className="block">
+                                  <span className="text-xs font-medium text-neutral-500">
+                                    Alt text
+                                  </span>
+                                  <input
+                                    type="text"
+                                    value={selectedImageConfig.alt}
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      updateImageConfig(selectedBlock.id, (config) => ({
+                                        ...config,
+                                        alt: value,
+                                      }));
+                                    }}
+                                    className="mt-1 w-full rounded border px-2 py-1 text-xs"
+                                    placeholder="Describe the image"
+                                  />
+                                </label>
                               </div>
-                            </>
-                          )}
+                            )}
                           {selectedBlock.kind === "gallery" && (
                             <div className="space-y-3">
                               <div className="flex items-center justify-between text-xs text-neutral-500">

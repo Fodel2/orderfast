@@ -67,6 +67,26 @@ export const DEFAULT_BUTTON_CONFIG: ButtonBlockConfig = {
   bgColor: '#000000',
 };
 
+export type ImageBlockConfig = {
+  url: string;
+  fit: 'cover' | 'contain';
+  focalX: number;
+  focalY: number;
+  radius: number;
+  shadow: boolean;
+  alt: string;
+};
+
+export const DEFAULT_IMAGE_CONFIG: ImageBlockConfig = {
+  url: '',
+  fit: 'cover',
+  focalX: 0.5,
+  focalY: 0.5,
+  radius: 0,
+  shadow: false,
+  alt: '',
+};
+
 export type SlideBlock = {
   id: string;
   kind: 'heading' | 'subheading' | 'text' | 'button' | 'image' | 'quote' | 'gallery' | 'spacer';
@@ -74,6 +94,7 @@ export type SlideBlock = {
   content?: string;
   href?: string;
   src?: string;
+  alt?: string;
   items?: { src: string; alt?: string }[];
   frames: Partial<Record<DeviceKind, Frame>>;
   color?: string;
@@ -93,7 +114,7 @@ export type SlideBlock = {
   radius?: number;
   padding?: number;
   buttonVariant?: 'primary' | 'secondary';
-  config?: (Partial<ButtonBlockConfig> & Record<string, any>) | null;
+  config?: (Partial<ButtonBlockConfig> & Partial<ImageBlockConfig> & Record<string, any>) | null;
   fit?: 'cover' | 'contain';
   author?: string;
   height?: number;
@@ -260,6 +281,70 @@ export function resolveButtonConfig(block: SlideBlock): ButtonBlockConfig {
     shadow,
     textColor,
     bgColor,
+  };
+}
+
+export function resolveImageConfig(block: SlideBlock): ImageBlockConfig {
+  const raw = (block.config ?? {}) as Record<string, any>;
+  const rawUrl = typeof raw.url === 'string' ? raw.url.trim() : '';
+  const url =
+    rawUrl.length > 0
+      ? rawUrl
+      : typeof block.src === 'string' && block.src.length > 0
+        ? block.src
+        : DEFAULT_IMAGE_CONFIG.url;
+  const fitRaw =
+    raw.fit === 'contain' || block.fit === 'contain' ? 'contain' : 'cover';
+  const focal = raw.focal && typeof raw.focal === 'object' ? raw.focal : undefined;
+  const focalXSource =
+    typeof raw.focalX === 'number'
+      ? raw.focalX
+      : typeof focal?.x === 'number'
+        ? focal.x
+        : undefined;
+  const focalYSource =
+    typeof raw.focalY === 'number'
+      ? raw.focalY
+      : typeof focal?.y === 'number'
+        ? focal.y
+        : undefined;
+  const radiusSource =
+    typeof raw.radius === 'number'
+      ? raw.radius
+      : typeof block.radius === 'number'
+        ? block.radius
+        : undefined;
+  const shadowSource =
+    typeof raw.shadow === 'boolean'
+      ? raw.shadow
+      : typeof (raw as any).hasShadow === 'boolean'
+        ? Boolean((raw as any).hasShadow)
+        : DEFAULT_IMAGE_CONFIG.shadow;
+  const altSource =
+    typeof raw.alt === 'string'
+      ? raw.alt
+      : typeof block.alt === 'string'
+        ? block.alt
+        : DEFAULT_IMAGE_CONFIG.alt;
+
+  const focalX = Number.isFinite(focalXSource)
+    ? clamp(focalXSource as number, 0, 1)
+    : DEFAULT_IMAGE_CONFIG.focalX;
+  const focalY = Number.isFinite(focalYSource)
+    ? clamp(focalYSource as number, 0, 1)
+    : DEFAULT_IMAGE_CONFIG.focalY;
+  const radius = Number.isFinite(radiusSource)
+    ? Math.max(0, radiusSource as number)
+    : DEFAULT_IMAGE_CONFIG.radius;
+
+  return {
+    url,
+    fit: fitRaw,
+    focalX,
+    focalY,
+    radius,
+    shadow: Boolean(shadowSource),
+    alt: altSource,
   };
 }
 
@@ -453,13 +538,30 @@ export default function SlidesManager({
         );
       }
       case 'image': {
-        if (!block.src) return <div className="bg-neutral-200 w-full h-full rounded" />;
+        const image = resolveImageConfig(block);
+        const imageUrl = image.url || block.src || '';
+        if (!imageUrl) {
+          const placeholderClasses = ['h-full w-full bg-neutral-200'];
+          if (image.shadow) placeholderClasses.push('shadow-lg');
+          return (
+            <div
+              className={placeholderClasses.join(' ')}
+              style={{ borderRadius: image.radius }}
+            />
+          );
+        }
+        const classes = ['h-full w-full'];
+        if (image.shadow) classes.push('shadow-lg');
         return (
           <img
-            src={block.src}
-            alt=""
-            className="w-full h-full object-cover"
-            style={{ objectFit: block.fit || 'cover', borderRadius: 12 }}
+            src={imageUrl}
+            alt={image.alt || ''}
+            className={classes.join(' ')}
+            style={{
+              objectFit: image.fit,
+              objectPosition: `${image.focalX * 100}% ${image.focalY * 100}%`,
+              borderRadius: image.radius,
+            }}
           />
         );
       }
