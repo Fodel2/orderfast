@@ -14,6 +14,7 @@ import SlidesManager, {
   type ButtonBlockSize,
   type ButtonBlockVariant,
   DEFAULT_IMAGE_CONFIG,
+  type GalleryBlockItem,
   DEFAULT_GALLERY_CONFIG,
   type ImageBlockConfig,
   type GalleryBlockConfig,
@@ -900,7 +901,7 @@ export default function SlideModal({
           const next = mutator({ ...current });
           const sanitizedItems = Array.isArray(next.items)
             ? next.items
-                .map((item) => {
+                .map((item): GalleryBlockItem | null => {
                   if (!item) return null;
                   const urlSource =
                     typeof item.url === "string"
@@ -914,9 +915,10 @@ export default function SlideModal({
                     typeof item.alt === "string" && item.alt.trim().length > 0
                       ? item.alt
                       : undefined;
-                  return { url, alt };
+                  const normalized: GalleryBlockItem = alt ? { url, alt } : { url };
+                  return normalized;
                 })
-                .filter((item): item is GalleryBlockConfig["items"][number] => Boolean(item))
+                .filter((item): item is GalleryBlockItem => Boolean(item))
             : [];
           const intervalRaw =
             typeof next.interval === "number"
