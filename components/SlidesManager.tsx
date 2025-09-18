@@ -68,6 +68,210 @@ const BLOCK_SHADOW_VALUE: Record<BlockShadowPreset, string | undefined> = {
   lg: '0 10px 15px rgba(15, 23, 42, 0.12), 0 4px 6px rgba(15, 23, 42, 0.05)',
 };
 
+export type BlockAnimationType =
+  | 'none'
+  | 'fade-in'
+  | 'slide-in-left'
+  | 'slide-in-right'
+  | 'slide-in-up'
+  | 'slide-in-down'
+  | 'zoom-in';
+
+export type BlockHoverTransition =
+  | 'none'
+  | 'grow'
+  | 'shrink'
+  | 'pulse'
+  | 'shadow'
+  | 'rotate';
+
+export type BlockAnimationConfig = {
+  type: BlockAnimationType;
+  duration: number;
+  delay: number;
+};
+
+export type BlockTransitionConfig = {
+  hover: BlockHoverTransition;
+  duration: number;
+};
+
+const BLOCK_ANIMATION_TYPES: BlockAnimationType[] = [
+  'none',
+  'fade-in',
+  'slide-in-left',
+  'slide-in-right',
+  'slide-in-up',
+  'slide-in-down',
+  'zoom-in',
+];
+
+const BLOCK_TRANSITION_TYPES: BlockHoverTransition[] = [
+  'none',
+  'grow',
+  'shrink',
+  'pulse',
+  'shadow',
+  'rotate',
+];
+
+type BlockAnimationDefinition = {
+  name: string;
+  timingFunction: string;
+};
+
+const BLOCK_ANIMATION_DEFINITIONS: Record<Exclude<BlockAnimationType, 'none'>, BlockAnimationDefinition> = {
+  'fade-in': { name: 'of-fade-in', timingFunction: 'ease-out' },
+  'slide-in-left': { name: 'of-slide-in-left', timingFunction: 'ease-out' },
+  'slide-in-right': { name: 'of-slide-in-right', timingFunction: 'ease-out' },
+  'slide-in-up': { name: 'of-slide-in-up', timingFunction: 'ease-out' },
+  'slide-in-down': { name: 'of-slide-in-down', timingFunction: 'ease-out' },
+  'zoom-in': { name: 'of-zoom-in', timingFunction: 'ease-out' },
+};
+
+const BLOCK_TRANSITION_CLASS_MAP: Record<Exclude<BlockHoverTransition, 'none'>, string> = {
+  grow: 'of-hover-grow',
+  shrink: 'of-hover-shrink',
+  pulse: 'of-hover-pulse',
+  shadow: 'of-hover-shadow',
+  rotate: 'of-hover-rotate',
+};
+
+export const DEFAULT_BLOCK_ANIMATION_CONFIG: BlockAnimationConfig = {
+  type: 'none',
+  duration: 300,
+  delay: 0,
+};
+
+export const DEFAULT_BLOCK_TRANSITION_CONFIG: BlockTransitionConfig = {
+  hover: 'none',
+  duration: 200,
+};
+
+export const BLOCK_INTERACTION_GLOBAL_STYLES = `
+@keyframes of-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes of-slide-in-left {
+  from {
+    opacity: 0;
+    transform: translate3d(-32px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes of-slide-in-right {
+  from {
+    opacity: 0;
+    transform: translate3d(32px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes of-slide-in-up {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 32px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes of-slide-in-down {
+  from {
+    opacity: 0;
+    transform: translate3d(0, -32px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes of-zoom-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes of-hover-pulse-keyframes {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.05);
+  }
+}
+
+.of-hover-grow {
+  transition-property: transform, box-shadow;
+  transition-duration: var(--of-transition-duration, 200ms);
+  transition-timing-function: ease-out;
+}
+
+.of-hover-grow:hover {
+  transform: scale(1.05);
+}
+
+.of-hover-shrink {
+  transition-property: transform;
+  transition-duration: var(--of-transition-duration, 200ms);
+  transition-timing-function: ease-out;
+}
+
+.of-hover-shrink:hover {
+  transform: scale(0.96);
+}
+
+.of-hover-pulse {
+  transition: none;
+}
+
+.of-hover-pulse:hover {
+  animation: of-hover-pulse-keyframes var(--of-transition-duration, 600ms) ease-in-out infinite alternate;
+}
+
+.of-hover-shadow {
+  transition-property: box-shadow, transform;
+  transition-duration: var(--of-transition-duration, 200ms);
+  transition-timing-function: ease-out;
+}
+
+.of-hover-shadow:hover {
+  box-shadow: 0 15px 35px rgba(15, 23, 42, 0.18);
+  transform: translateY(-4px);
+}
+
+.of-hover-rotate {
+  transition-property: transform;
+  transition-duration: var(--of-transition-duration, 200ms);
+  transition-timing-function: ease-out;
+}
+
+.of-hover-rotate:hover {
+  transform: rotate(3deg);
+}
+`;
+
 const BLOCK_GRADIENT_DIRECTION_MAP: Record<BlockBackgroundGradientDirection, string> = {
   'to-top': 'to top',
   'to-bottom': 'to bottom',
@@ -160,9 +364,12 @@ function getBlockChromeStyle(block: SlideBlock): CSSProperties {
 }
 
 function BlockChrome({ block, children }: { block: SlideBlock; children: ReactNode }) {
-  const style = getBlockChromeStyle(block);
+  const baseStyle = getBlockChromeStyle(block);
+  const interaction = getBlockInteractionPresentation(block);
+  const style = { ...baseStyle, ...(interaction.style || {}) } as CSSProperties;
+  const className = ['relative h-full w-full', ...(interaction.classNames ?? [])].join(' ');
   return (
-    <div className="relative h-full w-full" style={style}>
+    <div className={className} style={style}>
       {children}
     </div>
   );
@@ -403,6 +610,84 @@ const hexToRgba = (hex: string, opacity: number) => {
   }
   return `rgba(${r}, ${g}, ${b}, ${clamp(alpha, 0, 1)})`;
 };
+
+export function resolveBlockAnimationConfig(block: SlideBlock): BlockAnimationConfig {
+  const rawConfig =
+    block.config && typeof block.config === 'object' ? ((block.config as Record<string, any>).animation as Record<string, any>) : undefined;
+  const typeCandidate =
+    typeof rawConfig?.type === 'string'
+      ? rawConfig.type.trim().toLowerCase().replace(/\s+/g, '-')
+      : undefined;
+  const type = BLOCK_ANIMATION_TYPES.includes(typeCandidate as BlockAnimationType)
+    ? (typeCandidate as BlockAnimationType)
+    : DEFAULT_BLOCK_ANIMATION_CONFIG.type;
+  const durationCandidate = parseNumber(rawConfig?.duration);
+  const delayCandidate = parseNumber(rawConfig?.delay);
+  return {
+    type,
+    duration:
+      durationCandidate !== undefined && Number.isFinite(durationCandidate)
+        ? Math.max(0, durationCandidate)
+        : DEFAULT_BLOCK_ANIMATION_CONFIG.duration,
+    delay:
+      delayCandidate !== undefined && Number.isFinite(delayCandidate)
+        ? Math.max(0, delayCandidate)
+        : DEFAULT_BLOCK_ANIMATION_CONFIG.delay,
+  };
+}
+
+export function resolveBlockTransitionConfig(block: SlideBlock): BlockTransitionConfig {
+  const rawConfig =
+    block.config && typeof block.config === 'object' ? ((block.config as Record<string, any>).transition as Record<string, any>) : undefined;
+  const hoverCandidate =
+    typeof rawConfig?.hover === 'string'
+      ? rawConfig.hover.trim().toLowerCase()
+      : undefined;
+  const hover = BLOCK_TRANSITION_TYPES.includes(hoverCandidate as BlockHoverTransition)
+    ? (hoverCandidate as BlockHoverTransition)
+    : DEFAULT_BLOCK_TRANSITION_CONFIG.hover;
+  const durationCandidate = parseNumber(rawConfig?.duration);
+  return {
+    hover,
+    duration:
+      durationCandidate !== undefined && Number.isFinite(durationCandidate)
+        ? Math.max(0, durationCandidate)
+        : DEFAULT_BLOCK_TRANSITION_CONFIG.duration,
+  };
+}
+
+export function getBlockInteractionPresentation(
+  block: SlideBlock,
+): {
+  classNames: string[];
+  style: (CSSProperties & Record<string, string | number | undefined>) | CSSProperties;
+} {
+  const animation = resolveBlockAnimationConfig(block);
+  const transition = resolveBlockTransitionConfig(block);
+  const classes: string[] = [];
+  const style: CSSProperties & Record<string, string | number | undefined> = {};
+
+  if (animation.type !== 'none') {
+    const definition = BLOCK_ANIMATION_DEFINITIONS[animation.type as Exclude<BlockAnimationType, 'none'>];
+    if (definition) {
+      style.animationName = definition.name;
+      style.animationDuration = `${Math.max(0, animation.duration)}ms`;
+      style.animationDelay = `${Math.max(0, animation.delay)}ms`;
+      style.animationTimingFunction = definition.timingFunction;
+      style.animationFillMode = 'both';
+    }
+  }
+
+  if (transition.hover !== 'none') {
+    const className = BLOCK_TRANSITION_CLASS_MAP[transition.hover as Exclude<BlockHoverTransition, 'none'>];
+    if (className) {
+      classes.push(className);
+      style['--of-transition-duration'] = `${Math.max(0, transition.duration)}ms`;
+    }
+  }
+
+  return { classNames: classes, style };
+}
 
 export function resolveButtonConfig(block: SlideBlock): ButtonBlockConfig {
   const raw = (block.config ?? {}) as Partial<ButtonBlockConfig>;
@@ -1048,64 +1333,67 @@ export default function SlidesManager({
   const clampedScale = Math.min(Math.max(scale || 1, 0.05), 1);
 
   return (
-    <div className="flex h-full w-full items-start justify-center overflow-hidden">
-      <div
-        className="relative"
-        style={{
-          width: deviceSize.width,
-          height: deviceSize.height,
-          transform: `scale(${clampedScale})`,
-          transformOrigin: 'top center',
-          margin: '0 auto',
-        }}
-      >
+    <>
+      <style jsx global>{BLOCK_INTERACTION_GLOBAL_STYLES}</style>
+      <div className="flex h-full w-full items-start justify-center overflow-hidden">
         <div
-          ref={frameRef}
-          className="relative overflow-hidden rounded-2xl bg-white shadow-xl"
-          style={{ width: deviceSize.width, height: deviceSize.height }}
-          onClick={() => {
-            if (editable && editInPreview) {
-              onSelectBlock?.(null);
-              onCanvasClick?.();
-            }
+          className="relative"
+          style={{
+            width: deviceSize.width,
+            height: deviceSize.height,
+            transform: `scale(${clampedScale})`,
+            transformOrigin: 'top center',
+            margin: '0 auto',
           }}
         >
-          <SlideBackground cfg={cfg} />
           <div
-            className="absolute inset-0"
-            style={{ pointerEvents: editable && editInPreview ? 'auto' : 'none' }}
+            ref={frameRef}
+            className="relative overflow-hidden rounded-2xl bg-white shadow-xl"
+            style={{ width: deviceSize.width, height: deviceSize.height }}
+            onClick={() => {
+              if (editable && editInPreview) {
+                onSelectBlock?.(null);
+                onCanvasClick?.();
+              }
+            }}
           >
-            {cfg.blocks.map((block) => {
-              const frame = ensureFrame(block, activeDevice);
-              const locked = Boolean(block.locked);
-              return (
-                <InteractiveBox
-                  key={block.id}
-                  id={block.id}
-                  frame={frame}
-                  containerRef={frameRef}
-                  selected={selectedId === block.id}
-                  editable={editable && editInPreview}
-                  onSelect={() => onSelectBlock?.(block.id)}
-                  onTap={() => {
-                    onSelectBlock?.(block.id);
-                    openInspector?.();
-                  }}
-                  onChange={(nextFrame, opts) => handleFrameChange(block.id, nextFrame, opts)}
-                  scale={clampedScale}
-                  locked={locked}
-                  onManipulationChange={onManipulationChange}
-                >
-                  <BlockChrome block={block}>
-                    {renderBlockContent(block)}
-                  </BlockChrome>
-                </InteractiveBox>
-              );
-            })}
+            <SlideBackground cfg={cfg} />
+            <div
+              className="absolute inset-0"
+              style={{ pointerEvents: editable && editInPreview ? 'auto' : 'none' }}
+            >
+              {cfg.blocks.map((block) => {
+                const frame = ensureFrame(block, activeDevice);
+                const locked = Boolean(block.locked);
+                return (
+                  <InteractiveBox
+                    key={block.id}
+                    id={block.id}
+                    frame={frame}
+                    containerRef={frameRef}
+                    selected={selectedId === block.id}
+                    editable={editable && editInPreview}
+                    onSelect={() => onSelectBlock?.(block.id)}
+                    onTap={() => {
+                      onSelectBlock?.(block.id);
+                      openInspector?.();
+                    }}
+                    onChange={(nextFrame, opts) => handleFrameChange(block.id, nextFrame, opts)}
+                    scale={clampedScale}
+                    locked={locked}
+                    onManipulationChange={onManipulationChange}
+                  >
+                    <BlockChrome block={block}>
+                      {renderBlockContent(block)}
+                    </BlockChrome>
+                  </InteractiveBox>
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 

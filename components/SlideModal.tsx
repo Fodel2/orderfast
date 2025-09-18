@@ -16,6 +16,8 @@ import SlidesManager, {
   type ButtonBlockConfig,
   type ButtonBlockSize,
   type ButtonBlockVariant,
+  type BlockAnimationConfig,
+  type BlockAnimationType,
   DEFAULT_IMAGE_CONFIG,
   type GalleryBlockItem,
   DEFAULT_GALLERY_CONFIG,
@@ -23,6 +25,8 @@ import SlidesManager, {
   type GalleryBlockConfig,
   DEFAULT_QUOTE_CONFIG,
   type QuoteBlockConfig,
+  type BlockHoverTransition,
+  type BlockTransitionConfig,
   type DeviceKind,
   type Frame,
   type SlideBackground,
@@ -33,6 +37,10 @@ import SlidesManager, {
   resolveImageConfig,
   resolveGalleryConfig,
   resolveQuoteConfig,
+  resolveBlockAnimationConfig,
+  resolveBlockTransitionConfig,
+  DEFAULT_BLOCK_ANIMATION_CONFIG,
+  DEFAULT_BLOCK_TRANSITION_CONFIG,
 } from "./SlidesManager";
 import Button from "@/components/ui/Button";
 import { supabase } from "@/utils/supabaseClient";
@@ -108,6 +116,25 @@ const BLOCK_BACKGROUND_GRADIENT_DIRECTIONS: {
   { value: "to-bottom", label: "To bottom" },
   { value: "to-left", label: "To left" },
   { value: "to-right", label: "To right" },
+];
+
+const BLOCK_ANIMATION_OPTIONS: { value: BlockAnimationType; label: string }[] = [
+  { value: "none", label: "None" },
+  { value: "fade-in", label: "Fade In" },
+  { value: "slide-in-left", label: "Slide In Left" },
+  { value: "slide-in-right", label: "Slide In Right" },
+  { value: "slide-in-up", label: "Slide In Up" },
+  { value: "slide-in-down", label: "Slide In Down" },
+  { value: "zoom-in", label: "Zoom In" },
+];
+
+const BLOCK_TRANSITION_OPTIONS: { value: BlockHoverTransition; label: string }[] = [
+  { value: "none", label: "None" },
+  { value: "grow", label: "Grow" },
+  { value: "shrink", label: "Shrink" },
+  { value: "pulse", label: "Pulse" },
+  { value: "shadow", label: "Shadow" },
+  { value: "rotate", label: "Rotate" },
 ];
 
 const DEFAULT_BLOCK_BACKGROUND_COLOR = "#ffffff";
@@ -708,6 +735,42 @@ function cloneBlockBackground(background?: BlockBackground | null): BlockBackgro
   };
 }
 
+function extractConfig(config: SlideBlock["config"]): Record<string, any> {
+  if (config && typeof config === "object") {
+    return { ...(config as Record<string, any>) };
+  }
+  return {};
+}
+
+function mergeInteractionConfig(
+  block: SlideBlock,
+  candidate?: Record<string, any>,
+): Record<string, any> {
+  const base = { ...(candidate ?? {}) };
+  const syntheticBlock: SlideBlock = { ...block, config: base };
+  const animation = resolveBlockAnimationConfig(syntheticBlock);
+  const transition = resolveBlockTransitionConfig(syntheticBlock);
+  base.animation = {
+    type: animation.type,
+    duration: Math.max(
+      0,
+      animation.duration ?? DEFAULT_BLOCK_ANIMATION_CONFIG.duration,
+    ),
+    delay: Math.max(
+      0,
+      animation.delay ?? DEFAULT_BLOCK_ANIMATION_CONFIG.delay,
+    ),
+  } satisfies BlockAnimationConfig;
+  base.transition = {
+    hover: transition.hover,
+    duration: Math.max(
+      0,
+      transition.duration ?? DEFAULT_BLOCK_TRANSITION_CONFIG.duration,
+    ),
+  } satisfies BlockTransitionConfig;
+  return base;
+}
+
 function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
   const kind: SlideBlock["kind"] = raw.kind ?? raw.type ?? "text";
   const frames: SlideBlock["frames"] = {};
@@ -954,6 +1017,8 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
     raw.background ?? raw.blockBackground ?? raw.backgroundFill ?? block.background;
   block.background = normalizeBlockBackground(backgroundSource);
 
+  block.config = mergeInteractionConfig(block, extractConfig(block.config));
+
   return block;
 }
 
@@ -1018,6 +1083,11 @@ function normalizeConfig(raw: any, slide: SlideRow): SlideCfg {
           },
         ];
   }
+
+  cfg.blocks = cfg.blocks.map((block) => ({
+    ...block,
+    config: mergeInteractionConfig(block, extractConfig(block.config)),
+  }));
 
   return cfg;
 }
@@ -1259,6 +1329,7 @@ export default function SlideModal({
         block.padding = 0;
       }
     }
+    block.config = mergeInteractionConfig(block, extractConfig(block.config));
     updateCfg((prev) => ({ ...prev, blocks: [...prev.blocks, block] }));
     handleSelectBlock(id);
   };
@@ -1312,9 +1383,11 @@ export default function SlideModal({
           if (b.id !== id) return b;
           const current = resolveButtonConfig(b);
           const nextConfig = mutator({ ...current });
+          const previous = extractConfig(b.config);
+          const candidate = { ...previous, ...nextConfig };
           return {
             ...b,
-            config: nextConfig,
+            config: mergeInteractionConfig({ ...b, config: candidate }, candidate),
             text: nextConfig.label,
             href: nextConfig.href,
             buttonVariant:
@@ -1363,13 +1436,15 @@ export default function SlideModal({
                 ? next.alt
                 : DEFAULT_IMAGE_CONFIG.alt,
           };
+          const previous = extractConfig(b.config);
+          const candidate = { ...previous, ...sanitized };
           return {
             ...b,
             src: sanitized.url,
             fit: sanitized.fit,
             radius: sanitized.radius,
             alt: sanitized.alt,
-            config: { ...sanitized },
+            config: mergeInteractionConfig({ ...b, config: candidate }, candidate),
           };
         }),
       }),
@@ -1436,9 +1511,11 @@ export default function SlideModal({
             radius: radiusCandidate,
             shadow: Boolean(next.shadow),
           };
+          const previous = extractConfig(b.config);
+          const candidate = { ...previous, ...sanitized };
           return {
             ...b,
-            config: { ...(b.config ?? {}), ...sanitized },
+            config: mergeInteractionConfig({ ...b, config: candidate }, candidate),
             items: sanitized.items.map((item) => ({
               src: item.url,
               alt: item.alt,
@@ -1475,6 +1552,8 @@ export default function SlideModal({
             radius: next.radius,
             padding: next.padding,
           });
+          const previous = extractConfig(b.config);
+          const candidate = { ...previous, ...normalized };
           return {
             ...b,
             text: normalized.text,
@@ -1484,7 +1563,7 @@ export default function SlideModal({
             bgOpacity: normalized.bgOpacity,
             radius: normalized.radius,
             padding: normalized.padding,
-            config: { ...normalized },
+            config: mergeInteractionConfig({ ...b, config: candidate }, candidate),
           };
         }),
       }),
@@ -1736,6 +1815,72 @@ export default function SlideModal({
         ? resolveQuoteConfig(selectedBlock)
         : null,
     [selectedBlock],
+  );
+
+  const selectedAnimationConfig = useMemo(
+    () =>
+      selectedBlock
+        ? resolveBlockAnimationConfig(selectedBlock)
+        : DEFAULT_BLOCK_ANIMATION_CONFIG,
+    [selectedBlock],
+  );
+
+  const selectedTransitionConfig = useMemo(
+    () =>
+      selectedBlock
+        ? resolveBlockTransitionConfig(selectedBlock)
+        : DEFAULT_BLOCK_TRANSITION_CONFIG,
+    [selectedBlock],
+  );
+
+  const applyAnimationConfig = useCallback(
+    (mutator: (prev: BlockAnimationConfig) => BlockAnimationConfig) => {
+      if (!selectedBlock) return;
+      const next = mutator(selectedAnimationConfig);
+      const normalized: BlockAnimationConfig = {
+        type: next.type,
+        duration: Math.max(
+          0,
+          next.duration ?? DEFAULT_BLOCK_ANIMATION_CONFIG.duration,
+        ),
+        delay: Math.max(
+          0,
+          next.delay ?? DEFAULT_BLOCK_ANIMATION_CONFIG.delay,
+        ),
+      };
+      const previous = extractConfig(selectedBlock.config);
+      previous.animation = normalized;
+      patchBlock(selectedBlock.id, {
+        config: mergeInteractionConfig(
+          { ...selectedBlock, config: previous },
+          previous,
+        ),
+      });
+    },
+    [patchBlock, selectedAnimationConfig, selectedBlock],
+  );
+
+  const applyTransitionConfig = useCallback(
+    (mutator: (prev: BlockTransitionConfig) => BlockTransitionConfig) => {
+      if (!selectedBlock) return;
+      const next = mutator(selectedTransitionConfig);
+      const normalized: BlockTransitionConfig = {
+        hover: next.hover,
+        duration: Math.max(
+          0,
+          next.duration ?? DEFAULT_BLOCK_TRANSITION_CONFIG.duration,
+        ),
+      };
+      const previous = extractConfig(selectedBlock.config);
+      previous.transition = normalized;
+      patchBlock(selectedBlock.id, {
+        config: mergeInteractionConfig(
+          { ...selectedBlock, config: previous },
+          previous,
+        ),
+      });
+    },
+    [patchBlock, selectedBlock, selectedTransitionConfig],
   );
 
   useEffect(() => {
@@ -4700,6 +4845,114 @@ export default function SlideModal({
                                 </div>
                               )}
                             </div>
+                          </div>
+                          <div className="rounded border px-3 py-3 space-y-3">
+                            <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                              Animations
+                            </h4>
+                            <label className="block">
+                              <span className="text-xs font-medium text-neutral-500">
+                                Entry animation
+                              </span>
+                              <select
+                                value={selectedAnimationConfig.type}
+                                onChange={(event) =>
+                                  applyAnimationConfig((prev) => ({
+                                    ...prev,
+                                    type: event.target.value as BlockAnimationType,
+                                  }))
+                                }
+                                className={INSPECTOR_INPUT_CLASS}
+                              >
+                                {BLOCK_ANIMATION_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                              <label className="block">
+                                <span className="text-xs font-medium text-neutral-500">
+                                  Duration (ms)
+                                </span>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={selectedAnimationConfig.duration}
+                                  onChange={(event) => {
+                                    const parsed = Number(event.target.value);
+                                    applyAnimationConfig((prev) => ({
+                                      ...prev,
+                                      duration: Number.isNaN(parsed) ? prev.duration : parsed,
+                                    }));
+                                  }}
+                                  className={INSPECTOR_INPUT_CLASS}
+                                />
+                              </label>
+                              <label className="block">
+                                <span className="text-xs font-medium text-neutral-500">
+                                  Delay (ms)
+                                </span>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={selectedAnimationConfig.delay}
+                                  onChange={(event) => {
+                                    const parsed = Number(event.target.value);
+                                    applyAnimationConfig((prev) => ({
+                                      ...prev,
+                                      delay: Number.isNaN(parsed) ? prev.delay : parsed,
+                                    }));
+                                  }}
+                                  className={INSPECTOR_INPUT_CLASS}
+                                />
+                              </label>
+                            </div>
+                          </div>
+                          <div className="rounded border px-3 py-3 space-y-3">
+                            <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                              Transitions
+                            </h4>
+                            <label className="block">
+                              <span className="text-xs font-medium text-neutral-500">
+                                Hover effect
+                              </span>
+                              <select
+                                value={selectedTransitionConfig.hover}
+                                onChange={(event) =>
+                                  applyTransitionConfig((prev) => ({
+                                    ...prev,
+                                    hover: event.target.value as BlockHoverTransition,
+                                  }))
+                                }
+                                className={INSPECTOR_INPUT_CLASS}
+                              >
+                                {BLOCK_TRANSITION_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className="block">
+                              <span className="text-xs font-medium text-neutral-500">
+                                Transition duration (ms)
+                              </span>
+                              <input
+                                type="number"
+                                min={0}
+                                value={selectedTransitionConfig.duration}
+                                onChange={(event) => {
+                                  const parsed = Number(event.target.value);
+                                  applyTransitionConfig((prev) => ({
+                                    ...prev,
+                                    duration: Number.isNaN(parsed) ? prev.duration : parsed,
+                                  }));
+                                }}
+                                className={INSPECTOR_INPUT_CLASS}
+                              />
+                            </label>
                           </div>
                           <div className="rounded border px-3 py-3">
                             <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">

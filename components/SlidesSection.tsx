@@ -1,12 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
-import type {
-  SlideCfg,
-  SlideBlock,
-  DeviceKind,
-  BlockBackground,
-  BlockBackgroundGradientDirection,
-  BlockShadowPreset,
+import {
+  BLOCK_INTERACTION_GLOBAL_STYLES,
+  getBlockInteractionPresentation,
+  type SlideCfg,
+  type SlideBlock,
+  type DeviceKind,
+  type BlockBackground,
+  type BlockBackgroundGradientDirection,
+  type BlockShadowPreset,
 } from './SlidesManager';
 import type { SlideRow } from '@/components/customer/home/SlidesContainer';
 
@@ -277,32 +279,43 @@ export default function SlidesSection({ slide, cfg }: { slide: SlideRow; cfg: Sl
   const blocks = useMemo(() => cfg.blocks || [], [cfg.blocks]);
 
   return (
-    <section className="relative flex min-h-screen snap-start items-center justify-center" style={{ height: '100dvh' }}>
-      <Background cfg={cfg} />
-      <div className="relative h-full w-full" style={{ pointerEvents: 'none' }}>
-        {blocks.map((block) => {
-          const frame = pickFrame(block, device);
-          const style: CSSProperties = {
-            position: 'absolute',
-            left: `${frame.x}%`,
-            top: `${frame.y}%`,
-            width: `${frame.w}%`,
-            height: `${frame.h}%`,
-            transform: `rotate(${frame.r ?? 0}deg)`,
-            transformOrigin: 'top left',
-            pointerEvents: 'auto',
-          };
-          const chromeStyle = getBlockChromeStyle(block);
-          return (
-            <div key={block.id} style={style} className="flex h-full w-full items-center justify-center">
-              <div style={chromeStyle} className="flex h-full w-full items-center justify-center">
-                {renderBlock(block)}
+    <>
+      <style jsx global>{BLOCK_INTERACTION_GLOBAL_STYLES}</style>
+      <section className="relative flex min-h-screen snap-start items-center justify-center" style={{ height: '100dvh' }}>
+        <Background cfg={cfg} />
+        <div className="relative h-full w-full" style={{ pointerEvents: 'none' }}>
+          {blocks.map((block) => {
+            const frame = pickFrame(block, device);
+            const style: CSSProperties = {
+              position: 'absolute',
+              left: `${frame.x}%`,
+              top: `${frame.y}%`,
+              width: `${frame.w}%`,
+              height: `${frame.h}%`,
+              transform: `rotate(${frame.r ?? 0}deg)`,
+              transformOrigin: 'top left',
+              pointerEvents: 'auto',
+            };
+            const interaction = getBlockInteractionPresentation(block);
+            const chromeStyle = {
+              ...getBlockChromeStyle(block),
+              ...(interaction.style || {}),
+            } as CSSProperties;
+            const chromeClasses = [
+              'flex h-full w-full items-center justify-center',
+              ...(interaction.classNames ?? []),
+            ].join(' ');
+            return (
+              <div key={block.id} style={style} className="flex h-full w-full items-center justify-center">
+                <div style={chromeStyle} className={chromeClasses}>
+                  {renderBlock(block)}
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
-    </section>
+            );
+          })}
+        </div>
+      </section>
+    </>
   );
 }
 
