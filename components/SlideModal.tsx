@@ -112,6 +112,27 @@ const BLOCK_KIND_LABELS: Record<SlideBlock["kind"], string> = {
 const PREVIEW_PADDING_X = 16;
 const PREVIEW_PADDING_Y = 16;
 
+const INSPECTOR_CONTENT_CLASS = [
+  "space-y-4 px-4 pb-4 pt-3",
+  "[&_label:not(.flex)]:flex",
+  "[&_label:not(.flex)]:flex-col",
+  "[&_label:not(.flex)]:gap-1",
+  "[&_label:not(.flex)]:text-xs",
+  "[&_label:not(.flex)]:font-medium",
+  "[&_label]:text-neutral-600",
+  "[&_label:not(.flex)>span:first-child]:!text-[11px]",
+  "[&_label:not(.flex)>span:first-child]:!font-semibold",
+  "[&_label:not(.flex)>span:first-child]:!text-neutral-600",
+  "[&_label:not(.flex)>span:first-child]:leading-tight",
+  "[&_label:not(.flex)>input]:!mt-0",
+  "[&_label:not(.flex)>textarea]:!mt-0",
+  "[&_label:not(.flex)>select]:!mt-0",
+  "[&_label:not(.flex)>div]:!mt-0",
+  "[&_.gap-4]:gap-3",
+  "[&_.space-y-4]:space-y-3",
+  "[&_.space-y-6]:space-y-4",
+].join(" ");
+
 const cloneCfg = (cfg: SlideCfg): SlideCfg => JSON.parse(JSON.stringify(cfg));
 
 function defaultBackground(): SlideCfg["background"] {
@@ -798,7 +819,6 @@ export default function SlideModal({
     }
     updateCfg((prev) => ({ ...prev, blocks: [...prev.blocks, block] }));
     handleSelectBlock(id);
-    setInspectorOpen(true);
   };
 
   const removeBlock = (id: string) => {
@@ -1073,6 +1093,8 @@ export default function SlideModal({
     isManipulatingRef.current = manipulating;
     if (manipulating) {
       setInspectorOpen(false);
+    } else if (selectedIdRef.current) {
+      setInspectorOpen(true);
     }
   }, []);
 
@@ -1081,6 +1103,10 @@ export default function SlideModal({
     selectedIdRef.current = id;
     if (!id) {
       setInspectorOpen(false);
+      return;
+    }
+    if (!isManipulatingRef.current) {
+      setInspectorOpen(true);
     }
   }, []);
 
@@ -1097,9 +1123,6 @@ export default function SlideModal({
   const handleLayerSelect = useCallback(
     (id: string) => {
       handleSelectBlock(id);
-      if (!isManipulatingRef.current) {
-        setInspectorOpen(true);
-      }
     },
     [handleSelectBlock],
   );
@@ -1119,7 +1142,6 @@ export default function SlideModal({
         return { ...prev, blocks };
       });
       handleSelectBlock(newId);
-      setInspectorOpen(true);
     },
     [handleSelectBlock, updateCfg],
   );
@@ -1137,8 +1159,8 @@ export default function SlideModal({
   );
 
   const handleInspectorDone = useCallback(() => {
-    setInspectorOpen(false);
-  }, []);
+    handleSelectBlock(null);
+  }, [handleSelectBlock]);
 
   const handleBackgroundTypeChange = useCallback(
     (type: SlideBackground["type"]) => {
@@ -2137,66 +2159,61 @@ export default function SlideModal({
               {inspectorOpen && selectedBlock && (
                 <div className="border-t bg-white">
                   <div className="max-h-[60vh] overflow-y-auto">
-                    <div className="sticky top-0 z-10 border-b bg-white px-4 py-3">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
-                            Block
-                          </div>
-                          <div className="mt-1 flex flex-wrap items-center gap-2">
-                            <span className="text-sm font-semibold text-neutral-900">
-                              {selectionLabel}
+                    <div className="sticky top-0 z-10 border-b bg-white px-4 py-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-neutral-600">
+                          Inspector
+                        </span>
+                        <span className="text-xs text-neutral-500">
+                          Selected: {selectionLabel}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                        <div className="min-w-0 flex flex-wrap items-center gap-2">
+                          <span className="text-sm font-semibold text-neutral-900">
+                            {selectionLabel}
+                          </span>
+                          {selectedBlock.locked && (
+                            <span className="rounded bg-neutral-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-neutral-600">
+                              Locked
                             </span>
-                            {selectedBlock.locked && (
-                              <span className="rounded bg-neutral-100 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-neutral-600">
-                                Locked
-                              </span>
-                            )}
-                          </div>
+                          )}
                         </div>
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           <button
                             type="button"
                             onClick={() => handleDuplicateBlock(selectedBlock.id)}
-                            className="rounded border px-3 py-1 text-sm"
+                            className="rounded border px-2.5 py-1 text-xs font-medium"
                           >
                             Duplicate
                           </button>
                           <button
                             type="button"
                             onClick={() => removeBlock(selectedBlock.id)}
-                            className="rounded border px-3 py-1 text-sm text-red-600"
+                            className="rounded border px-2.5 py-1 text-xs font-medium text-red-600"
                           >
                             Delete
                           </button>
                           <button
                             type="button"
                             onClick={() => toggleBlockLock(selectedBlock.id)}
-                            className="rounded border px-3 py-1 text-sm"
+                            className="rounded border px-2.5 py-1 text-xs font-medium"
                           >
                             {selectedBlock.locked ? "Unlock" : "Lock"}
                           </button>
                           <button
                             type="button"
                             onClick={handleInspectorDone}
-                            className="rounded border px-3 py-1 text-sm"
+                            className="rounded border px-2.5 py-1 text-xs font-medium"
                           >
                             Done
                           </button>
                         </div>
                       </div>
                     </div>
-                    <div className="space-y-6 px-4 pb-6 pt-4">
+                    <div className={INSPECTOR_CONTENT_CLASS}>
                       <section>
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-semibold text-neutral-600">
-                          Inspector
-                        </h3>
-                        <span className="text-xs text-neutral-500">
-                          Selected: {selectionLabel}
-                        </span>
-                      </div>
-                      <div className="mt-3 space-y-4 text-sm">
+                        <div className="mt-2 space-y-3 text-sm">
                           {(selectedBlock.kind === "heading" ||
                             selectedBlock.kind === "text") && (
                             <>
