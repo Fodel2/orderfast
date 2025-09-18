@@ -61,6 +61,113 @@ const BUTTON_FONT_SIZE_PX: Record<ButtonBlockSize, number> = {
   Large: 18,
 };
 
+const BLOCK_SHADOW_VALUE: Record<BlockShadowPreset, string | undefined> = {
+  none: undefined,
+  sm: '0 1px 2px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.04)',
+  md: '0 4px 6px rgba(15, 23, 42, 0.1), 0 2px 4px rgba(15, 23, 42, 0.06)',
+  lg: '0 10px 15px rgba(15, 23, 42, 0.12), 0 4px 6px rgba(15, 23, 42, 0.05)',
+};
+
+const BLOCK_GRADIENT_DIRECTION_MAP: Record<BlockBackgroundGradientDirection, string> = {
+  'to-top': 'to top',
+  'to-bottom': 'to bottom',
+  'to-left': 'to left',
+  'to-right': 'to right',
+};
+
+function getBlockChromeStyle(block: SlideBlock): CSSProperties {
+  const style: CSSProperties = {
+    width: '100%',
+    height: '100%',
+    boxSizing: 'border-box',
+    backgroundColor: 'transparent',
+  };
+
+  const shadowKey = (block.boxShadow ?? 'none') as BlockShadowPreset;
+  const shadowValue = BLOCK_SHADOW_VALUE[shadowKey];
+  if (shadowValue) {
+    style.boxShadow = shadowValue;
+  }
+
+  const borderWidth =
+    typeof block.borderWidth === 'number' && Number.isFinite(block.borderWidth)
+      ? Math.max(0, block.borderWidth)
+      : undefined;
+  const borderColor =
+    typeof block.borderColor === 'string' ? block.borderColor : undefined;
+
+  if (borderWidth && borderWidth > 0) {
+    style.borderWidth = borderWidth;
+    style.borderStyle = 'solid';
+    style.borderColor = borderColor ?? 'rgba(15, 23, 42, 0.12)';
+  } else if (borderColor && borderColor !== 'transparent') {
+    style.borderWidth = 1;
+    style.borderStyle = 'solid';
+    style.borderColor = borderColor;
+  }
+
+  const borderRadius =
+    typeof block.borderRadius === 'number' && Number.isFinite(block.borderRadius)
+      ? Math.max(0, block.borderRadius)
+      : undefined;
+  if (borderRadius !== undefined) {
+    style.borderRadius = borderRadius;
+  }
+
+  const background = block.background;
+  const backgroundType = background?.type ?? 'none';
+  let shouldClip = false;
+
+  if (backgroundType === 'color') {
+    style.backgroundColor = background?.color ?? 'transparent';
+    shouldClip = true;
+  } else if (backgroundType === 'gradient') {
+    const gradient = background?.gradient ?? {};
+    const from =
+      typeof gradient.from === 'string' ? gradient.from : 'rgba(15, 23, 42, 0.4)';
+    const to =
+      typeof gradient.to === 'string' ? gradient.to : 'rgba(15, 23, 42, 0.05)';
+    const rawDirection =
+      typeof gradient.direction === 'string'
+        ? gradient.direction.replace(/\s+/g, '-').toLowerCase()
+        : undefined;
+    const directionKey =
+      rawDirection === 'to-top' ||
+      rawDirection === 'to-left' ||
+      rawDirection === 'to-right' ||
+      rawDirection === 'to-bottom'
+        ? (rawDirection as BlockBackgroundGradientDirection)
+        : 'to-bottom';
+    const direction = BLOCK_GRADIENT_DIRECTION_MAP[directionKey];
+    style.backgroundImage = `linear-gradient(${direction}, ${from}, ${to})`;
+    shouldClip = true;
+  } else if (backgroundType === 'image') {
+    const url = background?.image?.url;
+    if (url) {
+      style.backgroundImage = `url(${url})`;
+      style.backgroundSize = 'cover';
+      style.backgroundPosition = 'center';
+      style.backgroundRepeat = 'no-repeat';
+      shouldClip = true;
+    }
+  }
+
+  if (shouldClip && borderRadius !== undefined && borderRadius > 0) {
+    style.overflow = 'hidden';
+  }
+
+  return style;
+}
+
+function BlockChrome({ block, children }: { block: SlideBlock; children: ReactNode }) {
+  const style = getBlockChromeStyle(block);
+  return (
+    <div className="relative h-full w-full" style={style}>
+      {children}
+    </div>
+  );
+}
+
 export const DEFAULT_BUTTON_CONFIG: ButtonBlockConfig = {
   label: 'Button',
   href: '/menu',
@@ -135,6 +242,27 @@ export const DEFAULT_QUOTE_CONFIG: QuoteBlockConfig = {
   align: 'left',
 };
 
+export type BlockShadowPreset = 'none' | 'sm' | 'md' | 'lg';
+
+export type BlockBackgroundGradientDirection =
+  | 'to-top'
+  | 'to-bottom'
+  | 'to-left'
+  | 'to-right';
+
+export type BlockBackground = {
+  type: 'none' | 'color' | 'gradient' | 'image';
+  color?: string;
+  gradient?: {
+    from?: string;
+    to?: string;
+    direction?: BlockBackgroundGradientDirection;
+  };
+  image?: {
+    url?: string;
+  };
+};
+
 export type SlideBlock = {
   id: string;
   kind: 'heading' | 'subheading' | 'text' | 'button' | 'image' | 'quote' | 'gallery' | 'spacer';
@@ -162,6 +290,11 @@ export type SlideBlock = {
   radius?: number;
   padding?: number;
   buttonVariant?: 'primary' | 'secondary';
+  boxShadow?: BlockShadowPreset;
+  borderColor?: string;
+  borderWidth?: number;
+  borderRadius?: number;
+  background?: BlockBackground;
   config?:
     | (Partial<ButtonBlockConfig> &
         Partial<ImageBlockConfig> &
@@ -963,7 +1096,9 @@ export default function SlidesManager({
                   locked={locked}
                   onManipulationChange={onManipulationChange}
                 >
-                  {renderBlockContent(block)}
+                  <BlockChrome block={block}>
+                    {renderBlockContent(block)}
+                  </BlockChrome>
                 </InteractiveBox>
               );
             })}

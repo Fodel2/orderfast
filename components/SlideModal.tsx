@@ -10,6 +10,9 @@ import SlidesManager, {
   DEFAULT_BUTTON_CONFIG,
   BUTTON_SIZES,
   BUTTON_VARIANTS,
+  type BlockBackground,
+  type BlockBackgroundGradientDirection,
+  type BlockShadowPreset,
   type ButtonBlockConfig,
   type ButtonBlockSize,
   type ButtonBlockVariant,
@@ -79,6 +82,37 @@ const TEXT_ALIGNMENT_OPTIONS: {
   { value: "center", label: "Center" },
   { value: "right", label: "Right" },
 ];
+
+const BLOCK_SHADOW_OPTIONS: { value: BlockShadowPreset; label: string }[] = [
+  { value: "none", label: "None" },
+  { value: "sm", label: "Small" },
+  { value: "md", label: "Medium" },
+  { value: "lg", label: "Large" },
+];
+
+const BLOCK_BACKGROUND_TYPE_OPTIONS: {
+  value: NonNullable<BlockBackground["type"]>;
+  label: string;
+}[] = [
+  { value: "none", label: "None" },
+  { value: "color", label: "Color" },
+  { value: "gradient", label: "Gradient" },
+  { value: "image", label: "Image" },
+];
+
+const BLOCK_BACKGROUND_GRADIENT_DIRECTIONS: {
+  value: BlockBackgroundGradientDirection;
+  label: string;
+}[] = [
+  { value: "to-top", label: "To top" },
+  { value: "to-bottom", label: "To bottom" },
+  { value: "to-left", label: "To left" },
+  { value: "to-right", label: "To right" },
+];
+
+const DEFAULT_BLOCK_BACKGROUND_COLOR = "#ffffff";
+const DEFAULT_BLOCK_GRADIENT_FROM = "rgba(15, 23, 42, 0.45)";
+const DEFAULT_BLOCK_GRADIENT_TO = "rgba(15, 23, 42, 0.05)";
 
 const BUTTON_FONT_SIZE_PX: Record<ButtonBlockSize, number> = {
   Small: 14,
@@ -556,6 +590,124 @@ function normalizeBackground(raw: any): SlideCfg["background"] {
   return defaultBackground();
 }
 
+function normalizeBlockBackground(raw: any): BlockBackground {
+  if (!raw) {
+    return { type: "none" };
+  }
+  if (typeof raw === "string") {
+    const normalized = raw.trim().toLowerCase();
+    if (normalized === "none") {
+      return { type: "none" };
+    }
+  }
+  if (typeof raw !== "object") {
+    return { type: "none" };
+  }
+  const typeValue =
+    typeof raw.type === "string"
+      ? raw.type.toLowerCase()
+      : typeof raw.kind === "string"
+        ? raw.kind.toLowerCase()
+        : undefined;
+  const type: BlockBackground["type"] =
+    typeValue === "color" || typeValue === "gradient" || typeValue === "image" || typeValue === "none"
+      ? (typeValue as BlockBackground["type"])
+      : "none";
+
+  if (type === "none") {
+    return { type: "none" };
+  }
+
+  if (type === "color") {
+    const color =
+      typeof raw.color === "string"
+        ? raw.color
+        : typeof raw.value === "string"
+          ? raw.value
+          : DEFAULT_BLOCK_BACKGROUND_COLOR;
+    return { type: "color", color };
+  }
+
+  if (type === "gradient") {
+    const source =
+      raw.gradient && typeof raw.gradient === "object" ? raw.gradient : raw;
+    const from =
+      typeof source.from === "string"
+        ? source.from
+        : typeof source.start === "string"
+          ? source.start
+          : typeof source.color1 === "string"
+            ? source.color1
+            : DEFAULT_BLOCK_GRADIENT_FROM;
+    const to =
+      typeof source.to === "string"
+        ? source.to
+        : typeof source.end === "string"
+          ? source.end
+          : typeof source.color2 === "string"
+            ? source.color2
+            : DEFAULT_BLOCK_GRADIENT_TO;
+    const directionValue =
+      typeof source.direction === "string"
+        ? source.direction.replace(/\s+/g, "-").toLowerCase()
+        : typeof raw.direction === "string"
+          ? raw.direction.replace(/\s+/g, "-").toLowerCase()
+          : undefined;
+    const direction: BlockBackgroundGradientDirection =
+      directionValue === "to-top" ||
+      directionValue === "to-left" ||
+      directionValue === "to-right" ||
+      directionValue === "to-bottom"
+        ? (directionValue as BlockBackgroundGradientDirection)
+        : "to-bottom";
+    return {
+      type: "gradient",
+      gradient: {
+        from,
+        to,
+        direction,
+      },
+    };
+  }
+
+  const imageSource =
+    raw.image && typeof raw.image === "object" ? raw.image : raw;
+  const url =
+    typeof imageSource.url === "string"
+      ? imageSource.url
+      : typeof imageSource.src === "string"
+        ? imageSource.src
+        : typeof raw.url === "string"
+          ? raw.url
+          : undefined;
+  return {
+    type: "image",
+    image: { url },
+  };
+}
+
+function cloneBlockBackground(background?: BlockBackground | null): BlockBackground {
+  if (!background || typeof background !== "object") {
+    return { type: "none" };
+  }
+  return {
+    type: background.type ?? "none",
+    color: background.color,
+    gradient: background.gradient
+      ? {
+          from: background.gradient.from,
+          to: background.gradient.to,
+          direction: background.gradient.direction,
+        }
+      : undefined,
+    image: background.image
+      ? {
+          url: background.image.url,
+        }
+      : undefined,
+  };
+}
+
 function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
   const kind: SlideBlock["kind"] = raw.kind ?? raw.type ?? "text";
   const frames: SlideBlock["frames"] = {};
@@ -767,6 +919,41 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
     }
   }
 
+  const rawShadow = raw.boxShadow ?? raw.shadowPreset ?? block.boxShadow;
+  const normalizedShadow: BlockShadowPreset =
+    rawShadow === "sm" || rawShadow === "md" || rawShadow === "lg" || rawShadow === "none"
+      ? (rawShadow as BlockShadowPreset)
+      : "none";
+  block.boxShadow = normalizedShadow;
+
+  const borderColorSource =
+    typeof raw.borderColor === "string"
+      ? raw.borderColor
+      : typeof block.borderColor === "string"
+        ? block.borderColor
+        : undefined;
+  block.borderColor = borderColorSource;
+
+  const borderWidthSource =
+    typeof raw.borderWidth === "number"
+      ? Math.max(0, raw.borderWidth)
+      : typeof block.borderWidth === "number"
+        ? Math.max(0, block.borderWidth)
+        : undefined;
+  block.borderWidth = borderWidthSource;
+
+  const borderRadiusSource =
+    typeof raw.borderRadius === "number"
+      ? Math.max(0, raw.borderRadius)
+      : typeof block.borderRadius === "number"
+        ? Math.max(0, block.borderRadius)
+        : undefined;
+  block.borderRadius = borderRadiusSource;
+
+  const backgroundSource =
+    raw.background ?? raw.blockBackground ?? raw.backgroundFill ?? block.background;
+  block.background = normalizeBlockBackground(backgroundSource);
+
   return block;
 }
 
@@ -869,6 +1056,7 @@ export default function SlideModal({
   const previewContainerRef = useRef<HTMLDivElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const blockImageInputRef = useRef<HTMLInputElement | null>(null);
+  const blockBackgroundImageInputRef = useRef<HTMLInputElement | null>(null);
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
   const videoPosterInputRef = useRef<HTMLInputElement | null>(null);
   const isManipulatingRef = useRef(false);
@@ -4160,6 +4348,359 @@ export default function SlideModal({
                               </div>
                             </div>
                           )}
+                          <div className="rounded border px-3 py-3 space-y-3">
+                            <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                              Appearance
+                            </h4>
+                            <div>
+                              <span className="text-xs font-medium text-neutral-500">Shadow</span>
+                              <div className="mt-1 flex gap-1.5">
+                                {BLOCK_SHADOW_OPTIONS.map((option) => {
+                                  const currentShadow = selectedBlock.boxShadow ?? "none";
+                                  const isActive = currentShadow === option.value;
+                                  return (
+                                    <button
+                                      key={option.value}
+                                      type="button"
+                                      onClick={() =>
+                                        patchBlock(selectedBlock.id, { boxShadow: option.value })
+                                      }
+                                      className={`flex-1 rounded border px-2.5 py-1.5 text-xs font-medium transition ${
+                                        isActive
+                                          ? "border-emerald-500 bg-emerald-50 text-emerald-600"
+                                          : "border-neutral-200 text-neutral-600 hover:border-neutral-300"
+                                      }`}
+                                    >
+                                      {option.label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                              <label className="block sm:col-span-2">
+                                <span className="text-xs font-medium text-neutral-500">
+                                  Border color
+                                </span>
+                                <InspectorColorInput
+                                  value={selectedBlock.borderColor ?? "transparent"}
+                                  onChange={(nextColor) => {
+                                    const normalized = nextColor?.trim();
+                                    patchBlock(selectedBlock.id, {
+                                      borderColor:
+                                        normalized && normalized.length > 0
+                                          ? normalized
+                                          : undefined,
+                                    });
+                                  }}
+                                  allowAlpha
+                                />
+                              </label>
+                              <label className="block">
+                                <span className="text-xs font-medium text-neutral-500">
+                                  Border width (px)
+                                </span>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={
+                                    selectedBlock.borderWidth !== undefined
+                                      ? selectedBlock.borderWidth
+                                      : ""
+                                  }
+                                  onChange={(e) => {
+                                    const value = e.target.value;
+                                    if (value === "") {
+                                      patchBlock(selectedBlock.id, { borderWidth: undefined });
+                                      return;
+                                    }
+                                    const parsed = Number(value);
+                                    patchBlock(selectedBlock.id, {
+                                      borderWidth: Number.isNaN(parsed)
+                                        ? selectedBlock.borderWidth
+                                        : Math.max(0, parsed),
+                                    });
+                                  }}
+                                  className={INSPECTOR_INPUT_CLASS}
+                                />
+                              </label>
+                              <label className="block">
+                                <span className="text-xs font-medium text-neutral-500">
+                                  Border radius (px)
+                                </span>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={
+                                    selectedBlock.borderRadius !== undefined
+                                      ? selectedBlock.borderRadius
+                                      : ""
+                                  }
+                                  onChange={(e) => {
+                                    const value = e.target.value;
+                                    if (value === "") {
+                                      patchBlock(selectedBlock.id, { borderRadius: undefined });
+                                      return;
+                                    }
+                                    const parsed = Number(value);
+                                    patchBlock(selectedBlock.id, {
+                                      borderRadius: Number.isNaN(parsed)
+                                        ? selectedBlock.borderRadius
+                                        : Math.max(0, parsed),
+                                    });
+                                  }}
+                                  className={INSPECTOR_INPUT_CLASS}
+                                />
+                              </label>
+                            </div>
+                            <div className="space-y-3">
+                              <label className="block">
+                                <span className="text-xs font-medium text-neutral-500">
+                                  Background type
+                                </span>
+                                <select
+                                  value={selectedBlock.background?.type ?? "none"}
+                                  onChange={(e) => {
+                                    const nextType = e.target.value as BlockBackground["type"];
+                                    const current = cloneBlockBackground(selectedBlock.background);
+                                    if (nextType === "none") {
+                                      patchBlock(selectedBlock.id, { background: { type: "none" } });
+                                      return;
+                                    }
+                                    if (nextType === "color") {
+                                      patchBlock(selectedBlock.id, {
+                                        background: {
+                                          ...current,
+                                          type: "color",
+                                          color:
+                                            current.color ?? DEFAULT_BLOCK_BACKGROUND_COLOR,
+                                        },
+                                      });
+                                      return;
+                                    }
+                                    if (nextType === "gradient") {
+                                      patchBlock(selectedBlock.id, {
+                                        background: {
+                                          ...current,
+                                          type: "gradient",
+                                          gradient: {
+                                            from:
+                                              current.gradient?.from ??
+                                              DEFAULT_BLOCK_GRADIENT_FROM,
+                                            to:
+                                              current.gradient?.to ??
+                                              DEFAULT_BLOCK_GRADIENT_TO,
+                                            direction:
+                                              current.gradient?.direction ?? "to-bottom",
+                                          },
+                                        },
+                                      });
+                                      return;
+                                    }
+                                    patchBlock(selectedBlock.id, {
+                                      background: {
+                                        ...current,
+                                        type: "image",
+                                        image: { url: current.image?.url ?? "" },
+                                      },
+                                    });
+                                  }}
+                                  className={INSPECTOR_INPUT_CLASS}
+                                >
+                                  {BLOCK_BACKGROUND_TYPE_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              {selectedBlock.background?.type === "color" && (
+                                <label className="block">
+                                  <span className="text-xs font-medium text-neutral-500">
+                                    Background color
+                                  </span>
+                                  <InspectorColorInput
+                                    value={
+                                      selectedBlock.background?.color ??
+                                      DEFAULT_BLOCK_BACKGROUND_COLOR
+                                    }
+                                    onChange={(nextColor) => {
+                                      const base = cloneBlockBackground(selectedBlock.background);
+                                      const normalized = nextColor?.trim();
+                                      base.type = "color";
+                                      base.color =
+                                        normalized && normalized.length > 0
+                                          ? normalized
+                                          : DEFAULT_BLOCK_BACKGROUND_COLOR;
+                                      patchBlock(selectedBlock.id, { background: base });
+                                    }}
+                                    allowAlpha
+                                  />
+                                </label>
+                              )}
+                              {selectedBlock.background?.type === "gradient" && (
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                                  <label className="block">
+                                    <span className="text-xs font-medium text-neutral-500">
+                                      From
+                                    </span>
+                                    <InspectorColorInput
+                                      value={
+                                        selectedBlock.background?.gradient?.from ??
+                                        DEFAULT_BLOCK_GRADIENT_FROM
+                                      }
+                                      onChange={(nextColor) => {
+                                        const base = cloneBlockBackground(selectedBlock.background);
+                                        const normalized = nextColor?.trim();
+                                        base.type = "gradient";
+                                        base.gradient = {
+                                          from:
+                                            normalized && normalized.length > 0
+                                              ? normalized
+                                              : DEFAULT_BLOCK_GRADIENT_FROM,
+                                          to:
+                                            base.gradient?.to ??
+                                            selectedBlock.background?.gradient?.to ??
+                                            DEFAULT_BLOCK_GRADIENT_TO,
+                                          direction:
+                                            base.gradient?.direction ??
+                                            selectedBlock.background?.gradient?.direction ??
+                                            "to-bottom",
+                                        };
+                                        patchBlock(selectedBlock.id, { background: base });
+                                      }}
+                                      allowAlpha
+                                    />
+                                  </label>
+                                  <label className="block">
+                                    <span className="text-xs font-medium text-neutral-500">
+                                      To
+                                    </span>
+                                    <InspectorColorInput
+                                      value={
+                                        selectedBlock.background?.gradient?.to ??
+                                        DEFAULT_BLOCK_GRADIENT_TO
+                                      }
+                                      onChange={(nextColor) => {
+                                        const base = cloneBlockBackground(selectedBlock.background);
+                                        const normalized = nextColor?.trim();
+                                        base.type = "gradient";
+                                        base.gradient = {
+                                          from:
+                                            base.gradient?.from ??
+                                            selectedBlock.background?.gradient?.from ??
+                                            DEFAULT_BLOCK_GRADIENT_FROM,
+                                          to:
+                                            normalized && normalized.length > 0
+                                              ? normalized
+                                              : DEFAULT_BLOCK_GRADIENT_TO,
+                                          direction:
+                                            base.gradient?.direction ??
+                                            selectedBlock.background?.gradient?.direction ??
+                                            "to-bottom",
+                                        };
+                                        patchBlock(selectedBlock.id, { background: base });
+                                      }}
+                                      allowAlpha
+                                    />
+                                  </label>
+                                  <label className="block">
+                                    <span className="text-xs font-medium text-neutral-500">
+                                      Direction
+                                    </span>
+                                    <select
+                                      value={
+                                        selectedBlock.background?.gradient?.direction ??
+                                        "to-bottom"
+                                      }
+                                      onChange={(e) => {
+                                        const value = e.target
+                                          .value as BlockBackgroundGradientDirection;
+                                        const base = cloneBlockBackground(selectedBlock.background);
+                                        base.type = "gradient";
+                                        base.gradient = {
+                                          from:
+                                            base.gradient?.from ??
+                                            selectedBlock.background?.gradient?.from ??
+                                            DEFAULT_BLOCK_GRADIENT_FROM,
+                                          to:
+                                            base.gradient?.to ??
+                                            selectedBlock.background?.gradient?.to ??
+                                            DEFAULT_BLOCK_GRADIENT_TO,
+                                          direction: value,
+                                        };
+                                        patchBlock(selectedBlock.id, { background: base });
+                                      }}
+                                      className={INSPECTOR_INPUT_CLASS}
+                                    >
+                                      {BLOCK_BACKGROUND_GRADIENT_DIRECTIONS.map((option) => (
+                                        <option key={option.value} value={option.value}>
+                                          {option.label}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                </div>
+                              )}
+                              {selectedBlock.background?.type === "image" && (
+                                <div className="space-y-2">
+                                  <input
+                                    ref={blockBackgroundImageInputRef}
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={async (e) => {
+                                      const file = e.target.files?.[0];
+                                      if (!file) return;
+                                      await handleUpload(file, (url) => {
+                                        const base = cloneBlockBackground(selectedBlock.background);
+                                        base.type = "image";
+                                        base.image = { url };
+                                        patchBlock(selectedBlock.id, { background: base });
+                                      });
+                                      e.target.value = "";
+                                    }}
+                                  />
+                                  <label className="block">
+                                    <span className="text-xs font-medium text-neutral-500">
+                                      Image URL
+                                    </span>
+                                    <input
+                                      type="text"
+                                      value={selectedBlock.background?.image?.url ?? ""}
+                                      onChange={(event) => {
+                                        const value = event.target.value;
+                                        const base = cloneBlockBackground(selectedBlock.background);
+                                        base.type = "image";
+                                        base.image = { url: value };
+                                        patchBlock(selectedBlock.id, { background: base });
+                                      }}
+                                      className={INSPECTOR_INPUT_CLASS}
+                                      placeholder="https://example.com/image.jpg"
+                                    />
+                                  </label>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        blockBackgroundImageInputRef.current?.click()
+                                      }
+                                      className="rounded border px-3 py-1 text-xs font-medium"
+                                    >
+                                      {selectedBlock.background?.image?.url
+                                        ? "Replace image"
+                                        : "Upload image"}
+                                    </button>
+                                    {uploading && (
+                                      <span className="text-[11px] text-neutral-500">
+                                        Uploading…
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
                           <div className="rounded border px-3 py-3">
                             <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
                               Frame ({activeDevice})
