@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import {
   DndContext,
@@ -22,6 +22,8 @@ import { supabase } from '@/utils/supabaseClient';
 import type { SlideRow } from '@/components/customer/home/SlidesContainer';
 
 export type DeviceKind = 'mobile' | 'tablet' | 'desktop';
+
+type TextTag = 'h2' | 'h3' | 'p';
 
 export const DEVICE_DIMENSIONS: Record<DeviceKind, { width: number; height: number }> = {
   mobile: { width: 390, height: 844 },
@@ -1051,6 +1053,9 @@ export default function SlidesManager({
   };
 
   const handleInlineText = (blockId: string, text: string) => {
+    const target = cfg.blocks.find((b) => b.id === blockId);
+    const currentValue = target ? target.content ?? target.text ?? '' : '';
+    if (currentValue === text) return;
     const next: SlideCfg = {
       ...cfg,
       blocks: cfg.blocks.map((b) =>
@@ -1064,6 +1069,24 @@ export default function SlidesManager({
       ),
     };
     onChange(next, { commit: true });
+  };
+
+  const renderEditableText = (
+    block: SlideBlock,
+    Tag: TextTag,
+    style: CSSProperties,
+  ) => {
+    const content = block.content ?? block.text ?? '';
+    return (
+      <EditableTextContent
+        tag={Tag}
+        value={content}
+        style={style}
+        className="leading-tight"
+        editable={Boolean(editable && editInPreview)}
+        onCommit={(next) => handleInlineText(block.id, next)}
+      />
+    );
   };
 
   const renderBlockContent = (block: SlideBlock): ReactNode => {
@@ -1103,25 +1126,7 @@ export default function SlidesManager({
         if (resolvedFontFamily) {
           style.fontFamily = resolvedFontFamily;
         }
-        const editableProps =
-          editable && editInPreview
-            ? {
-                contentEditable: true,
-                suppressContentEditableWarning: true,
-                onBlur: (e: React.FocusEvent<HTMLElement>) =>
-                  handleInlineText(block.id, e.currentTarget.textContent || ''),
-              }
-            : {};
-        const content = block.content ?? block.text ?? '';
-        const textElement = (
-          <Tag
-            {...editableProps}
-            style={style}
-            className="leading-tight"
-          >
-            {content}
-          </Tag>
-        );
+        const textElement = renderEditableText(block, Tag, style);
         if (
           (block.kind === 'heading' || block.kind === 'text') &&
           block.bgStyle &&
@@ -1397,6 +1402,124 @@ export default function SlidesManager({
   );
 }
 
+type EditableTextContentProps = {
+  tag: TextTag;
+  value: string;
+  style: CSSProperties;
+  className?: string;
+  editable: boolean;
+  onCommit: (text: string) => void;
+};
+
+function EditableTextContent({
+  tag,
+  value,
+  style,
+  className,
+  editable,
+  onCommit,
+}: EditableTextContentProps) {
+  const elementRef = useRef<HTMLElement | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+
+  useLayoutEffect(() => {
+    if (!elementRef.current) return;
+    if (isEditing) return;
+    const current = elementRef.current.textContent ?? '';
+    if (current !== value) {
+      elementRef.current.textContent = value;
+    }
+  }, [isEditing, value]);
+
+  const commitIfChanged = (nextValue: string) => {
+    if (nextValue === value) return;
+    onCommit(nextValue);
+  };
+
+  const handleBlur = (event: React.FocusEvent<HTMLElement>) => {
+    setIsEditing(false);
+    const text = (event.currentTarget.innerText ?? '')
+      .replace(/\u00A0/g, ' ')
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n');
+    commitIfChanged(text);
+  };
+
+  const handleFocus = () => {
+    setIsEditing(true);
+  };
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      (event.currentTarget as HTMLElement).blur();
+      return;
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      const selection = window.getSelection();
+      if (!selection) return;
+      selection.deleteFromDocument();
+      if (selection.rangeCount === 0) return;
+      const range = selection.getRangeAt(0);
+      const textNode = document.createTextNode('\n');
+      range.insertNode(textNode);
+      range.setStartAfter(textNode);
+      range.setEndAfter(textNode);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+  };
+
+  const handlePaste = (event: React.ClipboardEvent<HTMLElement>) => {
+    if (!editable) return;
+    event.preventDefault();
+    const text = event.clipboardData.getData('text/plain');
+    const selection = window.getSelection();
+    if (!selection) return;
+    selection.deleteFromDocument();
+    if (selection.rangeCount === 0) return;
+    const range = selection.getRangeAt(0);
+    const textNode = document.createTextNode(text);
+    range.insertNode(textNode);
+    range.setStartAfter(textNode);
+    range.setEndAfter(textNode);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  };
+
+  const combinedClassName = ['whitespace-pre-wrap', 'focus:outline-none'];
+  if (className) combinedClassName.push(className);
+
+  const baseStyle: CSSProperties = {
+    ...style,
+    whiteSpace: 'pre-wrap',
+  };
+
+  const props: Record<string, any> = {
+    ref: (node: HTMLElement | null) => {
+      elementRef.current = node;
+    },
+    className: combinedClassName.join(' '),
+    style: baseStyle,
+  };
+
+  if (editable) {
+    props.contentEditable = true;
+    props.suppressContentEditableWarning = true;
+    props.spellCheck = true;
+    props['aria-multiline'] = true;
+    props.onBlur = handleBlur;
+    props.onFocus = handleFocus;
+    props.onKeyDown = handleKeyDown;
+    props.onPaste = handlePaste;
+  }
+
+  props.children = editable ? (isEditing ? undefined : value) : value;
+
+  return React.createElement(tag, props);
+}
+
 function GalleryBlockPreview({ block }: { block: SlideBlock }) {
   const config = useMemo(() => resolveGalleryConfig(block), [block]);
   const items = config.items;
@@ -1552,12 +1675,12 @@ function InteractiveBox({
   const handlePointerDown = (type: PointerState['type'], corner?: string) => (e: React.PointerEvent) => {
     if (!editable) return;
     e.stopPropagation();
-    const rect = getContainerRect();
-    if (!rect) return;
-    if (locked && type !== 'move') {
-      onSelect();
+    onSelect();
+    if (locked) {
       return;
     }
+    const rect = getContainerRect();
+    if (!rect) return;
     const state: PointerState = {
       type,
       startX: e.clientX,
@@ -1576,7 +1699,6 @@ function InteractiveBox({
     }
     pointerState.current = state;
     localRef.current?.setPointerCapture?.(e.pointerId);
-    onSelect();
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
@@ -1717,7 +1839,7 @@ function InteractiveBox({
       }}
     >
       {children}
-      {editable && selected && (
+      {editable && selected && !locked && (
         <>
           <div
             onPointerDown={handlePointerDown('rotate')}
