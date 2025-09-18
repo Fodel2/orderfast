@@ -55,6 +55,12 @@ export type ButtonBlockConfig = {
 export const BUTTON_VARIANTS: ButtonBlockVariant[] = ['Primary', 'Outline', 'Ghost'];
 export const BUTTON_SIZES: ButtonBlockSize[] = ['Small', 'Medium', 'Large'];
 
+const BUTTON_FONT_SIZE_PX: Record<ButtonBlockSize, number> = {
+  Small: 14,
+  Medium: 16,
+  Large: 18,
+};
+
 export const DEFAULT_BUTTON_CONFIG: ButtonBlockConfig = {
   label: 'Button',
   href: '/menu',
@@ -221,6 +227,16 @@ const SIZE_TO_FONT_SIZE: Record<NonNullable<SlideBlock['size']>, number> = {
   md: 24,
   lg: 40,
   xl: 56,
+};
+
+const resolveLineHeightValue = (
+  value?: number,
+  unit?: SlideBlock['lineHeightUnit'],
+): string | number | undefined => {
+  if (typeof value !== 'number') return undefined;
+  if (unit === 'px') return `${value}px`;
+  if (unit === 'em') return `${value}em`;
+  return value;
 };
 
 const hexToRgba = (hex: string, opacity: number) => {
@@ -648,10 +664,7 @@ export default function SlidesManager({
             : block.size
               ? SIZE_TO_FONT_SIZE[block.size]
               : undefined;
-        const lineHeightValue =
-          typeof block.lineHeight === 'number'
-            ? `${block.lineHeight}${block.lineHeightUnit === 'px' ? 'px' : 'em'}`
-            : undefined;
+        const lineHeightValue = resolveLineHeightValue(block.lineHeight, block.lineHeightUnit);
         const letterSpacingValue =
           typeof block.letterSpacing === 'number' ? `${block.letterSpacing}px` : undefined;
         const textShadowValue = block.textShadow
@@ -741,6 +754,14 @@ export default function SlidesManager({
         ]
           .filter(Boolean)
           .join(' ');
+        const fontFamilyKey = block.fontFamily ?? 'default';
+        const resolvedFontFamily = FONT_FAMILY_MAP[fontFamilyKey];
+        const fontSizePx =
+          typeof block.fontSize === 'number'
+            ? block.fontSize
+            : BUTTON_FONT_SIZE_PX[button.size] ?? BUTTON_FONT_SIZE_PX.Medium;
+        const lineHeightValue = resolveLineHeightValue(block.lineHeight, block.lineHeightUnit);
+        const align = block.align ?? 'left';
         const style: CSSProperties = {
           borderRadius: button.radius,
           color: button.textColor,
@@ -748,19 +769,32 @@ export default function SlidesManager({
           borderColor: button.variant === 'Outline' ? button.bgColor : 'transparent',
           borderWidth: button.variant === 'Outline' ? 1 : 0,
           borderStyle: 'solid',
+          fontWeight: block.fontWeight ?? 600,
         };
+        if (resolvedFontFamily) {
+          style.fontFamily = resolvedFontFamily;
+        }
+        if (fontSizePx) {
+          style.fontSize = `${fontSizePx}px`;
+        }
+        if (lineHeightValue !== undefined) {
+          style.lineHeight = lineHeightValue;
+        }
         if (button.fullWidth) {
           style.width = '100%';
         }
+        const wrapperStyle: CSSProperties = { width: '100%', textAlign: align };
         return (
-          <a
-            href={button.href || '#'}
-            onClick={(e) => e.preventDefault()}
-            className={classes}
-            style={style}
-          >
-            {button.label || 'Button'}
-          </a>
+          <div style={wrapperStyle}>
+            <a
+              href={button.href || '#'}
+              onClick={(e) => e.preventDefault()}
+              className={classes}
+              style={style}
+            >
+              {button.label || 'Button'}
+            </a>
+          </div>
         );
       }
       case 'image': {
@@ -795,6 +829,16 @@ export default function SlidesManager({
         const quote = resolveQuoteConfig(block);
         const defaultTextColor = quote.style === 'plain' ? '#ffffff' : '#111111';
         const textColor = block.textColor ?? block.color ?? defaultTextColor;
+        const fontFamilyKey = block.fontFamily ?? 'default';
+        const resolvedFontFamily = FONT_FAMILY_MAP[fontFamilyKey];
+        const fallbackWeight = block.fontWeight ?? (quote.style === 'emphasis' ? 600 : 400);
+        const fontSizePx =
+          typeof block.fontSize === 'number'
+            ? block.fontSize
+            : quote.style === 'emphasis'
+              ? 24
+              : 16;
+        const lineHeightValue = resolveLineHeightValue(block.lineHeight, block.lineHeightUnit);
         const wrapperStyle: CSSProperties = {
           width: '100%',
           textAlign: quote.align,
@@ -803,6 +847,9 @@ export default function SlidesManager({
           color: textColor,
           textAlign: quote.align,
         };
+        if (resolvedFontFamily) {
+          innerStyle.fontFamily = resolvedFontFamily;
+        }
         const innerClasses = ['max-w-full'];
         if (quote.style === 'emphasis' || quote.style === 'card') {
           const backgroundColor = hexToRgba(quote.bgColor, quote.bgOpacity);
@@ -822,14 +869,34 @@ export default function SlidesManager({
         } else {
           textClasses.push('italic');
         }
+        const textStyle: CSSProperties = {
+          fontWeight: fallbackWeight,
+          lineHeight: lineHeightValue,
+        };
+        if (resolvedFontFamily) {
+          textStyle.fontFamily = resolvedFontFamily;
+        }
+        if (fontSizePx) {
+          textStyle.fontSize = `${fontSizePx}px`;
+        }
         const authorClasses = ['mt-3', 'text-sm', 'opacity-80', 'whitespace-pre-line'];
+        const authorStyle: CSSProperties = {};
+        if (resolvedFontFamily) {
+          authorStyle.fontFamily = resolvedFontFamily;
+        }
+        if (typeof block.fontWeight === 'number') {
+          authorStyle.fontWeight = block.fontWeight;
+        }
+        if (lineHeightValue !== undefined) {
+          authorStyle.lineHeight = lineHeightValue;
+        }
         const trimmedAuthor = quote.author.trim();
         return (
           <div style={wrapperStyle}>
             <div className={innerClasses.join(' ')} style={innerStyle}>
-              <p className={textClasses.join(' ')}>“{quote.text}”</p>
+              <p className={textClasses.join(' ')} style={textStyle}>“{quote.text}”</p>
               {trimmedAuthor.length > 0 ? (
-                <p className={authorClasses.join(' ')}>— {trimmedAuthor}</p>
+                <p className={authorClasses.join(' ')} style={authorStyle}>— {trimmedAuthor}</p>
               ) : null}
             </div>
           </div>

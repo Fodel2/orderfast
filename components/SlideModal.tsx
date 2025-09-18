@@ -58,13 +58,33 @@ const TEXT_SIZES: { value: NonNullable<SlideBlock["size"]>; label: string }[] =
   ];
 
 const FONT_FAMILY_OPTIONS: { value: NonNullable<SlideBlock["fontFamily"]>; label: string }[] = [
-  { value: "default", label: "Default" },
+  { value: "default", label: "Default (inherit)" },
+  { value: "sans", label: "Sans Serif" },
   { value: "serif", label: "Serif" },
-  { value: "sans", label: "Sans" },
-  { value: "mono", label: "Mono" },
+  { value: "mono", label: "Monospace" },
 ];
 
-const FONT_WEIGHT_OPTIONS = [100, 200, 300, 400, 500, 600, 700, 800, 900];
+const FONT_WEIGHT_OPTIONS: { value: number; label: string }[] = [
+  { value: 400, label: "Normal (400)" },
+  { value: 500, label: "Medium (500)" },
+  { value: 600, label: "Semibold (600)" },
+  { value: 700, label: "Bold (700)" },
+];
+
+const TEXT_ALIGNMENT_OPTIONS: {
+  value: NonNullable<SlideBlock["align"]>;
+  label: string;
+}[] = [
+  { value: "left", label: "Left" },
+  { value: "center", label: "Center" },
+  { value: "right", label: "Right" },
+];
+
+const BUTTON_FONT_SIZE_PX: Record<ButtonBlockSize, number> = {
+  Small: 14,
+  Medium: 16,
+  Large: 18,
+};
 
 const BACKGROUND_STYLE_OPTIONS: { value: NonNullable<SlideBlock["bgStyle"]>; label: string }[] = [
   { value: "none", label: "None" },
@@ -76,12 +96,6 @@ const QUOTE_STYLE_OPTIONS: { value: QuoteBlockConfig["style"]; label: string }[]
   { value: "plain", label: "Plain" },
   { value: "emphasis", label: "Emphasis" },
   { value: "card", label: "Card" },
-];
-
-const QUOTE_ALIGNMENT_OPTIONS: { value: QuoteBlockConfig["align"]; label: string }[] = [
-  { value: "left", label: "Left" },
-  { value: "center", label: "Center" },
-  { value: "right", label: "Right" },
 ];
 
 const SIZE_TO_FONT_SIZE_PX: Record<NonNullable<SlideBlock["size"]>, number> = {
@@ -653,7 +667,7 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
     block.text = content;
   }
 
-  if (kind === "heading" || kind === "text") {
+  if (kind === "heading" || kind === "subheading" || kind === "text") {
     const fontFamilyValue =
       typeof raw.fontFamily === "string"
         ? (raw.fontFamily.toLowerCase() as SlideBlock["fontFamily"])
@@ -663,7 +677,8 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
       FONT_FAMILY_OPTIONS.some((opt) => opt.value === fontFamilyValue)
         ? fontFamilyValue
         : "default";
-    const fallbackWeight = kind === "heading" ? 700 : 400;
+    const fallbackWeight =
+      kind === "heading" ? 700 : kind === "subheading" ? 600 : 400;
     block.fontWeight =
       typeof raw.fontWeight === "number"
         ? raw.fontWeight
@@ -677,15 +692,18 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
           ? SIZE_TO_FONT_SIZE_PX[block.size]
           : kind === "heading"
             ? 56
-            : 16;
+            : kind === "subheading"
+              ? SIZE_TO_FONT_SIZE_PX.md
+              : 16;
     block.fontSize = fontSizeFallback;
     if (typeof raw.lineHeight === "number") {
       block.lineHeight = raw.lineHeight;
     }
-    block.lineHeightUnit =
-      raw.lineHeightUnit === "px" || raw.lineHeightUnit === "em"
-        ? raw.lineHeightUnit
-        : block.lineHeightUnit ?? "em";
+    if (raw.lineHeightUnit === "px" || raw.lineHeightUnit === "em") {
+      block.lineHeightUnit = raw.lineHeightUnit;
+    } else if (typeof block.lineHeightUnit !== "string") {
+      block.lineHeightUnit = undefined;
+    }
     if (typeof raw.letterSpacing === "number") {
       block.letterSpacing = raw.letterSpacing;
     }
@@ -695,56 +713,58 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
         : block.color || "#000000";
     block.textColor = textColor;
     block.color = textColor;
-    if (raw.textShadow && typeof raw.textShadow === "object") {
-      const shadow = raw.textShadow;
-      const x = typeof shadow.x === "number" ? shadow.x : DEFAULT_TEXT_SHADOW.x;
-      const y = typeof shadow.y === "number" ? shadow.y : DEFAULT_TEXT_SHADOW.y;
-      const blur =
-        typeof shadow.blur === "number" ? shadow.blur : DEFAULT_TEXT_SHADOW.blur;
-      const color =
-        typeof shadow.color === "string"
-          ? shadow.color
-          : DEFAULT_TEXT_SHADOW.color;
-      block.textShadow = { x, y, blur, color };
-    } else if (raw.textShadow === null || raw.textShadow === false) {
-      block.textShadow = null;
-    } else if (block.textShadow === undefined) {
-      block.textShadow = null;
+    if (kind === "heading" || kind === "text") {
+      if (raw.textShadow && typeof raw.textShadow === "object") {
+        const shadow = raw.textShadow;
+        const x = typeof shadow.x === "number" ? shadow.x : DEFAULT_TEXT_SHADOW.x;
+        const y = typeof shadow.y === "number" ? shadow.y : DEFAULT_TEXT_SHADOW.y;
+        const blur =
+          typeof shadow.blur === "number" ? shadow.blur : DEFAULT_TEXT_SHADOW.blur;
+        const color =
+          typeof shadow.color === "string"
+            ? shadow.color
+            : DEFAULT_TEXT_SHADOW.color;
+        block.textShadow = { x, y, blur, color };
+      } else if (raw.textShadow === null || raw.textShadow === false) {
+        block.textShadow = null;
+      } else if (block.textShadow === undefined) {
+        block.textShadow = null;
+      }
+      const bgStyleValue = raw.bgStyle;
+      const normalizedBgStyle: SlideBlock["bgStyle"] =
+        bgStyleValue === "solid" || bgStyleValue === "glass"
+          ? bgStyleValue
+          : "none";
+      block.bgStyle = normalizedBgStyle;
+      const bgColor =
+        typeof raw.bgColor === "string"
+          ? raw.bgColor
+          : typeof raw.backgroundColor === "string"
+            ? raw.backgroundColor
+            : block.bgColor ?? "#000000";
+      block.bgColor = bgColor;
+      const opacitySource =
+        typeof raw.bgOpacity === "number"
+          ? raw.bgOpacity
+          : typeof raw.opacity === "number"
+            ? raw.opacity
+            : block.bgOpacity ?? (normalizedBgStyle === "glass" ? 0.5 : 1);
+      block.bgOpacity = clamp01(opacitySource);
+      const radiusSource =
+        typeof raw.radius === "number"
+          ? raw.radius
+          : typeof raw.cornerRadius === "number"
+            ? raw.cornerRadius
+            : block.radius ?? 0;
+      block.radius = radiusSource;
+      const paddingSource =
+        typeof raw.padding === "number"
+          ? raw.padding
+          : typeof raw.pad === "number"
+            ? raw.pad
+            : block.padding ?? 0;
+      block.padding = paddingSource;
     }
-    const bgStyleValue = raw.bgStyle;
-    const normalizedBgStyle: SlideBlock["bgStyle"] =
-      bgStyleValue === "solid" || bgStyleValue === "glass"
-        ? bgStyleValue
-        : "none";
-    block.bgStyle = normalizedBgStyle;
-    const bgColor =
-      typeof raw.bgColor === "string"
-        ? raw.bgColor
-        : typeof raw.backgroundColor === "string"
-          ? raw.backgroundColor
-          : block.bgColor ?? "#000000";
-    block.bgColor = bgColor;
-    const opacitySource =
-      typeof raw.bgOpacity === "number"
-        ? raw.bgOpacity
-        : typeof raw.opacity === "number"
-          ? raw.opacity
-          : block.bgOpacity ?? (normalizedBgStyle === "glass" ? 0.5 : 1);
-    block.bgOpacity = clamp01(opacitySource);
-    const radiusSource =
-      typeof raw.radius === "number"
-        ? raw.radius
-        : typeof raw.cornerRadius === "number"
-          ? raw.cornerRadius
-          : block.radius ?? 0;
-    block.radius = radiusSource;
-    const paddingSource =
-      typeof raw.padding === "number"
-        ? raw.padding
-        : typeof raw.pad === "number"
-          ? raw.pad
-          : block.padding ?? 0;
-    block.padding = paddingSource;
   }
 
   return block;
@@ -1025,25 +1045,31 @@ export default function SlideModal({
       block.radius = quoteConfig.radius;
       block.padding = quoteConfig.padding;
     }
-    if (kind === "heading" || kind === "text") {
+    if (kind === "heading" || kind === "subheading" || kind === "text") {
       const initialContent = block.text ?? "";
       block.content = initialContent;
       block.fontFamily = "default";
-      block.fontWeight = kind === "heading" ? 700 : 400;
+      block.fontWeight =
+        kind === "heading" ? 700 : kind === "subheading" ? 600 : 400;
       block.fontSize = block.size
         ? SIZE_TO_FONT_SIZE_PX[block.size]
         : kind === "heading"
           ? 56
-          : 16;
-      block.lineHeightUnit = "em";
+          : kind === "subheading"
+            ? SIZE_TO_FONT_SIZE_PX.md
+            : 16;
+      block.lineHeight = undefined;
+      block.lineHeightUnit = undefined;
       block.textColor = block.color ?? "#ffffff";
       block.color = block.textColor;
-      block.textShadow = null;
-      block.bgStyle = "none";
-      block.bgColor = "#000000";
-      block.bgOpacity = 1;
-      block.radius = 0;
-      block.padding = 0;
+      if (kind === "heading" || kind === "text") {
+        block.textShadow = null;
+        block.bgStyle = "none";
+        block.bgColor = "#000000";
+        block.bgOpacity = 1;
+        block.radius = 0;
+        block.padding = 0;
+      }
     }
     updateCfg((prev) => ({ ...prev, blocks: [...prev.blocks, block] }));
     handleSelectBlock(id);
@@ -2476,16 +2502,19 @@ export default function SlideModal({
                                       selectedBlock.fontWeight ??
                                         (selectedBlock.kind === "heading" ? 700 : 400),
                                     )}
-                                    onChange={(e) =>
+                                    onChange={(e) => {
+                                      const parsed = Number(e.target.value);
                                       patchBlock(selectedBlock.id, {
-                                        fontWeight: Number(e.target.value) || 400,
-                                      })
-                                    }
+                                        fontWeight: Number.isNaN(parsed)
+                                          ? selectedBlock.fontWeight
+                                          : parsed,
+                                      });
+                                    }}
                                     className={INSPECTOR_INPUT_CLASS}
                                   >
-                                    {FONT_WEIGHT_OPTIONS.map((weight) => (
-                                      <option key={weight} value={weight}>
-                                        {weight}
+                                    {FONT_WEIGHT_OPTIONS.map((option) => (
+                                      <option key={option.value} value={option.value}>
+                                        {option.label}
                                       </option>
                                     ))}
                                   </select>
@@ -2529,41 +2558,35 @@ export default function SlideModal({
                                   <span className="text-xs font-medium text-neutral-500">
                                     Line height
                                   </span>
-                                  <div className="mt-1 flex items-center gap-2">
-                                    <input
-                                      type="number"
-                                      step={0.1}
-                                      value={selectedBlock.lineHeight ?? ""}
-                                      onChange={(e) => {
-                                        const value = e.target.value;
-                                        if (value === "") {
-                                          patchBlock(selectedBlock.id, {
-                                            lineHeight: undefined,
-                                          });
-                                          return;
-                                        }
-                                        const parsed = Number(value);
+                                  <input
+                                    type="number"
+                                    step={0.05}
+                                    min={0}
+                                    value={
+                                      selectedBlock.lineHeight !== undefined
+                                        ? selectedBlock.lineHeight
+                                        : ""
+                                    }
+                                    placeholder="1.25"
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      if (value === "") {
                                         patchBlock(selectedBlock.id, {
-                                          lineHeight: Number.isNaN(parsed)
-                                            ? undefined
-                                            : parsed,
+                                          lineHeight: undefined,
+                                          lineHeightUnit: undefined,
                                         });
-                                      }}
-                                      className={INSPECTOR_INPUT_CLASS}
-                                    />
-                                    <select
-                                      value={selectedBlock.lineHeightUnit ?? "em"}
-                                      onChange={(e) =>
-                                        patchBlock(selectedBlock.id, {
-                                          lineHeightUnit: e.target.value as SlideBlock["lineHeightUnit"],
-                                        })
+                                        return;
                                       }
-                                      className={`${INSPECTOR_INPUT_CLASS} w-20 !text-xs`}
-                                    >
-                                      <option value="em">em</option>
-                                      <option value="px">px</option>
-                                    </select>
-                                  </div>
+                                      const parsed = Number(value);
+                                      patchBlock(selectedBlock.id, {
+                                        lineHeight: Number.isNaN(parsed) ? undefined : parsed,
+                                        lineHeightUnit: Number.isNaN(parsed)
+                                          ? selectedBlock.lineHeightUnit
+                                          : undefined,
+                                      });
+                                    }}
+                                    className={INSPECTOR_INPUT_CLASS}
+                                  />
                                 </label>
                               </div>
                               <label className="block">
@@ -2821,27 +2844,29 @@ export default function SlideModal({
                                 <span className="text-xs font-medium text-neutral-500">
                                   Alignment
                                 </span>
-                                <div className="mt-1 flex gap-2">
-                                  {(["left", "center", "right"] as const).map(
-                                    (align) => (
+                                <div className="mt-1 flex gap-1.5">
+                                  {TEXT_ALIGNMENT_OPTIONS.map((option) => {
+                                    const currentAlign = selectedBlock.align ?? "left";
+                                    const isActive = currentAlign === option.value;
+                                    return (
                                       <button
-                                        key={align}
+                                        key={option.value}
                                         type="button"
                                         onClick={() =>
                                           patchBlock(selectedBlock.id, {
-                                            align,
+                                            align: option.value,
                                           })
                                         }
-                                        className={`rounded border px-2 py-1 text-xs capitalize ${
-                                          selectedBlock.align === align
-                                            ? "border-emerald-500 bg-emerald-50"
-                                            : ""
+                                        className={`flex-1 rounded border px-2.5 py-1.5 text-xs font-medium capitalize transition ${
+                                          isActive
+                                            ? "border-emerald-500 bg-emerald-50 text-emerald-600"
+                                            : "border-neutral-200 text-neutral-600 hover:border-neutral-300"
                                         }`}
                                       >
-                                        {align}
+                                        {option.label}
                                       </button>
-                                    ),
-                                  )}
+                                    );
+                                  })}
                                 </div>
                               </div>
                             </>
@@ -2864,6 +2889,118 @@ export default function SlideModal({
                                   className={INSPECTOR_TEXTAREA_CLASS}
                                 />
                               </label>
+                              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                <label className="block">
+                                  <span className="text-xs font-medium text-neutral-500">
+                                    Font family
+                                  </span>
+                                  <select
+                                    value={selectedBlock.fontFamily ?? "default"}
+                                    onChange={(e) =>
+                                      patchBlock(selectedBlock.id, {
+                                        fontFamily: e.target.value as SlideBlock["fontFamily"],
+                                      })
+                                    }
+                                    className={INSPECTOR_INPUT_CLASS}
+                                  >
+                                    {FONT_FAMILY_OPTIONS.map((opt) => (
+                                      <option key={opt.value} value={opt.value}>
+                                        {opt.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <label className="block">
+                                  <span className="text-xs font-medium text-neutral-500">
+                                    Font weight
+                                  </span>
+                                  <select
+                                    value={String(selectedBlock.fontWeight ?? 600)}
+                                    onChange={(e) => {
+                                      const parsed = Number(e.target.value);
+                                      patchBlock(selectedBlock.id, {
+                                        fontWeight: Number.isNaN(parsed)
+                                          ? selectedBlock.fontWeight
+                                          : parsed,
+                                      });
+                                    }}
+                                    className={INSPECTOR_INPUT_CLASS}
+                                  >
+                                    {FONT_WEIGHT_OPTIONS.map((option) => (
+                                      <option key={option.value} value={option.value}>
+                                        {option.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              </div>
+                              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                <label className="block">
+                                  <span className="text-xs font-medium text-neutral-500">
+                                    Font size (px)
+                                  </span>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    value={
+                                      selectedBlock.fontSize ??
+                                      (selectedBlock.size
+                                        ? SIZE_TO_FONT_SIZE_PX[selectedBlock.size]
+                                        : SIZE_TO_FONT_SIZE_PX.md)
+                                    }
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      if (value === "") {
+                                        patchBlock(selectedBlock.id, {
+                                          fontSize: undefined,
+                                        });
+                                        return;
+                                      }
+                                      const parsed = Number(value);
+                                      patchBlock(selectedBlock.id, {
+                                        fontSize: Number.isNaN(parsed)
+                                          ? undefined
+                                          : parsed,
+                                      });
+                                    }}
+                                    className={INSPECTOR_INPUT_CLASS}
+                                  />
+                                </label>
+                                <label className="block">
+                                  <span className="text-xs font-medium text-neutral-500">
+                                    Line height
+                                  </span>
+                                  <input
+                                    type="number"
+                                    step={0.05}
+                                    min={0}
+                                    value={
+                                      selectedBlock.lineHeight !== undefined
+                                        ? selectedBlock.lineHeight
+                                        : ""
+                                    }
+                                    placeholder="1.25"
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      if (value === "") {
+                                        patchBlock(selectedBlock.id, {
+                                          lineHeight: undefined,
+                                          lineHeightUnit: undefined,
+                                        });
+                                        return;
+                                      }
+                                      const parsed = Number(value);
+                                      patchBlock(selectedBlock.id, {
+                                        lineHeight: Number.isNaN(parsed) ? undefined : parsed,
+                                        lineHeightUnit: Number.isNaN(parsed)
+                                          ? selectedBlock.lineHeightUnit
+                                          : undefined,
+                                      });
+                                    }}
+                                    className={INSPECTOR_INPUT_CLASS}
+                                  />
+                                </label>
+                              </div>
                               <label className="block">
                                 <span className="text-xs font-medium text-neutral-500">
                                   Color
@@ -2903,27 +3040,29 @@ export default function SlideModal({
                                 <span className="text-xs font-medium text-neutral-500">
                                   Alignment
                                 </span>
-                                <div className="mt-1 flex gap-2">
-                                  {(["left", "center", "right"] as const).map(
-                                    (align) => (
+                                <div className="mt-1 flex gap-1.5">
+                                  {TEXT_ALIGNMENT_OPTIONS.map((option) => {
+                                    const currentAlign = selectedBlock.align ?? "left";
+                                    const isActive = currentAlign === option.value;
+                                    return (
                                       <button
-                                        key={align}
+                                        key={option.value}
                                         type="button"
                                         onClick={() =>
                                           patchBlock(selectedBlock.id, {
-                                            align,
+                                            align: option.value,
                                           })
                                         }
-                                        className={`rounded border px-2 py-1 text-xs capitalize ${
-                                          selectedBlock.align === align
-                                            ? "border-emerald-500 bg-emerald-50"
-                                            : ""
+                                        className={`flex-1 rounded border px-2.5 py-1.5 text-xs font-medium capitalize transition ${
+                                          isActive
+                                            ? "border-emerald-500 bg-emerald-50 text-emerald-600"
+                                            : "border-neutral-200 text-neutral-600 hover:border-neutral-300"
                                         }`}
                                       >
-                                        {align}
+                                        {option.label}
                                       </button>
-                                    ),
-                                  )}
+                                    );
+                                  })}
                                 </div>
                               </div>
                             </>
@@ -2946,6 +3085,146 @@ export default function SlideModal({
                                   className={INSPECTOR_INPUT_CLASS}
                                 />
                               </label>
+                              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                <label className="block">
+                                  <span className="text-xs font-medium text-neutral-500">
+                                    Font family
+                                  </span>
+                                  <select
+                                    value={selectedBlock.fontFamily ?? "default"}
+                                    onChange={(e) =>
+                                      patchBlock(selectedBlock.id, {
+                                        fontFamily: e.target.value as SlideBlock["fontFamily"],
+                                      })
+                                    }
+                                    className={INSPECTOR_INPUT_CLASS}
+                                  >
+                                    {FONT_FAMILY_OPTIONS.map((opt) => (
+                                      <option key={opt.value} value={opt.value}>
+                                        {opt.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <label className="block">
+                                  <span className="text-xs font-medium text-neutral-500">
+                                    Font weight
+                                  </span>
+                                  <select
+                                    value={String(selectedBlock.fontWeight ?? 600)}
+                                    onChange={(e) => {
+                                      const parsed = Number(e.target.value);
+                                      patchBlock(selectedBlock.id, {
+                                        fontWeight: Number.isNaN(parsed)
+                                          ? selectedBlock.fontWeight
+                                          : parsed,
+                                      });
+                                    }}
+                                    className={INSPECTOR_INPUT_CLASS}
+                                  >
+                                    {FONT_WEIGHT_OPTIONS.map((option) => (
+                                      <option key={option.value} value={option.value}>
+                                        {option.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              </div>
+                              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                <label className="block">
+                                  <span className="text-xs font-medium text-neutral-500">
+                                    Font size (px)
+                                  </span>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    value={
+                                      selectedBlock.fontSize ??
+                                      BUTTON_FONT_SIZE_PX[selectedButtonConfig.size] ??
+                                        BUTTON_FONT_SIZE_PX.Medium
+                                    }
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      if (value === "") {
+                                        patchBlock(selectedBlock.id, {
+                                          fontSize: undefined,
+                                        });
+                                        return;
+                                      }
+                                      const parsed = Number(value);
+                                      patchBlock(selectedBlock.id, {
+                                        fontSize: Number.isNaN(parsed)
+                                          ? undefined
+                                          : parsed,
+                                      });
+                                    }}
+                                    className={INSPECTOR_INPUT_CLASS}
+                                  />
+                                </label>
+                                <label className="block">
+                                  <span className="text-xs font-medium text-neutral-500">
+                                    Line height
+                                  </span>
+                                  <input
+                                    type="number"
+                                    step={0.05}
+                                    min={0}
+                                    value={
+                                      selectedBlock.lineHeight !== undefined
+                                        ? selectedBlock.lineHeight
+                                        : ""
+                                    }
+                                    placeholder="1.25"
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      if (value === "") {
+                                        patchBlock(selectedBlock.id, {
+                                          lineHeight: undefined,
+                                          lineHeightUnit: undefined,
+                                        });
+                                        return;
+                                      }
+                                      const parsed = Number(value);
+                                      patchBlock(selectedBlock.id, {
+                                        lineHeight: Number.isNaN(parsed) ? undefined : parsed,
+                                        lineHeightUnit: Number.isNaN(parsed)
+                                          ? selectedBlock.lineHeightUnit
+                                          : undefined,
+                                      });
+                                    }}
+                                    className={INSPECTOR_INPUT_CLASS}
+                                  />
+                                </label>
+                              </div>
+                              <div>
+                                <span className="text-xs font-medium text-neutral-500">
+                                  Alignment
+                                </span>
+                                <div className="mt-1 flex gap-1.5">
+                                  {TEXT_ALIGNMENT_OPTIONS.map((option) => {
+                                    const currentAlign = selectedBlock.align ?? "left";
+                                    const isActive = currentAlign === option.value;
+                                    return (
+                                      <button
+                                        key={option.value}
+                                        type="button"
+                                        onClick={() =>
+                                          patchBlock(selectedBlock.id, {
+                                            align: option.value,
+                                          })
+                                        }
+                                        className={`flex-1 rounded border px-2.5 py-1.5 text-xs font-medium capitalize transition ${
+                                          isActive
+                                            ? "border-emerald-500 bg-emerald-50 text-emerald-600"
+                                            : "border-neutral-200 text-neutral-600 hover:border-neutral-300"
+                                        }`}
+                                      >
+                                        {option.label}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
                               <div>
                                 <span className="text-xs font-medium text-neutral-500">
                                   Link
@@ -3641,6 +3920,119 @@ export default function SlideModal({
                                   className={INSPECTOR_INPUT_CLASS}
                                 />
                               </label>
+                              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                <label className="block">
+                                  <span className="text-xs font-medium text-neutral-500">
+                                    Font family
+                                  </span>
+                                  <select
+                                    value={selectedBlock.fontFamily ?? "default"}
+                                    onChange={(e) =>
+                                      patchBlock(selectedBlock.id, {
+                                        fontFamily: e.target.value as SlideBlock["fontFamily"],
+                                      })
+                                    }
+                                    className={INSPECTOR_INPUT_CLASS}
+                                  >
+                                    {FONT_FAMILY_OPTIONS.map((opt) => (
+                                      <option key={opt.value} value={opt.value}>
+                                        {opt.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <label className="block">
+                                  <span className="text-xs font-medium text-neutral-500">
+                                    Font weight
+                                  </span>
+                                  <select
+                                    value={String(
+                                      selectedBlock.fontWeight ??
+                                        (selectedQuoteConfig.style === "emphasis" ? 600 : 400),
+                                    )}
+                                    onChange={(e) => {
+                                      const parsed = Number(e.target.value);
+                                      patchBlock(selectedBlock.id, {
+                                        fontWeight: Number.isNaN(parsed)
+                                          ? selectedBlock.fontWeight
+                                          : parsed,
+                                      });
+                                    }}
+                                    className={INSPECTOR_INPUT_CLASS}
+                                  >
+                                    {FONT_WEIGHT_OPTIONS.map((option) => (
+                                      <option key={option.value} value={option.value}>
+                                        {option.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              </div>
+                              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                <label className="block">
+                                  <span className="text-xs font-medium text-neutral-500">
+                                    Font size (px)
+                                  </span>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    value={
+                                      selectedBlock.fontSize ??
+                                      (selectedQuoteConfig.style === "emphasis" ? 24 : 16)
+                                    }
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      if (value === "") {
+                                        patchBlock(selectedBlock.id, {
+                                          fontSize: undefined,
+                                        });
+                                        return;
+                                      }
+                                      const parsed = Number(value);
+                                      patchBlock(selectedBlock.id, {
+                                        fontSize: Number.isNaN(parsed)
+                                          ? undefined
+                                          : parsed,
+                                      });
+                                    }}
+                                    className={INSPECTOR_INPUT_CLASS}
+                                  />
+                                </label>
+                                <label className="block">
+                                  <span className="text-xs font-medium text-neutral-500">
+                                    Line height
+                                  </span>
+                                  <input
+                                    type="number"
+                                    step={0.05}
+                                    min={0}
+                                    value={
+                                      selectedBlock.lineHeight !== undefined
+                                        ? selectedBlock.lineHeight
+                                        : ""
+                                    }
+                                    placeholder="1.4"
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      if (value === "") {
+                                        patchBlock(selectedBlock.id, {
+                                          lineHeight: undefined,
+                                          lineHeightUnit: undefined,
+                                        });
+                                        return;
+                                      }
+                                      const parsed = Number(value);
+                                      patchBlock(selectedBlock.id, {
+                                        lineHeight: Number.isNaN(parsed) ? undefined : parsed,
+                                        lineHeightUnit: Number.isNaN(parsed)
+                                          ? selectedBlock.lineHeightUnit
+                                          : undefined,
+                                      });
+                                    }}
+                                    className={INSPECTOR_INPUT_CLASS}
+                                  />
+                                </label>
+                              </div>
                               <label className="block">
                                 <span className="text-xs font-medium text-neutral-500">
                                   Style
@@ -3740,27 +4132,30 @@ export default function SlideModal({
                                 <span className="text-xs font-medium text-neutral-500">
                                   Alignment
                                 </span>
-                                <div className="mt-1 flex gap-3 text-xs">
-                                  {QUOTE_ALIGNMENT_OPTIONS.map((option) => (
-                                    <label
-                                      key={option.value}
-                                      className="flex items-center gap-1"
-                                    >
-                                      <input
-                                        type="radio"
-                                        name={`quote-align-${selectedBlock.id}`}
-                                        value={option.value}
-                                        checked={selectedQuoteConfig.align === option.value}
-                                        onChange={() =>
+                                <div className="mt-1 flex gap-1.5">
+                                  {TEXT_ALIGNMENT_OPTIONS.map((option) => {
+                                    const currentAlign = selectedQuoteConfig.align;
+                                    const isActive = currentAlign === option.value;
+                                    return (
+                                      <button
+                                        key={option.value}
+                                        type="button"
+                                        onClick={() =>
                                           updateQuoteConfig(selectedBlock.id, (config) => ({
                                             ...config,
                                             align: option.value,
                                           }))
                                         }
-                                      />
-                                      <span className="capitalize">{option.label}</span>
-                                    </label>
-                                  ))}
+                                        className={`flex-1 rounded border px-2.5 py-1.5 text-xs font-medium capitalize transition ${
+                                          isActive
+                                            ? "border-emerald-500 bg-emerald-50 text-emerald-600"
+                                            : "border-neutral-200 text-neutral-600 hover:border-neutral-300"
+                                        }`}
+                                      >
+                                        {option.label}
+                                      </button>
+                                    );
+                                  })}
                                 </div>
                               </div>
                             </div>
