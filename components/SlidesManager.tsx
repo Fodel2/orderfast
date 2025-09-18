@@ -55,6 +55,119 @@ export type ButtonBlockConfig = {
 export const BUTTON_VARIANTS: ButtonBlockVariant[] = ['Primary', 'Outline', 'Ghost'];
 export const BUTTON_SIZES: ButtonBlockSize[] = ['Small', 'Medium', 'Large'];
 
+const BUTTON_FONT_SIZE_PX: Record<ButtonBlockSize, number> = {
+  Small: 14,
+  Medium: 16,
+  Large: 18,
+};
+
+const BLOCK_SHADOW_VALUE: Record<BlockShadowPreset, string | undefined> = {
+  none: undefined,
+  sm: '0 1px 2px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.04)',
+  md: '0 4px 6px rgba(15, 23, 42, 0.1), 0 2px 4px rgba(15, 23, 42, 0.06)',
+  lg: '0 10px 15px rgba(15, 23, 42, 0.12), 0 4px 6px rgba(15, 23, 42, 0.05)',
+};
+
+const BLOCK_GRADIENT_DIRECTION_MAP: Record<BlockBackgroundGradientDirection, string> = {
+  'to-top': 'to top',
+  'to-bottom': 'to bottom',
+  'to-left': 'to left',
+  'to-right': 'to right',
+};
+
+function getBlockChromeStyle(block: SlideBlock): CSSProperties {
+  const style: CSSProperties = {
+    width: '100%',
+    height: '100%',
+    boxSizing: 'border-box',
+    backgroundColor: 'transparent',
+  };
+
+  const shadowKey = (block.boxShadow ?? 'none') as BlockShadowPreset;
+  const shadowValue = BLOCK_SHADOW_VALUE[shadowKey];
+  if (shadowValue) {
+    style.boxShadow = shadowValue;
+  }
+
+  const borderWidth =
+    typeof block.borderWidth === 'number' && Number.isFinite(block.borderWidth)
+      ? Math.max(0, block.borderWidth)
+      : undefined;
+  const borderColor =
+    typeof block.borderColor === 'string' ? block.borderColor : undefined;
+
+  if (borderWidth && borderWidth > 0) {
+    style.borderWidth = borderWidth;
+    style.borderStyle = 'solid';
+    style.borderColor = borderColor ?? 'rgba(15, 23, 42, 0.12)';
+  } else if (borderColor && borderColor !== 'transparent') {
+    style.borderWidth = 1;
+    style.borderStyle = 'solid';
+    style.borderColor = borderColor;
+  }
+
+  const borderRadius =
+    typeof block.borderRadius === 'number' && Number.isFinite(block.borderRadius)
+      ? Math.max(0, block.borderRadius)
+      : undefined;
+  if (borderRadius !== undefined) {
+    style.borderRadius = borderRadius;
+  }
+
+  const background = block.background;
+  const backgroundType = background?.type ?? 'none';
+  let shouldClip = false;
+
+  if (backgroundType === 'color') {
+    style.backgroundColor = background?.color ?? 'transparent';
+    shouldClip = true;
+  } else if (backgroundType === 'gradient') {
+    const gradient = background?.gradient ?? {};
+    const from =
+      typeof gradient.from === 'string' ? gradient.from : 'rgba(15, 23, 42, 0.4)';
+    const to =
+      typeof gradient.to === 'string' ? gradient.to : 'rgba(15, 23, 42, 0.05)';
+    const rawDirection =
+      typeof gradient.direction === 'string'
+        ? gradient.direction.replace(/\s+/g, '-').toLowerCase()
+        : undefined;
+    const directionKey =
+      rawDirection === 'to-top' ||
+      rawDirection === 'to-left' ||
+      rawDirection === 'to-right' ||
+      rawDirection === 'to-bottom'
+        ? (rawDirection as BlockBackgroundGradientDirection)
+        : 'to-bottom';
+    const direction = BLOCK_GRADIENT_DIRECTION_MAP[directionKey];
+    style.backgroundImage = `linear-gradient(${direction}, ${from}, ${to})`;
+    shouldClip = true;
+  } else if (backgroundType === 'image') {
+    const url = background?.image?.url;
+    if (url) {
+      style.backgroundImage = `url(${url})`;
+      style.backgroundSize = 'cover';
+      style.backgroundPosition = 'center';
+      style.backgroundRepeat = 'no-repeat';
+      shouldClip = true;
+    }
+  }
+
+  if (shouldClip && borderRadius !== undefined && borderRadius > 0) {
+    style.overflow = 'hidden';
+  }
+
+  return style;
+}
+
+function BlockChrome({ block, children }: { block: SlideBlock; children: ReactNode }) {
+  const style = getBlockChromeStyle(block);
+  return (
+    <div className="relative h-full w-full" style={style}>
+      {children}
+    </div>
+  );
+}
+
 export const DEFAULT_BUTTON_CONFIG: ButtonBlockConfig = {
   label: 'Button',
   href: '/menu',
@@ -129,6 +242,27 @@ export const DEFAULT_QUOTE_CONFIG: QuoteBlockConfig = {
   align: 'left',
 };
 
+export type BlockShadowPreset = 'none' | 'sm' | 'md' | 'lg';
+
+export type BlockBackgroundGradientDirection =
+  | 'to-top'
+  | 'to-bottom'
+  | 'to-left'
+  | 'to-right';
+
+export type BlockBackground = {
+  type: 'none' | 'color' | 'gradient' | 'image';
+  color?: string;
+  gradient?: {
+    from?: string;
+    to?: string;
+    direction?: BlockBackgroundGradientDirection;
+  };
+  image?: {
+    url?: string;
+  };
+};
+
 export type SlideBlock = {
   id: string;
   kind: 'heading' | 'subheading' | 'text' | 'button' | 'image' | 'quote' | 'gallery' | 'spacer';
@@ -156,6 +290,11 @@ export type SlideBlock = {
   radius?: number;
   padding?: number;
   buttonVariant?: 'primary' | 'secondary';
+  boxShadow?: BlockShadowPreset;
+  borderColor?: string;
+  borderWidth?: number;
+  borderRadius?: number;
+  background?: BlockBackground;
   config?:
     | (Partial<ButtonBlockConfig> &
         Partial<ImageBlockConfig> &
@@ -221,6 +360,16 @@ const SIZE_TO_FONT_SIZE: Record<NonNullable<SlideBlock['size']>, number> = {
   md: 24,
   lg: 40,
   xl: 56,
+};
+
+const resolveLineHeightValue = (
+  value?: number,
+  unit?: SlideBlock['lineHeightUnit'],
+): string | number | undefined => {
+  if (typeof value !== 'number') return undefined;
+  if (unit === 'px') return `${value}px`;
+  if (unit === 'em') return `${value}em`;
+  return value;
 };
 
 const hexToRgba = (hex: string, opacity: number) => {
@@ -648,10 +797,7 @@ export default function SlidesManager({
             : block.size
               ? SIZE_TO_FONT_SIZE[block.size]
               : undefined;
-        const lineHeightValue =
-          typeof block.lineHeight === 'number'
-            ? `${block.lineHeight}${block.lineHeightUnit === 'px' ? 'px' : 'em'}`
-            : undefined;
+        const lineHeightValue = resolveLineHeightValue(block.lineHeight, block.lineHeightUnit);
         const letterSpacingValue =
           typeof block.letterSpacing === 'number' ? `${block.letterSpacing}px` : undefined;
         const textShadowValue = block.textShadow
@@ -741,6 +887,14 @@ export default function SlidesManager({
         ]
           .filter(Boolean)
           .join(' ');
+        const fontFamilyKey = block.fontFamily ?? 'default';
+        const resolvedFontFamily = FONT_FAMILY_MAP[fontFamilyKey];
+        const fontSizePx =
+          typeof block.fontSize === 'number'
+            ? block.fontSize
+            : BUTTON_FONT_SIZE_PX[button.size] ?? BUTTON_FONT_SIZE_PX.Medium;
+        const lineHeightValue = resolveLineHeightValue(block.lineHeight, block.lineHeightUnit);
+        const align = block.align ?? 'left';
         const style: CSSProperties = {
           borderRadius: button.radius,
           color: button.textColor,
@@ -748,19 +902,32 @@ export default function SlidesManager({
           borderColor: button.variant === 'Outline' ? button.bgColor : 'transparent',
           borderWidth: button.variant === 'Outline' ? 1 : 0,
           borderStyle: 'solid',
+          fontWeight: block.fontWeight ?? 600,
         };
+        if (resolvedFontFamily) {
+          style.fontFamily = resolvedFontFamily;
+        }
+        if (fontSizePx) {
+          style.fontSize = `${fontSizePx}px`;
+        }
+        if (lineHeightValue !== undefined) {
+          style.lineHeight = lineHeightValue;
+        }
         if (button.fullWidth) {
           style.width = '100%';
         }
+        const wrapperStyle: CSSProperties = { width: '100%', textAlign: align };
         return (
-          <a
-            href={button.href || '#'}
-            onClick={(e) => e.preventDefault()}
-            className={classes}
-            style={style}
-          >
-            {button.label || 'Button'}
-          </a>
+          <div style={wrapperStyle}>
+            <a
+              href={button.href || '#'}
+              onClick={(e) => e.preventDefault()}
+              className={classes}
+              style={style}
+            >
+              {button.label || 'Button'}
+            </a>
+          </div>
         );
       }
       case 'image': {
@@ -795,6 +962,16 @@ export default function SlidesManager({
         const quote = resolveQuoteConfig(block);
         const defaultTextColor = quote.style === 'plain' ? '#ffffff' : '#111111';
         const textColor = block.textColor ?? block.color ?? defaultTextColor;
+        const fontFamilyKey = block.fontFamily ?? 'default';
+        const resolvedFontFamily = FONT_FAMILY_MAP[fontFamilyKey];
+        const fallbackWeight = block.fontWeight ?? (quote.style === 'emphasis' ? 600 : 400);
+        const fontSizePx =
+          typeof block.fontSize === 'number'
+            ? block.fontSize
+            : quote.style === 'emphasis'
+              ? 24
+              : 16;
+        const lineHeightValue = resolveLineHeightValue(block.lineHeight, block.lineHeightUnit);
         const wrapperStyle: CSSProperties = {
           width: '100%',
           textAlign: quote.align,
@@ -803,6 +980,9 @@ export default function SlidesManager({
           color: textColor,
           textAlign: quote.align,
         };
+        if (resolvedFontFamily) {
+          innerStyle.fontFamily = resolvedFontFamily;
+        }
         const innerClasses = ['max-w-full'];
         if (quote.style === 'emphasis' || quote.style === 'card') {
           const backgroundColor = hexToRgba(quote.bgColor, quote.bgOpacity);
@@ -822,14 +1002,34 @@ export default function SlidesManager({
         } else {
           textClasses.push('italic');
         }
+        const textStyle: CSSProperties = {
+          fontWeight: fallbackWeight,
+          lineHeight: lineHeightValue,
+        };
+        if (resolvedFontFamily) {
+          textStyle.fontFamily = resolvedFontFamily;
+        }
+        if (fontSizePx) {
+          textStyle.fontSize = `${fontSizePx}px`;
+        }
         const authorClasses = ['mt-3', 'text-sm', 'opacity-80', 'whitespace-pre-line'];
+        const authorStyle: CSSProperties = {};
+        if (resolvedFontFamily) {
+          authorStyle.fontFamily = resolvedFontFamily;
+        }
+        if (typeof block.fontWeight === 'number') {
+          authorStyle.fontWeight = block.fontWeight;
+        }
+        if (lineHeightValue !== undefined) {
+          authorStyle.lineHeight = lineHeightValue;
+        }
         const trimmedAuthor = quote.author.trim();
         return (
           <div style={wrapperStyle}>
             <div className={innerClasses.join(' ')} style={innerStyle}>
-              <p className={textClasses.join(' ')}>“{quote.text}”</p>
+              <p className={textClasses.join(' ')} style={textStyle}>“{quote.text}”</p>
               {trimmedAuthor.length > 0 ? (
-                <p className={authorClasses.join(' ')}>— {trimmedAuthor}</p>
+                <p className={authorClasses.join(' ')} style={authorStyle}>— {trimmedAuthor}</p>
               ) : null}
             </div>
           </div>
@@ -896,7 +1096,9 @@ export default function SlidesManager({
                   locked={locked}
                   onManipulationChange={onManipulationChange}
                 >
-                  {renderBlockContent(block)}
+                  <BlockChrome block={block}>
+                    {renderBlockContent(block)}
+                  </BlockChrome>
                 </InteractiveBox>
               );
             })}
