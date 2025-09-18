@@ -112,6 +112,255 @@ const BLOCK_KIND_LABELS: Record<SlideBlock["kind"], string> = {
 const PREVIEW_PADDING_X = 16;
 const PREVIEW_PADDING_Y = 16;
 
+const INSPECTOR_CONTENT_CLASS = [
+  "space-y-4 px-4 pb-4 pt-3",
+  "[&_label:not(.flex)]:flex",
+  "[&_label:not(.flex)]:flex-col",
+  "[&_label:not(.flex)]:gap-1",
+  "[&_label:not(.flex)]:text-xs",
+  "[&_label:not(.flex)]:font-medium",
+  "[&_label]:text-neutral-600",
+  "[&_label:not(.flex)>span:first-child]:!text-[11px]",
+  "[&_label:not(.flex)>span:first-child]:!font-semibold",
+  "[&_label:not(.flex)>span:first-child]:!text-neutral-600",
+  "[&_label:not(.flex)>span:first-child]:leading-tight",
+  "[&_label:not(.flex)>input]:!mt-0",
+  "[&_label:not(.flex)>textarea]:!mt-0",
+  "[&_label:not(.flex)>select]:!mt-0",
+  "[&_label:not(.flex)>div]:!mt-0",
+  "[&_.gap-4]:gap-3",
+  "[&_.space-y-4]:space-y-3",
+  "[&_.space-y-6]:space-y-4",
+].join(" ");
+
+const INSPECTOR_INPUT_CLASS = [
+  "w-full",
+  "rounded-md",
+  "border",
+  "border-neutral-300",
+  "bg-white",
+  "px-3",
+  "py-2",
+  "text-sm",
+  "text-neutral-900",
+  "shadow-sm",
+  "focus:border-neutral-400",
+  "focus:outline-none",
+  "focus:ring-1",
+  "focus:ring-neutral-400",
+].join(" ");
+
+const INSPECTOR_TEXTAREA_CLASS = [
+  INSPECTOR_INPUT_CLASS,
+  "min-h-[84px]",
+].join(" ");
+
+const CHECKERBOARD_BACKGROUND =
+  "linear-gradient(45deg, #f3f4f6 25%, transparent 25%), linear-gradient(-45deg, #f3f4f6 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #f3f4f6 75%), linear-gradient(-45deg, transparent 75%, #f3f4f6 75%)";
+
+type ParsedColor = {
+  hex: string;
+  alpha: number;
+};
+
+function parseColorValue(raw: string | null | undefined): ParsedColor {
+  if (!raw) {
+    return { hex: "#000000", alpha: 1 };
+  }
+  const value = raw.trim();
+  if (value.length === 0) {
+    return { hex: "#000000", alpha: 1 };
+  }
+  if (value.toLowerCase() === "transparent") {
+    return { hex: "#000000", alpha: 0 };
+  }
+  if (value.startsWith("#")) {
+    let hex = value.slice(1);
+    if (hex.length === 3 || hex.length === 4) {
+      hex = hex
+        .split("")
+        .map((c) => c + c)
+        .join("");
+    }
+    if (hex.length === 6) {
+      return { hex: `#${hex}`, alpha: 1 };
+    }
+    if (hex.length === 8) {
+      const base = hex.slice(0, 6);
+      const alphaHex = hex.slice(6, 8);
+      const alpha = parseInt(alphaHex, 16);
+      return {
+        hex: `#${base}`,
+        alpha: Number.isNaN(alpha) ? 1 : clamp01(alpha / 255),
+      };
+    }
+    return { hex: `#${hex.slice(0, 6).padEnd(6, "0")}`, alpha: 1 };
+  }
+  const rgbaMatch = value.match(/rgba?\(([^)]+)\)/i);
+  if (rgbaMatch) {
+    const [r, g, b, a] = rgbaMatch[1]
+      .split(",")
+      .map((part) => part.trim())
+      .map((part, index) =>
+        index < 3 ? parseInt(part, 10) : Number.parseFloat(part || "1"),
+      );
+    if ([r, g, b].some((channel) => Number.isNaN(channel))) {
+      return { hex: "#000000", alpha: 1 };
+    }
+    const toHex = (channel: number) => {
+      const clamped = Math.min(255, Math.max(0, Math.round(channel)));
+      return clamped.toString(16).padStart(2, "0");
+    };
+    return {
+      hex: `#${toHex(r)}${toHex(g)}${toHex(b)}`,
+      alpha: Number.isNaN(a) ? 1 : clamp01(a),
+    };
+  }
+  return { hex: "#000000", alpha: 1 };
+}
+
+function hexToRgbaString(hex: string, alpha: number): string {
+  if (!hex) {
+    return `rgba(0, 0, 0, ${clamp01(alpha)})`;
+  }
+  let normalized = hex.startsWith("#") ? hex.slice(1) : hex;
+  if (normalized.length === 3) {
+    normalized = normalized
+      .split("")
+      .map((c) => c + c)
+      .join("");
+  }
+  const r = Number.parseInt(normalized.slice(0, 2), 16);
+  const g = Number.parseInt(normalized.slice(2, 4), 16);
+  const b = Number.parseInt(normalized.slice(4, 6), 16);
+  const safeR = Number.isNaN(r) ? 0 : r;
+  const safeG = Number.isNaN(g) ? 0 : g;
+  const safeB = Number.isNaN(b) ? 0 : b;
+  const alphaString = clamp01(alpha).toFixed(2).replace(/\.00$/, "");
+  return `rgba(${safeR}, ${safeG}, ${safeB}, ${alphaString})`;
+}
+
+type InspectorColorInputProps = {
+  value: string;
+  onChange: (next: string) => void;
+  allowAlpha?: boolean;
+  disabled?: boolean;
+};
+
+const InspectorColorInput: React.FC<InspectorColorInputProps> = ({
+  value,
+  onChange,
+  allowAlpha = false,
+  disabled = false,
+}) => {
+  const colorPickerRef = useRef<HTMLInputElement | null>(null);
+  const parsed = useMemo(() => parseColorValue(value), [value]);
+  const [textValue, setTextValue] = useState(value ?? "");
+
+  useEffect(() => {
+    setTextValue(value ?? "");
+  }, [value]);
+
+  const previewColor = textValue?.trim().length ? textValue : parsed.hex;
+
+  const handleCommit = useCallback(
+    (nextValue: string) => {
+      if (disabled) return;
+      setTextValue(nextValue);
+      onChange(nextValue);
+    },
+    [disabled, onChange],
+  );
+
+  const handleColorChange = useCallback(
+    (nextHex: string) => {
+      if (allowAlpha && parsed.alpha < 0.999) {
+        handleCommit(hexToRgbaString(nextHex, parsed.alpha));
+        return;
+      }
+      handleCommit(nextHex);
+    },
+    [allowAlpha, handleCommit, parsed.alpha],
+  );
+
+  const handleAlphaChange = useCallback(
+    (next: number) => {
+      const normalized = clamp01(next / 100);
+      if (!allowAlpha) {
+        return;
+      }
+      if (normalized >= 0.999) {
+        handleCommit(parsed.hex);
+        return;
+      }
+      handleCommit(hexToRgbaString(parsed.hex, normalized));
+    },
+    [allowAlpha, handleCommit, parsed.hex],
+  );
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => colorPickerRef.current?.click()}
+          className="relative h-9 w-9 overflow-hidden rounded-md border border-neutral-300 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-neutral-400 disabled:cursor-not-allowed"
+          aria-label="Choose color"
+        >
+          <span
+            aria-hidden
+            className="absolute inset-0"
+            style={{
+              backgroundImage: CHECKERBOARD_BACKGROUND,
+              backgroundSize: "8px 8px",
+              backgroundPosition: "0 0, 0 4px, 4px -4px, -4px 0",
+            }}
+          />
+          <span
+            aria-hidden
+            className="absolute inset-0"
+            style={{ background: previewColor || "transparent" }}
+          />
+        </button>
+        <input
+          ref={colorPickerRef}
+          type="color"
+          className="sr-only"
+          value={parsed.hex.startsWith("#") ? parsed.hex : `#${parsed.hex}`}
+          onChange={(event) => handleColorChange(event.target.value)}
+          disabled={disabled}
+        />
+        <input
+          type="text"
+          value={textValue}
+          onChange={(event) => handleCommit(event.target.value)}
+          disabled={disabled}
+          className={`${INSPECTOR_INPUT_CLASS} font-mono uppercase`}
+          placeholder="#000000"
+        />
+      </div>
+      {allowAlpha && (
+        <div className="flex items-center gap-2">
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={1}
+            value={Math.round(parsed.alpha * 100)}
+            onChange={(event) => handleAlphaChange(Number(event.target.value))}
+            disabled={disabled}
+            className="flex-1"
+          />
+          <span className="w-10 text-right text-xs text-neutral-500">
+            {Math.round(parsed.alpha * 100)}%
+          </span>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const cloneCfg = (cfg: SlideCfg): SlideCfg => JSON.parse(JSON.stringify(cfg));
 
 function defaultBackground(): SlideCfg["background"] {
@@ -798,7 +1047,6 @@ export default function SlideModal({
     }
     updateCfg((prev) => ({ ...prev, blocks: [...prev.blocks, block] }));
     handleSelectBlock(id);
-    setInspectorOpen(true);
   };
 
   const removeBlock = (id: string) => {
@@ -1073,6 +1321,8 @@ export default function SlideModal({
     isManipulatingRef.current = manipulating;
     if (manipulating) {
       setInspectorOpen(false);
+    } else if (selectedIdRef.current) {
+      setInspectorOpen(true);
     }
   }, []);
 
@@ -1081,6 +1331,10 @@ export default function SlideModal({
     selectedIdRef.current = id;
     if (!id) {
       setInspectorOpen(false);
+      return;
+    }
+    if (!isManipulatingRef.current) {
+      setInspectorOpen(true);
     }
   }, []);
 
@@ -1097,9 +1351,6 @@ export default function SlideModal({
   const handleLayerSelect = useCallback(
     (id: string) => {
       handleSelectBlock(id);
-      if (!isManipulatingRef.current) {
-        setInspectorOpen(true);
-      }
     },
     [handleSelectBlock],
   );
@@ -1119,7 +1370,6 @@ export default function SlideModal({
         return { ...prev, blocks };
       });
       handleSelectBlock(newId);
-      setInspectorOpen(true);
     },
     [handleSelectBlock, updateCfg],
   );
@@ -1137,8 +1387,8 @@ export default function SlideModal({
   );
 
   const handleInspectorDone = useCallback(() => {
-    setInspectorOpen(false);
-  }, []);
+    handleSelectBlock(null);
+  }, [handleSelectBlock]);
 
   const handleBackgroundTypeChange = useCallback(
     (type: SlideBackground["type"]) => {
@@ -1474,7 +1724,7 @@ export default function SlideModal({
                               e.target.value as SlideBackground["type"],
                             )
                           }
-                          className="mt-1 w-full rounded border px-2 py-1 text-sm"
+                          className={INSPECTOR_INPUT_CLASS}
                         >
                           <option value="none">None</option>
                           <option value="color">Color</option>
@@ -1486,38 +1736,19 @@ export default function SlideModal({
                         <div className="space-y-2">
                           <label className="block text-xs font-medium text-neutral-500">
                             Color
-                            <div className="mt-1 flex items-center gap-2">
-                              <input
-                                type="color"
-                                value={colorBackground?.color || "#111111"}
-                                onChange={(e) =>
-                                  updateBackground((prev) => {
-                                    const next: SlideBackground =
-                                      prev?.type === "color"
-                                        ? { ...prev }
-                                        : { type: "color", color: "#111111", opacity: 1 };
-                                    next.color = e.target.value;
-                                    return next;
-                                  })
-                                }
-                                className="h-9 w-9 rounded border"
-                              />
-                              <input
-                                type="text"
-                                value={colorBackground?.color || "#111111"}
-                                onChange={(e) =>
-                                  updateBackground((prev) => {
-                                    const next: SlideBackground =
-                                      prev?.type === "color"
-                                        ? { ...prev }
-                                        : { type: "color", color: "#111111", opacity: 1 };
-                                    next.color = e.target.value;
-                                    return next;
-                                  })
-                                }
-                                className="flex-1 rounded border px-2 py-1 text-xs uppercase"
-                              />
-                            </div>
+                            <InspectorColorInput
+                              value={colorBackground?.color || "#111111"}
+                              onChange={(nextColor) =>
+                                updateBackground((prev) => {
+                                  const next: SlideBackground =
+                                    prev?.type === "color"
+                                      ? { ...prev }
+                                      : { type: "color", color: "#111111", opacity: 1 };
+                                  next.color = nextColor;
+                                  return next;
+                                })
+                              }
+                            />
                           </label>
                           <label className="block text-xs font-medium text-neutral-500">
                             Opacity
@@ -1570,7 +1801,7 @@ export default function SlideModal({
                                   return next;
                                 })
                               }
-                              className="mt-1 w-full rounded border px-2 py-1"
+                              className={INSPECTOR_INPUT_CLASS}
                               placeholder="https://"
                             />
                           </label>
@@ -1633,7 +1864,7 @@ export default function SlideModal({
                                   return { ...prev, fit: e.target.value as "cover" | "contain" };
                                 })
                               }
-                              className="mt-1 w-full rounded border px-2 py-1"
+                              className={INSPECTOR_INPUT_CLASS}
                             >
                               <option value="cover">Cover</option>
                               <option value="contain">Contain</option>
@@ -1658,7 +1889,7 @@ export default function SlideModal({
                                     return { ...prev, focal: nextFocal };
                                   })
                                 }
-                                className="mt-1 w-full rounded border px-2 py-1"
+                                className={INSPECTOR_INPUT_CLASS}
                               />
                             </label>
                             <label className="block font-medium text-neutral-500">
@@ -1679,7 +1910,7 @@ export default function SlideModal({
                                     return { ...prev, focal: nextFocal };
                                   })
                                 }
-                                className="mt-1 w-full rounded border px-2 py-1"
+                                className={INSPECTOR_INPUT_CLASS}
                               />
                             </label>
                           </div>
@@ -1706,44 +1937,45 @@ export default function SlideModal({
                             Overlay
                           </label>
                           {imageBackground?.overlay && (
-                            <div className="grid grid-cols-2 gap-2">
-                              <input
-                                type="color"
-                                value={imageBackground.overlay.color}
-                                onChange={(e) =>
+                            <div className="space-y-2">
+                              <InspectorColorInput
+                                value={imageBackground.overlay.color || "#000000"}
+                                onChange={(nextColor) =>
                                   updateBackground((prev) => {
                                     if (prev?.type !== "image") return prev;
                                     return {
                                       ...prev,
                                       overlay: {
-                                        color: e.target.value,
+                                        color: nextColor,
                                         opacity: prev.overlay?.opacity ?? 0.25,
                                       },
                                     };
                                   })
                                 }
-                                className="h-9 w-full rounded border"
                               />
-                              <input
-                                type="number"
-                                min={0}
-                                max={1}
-                                step={0.05}
-                                value={imageBackground.overlay.opacity ?? 0.25}
-                                onChange={(e) =>
-                                  updateBackground((prev) => {
-                                    if (prev?.type !== "image") return prev;
-                                    return {
-                                      ...prev,
-                                      overlay: {
-                                        color: prev.overlay?.color || "#000000",
-                                        opacity: clamp01(Number(e.target.value)),
-                                      },
-                                    };
-                                  })
-                                }
-                                className="rounded border px-2 py-1"
-                              />
+                              <label className="flex items-center justify-between gap-3 text-xs font-medium text-neutral-500">
+                                <span>Opacity</span>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={1}
+                                  step={0.05}
+                                  value={imageBackground.overlay.opacity ?? 0.25}
+                                  onChange={(e) =>
+                                    updateBackground((prev) => {
+                                      if (prev?.type !== "image") return prev;
+                                      return {
+                                        ...prev,
+                                        overlay: {
+                                          color: prev.overlay?.color || "#000000",
+                                          opacity: clamp01(Number(e.target.value)),
+                                        },
+                                      };
+                                    })
+                                  }
+                                  className={`${INSPECTOR_INPUT_CLASS} max-w-[110px]`}
+                                />
+                              </label>
                             </div>
                           )}
                           <label className="block text-xs font-medium text-neutral-500">
@@ -1762,7 +1994,7 @@ export default function SlideModal({
                                   };
                                 })
                               }
-                              className="mt-1 w-full rounded border px-2 py-1"
+                              className={INSPECTOR_INPUT_CLASS}
                             />
                           </label>
                         </div>
@@ -1793,7 +2025,7 @@ export default function SlideModal({
                                   return next;
                                 })
                               }
-                              className="mt-1 w-full rounded border px-2 py-1"
+                              className={INSPECTOR_INPUT_CLASS}
                               placeholder="https://"
                             />
                           </label>
@@ -1864,7 +2096,7 @@ export default function SlideModal({
                                   return { ...prev, poster: e.target.value };
                                 })
                               }
-                              className="mt-1 w-full rounded border px-2 py-1"
+                              className={INSPECTOR_INPUT_CLASS}
                               placeholder="https://"
                             />
                           </label>
@@ -1916,7 +2148,7 @@ export default function SlideModal({
                                   return { ...prev, fit: e.target.value as "cover" | "contain" };
                                 })
                               }
-                              className="mt-1 w-full rounded border px-2 py-1"
+                              className={INSPECTOR_INPUT_CLASS}
                             >
                               <option value="cover">Cover</option>
                               <option value="contain">Contain</option>
@@ -1941,7 +2173,7 @@ export default function SlideModal({
                                     return { ...prev, focal: nextFocal };
                                   })
                                 }
-                                className="mt-1 w-full rounded border px-2 py-1"
+                                className={INSPECTOR_INPUT_CLASS}
                               />
                             </label>
                             <label className="block font-medium text-neutral-500">
@@ -1962,7 +2194,7 @@ export default function SlideModal({
                                     return { ...prev, focal: nextFocal };
                                   })
                                 }
-                                className="mt-1 w-full rounded border px-2 py-1"
+                                className={INSPECTOR_INPUT_CLASS}
                               />
                             </label>
                           </div>
@@ -2030,44 +2262,45 @@ export default function SlideModal({
                             Overlay
                           </label>
                           {videoBackground?.overlay && (
-                            <div className="grid grid-cols-2 gap-2">
-                              <input
-                                type="color"
-                                value={videoBackground.overlay.color}
-                                onChange={(e) =>
+                            <div className="space-y-2">
+                              <InspectorColorInput
+                                value={videoBackground.overlay.color || "#000000"}
+                                onChange={(nextColor) =>
                                   updateBackground((prev) => {
                                     if (prev?.type !== "video") return prev;
                                     return {
                                       ...prev,
                                       overlay: {
-                                        color: e.target.value,
+                                        color: nextColor,
                                         opacity: prev.overlay?.opacity ?? 0.25,
                                       },
                                     };
                                   })
                                 }
-                                className="h-9 w-full rounded border"
                               />
-                              <input
-                                type="number"
-                                min={0}
-                                max={1}
-                                step={0.05}
-                                value={videoBackground.overlay.opacity ?? 0.25}
-                                onChange={(e) =>
-                                  updateBackground((prev) => {
-                                    if (prev?.type !== "video") return prev;
-                                    return {
-                                      ...prev,
-                                      overlay: {
-                                        color: prev.overlay?.color || "#000000",
-                                        opacity: clamp01(Number(e.target.value)),
-                                      },
-                                    };
-                                  })
-                                }
-                                className="rounded border px-2 py-1"
-                              />
+                              <label className="flex items-center justify-between gap-3 text-xs font-medium text-neutral-500">
+                                <span>Opacity</span>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={1}
+                                  step={0.05}
+                                  value={videoBackground.overlay.opacity ?? 0.25}
+                                  onChange={(e) =>
+                                    updateBackground((prev) => {
+                                      if (prev?.type !== "video") return prev;
+                                      return {
+                                        ...prev,
+                                        overlay: {
+                                          color: prev.overlay?.color || "#000000",
+                                          opacity: clamp01(Number(e.target.value)),
+                                        },
+                                      };
+                                    })
+                                  }
+                                  className={`${INSPECTOR_INPUT_CLASS} max-w-[110px]`}
+                                />
+                              </label>
                             </div>
                           )}
                           <label className="block text-xs font-medium text-neutral-500">
@@ -2086,7 +2319,7 @@ export default function SlideModal({
                                   };
                                 })
                               }
-                              className="mt-1 w-full rounded border px-2 py-1"
+                              className={INSPECTOR_INPUT_CLASS}
                             />
                           </label>
                         </div>
@@ -2137,66 +2370,61 @@ export default function SlideModal({
               {inspectorOpen && selectedBlock && (
                 <div className="border-t bg-white">
                   <div className="max-h-[60vh] overflow-y-auto">
-                    <div className="sticky top-0 z-10 border-b bg-white px-4 py-3">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
-                            Block
-                          </div>
-                          <div className="mt-1 flex flex-wrap items-center gap-2">
-                            <span className="text-sm font-semibold text-neutral-900">
-                              {selectionLabel}
+                    <div className="sticky top-0 z-10 border-b bg-white px-4 py-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-neutral-600">
+                          Inspector
+                        </span>
+                        <span className="text-xs text-neutral-500">
+                          Selected: {selectionLabel}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                        <div className="min-w-0 flex flex-wrap items-center gap-2">
+                          <span className="text-sm font-semibold text-neutral-900">
+                            {selectionLabel}
+                          </span>
+                          {selectedBlock.locked && (
+                            <span className="rounded bg-neutral-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-neutral-600">
+                              Locked
                             </span>
-                            {selectedBlock.locked && (
-                              <span className="rounded bg-neutral-100 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-neutral-600">
-                                Locked
-                              </span>
-                            )}
-                          </div>
+                          )}
                         </div>
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           <button
                             type="button"
                             onClick={() => handleDuplicateBlock(selectedBlock.id)}
-                            className="rounded border px-3 py-1 text-sm"
+                            className="rounded border px-2.5 py-1 text-xs font-medium"
                           >
                             Duplicate
                           </button>
                           <button
                             type="button"
                             onClick={() => removeBlock(selectedBlock.id)}
-                            className="rounded border px-3 py-1 text-sm text-red-600"
+                            className="rounded border px-2.5 py-1 text-xs font-medium text-red-600"
                           >
                             Delete
                           </button>
                           <button
                             type="button"
                             onClick={() => toggleBlockLock(selectedBlock.id)}
-                            className="rounded border px-3 py-1 text-sm"
+                            className="rounded border px-2.5 py-1 text-xs font-medium"
                           >
                             {selectedBlock.locked ? "Unlock" : "Lock"}
                           </button>
                           <button
                             type="button"
                             onClick={handleInspectorDone}
-                            className="rounded border px-3 py-1 text-sm"
+                            className="rounded border px-2.5 py-1 text-xs font-medium"
                           >
                             Done
                           </button>
                         </div>
                       </div>
                     </div>
-                    <div className="space-y-6 px-4 pb-6 pt-4">
+                    <div className={INSPECTOR_CONTENT_CLASS}>
                       <section>
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-semibold text-neutral-600">
-                          Inspector
-                        </h3>
-                        <span className="text-xs text-neutral-500">
-                          Selected: {selectionLabel}
-                        </span>
-                      </div>
-                      <div className="mt-3 space-y-4 text-sm">
+                        <div className="mt-2 space-y-3 text-sm">
                           {(selectedBlock.kind === "heading" ||
                             selectedBlock.kind === "text") && (
                             <>
@@ -2215,7 +2443,7 @@ export default function SlideModal({
                                       text: e.target.value,
                                     })
                                   }
-                                  className="mt-1 w-full rounded border px-2 py-1"
+                                  className={INSPECTOR_TEXTAREA_CLASS}
                                 />
                               </label>
                               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -2230,7 +2458,7 @@ export default function SlideModal({
                                         fontFamily: e.target.value as SlideBlock["fontFamily"],
                                       })
                                     }
-                                    className="mt-1 w-full rounded border px-2 py-1"
+                                    className={INSPECTOR_INPUT_CLASS}
                                   >
                                     {FONT_FAMILY_OPTIONS.map((opt) => (
                                       <option key={opt.value} value={opt.value}>
@@ -2253,7 +2481,7 @@ export default function SlideModal({
                                         fontWeight: Number(e.target.value) || 400,
                                       })
                                     }
-                                    className="mt-1 w-full rounded border px-2 py-1"
+                                    className={INSPECTOR_INPUT_CLASS}
                                   >
                                     {FONT_WEIGHT_OPTIONS.map((weight) => (
                                       <option key={weight} value={weight}>
@@ -2294,7 +2522,7 @@ export default function SlideModal({
                                           : parsed,
                                       });
                                     }}
-                                    className="mt-1 w-full rounded border px-2 py-1"
+                                    className={INSPECTOR_INPUT_CLASS}
                                   />
                                 </label>
                                 <label className="block">
@@ -2321,7 +2549,7 @@ export default function SlideModal({
                                             : parsed,
                                         });
                                       }}
-                                      className="w-full rounded border px-2 py-1"
+                                      className={INSPECTOR_INPUT_CLASS}
                                     />
                                     <select
                                       value={selectedBlock.lineHeightUnit ?? "em"}
@@ -2330,7 +2558,7 @@ export default function SlideModal({
                                           lineHeightUnit: e.target.value as SlideBlock["lineHeightUnit"],
                                         })
                                       }
-                                      className="rounded border px-2 py-1 text-xs"
+                                      className={`${INSPECTOR_INPUT_CLASS} w-20 !text-xs`}
                                     >
                                       <option value="em">em</option>
                                       <option value="px">px</option>
@@ -2361,45 +2589,27 @@ export default function SlideModal({
                                         : parsed,
                                     });
                                   }}
-                                  className="mt-1 w-full rounded border px-2 py-1"
+                                  className={INSPECTOR_INPUT_CLASS}
                                 />
                               </label>
                               <div>
                                 <span className="text-xs font-medium text-neutral-500">
                                   Text color
                                 </span>
-                                <div className="mt-1 flex items-center gap-2">
-                                  <input
-                                    type="color"
-                                    value={
-                                      selectedBlock.textColor ??
-                                      selectedBlock.color ??
-                                      "#000000"
-                                    }
-                                    onChange={(e) =>
-                                      patchBlock(selectedBlock.id, {
-                                        textColor: e.target.value,
-                                        color: e.target.value,
-                                      })
-                                    }
-                                    className="h-10 w-16 rounded border"
-                                  />
-                                  <input
-                                    type="text"
-                                    value={
-                                      selectedBlock.textColor ??
-                                      selectedBlock.color ??
-                                      "#000000"
-                                    }
-                                    onChange={(e) =>
-                                      patchBlock(selectedBlock.id, {
-                                        textColor: e.target.value,
-                                        color: e.target.value,
-                                      })
-                                    }
-                                    className="w-full rounded border px-2 py-1 text-xs uppercase"
-                                  />
-                                </div>
+                                <InspectorColorInput
+                                  value={
+                                    selectedBlock.textColor ??
+                                    selectedBlock.color ??
+                                    "#000000"
+                                  }
+                                  onChange={(nextColor) =>
+                                    patchBlock(selectedBlock.id, {
+                                      textColor: nextColor,
+                                      color: nextColor,
+                                    })
+                                  }
+                                  allowAlpha
+                                />
                               </div>
                               <div>
                                 <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
@@ -2452,7 +2662,7 @@ export default function SlideModal({
                                               },
                                             });
                                           }}
-                                          className="mt-1 w-full rounded border px-2 py-1"
+                                          className={INSPECTOR_INPUT_CLASS}
                                         />
                                       </label>
                                     ))}
@@ -2460,48 +2670,25 @@ export default function SlideModal({
                                       <span className="font-medium text-neutral-500">
                                         Color
                                       </span>
-                                      <div className="mt-1 flex items-center gap-2">
-                                        <input
-                                          type="color"
-                                          value={
-                                            selectedBlock.textShadow?.color ??
-                                            DEFAULT_TEXT_SHADOW.color
-                                          }
-                                          onChange={(e) => {
-                                            const current =
-                                              selectedBlock.textShadow ?? {
-                                                ...DEFAULT_TEXT_SHADOW,
-                                              };
-                                            patchBlock(selectedBlock.id, {
-                                              textShadow: {
-                                                ...current,
-                                                color: e.target.value,
-                                              },
-                                            });
-                                          }}
-                                          className="h-10 w-16 rounded border"
-                                        />
-                                        <input
-                                          type="text"
-                                          value={
-                                            selectedBlock.textShadow?.color ??
-                                            DEFAULT_TEXT_SHADOW.color
-                                          }
-                                          onChange={(e) => {
-                                            const current =
-                                              selectedBlock.textShadow ?? {
-                                                ...DEFAULT_TEXT_SHADOW,
-                                              };
-                                            patchBlock(selectedBlock.id, {
-                                              textShadow: {
-                                                ...current,
-                                                color: e.target.value,
-                                              },
-                                            });
-                                          }}
-                                          className="w-full rounded border px-2 py-1 text-xs uppercase"
-                                        />
-                                      </div>
+                                      <InspectorColorInput
+                                        value={
+                                          selectedBlock.textShadow?.color ??
+                                          DEFAULT_TEXT_SHADOW.color
+                                        }
+                                        onChange={(nextColor) => {
+                                          const current =
+                                            selectedBlock.textShadow ?? {
+                                              ...DEFAULT_TEXT_SHADOW,
+                                            };
+                                          patchBlock(selectedBlock.id, {
+                                            textShadow: {
+                                              ...current,
+                                              color: nextColor,
+                                            },
+                                          });
+                                        }}
+                                        allowAlpha
+                                      />
                                     </label>
                                   </div>
                                 )}
@@ -2531,7 +2718,7 @@ export default function SlideModal({
                                       padding: selectedBlock.padding ?? 0,
                                     });
                                   }}
-                                  className="mt-1 w-full rounded border px-2 py-1"
+                                  className={INSPECTOR_INPUT_CLASS}
                                 >
                                   {BACKGROUND_STYLE_OPTIONS.map((opt) => (
                                     <option key={opt.value} value={opt.value}>
@@ -2547,32 +2734,14 @@ export default function SlideModal({
                                       <span className="text-xs font-medium text-neutral-500">
                                         Background color
                                       </span>
-                                      <div className="mt-1 flex items-center gap-2">
-                                        <input
-                                          type="color"
-                                          value={
-                                            selectedBlock.bgColor ?? "#000000"
-                                          }
-                                          onChange={(e) =>
-                                            patchBlock(selectedBlock.id, {
-                                              bgColor: e.target.value,
-                                            })
-                                          }
-                                          className="h-10 w-16 rounded border"
-                                        />
-                                        <input
-                                          type="text"
-                                          value={
-                                            selectedBlock.bgColor ?? "#000000"
-                                          }
-                                          onChange={(e) =>
-                                            patchBlock(selectedBlock.id, {
-                                              bgColor: e.target.value,
-                                            })
-                                          }
-                                          className="w-full rounded border px-2 py-1 text-xs uppercase"
-                                        />
-                                      </div>
+                                      <InspectorColorInput
+                                        value={selectedBlock.bgColor ?? "#000000"}
+                                        onChange={(nextColor) =>
+                                          patchBlock(selectedBlock.id, {
+                                            bgColor: nextColor,
+                                          })
+                                        }
+                                      />
                                     </div>
                                     <div>
                                       <span className="text-xs font-medium text-neutral-500">
@@ -2624,7 +2793,7 @@ export default function SlideModal({
                                               : value,
                                           });
                                         }}
-                                        className="mt-1 w-full rounded border px-2 py-1"
+                                        className={INSPECTOR_INPUT_CLASS}
                                       />
                                     </label>
                                     <label className="block">
@@ -2643,7 +2812,7 @@ export default function SlideModal({
                                               : value,
                                           });
                                         }}
-                                        className="mt-1 w-full rounded border px-2 py-1"
+                                        className={INSPECTOR_INPUT_CLASS}
                                       />
                                     </label>
                                   </div>
@@ -2692,23 +2861,22 @@ export default function SlideModal({
                                       content: e.target.value,
                                     })
                                   }
-                                  className="mt-1 w-full rounded border px-2 py-1"
+                                  className={INSPECTOR_TEXTAREA_CLASS}
                                 />
                               </label>
                               <label className="block">
                                 <span className="text-xs font-medium text-neutral-500">
                                   Color
                                 </span>
-                                <input
-                                  type="color"
+                                <InspectorColorInput
                                   value={selectedBlock.color || "#ffffff"}
-                                  onChange={(e) =>
+                                  onChange={(nextColor) =>
                                     patchBlock(selectedBlock.id, {
-                                      color: e.target.value,
-                                      textColor: e.target.value,
+                                      color: nextColor,
+                                      textColor: nextColor,
                                     })
                                   }
-                                  className="mt-1 h-10 w-full rounded border"
+                                  allowAlpha
                                 />
                               </label>
                               <label className="block">
@@ -2722,7 +2890,7 @@ export default function SlideModal({
                                       size: e.target.value as any,
                                     })
                                   }
-                                  className="mt-1 w-full rounded border px-2 py-1"
+                                  className={INSPECTOR_INPUT_CLASS}
                                 >
                                   {TEXT_SIZES.map((opt) => (
                                     <option key={opt.value} value={opt.value}>
@@ -2775,7 +2943,7 @@ export default function SlideModal({
                                       label: e.target.value,
                                     }))
                                   }
-                                  className="mt-1 w-full rounded border px-2 py-1"
+                                  className={INSPECTOR_INPUT_CLASS}
                                 />
                               </label>
                               <div>
@@ -2806,7 +2974,7 @@ export default function SlideModal({
                                         href: value,
                                       }));
                                     }}
-                                    className="w-full rounded border px-2 py-1"
+                                    className={INSPECTOR_INPUT_CLASS}
                                   >
                                     {linkOptions.map((opt) => (
                                       <option key={opt} value={opt}>
@@ -2823,7 +2991,7 @@ export default function SlideModal({
                                         href: e.target.value,
                                       }))
                                     }
-                                    className="w-full rounded border px-2 py-1"
+                                    className={INSPECTOR_INPUT_CLASS}
                                     placeholder="https://"
                                   />
                                 </div>
@@ -2841,7 +3009,7 @@ export default function SlideModal({
                                         variant: e.target.value as ButtonBlockVariant,
                                       }))
                                     }
-                                    className="mt-1 w-full rounded border px-2 py-1"
+                                    className={INSPECTOR_INPUT_CLASS}
                                   >
                                     {BUTTON_VARIANTS.map((variant) => (
                                       <option key={variant} value={variant}>
@@ -2862,7 +3030,7 @@ export default function SlideModal({
                                         size: e.target.value as ButtonBlockSize,
                                       }))
                                     }
-                                    className="mt-1 w-full rounded border px-2 py-1"
+                                    className={INSPECTOR_INPUT_CLASS}
                                   >
                                     {BUTTON_SIZES.map((size) => (
                                       <option key={size} value={size}>
@@ -2915,66 +3083,38 @@ export default function SlideModal({
                                       radius: Number.isNaN(value) ? 0 : Math.max(0, value),
                                     }));
                                   }}
-                                  className="mt-1 w-full rounded border px-2 py-1"
+                                  className={INSPECTOR_INPUT_CLASS}
                                 />
                               </label>
                               <div>
                                 <span className="text-xs font-medium text-neutral-500">
                                   Text color
                                 </span>
-                                <div className="mt-1 flex items-center gap-2">
-                                  <input
-                                    type="color"
-                                    value={selectedButtonConfig.textColor}
-                                    onChange={(e) =>
-                                      updateButtonConfig(selectedBlock.id, (config) => ({
-                                        ...config,
-                                        textColor: e.target.value,
-                                      }))
-                                    }
-                                    className="h-10 w-16 rounded border"
-                                  />
-                                  <input
-                                    type="text"
-                                    value={selectedButtonConfig.textColor}
-                                    onChange={(e) =>
-                                      updateButtonConfig(selectedBlock.id, (config) => ({
-                                        ...config,
-                                        textColor: e.target.value,
-                                      }))
-                                    }
-                                    className="w-full rounded border px-2 py-1 text-xs uppercase"
-                                  />
-                                </div>
+                                <InspectorColorInput
+                                  value={selectedButtonConfig.textColor}
+                                  onChange={(nextColor) =>
+                                    updateButtonConfig(selectedBlock.id, (config) => ({
+                                      ...config,
+                                      textColor: nextColor,
+                                    }))
+                                  }
+                                  allowAlpha
+                                />
                               </div>
                               <div>
                                 <span className="text-xs font-medium text-neutral-500">
                                   Background color
                                 </span>
-                                <div className="mt-1 flex items-center gap-2">
-                                  <input
-                                    type="color"
-                                    value={selectedButtonConfig.bgColor}
-                                    onChange={(e) =>
-                                      updateButtonConfig(selectedBlock.id, (config) => ({
-                                        ...config,
-                                        bgColor: e.target.value,
-                                      }))
-                                    }
-                                    className="h-10 w-16 rounded border"
-                                  />
-                                  <input
-                                    type="text"
-                                    value={selectedButtonConfig.bgColor}
-                                    onChange={(e) =>
-                                      updateButtonConfig(selectedBlock.id, (config) => ({
-                                        ...config,
-                                        bgColor: e.target.value,
-                                      }))
-                                    }
-                                    className="w-full rounded border px-2 py-1 text-xs uppercase"
-                                  />
-                                </div>
+                                <InspectorColorInput
+                                  value={selectedButtonConfig.bgColor}
+                                  onChange={(nextColor) =>
+                                    updateButtonConfig(selectedBlock.id, (config) => ({
+                                      ...config,
+                                      bgColor: nextColor,
+                                    }))
+                                  }
+                                  allowAlpha
+                                />
                               </div>
                             </div>
                           )}
@@ -3019,7 +3159,7 @@ export default function SlideModal({
                                         url: value,
                                       }));
                                     }}
-                                    className="mt-1 w-full rounded border px-2 py-1 text-xs"
+                                    className={INSPECTOR_INPUT_CLASS}
                                     placeholder="https://example.com/image.jpg"
                                   />
                                 </label>
@@ -3064,7 +3204,7 @@ export default function SlideModal({
                                         fit: e.target.value as "cover" | "contain",
                                       }))
                                     }
-                                    className="mt-1 w-full rounded border px-2 py-1"
+                                    className={INSPECTOR_INPUT_CLASS}
                                   >
                                     <option value="cover">Cover</option>
                                     <option value="contain">Contain</option>
@@ -3136,7 +3276,7 @@ export default function SlideModal({
                                           : value,
                                       }));
                                     }}
-                                    className="mt-1 w-full rounded border px-2 py-1"
+                                    className={INSPECTOR_INPUT_CLASS}
                                   />
                                 </label>
                                 <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
@@ -3166,7 +3306,7 @@ export default function SlideModal({
                                         alt: value,
                                       }));
                                     }}
-                                    className="mt-1 w-full rounded border px-2 py-1 text-xs"
+                                    className={INSPECTOR_INPUT_CLASS}
                                     placeholder="Describe the image"
                                   />
                                 </label>
@@ -3216,7 +3356,7 @@ export default function SlideModal({
                                           onChange={(e) =>
                                             setGalleryUrlInput(e.target.value)
                                           }
-                                          className="flex-1 rounded border px-2 py-1 text-xs"
+                                          className={`${INSPECTOR_INPUT_CLASS} flex-1`}
                                           placeholder="https://example.com/image.jpg"
                                         />
                                         <button
@@ -3374,7 +3514,7 @@ export default function SlideModal({
                                           }),
                                         )
                                       }
-                                      className="mt-1 w-full rounded border px-2 py-1 text-xs"
+                                      className={INSPECTOR_INPUT_CLASS}
                                     >
                                       <option value="grid">Grid</option>
                                       <option value="carousel">Carousel</option>
@@ -3419,7 +3559,7 @@ export default function SlideModal({
                                               }),
                                             );
                                           }}
-                                          className="mt-1 w-full rounded border px-2 py-1"
+                                          className={INSPECTOR_INPUT_CLASS}
                                           disabled={!selectedGalleryConfig.autoplay}
                                         />
                                       </label>
@@ -3445,7 +3585,7 @@ export default function SlideModal({
                                           }),
                                         );
                                       }}
-                                      className="mt-1 w-full rounded border px-2 py-1"
+                                      className={INSPECTOR_INPUT_CLASS}
                                     />
                                   </label>
                                   <label className="flex items-center justify-between text-xs text-neutral-500">
@@ -3482,7 +3622,7 @@ export default function SlideModal({
                                       text: e.target.value,
                                     }))
                                   }
-                                  className="mt-1 w-full rounded border px-2 py-1"
+                                  className={INSPECTOR_TEXTAREA_CLASS}
                                 />
                               </label>
                               <label className="block">
@@ -3498,7 +3638,7 @@ export default function SlideModal({
                                       author: e.target.value,
                                     }))
                                   }
-                                  className="mt-1 w-full rounded border px-2 py-1"
+                                  className={INSPECTOR_INPUT_CLASS}
                                 />
                               </label>
                               <label className="block">
@@ -3513,7 +3653,7 @@ export default function SlideModal({
                                       style: e.target.value as QuoteBlockConfig["style"],
                                     }))
                                   }
-                                  className="mt-1 w-full rounded border px-2 py-1 text-xs"
+                                  className={INSPECTOR_INPUT_CLASS}
                                 >
                                   {QUOTE_STYLE_OPTIONS.map((option) => (
                                     <option key={option.value} value={option.value}>
@@ -3527,30 +3667,15 @@ export default function SlideModal({
                                 <div className="space-y-3 rounded border px-3 py-3">
                                   <label className="block text-xs font-medium text-neutral-500">
                                     Background color
-                                    <div className="mt-1 flex items-center gap-2">
-                                      <input
-                                        type="color"
-                                        value={selectedQuoteConfig.bgColor}
-                                        onChange={(e) =>
-                                          updateQuoteConfig(selectedBlock.id, (config) => ({
-                                            ...config,
-                                            bgColor: e.target.value,
-                                          }))
-                                        }
-                                        className="h-9 w-9 rounded border"
-                                      />
-                                      <input
-                                        type="text"
-                                        value={selectedQuoteConfig.bgColor}
-                                        onChange={(e) =>
-                                          updateQuoteConfig(selectedBlock.id, (config) => ({
-                                            ...config,
-                                            bgColor: e.target.value,
-                                          }))
-                                        }
-                                        className="flex-1 rounded border px-2 py-1 text-xs uppercase"
-                                      />
-                                    </div>
+                                    <InspectorColorInput
+                                      value={selectedQuoteConfig.bgColor}
+                                      onChange={(nextColor) =>
+                                        updateQuoteConfig(selectedBlock.id, (config) => ({
+                                          ...config,
+                                          bgColor: nextColor,
+                                        }))
+                                      }
+                                    />
                                   </label>
                                   <label className="block text-xs font-medium text-neutral-500">
                                     Background opacity
@@ -3590,7 +3715,7 @@ export default function SlideModal({
                                           radius: Number.isNaN(value) ? config.radius : value,
                                         }));
                                       }}
-                                      className="mt-1 w-full rounded border px-2 py-1"
+                                      className={INSPECTOR_INPUT_CLASS}
                                     />
                                   </label>
                                   <label className="block text-xs font-medium text-neutral-500">
@@ -3606,7 +3731,7 @@ export default function SlideModal({
                                           padding: Number.isNaN(value) ? config.padding : value,
                                         }));
                                       }}
-                                      className="mt-1 w-full rounded border px-2 py-1"
+                                      className={INSPECTOR_INPUT_CLASS}
                                     />
                                   </label>
                                 </div>
