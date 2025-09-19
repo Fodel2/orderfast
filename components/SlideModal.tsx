@@ -46,6 +46,7 @@ import Button from "@/components/ui/Button";
 import { supabase } from "@/utils/supabaseClient";
 import { STORAGE_BUCKET } from "@/lib/storage";
 import { SlideRow } from "@/components/customer/home/SlidesContainer";
+import { LockClosedIcon } from "@heroicons/react/24/solid";
 
 const ROUTE_OPTIONS = ["/menu", "/orders", "/more"];
 
@@ -1196,6 +1197,7 @@ export default function SlideModal({
   const handlePreviewChange = useCallback(
     (next: SlideCfg, options?: SlidesManagerChangeOptions) => {
       setCfg((prev) => {
+        if (prev === next) return prev;
         if (options?.commit) {
           pushHistory(cloneCfg(prev));
         }
@@ -1209,6 +1211,7 @@ export default function SlideModal({
     (mutator: (prev: SlideCfg) => SlideCfg, commit = true) => {
       setCfg((prev) => {
         const next = mutator(prev);
+        if (next === prev) return prev;
         if (commit) {
           pushHistory(cloneCfg(prev));
         }
@@ -1896,19 +1899,48 @@ export default function SlideModal({
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      const target = event.target as HTMLElement | null;
+      const targetIsContentEditable = target?.isContentEditable;
       if (event.key === "Escape") {
+        event.preventDefault();
         handleSelectBlock(null);
+        return;
+      }
+      if ((event.metaKey || event.ctrlKey) && !targetIsContentEditable) {
+        const key = event.key.toLowerCase();
+        if (key === "z") {
+          event.preventDefault();
+          if (event.shiftKey) {
+            redo();
+          } else {
+            undo();
+          }
+          return;
+        }
+        if (key === "y") {
+          event.preventDefault();
+          redo();
+        }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [handleSelectBlock]);
+  }, [handleSelectBlock, redo, undo]);
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
   }, [selectedId]);
+
+  useEffect(() => {
+    if (!selectedIdRef.current) return;
+    const exists = cfg.blocks.some((block) => block.id === selectedIdRef.current);
+    if (!exists) {
+      handleSelectBlock(null);
+    }
+  }, [cfg.blocks, handleSelectBlock]);
 
   const frame = selectedBlock ? ensureFrame(selectedBlock, activeDevice) : null;
 
@@ -1942,24 +1974,28 @@ export default function SlideModal({
               >
                 Blocks
               </button>
-              <button
-                type="button"
-                onClick={undo}
-                disabled={!canUndo}
-                className="rounded border px-3 py-1 text-sm disabled:opacity-50"
-              >
-                Undo
-              </button>
-              <button
-                type="button"
-                onClick={redo}
-                disabled={!canRedo}
-                className="rounded border px-3 py-1 text-sm disabled:opacity-50"
-              >
-                Redo
-              </button>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={undo}
+                  disabled={!canUndo}
+                  className="rounded border px-3 py-1 text-sm disabled:opacity-50"
+                  title="Undo (Ctrl+Z / ⌘Z)"
+                >
+                  Undo
+                </button>
+                <button
+                  type="button"
+                  onClick={redo}
+                  disabled={!canRedo}
+                  className="rounded border px-3 py-1 text-sm disabled:opacity-50"
+                  title="Redo (Ctrl+Shift+Z / ⌘+Shift+Z)"
+                >
+                  Redo
+                </button>
+              </div>
               <label className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
@@ -2051,9 +2087,14 @@ export default function SlideModal({
                           <button
                             type="button"
                             onClick={() => handleLayerSelect(block.id)}
-                            className="flex h-full flex-1 items-center gap-2 overflow-hidden text-left capitalize"
+                            className="flex h-full flex-1 items-center gap-2 overflow-hidden text-left"
                           >
-                            <span className="truncate">{block.kind}</span>
+                            <span className="flex items-center gap-1 truncate capitalize">
+                              {block.locked && (
+                                <LockClosedIcon className="h-3.5 w-3.5 flex-none text-neutral-500" />
+                              )}
+                              <span className="truncate">{block.kind}</span>
+                            </span>
                             <span className="ml-auto text-[11px] text-neutral-500">
                               #{index + 1}
                             </span>
