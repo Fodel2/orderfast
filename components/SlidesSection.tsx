@@ -9,6 +9,7 @@ import {
   type BlockBackground,
   type BlockBackgroundGradientDirection,
   type BlockShadowPreset,
+  resolveBlockVisibility,
 } from './SlidesManager';
 import type { SlideRow } from '@/components/customer/home/SlidesContainer';
 
@@ -285,6 +286,10 @@ export default function SlidesSection({ slide, cfg }: { slide: SlideRow; cfg: Sl
         <Background cfg={cfg} />
         <div className="relative h-full w-full" style={{ pointerEvents: 'none' }}>
           {blocks.map((block) => {
+            const visibility = resolveBlockVisibility(block);
+            if (!visibility[device]) {
+              return null;
+            }
             const frame = pickFrame(block, device);
             const style: CSSProperties = {
               position: 'absolute',

@@ -25,6 +25,18 @@ export type DeviceKind = 'mobile' | 'tablet' | 'desktop';
 
 type TextTag = 'h2' | 'h3' | 'p';
 
+export type BlockVisibilityConfig = {
+  mobile: boolean;
+  tablet: boolean;
+  desktop: boolean;
+};
+
+export const DEFAULT_BLOCK_VISIBILITY: BlockVisibilityConfig = {
+  mobile: true,
+  tablet: true,
+  desktop: true,
+};
+
 export const DEVICE_DIMENSIONS: Record<DeviceKind, { width: number; height: number }> = {
   mobile: { width: 390, height: 844 },
   tablet: { width: 834, height: 1112 },
@@ -438,6 +450,8 @@ export type QuoteBlockConfig = {
   radius: number;
   padding: number;
   align: 'left' | 'center' | 'right';
+  useReview: boolean;
+  reviewId: string | null;
 };
 
 export const DEFAULT_QUOTE_CONFIG: QuoteBlockConfig = {
@@ -449,6 +463,8 @@ export const DEFAULT_QUOTE_CONFIG: QuoteBlockConfig = {
   radius: 0,
   padding: 0,
   align: 'left',
+  useReview: false,
+  reviewId: null,
 };
 
 export type BlockShadowPreset = 'none' | 'sm' | 'md' | 'lg';
@@ -851,6 +867,35 @@ const parseNumber = (value: unknown): number | undefined => {
   return undefined;
 };
 
+const parseVisibilityBoolean = (value: unknown): boolean | undefined => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') {
+    if (value === 0) return false;
+    if (value === 1) return true;
+    if (Number.isFinite(value)) return value > 0;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true' || normalized === '1' || normalized === 'yes') return true;
+    if (normalized === 'false' || normalized === '0' || normalized === 'no') return false;
+  }
+  return undefined;
+};
+
+const normalizeVisibilityConfig = (raw: any): BlockVisibilityConfig => {
+  const source = raw && typeof raw === 'object' ? raw : {};
+  const resolve = (key: keyof BlockVisibilityConfig) => {
+    const value = (source as Record<string, any>)[key];
+    const parsed = parseVisibilityBoolean(value);
+    return parsed === undefined ? DEFAULT_BLOCK_VISIBILITY[key] : parsed;
+  };
+  return {
+    mobile: resolve('mobile'),
+    tablet: resolve('tablet'),
+    desktop: resolve('desktop'),
+  };
+};
+
 export function resolveGalleryConfig(block: SlideBlock): GalleryBlockConfig {
   const raw = (block.config ?? {}) as Record<string, any>;
   const rawItems = Array.isArray(raw.items)
@@ -998,6 +1043,19 @@ export function resolveQuoteConfig(block: SlideBlock): QuoteBlockConfig {
       ? (alignNormalized as QuoteBlockConfig['align'])
       : 'left';
 
+  const useReviewSource =
+    parseBoolean((raw as any).useReview) ??
+    parseBoolean((block as any).useReview) ??
+    DEFAULT_QUOTE_CONFIG.useReview;
+
+  const reviewIdRaw =
+    typeof raw.reviewId === 'string'
+      ? raw.reviewId
+      : typeof (block as any).reviewId === 'string'
+        ? (block as any).reviewId
+        : null;
+  const reviewIdNormalized = reviewIdRaw && reviewIdRaw.trim().length > 0 ? reviewIdRaw.trim() : null;
+
   return {
     text: textSource,
     author: authorSource,
@@ -1007,7 +1065,20 @@ export function resolveQuoteConfig(block: SlideBlock): QuoteBlockConfig {
     radius: Math.max(0, radiusSource),
     padding: Math.max(0, paddingSource),
     align,
+    useReview: Boolean(useReviewSource),
+    reviewId: reviewIdNormalized,
   };
+}
+
+export function resolveBlockVisibility(block: SlideBlock): BlockVisibilityConfig {
+  if (!block || typeof block !== 'object') {
+    return { ...DEFAULT_BLOCK_VISIBILITY };
+  }
+  const rawConfig =
+    block.config && typeof block.config === 'object'
+      ? (block.config as Record<string, any>).visibleOn
+      : undefined;
+  return normalizeVisibilityConfig(rawConfig);
 }
 
 function ensureFrame(block: SlideBlock, device: DeviceKind): Frame {
@@ -1368,6 +1439,10 @@ export default function SlidesManager({
               style={{ pointerEvents: editable && editInPreview ? 'auto' : 'none' }}
             >
               {cfg.blocks.map((block) => {
+                const visibility = resolveBlockVisibility(block);
+                if (!visibility[activeDevice]) {
+                  return null;
+                }
                 const frame = ensureFrame(block, activeDevice);
                 const locked = Boolean(block.locked);
                 return (
