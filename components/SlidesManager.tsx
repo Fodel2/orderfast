@@ -1385,12 +1385,24 @@ export default function SlidesManager({
           authorStyle.lineHeight = lineHeightValue;
         }
         const trimmedAuthor = quote.author.trim();
+        const showReviewRating = quote.useReview && Boolean(quote.reviewId);
+        const ratingClasses = ['text-base', 'opacity-90'];
+        ratingClasses.push(trimmedAuthor.length > 0 ? 'mt-1' : 'mt-3');
+        const ratingStyle: CSSProperties = {};
+        if (resolvedFontFamily) {
+          ratingStyle.fontFamily = resolvedFontFamily;
+        }
         return (
           <div style={wrapperStyle}>
             <div className={innerClasses.join(' ')} style={innerStyle}>
               <p className={textClasses.join(' ')} style={textStyle}>“{quote.text}”</p>
               {trimmedAuthor.length > 0 ? (
                 <p className={authorClasses.join(' ')} style={authorStyle}>— {trimmedAuthor}</p>
+              ) : null}
+              {showReviewRating ? (
+                <p className={ratingClasses.join(' ')} style={ratingStyle} aria-label="Five star review">
+                  {'⭐️⭐️⭐️⭐️⭐️'}
+                </p>
               ) : null}
             </div>
           </div>
