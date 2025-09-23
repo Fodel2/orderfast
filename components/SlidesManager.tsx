@@ -68,6 +68,116 @@ export type Frame = {
   r: number;
 };
 
+const TEXT_SIZING_DEVICE_ORDER: DeviceKind[] = ['mobile', 'tablet', 'desktop'];
+
+type TextSizingDimensions = { width?: number; height?: number };
+
+export type TextSizingSnapshot = {
+  autoWidth?: boolean;
+  width?: number;
+  height?: number;
+  devices?: Partial<Record<DeviceKind, TextSizingDimensions>>;
+};
+
+const asRecord = (value: unknown): Record<string, any> | undefined =>
+  value && typeof value === 'object' ? (value as Record<string, any>) : undefined;
+
+const clampPercentValue = (value: unknown): number | undefined => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
+  return Math.min(100, Math.max(0, value));
+};
+
+const cloneConfigRecord = (
+  config: SlideBlock['config'] | Record<string, any> | undefined | null,
+): Record<string, any> => {
+  const record = asRecord(config);
+  return record ? { ...record } : {};
+};
+
+export const readTextSizingConfig = (source: unknown): TextSizingSnapshot => {
+  const root = asRecord(source);
+  if (!root) return {};
+  const sizingRoot = asRecord(root.textSizing) ?? root;
+  const autoWidth = typeof sizingRoot.autoWidth === 'boolean' ? sizingRoot.autoWidth : undefined;
+  const width = clampPercentValue(sizingRoot.width);
+  const height = clampPercentValue(sizingRoot.height);
+  const devicesRaw = asRecord(sizingRoot.devices);
+  const devices: Partial<Record<DeviceKind, TextSizingDimensions>> = {};
+  if (devicesRaw) {
+    TEXT_SIZING_DEVICE_ORDER.forEach((device) => {
+      const entry = asRecord(devicesRaw[device]);
+      if (!entry) return;
+      const deviceWidth = clampPercentValue(entry.width);
+      const deviceHeight = clampPercentValue(entry.height);
+      if (deviceWidth !== undefined || deviceHeight !== undefined) {
+        devices[device] = {
+          width: deviceWidth,
+          height: deviceHeight,
+        };
+      }
+    });
+  }
+  const snapshot: TextSizingSnapshot = {};
+  if (autoWidth !== undefined) snapshot.autoWidth = autoWidth;
+  if (width !== undefined) snapshot.width = width;
+  if (height !== undefined) snapshot.height = height;
+  if (Object.keys(devices).length > 0) snapshot.devices = devices;
+  return snapshot;
+};
+
+export const pickTextSizingDimensions = (
+  sizing: TextSizingSnapshot | undefined,
+  device: DeviceKind,
+): TextSizingDimensions | undefined => {
+  if (!sizing) return undefined;
+  const deviceEntry = sizing.devices?.[device];
+  const width = deviceEntry?.width ?? sizing.width;
+  const height = deviceEntry?.height ?? sizing.height;
+  if (width === undefined && height === undefined) return undefined;
+  return { width, height };
+};
+
+export const writeTextSizingToConfig = (
+  config: SlideBlock['config'] | Record<string, any> | undefined,
+  device: DeviceKind,
+  frame: Frame,
+): Record<string, any> => {
+  const base = cloneConfigRecord(config);
+  const existingSizing = asRecord(base.textSizing);
+  const nextSizing: Record<string, any> = existingSizing ? { ...existingSizing } : {};
+  const devicesRaw = asRecord(nextSizing.devices);
+  const nextDevices: Record<string, any> = devicesRaw ? { ...devicesRaw } : {};
+  const deviceSizing: Record<string, number> = {};
+  const width = clampPercentValue(frame.w);
+  const height = clampPercentValue(frame.h);
+  if (width !== undefined) deviceSizing.width = width;
+  if (height !== undefined) deviceSizing.height = height;
+  nextDevices[device] = deviceSizing;
+  nextSizing.devices = nextDevices;
+  if (width !== undefined) nextSizing.width = width;
+  if (height !== undefined) nextSizing.height = height;
+  if (existingSizing && typeof existingSizing.autoWidth === 'boolean') {
+    nextSizing.autoWidth = existingSizing.autoWidth;
+  }
+  base.textSizing = nextSizing;
+  return base;
+};
+
+const updateConfigWithTextContent = (
+  block: SlideBlock,
+  text: string,
+): SlideBlock['config'] | undefined => {
+  if (!isTextualKind(block.kind)) return block.config;
+  const base = cloneConfigRecord(block.config);
+  if (block.kind === 'button') {
+    base.label = text;
+  } else {
+    base.text = text;
+    base.content = text;
+  }
+  return Object.keys(base).length > 0 ? base : undefined;
+};
+
 export type ButtonBlockVariant = 'Primary' | 'Outline' | 'Ghost';
 export type ButtonBlockSize = 'Small' | 'Medium' | 'Large';
 
@@ -1160,15 +1270,8 @@ function getTextBlockMinSizePct(
 
 function isAutoWidthEnabled(block: SlideBlock): boolean {
   if (!block || typeof block !== 'object') return true;
-  const rawConfig = block.config && typeof block.config === 'object' ? (block.config as Record<string, any>) : undefined;
-  if (!rawConfig) return true;
-  const sizing =
-    rawConfig.textSizing && typeof rawConfig.textSizing === 'object'
-      ? (rawConfig.textSizing as Record<string, any>)
-      : undefined;
-  if (!sizing) return true;
-  const value = sizing.autoWidth;
-  return typeof value === 'boolean' ? value : true;
+  const sizing = readTextSizingConfig(block.config);
+  return typeof sizing.autoWidth === 'boolean' ? sizing.autoWidth : true;
 }
 
 export function resolveImageConfig(block: SlideBlock): ImageBlockConfig {
@@ -1470,9 +1573,30 @@ export function resolveBlockVisibility(block: SlideBlock): BlockVisibilityConfig
 
 function ensureFrame(block: SlideBlock, device: DeviceKind): Frame {
   const fallback: Frame = { x: 10, y: 10, w: 40, h: 20, r: 0 };
-  if (block.frames?.[device]) return block.frames[device]!;
+  const sizing = isTextualKind(block.kind) ? readTextSizingConfig(block.config) : undefined;
+  const pickForDevice = (frame: Frame): Frame => {
+    const sanitized: Frame = {
+      x: clamp(typeof frame.x === 'number' ? frame.x : fallback.x, 0, 100),
+      y: clamp(typeof frame.y === 'number' ? frame.y : fallback.y, 0, 100),
+      w: clamp(typeof frame.w === 'number' ? frame.w : fallback.w, 0, 100),
+      h: clamp(typeof frame.h === 'number' ? frame.h : fallback.h, 0, 100),
+      r: typeof frame.r === 'number' && Number.isFinite(frame.r) ? frame.r : 0,
+    };
+    if (isTextualKind(block.kind) && sizing) {
+      const dims = pickTextSizingDimensions(sizing, device);
+      if (dims?.width !== undefined) {
+        sanitized.w = clamp(dims.width, 0, 100);
+      }
+      if (dims?.height !== undefined) {
+        sanitized.h = clamp(dims.height, 0, 100);
+      }
+    }
+    return sanitized;
+  };
+
+  if (block.frames?.[device]) return pickForDevice(block.frames[device]!);
   const existing = Object.values(block.frames || {})[0];
-  return existing ? existing : fallback;
+  return existing ? pickForDevice(existing) : pickForDevice(fallback);
 }
 
 export default function SlidesManager({
@@ -1494,6 +1618,13 @@ export default function SlidesManager({
 
   const handleFrameChange = useCallback(
     (blockId: string, frame: Frame, options?: SlidesManagerChangeOptions) => {
+      const sanitized: Frame = {
+        x: clamp(typeof frame.x === 'number' ? frame.x : 0, 0, 100),
+        y: clamp(typeof frame.y === 'number' ? frame.y : 0, 0, 100),
+        w: clamp(typeof frame.w === 'number' ? frame.w : 0, 0, 100),
+        h: clamp(typeof frame.h === 'number' ? frame.h : 0, 0, 100),
+        r: typeof frame.r === 'number' && Number.isFinite(frame.r) ? frame.r : 0,
+      };
       const next: SlideCfg = {
         ...cfg,
         blocks: cfg.blocks.map((b) =>
@@ -1502,8 +1633,11 @@ export default function SlidesManager({
                 ...b,
                 frames: {
                   ...b.frames,
-                  [activeDevice]: { ...frame },
+                  [activeDevice]: sanitized,
                 },
+                config: isTextualKind(b.kind)
+                  ? writeTextSizingToConfig(b.config, activeDevice, sanitized)
+                  : b.config,
               }
             : b,
         ),
@@ -1562,6 +1696,7 @@ export default function SlidesManager({
               ...b,
               text,
               content: text,
+              config: updateConfigWithTextContent(b, text),
             }
           : b,
       ),

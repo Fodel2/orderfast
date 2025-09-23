@@ -47,6 +47,9 @@ import SlidesManager, {
   FONT_FAMILY_SELECT_OPTIONS,
   DEFAULT_TEXT_FONT_FAMILY,
   normalizeFontFamily,
+  readTextSizingConfig,
+  pickTextSizingDimensions,
+  writeTextSizingToConfig,
 } from "./SlidesManager";
 import Button from "@/components/ui/Button";
 import { supabase } from "@/utils/supabaseClient";
@@ -1021,6 +1024,8 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
     locked: Boolean(raw.locked),
   };
 
+  let workingConfig = extractConfig(block.config);
+
   if (kind === "image") {
     const imageConfig = resolveImageConfig(block);
     block.config = { ...imageConfig };
@@ -1028,12 +1033,14 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
     block.fit = imageConfig.fit;
     block.radius = imageConfig.radius;
     block.alt = imageConfig.alt;
+    workingConfig = extractConfig(block.config);
   }
   if (kind === "gallery") {
     const galleryConfig = resolveGalleryConfig(block);
     block.items = galleryConfig.items.map((item) => ({ src: item.url, alt: item.alt }));
     block.config = { ...(block.config ?? {}), ...galleryConfig };
     block.radius = galleryConfig.radius;
+    workingConfig = extractConfig(block.config);
   }
   if (kind === "heading" && !block.size) block.size = "xl";
   if (kind === "subheading" && !block.size) block.size = "md";
@@ -1046,9 +1053,11 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
     block.href = normalizedConfig.href;
     block.buttonVariant =
       normalizedConfig.variant === "Outline" ? "secondary" : "primary";
+    workingConfig = extractConfig(block.config);
   }
   if (kind === "gallery") {
     block.config = { ...DEFAULT_GALLERY_CONFIG };
+    workingConfig = extractConfig(block.config);
   }
   if (
     (kind === "heading" || kind === "subheading" || kind === "text") &&
@@ -1062,14 +1071,30 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
     kind === "subheading" ||
     kind === "text"
   ) {
+    const configText =
+      typeof workingConfig.text === "string" ? workingConfig.text : undefined;
+    const configContent =
+      typeof workingConfig.content === "string" ? workingConfig.content : configText;
+    const fallbackText =
+      typeof raw.text === "string"
+        ? raw.text
+        : typeof raw.label === "string"
+          ? raw.label
+          : configText ?? block.text ?? "";
     const content =
       typeof raw.content === "string"
         ? raw.content
-        : typeof block.text === "string"
-          ? block.text
-          : "";
+        : configContent ?? fallbackText;
     block.content = content;
     block.text = content;
+    workingConfig.text = content;
+    workingConfig.content = content;
+  } else if (isTextualBlock(kind)) {
+    const configText =
+      typeof workingConfig.text === "string" ? workingConfig.text : undefined;
+    if (!block.text && configText) {
+      block.text = configText;
+    }
   }
 
   if (isFontEnabledBlock(kind)) {
@@ -1177,6 +1202,26 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
     }
   }
 
+  if (isTextualBlock(kind)) {
+    const sizingSnapshot = readTextSizingConfig(workingConfig);
+    (Object.keys(frames) as DeviceKind[]).forEach((device) => {
+      const dims = pickTextSizingDimensions(sizingSnapshot, device);
+      if (!dims) return;
+      const current = frames[device];
+      if (!current) return;
+      if (dims.width !== undefined) current.w = clampPct(dims.width);
+      if (dims.height !== undefined) current.h = clampPct(dims.height);
+    });
+    if (typeof sizingSnapshot.autoWidth !== "boolean") {
+      const sizingRecord =
+        workingConfig.textSizing && typeof workingConfig.textSizing === "object"
+          ? { ...(workingConfig.textSizing as Record<string, any>) }
+          : {};
+      sizingRecord.autoWidth = true;
+      workingConfig.textSizing = sizingRecord;
+    }
+  }
+
   const rawShadow = raw.boxShadow ?? raw.shadowPreset ?? block.boxShadow;
   const normalizedShadow: BlockShadowPreset =
     rawShadow === "sm" || rawShadow === "md" || rawShadow === "lg" || rawShadow === "none"
@@ -1212,11 +1257,11 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
     raw.background ?? raw.blockBackground ?? raw.backgroundFill ?? block.background;
   block.background = normalizeBlockBackground(backgroundSource);
 
-  const baseConfig = extractConfig(block.config);
   const configWithFont = isFontEnabledBlock(kind)
-    ? applyFontFamilyToConfig(baseConfig, block.fontFamily)
-    : baseConfig;
-  block.config = mergeInteractionConfig(block, configWithFont);
+    ? applyFontFamilyToConfig(workingConfig, block.fontFamily)
+    : workingConfig;
+  const blockForConfig: SlideBlock = { ...block, config: configWithFont };
+  block.config = mergeInteractionConfig(blockForConfig, configWithFont);
 
   return block;
 }
@@ -1565,6 +1610,11 @@ export default function SlideModal({
         sizing.autoWidth = true;
       }
       baseConfig.textSizing = sizing;
+      if (kind === "heading" || kind === "subheading" || kind === "text") {
+        const initialText = block.text ?? "";
+        baseConfig.text = initialText;
+        baseConfig.content = initialText;
+      }
     }
     block.config = mergeInteractionConfig(block, baseConfig);
     updateCfg((prev) => ({ ...prev, blocks: [...prev.blocks, block] }));
@@ -1880,12 +1930,22 @@ export default function SlideModal({
           ...existing,
           [field]: field === "r" ? value : clampPct(value),
         };
+        const updatedFrames = {
+          ...b.frames,
+          [activeDevice]: nextFrame,
+        };
+        if (!isTextualBlock(b.kind)) {
+          return {
+            ...b,
+            frames: updatedFrames,
+          };
+        }
+        const previous = extractConfig(b.config);
+        const nextConfig = writeTextSizingToConfig(previous, activeDevice, nextFrame);
         return {
           ...b,
-          frames: {
-            ...b.frames,
-            [activeDevice]: nextFrame,
-          },
+          frames: updatedFrames,
+          config: mergeInteractionConfig({ ...b, frames: updatedFrames, config: nextConfig }, nextConfig),
         };
       }),
     }));
