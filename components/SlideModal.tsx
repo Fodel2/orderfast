@@ -50,6 +50,7 @@ import { supabase } from "@/utils/supabaseClient";
 import { STORAGE_BUCKET } from "@/lib/storage";
 import { SlideRow } from "@/components/customer/home/SlidesContainer";
 import { LockClosedIcon } from "@heroicons/react/24/solid";
+import { ChevronDown, ChevronUp, Trash2 } from "lucide-react";
 
 const ROUTE_OPTIONS = ["/menu", "/orders", "/more"];
 
@@ -1847,6 +1848,11 @@ export default function SlideModal({
     [cfg.blocks, selectedId],
   );
 
+  const layerEntries = useMemo(
+    () => cfg.blocks.map((block, index) => ({ block, index })),
+    [cfg.blocks],
+  );
+
   const selectedButtonConfig = useMemo(
     () =>
       selectedBlock?.kind === "button"
@@ -2141,39 +2147,72 @@ export default function SlideModal({
                       Layers
                     </h3>
                     <div className="space-y-1">
-                      {cfg.blocks.map((block, index) => (
-                        <div
-                          key={block.id}
-                          className={`flex h-10 items-center gap-2 rounded border px-2 text-xs transition ${
-                            block.id === selectedId
-                              ? "border-emerald-500 bg-emerald-50"
-                              : "border-neutral-200"
-                          }`}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => handleLayerSelect(block.id)}
-                            className="flex h-full flex-1 items-center gap-2 overflow-hidden text-left"
+                      {layerEntries
+                        .slice()
+                        .reverse()
+                        .map(({ block, index }) => {
+                          const isSelected = block.id === selectedId;
+                          const isBottom = index === 0;
+                          const isTop = index === layerEntries.length - 1;
+                          const displayIndex = layerEntries.length - index;
+                          return (
+                            <div
+                              key={block.id}
+                              className={`flex h-10 items-center gap-2 rounded border px-2 text-xs transition ${
+                              isSelected
+                                ? "border-emerald-500 bg-emerald-50"
+                                : "border-neutral-200"
+                            }`}
                           >
-                            <span className="flex items-center gap-1 truncate capitalize">
-                              {block.locked && (
-                                <LockClosedIcon className="h-3.5 w-3.5 flex-none text-neutral-500" />
-                              )}
-                              <span className="truncate">{block.kind}</span>
-                            </span>
-                            <span className="ml-auto text-[11px] text-neutral-500">
-                              #{index + 1}
-                            </span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => removeBlock(block.id)}
-                            className="rounded border px-2 py-1 text-[11px] text-red-600"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      ))}
+                            <button
+                              type="button"
+                              onClick={() => handleLayerSelect(block.id)}
+                              className="flex h-full flex-1 items-center gap-2 overflow-hidden text-left"
+                            >
+                              <span className="flex items-center gap-1 truncate capitalize">
+                                {block.locked && (
+                                  <LockClosedIcon className="h-3.5 w-3.5 flex-none text-neutral-500" />
+                                )}
+                                <span className="truncate">{block.kind}</span>
+                              </span>
+                              <span className="ml-auto text-[11px] text-neutral-500">
+                                #{displayIndex}
+                              </span>
+                            </button>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => moveBlock(block.id, 1)}
+                                disabled={isTop}
+                                aria-label="Bring block forward"
+                                title="Bring block forward"
+                                className="flex h-7 w-7 items-center justify-center rounded border border-transparent text-neutral-500 transition hover:border-neutral-300 hover:text-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                <ChevronUp className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => moveBlock(block.id, -1)}
+                                disabled={isBottom}
+                                aria-label="Send block backward"
+                                title="Send block backward"
+                                className="flex h-7 w-7 items-center justify-center rounded border border-transparent text-neutral-500 transition hover:border-neutral-300 hover:text-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                <ChevronDown className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => removeBlock(block.id)}
+                                aria-label="Delete block"
+                                title="Delete block"
+                                className="flex h-7 w-7 items-center justify-center rounded border border-transparent text-neutral-500 transition hover:border-red-200 hover:text-red-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                        })}
                     </div>
                   </section>
                   <section>
