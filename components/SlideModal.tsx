@@ -79,6 +79,17 @@ const FONT_ENABLED_BLOCK_KINDS: SlideBlock["kind"][] = [
 const isFontEnabledBlock = (kind: SlideBlock["kind"]): boolean =>
   FONT_ENABLED_BLOCK_KINDS.includes(kind);
 
+const TEXTUAL_BLOCK_KINDS: SlideBlock["kind"][] = [
+  "heading",
+  "subheading",
+  "text",
+  "quote",
+  "button",
+];
+
+const isTextualBlock = (kind: SlideBlock["kind"]): boolean =>
+  TEXTUAL_BLOCK_KINDS.includes(kind);
+
 const TEXT_SIZES: { value: NonNullable<SlideBlock["size"]>; label: string }[] =
   [
     { value: "sm", label: "Small" },
@@ -1544,6 +1555,16 @@ export default function SlideModal({
         normalizeFontFamily(block.fontFamily) ?? DEFAULT_TEXT_FONT_FAMILY;
       block.fontFamily = normalizedFont;
       baseConfig = applyFontFamilyToConfig(baseConfig, normalizedFont);
+    }
+    if (isTextualBlock(kind)) {
+      const sizing =
+        baseConfig.textSizing && typeof baseConfig.textSizing === "object"
+          ? { ...(baseConfig.textSizing as Record<string, any>) }
+          : {};
+      if (typeof sizing.autoWidth !== "boolean") {
+        sizing.autoWidth = true;
+      }
+      baseConfig.textSizing = sizing;
     }
     block.config = mergeInteractionConfig(block, baseConfig);
     updateCfg((prev) => ({ ...prev, blocks: [...prev.blocks, block] }));

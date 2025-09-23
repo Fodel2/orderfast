@@ -1,4 +1,11 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import {
   DndContext,
@@ -20,6 +27,16 @@ import { ArrowsUpDownIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/rea
 import { toast } from '@/components/ui/toast';
 import { supabase } from '@/utils/supabaseClient';
 import type { SlideRow } from '@/components/customer/home/SlidesContainer';
+
+const TEXTUAL_BLOCK_KIND_NAMES = new Set([
+  'heading',
+  'subheading',
+  'text',
+  'quote',
+  'button',
+] as const);
+
+const isTextualKind = (kind: string): boolean => TEXTUAL_BLOCK_KIND_NAMES.has(kind as any);
 
 export type DeviceKind = 'mobile' | 'tablet' | 'desktop';
 
@@ -430,12 +447,20 @@ const BLOCK_GRADIENT_DIRECTION_MAP: Record<BlockBackgroundGradientDirection, str
 };
 
 function getBlockChromeStyle(block: SlideBlock): CSSProperties {
+  const textual = isTextualKind(block.kind);
   const style: CSSProperties = {
-    width: '100%',
-    height: '100%',
+    width: textual ? 'fit-content' : '100%',
+    height: textual ? 'fit-content' : '100%',
+    maxWidth: '100%',
+    maxHeight: '100%',
     boxSizing: 'border-box',
     backgroundColor: 'transparent',
+    display: textual ? 'inline-flex' : 'block',
   };
+
+  if (textual) {
+    style.alignItems = 'flex-start';
+  }
 
   const shadowKey = (block.boxShadow ?? 'none') as BlockShadowPreset;
   const shadowValue = BLOCK_SHADOW_VALUE[shadowKey];
@@ -513,17 +538,114 @@ function getBlockChromeStyle(block: SlideBlock): CSSProperties {
   return style;
 }
 
-function BlockChrome({ block, children }: { block: SlideBlock; children: ReactNode }) {
+type BlockChromeProps = { block: SlideBlock; children: ReactNode };
+
+const BlockChrome = React.forwardRef<HTMLDivElement, BlockChromeProps>(({ block, children }, ref) => {
   const baseStyle = getBlockChromeStyle(block);
   const interaction = getBlockInteractionPresentation(block);
   const style = { ...baseStyle, ...(interaction.style || {}) } as CSSProperties;
-  const className = ['relative h-full w-full', ...(interaction.classNames ?? [])].join(' ');
+  const textual = isTextualKind(block.kind);
+  const className = ['relative'];
+  if (textual) {
+    className.push('inline-flex', 'max-w-full');
+  } else {
+    className.push('h-full', 'w-full');
+  }
+  if (interaction.classNames && interaction.classNames.length > 0) {
+    className.push(...interaction.classNames);
+  }
   return (
-    <div className={className} style={style}>
+    <div ref={ref} className={className.join(' ')} style={style}>
       {children}
     </div>
   );
-}
+});
+
+BlockChrome.displayName = 'BlockChrome';
+
+type BlockChromeWithAutoSizeProps = {
+  block: SlideBlock;
+  blockId: string;
+  frame: Frame;
+  deviceSize: { width: number; height: number };
+  autoWidthEnabled: boolean;
+  minSizePct: { width: number; height: number };
+  onFrameChange: (
+    blockId: string,
+    frame: Frame,
+    options?: SlidesManagerChangeOptions,
+  ) => void;
+  children: ReactNode;
+};
+
+const BlockChromeWithAutoSize = ({
+  block,
+  blockId,
+  frame,
+  deviceSize,
+  autoWidthEnabled,
+  minSizePct,
+  onFrameChange,
+  children,
+}: BlockChromeWithAutoSizeProps) => {
+  const elementRef = useRef<HTMLDivElement | null>(null);
+  const frameRef = useRef(frame);
+  frameRef.current = frame;
+
+  useLayoutEffect(() => {
+    if (!isTextualKind(block.kind)) return;
+    const node = elementRef.current;
+    if (!node) return;
+    let raf = 0;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const borderBox = entry.borderBoxSize;
+      let width = entry.contentRect.width;
+      let height = entry.contentRect.height;
+      if (borderBox) {
+        const box = Array.isArray(borderBox) ? borderBox[0] : borderBox;
+        if (box) {
+          if (typeof box.inlineSize === 'number') width = box.inlineSize;
+          if (typeof box.blockSize === 'number') height = box.blockSize;
+        }
+      }
+      const widthPct = clamp((width / deviceSize.width) * 100, 0, 100);
+      const heightPct = clamp((height / deviceSize.height) * 100, 0, 100);
+      const currentFrame = frameRef.current;
+      const targetHeight = Math.max(heightPct, minSizePct.height);
+      const targetWidth = Math.max(widthPct, minSizePct.width);
+      const nextFrame: Frame = { ...currentFrame };
+      let changed = false;
+      if (Math.abs(currentFrame.h - targetHeight) > 0.2) {
+        nextFrame.h = targetHeight;
+        changed = true;
+      }
+      if (autoWidthEnabled && Math.abs(currentFrame.w - targetWidth) > 0.2) {
+        nextFrame.w = targetWidth;
+        changed = true;
+      }
+      if (changed) {
+        cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(() => {
+          frameRef.current = nextFrame;
+          onFrameChange(blockId, nextFrame, { commit: false });
+        });
+      }
+    });
+    observer.observe(node);
+    return () => {
+      cancelAnimationFrame(raf);
+      observer.disconnect();
+    };
+  }, [autoWidthEnabled, block.kind, blockId, deviceSize.height, deviceSize.width, minSizePct.height, minSizePct.width, onFrameChange]);
+
+  return (
+    <BlockChrome ref={isTextualKind(block.kind) ? elementRef : undefined} block={block}>
+      {children}
+    </BlockChrome>
+  );
+};
 
 export const DEFAULT_BUTTON_CONFIG: ButtonBlockConfig = {
   label: 'Button',
@@ -956,6 +1078,99 @@ export function resolveButtonConfig(block: SlideBlock): ButtonBlockConfig {
   };
 }
 
+const BUTTON_HORIZONTAL_PADDING: Record<ButtonBlockSize, number> = {
+  Small: 12,
+  Medium: 20,
+  Large: 24,
+};
+
+const BUTTON_VERTICAL_PADDING: Record<ButtonBlockSize, number> = {
+  Small: 8,
+  Medium: 12,
+  Large: 14,
+};
+
+function resolveTextBlockFontSize(block: SlideBlock): number {
+  if (typeof block.fontSize === 'number' && Number.isFinite(block.fontSize)) {
+    return Math.max(block.fontSize, 1);
+  }
+  if (block.kind === 'button') {
+    const button = resolveButtonConfig(block);
+    const fontSize = BUTTON_FONT_SIZE_PX[button.size] ?? BUTTON_FONT_SIZE_PX.Medium;
+    return Math.max(fontSize, 1);
+  }
+  if (block.size) {
+    const mapped = SIZE_TO_FONT_SIZE[block.size];
+    if (typeof mapped === 'number') {
+      return Math.max(mapped, 1);
+    }
+  }
+  switch (block.kind) {
+    case 'heading':
+      return 56;
+    case 'subheading':
+      return SIZE_TO_FONT_SIZE.md;
+    case 'quote':
+      return 18;
+    default:
+      return 16;
+  }
+}
+
+function resolveLineHeightPx(block: SlideBlock, fontSize: number): number {
+  if (typeof block.lineHeight === 'number' && Number.isFinite(block.lineHeight)) {
+    if (block.lineHeightUnit === 'px') {
+      return Math.max(block.lineHeight, fontSize * 0.75);
+    }
+    const multiplier = block.lineHeightUnit === 'em' ? block.lineHeight : block.lineHeight;
+    return Math.max(multiplier * fontSize, fontSize * 0.75);
+  }
+  return fontSize * 1.1;
+}
+
+function getTextBlockMinSizePct(
+  block: SlideBlock,
+  deviceSize: { width: number; height: number },
+): { width: number; height: number } {
+  const fontSize = resolveTextBlockFontSize(block);
+  const lineHeight = resolveLineHeightPx(block, fontSize);
+  if (block.kind === 'button') {
+    const button = resolveButtonConfig(block);
+    const paddingX = BUTTON_HORIZONTAL_PADDING[button.size] ?? BUTTON_HORIZONTAL_PADDING.Medium;
+    const paddingY = BUTTON_VERTICAL_PADDING[button.size] ?? BUTTON_VERTICAL_PADDING.Medium;
+    const minWidthPx = Math.max(fontSize + paddingX * 2, 48);
+    const minHeightPx = Math.max(lineHeight + paddingY * 2, fontSize + paddingY * 2);
+    return {
+      width: clamp((minWidthPx / deviceSize.width) * 100, 1, 100),
+      height: clamp((minHeightPx / deviceSize.height) * 100, 1, 100),
+    };
+  }
+
+  const uniformPadding =
+    typeof block.padding === 'number' && Number.isFinite(block.padding)
+      ? Math.max(block.padding, 0)
+      : 0;
+  const minWidthPx = Math.max(fontSize + uniformPadding * 2, 32);
+  const minHeightPx = Math.max(lineHeight + uniformPadding * 2, fontSize * 0.9 + uniformPadding * 2);
+  return {
+    width: clamp((minWidthPx / deviceSize.width) * 100, 1, 100),
+    height: clamp((minHeightPx / deviceSize.height) * 100, 1, 100),
+  };
+}
+
+function isAutoWidthEnabled(block: SlideBlock): boolean {
+  if (!block || typeof block !== 'object') return true;
+  const rawConfig = block.config && typeof block.config === 'object' ? (block.config as Record<string, any>) : undefined;
+  if (!rawConfig) return true;
+  const sizing =
+    rawConfig.textSizing && typeof rawConfig.textSizing === 'object'
+      ? (rawConfig.textSizing as Record<string, any>)
+      : undefined;
+  if (!sizing) return true;
+  const value = sizing.autoWidth;
+  return typeof value === 'boolean' ? value : true;
+}
+
 export function resolveImageConfig(block: SlideBlock): ImageBlockConfig {
   const raw = (block.config ?? {}) as Record<string, any>;
   const rawUrl = typeof raw.url === 'string' ? raw.url.trim() : '';
@@ -1277,23 +1492,63 @@ export default function SlidesManager({
   const cfg = useMemo(() => initialCfg, [initialCfg]);
   const deviceSize = DEVICE_DIMENSIONS[activeDevice] ?? DEVICE_DIMENSIONS.desktop;
 
-  const handleFrameChange = (blockId: string, frame: Frame, options?: SlidesManagerChangeOptions) => {
-    const next: SlideCfg = {
-      ...cfg,
-      blocks: cfg.blocks.map((b) =>
-        b.id === blockId
-          ? {
-              ...b,
-              frames: {
-                ...b.frames,
-                [activeDevice]: { ...frame },
-              },
-            }
-          : b
-      ),
-    };
-    onChange(next, options);
-  };
+  const handleFrameChange = useCallback(
+    (blockId: string, frame: Frame, options?: SlidesManagerChangeOptions) => {
+      const next: SlideCfg = {
+        ...cfg,
+        blocks: cfg.blocks.map((b) =>
+          b.id === blockId
+            ? {
+                ...b,
+                frames: {
+                  ...b.frames,
+                  [activeDevice]: { ...frame },
+                },
+              }
+            : b,
+        ),
+      };
+      onChange(next, options);
+    },
+    [activeDevice, cfg, onChange],
+  );
+
+  const setBlockAutoWidth = useCallback(
+    (blockId: string, nextValue: boolean) => {
+      const target = cfg.blocks.find((b) => b.id === blockId);
+      if (!target) return;
+      const rawConfig =
+        target.config && typeof target.config === 'object'
+          ? (target.config as Record<string, any>)
+          : undefined;
+      const previousSizing =
+        rawConfig && typeof rawConfig.textSizing === 'object'
+          ? (rawConfig.textSizing as Record<string, any>)
+          : undefined;
+      const currentValue =
+        previousSizing && typeof previousSizing.autoWidth === 'boolean'
+          ? previousSizing.autoWidth
+          : undefined;
+      if (currentValue === nextValue) return;
+      const baseConfig = rawConfig ? { ...rawConfig } : {};
+      const nextSizing = { ...(previousSizing ?? {}) };
+      nextSizing.autoWidth = nextValue;
+      const nextConfig = { ...baseConfig, textSizing: nextSizing };
+      const next: SlideCfg = {
+        ...cfg,
+        blocks: cfg.blocks.map((b) =>
+          b.id === blockId
+            ? {
+                ...b,
+                config: nextConfig,
+              }
+            : b,
+        ),
+      };
+      onChange(next, { commit: false });
+    },
+    [cfg, onChange],
+  );
 
   const handleInlineText = (blockId: string, text: string) => {
     const target = cfg.blocks.find((b) => b.id === blockId);
@@ -1629,6 +1884,10 @@ export default function SlidesManager({
                 }
                 const frame = ensureFrame(block, activeDevice);
                 const locked = Boolean(block.locked);
+                const textual = isTextualKind(block.kind);
+                const minSizePct = textual ? getTextBlockMinSizePct(block, deviceSize) : undefined;
+                const effectiveMinSize = minSizePct ?? { width: 5, height: 5 };
+                const autoWidthEnabled = textual ? isAutoWidthEnabled(block) : false;
                 return (
                   <InteractiveBox
                     key={block.id}
@@ -1646,10 +1905,29 @@ export default function SlidesManager({
                     scale={clampedScale}
                     locked={locked}
                     onManipulationChange={onManipulationChange}
+                    minWidthPct={textual ? effectiveMinSize.width : undefined}
+                    minHeightPct={textual ? effectiveMinSize.height : undefined}
+                    onResizeStart={
+                      textual
+                        ? ({ horizontal }) => {
+                            if (horizontal && autoWidthEnabled) {
+                              setBlockAutoWidth(block.id, false);
+                            }
+                          }
+                        : undefined
+                    }
                   >
-                    <BlockChrome block={block}>
+                    <BlockChromeWithAutoSize
+                      block={block}
+                      blockId={block.id}
+                      frame={frame}
+                      deviceSize={deviceSize}
+                      autoWidthEnabled={textual ? autoWidthEnabled : false}
+                      minSizePct={effectiveMinSize}
+                      onFrameChange={handleFrameChange}
+                    >
                       {renderBlockContent(block)}
-                    </BlockChrome>
+                    </BlockChromeWithAutoSize>
                   </InteractiveBox>
                 );
               })}
@@ -1895,6 +2173,9 @@ type InteractiveBoxProps = {
   scale: number;
   locked?: boolean;
   onManipulationChange?: (manipulating: boolean) => void;
+  minWidthPct?: number;
+  minHeightPct?: number;
+  onResizeStart?: (details: { horizontal: boolean; vertical: boolean }) => void;
 };
 
 type PointerState = {
@@ -1925,6 +2206,9 @@ function InteractiveBox({
   scale,
   locked = false,
   onManipulationChange,
+  minWidthPct,
+  minHeightPct,
+  onResizeStart,
 }: InteractiveBoxProps) {
   const localRef = useRef<HTMLDivElement>(null);
   const pointerState = useRef<PointerState | null>(null);
@@ -1956,6 +2240,11 @@ function InteractiveBox({
       state.hasManipulated = true;
       onManipulationChange?.(true);
     }
+    if (type === 'resize' && !locked) {
+      const horizontal = Boolean(corner && (corner.includes('e') || corner.includes('w')));
+      const vertical = Boolean(corner && (corner.includes('n') || corner.includes('s')));
+      onResizeStart?.({ horizontal, vertical });
+    }
     pointerState.current = state;
     localRef.current?.setPointerCapture?.(e.pointerId);
   };
@@ -1986,6 +2275,17 @@ function InteractiveBox({
       onManipulationChange?.(true);
     }
 
+    const minWidth = clamp(
+      typeof minWidthPct === 'number' && Number.isFinite(minWidthPct) ? Math.max(minWidthPct, 0.5) : 5,
+      0.5,
+      100,
+    );
+    const minHeight = clamp(
+      typeof minHeightPct === 'number' && Number.isFinite(minHeightPct) ? Math.max(minHeightPct, 0.5) : 5,
+      0.5,
+      100,
+    );
+
     if (ps.type === 'move') {
       const next: Frame = {
         ...ps.startFrame,
@@ -1995,24 +2295,23 @@ function InteractiveBox({
       onChange(next, { commit: false });
     } else if (ps.type === 'resize') {
       const next: Frame = { ...ps.startFrame };
-      const min = 5;
       if (ps.corner?.includes('e')) {
-        next.w = clamp(ps.startFrame.w + dx, min, 100 - ps.startFrame.x);
+        next.w = clamp(ps.startFrame.w + dx, minWidth, 100 - ps.startFrame.x);
       }
       if (ps.corner?.includes('s')) {
-        next.h = clamp(ps.startFrame.h + dy, min, 100 - ps.startFrame.y);
+        next.h = clamp(ps.startFrame.h + dy, minHeight, 100 - ps.startFrame.y);
       }
       if (ps.corner?.includes('w')) {
-        const newX = clamp(ps.startFrame.x + dx, 0, ps.startFrame.x + ps.startFrame.w - min);
+        const newX = clamp(ps.startFrame.x + dx, 0, ps.startFrame.x + ps.startFrame.w - minWidth);
         const delta = ps.startFrame.x - newX;
         next.x = newX;
-        next.w = clamp(ps.startFrame.w + delta, min, 100 - newX);
+        next.w = clamp(ps.startFrame.w + delta, minWidth, 100 - newX);
       }
       if (ps.corner?.includes('n')) {
-        const newY = clamp(ps.startFrame.y + dy, 0, ps.startFrame.y + ps.startFrame.h - min);
+        const newY = clamp(ps.startFrame.y + dy, 0, ps.startFrame.y + ps.startFrame.h - minHeight);
         const delta = ps.startFrame.y - newY;
         next.y = newY;
-        next.h = clamp(ps.startFrame.h + delta, min, 100 - newY);
+        next.h = clamp(ps.startFrame.h + delta, minHeight, 100 - newY);
       }
       onChange(next, { commit: false });
     } else if (ps.type === 'rotate') {
