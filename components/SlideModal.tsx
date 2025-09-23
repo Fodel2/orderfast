@@ -472,6 +472,134 @@ const InspectorColorInput: React.FC<InspectorColorInputProps> = ({
   );
 };
 
+type InspectorSliderControlProps = {
+  label: React.ReactNode;
+  value: number | undefined;
+  fallbackValue?: number;
+  min: number;
+  max: number;
+  step?: number;
+  onChange: (next: number | undefined) => void;
+  formatValue?: (
+    value: number | undefined,
+    fallbackValue?: number,
+  ) => string;
+  disabled?: boolean;
+  numberInputClassName?: string;
+};
+
+const InspectorSliderControl: React.FC<InspectorSliderControlProps> = ({
+  label,
+  value,
+  fallbackValue,
+  min,
+  max,
+  step = 1,
+  onChange,
+  formatValue,
+  disabled = false,
+  numberInputClassName,
+}) => {
+  const formatDisplay = useCallback(
+    (current: number | undefined): string => {
+      if (formatValue) {
+        return formatValue(current, fallbackValue);
+      }
+      const base =
+        current !== undefined
+          ? current
+          : fallbackValue !== undefined
+            ? fallbackValue
+            : undefined;
+      if (base === undefined || Number.isNaN(base)) {
+        return "";
+      }
+      return `${base}`;
+    },
+    [fallbackValue, formatValue],
+  );
+
+  const [inputValue, setInputValue] = useState<string>(() =>
+    formatDisplay(value),
+  );
+
+  useEffect(() => {
+    setInputValue(formatDisplay(value));
+  }, [formatDisplay, value]);
+
+  const sliderValue = useMemo(() => {
+    const base =
+      value !== undefined
+        ? value
+        : fallbackValue !== undefined
+          ? fallbackValue
+          : min;
+    if (Number.isNaN(base)) {
+      return min;
+    }
+    return clampRange(base, min, max);
+  }, [fallbackValue, max, min, value]);
+
+  const handleSliderChange = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const raw = Number(event.target.value);
+      const clamped = clampRange(raw, min, max);
+      setInputValue(formatDisplay(clamped));
+      onChange(clamped);
+    },
+    [formatDisplay, max, min, onChange],
+  );
+
+  const handleNumberChange = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const raw = event.target.value;
+      setInputValue(raw);
+      if (raw.trim().length === 0) {
+        onChange(undefined);
+        return;
+      }
+      const parsed = Number(raw);
+      if (Number.isNaN(parsed)) {
+        return;
+      }
+      const clamped = clampRange(parsed, min, max);
+      onChange(clamped);
+      if (clamped !== parsed) {
+        setInputValue(formatDisplay(clamped));
+      }
+    },
+    [formatDisplay, max, min, onChange],
+  );
+
+  return (
+    <label className="flex items-center gap-3 text-xs font-medium text-neutral-500">
+      <span className="w-28 shrink-0 text-left">{label}</span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={sliderValue}
+        onChange={handleSliderChange}
+        disabled={disabled}
+        className="flex-1 accent-emerald-500"
+      />
+      <input
+        type="number"
+        min={min}
+        max={max}
+        step={step}
+        value={inputValue}
+        onChange={handleNumberChange}
+        disabled={disabled}
+        className={`${INSPECTOR_INPUT_CLASS} w-20 text-right ${
+          numberInputClassName ?? ""
+        }`}
+      />
+    </label>
+  );
+};
+
 const cloneCfg = (cfg: SlideCfg): SlideCfg => JSON.parse(JSON.stringify(cfg));
 
 function defaultBackground(): SlideCfg["background"] {
@@ -2342,32 +2470,32 @@ export default function SlideModal({
                               }
                             />
                           </label>
-                          <label className="block text-xs font-medium text-neutral-500">
-                            Opacity
-                            <div className="mt-1 flex items-center gap-2">
-                              <input
-                                type="range"
-                                min={0}
-                                max={1}
-                                step={0.05}
-                                value={colorBackground?.opacity ?? 1}
-                                onChange={(e) =>
-                                  updateBackground((prev) => {
-                                    const next: SlideBackground =
-                                      prev?.type === "color"
-                                        ? { ...prev }
-                                        : { type: "color", color: "#111111", opacity: 1 };
-                                    next.opacity = clamp01(Number(e.target.value));
-                                    return next;
-                                  })
-                                }
-                                className="flex-1"
-                              />
-                              <span className="w-12 text-right text-xs text-neutral-500">
-                                {(colorBackground?.opacity ?? 1).toFixed(2)}
-                              </span>
-                            </div>
-                          </label>
+                          <InspectorSliderControl
+                            label="Opacity"
+                            value={colorBackground?.opacity}
+                            fallbackValue={1}
+                            min={0}
+                            max={1}
+                            step={0.01}
+                            onChange={(next) =>
+                              updateBackground((prev) => {
+                                const nextBackground: SlideBackground =
+                                  prev?.type === "color"
+                                    ? { ...prev }
+                                    : {
+                                        type: "color",
+                                        color: "#111111",
+                                        opacity: 1,
+                                      };
+                                const resolved =
+                                  next === undefined
+                                    ? nextBackground.opacity ?? 1
+                                    : next;
+                                nextBackground.opacity = clamp01(resolved);
+                                return nextBackground;
+                              })
+                            }
+                          />
                         </div>
                       )}
                       {backgroundType === "image" && (
@@ -2545,50 +2673,54 @@ export default function SlideModal({
                                   })
                                 }
                               />
-                              <label className="flex items-center justify-between gap-3 text-xs font-medium text-neutral-500">
-                                <span>Opacity</span>
-                                <input
-                                  type="number"
-                                  min={0}
-                                  max={1}
-                                  step={0.05}
-                                  value={imageBackground.overlay.opacity ?? 0.25}
-                                  onChange={(e) =>
-                                    updateBackground((prev) => {
-                                      if (prev?.type !== "image") return prev;
-                                      return {
-                                        ...prev,
-                                        overlay: {
-                                          color: prev.overlay?.color || "#000000",
-                                          opacity: clamp01(Number(e.target.value)),
-                                        },
-                                      };
-                                    })
-                                  }
-                                  className={`${INSPECTOR_INPUT_CLASS} max-w-[110px]`}
-                                />
-                              </label>
+                              <InspectorSliderControl
+                                label="Opacity"
+                                value={imageBackground.overlay.opacity}
+                                fallbackValue={0.25}
+                                min={0}
+                                max={1}
+                                step={0.01}
+                                onChange={(next) =>
+                                  updateBackground((prev) => {
+                                    if (prev?.type !== "image") return prev;
+                                    const resolved =
+                                      next === undefined
+                                        ? prev.overlay?.opacity ?? 0.25
+                                        : next;
+                                    return {
+                                      ...prev,
+                                      overlay: {
+                                        color: prev.overlay?.color || "#000000",
+                                        opacity: clamp01(resolved),
+                                      },
+                                    };
+                                  })
+                                }
+                                numberInputClassName="max-w-[110px]"
+                              />
                             </div>
                           )}
-                          <label className="block text-xs font-medium text-neutral-500">
-                            Blur
-                            <input
-                              type="number"
-                              min={0}
-                              max={12}
-                              value={imageBackground?.blur ?? 0}
-                              onChange={(e) =>
-                                updateBackground((prev) => {
-                                  if (prev?.type !== "image") return prev;
-                                  return {
-                                    ...prev,
-                                    blur: clampRange(Number(e.target.value), 0, 12),
-                                  };
-                                })
-                              }
-                              className={INSPECTOR_INPUT_CLASS}
-                            />
-                          </label>
+                          <InspectorSliderControl
+                            label="Blur"
+                            value={imageBackground?.blur}
+                            fallbackValue={0}
+                            min={0}
+                            max={20}
+                            step={1}
+                            onChange={(next) =>
+                              updateBackground((prev) => {
+                                if (prev?.type !== "image") return prev;
+                                const resolved =
+                                  next === undefined
+                                    ? prev.blur ?? 0
+                                    : next;
+                                return {
+                                  ...prev,
+                                  blur: clampRange(resolved, 0, 20),
+                                };
+                              })
+                            }
+                          />
                         </div>
                       )}
                       {backgroundType === "video" && (
@@ -2870,50 +3002,54 @@ export default function SlideModal({
                                   })
                                 }
                               />
-                              <label className="flex items-center justify-between gap-3 text-xs font-medium text-neutral-500">
-                                <span>Opacity</span>
-                                <input
-                                  type="number"
-                                  min={0}
-                                  max={1}
-                                  step={0.05}
-                                  value={videoBackground.overlay.opacity ?? 0.25}
-                                  onChange={(e) =>
-                                    updateBackground((prev) => {
-                                      if (prev?.type !== "video") return prev;
-                                      return {
-                                        ...prev,
-                                        overlay: {
-                                          color: prev.overlay?.color || "#000000",
-                                          opacity: clamp01(Number(e.target.value)),
-                                        },
-                                      };
-                                    })
-                                  }
-                                  className={`${INSPECTOR_INPUT_CLASS} max-w-[110px]`}
-                                />
-                              </label>
+                              <InspectorSliderControl
+                                label="Opacity"
+                                value={videoBackground.overlay.opacity}
+                                fallbackValue={0.25}
+                                min={0}
+                                max={1}
+                                step={0.01}
+                                onChange={(next) =>
+                                  updateBackground((prev) => {
+                                    if (prev?.type !== "video") return prev;
+                                    const resolved =
+                                      next === undefined
+                                        ? prev.overlay?.opacity ?? 0.25
+                                        : next;
+                                    return {
+                                      ...prev,
+                                      overlay: {
+                                        color: prev.overlay?.color || "#000000",
+                                        opacity: clamp01(resolved),
+                                      },
+                                    };
+                                  })
+                                }
+                                numberInputClassName="max-w-[110px]"
+                              />
                             </div>
                           )}
-                          <label className="block text-xs font-medium text-neutral-500">
-                            Blur
-                            <input
-                              type="number"
-                              min={0}
-                              max={12}
-                              value={videoBackground?.blur ?? 0}
-                              onChange={(e) =>
-                                updateBackground((prev) => {
-                                  if (prev?.type !== "video") return prev;
-                                  return {
-                                    ...prev,
-                                    blur: clampRange(Number(e.target.value), 0, 12),
-                                  };
-                                })
-                              }
-                              className={INSPECTOR_INPUT_CLASS}
-                            />
-                          </label>
+                          <InspectorSliderControl
+                            label="Blur"
+                            value={videoBackground?.blur}
+                            fallbackValue={0}
+                            min={0}
+                            max={20}
+                            step={1}
+                            onChange={(next) =>
+                              updateBackground((prev) => {
+                                if (prev?.type !== "video") return prev;
+                                const resolved =
+                                  next === undefined
+                                    ? prev.blur ?? 0
+                                    : next;
+                                return {
+                                  ...prev,
+                                  blur: clampRange(resolved, 0, 20),
+                                };
+                              })
+                            }
+                          />
                         </div>
                       )}
                       {backgroundType === "none" && (
@@ -3104,101 +3240,82 @@ export default function SlideModal({
                                   </select>
                                 </label>
                               </div>
-                              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Font size (px)
-                                  </span>
-                                  <input
-                                    type="number"
-                                    min={1}
-                                    value={
-                                      selectedBlock.fontSize ??
-                                      (selectedBlock.size
-                                        ? SIZE_TO_FONT_SIZE_PX[selectedBlock.size]
-                                        : selectedBlock.kind === "heading"
-                                          ? 56
-                                          : 16)
-                                    }
-                                    onChange={(e) => {
-                                      const value = e.target.value;
-                                      if (value === "") {
-                                        patchBlock(selectedBlock.id, {
-                                          fontSize: undefined,
-                                        });
-                                        return;
-                                      }
-                                      const parsed = Number(value);
+                              <div className="space-y-3">
+                                <InspectorSliderControl
+                                  label="Font size (px)"
+                                  value={selectedBlock.fontSize}
+                                  fallbackValue={
+                                    selectedBlock.size
+                                      ? SIZE_TO_FONT_SIZE_PX[selectedBlock.size]
+                                      : selectedBlock.kind === "heading"
+                                        ? 56
+                                        : 16
+                                  }
+                                  min={8}
+                                  max={96}
+                                  step={1}
+                                  onChange={(next) => {
+                                    if (next === undefined) {
                                       patchBlock(selectedBlock.id, {
-                                        fontSize: Number.isNaN(parsed)
-                                          ? undefined
-                                          : parsed,
-                                      });
-                                    }}
-                                    className={INSPECTOR_INPUT_CLASS}
-                                  />
-                                </label>
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Line height
-                                  </span>
-                                  <input
-                                    type="number"
-                                    step={0.05}
-                                    min={0}
-                                    value={
-                                      selectedBlock.lineHeight !== undefined
-                                        ? selectedBlock.lineHeight
-                                        : ""
-                                    }
-                                    placeholder="1.25"
-                                    onChange={(e) => {
-                                      const value = e.target.value;
-                                      if (value === "") {
-                                        patchBlock(selectedBlock.id, {
-                                          lineHeight: undefined,
-                                          lineHeightUnit: undefined,
-                                        });
-                                        return;
-                                      }
-                                      const parsed = Number(value);
-                                      patchBlock(selectedBlock.id, {
-                                        lineHeight: Number.isNaN(parsed) ? undefined : parsed,
-                                        lineHeightUnit: Number.isNaN(parsed)
-                                          ? selectedBlock.lineHeightUnit
-                                          : undefined,
-                                      });
-                                    }}
-                                    className={INSPECTOR_INPUT_CLASS}
-                                  />
-                                </label>
-                              </div>
-                              <label className="block">
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Letter spacing (px)
-                                </span>
-                                <input
-                                  type="number"
-                                  step={0.1}
-                                  value={selectedBlock.letterSpacing ?? ""}
-                                  onChange={(e) => {
-                                    const value = e.target.value;
-                                    if (value === "") {
-                                      patchBlock(selectedBlock.id, {
-                                        letterSpacing: undefined,
+                                        fontSize: undefined,
                                       });
                                       return;
                                     }
-                                    const parsed = Number(value);
+                                    const normalized = Math.round(next);
                                     patchBlock(selectedBlock.id, {
-                                      letterSpacing: Number.isNaN(parsed)
+                                      fontSize: Number.isNaN(normalized)
                                         ? undefined
-                                        : parsed,
+                                        : normalized,
                                     });
                                   }}
-                                  className={INSPECTOR_INPUT_CLASS}
                                 />
-                              </label>
+                                <InspectorSliderControl
+                                  label="Line height"
+                                  value={selectedBlock.lineHeight}
+                                  fallbackValue={1.25}
+                                  min={0.8}
+                                  max={3}
+                                  step={0.01}
+                                  onChange={(next) => {
+                                    if (next === undefined) {
+                                      patchBlock(selectedBlock.id, {
+                                        lineHeight: undefined,
+                                        lineHeightUnit: undefined,
+                                      });
+                                      return;
+                                    }
+                                    patchBlock(selectedBlock.id, {
+                                      lineHeight: next,
+                                      lineHeightUnit: undefined,
+                                    });
+                                  }}
+                                  formatValue={(current) =>
+                                    current !== undefined ? `${current}` : ""
+                                  }
+                                />
+                              </div>
+                              <InspectorSliderControl
+                                label="Letter spacing (px)"
+                                value={selectedBlock.letterSpacing}
+                                fallbackValue={0}
+                                min={-5}
+                                max={20}
+                                step={0.1}
+                                onChange={(next) => {
+                                  if (next === undefined) {
+                                    patchBlock(selectedBlock.id, {
+                                      letterSpacing: undefined,
+                                    });
+                                    return;
+                                  }
+                                  patchBlock(selectedBlock.id, {
+                                    letterSpacing: next,
+                                  });
+                                }}
+                                formatValue={(current) =>
+                                  current !== undefined ? `${current}` : ""
+                                }
+                              />
                               <div>
                                 <span className="text-xs font-medium text-neutral-500">
                                   Text color
@@ -3245,7 +3362,6 @@ export default function SlideModal({
                                     {([
                                       ["x", "X"],
                                       ["y", "Y"],
-                                      ["blur", "Blur"],
                                     ] as const).map(([key, label]) => (
                                       <label key={key} className="block text-xs">
                                         <span className="font-medium text-neutral-500">
@@ -3273,6 +3389,32 @@ export default function SlideModal({
                                         />
                                       </label>
                                     ))}
+                                    <div className="col-span-2">
+                                      <InspectorSliderControl
+                                        label="Blur"
+                                        value={selectedBlock.textShadow?.blur}
+                                        fallbackValue={DEFAULT_TEXT_SHADOW.blur}
+                                        min={0}
+                                        max={20}
+                                        step={1}
+                                        onChange={(next) => {
+                                          const current =
+                                            selectedBlock.textShadow ?? {
+                                              ...DEFAULT_TEXT_SHADOW,
+                                            };
+                                          const resolved =
+                                            next === undefined || Number.isNaN(next)
+                                              ? current.blur
+                                              : Math.max(0, Math.round(next));
+                                          patchBlock(selectedBlock.id, {
+                                            textShadow: {
+                                              ...current,
+                                              blur: resolved,
+                                            },
+                                          });
+                                        }}
+                                      />
+                                    </div>
                                     <label className="col-span-2 block text-xs">
                                       <span className="font-medium text-neutral-500">
                                         Color
@@ -3350,78 +3492,59 @@ export default function SlideModal({
                                         }
                                       />
                                     </div>
-                                    <div>
-                                      <span className="text-xs font-medium text-neutral-500">
-                                        Opacity ({
-                                          (selectedBlock.bgOpacity ??
-                                            (selectedBlock.bgStyle === "glass"
-                                              ? 0.5
-                                              : 1)
-                                          ).toFixed(2)
-                                        })
-                                      </span>
-                                      <input
-                                        type="range"
-                                        min={0}
-                                        max={1}
-                                        step={0.05}
-                                        value={
-                                          selectedBlock.bgOpacity ??
-                                          (selectedBlock.bgStyle === "glass"
-                                            ? 0.5
-                                            : 1)
-                                        }
-                                        onChange={(e) => {
-                                          const value = Number(e.target.value);
-                                          patchBlock(
-                                            selectedBlock.id,
-                                            {
-                                              bgOpacity: clamp01(value),
-                                            },
-                                            false,
-                                          );
-                                        }}
-                                        className="mt-1 w-full"
-                                      />
-                                    </div>
-                                    <label className="block">
-                                      <span className="text-xs font-medium text-neutral-500">
-                                        Corner radius (px)
-                                      </span>
-                                      <input
-                                        type="number"
-                                        min={0}
-                                        value={selectedBlock.radius ?? 0}
-                                        onChange={(e) => {
-                                          const value = Number(e.target.value);
-                                          patchBlock(selectedBlock.id, {
-                                            radius: Number.isNaN(value)
-                                              ? 0
-                                              : value,
-                                          });
-                                        }}
-                                        className={INSPECTOR_INPUT_CLASS}
-                                      />
-                                    </label>
-                                    <label className="block">
-                                      <span className="text-xs font-medium text-neutral-500">
-                                        Padding (px)
-                                      </span>
-                                      <input
-                                        type="number"
-                                        min={0}
-                                        value={selectedBlock.padding ?? 0}
-                                        onChange={(e) => {
-                                          const value = Number(e.target.value);
-                                          patchBlock(selectedBlock.id, {
-                                            padding: Number.isNaN(value)
-                                              ? 0
-                                              : value,
-                                          });
-                                        }}
-                                        className={INSPECTOR_INPUT_CLASS}
-                                      />
-                                    </label>
+                                    <InspectorSliderControl
+                                      label="Opacity"
+                                      value={selectedBlock.bgOpacity}
+                                      fallbackValue={
+                                        selectedBlock.bgStyle === "glass" ? 0.5 : 1
+                                      }
+                                      min={0}
+                                      max={1}
+                                      step={0.01}
+                                      onChange={(next) => {
+                                        const fallbackValue =
+                                          selectedBlock.bgStyle === "glass" ? 0.5 : 1;
+                                        const resolved =
+                                          next === undefined
+                                            ? selectedBlock.bgOpacity ?? fallbackValue
+                                            : next;
+                                        patchBlock(
+                                          selectedBlock.id,
+                                          {
+                                            bgOpacity: clamp01(resolved),
+                                          },
+                                          false,
+                                        );
+                                      }}
+                                    />
+                                    <InspectorSliderControl
+                                      label="Corner radius (px)"
+                                      value={selectedBlock.radius}
+                                      fallbackValue={selectedBlock.radius ?? 0}
+                                      min={0}
+                                      max={100}
+                                      step={1}
+                                      onChange={(next) => {
+                                        const resolved = next === undefined ? 0 : Math.round(next);
+                                        patchBlock(selectedBlock.id, {
+                                          radius: resolved,
+                                        });
+                                      }}
+                                    />
+                                    <InspectorSliderControl
+                                      label="Padding (px)"
+                                      value={selectedBlock.padding}
+                                      fallbackValue={selectedBlock.padding ?? 0}
+                                      min={0}
+                                      max={100}
+                                      step={1}
+                                      onChange={(next) => {
+                                        const resolved = next === undefined ? 0 : Math.round(next);
+                                        patchBlock(selectedBlock.id, {
+                                          padding: resolved,
+                                        });
+                                      }}
+                                    />
                                   </div>
                                 )}
                               <div>
@@ -3536,72 +3659,57 @@ export default function SlideModal({
                                   </select>
                                 </label>
                               </div>
-                              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Font size (px)
-                                  </span>
-                                  <input
-                                    type="number"
-                                    min={1}
-                                    value={
-                                      selectedBlock.fontSize ??
-                                      (selectedBlock.size
-                                        ? SIZE_TO_FONT_SIZE_PX[selectedBlock.size]
-                                        : SIZE_TO_FONT_SIZE_PX.md)
-                                    }
-                                    onChange={(e) => {
-                                      const value = e.target.value;
-                                      if (value === "") {
-                                        patchBlock(selectedBlock.id, {
-                                          fontSize: undefined,
-                                        });
-                                        return;
-                                      }
-                                      const parsed = Number(value);
+                              <div className="space-y-3">
+                                <InspectorSliderControl
+                                  label="Font size (px)"
+                                  value={selectedBlock.fontSize}
+                                  fallbackValue={
+                                    selectedBlock.size
+                                      ? SIZE_TO_FONT_SIZE_PX[selectedBlock.size]
+                                      : SIZE_TO_FONT_SIZE_PX.md
+                                  }
+                                  min={8}
+                                  max={96}
+                                  step={1}
+                                  onChange={(next) => {
+                                    if (next === undefined) {
                                       patchBlock(selectedBlock.id, {
-                                        fontSize: Number.isNaN(parsed)
-                                          ? undefined
-                                          : parsed,
+                                        fontSize: undefined,
                                       });
-                                    }}
-                                    className={INSPECTOR_INPUT_CLASS}
-                                  />
-                                </label>
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Line height
-                                  </span>
-                                  <input
-                                    type="number"
-                                    step={0.05}
-                                    min={0}
-                                    value={
-                                      selectedBlock.lineHeight !== undefined
-                                        ? selectedBlock.lineHeight
-                                        : ""
+                                      return;
                                     }
-                                    placeholder="1.25"
-                                    onChange={(e) => {
-                                      const value = e.target.value;
-                                      if (value === "") {
-                                        patchBlock(selectedBlock.id, {
-                                          lineHeight: undefined,
-                                          lineHeightUnit: undefined,
-                                        });
-                                        return;
-                                      }
-                                      const parsed = Number(value);
+                                    const normalized = Math.round(next);
+                                    patchBlock(selectedBlock.id, {
+                                      fontSize: Number.isNaN(normalized)
+                                        ? undefined
+                                        : normalized,
+                                    });
+                                  }}
+                                />
+                                <InspectorSliderControl
+                                  label="Line height"
+                                  value={selectedBlock.lineHeight}
+                                  fallbackValue={1.25}
+                                  min={0.8}
+                                  max={3}
+                                  step={0.01}
+                                  onChange={(next) => {
+                                    if (next === undefined) {
                                       patchBlock(selectedBlock.id, {
-                                        lineHeight: Number.isNaN(parsed) ? undefined : parsed,
-                                        lineHeightUnit: Number.isNaN(parsed)
-                                          ? selectedBlock.lineHeightUnit
-                                          : undefined,
+                                        lineHeight: undefined,
+                                        lineHeightUnit: undefined,
                                       });
-                                    }}
-                                    className={INSPECTOR_INPUT_CLASS}
-                                  />
-                                </label>
+                                      return;
+                                    }
+                                    patchBlock(selectedBlock.id, {
+                                      lineHeight: next,
+                                      lineHeightUnit: undefined,
+                                    });
+                                  }}
+                                  formatValue={(current) =>
+                                    current !== undefined ? `${current}` : ""
+                                  }
+                                />
                               </div>
                               <label className="block">
                                 <span className="text-xs font-medium text-neutral-500">
@@ -3750,71 +3858,57 @@ export default function SlideModal({
                                   </select>
                                 </label>
                               </div>
-                              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Font size (px)
-                                  </span>
-                                  <input
-                                    type="number"
-                                    min={1}
-                                    value={
-                                      selectedBlock.fontSize ??
-                                      BUTTON_FONT_SIZE_PX[selectedButtonConfig.size] ??
-                                        BUTTON_FONT_SIZE_PX.Medium
-                                    }
-                                    onChange={(e) => {
-                                      const value = e.target.value;
-                                      if (value === "") {
-                                        patchBlock(selectedBlock.id, {
-                                          fontSize: undefined,
-                                        });
-                                        return;
-                                      }
-                                      const parsed = Number(value);
+                              <div className="space-y-3">
+                                <InspectorSliderControl
+                                  label="Font size (px)"
+                                  value={selectedBlock.fontSize}
+                                  fallbackValue={
+                                    selectedBlock.fontSize ??
+                                    BUTTON_FONT_SIZE_PX[selectedButtonConfig.size] ??
+                                      BUTTON_FONT_SIZE_PX.Medium
+                                  }
+                                  min={8}
+                                  max={96}
+                                  step={1}
+                                  onChange={(next) => {
+                                    if (next === undefined) {
                                       patchBlock(selectedBlock.id, {
-                                        fontSize: Number.isNaN(parsed)
-                                          ? undefined
-                                          : parsed,
+                                        fontSize: undefined,
                                       });
-                                    }}
-                                    className={INSPECTOR_INPUT_CLASS}
-                                  />
-                                </label>
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Line height
-                                  </span>
-                                  <input
-                                    type="number"
-                                    step={0.05}
-                                    min={0}
-                                    value={
-                                      selectedBlock.lineHeight !== undefined
-                                        ? selectedBlock.lineHeight
-                                        : ""
+                                      return;
                                     }
-                                    placeholder="1.25"
-                                    onChange={(e) => {
-                                      const value = e.target.value;
-                                      if (value === "") {
-                                        patchBlock(selectedBlock.id, {
-                                          lineHeight: undefined,
-                                          lineHeightUnit: undefined,
-                                        });
-                                        return;
-                                      }
-                                      const parsed = Number(value);
+                                    const normalized = Math.round(next);
+                                    patchBlock(selectedBlock.id, {
+                                      fontSize: Number.isNaN(normalized)
+                                        ? undefined
+                                        : normalized,
+                                    });
+                                  }}
+                                />
+                                <InspectorSliderControl
+                                  label="Line height"
+                                  value={selectedBlock.lineHeight}
+                                  fallbackValue={1.25}
+                                  min={0.8}
+                                  max={3}
+                                  step={0.01}
+                                  onChange={(next) => {
+                                    if (next === undefined) {
                                       patchBlock(selectedBlock.id, {
-                                        lineHeight: Number.isNaN(parsed) ? undefined : parsed,
-                                        lineHeightUnit: Number.isNaN(parsed)
-                                          ? selectedBlock.lineHeightUnit
-                                          : undefined,
+                                        lineHeight: undefined,
+                                        lineHeightUnit: undefined,
                                       });
-                                    }}
-                                    className={INSPECTOR_INPUT_CLASS}
-                                  />
-                                </label>
+                                      return;
+                                    }
+                                    patchBlock(selectedBlock.id, {
+                                      lineHeight: next,
+                                      lineHeightUnit: undefined,
+                                    });
+                                  }}
+                                  formatValue={(current) =>
+                                    current !== undefined ? `${current}` : ""
+                                  }
+                                />
                               </div>
                               <div>
                                 <span className="text-xs font-medium text-neutral-500">
@@ -3967,24 +4061,24 @@ export default function SlideModal({
                                   Shadow
                                 </label>
                               </div>
-                              <label className="block">
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Corner radius (px)
-                                </span>
-                                <input
-                                  type="number"
-                                  min={0}
-                                  value={selectedButtonConfig.radius}
-                                  onChange={(e) => {
-                                    const value = Number(e.target.value);
-                                    updateButtonConfig(selectedBlock.id, (config) => ({
-                                      ...config,
-                                      radius: Number.isNaN(value) ? 0 : Math.max(0, value),
-                                    }));
-                                  }}
-                                  className={INSPECTOR_INPUT_CLASS}
-                                />
-                              </label>
+                              <InspectorSliderControl
+                                label="Corner radius (px)"
+                                value={selectedButtonConfig.radius}
+                                fallbackValue={selectedButtonConfig.radius}
+                                min={0}
+                                max={100}
+                                step={1}
+                                onChange={(next) => {
+                                  const resolved =
+                                    next === undefined || Number.isNaN(next)
+                                      ? 0
+                                      : Math.max(0, Math.round(next));
+                                  updateButtonConfig(selectedBlock.id, (config) => ({
+                                    ...config,
+                                    radius: resolved,
+                                  }));
+                                }}
+                              />
                               <div>
                                 <span className="text-xs font-medium text-neutral-500">
                                   Text color
@@ -4158,26 +4252,23 @@ export default function SlideModal({
                                     </label>
                                   </div>
                                 </div>
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Corner radius (px)
-                                  </span>
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    value={selectedImageConfig.radius}
-                                    onChange={(e) => {
-                                      const value = Number(e.target.value);
-                                      updateImageConfig(selectedBlock.id, (config) => ({
-                                        ...config,
-                                        radius: Number.isNaN(value)
+                                <InspectorSliderControl
+                                  label="Corner radius (px)"
+                                  value={selectedImageConfig.radius}
+                                  fallbackValue={selectedImageConfig.radius}
+                                  min={0}
+                                  max={100}
+                                  step={1}
+                                  onChange={(next) => {
+                                    updateImageConfig(selectedBlock.id, (config) => ({
+                                      ...config,
+                                      radius:
+                                        next === undefined || Number.isNaN(next)
                                           ? config.radius
-                                          : value,
-                                      }));
-                                    }}
-                                    className={INSPECTOR_INPUT_CLASS}
-                                  />
-                                </label>
+                                          : Math.max(0, Math.round(next)),
+                                    }));
+                                  }}
+                                />
                                 <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
                                   <input
                                     type="checkbox"
@@ -4464,29 +4555,26 @@ export default function SlideModal({
                                       </label>
                                     </div>
                                   )}
-                                  <label className="block">
-                                    <span className="text-xs font-medium text-neutral-500">
-                                      Corner radius (px)
-                                    </span>
-                                    <input
-                                      type="number"
-                                      min={0}
-                                      value={selectedGalleryConfig.radius}
-                                      onChange={(e) => {
-                                        const value = Number(e.target.value);
-                                        updateGalleryConfig(
-                                          selectedBlock.id,
-                                          (config) => ({
-                                            ...config,
-                                            radius: Number.isNaN(value)
+                                  <InspectorSliderControl
+                                    label="Corner radius (px)"
+                                    value={selectedGalleryConfig.radius}
+                                    fallbackValue={selectedGalleryConfig.radius}
+                                    min={0}
+                                    max={100}
+                                    step={1}
+                                    onChange={(next) => {
+                                      updateGalleryConfig(
+                                        selectedBlock.id,
+                                        (config) => ({
+                                          ...config,
+                                          radius:
+                                            next === undefined || Number.isNaN(next)
                                               ? config.radius
-                                              : value,
-                                          }),
-                                        );
-                                      }}
-                                      className={INSPECTOR_INPUT_CLASS}
-                                    />
-                                  </label>
+                                              : Math.max(0, Math.round(next)),
+                                        }),
+                                      );
+                                    }}
+                                  />
                                   <label className="flex items-center justify-between text-xs text-neutral-500">
                                     <span>Shadow</span>
                                     <input
@@ -4659,70 +4747,56 @@ export default function SlideModal({
                                   </select>
                                 </label>
                               </div>
-                              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Font size (px)
-                                  </span>
-                                  <input
-                                    type="number"
-                                    min={1}
-                                    value={
-                                      selectedBlock.fontSize ??
-                                      (selectedQuoteConfig.style === "emphasis" ? 24 : 16)
-                                    }
-                                    onChange={(e) => {
-                                      const value = e.target.value;
-                                      if (value === "") {
-                                        patchBlock(selectedBlock.id, {
-                                          fontSize: undefined,
-                                        });
-                                        return;
-                                      }
-                                      const parsed = Number(value);
+                              <div className="space-y-3">
+                                <InspectorSliderControl
+                                  label="Font size (px)"
+                                  value={selectedBlock.fontSize}
+                                  fallbackValue={
+                                    selectedBlock.fontSize ??
+                                    (selectedQuoteConfig.style === "emphasis" ? 24 : 16)
+                                  }
+                                  min={8}
+                                  max={96}
+                                  step={1}
+                                  onChange={(next) => {
+                                    if (next === undefined) {
                                       patchBlock(selectedBlock.id, {
-                                        fontSize: Number.isNaN(parsed)
-                                          ? undefined
-                                          : parsed,
+                                        fontSize: undefined,
                                       });
-                                    }}
-                                    className={INSPECTOR_INPUT_CLASS}
-                                  />
-                                </label>
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Line height
-                                  </span>
-                                  <input
-                                    type="number"
-                                    step={0.05}
-                                    min={0}
-                                    value={
-                                      selectedBlock.lineHeight !== undefined
-                                        ? selectedBlock.lineHeight
-                                        : ""
+                                      return;
                                     }
-                                    placeholder="1.4"
-                                    onChange={(e) => {
-                                      const value = e.target.value;
-                                      if (value === "") {
-                                        patchBlock(selectedBlock.id, {
-                                          lineHeight: undefined,
-                                          lineHeightUnit: undefined,
-                                        });
-                                        return;
-                                      }
-                                      const parsed = Number(value);
+                                    const normalized = Math.round(next);
+                                    patchBlock(selectedBlock.id, {
+                                      fontSize: Number.isNaN(normalized)
+                                        ? undefined
+                                        : normalized,
+                                    });
+                                  }}
+                                />
+                                <InspectorSliderControl
+                                  label="Line height"
+                                  value={selectedBlock.lineHeight}
+                                  fallbackValue={1.4}
+                                  min={0.8}
+                                  max={3}
+                                  step={0.01}
+                                  onChange={(next) => {
+                                    if (next === undefined) {
                                       patchBlock(selectedBlock.id, {
-                                        lineHeight: Number.isNaN(parsed) ? undefined : parsed,
-                                        lineHeightUnit: Number.isNaN(parsed)
-                                          ? selectedBlock.lineHeightUnit
-                                          : undefined,
+                                        lineHeight: undefined,
+                                        lineHeightUnit: undefined,
                                       });
-                                    }}
-                                    className={INSPECTOR_INPUT_CLASS}
-                                  />
-                                </label>
+                                      return;
+                                    }
+                                    patchBlock(selectedBlock.id, {
+                                      lineHeight: next,
+                                      lineHeightUnit: undefined,
+                                    });
+                                  }}
+                                  formatValue={(current) =>
+                                    current !== undefined ? `${current}` : ""
+                                  }
+                                />
                               </div>
                               <label className="block">
                                 <span className="text-xs font-medium text-neutral-500">
@@ -4760,63 +4834,60 @@ export default function SlideModal({
                                       }
                                     />
                                   </label>
-                                  <label className="block text-xs font-medium text-neutral-500">
-                                    Background opacity
-                                    <div className="mt-1 flex items-center gap-2">
-                                      <input
-                                        type="range"
-                                        min={0}
-                                        max={1}
-                                        step={0.05}
-                                        value={selectedQuoteConfig.bgOpacity}
-                                        onChange={(e) => {
-                                          const value = Number(e.target.value);
-                                          updateQuoteConfig(selectedBlock.id, (config) => ({
-                                            ...config,
-                                            bgOpacity: Number.isNaN(value)
-                                              ? config.bgOpacity
-                                              : value,
-                                          }));
-                                        }}
-                                        className="flex-1"
-                                      />
-                                      <span className="w-12 text-right text-xs text-neutral-500">
-                                        {selectedQuoteConfig.bgOpacity.toFixed(2)}
-                                      </span>
-                                    </div>
-                                  </label>
-                                  <label className="block text-xs font-medium text-neutral-500">
-                                    Corner radius (px)
-                                    <input
-                                      type="number"
-                                      min={0}
-                                      value={selectedQuoteConfig.radius}
-                                      onChange={(e) => {
-                                        const value = Number(e.target.value);
-                                        updateQuoteConfig(selectedBlock.id, (config) => ({
-                                          ...config,
-                                          radius: Number.isNaN(value) ? config.radius : value,
-                                        }));
-                                      }}
-                                      className={INSPECTOR_INPUT_CLASS}
-                                    />
-                                  </label>
-                                  <label className="block text-xs font-medium text-neutral-500">
-                                    Padding (px)
-                                    <input
-                                      type="number"
-                                      min={0}
-                                      value={selectedQuoteConfig.padding}
-                                      onChange={(e) => {
-                                        const value = Number(e.target.value);
-                                        updateQuoteConfig(selectedBlock.id, (config) => ({
-                                          ...config,
-                                          padding: Number.isNaN(value) ? config.padding : value,
-                                        }));
-                                      }}
-                                      className={INSPECTOR_INPUT_CLASS}
-                                    />
-                                  </label>
+                                  <InspectorSliderControl
+                                    label="Background opacity"
+                                    value={selectedQuoteConfig.bgOpacity}
+                                    fallbackValue={selectedQuoteConfig.bgOpacity}
+                                    min={0}
+                                    max={1}
+                                    step={0.01}
+                                    onChange={(next) => {
+                                      const resolved =
+                                        next === undefined || Number.isNaN(next)
+                                          ? selectedQuoteConfig.bgOpacity
+                                          : clamp01(next);
+                                      updateQuoteConfig(selectedBlock.id, (config) => ({
+                                        ...config,
+                                        bgOpacity: resolved,
+                                      }));
+                                    }}
+                                  />
+                                  <InspectorSliderControl
+                                    label="Corner radius (px)"
+                                    value={selectedQuoteConfig.radius}
+                                    fallbackValue={selectedQuoteConfig.radius}
+                                    min={0}
+                                    max={100}
+                                    step={1}
+                                    onChange={(next) => {
+                                      const resolved =
+                                        next === undefined || Number.isNaN(next)
+                                          ? selectedQuoteConfig.radius
+                                          : Math.round(next);
+                                      updateQuoteConfig(selectedBlock.id, (config) => ({
+                                        ...config,
+                                        radius: resolved,
+                                      }));
+                                    }}
+                                  />
+                                  <InspectorSliderControl
+                                    label="Padding (px)"
+                                    value={selectedQuoteConfig.padding}
+                                    fallbackValue={selectedQuoteConfig.padding}
+                                    min={0}
+                                    max={100}
+                                    step={1}
+                                    onChange={(next) => {
+                                      const resolved =
+                                        next === undefined || Number.isNaN(next)
+                                          ? selectedQuoteConfig.padding
+                                          : Math.round(next);
+                                      updateQuoteConfig(selectedBlock.id, (config) => ({
+                                        ...config,
+                                        padding: resolved,
+                                      }));
+                                    }}
+                                  />
                                 </div>
                               )}
                               <div>
@@ -4950,34 +5021,31 @@ export default function SlideModal({
                                   className={INSPECTOR_INPUT_CLASS}
                                 />
                               </label>
-                              <label className="block">
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Border radius (px)
-                                </span>
-                                <input
-                                  type="number"
-                                  min={0}
-                                  value={
-                                    selectedBlock.borderRadius !== undefined
-                                      ? selectedBlock.borderRadius
-                                      : ""
+                              <InspectorSliderControl
+                                label="Border radius (px)"
+                                value={selectedBlock.borderRadius}
+                                fallbackValue={selectedBlock.borderRadius ?? 0}
+                                min={0}
+                                max={100}
+                                step={1}
+                                onChange={(next) => {
+                                  if (next === undefined) {
+                                    patchBlock(selectedBlock.id, { borderRadius: undefined });
+                                    return;
                                   }
-                                  onChange={(e) => {
-                                    const value = e.target.value;
-                                    if (value === "") {
-                                      patchBlock(selectedBlock.id, { borderRadius: undefined });
-                                      return;
-                                    }
-                                    const parsed = Number(value);
-                                    patchBlock(selectedBlock.id, {
-                                      borderRadius: Number.isNaN(parsed)
-                                        ? selectedBlock.borderRadius
-                                        : Math.max(0, parsed),
-                                    });
-                                  }}
-                                  className={INSPECTOR_INPUT_CLASS}
-                                />
-                              </label>
+                                  const resolved = Math.max(0, Math.round(next));
+                                  patchBlock(selectedBlock.id, {
+                                    borderRadius: resolved,
+                                  });
+                                }}
+                                formatValue={(current, fallback) =>
+                                  current !== undefined
+                                    ? `${current}`
+                                    : fallback !== undefined
+                                      ? ""
+                                      : ""
+                                }
+                              />
                             </div>
                             <div className="space-y-3">
                               <label className="block">
