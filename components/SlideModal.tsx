@@ -27,6 +27,8 @@ import SlidesManager, {
   type QuoteBlockConfig,
   type BlockHoverTransition,
   type BlockTransitionConfig,
+  DEFAULT_BLOCK_VISIBILITY,
+  type BlockVisibilityConfig,
   type DeviceKind,
   type Frame,
   type SlideBackground,
@@ -37,6 +39,7 @@ import SlidesManager, {
   resolveImageConfig,
   resolveGalleryConfig,
   resolveQuoteConfig,
+  resolveBlockVisibility,
   resolveBlockAnimationConfig,
   resolveBlockTransitionConfig,
   DEFAULT_BLOCK_ANIMATION_CONFIG,
@@ -47,6 +50,7 @@ import { supabase } from "@/utils/supabaseClient";
 import { STORAGE_BUCKET } from "@/lib/storage";
 import { SlideRow } from "@/components/customer/home/SlidesContainer";
 import { LockClosedIcon } from "@heroicons/react/24/solid";
+import { ChevronDown, ChevronUp, Trash2 } from "lucide-react";
 
 const ROUTE_OPTIONS = ["/menu", "/orders", "/more"];
 
@@ -159,6 +163,30 @@ const QUOTE_STYLE_OPTIONS: { value: QuoteBlockConfig["style"]; label: string }[]
   { value: "emphasis", label: "Emphasis" },
   { value: "card", label: "Card" },
 ];
+
+type ReviewOption = {
+  id: string;
+  author: string;
+  text: string;
+};
+
+const DEFAULT_REVIEW_OPTIONS: ReviewOption[] = [
+  { id: "mock-1", author: "Jasmine", text: "🔥 The best burger I've had in years!" },
+  { id: "mock-2", author: "Luke", text: "Quick delivery and amazing fries." },
+  { id: "mock-3", author: "Aminah", text: "So good I came back the next day." },
+  { id: "mock-4", author: "Ben", text: "Perfect hangover cure!" },
+];
+
+const DEVICE_VISIBILITY_CONTROLS: { key: keyof BlockVisibilityConfig; label: string }[] = [
+  { key: "mobile", label: "Show on Mobile" },
+  { key: "tablet", label: "Show on Tablet" },
+  { key: "desktop", label: "Show on Desktop" },
+];
+
+const formatReviewOptionLabel = (option: ReviewOption) => {
+  const snippet = option.text.length > 60 ? `${option.text.slice(0, 57)}…` : option.text;
+  return `${option.author} — ${snippet}`;
+};
 
 const SIZE_TO_FONT_SIZE_PX: Record<NonNullable<SlideBlock["size"]>, number> = {
   sm: 18,
@@ -749,6 +777,8 @@ function mergeInteractionConfig(
 ): Record<string, any> {
   const base = { ...(candidate ?? {}) };
   const syntheticBlock: SlideBlock = { ...block, config: base };
+  const visibility = resolveBlockVisibility(syntheticBlock);
+  base.visibleOn = { ...visibility } satisfies BlockVisibilityConfig;
   const animation = resolveBlockAnimationConfig(syntheticBlock);
   const transition = resolveBlockTransitionConfig(syntheticBlock);
   base.animation = {
@@ -1132,6 +1162,7 @@ export default function SlideModal({
   const videoPosterInputRef = useRef<HTMLInputElement | null>(null);
   const isManipulatingRef = useRef(false);
   const selectedIdRef = useRef<string | null>(null);
+  const reviewOptions = DEFAULT_REVIEW_OPTIONS;
 
   useEffect(() => {
     setCfg(normalizeConfig(initialCfg ?? {}, slide));
@@ -1574,6 +1605,35 @@ export default function SlideModal({
     );
   };
 
+  const updateVisibilityConfig = (
+    id: string,
+    mutator: (prev: BlockVisibilityConfig) => BlockVisibilityConfig,
+    commit = true,
+  ) => {
+    updateCfg(
+      (prev) => ({
+        ...prev,
+        blocks: prev.blocks.map((b) => {
+          if (b.id !== id) return b;
+          const current = resolveBlockVisibility(b);
+          const next = mutator({ ...current });
+          const normalized: BlockVisibilityConfig = {
+            mobile: next.mobile,
+            tablet: next.tablet,
+            desktop: next.desktop,
+          };
+          const previous = extractConfig(b.config);
+          const candidate = { ...previous, visibleOn: normalized };
+          return {
+            ...b,
+            config: mergeInteractionConfig({ ...b, config: candidate }, candidate),
+          };
+        }),
+      }),
+      commit,
+    );
+  };
+
   const updateFrameField = (id: string, field: keyof Frame, value: number) => {
     updateCfg((prev) => ({
       ...prev,
@@ -1819,6 +1879,13 @@ export default function SlideModal({
         : null,
     [selectedBlock],
   );
+
+  const selectedVisibilityConfig = useMemo(() => {
+    if (!selectedBlock) {
+      return { ...DEFAULT_BLOCK_VISIBILITY };
+    }
+    return resolveBlockVisibility(selectedBlock);
+  }, [selectedBlock]);
 
   const selectedAnimationConfig = useMemo(
     () =>
@@ -2075,39 +2142,68 @@ export default function SlideModal({
                       Layers
                     </h3>
                     <div className="space-y-1">
-                      {cfg.blocks.map((block, index) => (
-                        <div
-                          key={block.id}
-                          className={`flex h-10 items-center gap-2 rounded border px-2 text-xs transition ${
-                            block.id === selectedId
-                              ? "border-emerald-500 bg-emerald-50"
-                              : "border-neutral-200"
-                          }`}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => handleLayerSelect(block.id)}
-                            className="flex h-full flex-1 items-center gap-2 overflow-hidden text-left"
+                      {cfg.blocks.map((block, index) => {
+                        const isSelected = block.id === selectedId;
+                        const isFirst = index === 0;
+                        const isLast = index === cfg.blocks.length - 1;
+                        return (
+                          <div
+                            key={block.id}
+                            className={`flex h-10 items-center gap-2 rounded border px-2 text-xs transition ${
+                              isSelected
+                                ? "border-emerald-500 bg-emerald-50"
+                                : "border-neutral-200"
+                            }`}
                           >
-                            <span className="flex items-center gap-1 truncate capitalize">
-                              {block.locked && (
-                                <LockClosedIcon className="h-3.5 w-3.5 flex-none text-neutral-500" />
-                              )}
-                              <span className="truncate">{block.kind}</span>
-                            </span>
-                            <span className="ml-auto text-[11px] text-neutral-500">
-                              #{index + 1}
-                            </span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => removeBlock(block.id)}
-                            className="rounded border px-2 py-1 text-[11px] text-red-600"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      ))}
+                            <button
+                              type="button"
+                              onClick={() => handleLayerSelect(block.id)}
+                              className="flex h-full flex-1 items-center gap-2 overflow-hidden text-left"
+                            >
+                              <span className="flex items-center gap-1 truncate capitalize">
+                                {block.locked && (
+                                  <LockClosedIcon className="h-3.5 w-3.5 flex-none text-neutral-500" />
+                                )}
+                                <span className="truncate">{block.kind}</span>
+                              </span>
+                              <span className="ml-auto text-[11px] text-neutral-500">
+                                #{index + 1}
+                              </span>
+                            </button>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => moveBlock(block.id, 1)}
+                                disabled={isLast}
+                                aria-label="Bring block forward"
+                                title="Bring block forward"
+                                className="flex h-7 w-7 items-center justify-center rounded border border-transparent text-neutral-500 transition hover:border-neutral-300 hover:text-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                <ChevronUp className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => moveBlock(block.id, -1)}
+                                disabled={isFirst}
+                                aria-label="Send block backward"
+                                title="Send block backward"
+                                className="flex h-7 w-7 items-center justify-center rounded border border-transparent text-neutral-500 transition hover:border-neutral-300 hover:text-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                <ChevronDown className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => removeBlock(block.id)}
+                                aria-label="Delete block"
+                                title="Delete block"
+                                className="flex h-7 w-7 items-center justify-center rounded border border-transparent text-neutral-500 transition hover:border-red-200 hover:text-red-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </section>
                   <section>
@@ -4262,6 +4358,59 @@ export default function SlideModal({
                             )}
                           {selectedBlock.kind === "quote" && selectedQuoteConfig && (
                             <div className="space-y-4">
+                              <div className="space-y-2">
+                                <label className="flex items-center justify-between text-xs text-neutral-500">
+                                  <span>Use customer review</span>
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedQuoteConfig.useReview}
+                                    onChange={(e) =>
+                                      updateQuoteConfig(selectedBlock.id, (config) => ({
+                                        ...config,
+                                        useReview: e.target.checked,
+                                        reviewId: e.target.checked ? config.reviewId : null,
+                                      }))
+                                    }
+                                  />
+                                </label>
+                                {selectedQuoteConfig.useReview && (
+                                  reviewOptions.length > 0 ? (
+                                    <label className="block">
+                                      <span className="text-xs font-medium text-neutral-500">
+                                        Select review
+                                      </span>
+                                      <select
+                                        value={selectedQuoteConfig.reviewId ?? ""}
+                                        onChange={(e) => {
+                                          const nextId = e.target.value;
+                                          const review = reviewOptions.find(
+                                            (option) => option.id === nextId,
+                                          );
+                                          updateQuoteConfig(selectedBlock.id, (config) => ({
+                                            ...config,
+                                            useReview: true,
+                                            reviewId: nextId.length > 0 ? nextId : null,
+                                            text: review ? review.text : config.text,
+                                            author: review ? review.author : config.author,
+                                          }));
+                                        }}
+                                        className={INSPECTOR_INPUT_CLASS}
+                                      >
+                                        <option value="">Choose a review…</option>
+                                        {reviewOptions.map((option) => (
+                                          <option key={option.id} value={option.id}>
+                                            {formatReviewOptionLabel(option)}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </label>
+                                  ) : (
+                                    <p className="text-xs text-neutral-500">
+                                      No reviews available.
+                                    </p>
+                                  )
+                                )}
+                              </div>
                               <label className="block">
                                 <span className="text-xs font-medium text-neutral-500">
                                   Quote text
@@ -4534,6 +4683,29 @@ export default function SlideModal({
                               </div>
                             </div>
                           )}
+                          <div className="rounded border px-3 py-3 space-y-3">
+                            <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                              Visibility
+                            </h4>
+                            {DEVICE_VISIBILITY_CONTROLS.map(({ key, label }) => (
+                              <label
+                                key={key}
+                                className="flex items-center justify-between text-xs text-neutral-500"
+                              >
+                                <span>{label}</span>
+                                <input
+                                  type="checkbox"
+                                  checked={selectedVisibilityConfig[key]}
+                                  onChange={(e) =>
+                                    updateVisibilityConfig(selectedBlock.id, (config) => ({
+                                      ...config,
+                                      [key]: e.target.checked,
+                                    }))
+                                  }
+                                />
+                              </label>
+                            ))}
+                          </div>
                           <div className="rounded border px-3 py-3 space-y-3">
                             <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
                               Appearance

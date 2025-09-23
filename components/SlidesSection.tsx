@@ -9,6 +9,8 @@ import {
   type BlockBackground,
   type BlockBackgroundGradientDirection,
   type BlockShadowPreset,
+  resolveQuoteConfig,
+  resolveBlockVisibility,
 } from './SlidesManager';
 import type { SlideRow } from '@/components/customer/home/SlidesContainer';
 
@@ -103,12 +105,24 @@ function renderBlock(block: SlideBlock) {
         />
       );
     case 'quote':
-      return (
-        <blockquote className="text-white">
-          <p className="text-lg italic">“{block.text}”</p>
-          {block.author && <cite className="mt-2 block text-sm">— {block.author}</cite>}
-        </blockquote>
-      );
+      {
+        const quote = resolveQuoteConfig(block);
+        const trimmedAuthor = quote.author.trim();
+        const showReviewRating = quote.useReview && Boolean(quote.reviewId);
+        return (
+          <blockquote className="text-white" style={{ textAlign: quote.align }}>
+            <p className="text-lg italic">“{quote.text}”</p>
+            {trimmedAuthor.length > 0 ? (
+              <cite className="mt-2 block text-sm">— {trimmedAuthor}</cite>
+            ) : null}
+            {showReviewRating ? (
+              <p className={`text-base opacity-90 ${trimmedAuthor.length > 0 ? 'mt-1' : 'mt-3'}`} aria-label="Five star review">
+                {'⭐️⭐️⭐️⭐️⭐️'}
+              </p>
+            ) : null}
+          </blockquote>
+        );
+      }
     case 'gallery':
       return (
         <div className="flex h-full w-full gap-2 overflow-hidden rounded-xl">
@@ -285,6 +299,10 @@ export default function SlidesSection({ slide, cfg }: { slide: SlideRow; cfg: Sl
         <Background cfg={cfg} />
         <div className="relative h-full w-full" style={{ pointerEvents: 'none' }}>
           {blocks.map((block) => {
+            const visibility = resolveBlockVisibility(block);
+            if (!visibility[device]) {
+              return null;
+            }
             const frame = pickFrame(block, device);
             const style: CSSProperties = {
               position: 'absolute',
