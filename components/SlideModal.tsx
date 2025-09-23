@@ -44,6 +44,9 @@ import SlidesManager, {
   resolveBlockTransitionConfig,
   DEFAULT_BLOCK_ANIMATION_CONFIG,
   DEFAULT_BLOCK_TRANSITION_CONFIG,
+  FONT_FAMILY_SELECT_OPTIONS,
+  DEFAULT_TEXT_FONT_FAMILY,
+  normalizeFontFamily,
 } from "./SlidesManager";
 import Button from "@/components/ui/Button";
 import { supabase } from "@/utils/supabaseClient";
@@ -65,6 +68,17 @@ const DEFAULT_FRAMES: Record<SlideBlock["kind"], Frame> = {
   spacer: { x: 0, y: 0, w: 10, h: 10, r: 0 },
 };
 
+const FONT_ENABLED_BLOCK_KINDS: SlideBlock["kind"][] = [
+  "heading",
+  "subheading",
+  "text",
+  "quote",
+  "button",
+];
+
+const isFontEnabledBlock = (kind: SlideBlock["kind"]): boolean =>
+  FONT_ENABLED_BLOCK_KINDS.includes(kind);
+
 const TEXT_SIZES: { value: NonNullable<SlideBlock["size"]>; label: string }[] =
   [
     { value: "sm", label: "Small" },
@@ -72,13 +86,6 @@ const TEXT_SIZES: { value: NonNullable<SlideBlock["size"]>; label: string }[] =
     { value: "lg", label: "Large" },
     { value: "xl", label: "Extra large" },
   ];
-
-const FONT_FAMILY_OPTIONS: { value: NonNullable<SlideBlock["fontFamily"]>; label: string }[] = [
-  { value: "default", label: "Default (inherit)" },
-  { value: "sans", label: "Sans Serif" },
-  { value: "serif", label: "Serif" },
-  { value: "mono", label: "Monospace" },
-];
 
 const FONT_WEIGHT_OPTIONS: { value: number; label: string }[] = [
   { value: 400, label: "Normal (400)" },
@@ -771,6 +778,19 @@ function extractConfig(config: SlideBlock["config"]): Record<string, any> {
   return {};
 }
 
+function applyFontFamilyToConfig(
+  config: Record<string, any>,
+  fontFamily: SlideBlock["fontFamily"] | undefined,
+): Record<string, any> {
+  const next = { ...config };
+  if (typeof fontFamily === "string" && fontFamily.length > 0) {
+    next.fontFamily = fontFamily;
+  } else {
+    delete next.fontFamily;
+  }
+  return next;
+}
+
 function mergeInteractionConfig(
   block: SlideBlock,
   candidate?: Record<string, any>,
@@ -913,16 +933,21 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
     block.text = content;
   }
 
-  if (kind === "heading" || kind === "subheading" || kind === "text") {
-    const fontFamilyValue =
-      typeof raw.fontFamily === "string"
-        ? (raw.fontFamily.toLowerCase() as SlideBlock["fontFamily"])
-        : block.fontFamily;
+  if (isFontEnabledBlock(kind)) {
+    const configFontFamily =
+      block.config && typeof block.config === "object"
+        ? normalizeFontFamily((block.config as Record<string, any>).fontFamily)
+        : undefined;
+    const rawFontFamily = normalizeFontFamily((raw as Record<string, any>).fontFamily);
+    const currentFontFamily = normalizeFontFamily(block.fontFamily);
     block.fontFamily =
-      fontFamilyValue &&
-      FONT_FAMILY_OPTIONS.some((opt) => opt.value === fontFamilyValue)
-        ? fontFamilyValue
-        : "default";
+      configFontFamily ??
+      rawFontFamily ??
+      currentFontFamily ??
+      DEFAULT_TEXT_FONT_FAMILY;
+  }
+
+  if (kind === "heading" || kind === "subheading" || kind === "text") {
     const fallbackWeight =
       kind === "heading" ? 700 : kind === "subheading" ? 600 : 400;
     block.fontWeight =
@@ -1048,7 +1073,11 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
     raw.background ?? raw.blockBackground ?? raw.backgroundFill ?? block.background;
   block.background = normalizeBlockBackground(backgroundSource);
 
-  block.config = mergeInteractionConfig(block, extractConfig(block.config));
+  const baseConfig = extractConfig(block.config);
+  const configWithFont = isFontEnabledBlock(kind)
+    ? applyFontFamilyToConfig(baseConfig, block.fontFamily)
+    : baseConfig;
+  block.config = mergeInteractionConfig(block, configWithFont);
 
   return block;
 }
@@ -1115,10 +1144,28 @@ function normalizeConfig(raw: any, slide: SlideRow): SlideCfg {
         ];
   }
 
-  cfg.blocks = cfg.blocks.map((block) => ({
-    ...block,
-    config: mergeInteractionConfig(block, extractConfig(block.config)),
-  }));
+  cfg.blocks = cfg.blocks.map((block) => {
+    const baseConfig = extractConfig(block.config);
+    if (isFontEnabledBlock(block.kind)) {
+      const normalizedFont =
+        normalizeFontFamily(block.fontFamily) ??
+        normalizeFontFamily(baseConfig.fontFamily) ??
+        DEFAULT_TEXT_FONT_FAMILY;
+      const configWithFont = applyFontFamilyToConfig(baseConfig, normalizedFont);
+      const nextBlock: SlideBlock = {
+        ...block,
+        fontFamily: normalizedFont,
+      };
+      return {
+        ...nextBlock,
+        config: mergeInteractionConfig(nextBlock, configWithFont),
+      };
+    }
+    return {
+      ...block,
+      config: mergeInteractionConfig(block, baseConfig),
+    };
+  });
 
   return cfg;
 }
@@ -1340,7 +1387,7 @@ export default function SlideModal({
     if (kind === "heading" || kind === "subheading" || kind === "text") {
       const initialContent = block.text ?? "";
       block.content = initialContent;
-      block.fontFamily = "default";
+      block.fontFamily = DEFAULT_TEXT_FONT_FAMILY;
       block.fontWeight =
         kind === "heading" ? 700 : kind === "subheading" ? 600 : 400;
       block.fontSize = block.size
@@ -1363,7 +1410,14 @@ export default function SlideModal({
         block.padding = 0;
       }
     }
-    block.config = mergeInteractionConfig(block, extractConfig(block.config));
+    let baseConfig = extractConfig(block.config);
+    if (isFontEnabledBlock(kind)) {
+      const normalizedFont =
+        normalizeFontFamily(block.fontFamily) ?? DEFAULT_TEXT_FONT_FAMILY;
+      block.fontFamily = normalizedFont;
+      baseConfig = applyFontFamilyToConfig(baseConfig, normalizedFont);
+    }
+    block.config = mergeInteractionConfig(block, baseConfig);
     updateCfg((prev) => ({ ...prev, blocks: [...prev.blocks, block] }));
     handleSelectBlock(id);
   };
@@ -1399,10 +1453,43 @@ export default function SlideModal({
     updateCfg(
       (prev) => ({
         ...prev,
-        blocks: prev.blocks.map((b) => (b.id === id ? { ...b, ...patch } : b)),
+        blocks: prev.blocks.map((b) => {
+          if (b.id !== id) return b;
+          let nextBlock: SlideBlock = { ...b, ...patch };
+          if ("fontFamily" in patch && isFontEnabledBlock(b.kind)) {
+            const normalizedFont =
+              normalizeFontFamily(nextBlock.fontFamily) ?? DEFAULT_TEXT_FONT_FAMILY;
+            nextBlock = { ...nextBlock, fontFamily: normalizedFont };
+            const previous = extractConfig(b.config);
+            const nextConfig = applyFontFamilyToConfig(previous, normalizedFont);
+            return {
+              ...nextBlock,
+              config: mergeInteractionConfig(nextBlock, nextConfig),
+            };
+          }
+          return nextBlock;
+        }),
       }),
       commit,
     );
+  };
+
+  const resolveFontFamilyValue = (
+    value?: SlideBlock["fontFamily"],
+  ): SlideBlock["fontFamily"] => {
+    const normalized = normalizeFontFamily(value);
+    if (!normalized) {
+      return DEFAULT_TEXT_FONT_FAMILY;
+    }
+    const match = FONT_FAMILY_SELECT_OPTIONS.find(
+      (option) => option.value === normalized,
+    );
+    return match ? match.value : DEFAULT_TEXT_FONT_FAMILY;
+  };
+
+  const handleFontFamilyChange = (blockId: string, rawValue: string) => {
+    const normalized = normalizeFontFamily(rawValue) ?? DEFAULT_TEXT_FONT_FAMILY;
+    patchBlock(blockId, { fontFamily: normalized });
   };
 
   const updateButtonConfig = (
@@ -2956,21 +3043,39 @@ export default function SlideModal({
                                   <span className="text-xs font-medium text-neutral-500">
                                     Font family
                                   </span>
-                                  <select
-                                    value={selectedBlock.fontFamily ?? "default"}
-                                    onChange={(e) =>
-                                      patchBlock(selectedBlock.id, {
-                                        fontFamily: e.target.value as SlideBlock["fontFamily"],
-                                      })
-                                    }
-                                    className={INSPECTOR_INPUT_CLASS}
-                                  >
-                                    {FONT_FAMILY_OPTIONS.map((opt) => (
-                                      <option key={opt.value} value={opt.value}>
-                                        {opt.label}
-                                      </option>
-                                    ))}
-                                  </select>
+                                  {(() => {
+                                    const value = resolveFontFamilyValue(
+                                      selectedBlock.fontFamily,
+                                    );
+                                    const option = FONT_FAMILY_SELECT_OPTIONS.find(
+                                      (item) => item.value === value,
+                                    );
+                                    return (
+                                      <select
+                                        value={value}
+                                        onChange={(e) =>
+                                          handleFontFamilyChange(
+                                            selectedBlock.id,
+                                            e.target.value,
+                                          )
+                                        }
+                                        className={INSPECTOR_INPUT_CLASS}
+                                        style={{
+                                          fontFamily: option?.previewStack,
+                                        }}
+                                      >
+                                        {FONT_FAMILY_SELECT_OPTIONS.map((opt) => (
+                                          <option
+                                            key={opt.value}
+                                            value={opt.value}
+                                            style={{ fontFamily: opt.previewStack }}
+                                          >
+                                            {opt.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    );
+                                  })()}
                                 </label>
                                 <label className="block">
                                   <span className="text-xs font-medium text-neutral-500">
@@ -3373,21 +3478,39 @@ export default function SlideModal({
                                   <span className="text-xs font-medium text-neutral-500">
                                     Font family
                                   </span>
-                                  <select
-                                    value={selectedBlock.fontFamily ?? "default"}
-                                    onChange={(e) =>
-                                      patchBlock(selectedBlock.id, {
-                                        fontFamily: e.target.value as SlideBlock["fontFamily"],
-                                      })
-                                    }
-                                    className={INSPECTOR_INPUT_CLASS}
-                                  >
-                                    {FONT_FAMILY_OPTIONS.map((opt) => (
-                                      <option key={opt.value} value={opt.value}>
-                                        {opt.label}
-                                      </option>
-                                    ))}
-                                  </select>
+                                  {(() => {
+                                    const value = resolveFontFamilyValue(
+                                      selectedBlock.fontFamily,
+                                    );
+                                    const option = FONT_FAMILY_SELECT_OPTIONS.find(
+                                      (item) => item.value === value,
+                                    );
+                                    return (
+                                      <select
+                                        value={value}
+                                        onChange={(e) =>
+                                          handleFontFamilyChange(
+                                            selectedBlock.id,
+                                            e.target.value,
+                                          )
+                                        }
+                                        className={INSPECTOR_INPUT_CLASS}
+                                        style={{
+                                          fontFamily: option?.previewStack,
+                                        }}
+                                      >
+                                        {FONT_FAMILY_SELECT_OPTIONS.map((opt) => (
+                                          <option
+                                            key={opt.value}
+                                            value={opt.value}
+                                            style={{ fontFamily: opt.previewStack }}
+                                          >
+                                            {opt.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    );
+                                  })()}
                                 </label>
                                 <label className="block">
                                   <span className="text-xs font-medium text-neutral-500">
@@ -3569,21 +3692,39 @@ export default function SlideModal({
                                   <span className="text-xs font-medium text-neutral-500">
                                     Font family
                                   </span>
-                                  <select
-                                    value={selectedBlock.fontFamily ?? "default"}
-                                    onChange={(e) =>
-                                      patchBlock(selectedBlock.id, {
-                                        fontFamily: e.target.value as SlideBlock["fontFamily"],
-                                      })
-                                    }
-                                    className={INSPECTOR_INPUT_CLASS}
-                                  >
-                                    {FONT_FAMILY_OPTIONS.map((opt) => (
-                                      <option key={opt.value} value={opt.value}>
-                                        {opt.label}
-                                      </option>
-                                    ))}
-                                  </select>
+                                  {(() => {
+                                    const value = resolveFontFamilyValue(
+                                      selectedBlock.fontFamily,
+                                    );
+                                    const option = FONT_FAMILY_SELECT_OPTIONS.find(
+                                      (item) => item.value === value,
+                                    );
+                                    return (
+                                      <select
+                                        value={value}
+                                        onChange={(e) =>
+                                          handleFontFamilyChange(
+                                            selectedBlock.id,
+                                            e.target.value,
+                                          )
+                                        }
+                                        className={INSPECTOR_INPUT_CLASS}
+                                        style={{
+                                          fontFamily: option?.previewStack,
+                                        }}
+                                      >
+                                        {FONT_FAMILY_SELECT_OPTIONS.map((opt) => (
+                                          <option
+                                            key={opt.value}
+                                            value={opt.value}
+                                            style={{ fontFamily: opt.previewStack }}
+                                          >
+                                            {opt.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    );
+                                  })()}
                                 </label>
                                 <label className="block">
                                   <span className="text-xs font-medium text-neutral-500">
@@ -4457,21 +4598,39 @@ export default function SlideModal({
                                   <span className="text-xs font-medium text-neutral-500">
                                     Font family
                                   </span>
-                                  <select
-                                    value={selectedBlock.fontFamily ?? "default"}
-                                    onChange={(e) =>
-                                      patchBlock(selectedBlock.id, {
-                                        fontFamily: e.target.value as SlideBlock["fontFamily"],
-                                      })
-                                    }
-                                    className={INSPECTOR_INPUT_CLASS}
-                                  >
-                                    {FONT_FAMILY_OPTIONS.map((opt) => (
-                                      <option key={opt.value} value={opt.value}>
-                                        {opt.label}
-                                      </option>
-                                    ))}
-                                  </select>
+                                  {(() => {
+                                    const value = resolveFontFamilyValue(
+                                      selectedBlock.fontFamily,
+                                    );
+                                    const option = FONT_FAMILY_SELECT_OPTIONS.find(
+                                      (item) => item.value === value,
+                                    );
+                                    return (
+                                      <select
+                                        value={value}
+                                        onChange={(e) =>
+                                          handleFontFamilyChange(
+                                            selectedBlock.id,
+                                            e.target.value,
+                                          )
+                                        }
+                                        className={INSPECTOR_INPUT_CLASS}
+                                        style={{
+                                          fontFamily: option?.previewStack,
+                                        }}
+                                      >
+                                        {FONT_FAMILY_SELECT_OPTIONS.map((opt) => (
+                                          <option
+                                            key={opt.value}
+                                            value={opt.value}
+                                            style={{ fontFamily: opt.previewStack }}
+                                          >
+                                            {opt.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    );
+                                  })()}
                                 </label>
                                 <label className="block">
                                   <span className="text-xs font-medium text-neutral-500">
