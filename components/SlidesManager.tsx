@@ -36,6 +36,8 @@ const TEXTUAL_BLOCK_KIND_NAMES = new Set([
   'button',
 ] as const);
 
+export const DEFAULT_TEXT_PLACEHOLDER = 'Edit me';
+
 const isTextualKind = (kind: string): boolean => TEXTUAL_BLOCK_KIND_NAMES.has(kind as any);
 
 export type DeviceKind = 'mobile' | 'tablet' | 'desktop';
@@ -993,8 +995,6 @@ const TEXT_BLOCK_KINDS: SlideBlock['kind'][] = [
 
 const isTextualBlock = (kind: SlideBlock['kind']): boolean =>
   TEXT_BLOCK_KINDS.includes(kind);
-
-export const DEFAULT_TEXT_PLACEHOLDER = 'Edit me';
 
 export type SlideBackground = {
   type: 'none' | 'color' | 'image' | 'video';
