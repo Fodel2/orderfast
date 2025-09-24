@@ -74,6 +74,7 @@ type TextSizingDimensions = { width?: number; height?: number };
 
 export type TextSizingSnapshot = {
   autoWidth?: boolean;
+  autoHeight?: boolean;
   width?: number;
   height?: number;
   devices?: Partial<Record<DeviceKind, TextSizingDimensions>>;
@@ -101,6 +102,7 @@ export const readTextSizingConfig = (source: unknown): TextSizingSnapshot => {
   const autoWidth = typeof sizingRoot.autoWidth === 'boolean' ? sizingRoot.autoWidth : undefined;
   const width = clampPercentValue(sizingRoot.width);
   const height = clampPercentValue(sizingRoot.height);
+  const autoHeight = typeof sizingRoot.autoHeight === 'boolean' ? sizingRoot.autoHeight : undefined;
   const devicesRaw = asRecord(sizingRoot.devices);
   const devices: Partial<Record<DeviceKind, TextSizingDimensions>> = {};
   if (devicesRaw) {
@@ -119,6 +121,7 @@ export const readTextSizingConfig = (source: unknown): TextSizingSnapshot => {
   }
   const snapshot: TextSizingSnapshot = {};
   if (autoWidth !== undefined) snapshot.autoWidth = autoWidth;
+  if (typeof autoHeight === 'boolean') snapshot.autoHeight = autoHeight;
   if (width !== undefined) snapshot.width = width;
   if (height !== undefined) snapshot.height = height;
   if (Object.keys(devices).length > 0) snapshot.devices = devices;
@@ -156,8 +159,13 @@ export const writeTextSizingToConfig = (
   nextSizing.devices = nextDevices;
   if (width !== undefined) nextSizing.width = width;
   if (height !== undefined) nextSizing.height = height;
-  if (existingSizing && typeof existingSizing.autoWidth === 'boolean') {
-    nextSizing.autoWidth = existingSizing.autoWidth;
+  if (existingSizing) {
+    if (typeof existingSizing.autoWidth === 'boolean') {
+      nextSizing.autoWidth = existingSizing.autoWidth;
+    }
+    if (typeof (existingSizing as Record<string, any>).autoHeight === 'boolean') {
+      nextSizing.autoHeight = (existingSizing as Record<string, any>).autoHeight;
+    }
   }
   base.textSizing = nextSizing;
   return base;
@@ -176,6 +184,17 @@ const updateConfigWithTextContent = (
     base.content = text;
   }
   return Object.keys(base).length > 0 ? base : undefined;
+};
+
+const sanitizeEditableText = (raw: string): string => {
+  const normalized = raw.replace(/\u00A0/g, ' ').replace(/\r\n?/g, '\n');
+  const trimmed = normalized.trim();
+  return trimmed.length === 0 ? DEFAULT_TEXT_PLACEHOLDER : normalized;
+};
+
+const resolveDisplayText = (value: string): string => {
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? DEFAULT_TEXT_PLACEHOLDER : value;
 };
 
 export type ButtonBlockVariant = 'Primary' | 'Outline' | 'Ghost';
@@ -679,6 +698,7 @@ type BlockChromeWithAutoSizeProps = {
   frame: Frame;
   deviceSize: { width: number; height: number };
   autoWidthEnabled: boolean;
+  autoHeightEnabled: boolean;
   minSizePct: { width: number; height: number };
   onFrameChange: (
     blockId: string,
@@ -694,61 +714,123 @@ const BlockChromeWithAutoSize = ({
   frame,
   deviceSize,
   autoWidthEnabled,
+  autoHeightEnabled,
   minSizePct,
   onFrameChange,
   children,
 }: BlockChromeWithAutoSizeProps) => {
   const elementRef = useRef<HTMLDivElement | null>(null);
   const frameRef = useRef(frame);
+  const rafRef = useRef<number | null>(null);
   frameRef.current = frame;
+
+  const scheduleMeasurement = useCallback(() => {
+    if (!isTextualKind(block.kind)) return;
+    const node = elementRef.current;
+    if (!node) return;
+    const container = node.parentElement as HTMLElement | null;
+    if (!container) return;
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+    }
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      const currentFrame = frameRef.current;
+      const containerStyle = container.style;
+      const nodeStyle = node.style;
+      const previous = {
+        containerWidth: containerStyle.width,
+        containerHeight: containerStyle.height,
+        containerMinWidth: containerStyle.minWidth,
+        containerMinHeight: containerStyle.minHeight,
+        nodeWidth: nodeStyle.width,
+        nodeHeight: nodeStyle.height,
+        nodeMaxWidth: nodeStyle.maxWidth,
+        nodeMaxHeight: nodeStyle.maxHeight,
+      };
+
+      containerStyle.height = 'auto';
+      containerStyle.minHeight = '0';
+      nodeStyle.height = 'auto';
+      nodeStyle.maxHeight = 'none';
+
+      if (autoWidthEnabled) {
+        containerStyle.width = 'auto';
+        containerStyle.minWidth = '0';
+        nodeStyle.width = 'max-content';
+        nodeStyle.maxWidth = 'none';
+      } else {
+        const widthPx = Math.max(0, (currentFrame.w / 100) * deviceSize.width);
+        containerStyle.width = `${widthPx}px`;
+        containerStyle.minWidth = '0';
+        nodeStyle.width = '100%';
+        nodeStyle.maxWidth = '100%';
+      }
+
+      const measuredWidth = autoWidthEnabled ? node.scrollWidth : Math.max(container.offsetWidth, node.scrollWidth);
+      const measuredHeight = node.scrollHeight;
+
+      containerStyle.width = previous.containerWidth;
+      containerStyle.height = previous.containerHeight;
+      containerStyle.minWidth = previous.containerMinWidth;
+      containerStyle.minHeight = previous.containerMinHeight;
+      nodeStyle.width = previous.nodeWidth;
+      nodeStyle.height = previous.nodeHeight;
+      nodeStyle.maxWidth = previous.nodeMaxWidth;
+      nodeStyle.maxHeight = previous.nodeMaxHeight;
+
+      if (!Number.isFinite(measuredWidth) || !Number.isFinite(measuredHeight)) {
+        return;
+      }
+
+      const widthPct = clamp((measuredWidth / deviceSize.width) * 100, 0, 100);
+      const heightPct = clamp((measuredHeight / deviceSize.height) * 100, 0, 100);
+
+      const nextFrame: Frame = { ...currentFrame };
+      const targetWidth = autoWidthEnabled
+        ? Math.max(widthPct, minSizePct.width)
+        : clamp(Math.max(currentFrame.w, minSizePct.width), minSizePct.width, 100);
+      const requiredHeight = Math.max(heightPct, minSizePct.height);
+      const targetHeight = autoHeightEnabled
+        ? requiredHeight
+        : Math.max(requiredHeight, currentFrame.h);
+
+      let changed = false;
+      if (Math.abs(nextFrame.w - targetWidth) > 0.1) {
+        nextFrame.w = targetWidth;
+        changed = true;
+      }
+      if (Math.abs(nextFrame.h - targetHeight) > 0.1) {
+        nextFrame.h = targetHeight;
+        changed = true;
+      }
+
+      if (changed) {
+        frameRef.current = nextFrame;
+        onFrameChange(blockId, nextFrame, { commit: false });
+      }
+    });
+  }, [autoHeightEnabled, autoWidthEnabled, block.kind, blockId, deviceSize.height, deviceSize.width, minSizePct.height, minSizePct.width, onFrameChange]);
+
+  useLayoutEffect(() => {
+    if (!isTextualKind(block.kind)) return;
+    scheduleMeasurement();
+  }, [block, frame, scheduleMeasurement]);
 
   useLayoutEffect(() => {
     if (!isTextualKind(block.kind)) return;
     const node = elementRef.current;
     if (!node) return;
-    let raf = 0;
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (!entry) return;
-      const borderBox = entry.borderBoxSize;
-      let width = entry.contentRect.width;
-      let height = entry.contentRect.height;
-      if (borderBox) {
-        const box = Array.isArray(borderBox) ? borderBox[0] : borderBox;
-        if (box) {
-          if (typeof box.inlineSize === 'number') width = box.inlineSize;
-          if (typeof box.blockSize === 'number') height = box.blockSize;
-        }
-      }
-      const widthPct = clamp((width / deviceSize.width) * 100, 0, 100);
-      const heightPct = clamp((height / deviceSize.height) * 100, 0, 100);
-      const currentFrame = frameRef.current;
-      const targetHeight = Math.max(heightPct, minSizePct.height);
-      const targetWidth = Math.max(widthPct, minSizePct.width);
-      const nextFrame: Frame = { ...currentFrame };
-      let changed = false;
-      if (Math.abs(currentFrame.h - targetHeight) > 0.2) {
-        nextFrame.h = targetHeight;
-        changed = true;
-      }
-      if (autoWidthEnabled && Math.abs(currentFrame.w - targetWidth) > 0.2) {
-        nextFrame.w = targetWidth;
-        changed = true;
-      }
-      if (changed) {
-        cancelAnimationFrame(raf);
-        raf = requestAnimationFrame(() => {
-          frameRef.current = nextFrame;
-          onFrameChange(blockId, nextFrame, { commit: false });
-        });
-      }
-    });
+    const observer = new ResizeObserver(() => scheduleMeasurement());
     observer.observe(node);
     return () => {
-      cancelAnimationFrame(raf);
       observer.disconnect();
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
     };
-  }, [autoWidthEnabled, block.kind, blockId, deviceSize.height, deviceSize.width, minSizePct.height, minSizePct.width, onFrameChange]);
+  }, [block.kind, scheduleMeasurement]);
 
   return (
     <BlockChrome ref={isTextualKind(block.kind) ? elementRef : undefined} block={block}>
@@ -823,7 +905,7 @@ export type QuoteBlockConfig = {
 };
 
 export const DEFAULT_QUOTE_CONFIG: QuoteBlockConfig = {
-  text: '',
+  text: DEFAULT_TEXT_PLACEHOLDER,
   author: '',
   style: 'plain',
   bgColor: '#ffffff',
@@ -911,6 +993,8 @@ const TEXT_BLOCK_KINDS: SlideBlock['kind'][] = [
 
 const isTextualBlock = (kind: SlideBlock['kind']): boolean =>
   TEXT_BLOCK_KINDS.includes(kind);
+
+export const DEFAULT_TEXT_PLACEHOLDER = 'Edit me';
 
 export type SlideBackground = {
   type: 'none' | 'color' | 'image' | 'video';
@@ -1274,6 +1358,12 @@ function isAutoWidthEnabled(block: SlideBlock): boolean {
   return typeof sizing.autoWidth === 'boolean' ? sizing.autoWidth : true;
 }
 
+function isAutoHeightEnabled(block: SlideBlock): boolean {
+  if (!block || typeof block !== 'object') return true;
+  const sizing = readTextSizingConfig(block.config);
+  return typeof sizing.autoHeight === 'boolean' ? sizing.autoHeight : true;
+}
+
 export function resolveImageConfig(block: SlideBlock): ImageBlockConfig {
   const raw = (block.config ?? {}) as Record<string, any>;
   const rawUrl = typeof raw.url === 'string' ? raw.url.trim() : '';
@@ -1616,6 +1706,30 @@ export default function SlidesManager({
   const cfg = useMemo(() => initialCfg, [initialCfg]);
   const deviceSize = DEVICE_DIMENSIONS[activeDevice] ?? DEVICE_DIMENSIONS.desktop;
 
+  useEffect(() => {
+    if (!editable) return;
+    const updates = cfg.blocks.filter((block) => {
+      if (!isTextualKind(block.kind)) return false;
+      const content = block.content ?? block.text ?? '';
+      return content.trim().length === 0;
+    });
+    if (updates.length === 0) return;
+    const next: SlideCfg = {
+      ...cfg,
+      blocks: cfg.blocks.map((block) => {
+        if (!updates.some((candidate) => candidate.id === block.id)) return block;
+        const fallbackText = DEFAULT_TEXT_PLACEHOLDER;
+        return {
+          ...block,
+          text: fallbackText,
+          content: fallbackText,
+          config: updateConfigWithTextContent(block, fallbackText),
+        };
+      }),
+    };
+    onChange(next, { commit: false });
+  }, [cfg, editable, onChange]);
+
   const handleFrameChange = useCallback(
     (blockId: string, frame: Frame, options?: SlidesManagerChangeOptions) => {
       const sanitized: Frame = {
@@ -1647,8 +1761,8 @@ export default function SlidesManager({
     [activeDevice, cfg, onChange],
   );
 
-  const setBlockAutoWidth = useCallback(
-    (blockId: string, nextValue: boolean) => {
+  const setBlockAutoSizingFlag = useCallback(
+    (blockId: string, key: 'autoWidth' | 'autoHeight', nextValue: boolean) => {
       const target = cfg.blocks.find((b) => b.id === blockId);
       if (!target) return;
       const rawConfig =
@@ -1660,13 +1774,13 @@ export default function SlidesManager({
           ? (rawConfig.textSizing as Record<string, any>)
           : undefined;
       const currentValue =
-        previousSizing && typeof previousSizing.autoWidth === 'boolean'
-          ? previousSizing.autoWidth
+        previousSizing && typeof previousSizing[key] === 'boolean'
+          ? Boolean(previousSizing[key])
           : undefined;
       if (currentValue === nextValue) return;
       const baseConfig = rawConfig ? { ...rawConfig } : {};
       const nextSizing = { ...(previousSizing ?? {}) };
-      nextSizing.autoWidth = nextValue;
+      nextSizing[key] = nextValue;
       const nextConfig = { ...baseConfig, textSizing: nextSizing };
       const next: SlideCfg = {
         ...cfg,
@@ -1684,19 +1798,32 @@ export default function SlidesManager({
     [cfg, onChange],
   );
 
+  const setBlockAutoWidth = useCallback(
+    (blockId: string, nextValue: boolean) => setBlockAutoSizingFlag(blockId, 'autoWidth', nextValue),
+    [setBlockAutoSizingFlag],
+  );
+
+  const setBlockAutoHeight = useCallback(
+    (blockId: string, nextValue: boolean) => setBlockAutoSizingFlag(blockId, 'autoHeight', nextValue),
+    [setBlockAutoSizingFlag],
+  );
+
   const handleInlineText = (blockId: string, text: string) => {
+    const normalizedText = sanitizeEditableText(text);
     const target = cfg.blocks.find((b) => b.id === blockId);
-    const currentValue = target ? target.content ?? target.text ?? '' : '';
-    if (currentValue === text) return;
+    const currentValue = target
+      ? resolveDisplayText(target.content ?? target.text ?? '')
+      : DEFAULT_TEXT_PLACEHOLDER;
+    if (currentValue === normalizedText) return;
     const next: SlideCfg = {
       ...cfg,
       blocks: cfg.blocks.map((b) =>
         b.id === blockId
           ? {
               ...b,
-              text,
-              content: text,
-              config: updateConfigWithTextContent(b, text),
+              text: normalizedText,
+              content: normalizedText,
+              config: updateConfigWithTextContent(b, normalizedText),
             }
           : b,
       ),
@@ -2023,6 +2150,7 @@ export default function SlidesManager({
                 const minSizePct = textual ? getTextBlockMinSizePct(block, deviceSize) : undefined;
                 const effectiveMinSize = minSizePct ?? { width: 5, height: 5 };
                 const autoWidthEnabled = textual ? isAutoWidthEnabled(block) : false;
+                const autoHeightEnabled = textual ? isAutoHeightEnabled(block) : false;
                 return (
                   <InteractiveBox
                     key={block.id}
@@ -2044,9 +2172,12 @@ export default function SlidesManager({
                     minHeightPct={textual ? effectiveMinSize.height : undefined}
                     onResizeStart={
                       textual
-                        ? ({ horizontal }) => {
+                        ? ({ horizontal, vertical }) => {
                             if (horizontal && autoWidthEnabled) {
                               setBlockAutoWidth(block.id, false);
+                            }
+                            if (vertical && autoHeightEnabled) {
+                              setBlockAutoHeight(block.id, false);
                             }
                           }
                         : undefined
@@ -2058,6 +2189,7 @@ export default function SlidesManager({
                       frame={frame}
                       deviceSize={deviceSize}
                       autoWidthEnabled={textual ? autoWidthEnabled : false}
+                      autoHeightEnabled={textual ? autoHeightEnabled : false}
                       minSizePct={effectiveMinSize}
                       onFrameChange={handleFrameChange}
                     >
@@ -2093,28 +2225,32 @@ function EditableTextContent({
 }: EditableTextContentProps) {
   const elementRef = useRef<HTMLElement | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const displayValue = resolveDisplayText(value);
 
   useLayoutEffect(() => {
-    if (!elementRef.current) return;
-    if (isEditing) return;
-    const current = elementRef.current.textContent ?? '';
-    if (current !== value) {
-      elementRef.current.textContent = value;
+    const node = elementRef.current;
+    if (!node) return;
+    const current = node.textContent ?? '';
+    if (isEditing) {
+      if (current.length === 0 && displayValue.length > 0) {
+        node.textContent = displayValue;
+      }
+      return;
     }
-  }, [isEditing, value]);
+    if (current !== displayValue) {
+      node.textContent = displayValue;
+    }
+  }, [displayValue, isEditing]);
 
   const commitIfChanged = (nextValue: string) => {
-    if (nextValue === value) return;
-    onCommit(nextValue);
+    const sanitized = sanitizeEditableText(nextValue);
+    if (sanitized === resolveDisplayText(value)) return;
+    onCommit(sanitized);
   };
 
   const handleBlur = (event: React.FocusEvent<HTMLElement>) => {
     setIsEditing(false);
-    const text = (event.currentTarget.innerText ?? '')
-      .replace(/\u00A0/g, ' ')
-      .replace(/\r\n/g, '\n')
-      .replace(/\r/g, '\n');
-    commitIfChanged(text);
+    commitIfChanged(event.currentTarget.innerText ?? '');
   };
 
   const handleFocus = () => {
@@ -2128,18 +2264,24 @@ function EditableTextContent({
       return;
     }
     if (event.key === 'Enter') {
+      if (event.shiftKey) {
+        event.preventDefault();
+        const selection = window.getSelection();
+        if (!selection) return;
+        selection.deleteFromDocument();
+        if (selection.rangeCount === 0) return;
+        const range = selection.getRangeAt(0);
+        const textNode = document.createTextNode('\n');
+        range.insertNode(textNode);
+        range.setStartAfter(textNode);
+        range.setEndAfter(textNode);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        return;
+      }
       event.preventDefault();
-      const selection = window.getSelection();
-      if (!selection) return;
-      selection.deleteFromDocument();
-      if (selection.rangeCount === 0) return;
-      const range = selection.getRangeAt(0);
-      const textNode = document.createTextNode('\n');
-      range.insertNode(textNode);
-      range.setStartAfter(textNode);
-      range.setEndAfter(textNode);
-      selection.removeAllRanges();
-      selection.addRange(range);
+      commitIfChanged(event.currentTarget.innerText ?? '');
+      (event.currentTarget as HTMLElement).blur();
     }
   };
 
@@ -2187,7 +2329,7 @@ function EditableTextContent({
     props.onPaste = handlePaste;
   }
 
-  props.children = editable ? (isEditing ? undefined : value) : value;
+  props.children = editable ? (isEditing ? undefined : displayValue) : displayValue;
 
   return React.createElement(tag, props);
 }

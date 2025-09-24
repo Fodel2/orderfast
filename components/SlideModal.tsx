@@ -46,6 +46,7 @@ import SlidesManager, {
   DEFAULT_BLOCK_TRANSITION_CONFIG,
   FONT_FAMILY_SELECT_OPTIONS,
   DEFAULT_TEXT_FONT_FAMILY,
+  DEFAULT_TEXT_PLACEHOLDER,
   normalizeFontFamily,
   readTextSizingConfig,
   pickTextSizingDimensions,
@@ -1510,17 +1511,14 @@ export default function SlideModal({
       id,
       kind,
       text:
-        kind === "heading"
-          ? "Add a headline"
-          : kind === "subheading"
-            ? "Add a subtitle"
-            : kind === "text"
-              ? "Write some supporting text"
-              : kind === "button"
-                ? "Button"
-                : kind === "quote"
-                  ? "Add a quote from a happy guest"
-                  : "",
+        kind === "heading" ||
+        kind === "subheading" ||
+        kind === "text" ||
+        kind === "quote"
+          ? DEFAULT_TEXT_PLACEHOLDER
+          : kind === "button"
+            ? "Button"
+            : "",
       href: kind === "button" ? "/menu" : undefined,
       frames: { [activeDevice]: frame },
       color:
@@ -1561,6 +1559,7 @@ export default function SlideModal({
       };
       block.config = quoteConfig;
       block.text = quoteConfig.text;
+      block.content = quoteConfig.text;
       block.author = quoteConfig.author;
       block.align = quoteConfig.align;
       block.bgColor = quoteConfig.bgColor;
