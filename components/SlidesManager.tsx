@@ -1,4 +1,11 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import {
   DndContext,
@@ -20,6 +27,16 @@ import { ArrowsUpDownIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/rea
 import { toast } from '@/components/ui/toast';
 import { supabase } from '@/utils/supabaseClient';
 import type { SlideRow } from '@/components/customer/home/SlidesContainer';
+
+const TEXTUAL_BLOCK_KIND_NAMES = new Set([
+  'heading',
+  'subheading',
+  'text',
+  'quote',
+  'button',
+] as const);
+
+const isTextualKind = (kind: string): boolean => TEXTUAL_BLOCK_KIND_NAMES.has(kind as any);
 
 export type DeviceKind = 'mobile' | 'tablet' | 'desktop';
 
@@ -51,6 +68,116 @@ export type Frame = {
   r: number;
 };
 
+const TEXT_SIZING_DEVICE_ORDER: DeviceKind[] = ['mobile', 'tablet', 'desktop'];
+
+type TextSizingDimensions = { width?: number; height?: number };
+
+export type TextSizingSnapshot = {
+  autoWidth?: boolean;
+  width?: number;
+  height?: number;
+  devices?: Partial<Record<DeviceKind, TextSizingDimensions>>;
+};
+
+const asRecord = (value: unknown): Record<string, any> | undefined =>
+  value && typeof value === 'object' ? (value as Record<string, any>) : undefined;
+
+const clampPercentValue = (value: unknown): number | undefined => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
+  return Math.min(100, Math.max(0, value));
+};
+
+const cloneConfigRecord = (
+  config: SlideBlock['config'] | Record<string, any> | undefined | null,
+): Record<string, any> => {
+  const record = asRecord(config);
+  return record ? { ...record } : {};
+};
+
+export const readTextSizingConfig = (source: unknown): TextSizingSnapshot => {
+  const root = asRecord(source);
+  if (!root) return {};
+  const sizingRoot = asRecord(root.textSizing) ?? root;
+  const autoWidth = typeof sizingRoot.autoWidth === 'boolean' ? sizingRoot.autoWidth : undefined;
+  const width = clampPercentValue(sizingRoot.width);
+  const height = clampPercentValue(sizingRoot.height);
+  const devicesRaw = asRecord(sizingRoot.devices);
+  const devices: Partial<Record<DeviceKind, TextSizingDimensions>> = {};
+  if (devicesRaw) {
+    TEXT_SIZING_DEVICE_ORDER.forEach((device) => {
+      const entry = asRecord(devicesRaw[device]);
+      if (!entry) return;
+      const deviceWidth = clampPercentValue(entry.width);
+      const deviceHeight = clampPercentValue(entry.height);
+      if (deviceWidth !== undefined || deviceHeight !== undefined) {
+        devices[device] = {
+          width: deviceWidth,
+          height: deviceHeight,
+        };
+      }
+    });
+  }
+  const snapshot: TextSizingSnapshot = {};
+  if (autoWidth !== undefined) snapshot.autoWidth = autoWidth;
+  if (width !== undefined) snapshot.width = width;
+  if (height !== undefined) snapshot.height = height;
+  if (Object.keys(devices).length > 0) snapshot.devices = devices;
+  return snapshot;
+};
+
+export const pickTextSizingDimensions = (
+  sizing: TextSizingSnapshot | undefined,
+  device: DeviceKind,
+): TextSizingDimensions | undefined => {
+  if (!sizing) return undefined;
+  const deviceEntry = sizing.devices?.[device];
+  const width = deviceEntry?.width ?? sizing.width;
+  const height = deviceEntry?.height ?? sizing.height;
+  if (width === undefined && height === undefined) return undefined;
+  return { width, height };
+};
+
+export const writeTextSizingToConfig = (
+  config: SlideBlock['config'] | Record<string, any> | undefined,
+  device: DeviceKind,
+  frame: Frame,
+): Record<string, any> => {
+  const base = cloneConfigRecord(config);
+  const existingSizing = asRecord(base.textSizing);
+  const nextSizing: Record<string, any> = existingSizing ? { ...existingSizing } : {};
+  const devicesRaw = asRecord(nextSizing.devices);
+  const nextDevices: Record<string, any> = devicesRaw ? { ...devicesRaw } : {};
+  const deviceSizing: Record<string, number> = {};
+  const width = clampPercentValue(frame.w);
+  const height = clampPercentValue(frame.h);
+  if (width !== undefined) deviceSizing.width = width;
+  if (height !== undefined) deviceSizing.height = height;
+  nextDevices[device] = deviceSizing;
+  nextSizing.devices = nextDevices;
+  if (width !== undefined) nextSizing.width = width;
+  if (height !== undefined) nextSizing.height = height;
+  if (existingSizing && typeof existingSizing.autoWidth === 'boolean') {
+    nextSizing.autoWidth = existingSizing.autoWidth;
+  }
+  base.textSizing = nextSizing;
+  return base;
+};
+
+const updateConfigWithTextContent = (
+  block: SlideBlock,
+  text: string,
+): SlideBlock['config'] | undefined => {
+  if (!isTextualKind(block.kind)) return block.config;
+  const base = cloneConfigRecord(block.config);
+  if (block.kind === 'button') {
+    base.label = text;
+  } else {
+    base.text = text;
+    base.content = text;
+  }
+  return Object.keys(base).length > 0 ? base : undefined;
+};
+
 export type ButtonBlockVariant = 'Primary' | 'Outline' | 'Ghost';
 export type ButtonBlockSize = 'Small' | 'Medium' | 'Large';
 
@@ -74,6 +201,142 @@ const BUTTON_FONT_SIZE_PX: Record<ButtonBlockSize, number> = {
   Medium: 16,
   Large: 18,
 };
+
+const FONT_FAMILY_VALUE_LIST = [
+  'Inter',
+  'Roboto',
+  'Open Sans',
+  'Lato',
+  'Poppins',
+  'Montserrat',
+  'Nunito',
+  'Raleway',
+  'Merriweather',
+  'Playfair Display',
+  'Source Sans Pro',
+  'Ubuntu',
+  'Oswald',
+  'PT Sans',
+  'Work Sans',
+  'Quicksand',
+  'Dancing Script',
+  'Lobster',
+  'Roboto Mono',
+] as const;
+
+type ModernFontFamily = (typeof FONT_FAMILY_VALUE_LIST)[number];
+
+export type SlideBlockFontFamily =
+  | 'default'
+  | ModernFontFamily
+  | 'sans'
+  | 'serif'
+  | 'mono';
+
+export type FontFamilySelectOption = {
+  value: SlideBlockFontFamily;
+  label: string;
+  stack?: string;
+  previewStack: string;
+  legacy?: boolean;
+};
+
+const FONT_FAMILY_STACKS: Record<ModernFontFamily, string> = {
+  Inter: '"Inter", "Helvetica Neue", Arial, sans-serif',
+  Roboto: '"Roboto", "Helvetica Neue", Arial, sans-serif',
+  'Open Sans': '"Open Sans", "Helvetica Neue", Arial, sans-serif',
+  Lato: '"Lato", "Helvetica Neue", Arial, sans-serif',
+  Poppins: '"Poppins", "Helvetica Neue", Arial, sans-serif',
+  Montserrat: '"Montserrat", "Helvetica Neue", Arial, sans-serif',
+  Nunito: '"Nunito", "Helvetica Neue", Arial, sans-serif',
+  Raleway: '"Raleway", "Helvetica Neue", Arial, sans-serif',
+  Merriweather: '"Merriweather", Georgia, serif',
+  'Playfair Display': '"Playfair Display", "Times New Roman", serif',
+  'Source Sans Pro': '"Source Sans Pro", "Helvetica Neue", Arial, sans-serif',
+  Ubuntu: '"Ubuntu", "Helvetica Neue", Arial, sans-serif',
+  Oswald: '"Oswald", "Franklin Gothic Medium", "Arial Narrow", Arial, sans-serif',
+  'PT Sans': '"PT Sans", "Helvetica Neue", Arial, sans-serif',
+  'Work Sans': '"Work Sans", "Helvetica Neue", Arial, sans-serif',
+  Quicksand: '"Quicksand", "Trebuchet MS", sans-serif',
+  'Dancing Script': '"Dancing Script", "Comic Sans MS", cursive',
+  Lobster: '"Lobster", "Brush Script MT", cursive',
+  'Roboto Mono': '"Roboto Mono", "Courier New", monospace',
+};
+
+export const DEFAULT_TEXT_FONT_FAMILY: SlideBlockFontFamily = 'Inter';
+
+export const FONT_FAMILY_SELECT_OPTIONS: FontFamilySelectOption[] = [
+  {
+    value: 'default',
+    label: 'Theme default (Inter)',
+    stack: undefined,
+    previewStack: FONT_FAMILY_STACKS.Inter,
+  },
+  ...FONT_FAMILY_VALUE_LIST.map<FontFamilySelectOption>((value) => ({
+    value,
+    label: value,
+    stack: FONT_FAMILY_STACKS[value],
+    previewStack: FONT_FAMILY_STACKS[value],
+  })),
+  {
+    value: 'sans',
+    label: 'Legacy Sans Serif',
+    stack: FONT_FAMILY_STACKS.Inter,
+    previewStack: FONT_FAMILY_STACKS.Inter,
+    legacy: true,
+  },
+  {
+    value: 'serif',
+    label: 'Legacy Serif',
+    stack: 'Georgia, Cambria, "Times New Roman", serif',
+    previewStack: 'Georgia, Cambria, "Times New Roman", serif',
+    legacy: true,
+  },
+  {
+    value: 'mono',
+    label: 'Legacy Monospace',
+    stack: FONT_FAMILY_STACKS['Roboto Mono'],
+    previewStack: FONT_FAMILY_STACKS['Roboto Mono'],
+    legacy: true,
+  },
+];
+
+const normalizeFontKey = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+
+const FONT_FAMILY_LOOKUP: Record<string, SlideBlockFontFamily> = (() => {
+  const map: Record<string, SlideBlockFontFamily> = {};
+  const register = (key: string, value: SlideBlockFontFamily) => {
+    map[key] = value;
+  };
+  register('default', 'default');
+  register('inherit', 'default');
+  register('defaultinherit', 'default');
+  register('sans', 'sans');
+  register('sansserif', 'sans');
+  register('legacysansserif', 'sans');
+  register('serif', 'serif');
+  register('legacyserif', 'serif');
+  register('mono', 'mono');
+  register('monospace', 'mono');
+  register('legacymonospace', 'mono');
+  FONT_FAMILY_VALUE_LIST.forEach((value) => {
+    register(normalizeFontKey(value), value);
+  });
+  return map;
+})();
+
+export function normalizeFontFamily(
+  value: unknown,
+): SlideBlockFontFamily | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalizedKey = normalizeFontKey(value);
+  if (!normalizedKey) return undefined;
+  return FONT_FAMILY_LOOKUP[normalizedKey];
+}
 
 const BLOCK_SHADOW_VALUE: Record<BlockShadowPreset, string | undefined> = {
   none: undefined,
@@ -294,12 +557,20 @@ const BLOCK_GRADIENT_DIRECTION_MAP: Record<BlockBackgroundGradientDirection, str
 };
 
 function getBlockChromeStyle(block: SlideBlock): CSSProperties {
+  const textual = isTextualKind(block.kind);
   const style: CSSProperties = {
-    width: '100%',
-    height: '100%',
+    width: textual ? 'fit-content' : '100%',
+    height: textual ? 'fit-content' : '100%',
+    maxWidth: '100%',
+    maxHeight: '100%',
     boxSizing: 'border-box',
     backgroundColor: 'transparent',
+    display: textual ? 'inline-flex' : 'block',
   };
+
+  if (textual) {
+    style.alignItems = 'flex-start';
+  }
 
   const shadowKey = (block.boxShadow ?? 'none') as BlockShadowPreset;
   const shadowValue = BLOCK_SHADOW_VALUE[shadowKey];
@@ -377,17 +648,114 @@ function getBlockChromeStyle(block: SlideBlock): CSSProperties {
   return style;
 }
 
-function BlockChrome({ block, children }: { block: SlideBlock; children: ReactNode }) {
+type BlockChromeProps = { block: SlideBlock; children: ReactNode };
+
+const BlockChrome = React.forwardRef<HTMLDivElement, BlockChromeProps>(({ block, children }, ref) => {
   const baseStyle = getBlockChromeStyle(block);
   const interaction = getBlockInteractionPresentation(block);
   const style = { ...baseStyle, ...(interaction.style || {}) } as CSSProperties;
-  const className = ['relative h-full w-full', ...(interaction.classNames ?? [])].join(' ');
+  const textual = isTextualKind(block.kind);
+  const className = ['relative'];
+  if (textual) {
+    className.push('inline-flex', 'max-w-full');
+  } else {
+    className.push('h-full', 'w-full');
+  }
+  if (interaction.classNames && interaction.classNames.length > 0) {
+    className.push(...interaction.classNames);
+  }
   return (
-    <div className={className} style={style}>
+    <div ref={ref} className={className.join(' ')} style={style}>
       {children}
     </div>
   );
-}
+});
+
+BlockChrome.displayName = 'BlockChrome';
+
+type BlockChromeWithAutoSizeProps = {
+  block: SlideBlock;
+  blockId: string;
+  frame: Frame;
+  deviceSize: { width: number; height: number };
+  autoWidthEnabled: boolean;
+  minSizePct: { width: number; height: number };
+  onFrameChange: (
+    blockId: string,
+    frame: Frame,
+    options?: SlidesManagerChangeOptions,
+  ) => void;
+  children: ReactNode;
+};
+
+const BlockChromeWithAutoSize = ({
+  block,
+  blockId,
+  frame,
+  deviceSize,
+  autoWidthEnabled,
+  minSizePct,
+  onFrameChange,
+  children,
+}: BlockChromeWithAutoSizeProps) => {
+  const elementRef = useRef<HTMLDivElement | null>(null);
+  const frameRef = useRef(frame);
+  frameRef.current = frame;
+
+  useLayoutEffect(() => {
+    if (!isTextualKind(block.kind)) return;
+    const node = elementRef.current;
+    if (!node) return;
+    let raf = 0;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const borderBox = entry.borderBoxSize;
+      let width = entry.contentRect.width;
+      let height = entry.contentRect.height;
+      if (borderBox) {
+        const box = Array.isArray(borderBox) ? borderBox[0] : borderBox;
+        if (box) {
+          if (typeof box.inlineSize === 'number') width = box.inlineSize;
+          if (typeof box.blockSize === 'number') height = box.blockSize;
+        }
+      }
+      const widthPct = clamp((width / deviceSize.width) * 100, 0, 100);
+      const heightPct = clamp((height / deviceSize.height) * 100, 0, 100);
+      const currentFrame = frameRef.current;
+      const targetHeight = Math.max(heightPct, minSizePct.height);
+      const targetWidth = Math.max(widthPct, minSizePct.width);
+      const nextFrame: Frame = { ...currentFrame };
+      let changed = false;
+      if (Math.abs(currentFrame.h - targetHeight) > 0.2) {
+        nextFrame.h = targetHeight;
+        changed = true;
+      }
+      if (autoWidthEnabled && Math.abs(currentFrame.w - targetWidth) > 0.2) {
+        nextFrame.w = targetWidth;
+        changed = true;
+      }
+      if (changed) {
+        cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(() => {
+          frameRef.current = nextFrame;
+          onFrameChange(blockId, nextFrame, { commit: false });
+        });
+      }
+    });
+    observer.observe(node);
+    return () => {
+      cancelAnimationFrame(raf);
+      observer.disconnect();
+    };
+  }, [autoWidthEnabled, block.kind, blockId, deviceSize.height, deviceSize.width, minSizePct.height, minSizePct.width, onFrameChange]);
+
+  return (
+    <BlockChrome ref={isTextualKind(block.kind) ? elementRef : undefined} block={block}>
+      {children}
+    </BlockChrome>
+  );
+};
 
 export const DEFAULT_BUTTON_CONFIG: ButtonBlockConfig = {
   label: 'Button',
@@ -501,7 +869,7 @@ export type SlideBlock = {
   color?: string;
   align?: 'left' | 'center' | 'right';
   size?: 'sm' | 'md' | 'lg' | 'xl';
-  fontFamily?: 'default' | 'serif' | 'sans' | 'mono';
+  fontFamily?: SlideBlockFontFamily;
   fontWeight?: number;
   fontSize?: number;
   lineHeight?: number;
@@ -532,6 +900,17 @@ export type SlideBlock = {
   height?: number;
   locked?: boolean;
 };
+
+const TEXT_BLOCK_KINDS: SlideBlock['kind'][] = [
+  'heading',
+  'subheading',
+  'text',
+  'quote',
+  'button',
+];
+
+const isTextualBlock = (kind: SlideBlock['kind']): boolean =>
+  TEXT_BLOCK_KINDS.includes(kind);
 
 export type SlideBackground = {
   type: 'none' | 'color' | 'image' | 'video';
@@ -573,11 +952,36 @@ type SlidesManagerProps = {
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 
-const FONT_FAMILY_MAP: Record<'default' | 'serif' | 'sans' | 'mono', string | undefined> = {
+const FONT_FAMILY_BASE_MAP: Partial<
+  Record<SlideBlockFontFamily, string | undefined>
+> = {
   default: undefined,
   serif: 'Georgia, Cambria, "Times New Roman", serif',
   sans: '"Inter", "Segoe UI", system-ui, sans-serif',
-  mono: '"Roboto Mono", "Courier New", monospace',
+  mono: FONT_FAMILY_STACKS['Roboto Mono'],
+};
+
+FONT_FAMILY_SELECT_OPTIONS.forEach((option) => {
+  if (option.stack !== undefined) {
+    FONT_FAMILY_BASE_MAP[option.value] = option.stack;
+  } else if (!(option.value in FONT_FAMILY_BASE_MAP)) {
+    FONT_FAMILY_BASE_MAP[option.value] = undefined;
+  }
+});
+
+const FONT_FAMILY_MAP = FONT_FAMILY_BASE_MAP as Record<
+  SlideBlockFontFamily,
+  string | undefined
+>;
+
+const getBlockFontFamily = (block: SlideBlock): SlideBlockFontFamily => {
+  const normalizedFromBlock = normalizeFontFamily(block.fontFamily);
+  if (normalizedFromBlock) return normalizedFromBlock;
+  const configFont =
+    block.config && typeof block.config === 'object'
+      ? normalizeFontFamily((block.config as Record<string, any>).fontFamily)
+      : undefined;
+  return configFont ?? DEFAULT_TEXT_FONT_FAMILY;
 };
 
 const SIZE_TO_FONT_SIZE: Record<NonNullable<SlideBlock['size']>, number> = {
@@ -782,6 +1186,92 @@ export function resolveButtonConfig(block: SlideBlock): ButtonBlockConfig {
     textColor,
     bgColor,
   };
+}
+
+const BUTTON_HORIZONTAL_PADDING: Record<ButtonBlockSize, number> = {
+  Small: 12,
+  Medium: 20,
+  Large: 24,
+};
+
+const BUTTON_VERTICAL_PADDING: Record<ButtonBlockSize, number> = {
+  Small: 8,
+  Medium: 12,
+  Large: 14,
+};
+
+function resolveTextBlockFontSize(block: SlideBlock): number {
+  if (typeof block.fontSize === 'number' && Number.isFinite(block.fontSize)) {
+    return Math.max(block.fontSize, 1);
+  }
+  if (block.kind === 'button') {
+    const button = resolveButtonConfig(block);
+    const fontSize = BUTTON_FONT_SIZE_PX[button.size] ?? BUTTON_FONT_SIZE_PX.Medium;
+    return Math.max(fontSize, 1);
+  }
+  if (block.size) {
+    const mapped = SIZE_TO_FONT_SIZE[block.size];
+    if (typeof mapped === 'number') {
+      return Math.max(mapped, 1);
+    }
+  }
+  switch (block.kind) {
+    case 'heading':
+      return 56;
+    case 'subheading':
+      return SIZE_TO_FONT_SIZE.md;
+    case 'quote':
+      return 18;
+    default:
+      return 16;
+  }
+}
+
+function resolveLineHeightPx(block: SlideBlock, fontSize: number): number {
+  if (typeof block.lineHeight === 'number' && Number.isFinite(block.lineHeight)) {
+    if (block.lineHeightUnit === 'px') {
+      return Math.max(block.lineHeight, fontSize * 0.75);
+    }
+    const multiplier = block.lineHeightUnit === 'em' ? block.lineHeight : block.lineHeight;
+    return Math.max(multiplier * fontSize, fontSize * 0.75);
+  }
+  return fontSize * 1.1;
+}
+
+function getTextBlockMinSizePct(
+  block: SlideBlock,
+  deviceSize: { width: number; height: number },
+): { width: number; height: number } {
+  const fontSize = resolveTextBlockFontSize(block);
+  const lineHeight = resolveLineHeightPx(block, fontSize);
+  if (block.kind === 'button') {
+    const button = resolveButtonConfig(block);
+    const paddingX = BUTTON_HORIZONTAL_PADDING[button.size] ?? BUTTON_HORIZONTAL_PADDING.Medium;
+    const paddingY = BUTTON_VERTICAL_PADDING[button.size] ?? BUTTON_VERTICAL_PADDING.Medium;
+    const minWidthPx = Math.max(fontSize + paddingX * 2, 48);
+    const minHeightPx = Math.max(lineHeight + paddingY * 2, fontSize + paddingY * 2);
+    return {
+      width: clamp((minWidthPx / deviceSize.width) * 100, 1, 100),
+      height: clamp((minHeightPx / deviceSize.height) * 100, 1, 100),
+    };
+  }
+
+  const uniformPadding =
+    typeof block.padding === 'number' && Number.isFinite(block.padding)
+      ? Math.max(block.padding, 0)
+      : 0;
+  const minWidthPx = Math.max(fontSize + uniformPadding * 2, 32);
+  const minHeightPx = Math.max(lineHeight + uniformPadding * 2, fontSize * 0.9 + uniformPadding * 2);
+  return {
+    width: clamp((minWidthPx / deviceSize.width) * 100, 1, 100),
+    height: clamp((minHeightPx / deviceSize.height) * 100, 1, 100),
+  };
+}
+
+function isAutoWidthEnabled(block: SlideBlock): boolean {
+  if (!block || typeof block !== 'object') return true;
+  const sizing = readTextSizingConfig(block.config);
+  return typeof sizing.autoWidth === 'boolean' ? sizing.autoWidth : true;
 }
 
 export function resolveImageConfig(block: SlideBlock): ImageBlockConfig {
@@ -1083,9 +1573,30 @@ export function resolveBlockVisibility(block: SlideBlock): BlockVisibilityConfig
 
 function ensureFrame(block: SlideBlock, device: DeviceKind): Frame {
   const fallback: Frame = { x: 10, y: 10, w: 40, h: 20, r: 0 };
-  if (block.frames?.[device]) return block.frames[device]!;
+  const sizing = isTextualKind(block.kind) ? readTextSizingConfig(block.config) : undefined;
+  const pickForDevice = (frame: Frame): Frame => {
+    const sanitized: Frame = {
+      x: clamp(typeof frame.x === 'number' ? frame.x : fallback.x, 0, 100),
+      y: clamp(typeof frame.y === 'number' ? frame.y : fallback.y, 0, 100),
+      w: clamp(typeof frame.w === 'number' ? frame.w : fallback.w, 0, 100),
+      h: clamp(typeof frame.h === 'number' ? frame.h : fallback.h, 0, 100),
+      r: typeof frame.r === 'number' && Number.isFinite(frame.r) ? frame.r : 0,
+    };
+    if (isTextualKind(block.kind) && sizing) {
+      const dims = pickTextSizingDimensions(sizing, device);
+      if (dims?.width !== undefined) {
+        sanitized.w = clamp(dims.width, 0, 100);
+      }
+      if (dims?.height !== undefined) {
+        sanitized.h = clamp(dims.height, 0, 100);
+      }
+    }
+    return sanitized;
+  };
+
+  if (block.frames?.[device]) return pickForDevice(block.frames[device]!);
   const existing = Object.values(block.frames || {})[0];
-  return existing ? existing : fallback;
+  return existing ? pickForDevice(existing) : pickForDevice(fallback);
 }
 
 export default function SlidesManager({
@@ -1105,23 +1616,73 @@ export default function SlidesManager({
   const cfg = useMemo(() => initialCfg, [initialCfg]);
   const deviceSize = DEVICE_DIMENSIONS[activeDevice] ?? DEVICE_DIMENSIONS.desktop;
 
-  const handleFrameChange = (blockId: string, frame: Frame, options?: SlidesManagerChangeOptions) => {
-    const next: SlideCfg = {
-      ...cfg,
-      blocks: cfg.blocks.map((b) =>
-        b.id === blockId
-          ? {
-              ...b,
-              frames: {
-                ...b.frames,
-                [activeDevice]: { ...frame },
-              },
-            }
-          : b
-      ),
-    };
-    onChange(next, options);
-  };
+  const handleFrameChange = useCallback(
+    (blockId: string, frame: Frame, options?: SlidesManagerChangeOptions) => {
+      const sanitized: Frame = {
+        x: clamp(typeof frame.x === 'number' ? frame.x : 0, 0, 100),
+        y: clamp(typeof frame.y === 'number' ? frame.y : 0, 0, 100),
+        w: clamp(typeof frame.w === 'number' ? frame.w : 0, 0, 100),
+        h: clamp(typeof frame.h === 'number' ? frame.h : 0, 0, 100),
+        r: typeof frame.r === 'number' && Number.isFinite(frame.r) ? frame.r : 0,
+      };
+      const next: SlideCfg = {
+        ...cfg,
+        blocks: cfg.blocks.map((b) =>
+          b.id === blockId
+            ? {
+                ...b,
+                frames: {
+                  ...b.frames,
+                  [activeDevice]: sanitized,
+                },
+                config: isTextualKind(b.kind)
+                  ? writeTextSizingToConfig(b.config, activeDevice, sanitized)
+                  : b.config,
+              }
+            : b,
+        ),
+      };
+      onChange(next, options);
+    },
+    [activeDevice, cfg, onChange],
+  );
+
+  const setBlockAutoWidth = useCallback(
+    (blockId: string, nextValue: boolean) => {
+      const target = cfg.blocks.find((b) => b.id === blockId);
+      if (!target) return;
+      const rawConfig =
+        target.config && typeof target.config === 'object'
+          ? (target.config as Record<string, any>)
+          : undefined;
+      const previousSizing =
+        rawConfig && typeof rawConfig.textSizing === 'object'
+          ? (rawConfig.textSizing as Record<string, any>)
+          : undefined;
+      const currentValue =
+        previousSizing && typeof previousSizing.autoWidth === 'boolean'
+          ? previousSizing.autoWidth
+          : undefined;
+      if (currentValue === nextValue) return;
+      const baseConfig = rawConfig ? { ...rawConfig } : {};
+      const nextSizing = { ...(previousSizing ?? {}) };
+      nextSizing.autoWidth = nextValue;
+      const nextConfig = { ...baseConfig, textSizing: nextSizing };
+      const next: SlideCfg = {
+        ...cfg,
+        blocks: cfg.blocks.map((b) =>
+          b.id === blockId
+            ? {
+                ...b,
+                config: nextConfig,
+              }
+            : b,
+        ),
+      };
+      onChange(next, { commit: false });
+    },
+    [cfg, onChange],
+  );
 
   const handleInlineText = (blockId: string, text: string) => {
     const target = cfg.blocks.find((b) => b.id === blockId);
@@ -1135,6 +1696,7 @@ export default function SlidesManager({
               ...b,
               text,
               content: text,
+              config: updateConfigWithTextContent(b, text),
             }
           : b,
       ),
@@ -1168,7 +1730,7 @@ export default function SlidesManager({
         const Tag = block.kind === 'heading' ? 'h2' : block.kind === 'subheading' ? 'h3' : 'p';
         const align = block.align ?? 'left';
         const fallbackWeight = block.kind === 'heading' ? 700 : block.kind === 'subheading' ? 600 : 400;
-        const fontFamilyKey = block.fontFamily ?? 'default';
+        const fontFamilyKey = getBlockFontFamily(block);
         const resolvedFontFamily = FONT_FAMILY_MAP[fontFamilyKey];
         const fontSizePx =
           typeof block.fontSize === 'number'
@@ -1248,7 +1810,7 @@ export default function SlidesManager({
         ]
           .filter(Boolean)
           .join(' ');
-        const fontFamilyKey = block.fontFamily ?? 'default';
+        const fontFamilyKey = getBlockFontFamily(block);
         const resolvedFontFamily = FONT_FAMILY_MAP[fontFamilyKey];
         const fontSizePx =
           typeof block.fontSize === 'number'
@@ -1323,7 +1885,7 @@ export default function SlidesManager({
         const quote = resolveQuoteConfig(block);
         const defaultTextColor = quote.style === 'plain' ? '#ffffff' : '#111111';
         const textColor = block.textColor ?? block.color ?? defaultTextColor;
-        const fontFamilyKey = block.fontFamily ?? 'default';
+        const fontFamilyKey = getBlockFontFamily(block);
         const resolvedFontFamily = FONT_FAMILY_MAP[fontFamilyKey];
         const fallbackWeight = block.fontWeight ?? (quote.style === 'emphasis' ? 600 : 400);
         const fontSizePx =
@@ -1457,6 +2019,10 @@ export default function SlidesManager({
                 }
                 const frame = ensureFrame(block, activeDevice);
                 const locked = Boolean(block.locked);
+                const textual = isTextualKind(block.kind);
+                const minSizePct = textual ? getTextBlockMinSizePct(block, deviceSize) : undefined;
+                const effectiveMinSize = minSizePct ?? { width: 5, height: 5 };
+                const autoWidthEnabled = textual ? isAutoWidthEnabled(block) : false;
                 return (
                   <InteractiveBox
                     key={block.id}
@@ -1474,10 +2040,29 @@ export default function SlidesManager({
                     scale={clampedScale}
                     locked={locked}
                     onManipulationChange={onManipulationChange}
+                    minWidthPct={textual ? effectiveMinSize.width : undefined}
+                    minHeightPct={textual ? effectiveMinSize.height : undefined}
+                    onResizeStart={
+                      textual
+                        ? ({ horizontal }) => {
+                            if (horizontal && autoWidthEnabled) {
+                              setBlockAutoWidth(block.id, false);
+                            }
+                          }
+                        : undefined
+                    }
                   >
-                    <BlockChrome block={block}>
+                    <BlockChromeWithAutoSize
+                      block={block}
+                      blockId={block.id}
+                      frame={frame}
+                      deviceSize={deviceSize}
+                      autoWidthEnabled={textual ? autoWidthEnabled : false}
+                      minSizePct={effectiveMinSize}
+                      onFrameChange={handleFrameChange}
+                    >
                       {renderBlockContent(block)}
-                    </BlockChrome>
+                    </BlockChromeWithAutoSize>
                   </InteractiveBox>
                 );
               })}
@@ -1723,6 +2308,9 @@ type InteractiveBoxProps = {
   scale: number;
   locked?: boolean;
   onManipulationChange?: (manipulating: boolean) => void;
+  minWidthPct?: number;
+  minHeightPct?: number;
+  onResizeStart?: (details: { horizontal: boolean; vertical: boolean }) => void;
 };
 
 type PointerState = {
@@ -1753,6 +2341,9 @@ function InteractiveBox({
   scale,
   locked = false,
   onManipulationChange,
+  minWidthPct,
+  minHeightPct,
+  onResizeStart,
 }: InteractiveBoxProps) {
   const localRef = useRef<HTMLDivElement>(null);
   const pointerState = useRef<PointerState | null>(null);
@@ -1784,6 +2375,11 @@ function InteractiveBox({
       state.hasManipulated = true;
       onManipulationChange?.(true);
     }
+    if (type === 'resize' && !locked) {
+      const horizontal = Boolean(corner && (corner.includes('e') || corner.includes('w')));
+      const vertical = Boolean(corner && (corner.includes('n') || corner.includes('s')));
+      onResizeStart?.({ horizontal, vertical });
+    }
     pointerState.current = state;
     localRef.current?.setPointerCapture?.(e.pointerId);
   };
@@ -1814,6 +2410,17 @@ function InteractiveBox({
       onManipulationChange?.(true);
     }
 
+    const minWidth = clamp(
+      typeof minWidthPct === 'number' && Number.isFinite(minWidthPct) ? Math.max(minWidthPct, 0.5) : 5,
+      0.5,
+      100,
+    );
+    const minHeight = clamp(
+      typeof minHeightPct === 'number' && Number.isFinite(minHeightPct) ? Math.max(minHeightPct, 0.5) : 5,
+      0.5,
+      100,
+    );
+
     if (ps.type === 'move') {
       const next: Frame = {
         ...ps.startFrame,
@@ -1823,24 +2430,23 @@ function InteractiveBox({
       onChange(next, { commit: false });
     } else if (ps.type === 'resize') {
       const next: Frame = { ...ps.startFrame };
-      const min = 5;
       if (ps.corner?.includes('e')) {
-        next.w = clamp(ps.startFrame.w + dx, min, 100 - ps.startFrame.x);
+        next.w = clamp(ps.startFrame.w + dx, minWidth, 100 - ps.startFrame.x);
       }
       if (ps.corner?.includes('s')) {
-        next.h = clamp(ps.startFrame.h + dy, min, 100 - ps.startFrame.y);
+        next.h = clamp(ps.startFrame.h + dy, minHeight, 100 - ps.startFrame.y);
       }
       if (ps.corner?.includes('w')) {
-        const newX = clamp(ps.startFrame.x + dx, 0, ps.startFrame.x + ps.startFrame.w - min);
+        const newX = clamp(ps.startFrame.x + dx, 0, ps.startFrame.x + ps.startFrame.w - minWidth);
         const delta = ps.startFrame.x - newX;
         next.x = newX;
-        next.w = clamp(ps.startFrame.w + delta, min, 100 - newX);
+        next.w = clamp(ps.startFrame.w + delta, minWidth, 100 - newX);
       }
       if (ps.corner?.includes('n')) {
-        const newY = clamp(ps.startFrame.y + dy, 0, ps.startFrame.y + ps.startFrame.h - min);
+        const newY = clamp(ps.startFrame.y + dy, 0, ps.startFrame.y + ps.startFrame.h - minHeight);
         const delta = ps.startFrame.y - newY;
         next.y = newY;
-        next.h = clamp(ps.startFrame.h + delta, min, 100 - newY);
+        next.h = clamp(ps.startFrame.h + delta, minHeight, 100 - newY);
       }
       onChange(next, { commit: false });
     } else if (ps.type === 'rotate') {
