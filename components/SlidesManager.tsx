@@ -173,7 +173,7 @@ export const writeTextSizingToConfig = (
   return base;
 };
 
-const updateConfigWithTextContent = (
+export const updateConfigWithTextContent = (
   block: SlideBlock,
   text: string,
 ): SlideBlock['config'] | undefined => {
@@ -184,6 +184,17 @@ const updateConfigWithTextContent = (
   } else {
     base.text = text;
     base.content = text;
+  }
+  const sizingSource = asRecord(base.textSizing);
+  const nextSizing: Record<string, any> = sizingSource ? { ...sizingSource } : {};
+  if (nextSizing.autoWidth !== true) {
+    nextSizing.autoWidth = true;
+  }
+  if (nextSizing.autoHeight !== true) {
+    nextSizing.autoHeight = true;
+  }
+  if (Object.keys(nextSizing).length > 0) {
+    base.textSizing = nextSizing;
   }
   return Object.keys(base).length > 0 ? base : undefined;
 };

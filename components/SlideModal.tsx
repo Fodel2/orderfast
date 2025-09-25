@@ -51,6 +51,7 @@ import SlidesManager, {
   readTextSizingConfig,
   pickTextSizingDimensions,
   writeTextSizingToConfig,
+  updateConfigWithTextContent,
 } from "./SlidesManager";
 import Button from "@/components/ui/Button";
 import {
@@ -1188,14 +1189,17 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
       if (dims.width !== undefined) current.w = clampPct(dims.width);
       if (dims.height !== undefined) current.h = clampPct(dims.height);
     });
-    if (typeof sizingSnapshot.autoWidth !== "boolean") {
-      const sizingRecord =
-        workingConfig.textSizing && typeof workingConfig.textSizing === "object"
-          ? { ...(workingConfig.textSizing as Record<string, any>) }
-          : {};
+    const sizingRecord =
+      workingConfig.textSizing && typeof workingConfig.textSizing === "object"
+        ? { ...(workingConfig.textSizing as Record<string, any>) }
+        : {};
+    if (sizingRecord.autoWidth !== true) {
       sizingRecord.autoWidth = true;
-      workingConfig.textSizing = sizingRecord;
     }
+    if (sizingRecord.autoHeight !== true) {
+      sizingRecord.autoHeight = true;
+    }
+    workingConfig.textSizing = sizingRecord;
   }
 
   const rawShadow = raw.boxShadow ?? raw.shadowPreset ?? block.boxShadow;
@@ -1629,17 +1633,49 @@ export default function SlideModal({
         blocks: prev.blocks.map((b) => {
           if (b.id !== id) return b;
           let nextBlock: SlideBlock = { ...b, ...patch };
+          let nextConfig = extractConfig(b.config);
+          let shouldMergeConfig = false;
+
           if ("fontFamily" in patch && isFontEnabledBlock(b.kind)) {
             const normalizedFont =
               normalizeFontFamily(nextBlock.fontFamily) ?? DEFAULT_TEXT_FONT_FAMILY;
             nextBlock = { ...nextBlock, fontFamily: normalizedFont };
-            const previous = extractConfig(b.config);
-            const nextConfig = applyFontFamilyToConfig(previous, normalizedFont);
+            nextConfig = applyFontFamilyToConfig(nextConfig, normalizedFont);
+            shouldMergeConfig = true;
+          }
+
+          if (isTextualBlock(b.kind)) {
+            const textValue =
+              typeof patch.content === "string"
+                ? patch.content
+                : typeof patch.text === "string"
+                  ? patch.text
+                  : typeof nextBlock.content === "string"
+                    ? nextBlock.content
+                    : typeof nextBlock.text === "string"
+                      ? nextBlock.text
+                      : "";
+            const updatedConfig = updateConfigWithTextContent(
+              { ...nextBlock, config: nextConfig },
+              textValue,
+            );
+            if (updatedConfig) {
+              nextConfig = extractConfig(updatedConfig);
+            }
+            shouldMergeConfig = true;
+          }
+
+          if (shouldMergeConfig) {
+            const mergedConfig = mergeInteractionConfig(
+              { ...nextBlock, config: nextConfig },
+              nextConfig,
+            );
             return {
               ...nextBlock,
-              config: mergeInteractionConfig(nextBlock, nextConfig),
+              config: mergedConfig,
             };
           }
+
           return nextBlock;
         }),
       }),
@@ -3296,8 +3332,8 @@ export default function SlideModal({
                                         ? 56
                                         : 16
                                   }
-                                  min={8}
-                                  max={96}
+                                  min={10}
+                                  max={120}
                                   step={1}
                                   onChange={(next) => {
                                     if (next === undefined) {
@@ -3700,8 +3736,8 @@ export default function SlideModal({
                                       ? SIZE_TO_FONT_SIZE_PX[selectedBlock.size]
                                       : SIZE_TO_FONT_SIZE_PX.md
                                   }
-                                  min={8}
-                                  max={96}
+                                  min={10}
+                                  max={120}
                                   step={1}
                                   onChange={(next) => {
                                     if (next === undefined) {
@@ -3886,8 +3922,8 @@ export default function SlideModal({
                                     BUTTON_FONT_SIZE_PX[selectedButtonConfig.size] ??
                                       BUTTON_FONT_SIZE_PX.Medium
                                   }
-                                  min={8}
-                                  max={96}
+                                  min={10}
+                                  max={120}
                                   step={1}
                                   onChange={(next) => {
                                     if (next === undefined) {
@@ -4751,8 +4787,8 @@ export default function SlideModal({
                                     selectedBlock.fontSize ??
                                     (selectedQuoteConfig.style === "emphasis" ? 24 : 16)
                                   }
-                                  min={8}
-                                  max={96}
+                                  min={10}
+                                  max={120}
                                   step={1}
                                   onChange={(next) => {
                                     if (next === undefined) {
