@@ -53,6 +53,15 @@ import SlidesManager, {
   writeTextSizingToConfig,
 } from "./SlidesManager";
 import Button from "@/components/ui/Button";
+import {
+  InputCheckbox,
+  InputColor,
+  InputNumber,
+  InputSelect,
+  InputSlider,
+  InputText,
+  InputToggle,
+} from "./ui";
 import { supabase } from "@/utils/supabaseClient";
 import { STORAGE_BUCKET } from "@/lib/storage";
 import { SlideRow } from "@/components/customer/home/SlidesContainer";
@@ -379,7 +388,6 @@ const InspectorColorInput: React.FC<InspectorColorInputProps> = ({
   allowAlpha = false,
   disabled = false,
 }) => {
-  const colorPickerRef = useRef<HTMLInputElement | null>(null);
   const parsed = useMemo(() => parseColorValue(value), [value]);
   const [textValue, setTextValue] = useState(value ?? "");
 
@@ -426,50 +434,16 @@ const InspectorColorInput: React.FC<InspectorColorInputProps> = ({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => colorPickerRef.current?.click()}
-          className="relative h-9 w-9 overflow-hidden rounded-md border border-neutral-300 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-neutral-400 disabled:cursor-not-allowed"
-          aria-label="Choose color"
-        >
-          <span
-            aria-hidden
-            className="absolute inset-0"
-            style={{
-              backgroundImage: CHECKERBOARD_BACKGROUND,
-              backgroundSize: "8px 8px",
-              backgroundPosition: "0 0, 0 4px, 4px -4px, -4px 0",
-            }}
-          />
-          <span
-            aria-hidden
-            className="absolute inset-0"
-            style={{ background: previewColor || "transparent" }}
-          />
-        </button>
-        <input
-          ref={colorPickerRef}
-          type="color"
-          className="sr-only"
-          value={parsed.hex.startsWith("#") ? parsed.hex : `#${parsed.hex}`}
-          onChange={(event) => handleColorChange(event.target.value)}
-          disabled={disabled}
-        />
-        <input
-          type="text"
-          value={textValue}
-          onChange={(event) => handleCommit(event.target.value)}
-          disabled={disabled}
-          className={`${INSPECTOR_INPUT_CLASS} font-mono uppercase`}
-          placeholder="#000000"
-        />
-      </div>
+      <InputColor
+        value={textValue}
+        previewValue={previewColor}
+        onChange={handleCommit}
+        onColorInputChange={handleColorChange}
+        disabled={disabled}
+      />
       {allowAlpha && (
         <div className="flex items-center gap-2">
-          <input
-            type="range"
+          <InputSlider
             min={0}
             max={100}
             step={1}
@@ -589,8 +563,8 @@ const InspectorSliderControl: React.FC<InspectorSliderControlProps> = ({
   return (
     <label className="flex items-center gap-3 text-xs font-medium text-neutral-500">
       <span className="w-28 shrink-0 text-left">{label}</span>
-      <input
-        type="range"
+      <InputSlider
+        
         min={min}
         max={max}
         step={step}
@@ -599,8 +573,7 @@ const InspectorSliderControl: React.FC<InspectorSliderControlProps> = ({
         disabled={disabled}
         className="flex-1 accent-emerald-500"
       />
-      <input
-        type="number"
+      <InputNumber
         min={min}
         max={max}
         step={step}
@@ -2364,8 +2337,8 @@ export default function SlideModal({
                 </button>
               </div>
               <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
+                <InputCheckbox
+                  
                   checked={editInPreview}
                   onChange={(e) => setEditInPreview(e.target.checked)}
                 />
@@ -2515,23 +2488,22 @@ export default function SlideModal({
                       Background
                     </h3>
                     <div className="space-y-3 text-sm">
-                      <label className="block text-xs font-medium text-neutral-500">
-                        Type
-                        <select
-                          value={backgroundType}
-                          onChange={(e) =>
-                            handleBackgroundTypeChange(
-                              e.target.value as SlideBackground["type"],
-                            )
-                          }
-                          className={INSPECTOR_INPUT_CLASS}
-                        >
-                          <option value="none">None</option>
-                          <option value="color">Color</option>
-                          <option value="image">Image</option>
-                          <option value="video">Video</option>
-                        </select>
-                      </label>
+                      <InputSelect
+                        label="Type"
+                        value={backgroundType}
+                        onChange={(e) =>
+                          handleBackgroundTypeChange(
+                            e.target.value as SlideBackground["type"],
+                          )
+                        }
+                        labelClassName="block text-xs font-medium text-neutral-500"
+                        options={[
+                          { value: "none", label: "None" },
+                          { value: "color", label: "Color" },
+                          { value: "image", label: "Image" },
+                          { value: "video", label: "Video" },
+                        ]}
+                      />
                       {backgroundType === "color" && (
                         <div className="space-y-2">
                           <label className="block text-xs font-medium text-neutral-500">
@@ -2582,7 +2554,7 @@ export default function SlideModal({
                         <div className="space-y-3">
                           <label className="block text-xs font-medium text-neutral-500">
                             Image URL
-                            <input
+                            <InputText
                               type="text"
                               value={imageBackground?.url || ""}
                               onChange={(e) =>
@@ -2647,34 +2619,33 @@ export default function SlideModal({
                               </span>
                             )}
                           </div>
-                          <label className="block text-xs font-medium text-neutral-500">
-                            Fit
-                            <select
-                              value={imageBackground?.fit || "cover"}
-                              onChange={(e) =>
-                                updateBackground((prev) => {
-                                  if (prev?.type !== "image")
-                                    return {
-                                      type: "image",
-                                      url: "",
-                                      fit: e.target.value as "cover" | "contain",
-                                      focal: { x: 0.5, y: 0.5 },
-                                      blur: 0,
-                                    };
-                                  return { ...prev, fit: e.target.value as "cover" | "contain" };
-                                })
-                              }
-                              className={INSPECTOR_INPUT_CLASS}
-                            >
-                              <option value="cover">Cover</option>
-                              <option value="contain">Contain</option>
-                            </select>
-                          </label>
+                          <InputSelect
+                            label="Fit"
+                            value={imageBackground?.fit || "cover"}
+                            onChange={(e) =>
+                              updateBackground((prev) => {
+                                if (prev?.type !== "image")
+                                  return {
+                                    type: "image",
+                                    url: "",
+                                    fit: e.target.value as "cover" | "contain",
+                                    focal: { x: 0.5, y: 0.5 },
+                                    blur: 0,
+                                  };
+                                return { ...prev, fit: e.target.value as "cover" | "contain" };
+                              })
+                            }
+                            labelClassName="block text-xs font-medium text-neutral-500"
+                            options={[
+                              { value: "cover", label: "Cover" },
+                              { value: "contain", label: "Contain" },
+                            ]}
+                          />
                           <div className="grid grid-cols-2 gap-2 text-xs">
                             <label className="block font-medium text-neutral-500">
                               Focal X
-                              <input
-                                type="number"
+                              <InputNumber
+                                
                                 min={0}
                                 max={1}
                                 step={0.01}
@@ -2694,8 +2665,8 @@ export default function SlideModal({
                             </label>
                             <label className="block font-medium text-neutral-500">
                               Focal Y
-                              <input
-                                type="number"
+                              <InputNumber
+                                
                                 min={0}
                                 max={1}
                                 step={0.01}
@@ -2715,8 +2686,8 @@ export default function SlideModal({
                             </label>
                           </div>
                           <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
-                            <input
-                              type="checkbox"
+                            <InputCheckbox
+                              
                               checked={Boolean(imageBackground?.overlay)}
                               onChange={(e) =>
                                 updateBackground((prev) => {
@@ -2807,7 +2778,7 @@ export default function SlideModal({
                         <div className="space-y-3">
                           <label className="block text-xs font-medium text-neutral-500">
                             Video URL
-                            <input
+                            <InputText
                               type="text"
                               value={videoBackground?.url || ""}
                               onChange={(e) =>
@@ -2880,7 +2851,7 @@ export default function SlideModal({
                           </div>
                           <label className="block text-xs font-medium text-neutral-500">
                             Poster URL
-                            <input
+                            <InputText
                               type="text"
                               value={videoBackground?.poster || ""}
                               onChange={(e) =>
@@ -2931,38 +2902,37 @@ export default function SlideModal({
                               Upload poster
                             </button>
                           </div>
-                          <label className="block text-xs font-medium text-neutral-500">
-                            Fit
-                            <select
-                              value={videoBackground?.fit || "cover"}
-                              onChange={(e) =>
-                                updateBackground((prev) => {
-                                  if (prev?.type !== "video")
-                                    return {
-                                      type: "video",
-                                      url: prev?.url,
-                                      fit: e.target.value as "cover" | "contain",
-                                      focal: { x: 0.5, y: 0.5 },
-                                      blur: 0,
-                                      loop: true,
-                                      mute: true,
-                                      autoplay: true,
-                                      poster: prev?.poster,
-                                    };
-                                  return { ...prev, fit: e.target.value as "cover" | "contain" };
-                                })
-                              }
-                              className={INSPECTOR_INPUT_CLASS}
-                            >
-                              <option value="cover">Cover</option>
-                              <option value="contain">Contain</option>
-                            </select>
-                          </label>
+                          <InputSelect
+                            label="Fit"
+                            value={videoBackground?.fit || "cover"}
+                            onChange={(e) =>
+                              updateBackground((prev) => {
+                                if (prev?.type !== "video")
+                                  return {
+                                    type: "video",
+                                    url: prev?.url,
+                                    fit: e.target.value as "cover" | "contain",
+                                    focal: { x: 0.5, y: 0.5 },
+                                    blur: 0,
+                                    loop: true,
+                                    mute: true,
+                                    autoplay: true,
+                                    poster: prev?.poster,
+                                  };
+                                return { ...prev, fit: e.target.value as "cover" | "contain" };
+                              })
+                            }
+                            labelClassName="block text-xs font-medium text-neutral-500"
+                            options={[
+                              { value: "cover", label: "Cover" },
+                              { value: "contain", label: "Contain" },
+                            ]}
+                          />
                           <div className="grid grid-cols-2 gap-2 text-xs">
                             <label className="block font-medium text-neutral-500">
                               Focal X
-                              <input
-                                type="number"
+                              <InputNumber
+                                
                                 min={0}
                                 max={1}
                                 step={0.01}
@@ -2982,8 +2952,8 @@ export default function SlideModal({
                             </label>
                             <label className="block font-medium text-neutral-500">
                               Focal Y
-                              <input
-                                type="number"
+                              <InputNumber
+                                
                                 min={0}
                                 max={1}
                                 step={0.01}
@@ -3004,8 +2974,8 @@ export default function SlideModal({
                           </div>
                           <div className="flex flex-wrap gap-3 text-xs font-medium text-neutral-500">
                             <label className="flex items-center gap-2">
-                              <input
-                                type="checkbox"
+                              <InputCheckbox
+                                
                                 checked={videoBackground?.loop ?? true}
                                 onChange={(e) =>
                                   updateBackground((prev) => {
@@ -3017,8 +2987,8 @@ export default function SlideModal({
                               Loop
                             </label>
                             <label className="flex items-center gap-2">
-                              <input
-                                type="checkbox"
+                              <InputCheckbox
+                                
                                 checked={videoBackground?.mute ?? true}
                                 onChange={(e) =>
                                   updateBackground((prev) => {
@@ -3030,8 +3000,8 @@ export default function SlideModal({
                               Mute
                             </label>
                             <label className="flex items-center gap-2">
-                              <input
-                                type="checkbox"
+                              <InputCheckbox
+                                
                                 checked={videoBackground?.autoplay ?? true}
                                 onChange={(e) =>
                                   updateBackground((prev) => {
@@ -3044,8 +3014,8 @@ export default function SlideModal({
                             </label>
                           </div>
                           <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
-                            <input
-                              type="checkbox"
+                            <InputCheckbox
+                              
                               checked={Boolean(videoBackground?.overlay)}
                               onChange={(e) =>
                                 updateBackground((prev) => {
@@ -3267,7 +3237,7 @@ export default function SlideModal({
                                       (item) => item.value === value,
                                     );
                                     return (
-                                      <select
+                                      <InputSelect
                                         value={value}
                                         onChange={(e) =>
                                           handleFontFamilyChange(
@@ -3275,7 +3245,6 @@ export default function SlideModal({
                                             e.target.value,
                                           )
                                         }
-                                        className={INSPECTOR_INPUT_CLASS}
                                         style={{
                                           fontFamily: option?.previewStack,
                                         }}
@@ -3289,7 +3258,7 @@ export default function SlideModal({
                                             {opt.label}
                                           </option>
                                         ))}
-                                      </select>
+                                      </InputSelect>
                                     );
                                   })()}
                                 </label>
@@ -3297,7 +3266,7 @@ export default function SlideModal({
                                   <span className="text-xs font-medium text-neutral-500">
                                     Font weight
                                   </span>
-                                  <select
+                                  <InputSelect
                                     value={String(
                                       selectedBlock.fontWeight ??
                                         (selectedBlock.kind === "heading" ? 700 : 400),
@@ -3310,14 +3279,8 @@ export default function SlideModal({
                                           : parsed,
                                       });
                                     }}
-                                    className={INSPECTOR_INPUT_CLASS}
-                                  >
-                                    {FONT_WEIGHT_OPTIONS.map((option) => (
-                                      <option key={option.value} value={option.value}>
-                                        {option.label}
-                                      </option>
-                                    ))}
-                                  </select>
+                                    options={FONT_WEIGHT_OPTIONS}
+                                  />
                                 </label>
                               </div>
                               <div className="space-y-3">
@@ -3417,8 +3380,8 @@ export default function SlideModal({
                               </div>
                               <div>
                                 <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
-                                  <input
-                                    type="checkbox"
+                                  <InputCheckbox
+                                    
                                     checked={Boolean(selectedBlock.textShadow)}
                                     onChange={(e) => {
                                       if (e.target.checked) {
@@ -3447,8 +3410,8 @@ export default function SlideModal({
                                         <span className="font-medium text-neutral-500">
                                           {label}
                                         </span>
-                                        <input
-                                          type="number"
+                                        <InputNumber
+                                          
                                           value={selectedBlock.textShadow?.[key] ?? DEFAULT_TEXT_SHADOW[key]}
                                           onChange={(e) => {
                                             const value = Number(e.target.value);
@@ -3526,7 +3489,7 @@ export default function SlideModal({
                                 <span className="text-xs font-medium text-neutral-500">
                                   Background style
                                 </span>
-                                <select
+                                <InputSelect
                                   value={selectedBlock.bgStyle ?? "none"}
                                   onChange={(e) => {
                                     const value = e.target.value as SlideBlock["bgStyle"];
@@ -3547,14 +3510,8 @@ export default function SlideModal({
                                       padding: selectedBlock.padding ?? 0,
                                     });
                                   }}
-                                  className={INSPECTOR_INPUT_CLASS}
-                                >
-                                  {BACKGROUND_STYLE_OPTIONS.map((opt) => (
-                                    <option key={opt.value} value={opt.value}>
-                                      {opt.label}
-                                    </option>
-                                  ))}
-                                </select>
+                                  options={BACKGROUND_STYLE_OPTIONS}
+                                />
                               </label>
                               {selectedBlock.bgStyle &&
                                 selectedBlock.bgStyle !== "none" && (
@@ -3689,7 +3646,7 @@ export default function SlideModal({
                                       (item) => item.value === value,
                                     );
                                     return (
-                                      <select
+                                      <InputSelect
                                         value={value}
                                         onChange={(e) =>
                                           handleFontFamilyChange(
@@ -3697,7 +3654,6 @@ export default function SlideModal({
                                             e.target.value,
                                           )
                                         }
-                                        className={INSPECTOR_INPUT_CLASS}
                                         style={{
                                           fontFamily: option?.previewStack,
                                         }}
@@ -3711,7 +3667,7 @@ export default function SlideModal({
                                             {opt.label}
                                           </option>
                                         ))}
-                                      </select>
+                                      </InputSelect>
                                     );
                                   })()}
                                 </label>
@@ -3719,7 +3675,7 @@ export default function SlideModal({
                                   <span className="text-xs font-medium text-neutral-500">
                                     Font weight
                                   </span>
-                                  <select
+                                  <InputSelect
                                     value={String(selectedBlock.fontWeight ?? 600)}
                                     onChange={(e) => {
                                       const parsed = Number(e.target.value);
@@ -3729,14 +3685,8 @@ export default function SlideModal({
                                           : parsed,
                                       });
                                     }}
-                                    className={INSPECTOR_INPUT_CLASS}
-                                  >
-                                    {FONT_WEIGHT_OPTIONS.map((option) => (
-                                      <option key={option.value} value={option.value}>
-                                        {option.label}
-                                      </option>
-                                    ))}
-                                  </select>
+                                    options={FONT_WEIGHT_OPTIONS}
+                                  />
                                 </label>
                               </div>
                               <div className="space-y-3">
@@ -3810,21 +3760,15 @@ export default function SlideModal({
                                 <span className="text-xs font-medium text-neutral-500">
                                   Size
                                 </span>
-                                <select
+                                <InputSelect
                                   value={selectedBlock.size || "md"}
                                   onChange={(e) =>
                                     patchBlock(selectedBlock.id, {
                                       size: e.target.value as any,
                                     })
                                   }
-                                  className={INSPECTOR_INPUT_CLASS}
-                                >
-                                  {TEXT_SIZES.map((opt) => (
-                                    <option key={opt.value} value={opt.value}>
-                                      {opt.label}
-                                    </option>
-                                  ))}
-                                </select>
+                                  options={TEXT_SIZES}
+                                />
                               </label>
                               <div>
                                 <span className="text-xs font-medium text-neutral-500">
@@ -3863,7 +3807,7 @@ export default function SlideModal({
                                 <span className="text-xs font-medium text-neutral-500">
                                   Label
                                 </span>
-                                <input
+                                <InputText
                                   type="text"
                                   value={selectedButtonConfig.label}
                                   onChange={(e) =>
@@ -3888,7 +3832,7 @@ export default function SlideModal({
                                       (item) => item.value === value,
                                     );
                                     return (
-                                      <select
+                                      <InputSelect
                                         value={value}
                                         onChange={(e) =>
                                           handleFontFamilyChange(
@@ -3896,7 +3840,6 @@ export default function SlideModal({
                                             e.target.value,
                                           )
                                         }
-                                        className={INSPECTOR_INPUT_CLASS}
                                         style={{
                                           fontFamily: option?.previewStack,
                                         }}
@@ -3910,7 +3853,7 @@ export default function SlideModal({
                                             {opt.label}
                                           </option>
                                         ))}
-                                      </select>
+                                      </InputSelect>
                                     );
                                   })()}
                                 </label>
@@ -3918,7 +3861,7 @@ export default function SlideModal({
                                   <span className="text-xs font-medium text-neutral-500">
                                     Font weight
                                   </span>
-                                  <select
+                                  <InputSelect
                                     value={String(selectedBlock.fontWeight ?? 600)}
                                     onChange={(e) => {
                                       const parsed = Number(e.target.value);
@@ -3928,14 +3871,8 @@ export default function SlideModal({
                                           : parsed,
                                       });
                                     }}
-                                    className={INSPECTOR_INPUT_CLASS}
-                                  >
-                                    {FONT_WEIGHT_OPTIONS.map((option) => (
-                                      <option key={option.value} value={option.value}>
-                                        {option.label}
-                                      </option>
-                                    ))}
-                                  </select>
+                                    options={FONT_WEIGHT_OPTIONS}
+                                  />
                                 </label>
                               </div>
                               <div className="space-y-3">
@@ -4024,7 +3961,7 @@ export default function SlideModal({
                                   Link
                                 </span>
                                 <div className="mt-1 space-y-2">
-                                  <select
+                                  <InputSelect
                                     value={
                                       linkOptions.includes(selectedButtonConfig.href)
                                         ? selectedButtonConfig.href
@@ -4047,15 +3984,12 @@ export default function SlideModal({
                                         href: value,
                                       }));
                                     }}
-                                    className={INSPECTOR_INPUT_CLASS}
-                                  >
-                                    {linkOptions.map((opt) => (
-                                      <option key={opt} value={opt}>
-                                        {opt === "custom" ? "Custom URL" : opt}
-                                      </option>
-                                    ))}
-                                  </select>
-                                  <input
+                                    options={linkOptions.map((opt) => ({
+                                      value: opt,
+                                      label: opt === "custom" ? "Custom URL" : opt,
+                                    }))}
+                                  />
+                                  <InputText
                                     type="text"
                                     value={selectedButtonConfig.href}
                                     onChange={(e) =>
@@ -4074,7 +4008,7 @@ export default function SlideModal({
                                   <span className="text-xs font-medium text-neutral-500">
                                     Variant
                                   </span>
-                                  <select
+                                  <InputSelect
                                     value={selectedButtonConfig.variant}
                                     onChange={(e) =>
                                       updateButtonConfig(selectedBlock.id, (config) => ({
@@ -4082,20 +4016,17 @@ export default function SlideModal({
                                         variant: e.target.value as ButtonBlockVariant,
                                       }))
                                     }
-                                    className={INSPECTOR_INPUT_CLASS}
-                                  >
-                                    {BUTTON_VARIANTS.map((variant) => (
-                                      <option key={variant} value={variant}>
-                                        {variant}
-                                      </option>
-                                    ))}
-                                  </select>
+                                    options={BUTTON_VARIANTS.map((variant) => ({
+                                      value: variant,
+                                      label: variant,
+                                    }))}
+                                  />
                                 </label>
                                 <label className="block">
                                   <span className="text-xs font-medium text-neutral-500">
                                     Size
                                   </span>
-                                  <select
+                                  <InputSelect
                                     value={selectedButtonConfig.size}
                                     onChange={(e) =>
                                       updateButtonConfig(selectedBlock.id, (config) => ({
@@ -4103,20 +4034,17 @@ export default function SlideModal({
                                         size: e.target.value as ButtonBlockSize,
                                       }))
                                     }
-                                    className={INSPECTOR_INPUT_CLASS}
-                                  >
-                                    {BUTTON_SIZES.map((size) => (
-                                      <option key={size} value={size}>
-                                        {size}
-                                      </option>
-                                    ))}
-                                  </select>
+                                    options={BUTTON_SIZES.map((size) => ({
+                                      value: size,
+                                      label: size,
+                                    }))}
+                                  />
                                 </label>
                               </div>
                               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                 <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
-                                  <input
-                                    type="checkbox"
+                                  <InputCheckbox
+                                    
                                     checked={selectedButtonConfig.fullWidth}
                                     onChange={(e) =>
                                       updateButtonConfig(selectedBlock.id, (config) => ({
@@ -4128,8 +4056,8 @@ export default function SlideModal({
                                   Full width
                                 </label>
                                 <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
-                                  <input
-                                    type="checkbox"
+                                  <InputCheckbox
+                                    
                                     checked={selectedButtonConfig.shadow}
                                     onChange={(e) =>
                                       updateButtonConfig(selectedBlock.id, (config) => ({
@@ -4222,7 +4150,7 @@ export default function SlideModal({
                                   <span className="text-xs font-medium text-neutral-500">
                                     Image URL
                                   </span>
-                                  <input
+                                  <InputText
                                     type="text"
                                     value={selectedImageConfig.url}
                                     onChange={(e) => {
@@ -4269,7 +4197,7 @@ export default function SlideModal({
                                   <span className="text-xs font-medium text-neutral-500">
                                     Object fit
                                   </span>
-                                  <select
+                                  <InputSelect
                                     value={selectedImageConfig.fit}
                                     onChange={(e) =>
                                       updateImageConfig(selectedBlock.id, (config) => ({
@@ -4277,11 +4205,11 @@ export default function SlideModal({
                                         fit: e.target.value as "cover" | "contain",
                                       }))
                                     }
-                                    className={INSPECTOR_INPUT_CLASS}
-                                  >
-                                    <option value="cover">Cover</option>
-                                    <option value="contain">Contain</option>
-                                  </select>
+                                    options={[
+                                      { value: "cover", label: "Cover" },
+                                      { value: "contain", label: "Contain" },
+                                    ]}
+                                  />
                                 </label>
                                 <div>
                                   <span className="text-xs font-medium text-neutral-500">
@@ -4293,8 +4221,8 @@ export default function SlideModal({
                                         <span>X axis</span>
                                         <span>{selectedImageConfig.focalX.toFixed(2)}</span>
                                       </div>
-                                      <input
-                                        type="range"
+                                      <InputSlider
+                                        
                                         min={0}
                                         max={1}
                                         step={0.01}
@@ -4314,8 +4242,8 @@ export default function SlideModal({
                                         <span>Y axis</span>
                                         <span>{selectedImageConfig.focalY.toFixed(2)}</span>
                                       </div>
-                                      <input
-                                        type="range"
+                                      <InputSlider
+                                        
                                         min={0}
                                         max={1}
                                         step={0.01}
@@ -4350,8 +4278,8 @@ export default function SlideModal({
                                   }}
                                 />
                                 <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
-                                  <input
-                                    type="checkbox"
+                                  <InputCheckbox
+                                    
                                     checked={selectedImageConfig.shadow}
                                     onChange={(e) =>
                                       updateImageConfig(selectedBlock.id, (config) => ({
@@ -4366,7 +4294,7 @@ export default function SlideModal({
                                   <span className="text-xs font-medium text-neutral-500">
                                     Alt text
                                   </span>
-                                  <input
+                                  <InputText
                                     type="text"
                                     value={selectedImageConfig.alt}
                                     onChange={(e) => {
@@ -4420,7 +4348,7 @@ export default function SlideModal({
                                         Image URL
                                       </span>
                                       <div className="flex gap-2">
-                                        <input
+                                        <InputText
                                           type="text"
                                           value={galleryUrlInput}
                                           onChange={(e) =>
@@ -4573,7 +4501,7 @@ export default function SlideModal({
                                     <span className="text-xs font-medium text-neutral-500">
                                       Layout
                                     </span>
-                                    <select
+                                    <InputSelect
                                       value={selectedGalleryConfig.layout}
                                       onChange={(e) =>
                                         updateGalleryConfig(
@@ -4584,36 +4512,34 @@ export default function SlideModal({
                                           }),
                                         )
                                       }
-                                      className={INSPECTOR_INPUT_CLASS}
-                                    >
-                                      <option value="grid">Grid</option>
-                                      <option value="carousel">Carousel</option>
-                                    </select>
+                                      options={[
+                                        { value: "grid", label: "Grid" },
+                                        { value: "carousel", label: "Carousel" },
+                                      ]}
+                                    />
                                   </label>
                                   {selectedGalleryConfig.layout === "carousel" && (
                                     <div className="space-y-2 rounded border px-3 py-2 text-xs">
-                                      <label className="flex items-center justify-between text-xs text-neutral-500">
-                                        <span>Autoplay</span>
-                                        <input
-                                          type="checkbox"
-                                          checked={selectedGalleryConfig.autoplay}
-                                          onChange={(e) =>
-                                            updateGalleryConfig(
-                                              selectedBlock.id,
-                                              (config) => ({
-                                                ...config,
-                                                autoplay: e.target.checked,
-                                              }),
-                                            )
-                                          }
-                                        />
-                                      </label>
+                                      <InputToggle
+                                        label="Autoplay"
+                                        checked={selectedGalleryConfig.autoplay}
+                                        onChange={(checked) =>
+                                          updateGalleryConfig(
+                                            selectedBlock.id,
+                                            (config) => ({
+                                              ...config,
+                                              autoplay: checked,
+                                            }),
+                                          )
+                                        }
+                                        labelClassName="flex items-center justify-between text-xs text-neutral-500"
+                                      />
                                       <label className="block">
                                         <span className="text-xs font-medium text-neutral-500">
                                           Interval (ms)
                                         </span>
-                                        <input
-                                          type="number"
+                                        <InputNumber
+                                          
                                           min={200}
                                           step={100}
                                           value={selectedGalleryConfig.interval}
@@ -4655,49 +4581,45 @@ export default function SlideModal({
                                       );
                                     }}
                                   />
-                                  <label className="flex items-center justify-between text-xs text-neutral-500">
-                                    <span>Shadow</span>
-                                    <input
-                                      type="checkbox"
-                                      checked={selectedGalleryConfig.shadow}
-                                      onChange={(e) =>
-                                        updateGalleryConfig(
-                                          selectedBlock.id,
-                                          (config) => ({
-                                            ...config,
-                                            shadow: e.target.checked,
-                                          }),
-                                        )
-                                      }
-                                    />
-                                  </label>
+                                  <InputToggle
+                                    label="Shadow"
+                                    checked={selectedGalleryConfig.shadow}
+                                    onChange={(checked) =>
+                                      updateGalleryConfig(
+                                        selectedBlock.id,
+                                        (config) => ({
+                                          ...config,
+                                          shadow: checked,
+                                        }),
+                                      )
+                                    }
+                                    labelClassName="flex items-center justify-between text-xs text-neutral-500"
+                                  />
                                 </div>
                               </div>
                             )}
                           {selectedBlock.kind === "quote" && selectedQuoteConfig && (
                             <div className="space-y-4">
                               <div className="space-y-2">
-                                <label className="flex items-center justify-between text-xs text-neutral-500">
-                                  <span>Use customer review</span>
-                                  <input
-                                    type="checkbox"
-                                    checked={selectedQuoteConfig.useReview}
-                                    onChange={(e) =>
-                                      updateQuoteConfig(selectedBlock.id, (config) => ({
-                                        ...config,
-                                        useReview: e.target.checked,
-                                        reviewId: e.target.checked ? config.reviewId : null,
-                                      }))
-                                    }
-                                  />
-                                </label>
+                                <InputToggle
+                                  label="Use customer review"
+                                  checked={selectedQuoteConfig.useReview}
+                                  onChange={(checked) =>
+                                    updateQuoteConfig(selectedBlock.id, (config) => ({
+                                      ...config,
+                                      useReview: checked,
+                                      reviewId: checked ? config.reviewId : null,
+                                    }))
+                                  }
+                                  labelClassName="flex items-center justify-between text-xs text-neutral-500"
+                                />
                                 {selectedQuoteConfig.useReview && (
                                   reviewOptions.length > 0 ? (
                                     <label className="block">
                                       <span className="text-xs font-medium text-neutral-500">
                                         Select review
                                       </span>
-                                      <select
+                                      <InputSelect
                                         value={selectedQuoteConfig.reviewId ?? ""}
                                         onChange={(e) => {
                                           const nextId = e.target.value;
@@ -4712,7 +4634,6 @@ export default function SlideModal({
                                             author: review ? review.author : config.author,
                                           }));
                                         }}
-                                        className={INSPECTOR_INPUT_CLASS}
                                       >
                                         <option value="">Choose a review…</option>
                                         {reviewOptions.map((option) => (
@@ -4720,7 +4641,7 @@ export default function SlideModal({
                                             {formatReviewOptionLabel(option)}
                                           </option>
                                         ))}
-                                      </select>
+                                      </InputSelect>
                                     </label>
                                   ) : (
                                     <p className="text-xs text-neutral-500">
@@ -4749,7 +4670,7 @@ export default function SlideModal({
                                 <span className="text-xs font-medium text-neutral-500">
                                   Author (optional)
                                 </span>
-                                <input
+                                <InputText
                                   type="text"
                                   value={selectedQuoteConfig.author}
                                   onChange={(e) =>
@@ -4774,7 +4695,7 @@ export default function SlideModal({
                                       (item) => item.value === value,
                                     );
                                     return (
-                                      <select
+                                      <InputSelect
                                         value={value}
                                         onChange={(e) =>
                                           handleFontFamilyChange(
@@ -4782,7 +4703,6 @@ export default function SlideModal({
                                             e.target.value,
                                           )
                                         }
-                                        className={INSPECTOR_INPUT_CLASS}
                                         style={{
                                           fontFamily: option?.previewStack,
                                         }}
@@ -4796,7 +4716,7 @@ export default function SlideModal({
                                             {opt.label}
                                           </option>
                                         ))}
-                                      </select>
+                                      </InputSelect>
                                     );
                                   })()}
                                 </label>
@@ -4804,7 +4724,7 @@ export default function SlideModal({
                                   <span className="text-xs font-medium text-neutral-500">
                                     Font weight
                                   </span>
-                                  <select
+                                  <InputSelect
                                     value={String(
                                       selectedBlock.fontWeight ??
                                         (selectedQuoteConfig.style === "emphasis" ? 600 : 400),
@@ -4817,14 +4737,8 @@ export default function SlideModal({
                                           : parsed,
                                       });
                                     }}
-                                    className={INSPECTOR_INPUT_CLASS}
-                                  >
-                                    {FONT_WEIGHT_OPTIONS.map((option) => (
-                                      <option key={option.value} value={option.value}>
-                                        {option.label}
-                                      </option>
-                                    ))}
-                                  </select>
+                                    options={FONT_WEIGHT_OPTIONS}
+                                  />
                                 </label>
                               </div>
                               <div className="space-y-3">
@@ -4882,7 +4796,7 @@ export default function SlideModal({
                                 <span className="text-xs font-medium text-neutral-500">
                                   Style
                                 </span>
-                                <select
+                                <InputSelect
                                   value={selectedQuoteConfig.style}
                                   onChange={(e) =>
                                     updateQuoteConfig(selectedBlock.id, (config) => ({
@@ -4890,14 +4804,8 @@ export default function SlideModal({
                                       style: e.target.value as QuoteBlockConfig["style"],
                                     }))
                                   }
-                                  className={INSPECTOR_INPUT_CLASS}
-                                >
-                                  {QUOTE_STYLE_OPTIONS.map((option) => (
-                                    <option key={option.value} value={option.value}>
-                                      {option.label}
-                                    </option>
-                                  ))}
-                                </select>
+                                  options={QUOTE_STYLE_OPTIONS}
+                                />
                               </label>
                               {(selectedQuoteConfig.style === "emphasis" ||
                                 selectedQuoteConfig.style === "card") && (
@@ -5007,22 +4915,18 @@ export default function SlideModal({
                               Visibility
                             </h4>
                             {DEVICE_VISIBILITY_CONTROLS.map(({ key, label }) => (
-                              <label
+                              <InputToggle
                                 key={key}
-                                className="flex items-center justify-between text-xs text-neutral-500"
-                              >
-                                <span>{label}</span>
-                                <input
-                                  type="checkbox"
-                                  checked={selectedVisibilityConfig[key]}
-                                  onChange={(e) =>
-                                    updateVisibilityConfig(selectedBlock.id, (config) => ({
-                                      ...config,
-                                      [key]: e.target.checked,
-                                    }))
-                                  }
-                                />
-                              </label>
+                                label={label}
+                                checked={selectedVisibilityConfig[key]}
+                                onChange={(checked) =>
+                                  updateVisibilityConfig(selectedBlock.id, (config) => ({
+                                    ...config,
+                                    [key]: checked,
+                                  }))
+                                }
+                                labelClassName="flex items-center justify-between text-xs text-neutral-500"
+                              />
                             ))}
                           </div>
                           <div className="rounded border px-3 py-3 space-y-3">
@@ -5077,8 +4981,8 @@ export default function SlideModal({
                                 <span className="text-xs font-medium text-neutral-500">
                                   Border width (px)
                                 </span>
-                                <input
-                                  type="number"
+                                <InputNumber
+                                  
                                   min={0}
                                   value={
                                     selectedBlock.borderWidth !== undefined
@@ -5132,7 +5036,7 @@ export default function SlideModal({
                                 <span className="text-xs font-medium text-neutral-500">
                                   Background type
                                 </span>
-                                <select
+                                <InputSelect
                                   value={selectedBlock.background?.type ?? "none"}
                                   onChange={(e) => {
                                     const nextType = e.target.value as BlockBackground["type"];
@@ -5179,14 +5083,8 @@ export default function SlideModal({
                                       },
                                     });
                                   }}
-                                  className={INSPECTOR_INPUT_CLASS}
-                                >
-                                  {BLOCK_BACKGROUND_TYPE_OPTIONS.map((option) => (
-                                    <option key={option.value} value={option.value}>
-                                      {option.label}
-                                    </option>
-                                  ))}
-                                </select>
+                                  options={BLOCK_BACKGROUND_TYPE_OPTIONS}
+                                />
                               </label>
                               {selectedBlock.background?.type === "color" && (
                                 <label className="block">
@@ -5282,7 +5180,7 @@ export default function SlideModal({
                                     <span className="text-xs font-medium text-neutral-500">
                                       Direction
                                     </span>
-                                    <select
+                                    <InputSelect
                                       value={
                                         selectedBlock.background?.gradient?.direction ??
                                         "to-bottom"
@@ -5305,14 +5203,8 @@ export default function SlideModal({
                                         };
                                         patchBlock(selectedBlock.id, { background: base });
                                       }}
-                                      className={INSPECTOR_INPUT_CLASS}
-                                    >
-                                      {BLOCK_BACKGROUND_GRADIENT_DIRECTIONS.map((option) => (
-                                        <option key={option.value} value={option.value}>
-                                          {option.label}
-                                        </option>
-                                      ))}
-                                    </select>
+                                      options={BLOCK_BACKGROUND_GRADIENT_DIRECTIONS}
+                                    />
                                   </label>
                                 </div>
                               )}
@@ -5339,7 +5231,7 @@ export default function SlideModal({
                                     <span className="text-xs font-medium text-neutral-500">
                                       Image URL
                                     </span>
-                                    <input
+                                    <InputText
                                       type="text"
                                       value={selectedBlock.background?.image?.url ?? ""}
                                       onChange={(event) => {
@@ -5383,7 +5275,7 @@ export default function SlideModal({
                               <span className="text-xs font-medium text-neutral-500">
                                 Entry animation
                               </span>
-                              <select
+                              <InputSelect
                                 value={selectedAnimationConfig.type}
                                 onChange={(event) =>
                                   applyAnimationConfig((prev) => ({
@@ -5391,22 +5283,16 @@ export default function SlideModal({
                                     type: event.target.value as BlockAnimationType,
                                   }))
                                 }
-                                className={INSPECTOR_INPUT_CLASS}
-                              >
-                                {BLOCK_ANIMATION_OPTIONS.map((option) => (
-                                  <option key={option.value} value={option.value}>
-                                    {option.label}
-                                  </option>
-                                ))}
-                              </select>
+                                options={BLOCK_ANIMATION_OPTIONS}
+                              />
                             </label>
                             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                               <label className="block">
                                 <span className="text-xs font-medium text-neutral-500">
                                   Duration (ms)
                                 </span>
-                                <input
-                                  type="number"
+                                <InputNumber
+                                  
                                   min={0}
                                   value={selectedAnimationConfig.duration}
                                   onChange={(event) => {
@@ -5423,8 +5309,8 @@ export default function SlideModal({
                                 <span className="text-xs font-medium text-neutral-500">
                                   Delay (ms)
                                 </span>
-                                <input
-                                  type="number"
+                                <InputNumber
+                                  
                                   min={0}
                                   value={selectedAnimationConfig.delay}
                                   onChange={(event) => {
@@ -5447,7 +5333,7 @@ export default function SlideModal({
                               <span className="text-xs font-medium text-neutral-500">
                                 Hover effect
                               </span>
-                              <select
+                              <InputSelect
                                 value={selectedTransitionConfig.hover}
                                 onChange={(event) =>
                                   applyTransitionConfig((prev) => ({
@@ -5455,21 +5341,15 @@ export default function SlideModal({
                                     hover: event.target.value as BlockHoverTransition,
                                   }))
                                 }
-                                className={INSPECTOR_INPUT_CLASS}
-                              >
-                                {BLOCK_TRANSITION_OPTIONS.map((option) => (
-                                  <option key={option.value} value={option.value}>
-                                    {option.label}
-                                  </option>
-                                ))}
-                              </select>
+                                options={BLOCK_TRANSITION_OPTIONS}
+                              />
                             </label>
                             <label className="block">
                               <span className="text-xs font-medium text-neutral-500">
                                 Transition duration (ms)
                               </span>
-                              <input
-                                type="number"
+                              <InputNumber
+                                
                                 min={0}
                                 value={selectedTransitionConfig.duration}
                                 onChange={(event) => {
@@ -5492,8 +5372,8 @@ export default function SlideModal({
                                 <>
                                   <label className="flex flex-col gap-1">
                                     <span>X%</span>
-                                    <input
-                                      type="number"
+                                    <InputNumber
+                                      
                                       value={frame.x}
                                       onChange={(e) =>
                                         updateFrameField(
@@ -5507,8 +5387,8 @@ export default function SlideModal({
                                   </label>
                                   <label className="flex flex-col gap-1">
                                     <span>Y%</span>
-                                    <input
-                                      type="number"
+                                    <InputNumber
+                                      
                                       value={frame.y}
                                       onChange={(e) =>
                                         updateFrameField(
@@ -5522,8 +5402,8 @@ export default function SlideModal({
                                   </label>
                                   <label className="flex flex-col gap-1">
                                     <span>Width%</span>
-                                    <input
-                                      type="number"
+                                    <InputNumber
+                                      
                                       value={frame.w}
                                       onChange={(e) =>
                                         updateFrameField(
@@ -5537,8 +5417,8 @@ export default function SlideModal({
                                   </label>
                                   <label className="flex flex-col gap-1">
                                     <span>Height%</span>
-                                    <input
-                                      type="number"
+                                    <InputNumber
+                                      
                                       value={frame.h}
                                       onChange={(e) =>
                                         updateFrameField(
@@ -5552,8 +5432,8 @@ export default function SlideModal({
                                   </label>
                                   <label className="flex flex-col gap-1">
                                     <span>Rotation°</span>
-                                    <input
-                                      type="number"
+                                    <InputNumber
+                                      
                                       value={frame.r}
                                       onChange={(e) =>
                                         updateFrameField(
