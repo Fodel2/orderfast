@@ -561,29 +561,31 @@ const InspectorSliderControl: React.FC<InspectorSliderControlProps> = ({
   );
 
   return (
-    <label className="flex items-center gap-3 text-xs font-medium text-neutral-500">
-      <span className="w-28 shrink-0 text-left">{label}</span>
-      <InputSlider
-        
-        min={min}
-        max={max}
-        step={step}
-        value={sliderValue}
-        onChange={handleSliderChange}
-        disabled={disabled}
-        className="flex-1 accent-emerald-500"
-      />
-      <InputNumber
-        min={min}
-        max={max}
-        step={step}
-        value={inputValue}
-        onChange={handleNumberChange}
-        disabled={disabled}
-        className={`${INSPECTOR_INPUT_CLASS} w-20 text-right ${
-          numberInputClassName ?? ""
-        }`}
-      />
+    <label className="block text-xs font-medium text-neutral-500">
+      <span>{label}</span>
+      <div className="mt-2 flex items-center gap-3">
+        <InputSlider
+
+          min={min}
+          max={max}
+          step={step}
+          value={sliderValue}
+          onChange={handleSliderChange}
+          disabled={disabled}
+          className="flex-1"
+        />
+        <InputNumber
+          min={min}
+          max={max}
+          step={step}
+          value={inputValue}
+          onChange={handleNumberChange}
+          disabled={disabled}
+          className={`${INSPECTOR_INPUT_CLASS} w-20 shrink-0 text-right ${
+            numberInputClassName ?? ""
+          }`}
+        />
+      </div>
     </label>
   );
 };
