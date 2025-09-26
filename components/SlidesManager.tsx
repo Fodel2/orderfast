@@ -38,6 +38,13 @@ const TEXTUAL_BLOCK_KIND_NAMES = new Set([
 
 export const DEFAULT_TEXT_PLACEHOLDER = 'Edit me';
 
+const DEFAULT_TEXT_SHADOW = {
+  x: 0,
+  y: 2,
+  blur: 4,
+  color: 'rgba(0, 0, 0, 0.3)',
+};
+
 const isTextualKind = (kind: string): boolean => TEXTUAL_BLOCK_KIND_NAMES.has(kind as any);
 
 export type DeviceKind = 'mobile' | 'tablet' | 'desktop';
@@ -972,6 +979,10 @@ export type SlideBlock = {
   letterSpacing?: number;
   textColor?: string;
   textShadow?: { x: number; y: number; blur: number; color: string } | null;
+  shadowX?: number;
+  shadowY?: number;
+  shadowBlur?: number;
+  shadowColor?: string;
   bgStyle?: 'none' | 'solid' | 'glass';
   bgColor?: string;
   bgOpacity?: number;
@@ -1126,6 +1137,35 @@ const hexToRgba = (hex: string, opacity: number) => {
     }
   }
   return `rgba(${r}, ${g}, ${b}, ${clamp(alpha, 0, 1)})`;
+};
+
+const resolveTextShadowStyle = (block: SlideBlock): string | undefined => {
+  if (!block.textShadow) return undefined;
+  const x =
+    typeof block.textShadow.x === 'number'
+      ? block.textShadow.x
+      : typeof block.shadowX === 'number'
+        ? block.shadowX
+        : DEFAULT_TEXT_SHADOW.x;
+  const y =
+    typeof block.textShadow.y === 'number'
+      ? block.textShadow.y
+      : typeof block.shadowY === 'number'
+        ? block.shadowY
+        : DEFAULT_TEXT_SHADOW.y;
+  const blur =
+    typeof block.textShadow.blur === 'number'
+      ? block.textShadow.blur
+      : typeof block.shadowBlur === 'number'
+        ? block.shadowBlur
+        : DEFAULT_TEXT_SHADOW.blur;
+  const color =
+    typeof block.textShadow.color === 'string' && block.textShadow.color.trim().length > 0
+      ? block.textShadow.color
+      : typeof block.shadowColor === 'string' && block.shadowColor.trim().length > 0
+        ? block.shadowColor
+        : DEFAULT_TEXT_SHADOW.color;
+  return `${x}px ${y}px ${blur}px ${color}`;
 };
 
 export function resolveBlockAnimationConfig(block: SlideBlock): BlockAnimationConfig {
@@ -1879,11 +1919,7 @@ export default function SlidesManager({
         const lineHeightValue = resolveLineHeightValue(block.lineHeight, block.lineHeightUnit);
         const letterSpacingValue =
           typeof block.letterSpacing === 'number' ? `${block.letterSpacing}px` : undefined;
-        const textShadowValue = block.textShadow
-          ? `${block.textShadow.x ?? 0}px ${block.textShadow.y ?? 0}px ${block.textShadow.blur ?? 0}px ${
-              block.textShadow.color ?? '#000000'
-            }`
-          : undefined;
+        const textShadowValue = resolveTextShadowStyle(block);
         const textColor = block.textColor ?? block.color ?? '#ffffff';
         const style: CSSProperties = {
           color: textColor,
@@ -2033,6 +2069,7 @@ export default function SlidesManager({
               ? 24
               : 16;
         const lineHeightValue = resolveLineHeightValue(block.lineHeight, block.lineHeightUnit);
+        const textShadowValue = resolveTextShadowStyle(block);
         const wrapperStyle: CSSProperties = {
           width: '100%',
           textAlign: quote.align,
@@ -2073,6 +2110,9 @@ export default function SlidesManager({
         if (fontSizePx) {
           textStyle.fontSize = `${fontSizePx}px`;
         }
+        if (textShadowValue) {
+          textStyle.textShadow = textShadowValue;
+        }
         const authorClasses = ['mt-3', 'text-sm', 'opacity-80', 'whitespace-pre-line'];
         const authorStyle: CSSProperties = {};
         if (resolvedFontFamily) {
@@ -2084,6 +2124,9 @@ export default function SlidesManager({
         if (lineHeightValue !== undefined) {
           authorStyle.lineHeight = lineHeightValue;
         }
+        if (textShadowValue) {
+          authorStyle.textShadow = textShadowValue;
+        }
         const trimmedAuthor = quote.author.trim();
         const showReviewRating = quote.useReview && Boolean(quote.reviewId);
         const ratingClasses = ['text-base', 'opacity-90'];
@@ -2091,6 +2134,9 @@ export default function SlidesManager({
         const ratingStyle: CSSProperties = {};
         if (resolvedFontFamily) {
           ratingStyle.fontFamily = resolvedFontFamily;
+        }
+        if (textShadowValue) {
+          ratingStyle.textShadow = textShadowValue;
         }
         return (
           <div style={wrapperStyle}>

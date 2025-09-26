@@ -235,8 +235,8 @@ const TEXT_KIND_FONT_DEFAULT: Partial<Record<SlideBlock["kind"], number>> = {
 const DEFAULT_TEXT_SHADOW: NonNullable<SlideBlock["textShadow"]> = {
   x: 0,
   y: 2,
-  blur: 6,
-  color: "#000000",
+  blur: 4,
+  color: "rgba(0, 0, 0, 0.3)",
 };
 
 const BLOCK_KIND_LABELS: Record<SlideBlock["kind"], string> = {
@@ -463,6 +463,129 @@ const InspectorColorInput: React.FC<InspectorColorInputProps> = ({
           numberInputClassName="w-16 shrink-0 text-right text-xs"
           numberInputProps={{ inputMode: "numeric" }}
         />
+      )}
+    </div>
+  );
+};
+
+type InspectorTextShadowControlsProps = {
+  block: SlideBlock;
+  onPatch: (patch: Partial<SlideBlock>) => void;
+};
+
+const InspectorTextShadowControls: React.FC<InspectorTextShadowControlsProps> = ({
+  block,
+  onPatch,
+}) => {
+  const shadowEnabled = Boolean(block.textShadow);
+  const resolvedX =
+    typeof block.shadowX === "number"
+      ? block.shadowX
+      : block.textShadow?.x ?? DEFAULT_TEXT_SHADOW.x;
+  const resolvedY =
+    typeof block.shadowY === "number"
+      ? block.shadowY
+      : block.textShadow?.y ?? DEFAULT_TEXT_SHADOW.y;
+  const resolvedBlur =
+    typeof block.shadowBlur === "number"
+      ? block.shadowBlur
+      : block.textShadow?.blur ?? DEFAULT_TEXT_SHADOW.blur;
+  const resolvedColor =
+    typeof block.shadowColor === "string" && block.shadowColor.trim().length > 0
+      ? block.shadowColor
+      : block.textShadow?.color ?? DEFAULT_TEXT_SHADOW.color;
+
+  const buildShadow = useCallback(
+    (overrides?: Partial<NonNullable<SlideBlock["textShadow"]>>) => ({
+      x: overrides?.x ?? resolvedX ?? DEFAULT_TEXT_SHADOW.x,
+      y: overrides?.y ?? resolvedY ?? DEFAULT_TEXT_SHADOW.y,
+      blur: overrides?.blur ?? resolvedBlur ?? DEFAULT_TEXT_SHADOW.blur,
+      color: overrides?.color ?? resolvedColor ?? DEFAULT_TEXT_SHADOW.color,
+    }),
+    [resolvedBlur, resolvedColor, resolvedX, resolvedY],
+  );
+
+  const applyShadowPatch = useCallback(
+    (overrides?: Partial<NonNullable<SlideBlock["textShadow"]>>) => {
+      const nextShadow = buildShadow(overrides);
+      onPatch({
+        textShadow: nextShadow,
+        shadowX: nextShadow.x,
+        shadowY: nextShadow.y,
+        shadowBlur: nextShadow.blur,
+        shadowColor: nextShadow.color,
+      });
+    },
+    [buildShadow, onPatch],
+  );
+
+  const handleToggle = useCallback(
+    (checked: boolean) => {
+      if (checked) {
+        applyShadowPatch();
+        return;
+      }
+      onPatch({ textShadow: null });
+    },
+    [applyShadowPatch, onPatch],
+  );
+
+  return (
+    <div>
+      <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
+        <InputCheckbox
+          checked={shadowEnabled}
+          onChange={(e) => handleToggle(e.target.checked)}
+        />
+        Text shadow
+      </label>
+      {shadowEnabled && (
+        <div className="mt-2 space-y-2">
+          <InspectorSliderControl
+            label="Offset X (px)"
+            value={resolvedX}
+            fallbackValue={resolvedX ?? DEFAULT_TEXT_SHADOW.x}
+            min={-50}
+            max={50}
+            step={1}
+            onChange={(next) => {
+              if (typeof next !== "number" || Number.isNaN(next)) return;
+              applyShadowPatch({ x: Math.round(next) });
+            }}
+          />
+          <InspectorSliderControl
+            label="Offset Y (px)"
+            value={resolvedY}
+            fallbackValue={resolvedY ?? DEFAULT_TEXT_SHADOW.y}
+            min={-50}
+            max={50}
+            step={1}
+            onChange={(next) => {
+              if (typeof next !== "number" || Number.isNaN(next)) return;
+              applyShadowPatch({ y: Math.round(next) });
+            }}
+          />
+          <InspectorSliderControl
+            label="Blur (px)"
+            value={resolvedBlur}
+            fallbackValue={resolvedBlur ?? DEFAULT_TEXT_SHADOW.blur}
+            min={0}
+            max={50}
+            step={1}
+            onChange={(next) => {
+              if (typeof next !== "number" || Number.isNaN(next)) return;
+              applyShadowPatch({ blur: Math.max(0, Math.round(next)) });
+            }}
+          />
+          <div>
+            <span className="text-xs font-medium text-neutral-500">Shadow color</span>
+            <InspectorColorInput
+              value={resolvedColor ?? DEFAULT_TEXT_SHADOW.color}
+              onChange={(nextColor) => applyShadowPatch({ color: nextColor })}
+              allowAlpha
+            />
+          </div>
+        </div>
       )}
     </div>
   );
@@ -1059,22 +1182,6 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
     block.textColor = textColor;
     block.color = textColor;
     if (kind === "heading" || kind === "text") {
-      if (raw.textShadow && typeof raw.textShadow === "object") {
-        const shadow = raw.textShadow;
-        const x = typeof shadow.x === "number" ? shadow.x : DEFAULT_TEXT_SHADOW.x;
-        const y = typeof shadow.y === "number" ? shadow.y : DEFAULT_TEXT_SHADOW.y;
-        const blur =
-          typeof shadow.blur === "number" ? shadow.blur : DEFAULT_TEXT_SHADOW.blur;
-        const color =
-          typeof shadow.color === "string"
-            ? shadow.color
-            : DEFAULT_TEXT_SHADOW.color;
-        block.textShadow = { x, y, blur, color };
-      } else if (raw.textShadow === null || raw.textShadow === false) {
-        block.textShadow = null;
-      } else if (block.textShadow === undefined) {
-        block.textShadow = null;
-      }
       const bgStyleValue = raw.bgStyle;
       const normalizedBgStyle: SlideBlock["bgStyle"] =
         bgStyleValue === "solid" || bgStyleValue === "glass"
@@ -1109,6 +1216,49 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
             ? raw.pad
             : block.padding ?? 0;
       block.padding = paddingSource;
+    }
+  }
+
+  if (isTextualBlock(kind)) {
+    const shadowValue = raw.textShadow;
+    const rawShadowX = typeof raw.shadowX === "number" ? raw.shadowX : undefined;
+    const rawShadowY = typeof raw.shadowY === "number" ? raw.shadowY : undefined;
+    const rawShadowBlur =
+      typeof raw.shadowBlur === "number" ? raw.shadowBlur : undefined;
+    const rawShadowColor =
+      typeof raw.shadowColor === "string" ? raw.shadowColor : undefined;
+    const x =
+      rawShadowX ??
+      (shadowValue && typeof shadowValue === "object" && typeof shadowValue.x === "number"
+        ? shadowValue.x
+        : block.shadowX ?? block.textShadow?.x ?? DEFAULT_TEXT_SHADOW.x);
+    const y =
+      rawShadowY ??
+      (shadowValue && typeof shadowValue === "object" && typeof shadowValue.y === "number"
+        ? shadowValue.y
+        : block.shadowY ?? block.textShadow?.y ?? DEFAULT_TEXT_SHADOW.y);
+    const blur =
+      rawShadowBlur ??
+      (shadowValue && typeof shadowValue === "object" && typeof shadowValue.blur === "number"
+        ? shadowValue.blur
+        : block.shadowBlur ?? block.textShadow?.blur ?? DEFAULT_TEXT_SHADOW.blur);
+    const color =
+      rawShadowColor ??
+      (shadowValue && typeof shadowValue === "object" && typeof shadowValue.color === "string"
+        ? shadowValue.color
+        : block.shadowColor ?? block.textShadow?.color ?? DEFAULT_TEXT_SHADOW.color);
+
+    block.shadowX = x;
+    block.shadowY = y;
+    block.shadowBlur = blur;
+    block.shadowColor = color;
+
+    if (shadowValue && typeof shadowValue === "object") {
+      block.textShadow = { x, y, blur, color };
+    } else if (shadowValue === null || shadowValue === false) {
+      block.textShadow = null;
+    } else if (block.textShadow === undefined) {
+      block.textShadow = null;
     }
   }
 
@@ -3396,113 +3546,12 @@ export default function SlideModal({
                                   allowAlpha
                                 />
                               </div>
-                              <div>
-                                <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
-                                  <InputCheckbox
-                                    
-                                    checked={Boolean(selectedBlock.textShadow)}
-                                    onChange={(e) => {
-                                      if (e.target.checked) {
-                                        patchBlock(selectedBlock.id, {
-                                          textShadow:
-                                            selectedBlock.textShadow ?? {
-                                              ...DEFAULT_TEXT_SHADOW,
-                                            },
-                                        });
-                                      } else {
-                                        patchBlock(selectedBlock.id, {
-                                          textShadow: null,
-                                        });
-                                      }
-                                    }}
-                                  />
-                                  Text shadow
-                                </label>
-                                {selectedBlock.textShadow && (
-                                  <div className="mt-2 grid grid-cols-2 gap-2">
-                                    {([
-                                      ["x", "X"],
-                                      ["y", "Y"],
-                                    ] as const).map(([key, label]) => (
-                                      <label key={key} className="block text-xs">
-                                        <span className="font-medium text-neutral-500">
-                                          {label}
-                                        </span>
-                                        <InputNumber
-                                          
-                                          value={selectedBlock.textShadow?.[key] ?? DEFAULT_TEXT_SHADOW[key]}
-                                          onChange={(e) => {
-                                            const value = Number(e.target.value);
-                                            const current =
-                                              selectedBlock.textShadow ?? {
-                                                ...DEFAULT_TEXT_SHADOW,
-                                              };
-                                            patchBlock(selectedBlock.id, {
-                                              textShadow: {
-                                                ...current,
-                                                [key]: Number.isNaN(value)
-                                                  ? current[key]
-                                                  : value,
-                                              },
-                                            });
-                                          }}
-                                          className={INSPECTOR_INPUT_CLASS}
-                                        />
-                                      </label>
-                                    ))}
-                                    <div className="col-span-2">
-                                      <InspectorSliderControl
-                                        label="Blur"
-                                        value={selectedBlock.textShadow?.blur}
-                                        fallbackValue={DEFAULT_TEXT_SHADOW.blur}
-                                        min={0}
-                                        max={20}
-                                        step={1}
-                                        onChange={(next) => {
-                                          const current =
-                                            selectedBlock.textShadow ?? {
-                                              ...DEFAULT_TEXT_SHADOW,
-                                            };
-                                          const resolved =
-                                            next === undefined || Number.isNaN(next)
-                                              ? current.blur
-                                              : Math.max(0, Math.round(next));
-                                          patchBlock(selectedBlock.id, {
-                                            textShadow: {
-                                              ...current,
-                                              blur: resolved,
-                                            },
-                                          });
-                                        }}
-                                      />
-                                    </div>
-                                    <label className="col-span-2 block text-xs">
-                                      <span className="font-medium text-neutral-500">
-                                        Color
-                                      </span>
-                                      <InspectorColorInput
-                                        value={
-                                          selectedBlock.textShadow?.color ??
-                                          DEFAULT_TEXT_SHADOW.color
-                                        }
-                                        onChange={(nextColor) => {
-                                          const current =
-                                            selectedBlock.textShadow ?? {
-                                              ...DEFAULT_TEXT_SHADOW,
-                                            };
-                                          patchBlock(selectedBlock.id, {
-                                            textShadow: {
-                                              ...current,
-                                              color: nextColor,
-                                            },
-                                          });
-                                        }}
-                                        allowAlpha
-                                      />
-                                    </label>
-                                  </div>
-                                )}
-                              </div>
+                              <InspectorTextShadowControls
+                                block={selectedBlock}
+                                onPatch={(patch) =>
+                                  patchBlock(selectedBlock.id, patch)
+                                }
+                              />
                               <label className="block">
                                 <span className="text-xs font-medium text-neutral-500">
                                   Background style
@@ -3783,6 +3832,12 @@ export default function SlideModal({
                                   allowAlpha
                                 />
                               </label>
+                              <InspectorTextShadowControls
+                                block={selectedBlock}
+                                onPatch={(patch) =>
+                                  patchBlock(selectedBlock.id, patch)
+                                }
+                              />
                               <label className="block">
                                 <span className="text-xs font-medium text-neutral-500">
                                   Size
@@ -4833,6 +4888,12 @@ export default function SlideModal({
                                   }}
                                 />
                               </div>
+                              <InspectorTextShadowControls
+                                block={selectedBlock}
+                                onPatch={(patch) =>
+                                  patchBlock(selectedBlock.id, patch)
+                                }
+                              />
                               <label className="block">
                                 <span className="text-xs font-medium text-neutral-500">
                                   Style
