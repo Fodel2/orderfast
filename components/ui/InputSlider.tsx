@@ -36,9 +36,12 @@ export interface InputSliderProps
 }
 
 const SLIDER_BASE_CLASS =
-  "w-full h-2 cursor-pointer appearance-none rounded-full bg-neutral-200 accent-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60 [&::-webkit-slider-runnable-track]:h-2 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-neutral-200 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-emerald-500 [&::-webkit-slider-thumb]:shadow [&::-webkit-slider-thumb]:border-0 [&::-moz-range-track]:h-2 [&::-moz-range-track]:rounded-full [&::-moz-range-track]:bg-neutral-200 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-emerald-500 [&::-moz-range-thumb]:border-0 [&::-moz-range-progress]:bg-emerald-500";
+  "h-2 w-full flex-1 cursor-pointer appearance-none rounded-full bg-neutral-200 accent-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60 [&::-webkit-slider-runnable-track]:h-2 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-neutral-200 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-emerald-500 [&::-webkit-slider-thumb]:shadow [&::-webkit-slider-thumb]:border-0 [&::-moz-range-track]:h-2 [&::-moz-range-track]:rounded-full [&::-moz-range-track]:bg-neutral-200 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-emerald-500 [&::-moz-range-thumb]:border-0 [&::-moz-range-progress]:bg-emerald-500";
 
-const NUMBER_BASE_CLASS = mergeClassNames(INPUT_BASE_CLASS, "w-20 shrink-0 text-right");
+const NUMBER_BASE_CLASS = mergeClassNames(
+  INPUT_BASE_CLASS,
+  "w-[60px] shrink-0 text-right",
+);
 
 const clamp = (value: number, min: number, max: number): number => {
   if (Number.isNaN(value)) return min;
@@ -147,7 +150,7 @@ export const InputSlider = React.forwardRef<HTMLInputElement, InputSliderProps>(
     );
 
     const input = (
-      <div className={mergeClassNames("mt-2 flex items-center gap-3", containerClassName)}>
+      <div className={mergeClassNames("flex items-center gap-2", containerClassName)}>
         <input
           {...sliderProps}
           ref={ref}
