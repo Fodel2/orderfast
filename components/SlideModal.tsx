@@ -443,20 +443,21 @@ const InspectorColorInput: React.FC<InspectorColorInputProps> = ({
         disabled={disabled}
       />
       {allowAlpha && (
-        <div className="flex items-center gap-2">
-          <InputSlider
-            min={0}
-            max={100}
-            step={1}
-            value={Math.round(parsed.alpha * 100)}
-            onChange={(event) => handleAlphaChange(Number(event.target.value))}
-            disabled={disabled}
-            className="flex-1"
-          />
-          <span className="w-10 text-right text-xs text-neutral-500">
-            {Math.round(parsed.alpha * 100)}%
-          </span>
-        </div>
+        <InputSlider
+          min={0}
+          max={100}
+          step={1}
+          value={Math.round(parsed.alpha * 100)}
+          fallbackValue={100}
+          onValueChange={(next) =>
+            handleAlphaChange(typeof next === "number" ? next : 0)
+          }
+          disabled={disabled}
+          containerClassName="mt-0 flex flex-1 items-center gap-2"
+          sliderClassName="flex-1"
+          numberInputClassName="w-16 shrink-0 text-right text-xs"
+          numberInputProps={{ inputMode: "numeric" }}
+        />
       )}
     </div>
   );
@@ -490,104 +491,32 @@ const InspectorSliderControl: React.FC<InspectorSliderControlProps> = ({
   disabled = false,
   numberInputClassName,
 }) => {
-  const formatDisplay = useCallback(
-    (current: number | undefined): string => {
-      if (formatValue) {
-        return formatValue(current, fallbackValue);
-      }
-      const base =
-        current !== undefined
-          ? current
-          : fallbackValue !== undefined
-            ? fallbackValue
-            : undefined;
-      if (base === undefined || Number.isNaN(base)) {
-        return "";
-      }
-      return `${base}`;
-    },
-    [fallbackValue, formatValue],
-  );
-
-  const [inputValue, setInputValue] = useState<string>(() =>
-    formatDisplay(value),
-  );
-
-  useEffect(() => {
-    setInputValue(formatDisplay(value));
-  }, [formatDisplay, value]);
-
-  const sliderValue = useMemo(() => {
-    const base =
-      value !== undefined
-        ? value
-        : fallbackValue !== undefined
-          ? fallbackValue
-          : min;
-    if (Number.isNaN(base)) {
-      return min;
-    }
-    return clampRange(base, min, max);
-  }, [fallbackValue, max, min, value]);
-
-  const handleSliderChange = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      const raw = Number(event.target.value);
-      const clamped = clampRange(raw, min, max);
-      setInputValue(formatDisplay(clamped));
-      onChange(clamped);
-    },
-    [formatDisplay, max, min, onChange],
-  );
-
-  const handleNumberChange = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      const raw = event.target.value;
-      setInputValue(raw);
-      if (raw.trim().length === 0) {
+  const handleValueChange = useCallback(
+    (next: number | undefined) => {
+      if (Number.isNaN(next as number)) {
         onChange(undefined);
         return;
       }
-      const parsed = Number(raw);
-      if (Number.isNaN(parsed)) {
-        return;
-      }
-      const clamped = clampRange(parsed, min, max);
-      onChange(clamped);
-      if (clamped !== parsed) {
-        setInputValue(formatDisplay(clamped));
-      }
+      onChange(next);
     },
-    [formatDisplay, max, min, onChange],
+    [onChange],
   );
 
   return (
-    <label className="block text-xs font-medium text-neutral-500">
-      <span>{label}</span>
-      <div className="mt-2 flex items-center gap-3">
-        <InputSlider
-
-          min={min}
-          max={max}
-          step={step}
-          value={sliderValue}
-          onChange={handleSliderChange}
-          disabled={disabled}
-          className="flex-1"
-        />
-        <InputNumber
-          min={min}
-          max={max}
-          step={step}
-          value={inputValue}
-          onChange={handleNumberChange}
-          disabled={disabled}
-          className={`${INSPECTOR_INPUT_CLASS} w-20 shrink-0 text-right ${
-            numberInputClassName ?? ""
-          }`}
-        />
-      </div>
-    </label>
+    <InputSlider
+      label={<span>{label}</span>}
+      labelClassName="text-neutral-500"
+      min={min}
+      max={max}
+      step={step}
+      value={value}
+      fallbackValue={fallbackValue ?? min}
+      formatValue={formatValue}
+      onValueChange={handleValueChange}
+      disabled={disabled}
+      sliderClassName="flex-1"
+      numberInputClassName={`${INSPECTOR_INPUT_CLASS} ${numberInputClassName ?? ""}`}
+    />
   );
 };
 
@@ -4260,19 +4189,24 @@ export default function SlideModal({
                                         <span>{selectedImageConfig.focalX.toFixed(2)}</span>
                                       </div>
                                       <InputSlider
-                                        
                                         min={0}
                                         max={1}
                                         step={0.01}
                                         value={selectedImageConfig.focalX}
-                                        onChange={(e) => {
-                                          const value = Number(e.target.value);
+                                        fallbackValue={DEFAULT_IMAGE_CONFIG.focalX}
+                                        onValueChange={(next) => {
+                                          const value =
+                                            typeof next === "number"
+                                              ? next
+                                              : DEFAULT_IMAGE_CONFIG.focalX;
                                           updateImageConfig(selectedBlock.id, (config) => ({
                                             ...config,
                                             focalX: value,
                                           }));
                                         }}
-                                        className="mt-1 w-full"
+                                        containerClassName="mt-1"
+                                        className="w-full"
+                                        numberInputClassName="w-24 shrink-0 text-right text-xs"
                                       />
                                     </label>
                                     <label className="block text-xs text-neutral-500">
@@ -4281,19 +4215,24 @@ export default function SlideModal({
                                         <span>{selectedImageConfig.focalY.toFixed(2)}</span>
                                       </div>
                                       <InputSlider
-                                        
                                         min={0}
                                         max={1}
                                         step={0.01}
                                         value={selectedImageConfig.focalY}
-                                        onChange={(e) => {
-                                          const value = Number(e.target.value);
+                                        fallbackValue={DEFAULT_IMAGE_CONFIG.focalY}
+                                        onValueChange={(next) => {
+                                          const value =
+                                            typeof next === "number"
+                                              ? next
+                                              : DEFAULT_IMAGE_CONFIG.focalY;
                                           updateImageConfig(selectedBlock.id, (config) => ({
                                             ...config,
                                             focalY: value,
                                           }));
                                         }}
-                                        className="mt-1 w-full"
+                                        containerClassName="mt-1"
+                                        className="w-full"
+                                        numberInputClassName="w-24 shrink-0 text-right text-xs"
                                       />
                                     </label>
                                   </div>
