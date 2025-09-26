@@ -227,6 +227,11 @@ const SIZE_TO_FONT_SIZE_PX: Record<NonNullable<SlideBlock["size"]>, number> = {
   xl: 56,
 };
 
+const TEXT_KIND_FONT_DEFAULT: Partial<Record<SlideBlock["kind"], number>> = {
+  heading: 56,
+  subheading: SIZE_TO_FONT_SIZE_PX.md,
+};
+
 const DEFAULT_TEXT_SHADOW: NonNullable<SlideBlock["textShadow"]> = {
   x: 0,
   y: 2,
@@ -443,20 +448,21 @@ const InspectorColorInput: React.FC<InspectorColorInputProps> = ({
         disabled={disabled}
       />
       {allowAlpha && (
-        <div className="flex items-center gap-2">
-          <InputSlider
-            min={0}
-            max={100}
-            step={1}
-            value={Math.round(parsed.alpha * 100)}
-            onChange={(event) => handleAlphaChange(Number(event.target.value))}
-            disabled={disabled}
-            className="flex-1"
-          />
-          <span className="w-10 text-right text-xs text-neutral-500">
-            {Math.round(parsed.alpha * 100)}%
-          </span>
-        </div>
+        <InputSlider
+          min={0}
+          max={100}
+          step={1}
+          value={Math.round(parsed.alpha * 100)}
+          fallbackValue={100}
+          onValueChange={(next) =>
+            handleAlphaChange(typeof next === "number" ? next : 0)
+          }
+          disabled={disabled}
+          containerClassName="mt-0 flex flex-1 items-center gap-2"
+          sliderClassName="flex-1"
+          numberInputClassName="w-16 shrink-0 text-right text-xs"
+          numberInputProps={{ inputMode: "numeric" }}
+        />
       )}
     </div>
   );
@@ -490,104 +496,31 @@ const InspectorSliderControl: React.FC<InspectorSliderControlProps> = ({
   disabled = false,
   numberInputClassName,
 }) => {
-  const formatDisplay = useCallback(
-    (current: number | undefined): string => {
-      if (formatValue) {
-        return formatValue(current, fallbackValue);
-      }
-      const base =
-        current !== undefined
-          ? current
-          : fallbackValue !== undefined
-            ? fallbackValue
-            : undefined;
-      if (base === undefined || Number.isNaN(base)) {
-        return "";
-      }
-      return `${base}`;
-    },
-    [fallbackValue, formatValue],
-  );
-
-  const [inputValue, setInputValue] = useState<string>(() =>
-    formatDisplay(value),
-  );
-
-  useEffect(() => {
-    setInputValue(formatDisplay(value));
-  }, [formatDisplay, value]);
-
-  const sliderValue = useMemo(() => {
-    const base =
-      value !== undefined
-        ? value
-        : fallbackValue !== undefined
-          ? fallbackValue
-          : min;
-    if (Number.isNaN(base)) {
-      return min;
-    }
-    return clampRange(base, min, max);
-  }, [fallbackValue, max, min, value]);
-
-  const handleSliderChange = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      const raw = Number(event.target.value);
-      const clamped = clampRange(raw, min, max);
-      setInputValue(formatDisplay(clamped));
-      onChange(clamped);
-    },
-    [formatDisplay, max, min, onChange],
-  );
-
-  const handleNumberChange = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      const raw = event.target.value;
-      setInputValue(raw);
-      if (raw.trim().length === 0) {
+  const handleValueChange = useCallback(
+    (next: number | undefined) => {
+      if (Number.isNaN(next as number)) {
         onChange(undefined);
         return;
       }
-      const parsed = Number(raw);
-      if (Number.isNaN(parsed)) {
-        return;
-      }
-      const clamped = clampRange(parsed, min, max);
-      onChange(clamped);
-      if (clamped !== parsed) {
-        setInputValue(formatDisplay(clamped));
-      }
+      onChange(next);
     },
-    [formatDisplay, max, min, onChange],
+    [onChange],
   );
 
   return (
-    <label className="block text-xs font-medium text-neutral-500">
-      <span>{label}</span>
-      <div className="mt-2 flex items-center gap-3">
-        <InputSlider
-
-          min={min}
-          max={max}
-          step={step}
-          value={sliderValue}
-          onChange={handleSliderChange}
-          disabled={disabled}
-          className="flex-1"
-        />
-        <InputNumber
-          min={min}
-          max={max}
-          step={step}
-          value={inputValue}
-          onChange={handleNumberChange}
-          disabled={disabled}
-          className={`${INSPECTOR_INPUT_CLASS} w-20 shrink-0 text-right ${
-            numberInputClassName ?? ""
-          }`}
-        />
-      </div>
-    </label>
+    <InputSlider
+      label={<span>{label}</span>}
+      labelClassName="text-neutral-500"
+      min={min}
+      max={max}
+      step={step}
+      value={value}
+      fallbackValue={fallbackValue ?? min}
+      formatValue={formatValue}
+      onValueChange={handleValueChange}
+      disabled={disabled}
+      numberInputClassName={`${INSPECTOR_INPUT_CLASS} w-[60px] shrink-0 text-right ${numberInputClassName ?? ""}`}
+    />
   );
 };
 
@@ -2562,11 +2495,15 @@ export default function SlideModal({
                           </label>
                           <InspectorSliderControl
                             label="Opacity"
-                            value={colorBackground?.opacity}
-                            fallbackValue={1}
+                            value={
+                              colorBackground?.opacity !== undefined
+                                ? colorBackground.opacity * 100
+                                : undefined
+                            }
+                            fallbackValue={((colorBackground?.opacity ?? 1) * 100) || 0}
                             min={0}
-                            max={1}
-                            step={0.01}
+                            max={100}
+                            step={1}
                             onChange={(next) =>
                               updateBackground((prev) => {
                                 const nextBackground: SlideBackground =
@@ -2577,11 +2514,17 @@ export default function SlideModal({
                                         color: "#111111",
                                         opacity: 1,
                                       };
-                                const resolved =
+                                const percent =
                                   next === undefined
-                                    ? nextBackground.opacity ?? 1
+                                    ? (nextBackground.opacity ?? 1) * 100
                                     : next;
-                                nextBackground.opacity = clamp01(resolved);
+                                const clampedPercent = Math.min(
+                                  100,
+                                  Math.max(0, percent ?? 0),
+                                );
+                                nextBackground.opacity = clamp01(
+                                  clampedPercent / 100,
+                                );
                                 return nextBackground;
                               })
                             }
@@ -2680,48 +2623,60 @@ export default function SlideModal({
                             ]}
                           />
                           <div className="grid grid-cols-2 gap-2 text-xs">
-                            <label className="block font-medium text-neutral-500">
-                              Focal X
-                              <InputNumber
-                                
-                                min={0}
-                                max={1}
-                                step={0.01}
-                                value={imageBackground?.focal?.x ?? 0.5}
-                                onChange={(e) =>
-                                  updateBackground((prev) => {
-                                    if (prev?.type !== "image") return prev;
-                                    const nextFocal = {
-                                      ...(prev.focal || { x: 0.5, y: 0.5 }),
-                                      x: clamp01(Number(e.target.value)),
-                                    };
-                                    return { ...prev, focal: nextFocal };
-                                  })
-                                }
-                                className={INSPECTOR_INPUT_CLASS}
-                              />
-                            </label>
-                            <label className="block font-medium text-neutral-500">
-                              Focal Y
-                              <InputNumber
-                                
-                                min={0}
-                                max={1}
-                                step={0.01}
-                                value={imageBackground?.focal?.y ?? 0.5}
-                                onChange={(e) =>
-                                  updateBackground((prev) => {
-                                    if (prev?.type !== "image") return prev;
-                                    const nextFocal = {
-                                      ...(prev.focal || { x: 0.5, y: 0.5 }),
-                                      y: clamp01(Number(e.target.value)),
-                                    };
-                                    return { ...prev, focal: nextFocal };
-                                  })
-                                }
-                                className={INSPECTOR_INPUT_CLASS}
-                              />
-                            </label>
+                            <InputSlider
+                              label="Focal X"
+                              labelClassName="text-neutral-500"
+                              min={0}
+                              max={1}
+                              step={0.01}
+                              value={imageBackground?.focal?.x}
+                              fallbackValue={0.5}
+                              onValueChange={(next) =>
+                                updateBackground((prev) => {
+                                  if (prev?.type !== "image") return prev;
+                                  const resolved =
+                                    typeof next === "number" && Number.isFinite(next)
+                                      ? clamp01(next)
+                                      : 0.5;
+                                  const nextFocal = {
+                                    ...(prev.focal || { x: 0.5, y: 0.5 }),
+                                    x: resolved,
+                                  };
+                                  return { ...prev, focal: nextFocal };
+                                })
+                              }
+                              containerClassName="mt-1 flex items-center gap-2"
+                              sliderClassName="flex-1"
+                              numberInputClassName="w-24 shrink-0 border border-neutral-300 px-2 py-1 text-right text-xs text-neutral-900"
+                              numberInputProps={{ inputMode: "decimal" }}
+                            />
+                            <InputSlider
+                              label="Focal Y"
+                              labelClassName="text-neutral-500"
+                              min={0}
+                              max={1}
+                              step={0.01}
+                              value={imageBackground?.focal?.y}
+                              fallbackValue={0.5}
+                              onValueChange={(next) =>
+                                updateBackground((prev) => {
+                                  if (prev?.type !== "image") return prev;
+                                  const resolved =
+                                    typeof next === "number" && Number.isFinite(next)
+                                      ? clamp01(next)
+                                      : 0.5;
+                                  const nextFocal = {
+                                    ...(prev.focal || { x: 0.5, y: 0.5 }),
+                                    y: resolved,
+                                  };
+                                  return { ...prev, focal: nextFocal };
+                                })
+                              }
+                              containerClassName="mt-1 flex items-center gap-2"
+                              sliderClassName="flex-1"
+                              numberInputClassName="w-24 shrink-0 border border-neutral-300 px-2 py-1 text-right text-xs text-neutral-900"
+                              numberInputProps={{ inputMode: "decimal" }}
+                            />
                           </div>
                           <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
                             <InputCheckbox
@@ -2764,28 +2719,37 @@ export default function SlideModal({
                               />
                               <InspectorSliderControl
                                 label="Opacity"
-                                value={imageBackground.overlay.opacity}
-                                fallbackValue={0.25}
+                                value={
+                                  imageBackground.overlay.opacity !== undefined
+                                    ? imageBackground.overlay.opacity * 100
+                                    : undefined
+                                }
+                                fallbackValue={
+                                  (imageBackground.overlay.opacity ?? 0.25) * 100
+                                }
                                 min={0}
-                                max={1}
-                                step={0.01}
+                                max={100}
+                                step={1}
                                 onChange={(next) =>
                                   updateBackground((prev) => {
                                     if (prev?.type !== "image") return prev;
-                                    const resolved =
+                                    const percent =
                                       next === undefined
-                                        ? prev.overlay?.opacity ?? 0.25
+                                        ? (prev.overlay?.opacity ?? 0.25) * 100
                                         : next;
+                                    const clampedPercent = Math.min(
+                                      100,
+                                      Math.max(0, percent ?? 0),
+                                    );
                                     return {
                                       ...prev,
                                       overlay: {
                                         color: prev.overlay?.color || "#000000",
-                                        opacity: clamp01(resolved),
+                                        opacity: clamp01(clampedPercent / 100),
                                       },
                                     };
                                   })
                                 }
-                                numberInputClassName="max-w-[110px]"
                               />
                             </div>
                           )}
@@ -2967,48 +2931,60 @@ export default function SlideModal({
                             ]}
                           />
                           <div className="grid grid-cols-2 gap-2 text-xs">
-                            <label className="block font-medium text-neutral-500">
-                              Focal X
-                              <InputNumber
-                                
-                                min={0}
-                                max={1}
-                                step={0.01}
-                                value={videoBackground?.focal?.x ?? 0.5}
-                                onChange={(e) =>
-                                  updateBackground((prev) => {
-                                    if (prev?.type !== "video") return prev;
-                                    const nextFocal = {
-                                      ...(prev.focal || { x: 0.5, y: 0.5 }),
-                                      x: clamp01(Number(e.target.value)),
-                                    };
-                                    return { ...prev, focal: nextFocal };
-                                  })
-                                }
-                                className={INSPECTOR_INPUT_CLASS}
-                              />
-                            </label>
-                            <label className="block font-medium text-neutral-500">
-                              Focal Y
-                              <InputNumber
-                                
-                                min={0}
-                                max={1}
-                                step={0.01}
-                                value={videoBackground?.focal?.y ?? 0.5}
-                                onChange={(e) =>
-                                  updateBackground((prev) => {
-                                    if (prev?.type !== "video") return prev;
-                                    const nextFocal = {
-                                      ...(prev.focal || { x: 0.5, y: 0.5 }),
-                                      y: clamp01(Number(e.target.value)),
-                                    };
-                                    return { ...prev, focal: nextFocal };
-                                  })
-                                }
-                                className={INSPECTOR_INPUT_CLASS}
-                              />
-                            </label>
+                            <InputSlider
+                              label="Focal X"
+                              labelClassName="text-neutral-500"
+                              min={0}
+                              max={1}
+                              step={0.01}
+                              value={videoBackground?.focal?.x}
+                              fallbackValue={0.5}
+                              onValueChange={(next) =>
+                                updateBackground((prev) => {
+                                  if (prev?.type !== "video") return prev;
+                                  const resolved =
+                                    typeof next === "number" && Number.isFinite(next)
+                                      ? clamp01(next)
+                                      : 0.5;
+                                  const nextFocal = {
+                                    ...(prev.focal || { x: 0.5, y: 0.5 }),
+                                    x: resolved,
+                                  };
+                                  return { ...prev, focal: nextFocal };
+                                })
+                              }
+                              containerClassName="mt-1 flex items-center gap-2"
+                              sliderClassName="flex-1"
+                              numberInputClassName="w-24 shrink-0 border border-neutral-300 px-2 py-1 text-right text-xs text-neutral-900"
+                              numberInputProps={{ inputMode: "decimal" }}
+                            />
+                            <InputSlider
+                              label="Focal Y"
+                              labelClassName="text-neutral-500"
+                              min={0}
+                              max={1}
+                              step={0.01}
+                              value={videoBackground?.focal?.y}
+                              fallbackValue={0.5}
+                              onValueChange={(next) =>
+                                updateBackground((prev) => {
+                                  if (prev?.type !== "video") return prev;
+                                  const resolved =
+                                    typeof next === "number" && Number.isFinite(next)
+                                      ? clamp01(next)
+                                      : 0.5;
+                                  const nextFocal = {
+                                    ...(prev.focal || { x: 0.5, y: 0.5 }),
+                                    y: resolved,
+                                  };
+                                  return { ...prev, focal: nextFocal };
+                                })
+                              }
+                              containerClassName="mt-1 flex items-center gap-2"
+                              sliderClassName="flex-1"
+                              numberInputClassName="w-24 shrink-0 border border-neutral-300 px-2 py-1 text-right text-xs text-neutral-900"
+                              numberInputProps={{ inputMode: "decimal" }}
+                            />
                           </div>
                           <div className="flex flex-wrap gap-3 text-xs font-medium text-neutral-500">
                             <label className="flex items-center gap-2">
@@ -3092,28 +3068,37 @@ export default function SlideModal({
                               />
                               <InspectorSliderControl
                                 label="Opacity"
-                                value={videoBackground.overlay.opacity}
-                                fallbackValue={0.25}
+                                value={
+                                  videoBackground.overlay.opacity !== undefined
+                                    ? videoBackground.overlay.opacity * 100
+                                    : undefined
+                                }
+                                fallbackValue={
+                                  (videoBackground.overlay.opacity ?? 0.25) * 100
+                                }
                                 min={0}
-                                max={1}
-                                step={0.01}
+                                max={100}
+                                step={1}
                                 onChange={(next) =>
                                   updateBackground((prev) => {
                                     if (prev?.type !== "video") return prev;
-                                    const resolved =
+                                    const percent =
                                       next === undefined
-                                        ? prev.overlay?.opacity ?? 0.25
+                                        ? (prev.overlay?.opacity ?? 0.25) * 100
                                         : next;
+                                    const clampedPercent = Math.min(
+                                      100,
+                                      Math.max(0, percent ?? 0),
+                                    );
                                     return {
                                       ...prev,
                                       overlay: {
                                         color: prev.overlay?.color || "#000000",
-                                        opacity: clamp01(resolved),
+                                        opacity: clamp01(clampedPercent / 100),
                                       },
                                     };
                                   })
                                 }
-                                numberInputClassName="max-w-[110px]"
                               />
                             </div>
                           )}
@@ -3326,13 +3311,12 @@ export default function SlideModal({
                                   label="Font size (px)"
                                   value={selectedBlock.fontSize}
                                   fallbackValue={
-                                    selectedBlock.size
+                                    selectedBlock.fontSize ??
+                                    (selectedBlock.size
                                       ? SIZE_TO_FONT_SIZE_PX[selectedBlock.size]
-                                      : selectedBlock.kind === "heading"
-                                        ? 56
-                                        : 16
+                                      : TEXT_KIND_FONT_DEFAULT[selectedBlock.kind] ?? 16) ?? 16
                                   }
-                                  min={10}
+                                  min={8}
                                   max={120}
                                   step={1}
                                   onChange={(next) => {
@@ -3353,10 +3337,12 @@ export default function SlideModal({
                                 <InspectorSliderControl
                                   label="Line height"
                                   value={selectedBlock.lineHeight}
-                                  fallbackValue={1.25}
-                                  min={0.8}
+                                  fallbackValue={
+                                    selectedBlock.lineHeight ?? 1.2
+                                  }
+                                  min={0.5}
                                   max={3}
-                                  step={0.01}
+                                  step={0.1}
                                   onChange={(next) => {
                                     if (next === undefined) {
                                       patchBlock(selectedBlock.id, {
@@ -3370,16 +3356,13 @@ export default function SlideModal({
                                       lineHeightUnit: undefined,
                                     });
                                   }}
-                                  formatValue={(current) =>
-                                    current !== undefined ? `${current}` : ""
-                                  }
                                 />
                               </div>
                               <InspectorSliderControl
                                 label="Letter spacing (px)"
                                 value={selectedBlock.letterSpacing}
-                                fallbackValue={0}
-                                min={-5}
+                                fallbackValue={selectedBlock.letterSpacing ?? 0}
+                                min={-10}
                                 max={20}
                                 step={0.1}
                                 onChange={(next) => {
@@ -3393,9 +3376,6 @@ export default function SlideModal({
                                     letterSpacing: next,
                                   });
                                 }}
-                                formatValue={(current) =>
-                                  current !== undefined ? `${current}` : ""
-                                }
                               />
                               <div>
                                 <span className="text-xs font-medium text-neutral-500">
@@ -3569,24 +3549,33 @@ export default function SlideModal({
                                     </div>
                                     <InspectorSliderControl
                                       label="Opacity"
-                                      value={selectedBlock.bgOpacity}
+                                      value={
+                                        selectedBlock.bgOpacity !== undefined
+                                          ? selectedBlock.bgOpacity * 100
+                                          : undefined
+                                      }
                                       fallbackValue={
-                                        selectedBlock.bgStyle === "glass" ? 0.5 : 1
+                                        ((selectedBlock.bgStyle === "glass" ? 0.5 : 1) *
+                                          100) || 0
                                       }
                                       min={0}
-                                      max={1}
-                                      step={0.01}
+                                      max={100}
+                                      step={1}
                                       onChange={(next) => {
                                         const fallbackValue =
                                           selectedBlock.bgStyle === "glass" ? 0.5 : 1;
-                                        const resolved =
+                                        const percent =
                                           next === undefined
-                                            ? selectedBlock.bgOpacity ?? fallbackValue
+                                            ? (selectedBlock.bgOpacity ?? fallbackValue) * 100
                                             : next;
+                                        const clampedPercent = Math.min(
+                                          100,
+                                          Math.max(0, percent ?? 0),
+                                        );
                                         patchBlock(
                                           selectedBlock.id,
                                           {
-                                            bgOpacity: clamp01(resolved),
+                                            bgOpacity: clamp01(clampedPercent / 100),
                                           },
                                           false,
                                         );
@@ -3597,7 +3586,7 @@ export default function SlideModal({
                                       value={selectedBlock.radius}
                                       fallbackValue={selectedBlock.radius ?? 0}
                                       min={0}
-                                      max={100}
+                                      max={50}
                                       step={1}
                                       onChange={(next) => {
                                         const resolved = next === undefined ? 0 : Math.round(next);
@@ -3732,11 +3721,12 @@ export default function SlideModal({
                                   label="Font size (px)"
                                   value={selectedBlock.fontSize}
                                   fallbackValue={
-                                    selectedBlock.size
+                                    selectedBlock.fontSize ??
+                                    (selectedBlock.size
                                       ? SIZE_TO_FONT_SIZE_PX[selectedBlock.size]
-                                      : SIZE_TO_FONT_SIZE_PX.md
+                                      : SIZE_TO_FONT_SIZE_PX.md) ?? 16
                                   }
-                                  min={10}
+                                  min={8}
                                   max={120}
                                   step={1}
                                   onChange={(next) => {
@@ -3757,10 +3747,12 @@ export default function SlideModal({
                                 <InspectorSliderControl
                                   label="Line height"
                                   value={selectedBlock.lineHeight}
-                                  fallbackValue={1.25}
-                                  min={0.8}
+                                  fallbackValue={
+                                    selectedBlock.lineHeight ?? 1.2
+                                  }
+                                  min={0.5}
                                   max={3}
-                                  step={0.01}
+                                  step={0.1}
                                   onChange={(next) => {
                                     if (next === undefined) {
                                       patchBlock(selectedBlock.id, {
@@ -3774,9 +3766,6 @@ export default function SlideModal({
                                       lineHeightUnit: undefined,
                                     });
                                   }}
-                                  formatValue={(current) =>
-                                    current !== undefined ? `${current}` : ""
-                                  }
                                 />
                               </div>
                               <label className="block">
@@ -3922,7 +3911,7 @@ export default function SlideModal({
                                     BUTTON_FONT_SIZE_PX[selectedButtonConfig.size] ??
                                       BUTTON_FONT_SIZE_PX.Medium
                                   }
-                                  min={10}
+                                  min={8}
                                   max={120}
                                   step={1}
                                   onChange={(next) => {
@@ -3943,10 +3932,12 @@ export default function SlideModal({
                                 <InspectorSliderControl
                                   label="Line height"
                                   value={selectedBlock.lineHeight}
-                                  fallbackValue={1.25}
-                                  min={0.8}
+                                  fallbackValue={
+                                    selectedBlock.lineHeight ?? 1.2
+                                  }
+                                  min={0.5}
                                   max={3}
-                                  step={0.01}
+                                  step={0.1}
                                   onChange={(next) => {
                                     if (next === undefined) {
                                       patchBlock(selectedBlock.id, {
@@ -3960,9 +3951,6 @@ export default function SlideModal({
                                       lineHeightUnit: undefined,
                                     });
                                   }}
-                                  formatValue={(current) =>
-                                    current !== undefined ? `${current}` : ""
-                                  }
                                 />
                               </div>
                               <div>
@@ -4110,9 +4098,11 @@ export default function SlideModal({
                               <InspectorSliderControl
                                 label="Corner radius (px)"
                                 value={selectedButtonConfig.radius}
-                                fallbackValue={selectedButtonConfig.radius}
+                                fallbackValue={
+                                  selectedButtonConfig.radius ?? DEFAULT_BUTTON_CONFIG.radius
+                                }
                                 min={0}
-                                max={100}
+                                max={50}
                                 step={1}
                                 onChange={(next) => {
                                   const resolved =
@@ -4260,19 +4250,24 @@ export default function SlideModal({
                                         <span>{selectedImageConfig.focalX.toFixed(2)}</span>
                                       </div>
                                       <InputSlider
-                                        
                                         min={0}
                                         max={1}
                                         step={0.01}
                                         value={selectedImageConfig.focalX}
-                                        onChange={(e) => {
-                                          const value = Number(e.target.value);
+                                        fallbackValue={DEFAULT_IMAGE_CONFIG.focalX}
+                                        onValueChange={(next) => {
+                                          const value =
+                                            typeof next === "number"
+                                              ? next
+                                              : DEFAULT_IMAGE_CONFIG.focalX;
                                           updateImageConfig(selectedBlock.id, (config) => ({
                                             ...config,
                                             focalX: value,
                                           }));
                                         }}
-                                        className="mt-1 w-full"
+                                        containerClassName="mt-1"
+                                        className="w-full"
+                                        numberInputClassName="w-24 shrink-0 text-right text-xs"
                                       />
                                     </label>
                                     <label className="block text-xs text-neutral-500">
@@ -4281,19 +4276,24 @@ export default function SlideModal({
                                         <span>{selectedImageConfig.focalY.toFixed(2)}</span>
                                       </div>
                                       <InputSlider
-                                        
                                         min={0}
                                         max={1}
                                         step={0.01}
                                         value={selectedImageConfig.focalY}
-                                        onChange={(e) => {
-                                          const value = Number(e.target.value);
+                                        fallbackValue={DEFAULT_IMAGE_CONFIG.focalY}
+                                        onValueChange={(next) => {
+                                          const value =
+                                            typeof next === "number"
+                                              ? next
+                                              : DEFAULT_IMAGE_CONFIG.focalY;
                                           updateImageConfig(selectedBlock.id, (config) => ({
                                             ...config,
                                             focalY: value,
                                           }));
                                         }}
-                                        className="mt-1 w-full"
+                                        containerClassName="mt-1"
+                                        className="w-full"
+                                        numberInputClassName="w-24 shrink-0 text-right text-xs"
                                       />
                                     </label>
                                   </div>
@@ -4301,9 +4301,11 @@ export default function SlideModal({
                                 <InspectorSliderControl
                                   label="Corner radius (px)"
                                   value={selectedImageConfig.radius}
-                                  fallbackValue={selectedImageConfig.radius}
+                                  fallbackValue={
+                                    selectedImageConfig.radius ?? DEFAULT_IMAGE_CONFIG.radius
+                                  }
                                   min={0}
-                                  max={100}
+                                  max={50}
                                   step={1}
                                   onChange={(next) => {
                                     updateImageConfig(selectedBlock.id, (config) => ({
@@ -4602,9 +4604,11 @@ export default function SlideModal({
                                   <InspectorSliderControl
                                     label="Corner radius (px)"
                                     value={selectedGalleryConfig.radius}
-                                    fallbackValue={selectedGalleryConfig.radius}
+                                    fallbackValue={
+                                      selectedGalleryConfig.radius ?? DEFAULT_GALLERY_CONFIG.radius
+                                    }
                                     min={0}
-                                    max={100}
+                                    max={50}
                                     step={1}
                                     onChange={(next) => {
                                       updateGalleryConfig(
@@ -4787,7 +4791,7 @@ export default function SlideModal({
                                     selectedBlock.fontSize ??
                                     (selectedQuoteConfig.style === "emphasis" ? 24 : 16)
                                   }
-                                  min={10}
+                                  min={8}
                                   max={120}
                                   step={1}
                                   onChange={(next) => {
@@ -4808,10 +4812,12 @@ export default function SlideModal({
                                 <InspectorSliderControl
                                   label="Line height"
                                   value={selectedBlock.lineHeight}
-                                  fallbackValue={1.4}
-                                  min={0.8}
+                                  fallbackValue={
+                                    selectedBlock.lineHeight ?? 1.2
+                                  }
+                                  min={0.5}
                                   max={3}
-                                  step={0.01}
+                                  step={0.1}
                                   onChange={(next) => {
                                     if (next === undefined) {
                                       patchBlock(selectedBlock.id, {
@@ -4825,9 +4831,6 @@ export default function SlideModal({
                                       lineHeightUnit: undefined,
                                     });
                                   }}
-                                  formatValue={(current) =>
-                                    current !== undefined ? `${current}` : ""
-                                  }
                                 />
                               </div>
                               <label className="block">
@@ -4862,33 +4865,48 @@ export default function SlideModal({
                                   </label>
                                   <InspectorSliderControl
                                     label="Background opacity"
-                                    value={selectedQuoteConfig.bgOpacity}
-                                    fallbackValue={selectedQuoteConfig.bgOpacity}
+                                    value={
+                                      selectedQuoteConfig.bgOpacity !== undefined
+                                        ? selectedQuoteConfig.bgOpacity * 100
+                                        : undefined
+                                    }
+                                    fallbackValue={
+                                      ((selectedQuoteConfig.bgOpacity ?? DEFAULT_QUOTE_CONFIG.bgOpacity) *
+                                        100) || 0
+                                    }
                                     min={0}
-                                    max={1}
-                                    step={0.01}
+                                    max={100}
+                                    step={1}
                                     onChange={(next) => {
-                                      const resolved =
+                                      const fallback =
+                                        selectedQuoteConfig.bgOpacity ?? DEFAULT_QUOTE_CONFIG.bgOpacity;
+                                      const percent =
                                         next === undefined || Number.isNaN(next)
-                                          ? selectedQuoteConfig.bgOpacity
-                                          : clamp01(next);
+                                          ? fallback * 100
+                                          : next;
+                                      const clampedPercent = Math.min(
+                                        100,
+                                        Math.max(0, percent ?? 0),
+                                      );
                                       updateQuoteConfig(selectedBlock.id, (config) => ({
                                         ...config,
-                                        bgOpacity: resolved,
+                                        bgOpacity: clamp01(clampedPercent / 100),
                                       }));
                                     }}
                                   />
                                   <InspectorSliderControl
                                     label="Corner radius (px)"
                                     value={selectedQuoteConfig.radius}
-                                    fallbackValue={selectedQuoteConfig.radius}
+                                    fallbackValue={
+                                      selectedQuoteConfig.radius ?? DEFAULT_QUOTE_CONFIG.radius
+                                    }
                                     min={0}
-                                    max={100}
+                                    max={50}
                                     step={1}
                                     onChange={(next) => {
                                       const resolved =
                                         next === undefined || Number.isNaN(next)
-                                          ? selectedQuoteConfig.radius
+                                          ? selectedQuoteConfig.radius ?? DEFAULT_QUOTE_CONFIG.radius
                                           : Math.round(next);
                                       updateQuoteConfig(selectedBlock.id, (config) => ({
                                         ...config,
@@ -4899,14 +4917,16 @@ export default function SlideModal({
                                   <InspectorSliderControl
                                     label="Padding (px)"
                                     value={selectedQuoteConfig.padding}
-                                    fallbackValue={selectedQuoteConfig.padding}
+                                    fallbackValue={
+                                      selectedQuoteConfig.padding ?? DEFAULT_QUOTE_CONFIG.padding
+                                    }
                                     min={0}
                                     max={100}
                                     step={1}
                                     onChange={(next) => {
                                       const resolved =
                                         next === undefined || Number.isNaN(next)
-                                          ? selectedQuoteConfig.padding
+                                          ? selectedQuoteConfig.padding ?? DEFAULT_QUOTE_CONFIG.padding
                                           : Math.round(next);
                                       updateQuoteConfig(selectedBlock.id, (config) => ({
                                         ...config,
@@ -5048,7 +5068,7 @@ export default function SlideModal({
                                 value={selectedBlock.borderRadius}
                                 fallbackValue={selectedBlock.borderRadius ?? 0}
                                 min={0}
-                                max={100}
+                                max={50}
                                 step={1}
                                 onChange={(next) => {
                                   if (next === undefined) {
@@ -5060,13 +5080,6 @@ export default function SlideModal({
                                     borderRadius: resolved,
                                   });
                                 }}
-                                formatValue={(current, fallback) =>
-                                  current !== undefined
-                                    ? `${current}`
-                                    : fallback !== undefined
-                                      ? ""
-                                      : ""
-                                }
                               />
                             </div>
                             <div className="space-y-3">
