@@ -45,6 +45,10 @@ const DEFAULT_TEXT_SHADOW = {
   color: 'rgba(0, 0, 0, 0.3)',
 };
 
+const DEFAULT_BLOCK_BACKGROUND_COLOR = '#ffffff';
+const DEFAULT_BLOCK_GRADIENT_FROM = 'rgba(15, 23, 42, 0.45)';
+const DEFAULT_BLOCK_GRADIENT_TO = 'rgba(15, 23, 42, 0.05)';
+
 const isTextualKind = (kind: string): boolean => TEXTUAL_BLOCK_KIND_NAMES.has(kind as any);
 
 export type DeviceKind = 'mobile' | 'tablet' | 'desktop';
@@ -595,7 +599,92 @@ const BLOCK_GRADIENT_DIRECTION_MAP: Record<BlockBackgroundGradientDirection, str
   'to-right': 'to right',
 };
 
-function getBlockChromeStyle(block: SlideBlock): CSSProperties {
+const clampBackgroundOpacity = (value?: number): number => {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return 100;
+  }
+  if (value <= 1) {
+    return Math.round(Math.min(1, Math.max(0, value)) * 100);
+  }
+  return Math.round(Math.min(100, Math.max(0, value)));
+};
+
+const clampBackgroundRadius = (value?: number): number => {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return 0;
+  }
+  return Math.max(0, value);
+};
+
+type BlockBackgroundPresentation = {
+  style: CSSProperties;
+  radius: number;
+};
+
+const getBlockBackgroundPresentation = (
+  background?: BlockBackground | null,
+): BlockBackgroundPresentation | null => {
+  if (!background || background.type === 'none') {
+    return null;
+  }
+
+  const radius = clampBackgroundRadius(background.radius);
+  const opacity = clampBackgroundOpacity(background.opacity) / 100;
+  const overlayStyle: CSSProperties = {
+    position: 'absolute',
+    inset: 0,
+    pointerEvents: 'none',
+    borderRadius: radius,
+    opacity,
+    zIndex: -1,
+  };
+
+  if (background.type === 'color') {
+    const color =
+      typeof background.color === 'string' && background.color.trim().length > 0
+        ? background.color
+        : DEFAULT_BLOCK_BACKGROUND_COLOR;
+    overlayStyle.backgroundColor = color;
+    return { style: overlayStyle, radius };
+  }
+
+  if (background.type === 'gradient') {
+    const from =
+      typeof background.color === 'string' && background.color.trim().length > 0
+        ? background.color
+        : DEFAULT_BLOCK_GRADIENT_FROM;
+    const to =
+      typeof background.color2 === 'string' && background.color2.trim().length > 0
+        ? background.color2
+        : DEFAULT_BLOCK_GRADIENT_TO;
+    const directionKey =
+      background.direction && BLOCK_GRADIENT_DIRECTION_MAP[background.direction]
+        ? background.direction
+        : 'to-bottom';
+    const direction = BLOCK_GRADIENT_DIRECTION_MAP[directionKey];
+    overlayStyle.backgroundImage = `linear-gradient(${direction}, ${from}, ${to})`;
+    return { style: overlayStyle, radius };
+  }
+
+  if (background.type === 'image') {
+    const url = typeof background.url === 'string' && background.url.trim().length > 0 ? background.url : undefined;
+    if (!url) {
+      return null;
+    }
+    overlayStyle.backgroundImage = `url(${url})`;
+    overlayStyle.backgroundSize = 'cover';
+    overlayStyle.backgroundPosition = 'center';
+    overlayStyle.backgroundRepeat = 'no-repeat';
+    return { style: overlayStyle, radius };
+  }
+
+  return null;
+};
+
+function getBlockChromeStyle(
+  block: SlideBlock,
+  backgroundPresentation?: BlockBackgroundPresentation | null,
+): CSSProperties {
   const textual = isTextualKind(block.kind);
   const style: CSSProperties = {
     width: textual ? 'fit-content' : '100%',
@@ -638,50 +727,16 @@ function getBlockChromeStyle(block: SlideBlock): CSSProperties {
     typeof block.borderRadius === 'number' && Number.isFinite(block.borderRadius)
       ? Math.max(0, block.borderRadius)
       : undefined;
-  if (borderRadius !== undefined) {
+  const backgroundRadius = backgroundPresentation ? backgroundPresentation.radius : undefined;
+  const resolvedRadius =
+    borderRadius !== undefined || backgroundRadius !== undefined
+      ? Math.max(borderRadius ?? 0, backgroundRadius ?? 0)
+      : undefined;
+
+  if (resolvedRadius !== undefined && resolvedRadius > 0) {
+    style.borderRadius = resolvedRadius;
+  } else if (borderRadius !== undefined) {
     style.borderRadius = borderRadius;
-  }
-
-  const background = block.background;
-  const backgroundType = background?.type ?? 'none';
-  let shouldClip = false;
-
-  if (backgroundType === 'color') {
-    style.backgroundColor = background?.color ?? 'transparent';
-    shouldClip = true;
-  } else if (backgroundType === 'gradient') {
-    const gradient = background?.gradient ?? {};
-    const from =
-      typeof gradient.from === 'string' ? gradient.from : 'rgba(15, 23, 42, 0.4)';
-    const to =
-      typeof gradient.to === 'string' ? gradient.to : 'rgba(15, 23, 42, 0.05)';
-    const rawDirection =
-      typeof gradient.direction === 'string'
-        ? gradient.direction.replace(/\s+/g, '-').toLowerCase()
-        : undefined;
-    const directionKey =
-      rawDirection === 'to-top' ||
-      rawDirection === 'to-left' ||
-      rawDirection === 'to-right' ||
-      rawDirection === 'to-bottom'
-        ? (rawDirection as BlockBackgroundGradientDirection)
-        : 'to-bottom';
-    const direction = BLOCK_GRADIENT_DIRECTION_MAP[directionKey];
-    style.backgroundImage = `linear-gradient(${direction}, ${from}, ${to})`;
-    shouldClip = true;
-  } else if (backgroundType === 'image') {
-    const url = background?.image?.url;
-    if (url) {
-      style.backgroundImage = `url(${url})`;
-      style.backgroundSize = 'cover';
-      style.backgroundPosition = 'center';
-      style.backgroundRepeat = 'no-repeat';
-      shouldClip = true;
-    }
-  }
-
-  if (shouldClip && borderRadius !== undefined && borderRadius > 0) {
-    style.overflow = 'hidden';
   }
 
   return style;
@@ -690,7 +745,8 @@ function getBlockChromeStyle(block: SlideBlock): CSSProperties {
 type BlockChromeProps = { block: SlideBlock; children: ReactNode };
 
 const BlockChrome = React.forwardRef<HTMLDivElement, BlockChromeProps>(({ block, children }, ref) => {
-  const baseStyle = getBlockChromeStyle(block);
+  const backgroundPresentation = getBlockBackgroundPresentation(block.background);
+  const baseStyle = getBlockChromeStyle(block, backgroundPresentation);
   const interaction = getBlockInteractionPresentation(block);
   const style = { ...baseStyle, ...(interaction.style || {}) } as CSSProperties;
   const textual = isTextualKind(block.kind);
@@ -705,6 +761,13 @@ const BlockChrome = React.forwardRef<HTMLDivElement, BlockChromeProps>(({ block,
   }
   return (
     <div ref={ref} className={className.join(' ')} style={style}>
+      {backgroundPresentation && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
+          style={backgroundPresentation.style}
+        />
+      )}
       {children}
     </div>
   );
@@ -948,14 +1011,11 @@ export type BlockBackgroundGradientDirection =
 export type BlockBackground = {
   type: 'none' | 'color' | 'gradient' | 'image';
   color?: string;
-  gradient?: {
-    from?: string;
-    to?: string;
-    direction?: BlockBackgroundGradientDirection;
-  };
-  image?: {
-    url?: string;
-  };
+  color2?: string;
+  direction?: BlockBackgroundGradientDirection;
+  url?: string;
+  radius?: number;
+  opacity?: number;
 };
 
 export type SlideBlock = {
@@ -999,6 +1059,7 @@ export type SlideBlock = {
         Partial<ImageBlockConfig> &
         Partial<GalleryBlockConfig> &
         Partial<QuoteBlockConfig> &
+        { background?: BlockBackground } &
         Record<string, any>)
     | null;
   fit?: 'cover' | 'contain';
