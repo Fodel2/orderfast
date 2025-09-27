@@ -235,8 +235,8 @@ const TEXT_KIND_FONT_DEFAULT: Partial<Record<SlideBlock["kind"], number>> = {
 const DEFAULT_TEXT_SHADOW: NonNullable<SlideBlock["textShadow"]> = {
   x: 0,
   y: 2,
-  blur: 6,
-  color: "#000000",
+  blur: 4,
+  color: "rgba(0, 0, 0, 0.3)",
 };
 
 const BLOCK_KIND_LABELS: Record<SlideBlock["kind"], string> = {
@@ -463,6 +463,129 @@ const InspectorColorInput: React.FC<InspectorColorInputProps> = ({
           numberInputClassName="w-16 shrink-0 text-right text-xs"
           numberInputProps={{ inputMode: "numeric" }}
         />
+      )}
+    </div>
+  );
+};
+
+type InspectorTextShadowControlsProps = {
+  block: SlideBlock;
+  onPatch: (patch: Partial<SlideBlock>) => void;
+};
+
+const InspectorTextShadowControls: React.FC<InspectorTextShadowControlsProps> = ({
+  block,
+  onPatch,
+}) => {
+  const shadowEnabled = Boolean(block.textShadow);
+  const resolvedX =
+    typeof block.shadowX === "number"
+      ? block.shadowX
+      : block.textShadow?.x ?? DEFAULT_TEXT_SHADOW.x;
+  const resolvedY =
+    typeof block.shadowY === "number"
+      ? block.shadowY
+      : block.textShadow?.y ?? DEFAULT_TEXT_SHADOW.y;
+  const resolvedBlur =
+    typeof block.shadowBlur === "number"
+      ? block.shadowBlur
+      : block.textShadow?.blur ?? DEFAULT_TEXT_SHADOW.blur;
+  const resolvedColor =
+    typeof block.shadowColor === "string" && block.shadowColor.trim().length > 0
+      ? block.shadowColor
+      : block.textShadow?.color ?? DEFAULT_TEXT_SHADOW.color;
+
+  const buildShadow = useCallback(
+    (overrides?: Partial<NonNullable<SlideBlock["textShadow"]>>) => ({
+      x: overrides?.x ?? resolvedX ?? DEFAULT_TEXT_SHADOW.x,
+      y: overrides?.y ?? resolvedY ?? DEFAULT_TEXT_SHADOW.y,
+      blur: overrides?.blur ?? resolvedBlur ?? DEFAULT_TEXT_SHADOW.blur,
+      color: overrides?.color ?? resolvedColor ?? DEFAULT_TEXT_SHADOW.color,
+    }),
+    [resolvedBlur, resolvedColor, resolvedX, resolvedY],
+  );
+
+  const applyShadowPatch = useCallback(
+    (overrides?: Partial<NonNullable<SlideBlock["textShadow"]>>) => {
+      const nextShadow = buildShadow(overrides);
+      onPatch({
+        textShadow: nextShadow,
+        shadowX: nextShadow.x,
+        shadowY: nextShadow.y,
+        shadowBlur: nextShadow.blur,
+        shadowColor: nextShadow.color,
+      });
+    },
+    [buildShadow, onPatch],
+  );
+
+  const handleToggle = useCallback(
+    (checked: boolean) => {
+      if (checked) {
+        applyShadowPatch();
+        return;
+      }
+      onPatch({ textShadow: null });
+    },
+    [applyShadowPatch, onPatch],
+  );
+
+  return (
+    <div>
+      <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
+        <InputCheckbox
+          checked={shadowEnabled}
+          onChange={(e) => handleToggle(e.target.checked)}
+        />
+        Text shadow
+      </label>
+      {shadowEnabled && (
+        <div className="mt-2 space-y-2">
+          <InspectorSliderControl
+            label="Offset X (px)"
+            value={resolvedX}
+            fallbackValue={resolvedX ?? DEFAULT_TEXT_SHADOW.x}
+            min={-50}
+            max={50}
+            step={1}
+            onChange={(next) => {
+              if (typeof next !== "number" || Number.isNaN(next)) return;
+              applyShadowPatch({ x: Math.round(next) });
+            }}
+          />
+          <InspectorSliderControl
+            label="Offset Y (px)"
+            value={resolvedY}
+            fallbackValue={resolvedY ?? DEFAULT_TEXT_SHADOW.y}
+            min={-50}
+            max={50}
+            step={1}
+            onChange={(next) => {
+              if (typeof next !== "number" || Number.isNaN(next)) return;
+              applyShadowPatch({ y: Math.round(next) });
+            }}
+          />
+          <InspectorSliderControl
+            label="Blur (px)"
+            value={resolvedBlur}
+            fallbackValue={resolvedBlur ?? DEFAULT_TEXT_SHADOW.blur}
+            min={0}
+            max={50}
+            step={1}
+            onChange={(next) => {
+              if (typeof next !== "number" || Number.isNaN(next)) return;
+              applyShadowPatch({ blur: Math.max(0, Math.round(next)) });
+            }}
+          />
+          <div>
+            <span className="text-xs font-medium text-neutral-500">Shadow color</span>
+            <InspectorColorInput
+              value={resolvedColor ?? DEFAULT_TEXT_SHADOW.color}
+              onChange={(nextColor) => applyShadowPatch({ color: nextColor })}
+              allowAlpha
+            />
+          </div>
+        </div>
       )}
     </div>
   );
@@ -705,68 +828,138 @@ function normalizeBackground(raw: any): SlideCfg["background"] {
   return defaultBackground();
 }
 
-function normalizeBlockBackground(raw: any): BlockBackground {
-  if (!raw) {
-    return { type: "none" };
+function parseNumericValue(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
   }
-  if (typeof raw === "string") {
-    const normalized = raw.trim().toLowerCase();
-    if (normalized === "none") {
-      return { type: "none" };
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed.length === 0) {
+      return undefined;
+    }
+    const parsed = Number(trimmed);
+    if (Number.isFinite(parsed)) {
+      return parsed;
     }
   }
-  if (typeof raw !== "object") {
-    return { type: "none" };
+  return undefined;
+}
+
+function clampBackgroundOpacityPercent(rawValue: number | undefined): number {
+  if (rawValue === undefined) {
+    return 100;
   }
+  if (Number.isNaN(rawValue)) {
+    return 100;
+  }
+  if (rawValue <= 1) {
+    return Math.round(Math.min(1, Math.max(0, rawValue)) * 100);
+  }
+  return Math.round(Math.min(100, Math.max(0, rawValue)));
+}
+
+function normalizeBlockBackground(raw: any): BlockBackground {
+  if (!raw) {
+    return { type: "none", radius: 0, opacity: 100 };
+  }
+
+  if (typeof raw === "string") {
+    const normalized = raw.trim().toLowerCase();
+    if (normalized === "none" || normalized.length === 0) {
+      return { type: "none", radius: 0, opacity: 100 };
+    }
+  }
+
+  if (typeof raw !== "object") {
+    return { type: "none", radius: 0, opacity: 100 };
+  }
+
+  const source = raw as Record<string, any>;
   const typeValue =
-    typeof raw.type === "string"
-      ? raw.type.toLowerCase()
-      : typeof raw.kind === "string"
-        ? raw.kind.toLowerCase()
+    typeof source.type === "string"
+      ? source.type.toLowerCase()
+      : typeof source.kind === "string"
+        ? source.kind.toLowerCase()
         : undefined;
-  const type: BlockBackground["type"] =
-    typeValue === "color" || typeValue === "gradient" || typeValue === "image" || typeValue === "none"
-      ? (typeValue as BlockBackground["type"])
-      : "none";
+
+  let type: BlockBackground["type"] = "none";
+  if (typeValue === "color" || typeValue === "gradient" || typeValue === "image" || typeValue === "none") {
+    type = typeValue as BlockBackground["type"];
+  } else if (source.gradient || typeof source.color2 === "string") {
+    type = "gradient";
+  } else if (
+    typeof source.color === "string" ||
+    typeof source.value === "string" ||
+    typeof source.backgroundColor === "string" ||
+    typeof source.fill === "string"
+  ) {
+    type = "color";
+  } else if (
+    (source.image && typeof source.image === "object") ||
+    typeof source.url === "string" ||
+    typeof source.src === "string"
+  ) {
+    type = "image";
+  }
+
+  const radiusCandidate =
+    parseNumericValue(source.radius) ??
+    parseNumericValue(source.borderRadius) ??
+    parseNumericValue(source.cornerRadius);
+  const opacityCandidate =
+    parseNumericValue(source.opacity) ??
+    parseNumericValue(source.alpha) ??
+    parseNumericValue(source.backgroundOpacity) ??
+    parseNumericValue(source.opacityPercent);
+
+  const base: BlockBackground = {
+    type,
+    radius: radiusCandidate !== undefined ? Math.max(0, radiusCandidate) : 0,
+    opacity: clampBackgroundOpacityPercent(opacityCandidate),
+  };
 
   if (type === "none") {
-    return { type: "none" };
+    return base;
   }
 
   if (type === "color") {
     const color =
-      typeof raw.color === "string"
-        ? raw.color
-        : typeof raw.value === "string"
-          ? raw.value
-          : DEFAULT_BLOCK_BACKGROUND_COLOR;
-    return { type: "color", color };
+      typeof source.color === "string"
+        ? source.color
+        : typeof source.value === "string"
+          ? source.value
+          : typeof source.backgroundColor === "string"
+            ? source.backgroundColor
+            : typeof source.fill === "string"
+              ? source.fill
+              : DEFAULT_BLOCK_BACKGROUND_COLOR;
+    return { ...base, type: "color", color };
   }
 
   if (type === "gradient") {
-    const source =
-      raw.gradient && typeof raw.gradient === "object" ? raw.gradient : raw;
+    const gradientSource =
+      source.gradient && typeof source.gradient === "object" ? source.gradient : source;
     const from =
-      typeof source.from === "string"
-        ? source.from
-        : typeof source.start === "string"
-          ? source.start
-          : typeof source.color1 === "string"
-            ? source.color1
+      typeof gradientSource.from === "string"
+        ? gradientSource.from
+        : typeof gradientSource.start === "string"
+          ? gradientSource.start
+          : typeof gradientSource.color1 === "string"
+            ? gradientSource.color1
             : DEFAULT_BLOCK_GRADIENT_FROM;
     const to =
-      typeof source.to === "string"
-        ? source.to
-        : typeof source.end === "string"
-          ? source.end
-          : typeof source.color2 === "string"
-            ? source.color2
+      typeof gradientSource.to === "string"
+        ? gradientSource.to
+        : typeof gradientSource.end === "string"
+          ? gradientSource.end
+          : typeof gradientSource.color2 === "string"
+            ? gradientSource.color2
             : DEFAULT_BLOCK_GRADIENT_TO;
     const directionValue =
-      typeof source.direction === "string"
-        ? source.direction.replace(/\s+/g, "-").toLowerCase()
-        : typeof raw.direction === "string"
-          ? raw.direction.replace(/\s+/g, "-").toLowerCase()
+      typeof gradientSource.direction === "string"
+        ? gradientSource.direction.replace(/\s+/g, "-").toLowerCase()
+        : typeof source.direction === "string"
+          ? source.direction.replace(/\s+/g, "-").toLowerCase()
           : undefined;
     const direction: BlockBackgroundGradientDirection =
       directionValue === "to-top" ||
@@ -776,50 +969,48 @@ function normalizeBlockBackground(raw: any): BlockBackground {
         ? (directionValue as BlockBackgroundGradientDirection)
         : "to-bottom";
     return {
+      ...base,
       type: "gradient",
-      gradient: {
-        from,
-        to,
-        direction,
-      },
+      color: from,
+      color2: to,
+      direction,
     };
   }
 
   const imageSource =
-    raw.image && typeof raw.image === "object" ? raw.image : raw;
+    source.image && typeof source.image === "object" ? source.image : source;
   const url =
     typeof imageSource.url === "string"
       ? imageSource.url
       : typeof imageSource.src === "string"
         ? imageSource.src
-        : typeof raw.url === "string"
-          ? raw.url
+        : typeof source.url === "string"
+          ? source.url
           : undefined;
   return {
+    ...base,
     type: "image",
-    image: { url },
+    url,
   };
 }
 
 function cloneBlockBackground(background?: BlockBackground | null): BlockBackground {
   if (!background || typeof background !== "object") {
-    return { type: "none" };
+    return { type: "none", radius: 0, opacity: 100 };
   }
   return {
     type: background.type ?? "none",
     color: background.color,
-    gradient: background.gradient
-      ? {
-          from: background.gradient.from,
-          to: background.gradient.to,
-          direction: background.gradient.direction,
-        }
-      : undefined,
-    image: background.image
-      ? {
-          url: background.image.url,
-        }
-      : undefined,
+    color2: background.color2,
+    direction: background.direction,
+    url: background.url,
+    radius:
+      typeof background.radius === "number" && Number.isFinite(background.radius)
+        ? Math.max(0, background.radius)
+        : 0,
+    opacity: clampBackgroundOpacityPercent(
+      typeof background.opacity === "number" ? background.opacity : undefined,
+    ),
   };
 }
 
@@ -1059,22 +1250,6 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
     block.textColor = textColor;
     block.color = textColor;
     if (kind === "heading" || kind === "text") {
-      if (raw.textShadow && typeof raw.textShadow === "object") {
-        const shadow = raw.textShadow;
-        const x = typeof shadow.x === "number" ? shadow.x : DEFAULT_TEXT_SHADOW.x;
-        const y = typeof shadow.y === "number" ? shadow.y : DEFAULT_TEXT_SHADOW.y;
-        const blur =
-          typeof shadow.blur === "number" ? shadow.blur : DEFAULT_TEXT_SHADOW.blur;
-        const color =
-          typeof shadow.color === "string"
-            ? shadow.color
-            : DEFAULT_TEXT_SHADOW.color;
-        block.textShadow = { x, y, blur, color };
-      } else if (raw.textShadow === null || raw.textShadow === false) {
-        block.textShadow = null;
-      } else if (block.textShadow === undefined) {
-        block.textShadow = null;
-      }
       const bgStyleValue = raw.bgStyle;
       const normalizedBgStyle: SlideBlock["bgStyle"] =
         bgStyleValue === "solid" || bgStyleValue === "glass"
@@ -1109,6 +1284,49 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
             ? raw.pad
             : block.padding ?? 0;
       block.padding = paddingSource;
+    }
+  }
+
+  if (isTextualBlock(kind)) {
+    const shadowValue = raw.textShadow;
+    const rawShadowX = typeof raw.shadowX === "number" ? raw.shadowX : undefined;
+    const rawShadowY = typeof raw.shadowY === "number" ? raw.shadowY : undefined;
+    const rawShadowBlur =
+      typeof raw.shadowBlur === "number" ? raw.shadowBlur : undefined;
+    const rawShadowColor =
+      typeof raw.shadowColor === "string" ? raw.shadowColor : undefined;
+    const x =
+      rawShadowX ??
+      (shadowValue && typeof shadowValue === "object" && typeof shadowValue.x === "number"
+        ? shadowValue.x
+        : block.shadowX ?? block.textShadow?.x ?? DEFAULT_TEXT_SHADOW.x);
+    const y =
+      rawShadowY ??
+      (shadowValue && typeof shadowValue === "object" && typeof shadowValue.y === "number"
+        ? shadowValue.y
+        : block.shadowY ?? block.textShadow?.y ?? DEFAULT_TEXT_SHADOW.y);
+    const blur =
+      rawShadowBlur ??
+      (shadowValue && typeof shadowValue === "object" && typeof shadowValue.blur === "number"
+        ? shadowValue.blur
+        : block.shadowBlur ?? block.textShadow?.blur ?? DEFAULT_TEXT_SHADOW.blur);
+    const color =
+      rawShadowColor ??
+      (shadowValue && typeof shadowValue === "object" && typeof shadowValue.color === "string"
+        ? shadowValue.color
+        : block.shadowColor ?? block.textShadow?.color ?? DEFAULT_TEXT_SHADOW.color);
+
+    block.shadowX = x;
+    block.shadowY = y;
+    block.shadowBlur = blur;
+    block.shadowColor = color;
+
+    if (shadowValue && typeof shadowValue === "object") {
+      block.textShadow = { x, y, blur, color };
+    } else if (shadowValue === null || shadowValue === false) {
+      block.textShadow = null;
+    } else if (block.textShadow === undefined) {
+      block.textShadow = null;
     }
   }
 
@@ -1168,7 +1386,9 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
 
   const backgroundSource =
     raw.background ?? raw.blockBackground ?? raw.backgroundFill ?? block.background;
-  block.background = normalizeBlockBackground(backgroundSource);
+  const normalizedBackground = normalizeBlockBackground(backgroundSource);
+  block.background = normalizedBackground;
+  workingConfig.background = normalizedBackground;
 
   const configWithFont = isFontEnabledBlock(kind)
     ? applyFontFamilyToConfig(workingConfig, block.fontFamily)
@@ -1568,6 +1788,13 @@ export default function SlideModal({
           let nextBlock: SlideBlock = { ...b, ...patch };
           let nextConfig = extractConfig(b.config);
           let shouldMergeConfig = false;
+
+          if ("background" in patch) {
+            const normalizedBackground = normalizeBlockBackground(patch.background);
+            nextBlock = { ...nextBlock, background: normalizedBackground };
+            nextConfig = { ...nextConfig, background: normalizedBackground };
+            shouldMergeConfig = true;
+          }
 
           if ("fontFamily" in patch && isFontEnabledBlock(b.kind)) {
             const normalizedFont =
@@ -2130,6 +2357,31 @@ export default function SlideModal({
     }
     return resolveBlockVisibility(selectedBlock);
   }, [selectedBlock]);
+
+  const selectedBlockBackground = useMemo(() => {
+    if (!selectedBlock) {
+      return cloneBlockBackground();
+    }
+    const configRecord =
+      selectedBlock.config && typeof selectedBlock.config === "object"
+        ? (selectedBlock.config as Record<string, any>).background
+        : undefined;
+    return cloneBlockBackground(configRecord ?? selectedBlock.background);
+  }, [selectedBlock]);
+
+  const updateSelectedBlockBackground = useCallback(
+    (mutator: (background: BlockBackground) => BlockBackground) => {
+      if (!selectedBlock) return;
+      const configRecord =
+        selectedBlock.config && typeof selectedBlock.config === "object"
+          ? (selectedBlock.config as Record<string, any>).background
+          : undefined;
+      const current = cloneBlockBackground(configRecord ?? selectedBlock.background);
+      const next = mutator(current);
+      patchBlock(selectedBlock.id, { background: next });
+    },
+    [patchBlock, selectedBlock],
+  );
 
   const selectedAnimationConfig = useMemo(
     () =>
@@ -3396,113 +3648,12 @@ export default function SlideModal({
                                   allowAlpha
                                 />
                               </div>
-                              <div>
-                                <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
-                                  <InputCheckbox
-                                    
-                                    checked={Boolean(selectedBlock.textShadow)}
-                                    onChange={(e) => {
-                                      if (e.target.checked) {
-                                        patchBlock(selectedBlock.id, {
-                                          textShadow:
-                                            selectedBlock.textShadow ?? {
-                                              ...DEFAULT_TEXT_SHADOW,
-                                            },
-                                        });
-                                      } else {
-                                        patchBlock(selectedBlock.id, {
-                                          textShadow: null,
-                                        });
-                                      }
-                                    }}
-                                  />
-                                  Text shadow
-                                </label>
-                                {selectedBlock.textShadow && (
-                                  <div className="mt-2 grid grid-cols-2 gap-2">
-                                    {([
-                                      ["x", "X"],
-                                      ["y", "Y"],
-                                    ] as const).map(([key, label]) => (
-                                      <label key={key} className="block text-xs">
-                                        <span className="font-medium text-neutral-500">
-                                          {label}
-                                        </span>
-                                        <InputNumber
-                                          
-                                          value={selectedBlock.textShadow?.[key] ?? DEFAULT_TEXT_SHADOW[key]}
-                                          onChange={(e) => {
-                                            const value = Number(e.target.value);
-                                            const current =
-                                              selectedBlock.textShadow ?? {
-                                                ...DEFAULT_TEXT_SHADOW,
-                                              };
-                                            patchBlock(selectedBlock.id, {
-                                              textShadow: {
-                                                ...current,
-                                                [key]: Number.isNaN(value)
-                                                  ? current[key]
-                                                  : value,
-                                              },
-                                            });
-                                          }}
-                                          className={INSPECTOR_INPUT_CLASS}
-                                        />
-                                      </label>
-                                    ))}
-                                    <div className="col-span-2">
-                                      <InspectorSliderControl
-                                        label="Blur"
-                                        value={selectedBlock.textShadow?.blur}
-                                        fallbackValue={DEFAULT_TEXT_SHADOW.blur}
-                                        min={0}
-                                        max={20}
-                                        step={1}
-                                        onChange={(next) => {
-                                          const current =
-                                            selectedBlock.textShadow ?? {
-                                              ...DEFAULT_TEXT_SHADOW,
-                                            };
-                                          const resolved =
-                                            next === undefined || Number.isNaN(next)
-                                              ? current.blur
-                                              : Math.max(0, Math.round(next));
-                                          patchBlock(selectedBlock.id, {
-                                            textShadow: {
-                                              ...current,
-                                              blur: resolved,
-                                            },
-                                          });
-                                        }}
-                                      />
-                                    </div>
-                                    <label className="col-span-2 block text-xs">
-                                      <span className="font-medium text-neutral-500">
-                                        Color
-                                      </span>
-                                      <InspectorColorInput
-                                        value={
-                                          selectedBlock.textShadow?.color ??
-                                          DEFAULT_TEXT_SHADOW.color
-                                        }
-                                        onChange={(nextColor) => {
-                                          const current =
-                                            selectedBlock.textShadow ?? {
-                                              ...DEFAULT_TEXT_SHADOW,
-                                            };
-                                          patchBlock(selectedBlock.id, {
-                                            textShadow: {
-                                              ...current,
-                                              color: nextColor,
-                                            },
-                                          });
-                                        }}
-                                        allowAlpha
-                                      />
-                                    </label>
-                                  </div>
-                                )}
-                              </div>
+                              <InspectorTextShadowControls
+                                block={selectedBlock}
+                                onPatch={(patch) =>
+                                  patchBlock(selectedBlock.id, patch)
+                                }
+                              />
                               <label className="block">
                                 <span className="text-xs font-medium text-neutral-500">
                                   Background style
@@ -3783,6 +3934,12 @@ export default function SlideModal({
                                   allowAlpha
                                 />
                               </label>
+                              <InspectorTextShadowControls
+                                block={selectedBlock}
+                                onPatch={(patch) =>
+                                  patchBlock(selectedBlock.id, patch)
+                                }
+                              />
                               <label className="block">
                                 <span className="text-xs font-medium text-neutral-500">
                                   Size
@@ -4833,6 +4990,12 @@ export default function SlideModal({
                                   }}
                                 />
                               </div>
+                              <InspectorTextShadowControls
+                                block={selectedBlock}
+                                onPatch={(patch) =>
+                                  patchBlock(selectedBlock.id, patch)
+                                }
+                              />
                               <label className="block">
                                 <span className="text-xs font-medium text-neutral-500">
                                   Style
@@ -5088,80 +5251,71 @@ export default function SlideModal({
                                   Background type
                                 </span>
                                 <InputSelect
-                                  value={selectedBlock.background?.type ?? "none"}
-                                  onChange={(e) => {
-                                    const nextType = e.target.value as BlockBackground["type"];
-                                    const current = cloneBlockBackground(selectedBlock.background);
-                                    if (nextType === "none") {
-                                      patchBlock(selectedBlock.id, { background: { type: "none" } });
-                                      return;
-                                    }
-                                    if (nextType === "color") {
-                                      patchBlock(selectedBlock.id, {
-                                        background: {
-                                          ...current,
-                                          type: "color",
-                                          color:
-                                            current.color ?? DEFAULT_BLOCK_BACKGROUND_COLOR,
-                                        },
-                                      });
-                                      return;
-                                    }
-                                    if (nextType === "gradient") {
-                                      patchBlock(selectedBlock.id, {
-                                        background: {
-                                          ...current,
-                                          type: "gradient",
-                                          gradient: {
-                                            from:
-                                              current.gradient?.from ??
-                                              DEFAULT_BLOCK_GRADIENT_FROM,
-                                            to:
-                                              current.gradient?.to ??
-                                              DEFAULT_BLOCK_GRADIENT_TO,
-                                            direction:
-                                              current.gradient?.direction ?? "to-bottom",
-                                          },
-                                        },
-                                      });
-                                      return;
-                                    }
-                                    patchBlock(selectedBlock.id, {
-                                      background: {
-                                        ...current,
-                                        type: "image",
-                                        image: { url: current.image?.url ?? "" },
-                                      },
+                                  value={selectedBlockBackground.type ?? "none"}
+                                  onChange={(event) => {
+                                    const nextType = event.target.value as BlockBackground["type"];
+                                    updateSelectedBlockBackground((prev) => {
+                                      const next = cloneBlockBackground(prev);
+                                      next.type = nextType;
+                                      if (nextType === "none") {
+                                        next.color = undefined;
+                                        next.color2 = undefined;
+                                        next.direction = undefined;
+                                        next.url = undefined;
+                                      } else if (nextType === "color") {
+                                        next.color =
+                                          next.color && next.color.trim().length > 0
+                                            ? next.color
+                                            : DEFAULT_BLOCK_BACKGROUND_COLOR;
+                                        next.color2 = undefined;
+                                        next.direction = undefined;
+                                        next.url = undefined;
+                                      } else if (nextType === "gradient") {
+                                        next.color =
+                                          next.color && next.color.trim().length > 0
+                                            ? next.color
+                                            : DEFAULT_BLOCK_GRADIENT_FROM;
+                                        next.color2 =
+                                          next.color2 && next.color2.trim().length > 0
+                                            ? next.color2
+                                            : DEFAULT_BLOCK_GRADIENT_TO;
+                                        next.direction = next.direction ?? "to-bottom";
+                                        next.url = undefined;
+                                      } else if (nextType === "image") {
+                                        next.url = next.url ?? "";
+                                      }
+                                      return next;
                                     });
                                   }}
                                   options={BLOCK_BACKGROUND_TYPE_OPTIONS}
                                 />
                               </label>
-                              {selectedBlock.background?.type === "color" && (
+                              {selectedBlockBackground.type === "color" && (
                                 <label className="block">
                                   <span className="text-xs font-medium text-neutral-500">
                                     Background color
                                   </span>
                                   <InspectorColorInput
                                     value={
-                                      selectedBlock.background?.color ??
-                                      DEFAULT_BLOCK_BACKGROUND_COLOR
+                                      selectedBlockBackground.color ?? DEFAULT_BLOCK_BACKGROUND_COLOR
                                     }
                                     onChange={(nextColor) => {
-                                      const base = cloneBlockBackground(selectedBlock.background);
-                                      const normalized = nextColor?.trim();
-                                      base.type = "color";
-                                      base.color =
-                                        normalized && normalized.length > 0
-                                          ? normalized
-                                          : DEFAULT_BLOCK_BACKGROUND_COLOR;
-                                      patchBlock(selectedBlock.id, { background: base });
+                                      updateSelectedBlockBackground((prev) => {
+                                        const next = cloneBlockBackground(prev);
+                                        const normalized = nextColor?.trim();
+                                        next.type = "color";
+                                        next.color =
+                                          normalized && normalized.length > 0
+                                            ? normalized
+                                            : DEFAULT_BLOCK_BACKGROUND_COLOR;
+                                        return next;
+                                      });
                                     }}
                                     allowAlpha
                                   />
                                 </label>
                               )}
-                              {selectedBlock.background?.type === "gradient" && (
+                              {selectedBlockBackground.type === "gradient" && (
                                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                                   <label className="block">
                                     <span className="text-xs font-medium text-neutral-500">
@@ -5169,28 +5323,24 @@ export default function SlideModal({
                                     </span>
                                     <InspectorColorInput
                                       value={
-                                        selectedBlock.background?.gradient?.from ??
-                                        DEFAULT_BLOCK_GRADIENT_FROM
+                                        selectedBlockBackground.color ?? DEFAULT_BLOCK_GRADIENT_FROM
                                       }
                                       onChange={(nextColor) => {
-                                        const base = cloneBlockBackground(selectedBlock.background);
-                                        const normalized = nextColor?.trim();
-                                        base.type = "gradient";
-                                        base.gradient = {
-                                          from:
+                                        updateSelectedBlockBackground((prev) => {
+                                          const next = cloneBlockBackground(prev);
+                                          const normalized = nextColor?.trim();
+                                          next.type = "gradient";
+                                          next.color =
                                             normalized && normalized.length > 0
                                               ? normalized
-                                              : DEFAULT_BLOCK_GRADIENT_FROM,
-                                          to:
-                                            base.gradient?.to ??
-                                            selectedBlock.background?.gradient?.to ??
-                                            DEFAULT_BLOCK_GRADIENT_TO,
-                                          direction:
-                                            base.gradient?.direction ??
-                                            selectedBlock.background?.gradient?.direction ??
-                                            "to-bottom",
-                                        };
-                                        patchBlock(selectedBlock.id, { background: base });
+                                              : DEFAULT_BLOCK_GRADIENT_FROM;
+                                          next.color2 =
+                                            next.color2 && next.color2.trim().length > 0
+                                              ? next.color2
+                                              : DEFAULT_BLOCK_GRADIENT_TO;
+                                          next.direction = next.direction ?? "to-bottom";
+                                          return next;
+                                        });
                                       }}
                                       allowAlpha
                                     />
@@ -5201,28 +5351,24 @@ export default function SlideModal({
                                     </span>
                                     <InspectorColorInput
                                       value={
-                                        selectedBlock.background?.gradient?.to ??
-                                        DEFAULT_BLOCK_GRADIENT_TO
+                                        selectedBlockBackground.color2 ?? DEFAULT_BLOCK_GRADIENT_TO
                                       }
                                       onChange={(nextColor) => {
-                                        const base = cloneBlockBackground(selectedBlock.background);
-                                        const normalized = nextColor?.trim();
-                                        base.type = "gradient";
-                                        base.gradient = {
-                                          from:
-                                            base.gradient?.from ??
-                                            selectedBlock.background?.gradient?.from ??
-                                            DEFAULT_BLOCK_GRADIENT_FROM,
-                                          to:
+                                        updateSelectedBlockBackground((prev) => {
+                                          const next = cloneBlockBackground(prev);
+                                          const normalized = nextColor?.trim();
+                                          next.type = "gradient";
+                                          next.color =
+                                            next.color && next.color.trim().length > 0
+                                              ? next.color
+                                              : DEFAULT_BLOCK_GRADIENT_FROM;
+                                          next.color2 =
                                             normalized && normalized.length > 0
                                               ? normalized
-                                              : DEFAULT_BLOCK_GRADIENT_TO,
-                                          direction:
-                                            base.gradient?.direction ??
-                                            selectedBlock.background?.gradient?.direction ??
-                                            "to-bottom",
-                                        };
-                                        patchBlock(selectedBlock.id, { background: base });
+                                              : DEFAULT_BLOCK_GRADIENT_TO;
+                                          next.direction = next.direction ?? "to-bottom";
+                                          return next;
+                                        });
                                       }}
                                       allowAlpha
                                     />
@@ -5232,34 +5378,31 @@ export default function SlideModal({
                                       Direction
                                     </span>
                                     <InputSelect
-                                      value={
-                                        selectedBlock.background?.gradient?.direction ??
-                                        "to-bottom"
-                                      }
-                                      onChange={(e) => {
-                                        const value = e.target
-                                          .value as BlockBackgroundGradientDirection;
-                                        const base = cloneBlockBackground(selectedBlock.background);
-                                        base.type = "gradient";
-                                        base.gradient = {
-                                          from:
-                                            base.gradient?.from ??
-                                            selectedBlock.background?.gradient?.from ??
-                                            DEFAULT_BLOCK_GRADIENT_FROM,
-                                          to:
-                                            base.gradient?.to ??
-                                            selectedBlock.background?.gradient?.to ??
-                                            DEFAULT_BLOCK_GRADIENT_TO,
-                                          direction: value,
-                                        };
-                                        patchBlock(selectedBlock.id, { background: base });
+                                      value={selectedBlockBackground.direction ?? "to-bottom"}
+                                      onChange={(event) => {
+                                        const value =
+                                          event.target.value as BlockBackgroundGradientDirection;
+                                        updateSelectedBlockBackground((prev) => {
+                                          const next = cloneBlockBackground(prev);
+                                          next.type = "gradient";
+                                          next.color =
+                                            next.color && next.color.trim().length > 0
+                                              ? next.color
+                                              : DEFAULT_BLOCK_GRADIENT_FROM;
+                                          next.color2 =
+                                            next.color2 && next.color2.trim().length > 0
+                                              ? next.color2
+                                              : DEFAULT_BLOCK_GRADIENT_TO;
+                                          next.direction = value;
+                                          return next;
+                                        });
                                       }}
                                       options={BLOCK_BACKGROUND_GRADIENT_DIRECTIONS}
                                     />
                                   </label>
                                 </div>
                               )}
-                              {selectedBlock.background?.type === "image" && (
+                              {selectedBlockBackground.type === "image" && (
                                 <div className="space-y-2">
                                   <input
                                     ref={blockBackgroundImageInputRef}
@@ -5270,10 +5413,12 @@ export default function SlideModal({
                                       const file = e.target.files?.[0];
                                       if (!file) return;
                                       await handleUpload(file, (url) => {
-                                        const base = cloneBlockBackground(selectedBlock.background);
-                                        base.type = "image";
-                                        base.image = { url };
-                                        patchBlock(selectedBlock.id, { background: base });
+                                        updateSelectedBlockBackground((prev) => {
+                                          const next = cloneBlockBackground(prev);
+                                          next.type = "image";
+                                          next.url = url;
+                                          return next;
+                                        });
                                       });
                                       e.target.value = "";
                                     }}
@@ -5284,13 +5429,15 @@ export default function SlideModal({
                                     </span>
                                     <InputText
                                       type="text"
-                                      value={selectedBlock.background?.image?.url ?? ""}
+                                      value={selectedBlockBackground.url ?? ""}
                                       onChange={(event) => {
                                         const value = event.target.value;
-                                        const base = cloneBlockBackground(selectedBlock.background);
-                                        base.type = "image";
-                                        base.image = { url: value };
-                                        patchBlock(selectedBlock.id, { background: base });
+                                        updateSelectedBlockBackground((prev) => {
+                                          const next = cloneBlockBackground(prev);
+                                          next.type = "image";
+                                          next.url = value;
+                                          return next;
+                                        });
                                       }}
                                       className={INSPECTOR_INPUT_CLASS}
                                       placeholder="https://example.com/image.jpg"
@@ -5304,7 +5451,7 @@ export default function SlideModal({
                                       }
                                       className="rounded border px-3 py-1 text-xs font-medium"
                                     >
-                                      {selectedBlock.background?.image?.url
+                                      {selectedBlockBackground.url
                                         ? "Replace image"
                                         : "Upload image"}
                                     </button>
@@ -5316,6 +5463,44 @@ export default function SlideModal({
                                   </div>
                                 </div>
                               )}
+                              <InputSlider
+                                label="Corner radius (px)"
+                                min={0}
+                                max={50}
+                                step={1}
+                                value={selectedBlockBackground.radius ?? 0}
+                                onValueChange={(value) => {
+                                  updateSelectedBlockBackground((prev) => {
+                                    const next = cloneBlockBackground(prev);
+                                    const resolved =
+                                      typeof value === "number" && Number.isFinite(value)
+                                        ? Math.max(0, Math.round(value))
+                                        : 0;
+                                    next.radius = resolved;
+                                    return next;
+                                  });
+                                }}
+                                disabled={selectedBlockBackground.type === "none"}
+                              />
+                              <InputSlider
+                                label="Background opacity (%)"
+                                min={0}
+                                max={100}
+                                step={1}
+                                value={selectedBlockBackground.opacity ?? 100}
+                                onValueChange={(value) => {
+                                  updateSelectedBlockBackground((prev) => {
+                                    const next = cloneBlockBackground(prev);
+                                    const resolved =
+                                      typeof value === "number" && Number.isFinite(value)
+                                        ? Math.min(100, Math.max(0, Math.round(value)))
+                                        : 100;
+                                    next.opacity = resolved;
+                                    return next;
+                                  });
+                                }}
+                                disabled={selectedBlockBackground.type === "none"}
+                              />
                             </div>
                           </div>
                           <div className="rounded border px-3 py-3 space-y-3">
