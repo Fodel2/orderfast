@@ -44,15 +44,18 @@ import SlidesManager, {
   resolveBlockTransitionConfig,
   DEFAULT_BLOCK_ANIMATION_CONFIG,
   DEFAULT_BLOCK_TRANSITION_CONFIG,
-  FONT_FAMILY_SELECT_OPTIONS,
-  DEFAULT_TEXT_FONT_FAMILY,
   DEFAULT_TEXT_PLACEHOLDER,
-  normalizeFontFamily,
   readTextSizingConfig,
   pickTextSizingDimensions,
   writeTextSizingToConfig,
   updateConfigWithTextContent,
 } from "./SlidesManager";
+import {
+  FONT_FAMILY_SELECT_OPTIONS,
+  DEFAULT_TEXT_FONT_FAMILY,
+  normalizeFontFamily,
+  useGoogleFontLoader,
+} from "@/lib/slideFonts";
 import Button from "@/components/ui/Button";
 import {
   InputCheckbox,
@@ -1515,6 +1518,12 @@ export default function SlideModal({
   const [showGalleryAddOptions, setShowGalleryAddOptions] = useState(false);
   const [galleryUrlInput, setGalleryUrlInput] = useState("");
   const [saving, setSaving] = useState(false);
+  const [fontDropdownPreloaded, setFontDropdownPreloaded] = useState(false);
+  const fontPreloadList = useMemo(
+    () => (fontDropdownPreloaded ? FONT_FAMILY_SELECT_OPTIONS.map((opt) => opt.value) : []),
+    [fontDropdownPreloaded],
+  );
+  useGoogleFontLoader(fontPreloadList);
   const pastRef = useRef<SlideCfg[]>([]);
   const futureRef = useRef<SlideCfg[]>([]);
   const [, forceHistoryTick] = useState(0);
@@ -3520,6 +3529,7 @@ export default function SlideModal({
                                             e.target.value,
                                           )
                                         }
+                                        onFocus={() => setFontDropdownPreloaded(true)}
                                         style={{
                                           fontFamily: option?.previewStack,
                                         }}
@@ -3832,6 +3842,7 @@ export default function SlideModal({
                                             e.target.value,
                                           )
                                         }
+                                        onFocus={() => setFontDropdownPreloaded(true)}
                                         style={{
                                           fontFamily: option?.previewStack,
                                         }}
@@ -4024,6 +4035,7 @@ export default function SlideModal({
                                             e.target.value,
                                           )
                                         }
+                                        onFocus={() => setFontDropdownPreloaded(true)}
                                         style={{
                                           fontFamily: option?.previewStack,
                                         }}
@@ -4902,6 +4914,7 @@ export default function SlideModal({
                                             e.target.value,
                                           )
                                         }
+                                        onFocus={() => setFontDropdownPreloaded(true)}
                                         style={{
                                           fontFamily: option?.previewStack,
                                         }}

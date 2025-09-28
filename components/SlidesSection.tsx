@@ -13,6 +13,12 @@ import {
   resolveBlockVisibility,
 } from './SlidesManager';
 import type { SlideRow } from '@/components/customer/home/SlidesContainer';
+import {
+  DEFAULT_TEXT_FONT_FAMILY,
+  resolveBlockFontFamily,
+  getFontStackForFamily,
+  useGoogleFontLoader,
+} from '@/lib/slideFonts';
 
 const TEXT_SIZE_MAP: Record<string, string> = {
   sm: '1.125rem',
@@ -156,6 +162,8 @@ function pickFrame(block: SlideBlock, device: DeviceKind) {
 }
 
 function renderBlock(block: SlideBlock) {
+  const fontFamilyKey = resolveBlockFontFamily(block);
+  const resolvedFontFamily = getFontStackForFamily(fontFamilyKey);
   switch (block.kind) {
     case 'heading':
     case 'subheading':
@@ -164,16 +172,33 @@ function renderBlock(block: SlideBlock) {
       const style: CSSProperties = {
         color: block.color || '#ffffff',
         textAlign: block.align ?? 'left',
-        fontSize: block.size ? TEXT_SIZE_MAP[block.size] ?? TEXT_SIZE_MAP.md : undefined,
-        fontWeight: block.kind === 'heading' ? 700 : block.kind === 'subheading' ? 600 : 400,
+        fontSize:
+          typeof block.fontSize === 'number'
+            ? `${block.fontSize}px`
+            : block.size
+              ? TEXT_SIZE_MAP[block.size] ?? TEXT_SIZE_MAP.md
+              : undefined,
+        fontWeight:
+          block.fontWeight ?? (block.kind === 'heading' ? 700 : block.kind === 'subheading' ? 600 : 400),
         margin: 0,
       };
+      if (resolvedFontFamily) {
+        style.fontFamily = resolvedFontFamily;
+      }
       return <Tag style={style}>{block.text}</Tag>;
     }
     case 'button':
       return (
         <a href={block.href || '#'} className={`${BUTTON_CLASS} bg-white text-black`}>
-          {block.text || 'Button'}
+          <span
+            style={{
+              fontFamily: resolvedFontFamily ?? undefined,
+              fontWeight: block.fontWeight ?? 600,
+              fontSize: typeof block.fontSize === 'number' ? `${block.fontSize}px` : undefined,
+            }}
+          >
+            {block.text || 'Button'}
+          </span>
         </a>
       );
     case 'image':
@@ -192,13 +217,22 @@ function renderBlock(block: SlideBlock) {
         const trimmedAuthor = quote.author.trim();
         const showReviewRating = quote.useReview && Boolean(quote.reviewId);
         return (
-          <blockquote className="text-white" style={{ textAlign: quote.align }}>
+          <blockquote
+            className="text-white"
+            style={{ textAlign: quote.align, fontFamily: resolvedFontFamily ?? undefined }}
+          >
             <p className="text-lg italic">“{quote.text}”</p>
             {trimmedAuthor.length > 0 ? (
-              <cite className="mt-2 block text-sm">— {trimmedAuthor}</cite>
+              <cite className="mt-2 block text-sm" style={{ fontFamily: resolvedFontFamily ?? undefined }}>
+                — {trimmedAuthor}
+              </cite>
             ) : null}
             {showReviewRating ? (
-              <p className={`text-base opacity-90 ${trimmedAuthor.length > 0 ? 'mt-1' : 'mt-3'}`} aria-label="Five star review">
+              <p
+                className={`text-base opacity-90 ${trimmedAuthor.length > 0 ? 'mt-1' : 'mt-3'}`}
+                aria-label="Five star review"
+                style={{ fontFamily: resolvedFontFamily ?? undefined }}
+              >
                 {'⭐️⭐️⭐️⭐️⭐️'}
               </p>
             ) : null}
@@ -339,6 +373,19 @@ function getBlockChromeStyle(
 
 export default function SlidesSection({ slide, cfg }: { slide: SlideRow; cfg: SlideCfg }) {
   const device = useDeviceKind();
+  const fontsInUse = useMemo(() => {
+    const set = new Set<string>();
+    (cfg.blocks || []).forEach((block) => {
+      set.add(resolveBlockFontFamily(block));
+    });
+    if (set.size === 0) {
+      set.add(DEFAULT_TEXT_FONT_FAMILY);
+    }
+    return Array.from(set);
+  }, [cfg.blocks]);
+
+  useGoogleFontLoader(fontsInUse);
+
   const blocks = useMemo(() => cfg.blocks || [], [cfg.blocks]);
 
   return (
