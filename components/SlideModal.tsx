@@ -1530,6 +1530,7 @@ const GalleryInspectorItem = React.forwardRef<HTMLDivElement, GalleryInspectorIt
         src={item.url}
         alt={item.alt || ""}
         className="h-12 w-12 shrink-0 rounded object-cover"
+        draggable={false}
         onMouseDown={(event) => event.stopPropagation()}
         onClick={(event) => event.stopPropagation()}
       />
@@ -1587,9 +1588,9 @@ export default function SlideModal({
   const galleryItemsRef = useRef<GalleryBlockItem[]>([]);
   const galleryItemRefs = useRef<(HTMLDivElement | null)[]>([]);
   const galleryDragMetaRef = useRef<{
-    item: GalleryBlockItem;
     pointerType: "mouse" | "touch";
     pointerId: number | null;
+    currentIndex: number;
   } | null>(null);
   const galleryBlockIdRef = useRef<string | null>(null);
   const restoreUserSelectRef = useRef<string | null>(null);
@@ -2440,7 +2441,9 @@ export default function SlideModal({
   }, []);
 
   useEffect(() => {
-    galleryItemsRef.current = selectedGalleryConfig?.items ?? [];
+    galleryItemsRef.current = selectedGalleryConfig
+      ? [...selectedGalleryConfig.items]
+      : [];
     if (!selectedGalleryConfig || selectedGalleryConfig.items.length === 0) {
       galleryItemRefs.current = [];
       if (isGalleryDragging) {
@@ -2462,7 +2465,7 @@ export default function SlideModal({
     }
   }, [endGalleryDrag, isGalleryDragging, selectedBlock]);
 
-  const activeGalleryDragItem = galleryDragMetaRef.current?.item ?? null;
+  const activeGalleryDragIndex = galleryDragMetaRef.current?.currentIndex ?? null;
 
   const computeGalleryTargetIndex = useCallback(
     (clientY: number, currentIndex: number, positions: (DOMRect | null)[]) => {
@@ -2500,8 +2503,8 @@ export default function SlideModal({
       if (!meta || !blockId) return;
       const items = galleryItemsRef.current;
       if (!items.length) return;
-      const currentIndex = items.findIndex((item) => item === meta.item);
-      if (currentIndex === -1) return;
+      const { currentIndex } = meta;
+      if (currentIndex < 0 || currentIndex >= items.length) return;
       const positions = galleryItemRefs.current.map((node) =>
         node ? node.getBoundingClientRect() : null,
       );
@@ -2509,19 +2512,18 @@ export default function SlideModal({
       if (targetIndex === currentIndex || targetIndex < 0) {
         return;
       }
-      updateGalleryConfig(blockId, (config) => {
-        const nextItems = [...config.items];
-        const fromIndex = nextItems.findIndex((item) => item === meta.item);
-        if (fromIndex === -1 || targetIndex >= nextItems.length) {
-          return config;
-        }
-        const [moved] = nextItems.splice(fromIndex, 1);
-        nextItems.splice(targetIndex, 0, moved);
-        return {
-          ...config,
-          items: nextItems,
-        };
-      });
+      const nextItems = [...items];
+      const [moved] = nextItems.splice(currentIndex, 1);
+      if (!moved) {
+        return;
+      }
+      nextItems.splice(targetIndex, 0, moved);
+      galleryItemsRef.current = nextItems;
+      galleryDragMetaRef.current = { ...meta, currentIndex: targetIndex };
+      updateGalleryConfig(blockId, (config) => ({
+        ...config,
+        items: nextItems,
+      }));
     },
     [computeGalleryTargetIndex, updateGalleryConfig],
   );
@@ -2529,17 +2531,20 @@ export default function SlideModal({
   const startGalleryDrag = useCallback(
     (index: number, pointerType: "mouse" | "touch", pointerId: number | null) => {
       if (isGalleryDragging) return;
+      if (selectedGalleryConfig) {
+        galleryItemsRef.current = [...selectedGalleryConfig.items];
+      }
       const items = galleryItemsRef.current;
-      const item = items[index];
-      if (!item) return;
-      galleryDragMetaRef.current = { item, pointerType, pointerId };
+      const total = items.length;
+      if (index < 0 || index >= total) return;
+      galleryDragMetaRef.current = { pointerType, pointerId, currentIndex: index };
       if (restoreUserSelectRef.current === null) {
         restoreUserSelectRef.current = document.body.style.userSelect;
         document.body.style.userSelect = "none";
       }
       setIsGalleryDragging(true);
     },
-    [isGalleryDragging],
+    [isGalleryDragging, selectedGalleryConfig],
   );
 
   useEffect(() => {
@@ -4839,7 +4844,10 @@ export default function SlideModal({
                                         <GalleryInspectorItem
                                           key={`${item.url}-${index}`}
                                           item={item}
-                                          isDragging={isGalleryDragging && activeGalleryDragItem === item}
+                                          isDragging={
+                                            isGalleryDragging &&
+                                            activeGalleryDragIndex === index
+                                          }
                                           ref={(node) => {
                                             galleryItemRefs.current[index] = node;
                                           }}
