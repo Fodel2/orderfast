@@ -12,6 +12,8 @@ type ImageBlockProps = {
   shadow?: boolean;
   aspectRatio?: AspectRatio;
   className?: string;
+  disablePointerGuards?: boolean;
+  onImageDragStart?: (event: React.DragEvent<HTMLImageElement>) => void;
 };
 
 const ASPECT_RATIO_VALUE: Record<Exclude<AspectRatio, "original">, string> = {
@@ -37,6 +39,8 @@ const ImageBlock: React.FC<ImageBlockProps> = ({
   shadow = false,
   aspectRatio = "original",
   className,
+  disablePointerGuards = false,
+  onImageDragStart,
 }) => {
   const aspectValue = getAspectRatio(aspectRatio);
   const wrapperClasses = [
@@ -78,9 +82,20 @@ const ImageBlock: React.FC<ImageBlockProps> = ({
     imageStyle.aspectRatio = aspectValue;
   }
 
+  const pointerGuardProps: React.ImgHTMLAttributes<HTMLImageElement> = disablePointerGuards
+    ? {
+        className: "block-pointer-target select-none",
+        draggable: false,
+        onDragStart: (event) => {
+          event.preventDefault();
+          onImageDragStart?.(event);
+        },
+      }
+    : {};
+
   return (
     <div className={wrapperClasses.join(" ")} style={wrapperStyle}>
-      <img src={url} alt={alt} style={imageStyle} />
+      <img src={url} alt={alt} style={imageStyle} {...pointerGuardProps} />
     </div>
   );
 };

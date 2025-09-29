@@ -11,12 +11,16 @@ type GalleryBlockProps = {
   shadow?: boolean;
   aspectRatio?: AspectRatio;
   className?: string;
+  disablePointerGuards?: boolean;
+  onImageDragStart?: (event: React.DragEvent<HTMLImageElement>) => void;
 };
 
-const GalleryImage: React.FC<{ item: GalleryItem; aspectValue?: string }> = ({
-  item,
-  aspectValue,
-}) => {
+const GalleryImage: React.FC<{
+  item: GalleryItem;
+  aspectValue?: string;
+  disablePointerGuards?: boolean;
+  onImageDragStart?: (event: React.DragEvent<HTMLImageElement>) => void;
+}> = ({ item, aspectValue, disablePointerGuards, onImageDragStart }) => {
   const style: React.CSSProperties = {
     objectFit: "cover",
     width: "100%",
@@ -28,7 +32,18 @@ const GalleryImage: React.FC<{ item: GalleryItem; aspectValue?: string }> = ({
     style.aspectRatio = aspectValue;
   }
 
-  return <img src={item.url} alt={item.alt || ""} style={style} />;
+  const pointerGuardProps: React.ImgHTMLAttributes<HTMLImageElement> = disablePointerGuards
+    ? {
+        className: "block-pointer-target select-none",
+        draggable: false,
+        onDragStart: (event) => {
+          event.preventDefault();
+          onImageDragStart?.(event);
+        },
+      }
+    : {};
+
+  return <img src={item.url} alt={item.alt || ""} style={style} {...pointerGuardProps} />;
 };
 
 const GalleryBlock: React.FC<GalleryBlockProps> = ({
@@ -38,6 +53,8 @@ const GalleryBlock: React.FC<GalleryBlockProps> = ({
   shadow = false,
   aspectRatio = "original",
   className,
+  disablePointerGuards = false,
+  onImageDragStart,
 }) => {
   const aspectValue = useMemo(() => getAspectRatio(aspectRatio), [aspectRatio]);
 
@@ -75,7 +92,12 @@ const GalleryBlock: React.FC<GalleryBlockProps> = ({
                     : undefined
                 }
               >
-                <GalleryImage item={item} aspectValue={aspectValue} />
+                <GalleryImage
+                  item={item}
+                  aspectValue={aspectValue}
+                  disablePointerGuards={disablePointerGuards}
+                  onImageDragStart={onImageDragStart}
+                />
               </div>
             </div>
           ))}
@@ -105,7 +127,12 @@ const GalleryBlock: React.FC<GalleryBlockProps> = ({
                 : undefined
             }
           >
-            <GalleryImage item={item} aspectValue={aspectValue} />
+            <GalleryImage
+              item={item}
+              aspectValue={aspectValue}
+              disablePointerGuards={disablePointerGuards}
+              onImageDragStart={onImageDragStart}
+            />
           </div>
         ))}
       </div>

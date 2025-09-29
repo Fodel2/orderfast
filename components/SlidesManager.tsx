@@ -489,6 +489,18 @@ export const BLOCK_INTERACTION_GLOBAL_STYLES = `
 .of-hover-rotate:hover {
   transform: rotate(3deg);
 }
+
+.of-interactive-box {
+  position: relative;
+}
+
+.of-interactive-box .block-pointer-target {
+  -webkit-user-drag: none;
+}
+
+.of-interactive-box[data-block-dragging='true'] .block-pointer-target {
+  pointer-events: none;
+}
 `;
 
 const BLOCK_GRADIENT_DIRECTION_MAP: Record<BlockBackgroundGradientDirection, string> = {
@@ -814,9 +826,16 @@ const BlockChromeWithAutoSize = ({
     };
   }, [block.kind, scheduleMeasurement]);
 
+  const wrapperClassName = ['block-wrapper'];
+  if (isTextualKind(block.kind)) {
+    wrapperClassName.push('inline-flex', 'max-w-full');
+  } else {
+    wrapperClassName.push('flex', 'h-full', 'w-full');
+  }
+
   return (
     <BlockChrome ref={isTextualKind(block.kind) ? elementRef : undefined} block={block}>
-      {children}
+      <div className={wrapperClassName.join(' ')}>{children}</div>
     </BlockChrome>
   );
 };
@@ -2062,6 +2081,8 @@ export default function SlidesManager({
     );
   };
 
+  const disableChildPointerEvents = Boolean(editable && editInPreview);
+
   const renderBlockContent = (block: SlideBlock): ReactNode => {
     switch (block.kind) {
       case 'heading':
@@ -2224,9 +2245,21 @@ export default function SlidesManager({
         } else {
           imageStyle.height = '100%';
         }
+        const imageClassNames = ['block-pointer-target', 'select-none'];
+        const preventDrag = (event: React.DragEvent<HTMLImageElement>) => {
+          event.preventDefault();
+        };
+
         return (
           <div className={wrapperClasses.join(' ')} style={wrapperStyle}>
-            <img src={imageUrl} alt={image.alt || ''} style={imageStyle} />
+            <img
+              src={imageUrl}
+              alt={image.alt || ''}
+              style={imageStyle}
+              className={imageClassNames.join(' ')}
+              draggable={false}
+              onDragStart={preventDrag}
+            />
           </div>
         );
       }
@@ -2330,7 +2363,7 @@ export default function SlidesManager({
         );
       }
       case 'gallery': {
-        return <GalleryBlockPreview block={block} />;
+        return <GalleryBlockPreview block={block} disablePointerGuards={disableChildPointerEvents} />;
       }
       case 'spacer':
         return <div className="w-full h-full" />;
@@ -2609,12 +2642,29 @@ function EditableTextContent({
   return React.createElement(tag, props);
 }
 
-function GalleryBlockPreview({ block }: { block: SlideBlock }) {
+function GalleryBlockPreview({
+  block,
+  disablePointerGuards,
+}: {
+  block: SlideBlock;
+  disablePointerGuards?: boolean;
+}) {
   const config = useMemo(() => resolveGalleryConfig(block), [block]);
   const items = config.items;
   const [activeIndex, setActiveIndex] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const aspectRatioValue = getAspectRatioValue(config.aspectRatio);
+  const handleImageDragStart = useCallback((event: React.DragEvent<HTMLImageElement>) => {
+    event.preventDefault();
+  }, []);
+
+  const pointerGuardProps: React.ImgHTMLAttributes<HTMLImageElement> = disablePointerGuards
+    ? {
+        className: 'block-pointer-target select-none',
+        draggable: false,
+        onDragStart: handleImageDragStart,
+      }
+    : {};
 
   useEffect(() => {
     setActiveIndex(0);
@@ -2695,6 +2745,7 @@ function GalleryBlockPreview({ block }: { block: SlideBlock }) {
                     height: aspectRatioValue ? 'auto' : '100%',
                     aspectRatio: aspectRatioValue,
                   }}
+                  {...pointerGuardProps}
                 />
               </div>
             </div>
@@ -2736,6 +2787,7 @@ function GalleryBlockPreview({ block }: { block: SlideBlock }) {
                 height: aspectRatioValue ? 'auto' : '100%',
                 aspectRatio: aspectRatioValue,
               }}
+              {...pointerGuardProps}
             />
           </div>
         ))}
@@ -2803,6 +2855,7 @@ function InteractiveBox({
 }: InteractiveBoxProps) {
   const localRef = useRef<HTMLDivElement>(null);
   const pointerState = useRef<PointerState | null>(null);
+  const [dragging, setDragging] = useState(false);
 
   const getContainerRect = () => containerRef.current?.getBoundingClientRect();
 
@@ -2839,6 +2892,9 @@ function InteractiveBox({
       onResizeStart?.({ horizontal, vertical });
     }
     pointerState.current = state;
+    if (type !== 'move') {
+      setDragging(false);
+    }
     localRef.current?.setPointerCapture?.(e.pointerId);
   };
 
@@ -2869,6 +2925,9 @@ function InteractiveBox({
     if ((ps.type === 'move' || ps.type === 'resize') && !ps.hasManipulated && distance > TAP_MAX_MOVEMENT) {
       ps.hasManipulated = true;
       onManipulationChange?.(true);
+      if (ps.type === 'move') {
+        setDragging(true);
+      }
     }
 
     const minWidth = clamp(
@@ -2969,6 +3028,7 @@ function InteractiveBox({
     if (ps.hasManipulated) {
       onManipulationChange?.(false);
     }
+    setDragging(false);
   };
 
   const handlePointerCancel = (e: React.PointerEvent) => {
@@ -2981,6 +3041,7 @@ function InteractiveBox({
     if (ps.hasManipulated) {
       onManipulationChange?.(false);
     }
+    setDragging(false);
   };
 
   const style: CSSProperties = {
@@ -3000,6 +3061,8 @@ function InteractiveBox({
   return (
     <div
       ref={localRef}
+      className="of-interactive-box"
+      data-block-dragging={dragging ? 'true' : 'false'}
       style={style}
       onPointerDown={handlePointerDown('move')}
       onPointerMove={handlePointerMove}
