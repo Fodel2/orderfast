@@ -492,6 +492,30 @@ export const BLOCK_INTERACTION_GLOBAL_STYLES = `
 
 .of-interactive-box {
   position: relative;
+  outline: 1px solid transparent;
+  outline-offset: 0;
+  transition: transform 160ms ease, box-shadow 160ms ease, outline-color 120ms ease;
+}
+
+.of-interactive-box[data-editable='true'] {
+  cursor: default;
+}
+
+.of-interactive-box[data-editable='true']:hover {
+  outline-style: dashed;
+  outline-width: 1.5px;
+  outline-color: rgba(56, 189, 248, 0.55);
+  cursor: grab;
+}
+
+.of-interactive-box[data-editable='true'][data-selected='true'] {
+  outline-style: solid;
+  outline-width: 2px;
+  outline-color: rgba(56, 189, 248, 0.85);
+}
+
+.of-interactive-box[data-editable='true'][data-selected='true']:hover {
+  outline-color: rgba(56, 189, 248, 0.9);
 }
 
 .of-interactive-box .block-pointer-target {
@@ -500,6 +524,17 @@ export const BLOCK_INTERACTION_GLOBAL_STYLES = `
 
 .of-interactive-box[data-block-dragging='true'] .block-pointer-target {
   pointer-events: none;
+}
+
+.of-interactive-box[data-editable='true'][data-dragging='true'] {
+  cursor: grabbing;
+  box-shadow: 0 18px 36px -12px rgba(15, 23, 42, 0.3);
+}
+
+.of-interactive-box[data-snapping='true'] {
+  transition-property: left, top, transform, box-shadow, outline-color;
+  transition-duration: 180ms;
+  transition-timing-function: ease-out;
 }
 `;
 
@@ -2404,44 +2439,45 @@ export default function SlidesManager({
               className="absolute inset-0"
               style={{ pointerEvents: editable && editInPreview ? 'auto' : 'none' }}
             >
-              {activeGuides.length > 0 ? (
-                <div className="pointer-events-none absolute inset-0" style={{ zIndex: 30 }}>
-                  {activeGuides.map((guide, index) => {
-                    const color = guide.type === 'canvas-center' ? '#64748b' : '#38bdf8';
-                    const key = `guide-${guide.orientation}-${guide.type}-${index}`;
-                    if (guide.orientation === 'vertical') {
-                      return (
-                        <div
-                          key={key}
-                          className="absolute"
-                          style={{
-                            left: `${guide.position}%`,
-                            top: 0,
-                            bottom: 0,
-                            width: '1px',
-                            transform: 'translateX(-0.5px)',
-                            backgroundColor: color,
-                          }}
-                        />
-                      );
-                    }
+              <div
+                className="pointer-events-none absolute inset-0 transition-opacity duration-100"
+                style={{ zIndex: 30, opacity: activeGuides.length > 0 ? 1 : 0 }}
+              >
+                {activeGuides.map((guide, index) => {
+                  const color = guide.type === 'canvas-center' ? '#64748b' : '#38bdf8';
+                  const key = `guide-${guide.orientation}-${guide.type}-${index}`;
+                  if (guide.orientation === 'vertical') {
                     return (
                       <div
                         key={key}
                         className="absolute"
                         style={{
-                          top: `${guide.position}%`,
-                          left: 0,
-                          right: 0,
-                          height: '1px',
-                          transform: 'translateY(-0.5px)',
+                          left: `${guide.position}%`,
+                          top: 0,
+                          bottom: 0,
+                          width: '1px',
+                          transform: 'translateX(-0.5px)',
                           backgroundColor: color,
                         }}
                       />
                     );
-                  })}
-                </div>
-              ) : null}
+                  }
+                  return (
+                    <div
+                      key={key}
+                      className="absolute"
+                      style={{
+                        top: `${guide.position}%`,
+                        left: 0,
+                        right: 0,
+                        height: '1px',
+                        transform: 'translateY(-0.5px)',
+                        backgroundColor: color,
+                      }}
+                    />
+                  );
+                })}
+              </div>
               {cfg.blocks.map((block) => {
                 const visibility = resolveBlockVisibility(block);
                 if (!visibility[activeDevice]) {
@@ -2856,6 +2892,7 @@ function InteractiveBox({
   const localRef = useRef<HTMLDivElement>(null);
   const pointerState = useRef<PointerState | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [snapping, setSnapping] = useState(false);
 
   const getContainerRect = () => containerRef.current?.getBoundingClientRect();
 
@@ -2892,6 +2929,7 @@ function InteractiveBox({
       onResizeStart?.({ horizontal, vertical });
     }
     pointerState.current = state;
+    setSnapping(false);
     if (type !== 'move') {
       setDragging(false);
     }
@@ -2956,11 +2994,20 @@ function InteractiveBox({
         if (snap) {
           next = snap.frame;
           onDragGuidesChange?.(snap.guides);
+          if (!snapping) {
+            setSnapping(true);
+          }
         } else {
           onDragGuidesChange?.([]);
+          if (snapping) {
+            setSnapping(false);
+          }
         }
       } else {
         onDragGuidesChange?.([]);
+        if (snapping) {
+          setSnapping(false);
+        }
       }
       onChange(next, { commit: false });
     } else if (ps.type === 'resize') {
@@ -3029,6 +3076,9 @@ function InteractiveBox({
       onManipulationChange?.(false);
     }
     setDragging(false);
+    if (snapping) {
+      setSnapping(false);
+    }
   };
 
   const handlePointerCancel = (e: React.PointerEvent) => {
@@ -3042,7 +3092,16 @@ function InteractiveBox({
       onManipulationChange?.(false);
     }
     setDragging(false);
+    if (snapping) {
+      setSnapping(false);
+    }
   };
+
+  const rotation = frame.r ?? 0;
+  const transformParts = [`rotate(${rotation}deg)`];
+  if (dragging) {
+    transformParts.push('scale(1.02)');
+  }
 
   const style: CSSProperties = {
     position: 'absolute',
@@ -3050,12 +3109,10 @@ function InteractiveBox({
     top: `${frame.y}%`,
     width: `${frame.w}%`,
     height: `${frame.h}%`,
-    transform: `rotate(${frame.r ?? 0}deg)`,
+    transform: transformParts.join(' '),
     transformOrigin: 'top left',
-    border: selected && editable ? '1px dashed rgba(56,189,248,0.8)' : undefined,
     borderRadius: 8,
     touchAction: 'none',
-    cursor: editable && !locked ? 'move' : 'default',
   };
 
   return (
@@ -3063,6 +3120,10 @@ function InteractiveBox({
       ref={localRef}
       className="of-interactive-box"
       data-block-dragging={dragging ? 'true' : 'false'}
+      data-dragging={dragging ? 'true' : 'false'}
+      data-snapping={snapping ? 'true' : 'false'}
+      data-editable={editable && !locked ? 'true' : 'false'}
+      data-selected={selected ? 'true' : 'false'}
       style={style}
       onPointerDown={handlePointerDown('move')}
       onPointerMove={handlePointerMove}
