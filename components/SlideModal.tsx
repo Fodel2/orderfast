@@ -5,6 +5,21 @@ import React, {
   useRef,
   useState,
 } from "react";
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import SlidesManager, {
   DEVICE_DIMENSIONS,
   DEFAULT_BUTTON_CONFIG,
@@ -70,7 +85,7 @@ import { supabase } from "@/utils/supabaseClient";
 import { STORAGE_BUCKET } from "@/lib/storage";
 import { SlideRow } from "@/components/customer/home/SlidesContainer";
 import { LockClosedIcon } from "@heroicons/react/24/solid";
-import { ChevronDown, ChevronUp, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, GripVertical, Trash2 } from "lucide-react";
 
 const ROUTE_OPTIONS = ["/menu", "/orders", "/more"];
 
@@ -1497,6 +1512,72 @@ interface SlideModalProps {
   onClose: () => void;
 }
 
+type SortableGalleryItemProps = {
+  id: string;
+  index: number;
+  item: GalleryBlockItem;
+  onAltChange: (value: string) => void;
+  onRemove: () => void;
+};
+
+function SortableGalleryItem({
+  id,
+  index,
+  item,
+  onAltChange,
+  onRemove,
+}: SortableGalleryItemProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({
+      id,
+      data: { index },
+    });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center gap-3 rounded border bg-white px-2 py-2 text-xs transition ${
+        isDragging ? "ring-1 ring-primary/40" : ""
+      }`}
+    >
+      <button
+        type="button"
+        aria-label="Drag to reorder image"
+        className="flex h-10 w-6 shrink-0 items-center justify-center cursor-grab text-neutral-400 transition hover:text-neutral-600 focus:outline-none focus:ring-2 focus:ring-neutral-300 active:cursor-grabbing"
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+      <img
+        src={item.url}
+        alt={item.alt || ""}
+        className="h-12 w-12 shrink-0 rounded object-cover"
+      />
+      <InputText
+        type="text"
+        value={item.alt ?? ""}
+        onChange={(e) => onAltChange(e.target.value)}
+        placeholder="Alt text"
+        className={`${INSPECTOR_INPUT_CLASS} flex-1`}
+      />
+      <button
+        type="button"
+        onClick={onRemove}
+        className="rounded border px-2 py-1 text-xs text-red-600 transition hover:border-red-500 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-200"
+      >
+        Remove
+      </button>
+    </div>
+  );
+}
+
 export default function SlideModal({
   slide,
   initialCfg,
@@ -1527,6 +1608,11 @@ export default function SlideModal({
   const blockBackgroundImageInputRef = useRef<HTMLInputElement | null>(null);
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
   const videoPosterInputRef = useRef<HTMLInputElement | null>(null);
+  const galleryDragSensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 6 },
+    }),
+  );
 
   const isManipulatingRef = useRef(false);
   const selectedIdRef = useRef<string | null>(null);
@@ -2361,6 +2447,31 @@ export default function SlideModal({
         ? resolveGalleryConfig(selectedBlock)
         : null,
     [selectedBlock],
+  );
+
+  const handleGalleryDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      if (!selectedBlock || selectedBlock.kind !== "gallery") {
+        return;
+      }
+      const { active, over } = event;
+      if (!over || active.id === over.id) {
+        return;
+      }
+      const activeIndex = Number(active.id);
+      const overIndex = Number(over.id);
+      if (Number.isNaN(activeIndex) || Number.isNaN(overIndex)) {
+        return;
+      }
+      updateGalleryConfig(
+        selectedBlock.id,
+        (config) => ({
+          ...config,
+          items: arrayMove(config.items, activeIndex, overIndex),
+        }),
+      );
+    },
+    [selectedBlock, updateGalleryConfig],
   );
 
   const selectedQuoteConfig = useMemo(
@@ -4594,78 +4705,49 @@ export default function SlideModal({
                                       No images yet
                                     </div>
                                   ) : (
-                                    selectedGalleryConfig.items.map(
-                                      (item, index) => (
-                                        <div
-                                          key={`${item.url}-${index}`}
-                                          className="flex items-center gap-3 rounded border px-2 py-2 text-xs"
-                                        >
-                                          <img
-                                            src={item.url}
-                                            alt={item.alt || ""}
-                                            className="h-12 w-12 rounded object-cover"
-                                          />
-                                          <div className="ml-auto flex items-center gap-1">
-                                            <button
-                                              type="button"
-                                              className="rounded border px-2 py-1"
-                                              disabled={index === 0}
-                                              onClick={() =>
-                                                updateGalleryConfig(
-                                                  selectedBlock.id,
-                                                  (config) => {
-                                                    const items = [...config.items];
-                                                    const [moved] = items.splice(index, 1);
-                                                    items.splice(index - 1, 0, moved);
-                                                    return { ...config, items };
-                                                  },
-                                                )
-                                              }
-                                            >
-                                              Up
-                                            </button>
-                                            <button
-                                              type="button"
-                                              className="rounded border px-2 py-1"
-                                              disabled={
-                                                index ===
-                                                selectedGalleryConfig.items.length - 1
-                                              }
-                                              onClick={() =>
-                                                updateGalleryConfig(
-                                                  selectedBlock.id,
-                                                  (config) => {
-                                                    const items = [...config.items];
-                                                    const [moved] = items.splice(index, 1);
-                                                    items.splice(index + 1, 0, moved);
-                                                    return { ...config, items };
-                                                  },
-                                                )
-                                              }
-                                            >
-                                              Down
-                                            </button>
-                                            <button
-                                              type="button"
-                                              className="rounded border px-2 py-1 text-red-600"
-                                              onClick={() =>
+                                    <DndContext
+                                      sensors={galleryDragSensors}
+                                      collisionDetection={closestCenter}
+                                      onDragEnd={handleGalleryDragEnd}
+                                    >
+                                      <SortableContext
+                                        items={selectedGalleryConfig.items.map((_, index) => index.toString())}
+                                        strategy={verticalListSortingStrategy}
+                                      >
+                                        <div className="space-y-2">
+                                          {selectedGalleryConfig.items.map((item, index) => (
+                                            <SortableGalleryItem
+                                              key={`${item.url}-${index}`}
+                                              id={index.toString()}
+                                              index={index}
+                                              item={item}
+                                              onAltChange={(value) => {
                                                 updateGalleryConfig(
                                                   selectedBlock.id,
                                                   (config) => ({
                                                     ...config,
-                                                    items: config.items.filter(
-                                                      (_, i) => i !== index,
+                                                    items: config.items.map((galleryItem, galleryIndex) =>
+                                                      galleryIndex === index
+                                                        ? { ...galleryItem, alt: value }
+                                                        : galleryItem,
                                                     ),
+                                                  }),
+                                                );
+                                              }}
+                                              onRemove={() =>
+                                                updateGalleryConfig(
+                                                  selectedBlock.id,
+                                                  (config) => ({
+                                                    ...config,
+                                                    items: config.items.filter((_, i) => i !== index),
                                                   }),
                                                 )
                                               }
-                                            >
-                                              Remove
-                                            </button>
-                                          </div>
+                                            />
+                                          ))}
                                         </div>
-                                      ),
-                                    )
+                                      </SortableContext>
+                                    </DndContext>
                                   )}
                                 </div>
                                 <div className="space-y-3">
