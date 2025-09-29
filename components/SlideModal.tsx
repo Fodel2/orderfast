@@ -1233,8 +1233,13 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
   let workingConfig = extractConfig(block.config);
 
   if (kind === "image") {
+    const existingConfig = extractConfig(block.config);
     const imageConfig = resolveImageConfig(block);
-    block.config = { ...imageConfig };
+    const hydratedConfig = {
+      ...existingConfig,
+      ...imageConfig,
+    } satisfies Record<string, any>;
+    block.config = hydratedConfig;
     block.src = imageConfig.url;
     block.fit = imageConfig.fit;
     block.radius = imageConfig.radius;
@@ -1243,9 +1248,15 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
     workingConfig = extractConfig(block.config);
   }
   if (kind === "gallery") {
+    const existingConfig = extractConfig(block.config);
     const galleryConfig = resolveGalleryConfig(block);
     block.items = galleryConfig.items.map((item) => ({ src: item.url, alt: item.alt }));
-    block.config = { ...(block.config ?? {}), ...galleryConfig };
+    const hydratedConfig = {
+      ...existingConfig,
+      ...galleryConfig,
+      items: galleryConfig.items,
+    } satisfies Record<string, any>;
+    block.config = hydratedConfig;
     block.radius = galleryConfig.radius;
     block.aspectRatio = galleryConfig.aspectRatio;
     workingConfig = extractConfig(block.config);
@@ -1261,10 +1272,6 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
     block.href = normalizedConfig.href;
     block.buttonVariant =
       normalizedConfig.variant === "Outline" ? "secondary" : "primary";
-    workingConfig = extractConfig(block.config);
-  }
-  if (kind === "gallery") {
-    block.config = { ...DEFAULT_GALLERY_CONFIG };
     workingConfig = extractConfig(block.config);
   }
   if (
