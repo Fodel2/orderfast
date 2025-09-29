@@ -806,6 +806,8 @@ export const DEFAULT_BUTTON_CONFIG: ButtonBlockConfig = {
   bgColor: '#000000',
 };
 
+export type BlockAspectRatio = 'original' | 'square' | '4:3' | '16:9';
+
 export type ImageBlockConfig = {
   url: string;
   fit: 'cover' | 'contain';
@@ -814,6 +816,7 @@ export type ImageBlockConfig = {
   radius: number;
   shadow: boolean;
   alt: string;
+  aspectRatio: BlockAspectRatio;
 };
 
 export const DEFAULT_IMAGE_CONFIG: ImageBlockConfig = {
@@ -824,6 +827,7 @@ export const DEFAULT_IMAGE_CONFIG: ImageBlockConfig = {
   radius: 0,
   shadow: false,
   alt: '',
+  aspectRatio: 'original',
 };
 
 export type GalleryBlockItem = { url: string; alt?: string };
@@ -835,6 +839,7 @@ export type GalleryBlockConfig = {
   interval: number;
   radius: number;
   shadow: boolean;
+  aspectRatio: BlockAspectRatio;
 };
 
 export const DEFAULT_GALLERY_CONFIG: GalleryBlockConfig = {
@@ -844,7 +849,48 @@ export const DEFAULT_GALLERY_CONFIG: GalleryBlockConfig = {
   interval: 3000,
   radius: 0,
   shadow: false,
+  aspectRatio: 'original',
 };
+
+const ASPECT_RATIO_ALIASES: Record<string, BlockAspectRatio> = {
+  original: 'original',
+  auto: 'original',
+  natural: 'original',
+  none: 'original',
+  square: 'square',
+  '1:1': 'square',
+  '1x1': 'square',
+  '4:3': '4:3',
+  '4x3': '4:3',
+  '16:9': '16:9',
+  '16x9': '16:9',
+};
+
+export function parseBlockAspectRatio(value: unknown): BlockAspectRatio | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase();
+  return ASPECT_RATIO_ALIASES[normalized];
+}
+
+export function normalizeBlockAspectRatio(
+  value: unknown,
+  fallback: BlockAspectRatio,
+): BlockAspectRatio {
+  return parseBlockAspectRatio(value) ?? fallback;
+}
+
+export function getAspectRatioValue(aspectRatio: BlockAspectRatio): string | undefined {
+  switch (aspectRatio) {
+    case 'square':
+      return '1 / 1';
+    case '4:3':
+      return '4 / 3';
+    case '16:9':
+      return '16 / 9';
+    default:
+      return undefined;
+  }
+}
 
 export type QuoteBlockConfig = {
   text: string;
@@ -898,6 +944,7 @@ export type SlideBlock = {
   href?: string;
   src?: string;
   alt?: string;
+  aspectRatio?: BlockAspectRatio;
   items?: { src: string; alt?: string }[];
   frames: Partial<Record<DeviceKind, Frame>>;
   color?: string;
@@ -1365,6 +1412,10 @@ export function resolveImageConfig(block: SlideBlock): ImageBlockConfig {
       : typeof block.alt === 'string'
         ? block.alt
         : DEFAULT_IMAGE_CONFIG.alt;
+  const aspectRatioSource =
+    parseBlockAspectRatio(raw.aspectRatio) ??
+    parseBlockAspectRatio((raw as any).ratio) ??
+    parseBlockAspectRatio(block.aspectRatio);
 
   const focalX = Number.isFinite(focalXSource)
     ? clamp(focalXSource as number, 0, 1)
@@ -1384,6 +1435,7 @@ export function resolveImageConfig(block: SlideBlock): ImageBlockConfig {
     radius,
     shadow: Boolean(shadowSource),
     alt: altSource,
+    aspectRatio: aspectRatioSource ?? DEFAULT_IMAGE_CONFIG.aspectRatio,
   };
 }
 
@@ -1505,6 +1557,10 @@ export function resolveGalleryConfig(block: SlideBlock): GalleryBlockConfig {
     parseBoolean(raw.shadow) ??
     parseBoolean((raw as any).hasShadow) ??
     parseBoolean((block as any).shadow);
+  const aspectRatioSource =
+    parseBlockAspectRatio(raw.aspectRatio) ??
+    parseBlockAspectRatio((raw as any).ratio) ??
+    parseBlockAspectRatio((block as any).aspectRatio);
 
   const intervalCandidate = intervalRaw && intervalRaw > 0 ? intervalRaw : undefined;
   const radiusCandidate = typeof radiusRaw === 'number' && radiusRaw >= 0 ? radiusRaw : undefined;
@@ -1516,6 +1572,7 @@ export function resolveGalleryConfig(block: SlideBlock): GalleryBlockConfig {
     interval: intervalCandidate ? Math.round(intervalCandidate) : DEFAULT_GALLERY_CONFIG.interval,
     radius: radiusCandidate ?? DEFAULT_GALLERY_CONFIG.radius,
     shadow: Boolean(shadowRaw),
+    aspectRatio: aspectRatioSource ?? DEFAULT_GALLERY_CONFIG.aspectRatio,
   };
 }
 
@@ -1948,29 +2005,42 @@ export default function SlidesManager({
       case 'image': {
         const image = resolveImageConfig(block);
         const imageUrl = image.url || block.src || '';
+        const aspectRatioValue = getAspectRatioValue(image.aspectRatio);
+        const wrapperClasses = ['flex', 'h-full', 'w-full', 'items-center', 'justify-center', 'overflow-hidden'];
+        if (image.shadow) wrapperClasses.push('shadow-lg');
+        const wrapperStyle: CSSProperties = {
+          borderRadius: image.radius,
+        };
+        if (aspectRatioValue) {
+          wrapperStyle.aspectRatio = aspectRatioValue;
+          wrapperStyle.height = 'auto';
+        }
         if (!imageUrl) {
-          const placeholderClasses = ['h-full w-full bg-neutral-200'];
-          if (image.shadow) placeholderClasses.push('shadow-lg');
           return (
             <div
-              className={placeholderClasses.join(' ')}
-              style={{ borderRadius: image.radius }}
+              className={[...wrapperClasses, 'bg-neutral-200'].join(' ')}
+              style={wrapperStyle}
             />
           );
         }
-        const classes = ['h-full w-full'];
-        if (image.shadow) classes.push('shadow-lg');
+        const imageStyle: CSSProperties = {
+          objectFit: image.fit,
+          objectPosition: `${image.focalX * 100}% ${image.focalY * 100}%`,
+          borderRadius: image.radius,
+          width: '100%',
+          maxWidth: '100%',
+          maxHeight: '100%',
+        };
+        if (aspectRatioValue) {
+          imageStyle.aspectRatio = aspectRatioValue;
+          imageStyle.height = 'auto';
+        } else {
+          imageStyle.height = '100%';
+        }
         return (
-          <img
-            src={imageUrl}
-            alt={image.alt || ''}
-            className={classes.join(' ')}
-            style={{
-              objectFit: image.fit,
-              objectPosition: `${image.focalX * 100}% ${image.focalY * 100}%`,
-              borderRadius: image.radius,
-            }}
-          />
+          <div className={wrapperClasses.join(' ')} style={wrapperStyle}>
+            <img src={imageUrl} alt={image.alt || ''} style={imageStyle} />
+          </div>
         );
       }
       case 'quote': {
@@ -2314,6 +2384,7 @@ function GalleryBlockPreview({ block }: { block: SlideBlock }) {
   const items = config.items;
   const [activeIndex, setActiveIndex] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const aspectRatioValue = getAspectRatioValue(config.aspectRatio);
 
   useEffect(() => {
     setActiveIndex(0);
@@ -2372,14 +2443,30 @@ function GalleryBlockPreview({ block }: { block: SlideBlock }) {
           {items.map((item, index) => (
             <div
               key={`${item.url}-${index}`}
-              className="flex h-full w-full flex-none snap-center"
+              className="flex h-full w-full flex-none snap-center items-center justify-center"
               style={{ minWidth: '100%' }}
             >
-              <img
-                src={item.url}
-                alt={item.alt || ''}
-                className="h-full w-full object-cover"
-              />
+              <div
+                className="flex h-full w-full items-center justify-center overflow-hidden"
+                style={
+                  aspectRatioValue
+                    ? { aspectRatio: aspectRatioValue, height: 'auto', width: '100%' }
+                    : undefined
+                }
+              >
+                <img
+                  src={item.url}
+                  alt={item.alt || ''}
+                  style={{
+                    objectFit: 'cover',
+                    width: '100%',
+                    maxWidth: '100%',
+                    maxHeight: '100%',
+                    height: aspectRatioValue ? 'auto' : '100%',
+                    aspectRatio: aspectRatioValue,
+                  }}
+                />
+              </div>
             </div>
           ))}
         </div>
@@ -2395,15 +2482,30 @@ function GalleryBlockPreview({ block }: { block: SlideBlock }) {
         className="grid h-full w-full gap-2"
         style={{
           gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-          gridAutoRows: '1fr',
+          gridAutoRows: aspectRatioValue ? 'auto' : '1fr',
         }}
       >
         {items.map((item, index) => (
-          <div key={`${item.url}-${index}`} className="relative h-full w-full overflow-hidden">
+          <div
+            key={`${item.url}-${index}`}
+            className="relative flex h-full w-full items-center justify-center overflow-hidden"
+            style={
+              aspectRatioValue
+                ? { aspectRatio: aspectRatioValue, height: 'auto', width: '100%' }
+                : undefined
+            }
+          >
             <img
               src={item.url}
               alt={item.alt || ''}
-              className="h-full w-full object-cover"
+              style={{
+                objectFit: 'cover',
+                width: '100%',
+                maxWidth: '100%',
+                maxHeight: '100%',
+                height: aspectRatioValue ? 'auto' : '100%',
+                aspectRatio: aspectRatioValue,
+              }}
             />
           </div>
         ))}

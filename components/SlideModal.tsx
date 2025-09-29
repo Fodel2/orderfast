@@ -5,6 +5,21 @@ import React, {
   useRef,
   useState,
 } from "react";
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import SlidesManager, {
   DEVICE_DIMENSIONS,
   DEFAULT_BUTTON_CONFIG,
@@ -35,6 +50,8 @@ import SlidesManager, {
   type SlideBlock,
   type SlideCfg,
   type SlidesManagerChangeOptions,
+  getAspectRatioValue,
+  normalizeBlockAspectRatio,
   resolveButtonConfig,
   resolveImageConfig,
   resolveGalleryConfig,
@@ -70,7 +87,7 @@ import { supabase } from "@/utils/supabaseClient";
 import { STORAGE_BUCKET } from "@/lib/storage";
 import { SlideRow } from "@/components/customer/home/SlidesContainer";
 import { LockClosedIcon } from "@heroicons/react/24/solid";
-import { ChevronDown, ChevronUp, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, GripVertical, Trash2 } from "lucide-react";
 
 const ROUTE_OPTIONS = ["/menu", "/orders", "/more"];
 
@@ -156,6 +173,16 @@ const BLOCK_BACKGROUND_GRADIENT_DIRECTIONS: {
   { value: "to-bottom", label: "To bottom" },
   { value: "to-left", label: "To left" },
   { value: "to-right", label: "To right" },
+];
+
+const IMAGE_ASPECT_RATIO_OPTIONS: {
+  value: ImageBlockConfig["aspectRatio"];
+  label: string;
+}[] = [
+  { value: "original", label: "Original" },
+  { value: "square", label: "Square (1:1)" },
+  { value: "4:3", label: "4:3" },
+  { value: "16:9", label: "16:9" },
 ];
 
 const BLOCK_ANIMATION_OPTIONS: { value: BlockAnimationType; label: string }[] = [
@@ -650,6 +677,81 @@ const InspectorSliderControl: React.FC<InspectorSliderControlProps> = ({
   );
 };
 
+type GalleryInspectorItemProps = {
+  id: string;
+  index: number;
+  item: GalleryBlockItem;
+  onRemove: () => void;
+  onAltChange: (value: string) => void;
+};
+
+const GalleryInspectorItem: React.FC<GalleryInspectorItemProps> = ({
+  id,
+  index,
+  item,
+  onRemove,
+  onAltChange,
+}) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+  if (isDragging) {
+    style.boxShadow = "0 8px 16px rgba(15, 23, 42, 0.12)";
+    style.opacity = 0.95;
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-start gap-3 rounded border bg-white px-2 py-3 text-xs ${
+        isDragging ? "ring-1 ring-neutral-200" : ""
+      }`}
+    >
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        className="mt-1 flex h-7 w-7 items-center justify-center rounded border border-transparent text-neutral-400 hover:text-neutral-600 focus:outline-none cursor-grab active:cursor-grabbing"
+        aria-label="Reorder image"
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+      <img
+        src={item.url}
+        alt={item.alt || ""}
+        className="h-12 w-12 flex-none rounded object-cover"
+      />
+      <div className="flex flex-1 flex-col gap-2">
+        <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+          <span>Image {index + 1}</span>
+          <button
+            type="button"
+            onClick={onRemove}
+            className="rounded border px-2 py-1 text-[11px] font-medium text-red-600 hover:bg-red-50"
+          >
+            Remove
+          </button>
+        </div>
+        <p className="break-all text-[11px] text-neutral-500">{item.url}</p>
+        <label className="block">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+            Alt text
+          </span>
+          <InputText
+            value={item.alt ?? ""}
+            onChange={(e) => onAltChange(e.target.value)}
+            className={INSPECTOR_INPUT_CLASS}
+            placeholder="Describe the image"
+          />
+        </label>
+      </div>
+    </div>
+  );
+};
+
 const cloneCfg = (cfg: SlideCfg): SlideCfg => JSON.parse(JSON.stringify(cfg));
 
 function defaultBackground(): SlideCfg["background"] {
@@ -1137,6 +1239,7 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
     block.fit = imageConfig.fit;
     block.radius = imageConfig.radius;
     block.alt = imageConfig.alt;
+    block.aspectRatio = imageConfig.aspectRatio;
     workingConfig = extractConfig(block.config);
   }
   if (kind === "gallery") {
@@ -1144,6 +1247,7 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
     block.items = galleryConfig.items.map((item) => ({ src: item.url, alt: item.alt }));
     block.config = { ...(block.config ?? {}), ...galleryConfig };
     block.radius = galleryConfig.radius;
+    block.aspectRatio = galleryConfig.aspectRatio;
     workingConfig = extractConfig(block.config);
   }
   if (kind === "heading" && !block.size) block.size = "xl";
@@ -1528,6 +1632,10 @@ export default function SlideModal({
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
   const videoPosterInputRef = useRef<HTMLInputElement | null>(null);
 
+  const gallerySensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+  );
+
   const isManipulatingRef = useRef(false);
   const selectedIdRef = useRef<string | null>(null);
   const reviewOptions = DEFAULT_REVIEW_OPTIONS;
@@ -1687,6 +1795,17 @@ export default function SlideModal({
       block.fit = imageConfig.fit;
       block.radius = imageConfig.radius;
       block.alt = imageConfig.alt;
+      block.aspectRatio = imageConfig.aspectRatio;
+    }
+    if (kind === "gallery") {
+      const galleryConfig: GalleryBlockConfig = { ...DEFAULT_GALLERY_CONFIG };
+      block.config = galleryConfig;
+      block.items = galleryConfig.items.map((item) => ({
+        src: item.url,
+        alt: item.alt,
+      }));
+      block.radius = galleryConfig.radius;
+      block.aspectRatio = galleryConfig.aspectRatio;
     }
     if (kind === "quote") {
       const quoteConfig: QuoteBlockConfig = {
@@ -1929,6 +2048,10 @@ export default function SlideModal({
               typeof next.alt === "string"
                 ? next.alt
                 : DEFAULT_IMAGE_CONFIG.alt,
+            aspectRatio: normalizeBlockAspectRatio(
+              next.aspectRatio,
+              DEFAULT_IMAGE_CONFIG.aspectRatio,
+            ),
           };
           const previous = extractConfig(b.config);
           const candidate = { ...previous, ...sanitized };
@@ -1938,6 +2061,7 @@ export default function SlideModal({
             fit: sanitized.fit,
             radius: sanitized.radius,
             alt: sanitized.alt,
+            aspectRatio: sanitized.aspectRatio,
             config: mergeInteractionConfig({ ...b, config: candidate }, candidate),
           };
         }),
@@ -2004,6 +2128,10 @@ export default function SlideModal({
             interval: Math.max(200, intervalCandidate),
             radius: radiusCandidate,
             shadow: Boolean(next.shadow),
+            aspectRatio: normalizeBlockAspectRatio(
+              next.aspectRatio,
+              DEFAULT_GALLERY_CONFIG.aspectRatio,
+            ),
           };
           const previous = extractConfig(b.config);
           const candidate = { ...previous, ...sanitized };
@@ -2015,6 +2143,7 @@ export default function SlideModal({
               alt: item.alt,
             })),
             radius: sanitized.radius,
+            aspectRatio: sanitized.aspectRatio,
           };
         }),
       }),
@@ -2355,12 +2484,51 @@ export default function SlideModal({
     [selectedBlock],
   );
 
+  const selectedImageAspectRatio = useMemo(
+    () =>
+      selectedImageConfig
+        ? getAspectRatioValue(selectedImageConfig.aspectRatio)
+        : undefined,
+    [selectedImageConfig],
+  );
+
   const selectedGalleryConfig = useMemo(
     () =>
       selectedBlock?.kind === "gallery"
         ? resolveGalleryConfig(selectedBlock)
         : null,
     [selectedBlock],
+  );
+
+  const handleGalleryDragEnd = useCallback(
+    ({ active, over }: DragEndEvent) => {
+      if (!selectedBlock || selectedBlock.kind !== "gallery") {
+        return;
+      }
+      if (!over || active.id === over.id) {
+        return;
+      }
+      const fromIndex = Number(active.id);
+      const toIndex = Number(over.id);
+      if (!Number.isFinite(fromIndex) || !Number.isFinite(toIndex)) {
+        return;
+      }
+      updateGalleryConfig(selectedBlock.id, (config) => {
+        if (
+          fromIndex < 0 ||
+          fromIndex >= config.items.length ||
+          toIndex < 0 ||
+          toIndex >= config.items.length
+        ) {
+          return config;
+        }
+        return {
+          ...config,
+          items: arrayMove(config.items, fromIndex, toIndex),
+        };
+      });
+    },
+    [selectedBlock, updateGalleryConfig],
   );
 
   const selectedQuoteConfig = useMemo(
@@ -4286,25 +4454,42 @@ export default function SlideModal({
                                   <span className="text-xs font-medium text-neutral-500">
                                     Preview
                                   </span>
-                                  {selectedImageConfig.url ? (
-                                    <img
-                                      src={selectedImageConfig.url}
-                                      alt={selectedImageConfig.alt || ""}
-                                      className={`h-28 w-full rounded ${selectedImageConfig.shadow ? "shadow-lg" : ""}`}
-                                      style={{
-                                        objectFit: selectedImageConfig.fit,
-                                        objectPosition: `${selectedImageConfig.focalX * 100}% ${selectedImageConfig.focalY * 100}%`,
-                                        borderRadius: selectedImageConfig.radius,
-                                      }}
-                                    />
-                                  ) : (
-                                    <div
-                                      className={`flex h-28 w-full items-center justify-center rounded bg-neutral-200 text-xs text-neutral-500 ${selectedImageConfig.shadow ? "shadow-lg" : ""}`}
-                                      style={{ borderRadius: selectedImageConfig.radius }}
-                                    >
-                                      No image selected
-                                    </div>
-                                  )}
+                                  <div
+                                    className={[
+                                      "flex w-full items-center justify-center overflow-hidden rounded",
+                                      selectedImageConfig.shadow ? "shadow-lg" : "",
+                                      selectedImageAspectRatio ? "" : "h-28",
+                                      selectedImageConfig.url ? "bg-transparent" : "bg-neutral-200",
+                                    ]
+                                      .filter(Boolean)
+                                      .join(" ")}
+                                    style={{
+                                      borderRadius: selectedImageConfig.radius,
+                                      aspectRatio: selectedImageAspectRatio,
+                                      height: selectedImageAspectRatio ? "auto" : undefined,
+                                    }}
+                                  >
+                                    {selectedImageConfig.url ? (
+                                      <img
+                                        src={selectedImageConfig.url}
+                                        alt={selectedImageConfig.alt || ""}
+                                        style={{
+                                          objectFit: selectedImageConfig.fit,
+                                          objectPosition: `${selectedImageConfig.focalX * 100}% ${selectedImageConfig.focalY * 100}%`,
+                                          borderRadius: selectedImageConfig.radius,
+                                          width: "100%",
+                                          maxWidth: "100%",
+                                          maxHeight: "100%",
+                                          height: selectedImageAspectRatio ? "auto" : "100%",
+                                          aspectRatio: selectedImageAspectRatio,
+                                        }}
+                                      />
+                                    ) : (
+                                      <div className="flex h-full w-full items-center justify-center text-xs text-neutral-500">
+                                        No image selected
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                                 <label className="block">
                                   <span className="text-xs font-medium text-neutral-500">
@@ -4369,6 +4554,22 @@ export default function SlideModal({
                                       { value: "cover", label: "Cover" },
                                       { value: "contain", label: "Contain" },
                                     ]}
+                                  />
+                                </label>
+                                <label className="block">
+                                  <span className="text-xs font-medium text-neutral-500">
+                                    Aspect ratio
+                                  </span>
+                                  <InputSelect
+                                    value={selectedImageConfig.aspectRatio}
+                                    onChange={(e) =>
+                                      updateImageConfig(selectedBlock.id, (config) => ({
+                                        ...config,
+                                        aspectRatio: e.target
+                                          .value as ImageBlockConfig["aspectRatio"],
+                                      }))
+                                    }
+                                    options={IMAGE_ASPECT_RATIO_OPTIONS}
                                   />
                                 </label>
                                 <div>
@@ -4594,78 +4795,49 @@ export default function SlideModal({
                                       No images yet
                                     </div>
                                   ) : (
-                                    selectedGalleryConfig.items.map(
-                                      (item, index) => (
-                                        <div
-                                          key={`${item.url}-${index}`}
-                                          className="flex items-center gap-3 rounded border px-2 py-2 text-xs"
-                                        >
-                                          <img
-                                            src={item.url}
-                                            alt={item.alt || ""}
-                                            className="h-12 w-12 rounded object-cover"
-                                          />
-                                          <div className="ml-auto flex items-center gap-1">
-                                            <button
-                                              type="button"
-                                              className="rounded border px-2 py-1"
-                                              disabled={index === 0}
-                                              onClick={() =>
+                                    <DndContext
+                                      sensors={gallerySensors}
+                                      collisionDetection={closestCenter}
+                                      onDragEnd={handleGalleryDragEnd}
+                                    >
+                                      <SortableContext
+                                        items={selectedGalleryConfig.items.map((_, index) => `${index}`)}
+                                        strategy={verticalListSortingStrategy}
+                                      >
+                                        <div className="space-y-2">
+                                          {selectedGalleryConfig.items.map((item, index) => (
+                                            <GalleryInspectorItem
+                                              key={`${item.url}-${index}`}
+                                              id={`${index}`}
+                                              index={index}
+                                              item={item}
+                                              onAltChange={(value) =>
                                                 updateGalleryConfig(
                                                   selectedBlock.id,
                                                   (config) => {
                                                     const items = [...config.items];
-                                                    const [moved] = items.splice(index, 1);
-                                                    items.splice(index - 1, 0, moved);
+                                                    if (!items[index]) {
+                                                      return config;
+                                                    }
+                                                    items[index] = { ...items[index], alt: value };
                                                     return { ...config, items };
                                                   },
                                                 )
                                               }
-                                            >
-                                              Up
-                                            </button>
-                                            <button
-                                              type="button"
-                                              className="rounded border px-2 py-1"
-                                              disabled={
-                                                index ===
-                                                selectedGalleryConfig.items.length - 1
-                                              }
-                                              onClick={() =>
-                                                updateGalleryConfig(
-                                                  selectedBlock.id,
-                                                  (config) => {
-                                                    const items = [...config.items];
-                                                    const [moved] = items.splice(index, 1);
-                                                    items.splice(index + 1, 0, moved);
-                                                    return { ...config, items };
-                                                  },
-                                                )
-                                              }
-                                            >
-                                              Down
-                                            </button>
-                                            <button
-                                              type="button"
-                                              className="rounded border px-2 py-1 text-red-600"
-                                              onClick={() =>
+                                              onRemove={() =>
                                                 updateGalleryConfig(
                                                   selectedBlock.id,
                                                   (config) => ({
                                                     ...config,
-                                                    items: config.items.filter(
-                                                      (_, i) => i !== index,
-                                                    ),
+                                                    items: config.items.filter((_, i) => i !== index),
                                                   }),
                                                 )
                                               }
-                                            >
-                                              Remove
-                                            </button>
-                                          </div>
+                                            />
+                                          ))}
                                         </div>
-                                      ),
-                                    )
+                                      </SortableContext>
+                                    </DndContext>
                                   )}
                                 </div>
                                 <div className="space-y-3">
@@ -4688,6 +4860,25 @@ export default function SlideModal({
                                         { value: "grid", label: "Grid" },
                                         { value: "carousel", label: "Carousel" },
                                       ]}
+                                    />
+                                  </label>
+                                  <label className="block">
+                                    <span className="text-xs font-medium text-neutral-500">
+                                      Aspect ratio
+                                    </span>
+                                    <InputSelect
+                                      value={selectedGalleryConfig.aspectRatio}
+                                      onChange={(e) =>
+                                        updateGalleryConfig(
+                                          selectedBlock.id,
+                                          (config) => ({
+                                            ...config,
+                                            aspectRatio: e.target
+                                              .value as GalleryBlockConfig["aspectRatio"],
+                                          }),
+                                        )
+                                      }
+                                      options={IMAGE_ASPECT_RATIO_OPTIONS}
                                     />
                                   </label>
                                   {selectedGalleryConfig.layout === "carousel" && (
