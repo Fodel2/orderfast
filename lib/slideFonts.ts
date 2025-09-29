@@ -391,6 +391,23 @@ export const getFontStackForFamily = (
   value: SlideBlockFontFamily,
 ): string | undefined => FONT_STACK_MAP[value];
 
+export const getFontPreviewStack = (
+  value?: SlideBlockFontFamily,
+): string => {
+  const normalized = normalizeFontFamily(value);
+  if (normalized) {
+    const option = getFontOption(normalized);
+    if (option?.previewStack) {
+      return option.previewStack;
+    }
+    const fallbackStack = getFontStackForFamily(normalized);
+    if (fallbackStack) {
+      return fallbackStack;
+    }
+  }
+  return DEFAULT_SANS_STACK;
+};
+
 const GOOGLE_FONT_REGISTRY: Record<SlideBlockFontFamily, { googleId: string; weights: number[] }> = {};
 FONT_FAMILY_SELECT_OPTIONS.forEach((option) => {
   if (option.googleId) {

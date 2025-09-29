@@ -53,6 +53,7 @@ import SlidesManager, {
 import {
   FONT_FAMILY_SELECT_OPTIONS,
   DEFAULT_TEXT_FONT_FAMILY,
+  getFontPreviewStack,
   normalizeFontFamily,
   useGoogleFontLoader,
 } from "@/lib/slideFonts";
@@ -3517,9 +3518,7 @@ export default function SlideModal({
                                     const value = resolveFontFamilyValue(
                                       selectedBlock.fontFamily,
                                     );
-                                    const option = FONT_FAMILY_SELECT_OPTIONS.find(
-                                      (item) => item.value === value,
-                                    );
+                                    const previewStack = getFontPreviewStack(value);
                                     return (
                                       <InputSelect
                                         value={value}
@@ -3531,14 +3530,16 @@ export default function SlideModal({
                                         }
                                         onFocus={() => setFontDropdownPreloaded(true)}
                                         style={{
-                                          fontFamily: option?.previewStack,
+                                          fontFamily: previewStack,
                                         }}
                                       >
                                         {FONT_FAMILY_SELECT_OPTIONS.map((opt) => (
                                           <option
                                             key={opt.value}
                                             value={opt.value}
-                                            style={{ fontFamily: opt.previewStack }}
+                                            style={{
+                                              fontFamily: getFontPreviewStack(opt.value),
+                                            }}
                                           >
                                             {opt.label}
                                           </option>
@@ -3830,9 +3831,7 @@ export default function SlideModal({
                                     const value = resolveFontFamilyValue(
                                       selectedBlock.fontFamily,
                                     );
-                                    const option = FONT_FAMILY_SELECT_OPTIONS.find(
-                                      (item) => item.value === value,
-                                    );
+                                    const previewStack = getFontPreviewStack(value);
                                     return (
                                       <InputSelect
                                         value={value}
@@ -3844,14 +3843,16 @@ export default function SlideModal({
                                         }
                                         onFocus={() => setFontDropdownPreloaded(true)}
                                         style={{
-                                          fontFamily: option?.previewStack,
+                                          fontFamily: previewStack,
                                         }}
                                       >
                                         {FONT_FAMILY_SELECT_OPTIONS.map((opt) => (
                                           <option
                                             key={opt.value}
                                             value={opt.value}
-                                            style={{ fontFamily: opt.previewStack }}
+                                            style={{
+                                              fontFamily: getFontPreviewStack(opt.value),
+                                            }}
                                           >
                                             {opt.label}
                                           </option>
@@ -4023,9 +4024,7 @@ export default function SlideModal({
                                     const value = resolveFontFamilyValue(
                                       selectedBlock.fontFamily,
                                     );
-                                    const option = FONT_FAMILY_SELECT_OPTIONS.find(
-                                      (item) => item.value === value,
-                                    );
+                                    const previewStack = getFontPreviewStack(value);
                                     return (
                                       <InputSelect
                                         value={value}
@@ -4037,14 +4036,16 @@ export default function SlideModal({
                                         }
                                         onFocus={() => setFontDropdownPreloaded(true)}
                                         style={{
-                                          fontFamily: option?.previewStack,
+                                          fontFamily: previewStack,
                                         }}
                                       >
                                         {FONT_FAMILY_SELECT_OPTIONS.map((opt) => (
                                           <option
                                             key={opt.value}
                                             value={opt.value}
-                                            style={{ fontFamily: opt.previewStack }}
+                                            style={{
+                                              fontFamily: getFontPreviewStack(opt.value),
+                                            }}
                                           >
                                             {opt.label}
                                           </option>
@@ -4902,9 +4903,7 @@ export default function SlideModal({
                                     const value = resolveFontFamilyValue(
                                       selectedBlock.fontFamily,
                                     );
-                                    const option = FONT_FAMILY_SELECT_OPTIONS.find(
-                                      (item) => item.value === value,
-                                    );
+                                    const previewStack = getFontPreviewStack(value);
                                     return (
                                       <InputSelect
                                         value={value}
@@ -4916,14 +4915,16 @@ export default function SlideModal({
                                         }
                                         onFocus={() => setFontDropdownPreloaded(true)}
                                         style={{
-                                          fontFamily: option?.previewStack,
+                                          fontFamily: previewStack,
                                         }}
                                       >
                                         {FONT_FAMILY_SELECT_OPTIONS.map((opt) => (
                                           <option
                                             key={opt.value}
                                             value={opt.value}
-                                            style={{ fontFamily: opt.previewStack }}
+                                            style={{
+                                              fontFamily: getFontPreviewStack(opt.value),
+                                            }}
                                           >
                                             {opt.label}
                                           </option>
