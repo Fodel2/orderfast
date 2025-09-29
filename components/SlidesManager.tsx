@@ -89,6 +89,33 @@ export type Frame = {
   r: number;
 };
 
+const ALIGNMENT_TOLERANCE_PX = 8;
+
+const GUIDE_PRIORITY: Record<AlignmentGuideType, number> = {
+  'canvas-center': 0,
+  'block-center': 1,
+  'block-edge': 2,
+};
+
+type AlignmentGuideType = 'canvas-center' | 'block-center' | 'block-edge';
+
+type AlignmentGuide = {
+  orientation: 'vertical' | 'horizontal';
+  position: number;
+  type: AlignmentGuideType;
+};
+
+type AlignmentSnapMeta = {
+  blockId: string;
+  containerWidth: number;
+  containerHeight: number;
+};
+
+type AlignmentSnapResult = {
+  frame: Frame;
+  guides: AlignmentGuide[];
+};
+
 const TEXT_SIZING_DEVICE_ORDER: DeviceKind[] = ['mobile', 'tablet', 'desktop'];
 
 type TextSizingDimensions = { width?: number; height?: number };
@@ -1732,6 +1759,166 @@ export default function SlidesManager({
 
   useGoogleFontLoader(fontsInUse);
 
+  const [activeGuides, setActiveGuides] = useState<AlignmentGuide[]>([]);
+
+  const visibleBlockFrames = useMemo(
+    () =>
+      (cfg.blocks ?? [])
+        .map((block) => {
+          const visibility = resolveBlockVisibility(block);
+          if (!visibility[activeDevice]) {
+            return null;
+          }
+          return {
+            id: block.id,
+            frame: ensureFrame(block, activeDevice),
+          };
+        })
+        .filter(Boolean) as { id: string; frame: Frame }[],
+    [cfg, activeDevice],
+  );
+
+  const resolveDragSnap = useCallback(
+    (frame: Frame, meta: AlignmentSnapMeta): AlignmentSnapResult | null => {
+      const { blockId, containerWidth, containerHeight } = meta;
+      if (containerWidth <= 0 || containerHeight <= 0) {
+        return null;
+      }
+
+      const toleranceX = containerWidth ? (ALIGNMENT_TOLERANCE_PX / containerWidth) * 100 : 0;
+      const toleranceY = containerHeight ? (ALIGNMENT_TOLERANCE_PX / containerHeight) * 100 : 0;
+
+      const verticalGuides: AlignmentGuide[] = [
+        { orientation: 'vertical', position: 50, type: 'canvas-center' },
+      ];
+      const horizontalGuides: AlignmentGuide[] = [
+        { orientation: 'horizontal', position: 50, type: 'canvas-center' },
+      ];
+
+      visibleBlockFrames.forEach(({ id, frame: other }) => {
+        if (id === blockId) {
+          return;
+        }
+        verticalGuides.push(
+          { orientation: 'vertical', position: other.x, type: 'block-edge' },
+          { orientation: 'vertical', position: other.x + other.w, type: 'block-edge' },
+          { orientation: 'vertical', position: other.x + other.w / 2, type: 'block-center' },
+        );
+        horizontalGuides.push(
+          { orientation: 'horizontal', position: other.y, type: 'block-edge' },
+          { orientation: 'horizontal', position: other.y + other.h, type: 'block-edge' },
+          { orientation: 'horizontal', position: other.y + other.h / 2, type: 'block-center' },
+        );
+      });
+
+      let snappedX = frame.x;
+      let snappedY = frame.y;
+      let verticalGuide: AlignmentGuide | null = null;
+      let horizontalGuide: AlignmentGuide | null = null;
+      let bestVerticalDelta = Number.POSITIVE_INFINITY;
+      let bestVerticalPriority = Number.POSITIVE_INFINITY;
+      let bestHorizontalDelta = Number.POSITIVE_INFINITY;
+      let bestHorizontalPriority = Number.POSITIVE_INFINITY;
+      const EPSILON = 0.0001;
+
+      const tryVertical = (delta: number, value: number, guide: AlignmentGuide) => {
+        if (delta > toleranceX) return;
+        const priority = GUIDE_PRIORITY[guide.type];
+        if (
+          verticalGuide === null ||
+          delta < bestVerticalDelta - EPSILON ||
+          (Math.abs(delta - bestVerticalDelta) <= EPSILON && priority < bestVerticalPriority)
+        ) {
+          bestVerticalDelta = delta;
+          bestVerticalPriority = priority;
+          snappedX = clamp(value, 0, Math.max(0, 100 - frame.w));
+          verticalGuide = guide;
+        }
+      };
+
+      verticalGuides.forEach((guide) => {
+        const leftDelta = Math.abs(frame.x - guide.position);
+        tryVertical(leftDelta, guide.position, guide);
+        const rightDelta = Math.abs(frame.x + frame.w - guide.position);
+        tryVertical(rightDelta, guide.position - frame.w, guide);
+        const centerDelta = Math.abs(frame.x + frame.w / 2 - guide.position);
+        tryVertical(centerDelta, guide.position - frame.w / 2, guide);
+      });
+
+      const tryHorizontal = (delta: number, value: number, guide: AlignmentGuide) => {
+        if (delta > toleranceY) return;
+        const priority = GUIDE_PRIORITY[guide.type];
+        if (
+          horizontalGuide === null ||
+          delta < bestHorizontalDelta - EPSILON ||
+          (Math.abs(delta - bestHorizontalDelta) <= EPSILON && priority < bestHorizontalPriority)
+        ) {
+          bestHorizontalDelta = delta;
+          bestHorizontalPriority = priority;
+          snappedY = clamp(value, 0, Math.max(0, 100 - frame.h));
+          horizontalGuide = guide;
+        }
+      };
+
+      horizontalGuides.forEach((guide) => {
+        const topDelta = Math.abs(frame.y - guide.position);
+        tryHorizontal(topDelta, guide.position, guide);
+        const bottomDelta = Math.abs(frame.y + frame.h - guide.position);
+        tryHorizontal(bottomDelta, guide.position - frame.h, guide);
+        const centerDelta = Math.abs(frame.y + frame.h / 2 - guide.position);
+        tryHorizontal(centerDelta, guide.position - frame.h / 2, guide);
+      });
+
+      if (!verticalGuide && !horizontalGuide) {
+        return null;
+      }
+
+      const guides: AlignmentGuide[] = [];
+      if (verticalGuide) {
+        guides.push({ ...verticalGuide });
+      }
+      if (horizontalGuide) {
+        guides.push({ ...horizontalGuide });
+      }
+
+      return {
+        frame: {
+          ...frame,
+          x: clamp(snappedX, 0, Math.max(0, 100 - frame.w)),
+          y: clamp(snappedY, 0, Math.max(0, 100 - frame.h)),
+        },
+        guides,
+      };
+    },
+    [visibleBlockFrames],
+  );
+
+  const handleGuidesChange = useCallback((guides: AlignmentGuide[]) => {
+    setActiveGuides((prev) => {
+      if (
+        prev.length === guides.length &&
+        prev.every((guide, index) => {
+          const next = guides[index];
+          return (
+            next &&
+            next.orientation === guide.orientation &&
+            next.type === guide.type &&
+            Math.abs(next.position - guide.position) < 0.001
+          );
+        })
+      ) {
+        return prev;
+      }
+      return guides;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!editable || !editInPreview) {
+      setActiveGuides([]);
+    }
+  }, [editable, editInPreview]);
+
   useEffect(() => {
     if (!editable) return;
     const updates = cfg.blocks.filter((block) => {
@@ -2184,6 +2371,44 @@ export default function SlidesManager({
               className="absolute inset-0"
               style={{ pointerEvents: editable && editInPreview ? 'auto' : 'none' }}
             >
+              {activeGuides.length > 0 ? (
+                <div className="pointer-events-none absolute inset-0" style={{ zIndex: 30 }}>
+                  {activeGuides.map((guide, index) => {
+                    const color = guide.type === 'canvas-center' ? '#64748b' : '#38bdf8';
+                    const key = `guide-${guide.orientation}-${guide.type}-${index}`;
+                    if (guide.orientation === 'vertical') {
+                      return (
+                        <div
+                          key={key}
+                          className="absolute"
+                          style={{
+                            left: `${guide.position}%`,
+                            top: 0,
+                            bottom: 0,
+                            width: '1px',
+                            transform: 'translateX(-0.5px)',
+                            backgroundColor: color,
+                          }}
+                        />
+                      );
+                    }
+                    return (
+                      <div
+                        key={key}
+                        className="absolute"
+                        style={{
+                          top: `${guide.position}%`,
+                          left: 0,
+                          right: 0,
+                          height: '1px',
+                          transform: 'translateY(-0.5px)',
+                          backgroundColor: color,
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              ) : null}
               {cfg.blocks.map((block) => {
                 const visibility = resolveBlockVisibility(block);
                 if (!visibility[activeDevice]) {
@@ -2230,6 +2455,8 @@ export default function SlidesManager({
                           }
                         : undefined
                     }
+                    resolveDragSnap={resolveDragSnap}
+                    onDragGuidesChange={handleGuidesChange}
                   >
                     <BlockChromeWithAutoSize
                       block={block}
@@ -2534,6 +2761,8 @@ type InteractiveBoxProps = {
   minWidthPct?: number;
   minHeightPct?: number;
   onResizeStart?: (details: { horizontal: boolean; vertical: boolean }) => void;
+  resolveDragSnap?: (frame: Frame, meta: AlignmentSnapMeta) => AlignmentSnapResult | null;
+  onDragGuidesChange?: (guides: AlignmentGuide[]) => void;
 };
 
 type PointerState = {
@@ -2553,6 +2782,7 @@ const TAP_MAX_MOVEMENT = 4;
 const TAP_MAX_DURATION = 300;
 
 function InteractiveBox({
+  id,
   frame,
   containerRef,
   selected,
@@ -2568,6 +2798,8 @@ function InteractiveBox({
   minWidthPct,
   minHeightPct,
   onResizeStart,
+  resolveDragSnap,
+  onDragGuidesChange,
 }: InteractiveBoxProps) {
   const localRef = useRef<HTMLDivElement>(null);
   const pointerState = useRef<PointerState | null>(null);
@@ -2579,10 +2811,12 @@ function InteractiveBox({
     e.stopPropagation();
     onSelect();
     if (locked) {
+      onDragGuidesChange?.([]);
       return;
     }
     const rect = getContainerRect();
     if (!rect) return;
+    onDragGuidesChange?.([]);
     const state: PointerState = {
       type,
       startX: e.clientX,
@@ -2620,7 +2854,10 @@ function InteractiveBox({
     if (distance > TAP_MAX_MOVEMENT) {
       ps.moved = true;
     }
-    if (ps.locked) return;
+    if (ps.locked) {
+      onDragGuidesChange?.([]);
+      return;
+    }
     const effectiveScale = ps.scale || 1;
     const width = rect.width / effectiveScale;
     const height = rect.height / effectiveScale;
@@ -2646,13 +2883,29 @@ function InteractiveBox({
     );
 
     if (ps.type === 'move') {
-      const next: Frame = {
+      let next: Frame = {
         ...ps.startFrame,
         x: clamp(ps.startFrame.x + dx, 0, 100 - ps.startFrame.w),
         y: clamp(ps.startFrame.y + dy, 0, 100 - ps.startFrame.h),
       };
+      if (resolveDragSnap) {
+        const snap = resolveDragSnap(next, {
+          blockId: id,
+          containerWidth: width,
+          containerHeight: height,
+        });
+        if (snap) {
+          next = snap.frame;
+          onDragGuidesChange?.(snap.guides);
+        } else {
+          onDragGuidesChange?.([]);
+        }
+      } else {
+        onDragGuidesChange?.([]);
+      }
       onChange(next, { commit: false });
     } else if (ps.type === 'resize') {
+      onDragGuidesChange?.([]);
       const next: Frame = { ...ps.startFrame };
       if (ps.corner?.includes('e')) {
         next.w = clamp(ps.startFrame.w + dx, minWidth, 100 - ps.startFrame.x);
@@ -2674,6 +2927,7 @@ function InteractiveBox({
       }
       onChange(next, { commit: false });
     } else if (ps.type === 'rotate') {
+      onDragGuidesChange?.([]);
       const el = localRef.current;
       if (!el) return;
       if (!ps.hasManipulated) {
@@ -2695,6 +2949,7 @@ function InteractiveBox({
     if (!ps) return;
     pointerState.current = null;
     localRef.current?.releasePointerCapture?.(e.pointerId);
+    onDragGuidesChange?.([]);
     const duration = performance.now() - ps.startTime;
     const deltaX = e.clientX - ps.startX;
     const deltaY = e.clientY - ps.startY;
@@ -2722,6 +2977,7 @@ function InteractiveBox({
     if (!ps) return;
     pointerState.current = null;
     localRef.current?.releasePointerCapture?.(e.pointerId);
+    onDragGuidesChange?.([]);
     if (ps.hasManipulated) {
       onManipulationChange?.(false);
     }
