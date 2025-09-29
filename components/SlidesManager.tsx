@@ -1027,7 +1027,7 @@ type SlidesManagerProps = {
   onChange: (cfg: SlideCfg, options?: SlidesManagerChangeOptions) => void;
   editable: boolean;
   selectedId?: string | null;
-  onSelectBlock?: (id: string | null) => void;
+  onSelectBlock?: (id: string | null, options?: { openInspector?: boolean }) => void;
   openInspector?: () => void;
   onCanvasClick?: () => void;
   activeDevice?: DeviceKind;
@@ -2207,6 +2207,9 @@ export default function SlidesManager({
                     onSelect={() => onSelectBlock?.(block.id)}
                     onTap={() => {
                       onSelectBlock?.(block.id);
+                    }}
+                    onDoubleActivate={() => {
+                      onSelectBlock?.(block.id, { openInspector: true });
                       openInspector?.();
                     }}
                     onChange={(nextFrame, opts) => handleFrameChange(block.id, nextFrame, opts)}
@@ -2522,6 +2525,7 @@ type InteractiveBoxProps = {
   editable: boolean;
   onSelect: () => void;
   onTap: () => void;
+  onDoubleActivate?: () => void;
   onChange: (frame: Frame, options?: SlidesManagerChangeOptions) => void;
   children: ReactNode;
   scale: number;
@@ -2555,6 +2559,7 @@ function InteractiveBox({
   editable,
   onSelect,
   onTap,
+  onDoubleActivate,
   onChange,
   children,
   scale,
@@ -2748,6 +2753,12 @@ function InteractiveBox({
         if (!editable) return;
         e.stopPropagation();
         onSelect();
+      }}
+      onDoubleClick={(e) => {
+        if (!editable) return;
+        e.stopPropagation();
+        onSelect();
+        onDoubleActivate?.();
       }}
     >
       {children}

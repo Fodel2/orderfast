@@ -1638,7 +1638,13 @@ export default function SlideModal({
 
   const isManipulatingRef = useRef(false);
   const selectedIdRef = useRef<string | null>(null);
+  const inspectorOpenRef = useRef(inspectorOpen);
+  const inspectorWasOpenRef = useRef(false);
   const reviewOptions = DEFAULT_REVIEW_OPTIONS;
+
+  useEffect(() => {
+    inspectorOpenRef.current = inspectorOpen;
+  }, [inspectorOpen]);
 
   useEffect(() => {
     setCfg(normalizeConfig(initialCfg ?? {}, slide));
@@ -1872,7 +1878,7 @@ export default function SlideModal({
     }
     block.config = mergeInteractionConfig(block, baseConfig);
     updateCfg((prev) => ({ ...prev, blocks: [...prev.blocks, block] }));
-    handleSelectBlock(id);
+    handleSelectBlock(id, { openInspector: true });
   };
 
   const removeBlock = (id: string) => {
@@ -2275,27 +2281,43 @@ export default function SlideModal({
   const handleManipulationChange = useCallback((manipulating: boolean) => {
     isManipulatingRef.current = manipulating;
     if (manipulating) {
-      setInspectorOpen(false);
-    } else if (selectedIdRef.current) {
-      setInspectorOpen(true);
+      inspectorWasOpenRef.current = inspectorOpenRef.current;
+      if (inspectorOpenRef.current) {
+        setInspectorOpen(false);
+      }
+    } else {
+      if (inspectorWasOpenRef.current && selectedIdRef.current) {
+        setInspectorOpen(true);
+      }
+      inspectorWasOpenRef.current = false;
     }
   }, []);
 
-  const handleSelectBlock = useCallback((id: string | null) => {
-    setSelectedId(id);
-    selectedIdRef.current = id;
-    if (!id) {
-      setInspectorOpen(false);
-      return;
-    }
-    if (!isManipulatingRef.current) {
-      setInspectorOpen(true);
-    }
-  }, []);
+  const handleSelectBlock = useCallback(
+    (id: string | null, options?: { openInspector?: boolean }) => {
+      setSelectedId(id);
+      selectedIdRef.current = id;
+      const shouldOpen = Boolean(options?.openInspector);
+      inspectorWasOpenRef.current = shouldOpen;
+      if (!id) {
+        setInspectorOpen(false);
+        return;
+      }
+      if (isManipulatingRef.current) {
+        if (!shouldOpen) {
+          setInspectorOpen(false);
+        }
+        return;
+      }
+      setInspectorOpen(shouldOpen);
+    },
+    [],
+  );
 
   const openInspectorForSelection = useCallback(() => {
     if (isManipulatingRef.current) return;
     if (!selectedIdRef.current) return;
+    inspectorWasOpenRef.current = true;
     setInspectorOpen(true);
   }, []);
 
@@ -2305,7 +2327,7 @@ export default function SlideModal({
 
   const handleLayerSelect = useCallback(
     (id: string) => {
-      handleSelectBlock(id);
+      handleSelectBlock(id, { openInspector: true });
     },
     [handleSelectBlock],
   );
@@ -2324,7 +2346,7 @@ export default function SlideModal({
         blocks.splice(index + 1, 0, clone);
         return { ...prev, blocks };
       });
-      handleSelectBlock(newId);
+      handleSelectBlock(newId, { openInspector: true });
     },
     [handleSelectBlock, updateCfg],
   );
