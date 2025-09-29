@@ -27,6 +27,14 @@ import { ArrowsUpDownIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/rea
 import { toast } from '@/components/ui/toast';
 import { supabase } from '@/utils/supabaseClient';
 import type { SlideRow } from '@/components/customer/home/SlidesContainer';
+import {
+  DEFAULT_TEXT_FONT_FAMILY,
+  FONT_FAMILY_SELECT_OPTIONS,
+  resolveBlockFontFamily,
+  getFontStackForFamily,
+  useGoogleFontLoader,
+  type SlideBlockFontFamily,
+} from '@/lib/slideFonts';
 
 const TEXTUAL_BLOCK_KIND_NAMES = new Set([
   'heading',
@@ -244,142 +252,6 @@ const BUTTON_FONT_SIZE_PX: Record<ButtonBlockSize, number> = {
   Medium: 16,
   Large: 18,
 };
-
-const FONT_FAMILY_VALUE_LIST = [
-  'Inter',
-  'Roboto',
-  'Open Sans',
-  'Lato',
-  'Poppins',
-  'Montserrat',
-  'Nunito',
-  'Raleway',
-  'Merriweather',
-  'Playfair Display',
-  'Source Sans Pro',
-  'Ubuntu',
-  'Oswald',
-  'PT Sans',
-  'Work Sans',
-  'Quicksand',
-  'Dancing Script',
-  'Lobster',
-  'Roboto Mono',
-] as const;
-
-type ModernFontFamily = (typeof FONT_FAMILY_VALUE_LIST)[number];
-
-export type SlideBlockFontFamily =
-  | 'default'
-  | ModernFontFamily
-  | 'sans'
-  | 'serif'
-  | 'mono';
-
-export type FontFamilySelectOption = {
-  value: SlideBlockFontFamily;
-  label: string;
-  stack?: string;
-  previewStack: string;
-  legacy?: boolean;
-};
-
-const FONT_FAMILY_STACKS: Record<ModernFontFamily, string> = {
-  Inter: '"Inter", "Helvetica Neue", Arial, sans-serif',
-  Roboto: '"Roboto", "Helvetica Neue", Arial, sans-serif',
-  'Open Sans': '"Open Sans", "Helvetica Neue", Arial, sans-serif',
-  Lato: '"Lato", "Helvetica Neue", Arial, sans-serif',
-  Poppins: '"Poppins", "Helvetica Neue", Arial, sans-serif',
-  Montserrat: '"Montserrat", "Helvetica Neue", Arial, sans-serif',
-  Nunito: '"Nunito", "Helvetica Neue", Arial, sans-serif',
-  Raleway: '"Raleway", "Helvetica Neue", Arial, sans-serif',
-  Merriweather: '"Merriweather", Georgia, serif',
-  'Playfair Display': '"Playfair Display", "Times New Roman", serif',
-  'Source Sans Pro': '"Source Sans Pro", "Helvetica Neue", Arial, sans-serif',
-  Ubuntu: '"Ubuntu", "Helvetica Neue", Arial, sans-serif',
-  Oswald: '"Oswald", "Franklin Gothic Medium", "Arial Narrow", Arial, sans-serif',
-  'PT Sans': '"PT Sans", "Helvetica Neue", Arial, sans-serif',
-  'Work Sans': '"Work Sans", "Helvetica Neue", Arial, sans-serif',
-  Quicksand: '"Quicksand", "Trebuchet MS", sans-serif',
-  'Dancing Script': '"Dancing Script", "Comic Sans MS", cursive',
-  Lobster: '"Lobster", "Brush Script MT", cursive',
-  'Roboto Mono': '"Roboto Mono", "Courier New", monospace',
-};
-
-export const DEFAULT_TEXT_FONT_FAMILY: SlideBlockFontFamily = 'Inter';
-
-export const FONT_FAMILY_SELECT_OPTIONS: FontFamilySelectOption[] = [
-  {
-    value: 'default',
-    label: 'Theme default (Inter)',
-    stack: undefined,
-    previewStack: FONT_FAMILY_STACKS.Inter,
-  },
-  ...FONT_FAMILY_VALUE_LIST.map<FontFamilySelectOption>((value) => ({
-    value,
-    label: value,
-    stack: FONT_FAMILY_STACKS[value],
-    previewStack: FONT_FAMILY_STACKS[value],
-  })),
-  {
-    value: 'sans',
-    label: 'Legacy Sans Serif',
-    stack: FONT_FAMILY_STACKS.Inter,
-    previewStack: FONT_FAMILY_STACKS.Inter,
-    legacy: true,
-  },
-  {
-    value: 'serif',
-    label: 'Legacy Serif',
-    stack: 'Georgia, Cambria, "Times New Roman", serif',
-    previewStack: 'Georgia, Cambria, "Times New Roman", serif',
-    legacy: true,
-  },
-  {
-    value: 'mono',
-    label: 'Legacy Monospace',
-    stack: FONT_FAMILY_STACKS['Roboto Mono'],
-    previewStack: FONT_FAMILY_STACKS['Roboto Mono'],
-    legacy: true,
-  },
-];
-
-const normalizeFontKey = (value: string) =>
-  value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '');
-
-const FONT_FAMILY_LOOKUP: Record<string, SlideBlockFontFamily> = (() => {
-  const map: Record<string, SlideBlockFontFamily> = {};
-  const register = (key: string, value: SlideBlockFontFamily) => {
-    map[key] = value;
-  };
-  register('default', 'default');
-  register('inherit', 'default');
-  register('defaultinherit', 'default');
-  register('sans', 'sans');
-  register('sansserif', 'sans');
-  register('legacysansserif', 'sans');
-  register('serif', 'serif');
-  register('legacyserif', 'serif');
-  register('mono', 'mono');
-  register('monospace', 'mono');
-  register('legacymonospace', 'mono');
-  FONT_FAMILY_VALUE_LIST.forEach((value) => {
-    register(normalizeFontKey(value), value);
-  });
-  return map;
-})();
-
-export function normalizeFontFamily(
-  value: unknown,
-): SlideBlockFontFamily | undefined {
-  if (typeof value !== 'string') return undefined;
-  const normalizedKey = normalizeFontKey(value);
-  if (!normalizedKey) return undefined;
-  return FONT_FAMILY_LOOKUP[normalizedKey];
-}
 
 const BLOCK_SHADOW_VALUE: Record<BlockShadowPreset, string | undefined> = {
   none: undefined,
@@ -1119,37 +991,12 @@ type SlidesManagerProps = {
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 
-const FONT_FAMILY_BASE_MAP: Partial<
-  Record<SlideBlockFontFamily, string | undefined>
-> = {
-  default: undefined,
-  serif: 'Georgia, Cambria, "Times New Roman", serif',
-  sans: '"Inter", "Segoe UI", system-ui, sans-serif',
-  mono: FONT_FAMILY_STACKS['Roboto Mono'],
-};
+const getBlockFontFamily = (block: SlideBlock): SlideBlockFontFamily =>
+  resolveBlockFontFamily(block);
 
-FONT_FAMILY_SELECT_OPTIONS.forEach((option) => {
-  if (option.stack !== undefined) {
-    FONT_FAMILY_BASE_MAP[option.value] = option.stack;
-  } else if (!(option.value in FONT_FAMILY_BASE_MAP)) {
-    FONT_FAMILY_BASE_MAP[option.value] = undefined;
-  }
-});
-
-const FONT_FAMILY_MAP = FONT_FAMILY_BASE_MAP as Record<
-  SlideBlockFontFamily,
-  string | undefined
->;
-
-const getBlockFontFamily = (block: SlideBlock): SlideBlockFontFamily => {
-  const normalizedFromBlock = normalizeFontFamily(block.fontFamily);
-  if (normalizedFromBlock) return normalizedFromBlock;
-  const configFont =
-    block.config && typeof block.config === 'object'
-      ? normalizeFontFamily((block.config as Record<string, any>).fontFamily)
-      : undefined;
-  return configFont ?? DEFAULT_TEXT_FONT_FAMILY;
-};
+const getResolvedFontStack = (
+  family: SlideBlockFontFamily,
+): string | undefined => getFontStackForFamily(family);
 
 const SIZE_TO_FONT_SIZE: Record<NonNullable<SlideBlock['size']>, number> = {
   sm: 18,
@@ -1818,6 +1665,16 @@ export default function SlidesManager({
   const cfg = useMemo(() => initialCfg, [initialCfg]);
   const deviceSize = DEVICE_DIMENSIONS[activeDevice] ?? DEVICE_DIMENSIONS.desktop;
 
+  const fontsInUse = useMemo(() => {
+    const set = new Set<SlideBlockFontFamily>();
+    (cfg.blocks ?? []).forEach((block) => {
+      set.add(getBlockFontFamily(block));
+    });
+    return Array.from(set);
+  }, [cfg]);
+
+  useGoogleFontLoader(fontsInUse);
+
   useEffect(() => {
     if (!editable) return;
     const updates = cfg.blocks.filter((block) => {
@@ -1970,7 +1827,7 @@ export default function SlidesManager({
         const align = block.align ?? 'left';
         const fallbackWeight = block.kind === 'heading' ? 700 : block.kind === 'subheading' ? 600 : 400;
         const fontFamilyKey = getBlockFontFamily(block);
-        const resolvedFontFamily = FONT_FAMILY_MAP[fontFamilyKey];
+        const resolvedFontFamily = getResolvedFontStack(fontFamilyKey);
         const fontSizePx =
           typeof block.fontSize === 'number'
             ? block.fontSize
@@ -2046,7 +1903,7 @@ export default function SlidesManager({
           .filter(Boolean)
           .join(' ');
         const fontFamilyKey = getBlockFontFamily(block);
-        const resolvedFontFamily = FONT_FAMILY_MAP[fontFamilyKey];
+        const resolvedFontFamily = getResolvedFontStack(fontFamilyKey);
         const fontSizePx =
           typeof block.fontSize === 'number'
             ? block.fontSize
@@ -2121,7 +1978,7 @@ export default function SlidesManager({
         const defaultTextColor = quote.style === 'plain' ? '#ffffff' : '#111111';
         const textColor = block.textColor ?? block.color ?? defaultTextColor;
         const fontFamilyKey = getBlockFontFamily(block);
-        const resolvedFontFamily = FONT_FAMILY_MAP[fontFamilyKey];
+        const resolvedFontFamily = getResolvedFontStack(fontFamilyKey);
         const fallbackWeight = block.fontWeight ?? (quote.style === 'emphasis' ? 600 : 400);
         const fontSizePx =
           typeof block.fontSize === 'number'

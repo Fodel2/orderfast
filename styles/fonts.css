@@ -1,0 +1,12 @@
+.font-select-panel {
+  scrollbar-width: thin;
+}
+
+.font-select-panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.font-select-panel::-webkit-scrollbar-thumb {
+  background-color: rgba(100, 116, 139, 0.4);
+  border-radius: 9999px;
+}
