@@ -51,12 +51,11 @@ import SlidesManager, {
   updateConfigWithTextContent,
 } from "./SlidesManager";
 import {
-  FONT_FAMILY_SELECT_OPTIONS,
   DEFAULT_TEXT_FONT_FAMILY,
-  getFontPreviewStack,
   normalizeFontFamily,
-  useGoogleFontLoader,
 } from "@/lib/slideFonts";
+import FontSelect from "./ui/FontSelect";
+import { APP_FONTS, ensureFontLoaded } from "@/lib/fonts";
 import Button from "@/components/ui/Button";
 import {
   InputCheckbox,
@@ -1519,12 +1518,6 @@ export default function SlideModal({
   const [showGalleryAddOptions, setShowGalleryAddOptions] = useState(false);
   const [galleryUrlInput, setGalleryUrlInput] = useState("");
   const [saving, setSaving] = useState(false);
-  const [fontDropdownPreloaded, setFontDropdownPreloaded] = useState(false);
-  const fontPreloadList = useMemo(
-    () => (fontDropdownPreloaded ? FONT_FAMILY_SELECT_OPTIONS.map((opt) => opt.value) : []),
-    [fontDropdownPreloaded],
-  );
-  useGoogleFontLoader(fontPreloadList);
   const pastRef = useRef<SlideCfg[]>([]);
   const futureRef = useRef<SlideCfg[]>([]);
   const [, forceHistoryTick] = useState(0);
@@ -1534,6 +1527,7 @@ export default function SlideModal({
   const blockBackgroundImageInputRef = useRef<HTMLInputElement | null>(null);
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
   const videoPosterInputRef = useRef<HTMLInputElement | null>(null);
+
   const isManipulatingRef = useRef(false);
   const selectedIdRef = useRef<string | null>(null);
   const reviewOptions = DEFAULT_REVIEW_OPTIONS;
@@ -1860,10 +1854,10 @@ export default function SlideModal({
     if (!normalized) {
       return DEFAULT_TEXT_FONT_FAMILY;
     }
-    const match = FONT_FAMILY_SELECT_OPTIONS.find(
-      (option) => option.value === normalized,
+    const match = APP_FONTS.find(
+      (font) => normalizeFontFamily(font.id) === normalized,
     );
-    return match ? match.value : DEFAULT_TEXT_FONT_FAMILY;
+    return match ? match.id : DEFAULT_TEXT_FONT_FAMILY;
   };
 
   const handleFontFamilyChange = (blockId: string, rawValue: string) => {
@@ -2323,6 +2317,22 @@ export default function SlideModal({
     () => cfg.blocks.find((b) => b.id === selectedId) || null,
     [cfg.blocks, selectedId],
   );
+
+  useEffect(() => {
+    if (!selectedBlock || !isFontEnabledBlock(selectedBlock.kind)) {
+      return;
+    }
+    const normalized = normalizeFontFamily(selectedBlock.fontFamily);
+    if (!normalized) {
+      return;
+    }
+    const match = APP_FONTS.find(
+      (font) => normalizeFontFamily(font.id) === normalized,
+    );
+    if (match) {
+      void ensureFontLoaded(match);
+    }
+  }, [selectedBlock]);
 
   const layerEntries = useMemo(
     () => cfg.blocks.map((block, index) => ({ block, index })),
@@ -3518,33 +3528,17 @@ export default function SlideModal({
                                     const value = resolveFontFamilyValue(
                                       selectedBlock.fontFamily,
                                     );
-                                    const previewStack = getFontPreviewStack(value);
                                     return (
-                                      <InputSelect
+                                      <FontSelect
                                         value={value}
-                                        onChange={(e) =>
+                                        fonts={APP_FONTS}
+                                        onChange={(nextValue) =>
                                           handleFontFamilyChange(
                                             selectedBlock.id,
-                                            e.target.value,
+                                            nextValue,
                                           )
                                         }
-                                        onFocus={() => setFontDropdownPreloaded(true)}
-                                        style={{
-                                          fontFamily: previewStack,
-                                        }}
-                                      >
-                                        {FONT_FAMILY_SELECT_OPTIONS.map((opt) => (
-                                          <option
-                                            key={opt.value}
-                                            value={opt.value}
-                                            style={{
-                                              fontFamily: getFontPreviewStack(opt.value),
-                                            }}
-                                          >
-                                            {opt.label}
-                                          </option>
-                                        ))}
-                                      </InputSelect>
+                                      />
                                     );
                                   })()}
                                 </label>
@@ -3831,33 +3825,17 @@ export default function SlideModal({
                                     const value = resolveFontFamilyValue(
                                       selectedBlock.fontFamily,
                                     );
-                                    const previewStack = getFontPreviewStack(value);
                                     return (
-                                      <InputSelect
+                                      <FontSelect
                                         value={value}
-                                        onChange={(e) =>
+                                        fonts={APP_FONTS}
+                                        onChange={(nextValue) =>
                                           handleFontFamilyChange(
                                             selectedBlock.id,
-                                            e.target.value,
+                                            nextValue,
                                           )
                                         }
-                                        onFocus={() => setFontDropdownPreloaded(true)}
-                                        style={{
-                                          fontFamily: previewStack,
-                                        }}
-                                      >
-                                        {FONT_FAMILY_SELECT_OPTIONS.map((opt) => (
-                                          <option
-                                            key={opt.value}
-                                            value={opt.value}
-                                            style={{
-                                              fontFamily: getFontPreviewStack(opt.value),
-                                            }}
-                                          >
-                                            {opt.label}
-                                          </option>
-                                        ))}
-                                      </InputSelect>
+                                      />
                                     );
                                   })()}
                                 </label>
@@ -4024,33 +4002,17 @@ export default function SlideModal({
                                     const value = resolveFontFamilyValue(
                                       selectedBlock.fontFamily,
                                     );
-                                    const previewStack = getFontPreviewStack(value);
                                     return (
-                                      <InputSelect
+                                      <FontSelect
                                         value={value}
-                                        onChange={(e) =>
+                                        fonts={APP_FONTS}
+                                        onChange={(nextValue) =>
                                           handleFontFamilyChange(
                                             selectedBlock.id,
-                                            e.target.value,
+                                            nextValue,
                                           )
                                         }
-                                        onFocus={() => setFontDropdownPreloaded(true)}
-                                        style={{
-                                          fontFamily: previewStack,
-                                        }}
-                                      >
-                                        {FONT_FAMILY_SELECT_OPTIONS.map((opt) => (
-                                          <option
-                                            key={opt.value}
-                                            value={opt.value}
-                                            style={{
-                                              fontFamily: getFontPreviewStack(opt.value),
-                                            }}
-                                          >
-                                            {opt.label}
-                                          </option>
-                                        ))}
-                                      </InputSelect>
+                                      />
                                     );
                                   })()}
                                 </label>
@@ -4903,33 +4865,17 @@ export default function SlideModal({
                                     const value = resolveFontFamilyValue(
                                       selectedBlock.fontFamily,
                                     );
-                                    const previewStack = getFontPreviewStack(value);
                                     return (
-                                      <InputSelect
+                                      <FontSelect
                                         value={value}
-                                        onChange={(e) =>
+                                        fonts={APP_FONTS}
+                                        onChange={(nextValue) =>
                                           handleFontFamilyChange(
                                             selectedBlock.id,
-                                            e.target.value,
+                                            nextValue,
                                           )
                                         }
-                                        onFocus={() => setFontDropdownPreloaded(true)}
-                                        style={{
-                                          fontFamily: previewStack,
-                                        }}
-                                      >
-                                        {FONT_FAMILY_SELECT_OPTIONS.map((opt) => (
-                                          <option
-                                            key={opt.value}
-                                            value={opt.value}
-                                            style={{
-                                              fontFamily: getFontPreviewStack(opt.value),
-                                            }}
-                                          >
-                                            {opt.label}
-                                          </option>
-                                        ))}
-                                      </InputSelect>
+                                      />
                                     );
                                   })()}
                                 </label>
