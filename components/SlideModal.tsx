@@ -5165,20 +5165,27 @@ const galleryRenderedItems = useMemo(
           }}
           onAltChange={(value) => {
             updateGalleryConfig(selectedBlock.id, (config) => {
-              const targetIndex = config.items.findIndex(
-                (galleryItem) => galleryItem === item,
-              );
-              if (targetIndex === -1) {
+              if (!config.items[index]) {
                 return config;
               }
               return {
                 ...config,
                 items: config.items.map((galleryItem, galleryIndex) =>
-                  galleryIndex === targetIndex
+                  galleryIndex === index
                     ? { ...galleryItem, alt: value }
                     : galleryItem,
                 ),
               };
+            });
+            setGalleryDraftItems((prev) => {
+              if (!prev || !prev[index]) {
+                return prev;
+              }
+              return prev.map((galleryItem, galleryIndex) =>
+                galleryIndex === index
+                  ? { ...galleryItem, alt: value }
+                  : galleryItem,
+              );
             });
           }}
           onRemove={() =>
