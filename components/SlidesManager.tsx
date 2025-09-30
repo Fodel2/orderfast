@@ -93,11 +93,12 @@ const ALIGNMENT_TOLERANCE_PX = 8;
 
 const GUIDE_PRIORITY: Record<AlignmentGuideType, number> = {
   'canvas-center': 0,
+  'canvas-edge': 0,
   'block-center': 1,
   'block-edge': 2,
 };
 
-type AlignmentGuideType = 'canvas-center' | 'block-center' | 'block-edge';
+type AlignmentGuideType = 'canvas-center' | 'canvas-edge' | 'block-center' | 'block-edge';
 
 type AlignmentGuide = {
   orientation: 'vertical' | 'horizontal';
@@ -1845,10 +1846,14 @@ export default function SlidesManager({
       const toleranceY = containerHeight ? (ALIGNMENT_TOLERANCE_PX / containerHeight) * 100 : 0;
 
       const verticalGuides: AlignmentGuide[] = [
+        { orientation: 'vertical', position: 0, type: 'canvas-edge' },
         { orientation: 'vertical', position: 50, type: 'canvas-center' },
+        { orientation: 'vertical', position: 100, type: 'canvas-edge' },
       ];
       const horizontalGuides: AlignmentGuide[] = [
+        { orientation: 'horizontal', position: 0, type: 'canvas-edge' },
         { orientation: 'horizontal', position: 50, type: 'canvas-center' },
+        { orientation: 'horizontal', position: 100, type: 'canvas-edge' },
       ];
 
       visibleBlockFrames.forEach(({ id, frame: other }) => {
@@ -2446,7 +2451,10 @@ export default function SlidesManager({
                 style={{ zIndex: 30, opacity: activeGuides.length > 0 ? 1 : 0 }}
               >
                 {activeGuides.map((guide, index) => {
-                  const color = guide.type === 'canvas-center' ? '#64748b' : '#38bdf8';
+                  const color =
+                    guide.type === 'canvas-center' || guide.type === 'canvas-edge'
+                      ? '#64748b'
+                      : '#38bdf8';
                   const key = `guide-${guide.orientation}-${guide.type}-${index}`;
                   if (guide.orientation === 'vertical') {
                     return (
@@ -2866,10 +2874,27 @@ type PointerState = {
   moved: boolean;
   hasManipulated: boolean;
   locked: boolean;
+  containerWidth: number;
+  containerHeight: number;
+  startAspectRatio?: number;
 };
 
 const TAP_MAX_MOVEMENT = 4;
 const TAP_MAX_DURATION = 300;
+const DOUBLE_TAP_DELAY = 325;
+const DOUBLE_TAP_DISTANCE = 12;
+const SNAP_RELEASE_MULTIPLIER = 1.5;
+
+type PendingInteraction =
+  | {
+      type: 'move';
+      frame: Frame;
+      meta: AlignmentSnapMeta & { containerWidth: number; containerHeight: number };
+    }
+  | {
+      type: 'resize';
+      frame: Frame;
+    };
 
 function InteractiveBox({
   id,
@@ -2897,6 +2922,115 @@ function InteractiveBox({
   const [isDragging, setIsDragging] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [snapping, setSnapping] = useState(false);
+  const pendingInteractionRef = useRef<PendingInteraction | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const snapStateRef = useRef<AlignmentSnapResult | null>(null);
+  const lastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
+  const snappingRef = useRef(false);
+
+  const updateGuides = useCallback(
+    (guides: AlignmentGuide[]) => {
+      onDragGuidesChange?.(guides);
+      const shouldSnap = guides.length > 0;
+      if (shouldSnap) {
+        if (!snappingRef.current) {
+          snappingRef.current = true;
+          setSnapping(true);
+        }
+      } else if (snappingRef.current) {
+        snappingRef.current = false;
+        setSnapping(false);
+      }
+    },
+    [onDragGuidesChange],
+  );
+
+  const processMove = useCallback(
+    (interaction: Extract<PendingInteraction, { type: 'move' }>) => {
+      let next = interaction.frame;
+      if (resolveDragSnap) {
+        const snap = resolveDragSnap(next, interaction.meta);
+        if (snap) {
+          next = snap.frame;
+          snapStateRef.current = snap;
+          updateGuides(snap.guides);
+        } else if (snapStateRef.current) {
+          const last = snapStateRef.current;
+          const releaseX =
+            interaction.meta.containerWidth > 0
+              ? ((ALIGNMENT_TOLERANCE_PX * SNAP_RELEASE_MULTIPLIER) / interaction.meta.containerWidth) * 100
+              : 0;
+          const releaseY =
+            interaction.meta.containerHeight > 0
+              ? ((ALIGNMENT_TOLERANCE_PX * SNAP_RELEASE_MULTIPLIER) / interaction.meta.containerHeight) * 100
+              : 0;
+          const hasVertical = last.guides.some((guide) => guide.orientation === 'vertical');
+          const hasHorizontal = last.guides.some((guide) => guide.orientation === 'horizontal');
+          const stickX = hasVertical && Math.abs(last.frame.x - next.x) <= releaseX;
+          const stickY = hasHorizontal && Math.abs(last.frame.y - next.y) <= releaseY;
+          if (stickX || stickY) {
+            next = {
+              ...next,
+              x: stickX ? last.frame.x : next.x,
+              y: stickY ? last.frame.y : next.y,
+            };
+            updateGuides(last.guides);
+          } else {
+            snapStateRef.current = null;
+            updateGuides([]);
+          }
+        } else {
+          updateGuides([]);
+        }
+      } else {
+        updateGuides([]);
+      }
+      onChange(next, { commit: false });
+    },
+    [onChange, resolveDragSnap, updateGuides],
+  );
+
+  const processResize = useCallback(
+    (interaction: Extract<PendingInteraction, { type: 'resize' }>) => {
+      snapStateRef.current = null;
+      updateGuides([]);
+      onChange(interaction.frame, { commit: false });
+    },
+    [onChange, updateGuides],
+  );
+
+  const runPendingInteraction = useCallback(
+    (interaction: PendingInteraction | null) => {
+      if (!interaction) return;
+      if (interaction.type === 'move') {
+        processMove(interaction);
+      } else {
+        processResize(interaction);
+      }
+    },
+    [processMove, processResize],
+  );
+
+  const scheduleFlush = useCallback(() => {
+    if (rafRef.current !== null) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      const pending = pendingInteractionRef.current;
+      pendingInteractionRef.current = null;
+      runPendingInteraction(pending);
+    });
+  }, [runPendingInteraction]);
+
+  const flushPending = useCallback(() => {
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    const pending = pendingInteractionRef.current;
+    pendingInteractionRef.current = null;
+    runPendingInteraction(pending);
+  }, [runPendingInteraction]);
+
   const getContainerRect = () => containerRef.current?.getBoundingClientRect();
 
   const handlePointerDown = (type: PointerState['type'], corner?: string) => (e: React.PointerEvent) => {
@@ -2904,7 +3038,7 @@ function InteractiveBox({
     e.stopPropagation();
     onSelect();
     if (locked) {
-      onDragGuidesChange?.([]);
+      updateGuides([]);
       return;
     }
     if (type === 'move') {
@@ -2913,7 +3047,18 @@ function InteractiveBox({
     }
     const rect = getContainerRect();
     if (!rect) return;
-    onDragGuidesChange?.([]);
+    const effectiveScale = scale || 1;
+    const containerWidth = rect.width / effectiveScale;
+    const containerHeight = rect.height / effectiveScale;
+    updateGuides([]);
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    pendingInteractionRef.current = null;
+    snapStateRef.current = null;
+    snappingRef.current = false;
+    setSnapping(false);
     const state: PointerState = {
       type,
       startX: e.clientX,
@@ -2925,6 +3070,10 @@ function InteractiveBox({
       moved: false,
       hasManipulated: false,
       locked,
+      containerWidth,
+      containerHeight,
+      startAspectRatio:
+        type === 'resize' && frame.h > 0 && frame.w > 0 ? frame.w / frame.h : undefined,
     };
     if (type === 'rotate' && !locked) {
       state.hasManipulated = true;
@@ -2936,7 +3085,6 @@ function InteractiveBox({
       onResizeStart?.({ horizontal, vertical });
     }
     pointerState.current = state;
-    setSnapping(false);
     if (type !== 'move') {
       setDragging(false);
     }
@@ -2956,7 +3104,7 @@ function InteractiveBox({
       ps.moved = true;
     }
     if (ps.locked) {
-      onDragGuidesChange?.([]);
+      updateGuides([]);
       return;
     }
     const effectiveScale = ps.scale || 1;
@@ -2987,38 +3135,22 @@ function InteractiveBox({
     );
 
     if (ps.type === 'move') {
-      let next: Frame = {
+      const next: Frame = {
         ...ps.startFrame,
         x: clamp(ps.startFrame.x + dx, 0, 100 - ps.startFrame.w),
         y: clamp(ps.startFrame.y + dy, 0, 100 - ps.startFrame.h),
       };
-      if (resolveDragSnap) {
-        const snap = resolveDragSnap(next, {
+      pendingInteractionRef.current = {
+        type: 'move',
+        frame: next,
+        meta: {
           blockId: id,
           containerWidth: width,
           containerHeight: height,
-        });
-        if (snap) {
-          next = snap.frame;
-          onDragGuidesChange?.(snap.guides);
-          if (!snapping) {
-            setSnapping(true);
-          }
-        } else {
-          onDragGuidesChange?.([]);
-          if (snapping) {
-            setSnapping(false);
-          }
-        }
-      } else {
-        onDragGuidesChange?.([]);
-        if (snapping) {
-          setSnapping(false);
-        }
-      }
-      onChange(next, { commit: false });
+        },
+      };
+      scheduleFlush();
     } else if (ps.type === 'resize') {
-      onDragGuidesChange?.([]);
       const next: Frame = { ...ps.startFrame };
       if (ps.corner?.includes('e')) {
         next.w = clamp(ps.startFrame.w + dx, minWidth, 100 - ps.startFrame.x);
@@ -3038,9 +3170,49 @@ function InteractiveBox({
         next.y = newY;
         next.h = clamp(ps.startFrame.h + delta, minHeight, 100 - newY);
       }
-      onChange(next, { commit: false });
+
+      const maintainAspect = Boolean(e.shiftKey && ps.startAspectRatio && Number.isFinite(ps.startAspectRatio));
+      if (maintainAspect) {
+        const aspect = ps.startAspectRatio ?? 0;
+        if (aspect > 0) {
+          const start = ps.startFrame;
+          const startRight = start.x + start.w;
+          const startBottom = start.y + start.h;
+          const widthChange = Math.abs(next.w - start.w);
+          const heightChange = Math.abs(next.h - start.h);
+          if (widthChange >= heightChange) {
+            let adjustedHeight = next.w / aspect;
+            adjustedHeight = clamp(adjustedHeight, minHeight, 100 - next.y);
+            if (ps.corner?.includes('n')) {
+              const newY = startBottom - adjustedHeight;
+              const clampedY = clamp(newY, 0, startBottom - minHeight);
+              next.y = clampedY;
+              adjustedHeight = clamp(startBottom - clampedY, minHeight, 100 - clampedY);
+            }
+            next.h = adjustedHeight;
+          } else {
+            let adjustedWidth = next.h * aspect;
+            adjustedWidth = clamp(adjustedWidth, minWidth, 100 - next.x);
+            if (ps.corner?.includes('w')) {
+              const newX = startRight - adjustedWidth;
+              const clampedX = clamp(newX, 0, startRight - minWidth);
+              next.x = clampedX;
+              adjustedWidth = clamp(startRight - clampedX, minWidth, 100 - clampedX);
+            }
+            next.w = adjustedWidth;
+          }
+        }
+      }
+
+      pendingInteractionRef.current = { type: 'resize', frame: next };
+      scheduleFlush();
     } else if (ps.type === 'rotate') {
-      onDragGuidesChange?.([]);
+      updateGuides([]);
+      pendingInteractionRef.current = null;
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
       const el = localRef.current;
       if (!el) return;
       if (!ps.hasManipulated) {
@@ -3060,9 +3232,10 @@ function InteractiveBox({
     if (!editable) return;
     const ps = pointerState.current;
     if (!ps) return;
+    flushPending();
     pointerState.current = null;
     localRef.current?.releasePointerCapture?.(e.pointerId);
-if (ps.type === 'move') {
+    if (ps.type === 'move') {
       setIsDragging(false);
       const rect = localRef.current?.getBoundingClientRect();
       if (rect) {
@@ -3090,26 +3263,47 @@ if (ps.type === 'move') {
 
     if (ps.hasManipulated && !ps.locked) {
       onChange(frame, { commit: true });
+      lastTapRef.current = null;
     } else if (isTap) {
-      onTap();
+      if (e.pointerType === 'touch') {
+        const now = performance.now();
+        const lastTap = lastTapRef.current;
+        const doubleTap =
+          lastTap &&
+          now - lastTap.time <= DOUBLE_TAP_DELAY &&
+          Math.abs(e.clientX - lastTap.x) <= DOUBLE_TAP_DISTANCE &&
+          Math.abs(e.clientY - lastTap.y) <= DOUBLE_TAP_DISTANCE;
+        if (doubleTap) {
+          lastTapRef.current = null;
+          onDoubleActivate?.();
+        } else {
+          lastTapRef.current = { time: now, x: e.clientX, y: e.clientY };
+          onTap();
+        }
+      } else {
+        lastTapRef.current = null;
+        onTap();
+      }
+    } else if (e.pointerType === 'touch') {
+      lastTapRef.current = null;
     }
 
     if (ps.hasManipulated) {
       onManipulationChange?.(false);
     }
     setDragging(false);
-    if (snapping) {
-      setSnapping(false);
-    }
+    updateGuides([]);
+    snapStateRef.current = null;
   };
 
   const handlePointerCancel = (e: React.PointerEvent) => {
     if (!editable) return;
     const ps = pointerState.current;
     if (!ps) return;
+    flushPending();
     pointerState.current = null;
     localRef.current?.releasePointerCapture?.(e.pointerId);
-if (ps.type === 'move') {
+    if (ps.type === 'move') {
       setIsDragging(false);
       setHovered(false);
     }
@@ -3117,8 +3311,10 @@ if (ps.type === 'move') {
       onManipulationChange?.(false);
     }
     setDragging(false);
-    if (snapping) {
-      setSnapping(false);
+    updateGuides([]);
+    snapStateRef.current = null;
+    if (e.pointerType === 'touch') {
+      lastTapRef.current = null;
     }
   };
 
