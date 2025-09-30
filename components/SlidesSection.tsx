@@ -243,7 +243,7 @@ function renderBlock(block: SlideBlock) {
       return (
         <div className="flex h-full w-full gap-2 overflow-hidden rounded-xl">
           {(block.items || []).map((item) => (
-            <img key={item.src} src={item.src} alt={item.alt || ''} className="h-full flex-1 object-cover" />
+            <img key={item.src} src={item.src} alt={item.alt ?? ''} className="h-full flex-1 object-cover" />
           ))}
         </div>
       );

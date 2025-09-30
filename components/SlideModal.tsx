@@ -1,18 +1,22 @@
 import React, {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
 import {
   DndContext,
-  PointerSensor,
+  DragOverlay,
+  MouseSensor,
+  TouchSensor,
   closestCenter,
   useSensor,
   useSensors,
+  type DragCancelEvent,
   type DragEndEvent,
+  type DragStartEvent,
+  type DraggableAttributes,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -678,81 +682,6 @@ const InspectorSliderControl: React.FC<InspectorSliderControlProps> = ({
   );
 };
 
-type GalleryInspectorItemProps = {
-  id: string;
-  index: number;
-  item: GalleryBlockItem;
-  onRemove: () => void;
-  onAltChange: (value: string) => void;
-};
-
-const GalleryInspectorItem: React.FC<GalleryInspectorItemProps> = ({
-  id,
-  index,
-  item,
-  onRemove,
-  onAltChange,
-}) => {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
-  const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-  if (isDragging) {
-    style.boxShadow = "0 8px 16px rgba(15, 23, 42, 0.12)";
-    style.opacity = 0.95;
-  }
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`flex items-start gap-3 rounded border bg-white px-2 py-3 text-xs ${
-        isDragging ? "ring-1 ring-neutral-200" : ""
-      }`}
-    >
-      <button
-        type="button"
-        {...attributes}
-        {...listeners}
-        className="mt-1 flex h-7 w-7 items-center justify-center rounded border border-transparent text-neutral-400 hover:text-neutral-600 focus:outline-none cursor-grab active:cursor-grabbing"
-        aria-label="Reorder image"
-      >
-        <GripVertical className="h-4 w-4" />
-      </button>
-      <img
-        src={item.url}
-        alt={item.alt || ""}
-        className="h-12 w-12 flex-none rounded object-cover"
-      />
-      <div className="flex flex-1 flex-col gap-2">
-        <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
-          <span>Image {index + 1}</span>
-          <button
-            type="button"
-            onClick={onRemove}
-            className="rounded border px-2 py-1 text-[11px] font-medium text-red-600 hover:bg-red-50"
-          >
-            Remove
-          </button>
-        </div>
-        <p className="break-all text-[11px] text-neutral-500">{item.url}</p>
-        <label className="block">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
-            Alt text
-          </span>
-          <InputText
-            value={item.alt ?? ""}
-            onChange={(e) => onAltChange(e.target.value)}
-            className={INSPECTOR_INPUT_CLASS}
-            placeholder="Describe the image"
-          />
-        </label>
-      </div>
-    </div>
-  );
-};
-
 const cloneCfg = (cfg: SlideCfg): SlideCfg => JSON.parse(JSON.stringify(cfg));
 
 function defaultBackground(): SlideCfg["background"] {
@@ -1251,7 +1180,10 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
   if (kind === "gallery") {
     const existingConfig = extractConfig(block.config);
     const galleryConfig = resolveGalleryConfig(block);
-    block.items = galleryConfig.items.map((item) => ({ src: item.url, alt: item.alt }));
+    block.items = galleryConfig.items.map((item) => ({
+      src: item.url,
+      alt: item.alt ?? "",
+    }));
     const hydratedConfig = {
       ...existingConfig,
       ...galleryConfig,
@@ -1609,19 +1541,36 @@ interface SlideModalProps {
   onClose: () => void;
 }
 
-type GalleryInspectorItemProps = {
+type GalleryInspectorItemContentProps = {
   item: GalleryBlockItem;
-  isDragging: boolean;
   itemKey: string;
   onAltChange: (value: string) => void;
   onRemove: () => void;
-  onHandleMouseDown: (event: React.MouseEvent<HTMLButtonElement>) => void;
-  onHandleTouchStart: (event: React.TouchEvent<HTMLButtonElement>) => void;
+  dragHandleAttributes?: DraggableAttributes;
+  dragHandleListeners?: React.HTMLAttributes<HTMLButtonElement>;
+  dragHandleRef?: (instance: HTMLButtonElement | null) => void;
+  isDragging?: boolean;
+  disableInteractions?: boolean;
+  style?: React.CSSProperties;
 };
 
-const GalleryInspectorItem = React.forwardRef<HTMLDivElement, GalleryInspectorItemProps>(
+const GalleryInspectorItemContent = React.forwardRef<
+  HTMLDivElement,
+  GalleryInspectorItemContentProps
+>(
   (
-    { item, isDragging, itemKey, onAltChange, onRemove, onHandleMouseDown, onHandleTouchStart },
+    {
+      item,
+      itemKey,
+      onAltChange,
+      onRemove,
+      dragHandleAttributes,
+      dragHandleListeners,
+      dragHandleRef,
+      isDragging = false,
+      disableInteractions = false,
+      style,
+    },
     ref,
   ) => (
     <div
@@ -1630,23 +1579,28 @@ const GalleryInspectorItem = React.forwardRef<HTMLDivElement, GalleryInspectorIt
       data-dragging={isDragging ? "true" : "false"}
       className={`group relative flex items-center gap-3 rounded border bg-white px-2 py-2 text-xs transition-all duration-200 ease-out ${
         isDragging
-          ? "z-10 scale-[1.05] border-primary/40 bg-white/90 shadow-lg ring-2 ring-primary/40"
+          ? "z-10 border-primary/40 shadow-md ring-2 ring-primary/40"
           : "hover:border-primary/30 hover:shadow-sm"
       }`}
-      style={isDragging ? { opacity: 0.9 } : undefined}
+      style={{
+        position: "relative",
+        ...(disableInteractions ? { pointerEvents: "none" } : {}),
+        ...style,
+      }}
     >
       <button
         type="button"
         aria-label="Drag to reorder image"
         className="flex h-10 w-6 shrink-0 select-none items-center justify-center touch-none cursor-grab text-neutral-400 transition hover:text-neutral-600 focus:outline-none focus:ring-2 focus:ring-neutral-300 active:cursor-grabbing"
-        onMouseDown={onHandleMouseDown}
-        onTouchStart={onHandleTouchStart}
+        ref={dragHandleRef}
+        {...(dragHandleAttributes ?? {})}
+        {...(dragHandleListeners ?? {})}
       >
         <GripVertical className="h-4 w-4" />
       </button>
       <img
         src={item.url}
-        alt={item.alt || ""}
+        alt={item.alt ?? ""}
         className="h-12 w-12 shrink-0 rounded object-cover"
         draggable={false}
         onMouseDown={(event) => event.stopPropagation()}
@@ -1659,11 +1613,13 @@ const GalleryInspectorItem = React.forwardRef<HTMLDivElement, GalleryInspectorIt
         placeholder="Alt text"
         className={`${INSPECTOR_INPUT_CLASS} flex-1`}
         onMouseDown={(event) => event.stopPropagation()}
+        readOnly={disableInteractions}
       />
       <button
         type="button"
         onClick={onRemove}
         className="rounded border px-2 py-1 text-xs text-red-600 transition hover:border-red-500 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-200"
+        disabled={disableInteractions}
       >
         Remove
       </button>
@@ -1671,11 +1627,57 @@ const GalleryInspectorItem = React.forwardRef<HTMLDivElement, GalleryInspectorIt
   ),
 );
 
-GalleryInspectorItem.displayName = "GalleryInspectorItem";
+GalleryInspectorItemContent.displayName = "GalleryInspectorItemContent";
 
-const GalleryDragPlaceholder = () => (
-  <div className="pointer-events-none h-[60px] w-full rounded border-2 border-dashed border-neutral-300 bg-neutral-50 transition-all duration-200 ease-out" />
-);
+type GalleryInspectorItemProps = {
+  item: GalleryBlockItem;
+  itemKey: string;
+  index: number;
+  onAltChange: (value: string) => void;
+  onRemove: () => void;
+};
+
+const GalleryInspectorItem: React.FC<GalleryInspectorItemProps> = ({
+  item,
+  itemKey,
+  index,
+  onAltChange,
+  onRemove,
+}) => {
+  const {
+    attributes,
+    listeners,
+    setActivatorNodeRef,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: `${index}`,
+  });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0 : 1,
+  };
+
+  return (
+    <GalleryInspectorItemContent
+      ref={setNodeRef}
+      item={item}
+      itemKey={itemKey}
+      onAltChange={onAltChange}
+      onRemove={onRemove}
+      dragHandleAttributes={attributes}
+      dragHandleListeners={
+        listeners as React.HTMLAttributes<HTMLButtonElement>
+      }
+      dragHandleRef={setActivatorNodeRef}
+      style={style}
+    />
+  );
+};
 
 export default function SlideModal({
   slide,
@@ -1697,7 +1699,9 @@ export default function SlideModal({
   const [uploading, setUploading] = useState(false);
   const [showGalleryAddOptions, setShowGalleryAddOptions] = useState(false);
   const [galleryUrlInput, setGalleryUrlInput] = useState("");
-  const [galleryDraftItems, setGalleryDraftItems] = useState<GalleryBlockItem[] | null>(null);
+  const [activeGalleryDragId, setActiveGalleryDragId] = useState<string | null>(
+    null,
+  );
   const [saving, setSaving] = useState(false);
   const pastRef = useRef<SlideCfg[]>([]);
   const futureRef = useRef<SlideCfg[]>([]);
@@ -1708,25 +1712,9 @@ export default function SlideModal({
   const blockBackgroundImageInputRef = useRef<HTMLInputElement | null>(null);
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
   const videoPosterInputRef = useRef<HTMLInputElement | null>(null);
-  const galleryItemsRef = useRef<GalleryBlockItem[]>([]);
-  const galleryItemRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const galleryDragMetaRef = useRef<{
-    pointerType: "mouse" | "touch";
-    pointerId: number | null;
-    currentIndex: number;
-    dropIndicatorIndex: number;
-    dropPosition: "before" | "after";
-    lastDirection: "up" | "down" | "none";
-  } | null>(null);
-  const galleryBlockIdRef = useRef<string | null>(null);
-  const restoreUserSelectRef = useRef<string | null>(null);
-  const [isGalleryDragging, setIsGalleryDragging] = useState(false);
-  const galleryItemKeyMapRef = useRef(new WeakMap<GalleryBlockItem, string>());
-  const galleryPrevPositionsRef = useRef<Map<string, DOMRect>>(new Map());
-
-  const gallerySensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-  );
+  const galleryItemIdentityRef = useRef<
+    { url: string; alt: string; key: string }[]
+  >([]);
 
   const isManipulatingRef = useRef(false);
   const selectedIdRef = useRef<string | null>(null);
@@ -1900,7 +1888,7 @@ export default function SlideModal({
       block.config = galleryConfig;
       block.items = galleryConfig.items.map((item) => ({
         src: item.url,
-        alt: item.alt,
+        alt: item.alt ?? "",
       }));
       block.radius = galleryConfig.radius;
       block.aspectRatio = galleryConfig.aspectRatio;
@@ -2193,11 +2181,15 @@ export default function SlideModal({
                         : "";
                   const url = urlSource.trim();
                   if (!url) return null;
-                  const alt =
-                    typeof item.alt === "string" && item.alt.trim().length > 0
-                      ? item.alt
-                      : undefined;
-                  const normalized: GalleryBlockItem = alt ? { url, alt } : { url };
+                  const altRaw =
+                    typeof (item as any).alt === "string"
+                      ? (item as any).alt
+                      : "";
+                  const alt = altRaw.trim().length > 0 ? altRaw : "";
+                  const normalized: GalleryBlockItem = {
+                    url,
+                    alt,
+                  };
                   return normalized;
                 })
                 .filter((item): item is GalleryBlockItem => Boolean(item))
@@ -2238,7 +2230,7 @@ export default function SlideModal({
             config: mergeInteractionConfig({ ...b, config: candidate }, candidate),
             items: sanitized.items.map((item) => ({
               src: item.url,
-              alt: item.alt,
+              alt: item.alt ?? "",
             })),
             radius: sanitized.radius,
             aspectRatio: sanitized.aspectRatio,
@@ -2614,346 +2606,157 @@ export default function SlideModal({
     [selectedBlock],
   );
 
-const galleryRenderedItems = useMemo(
-    () =>
-      galleryDraftItems
-        ? galleryDraftItems
-        : selectedGalleryConfig
-        ? selectedGalleryConfig.items
-        : [],
-    [galleryDraftItems, selectedGalleryConfig],
+  const galleryRenderedItems = useMemo(
+    () => (selectedGalleryConfig ? selectedGalleryConfig.items : []),
+    [selectedGalleryConfig],
   );
 
-  const endGalleryDrag = useCallback(() => {
-    const blockId = galleryBlockIdRef.current;
-    const prevItems = selectedGalleryConfig?.items ?? [];
-    const nextItems = galleryItemsRef.current;
-    galleryDragMetaRef.current = null;
-    if (restoreUserSelectRef.current !== null) {
-      document.body.style.userSelect = restoreUserSelectRef.current;
-      restoreUserSelectRef.current = null;
-    }
-    setIsGalleryDragging(false);
-    setGalleryDraftItems(null);
-    if (!blockId || !selectedGalleryConfig) {
-      return;
-    }
-    if (nextItems.length !== prevItems.length) {
-      const committed = [...nextItems];
-      updateGalleryConfig(blockId, (config) => ({
-        ...config,
-        items: committed,
-      }));
-      return;
-    }
-    const hasChanged = nextItems.some((item, index) => {
-      const prev = prevItems[index];
-      if (!prev) return true;
-      return prev.url !== item.url || (prev.alt ?? "") !== (item.alt ?? "");
-    });
-    if (hasChanged) {
-      const committed = [...nextItems];
-      updateGalleryConfig(blockId, (config) => ({
-        ...config,
-        items: committed,
-      }));
-    }
-  }, [selectedGalleryConfig, updateGalleryConfig]);
-
-  useEffect(() => {
-    if (!isGalleryDragging) {
-      galleryItemsRef.current = selectedGalleryConfig
-        ? [...selectedGalleryConfig.items]
-        : [];
-    }
-    if (galleryRenderedItems.length === 0) {
-      galleryItemRefs.current = [];
-      if (isGalleryDragging) {
-        endGalleryDrag();
-      }
-      return;
-    }
-    galleryItemRefs.current.length = galleryRenderedItems.length;
-  }, [
-    endGalleryDrag,
-    galleryRenderedItems,
-    isGalleryDragging,
-    selectedGalleryConfig,
-  ]);
-
-  useEffect(() => {
-    if (selectedBlock?.kind === "gallery") {
-      galleryBlockIdRef.current = selectedBlock.id;
-      return;
-    }
-    galleryBlockIdRef.current = null;
-    if (galleryDraftItems) {
-      setGalleryDraftItems(null);
-    }
-    if (isGalleryDragging) {
-      endGalleryDrag();
-    }
-  }, [endGalleryDrag, galleryDraftItems, isGalleryDragging, selectedBlock]);
-
-  useEffect(() => {
-    setGalleryDraftItems(null);
-  }, [selectedBlock?.id]);
-
-  const activeGalleryDragIndex = galleryDragMetaRef.current?.currentIndex ?? null;
-  const activeGalleryDropIndicatorIndex =
-    galleryDragMetaRef.current?.dropIndicatorIndex ?? null;
-  const activeGalleryDropPosition =
-    galleryDragMetaRef.current?.dropPosition ?? "before";
-
-  const galleryPlaceholderIndex = useMemo(() => {
+  const createGalleryItemKey = useCallback(() => {
     if (
-      !isGalleryDragging ||
-      galleryRenderedItems.length === 0 ||
-      activeGalleryDropIndicatorIndex === null
-    ) {
-      return null;
-    }
-    const lastIndex = galleryRenderedItems.length - 1;
-    const indicator = Math.max(
-      0,
-      Math.min(activeGalleryDropIndicatorIndex, lastIndex),
-    );
-    if (activeGalleryDropPosition === "after") {
-      return Math.min(galleryRenderedItems.length, indicator + 1);
-    }
-    return Math.max(0, indicator);
-  }, [
-    activeGalleryDropIndicatorIndex,
-    activeGalleryDropPosition,
-    galleryRenderedItems.length,
-    isGalleryDragging,
-  ]);
-
-  const ensureGalleryItemKey = useCallback((item: GalleryBlockItem) => {
-    const map = galleryItemKeyMapRef.current;
-    const existing = map.get(item);
-    if (existing) {
-      return existing;
-    }
-    const generated =
       typeof globalThis.crypto !== "undefined" &&
       typeof globalThis.crypto.randomUUID === "function"
-        ? `gallery-item-${globalThis.crypto.randomUUID()}`
-        : `gallery-item-${Math.random().toString(36).slice(2)}`;
-    map.set(item, generated);
-    return generated;
+    ) {
+      return `gallery-item-${globalThis.crypto.randomUUID()}`;
+    }
+    return `gallery-item-${Math.random().toString(36).slice(2)}`;
   }, []);
 
-  const computeGalleryTargetIndex = useCallback(
-    (clientY: number, currentIndex: number, positions: (DOMRect | null)[]) => {
-      const draggingRect = positions[currentIndex];
-      if (!draggingRect) return currentIndex;
-      if (clientY < draggingRect.top) {
-        for (let i = 0; i < currentIndex; i += 1) {
-          const rect = positions[i];
-          if (!rect) continue;
-          if (clientY < rect.top + rect.height / 2) {
-            return i;
-          }
-        }
-        return Math.max(0, currentIndex - 1);
-      }
-      if (clientY > draggingRect.bottom) {
-        for (let i = positions.length - 1; i > currentIndex; i -= 1) {
-          const rect = positions[i];
-          if (!rect) continue;
-          if (clientY > rect.top + rect.height / 2) {
-            return i;
-          }
-        }
-        return Math.min(positions.length - 1, currentIndex + 1);
-      }
-      return currentIndex;
-    },
-    [],
-  );
-
-  const handleGalleryPointerMove = useCallback(
-    (clientY: number) => {
-      const meta = galleryDragMetaRef.current;
-      if (!meta) return;
-      const items = galleryItemsRef.current;
-      if (!items.length) return;
-      const { currentIndex } = meta;
-      if (currentIndex < 0 || currentIndex >= items.length) return;
-      const positions = galleryItemRefs.current.map((node) =>
-        node ? node.getBoundingClientRect() : null,
-      );
-      const targetIndex = computeGalleryTargetIndex(clientY, currentIndex, positions);
-      if (targetIndex < 0) {
-        return;
-      }
-      let dropPosition: "before" | "after" = "before";
-      const targetRect = positions[targetIndex];
-      if (targetRect) {
-        dropPosition =
-          clientY >= targetRect.top + targetRect.height / 2 ? "after" : "before";
-      }
-      const direction: "up" | "down" | "none" =
-        targetIndex > meta.currentIndex
-          ? "down"
-          : targetIndex < meta.currentIndex
-          ? "up"
-          : meta.lastDirection;
-      if (targetIndex === currentIndex) {
-        galleryDragMetaRef.current = {
-          ...meta,
-          dropIndicatorIndex: targetIndex,
-          dropPosition,
-          lastDirection: direction,
-        };
-        setGalleryDraftItems([...items]);
-        return;
-      }
-      const nextItems = [...items];
-      const [moved] = nextItems.splice(currentIndex, 1);
-      if (!moved) {
-        return;
-      }
-      nextItems.splice(targetIndex, 0, moved);
-      galleryItemsRef.current = nextItems;
-      galleryDragMetaRef.current = {
-        ...meta,
-        currentIndex: targetIndex,
-        dropIndicatorIndex: targetIndex,
-        dropPosition,
-        lastDirection: direction,
-      };
-      setGalleryDraftItems([...nextItems]);
-    },
-    [computeGalleryTargetIndex],
-  );
-
-  const startGalleryDrag = useCallback(
-    (index: number, pointerType: "mouse" | "touch", pointerId: number | null) => {
-      if (isGalleryDragging) return;
-      if (selectedGalleryConfig) {
-        galleryItemsRef.current = [...selectedGalleryConfig.items];
-      }
-      const items = galleryItemsRef.current;
-      const total = items.length;
-      if (index < 0 || index >= total) return;
-      setGalleryDraftItems([...items]);
-      galleryDragMetaRef.current = {
-        pointerType,
-        pointerId,
-        currentIndex: index,
-        dropIndicatorIndex: index,
-        dropPosition: "before",
-        lastDirection: "none",
-      };
-      if (restoreUserSelectRef.current === null) {
-        restoreUserSelectRef.current = document.body.style.userSelect;
-        document.body.style.userSelect = "none";
-      }
-      setIsGalleryDragging(true);
-    },
-    [isGalleryDragging, selectedGalleryConfig],
-  );
-
-  useEffect(() => {
-    if (!isGalleryDragging) return;
-    const meta = galleryDragMetaRef.current;
-    if (!meta) {
-      setIsGalleryDragging(false);
-      return;
-    }
-
-    if (meta.pointerType === "mouse") {
-      const handleMouseMove = (event: MouseEvent) => {
-        event.preventDefault();
-        handleGalleryPointerMove(event.clientY);
-      };
-      const handleMouseUp = () => {
-        endGalleryDrag();
-      };
-      window.addEventListener("mousemove", handleMouseMove);
-      window.addEventListener("mouseup", handleMouseUp);
-      return () => {
-        window.removeEventListener("mousemove", handleMouseMove);
-        window.removeEventListener("mouseup", handleMouseUp);
-      };
-    }
-
-    const handleTouchMove = (event: TouchEvent) => {
-      const currentMeta = galleryDragMetaRef.current;
-      if (!currentMeta) return;
-      const matching = Array.from(event.touches).find((touch) =>
-        currentMeta.pointerId === null
-          ? true
-          : touch.identifier === currentMeta.pointerId,
-      );
-      if (!matching) return;
-      handleGalleryPointerMove(matching.clientY);
-      event.preventDefault();
-    };
-    const handleTouchEnd = (event: TouchEvent) => {
-      const currentMeta = galleryDragMetaRef.current;
-      if (!currentMeta) {
-        endGalleryDrag();
-        return;
-      }
-      const ended = Array.from(event.changedTouches).some((touch) =>
-        currentMeta.pointerId === null
-          ? true
-          : touch.identifier === currentMeta.pointerId,
-      );
-      if (ended) {
-        endGalleryDrag();
-      }
-    };
-    window.addEventListener("touchmove", handleTouchMove, { passive: false });
-    window.addEventListener("touchend", handleTouchEnd);
-    window.addEventListener("touchcancel", handleTouchEnd);
-    return () => {
-      window.removeEventListener("touchmove", handleTouchMove);
-      window.removeEventListener("touchend", handleTouchEnd);
-      window.removeEventListener("touchcancel", handleTouchEnd);
-    };
-  }, [endGalleryDrag, handleGalleryPointerMove, isGalleryDragging]);
-
-  useLayoutEffect(() => {
+  const galleryItemIdentities = useMemo(() => {
     if (!galleryRenderedItems.length) {
-      galleryPrevPositionsRef.current = new Map();
-      return;
+      galleryItemIdentityRef.current = [];
+      return [] as { url: string; alt: string; key: string }[];
     }
-    const prevPositions = galleryPrevPositionsRef.current;
-    const nextPositions = new Map<string, DOMRect>();
-    const nodes = galleryItemRefs.current;
-    nodes.forEach((node) => {
-      if (!node) return;
-      const key = node.dataset.galleryKey;
-      if (!key) return;
-      const rect = node.getBoundingClientRect();
-      nextPositions.set(key, rect);
-      const previous = prevPositions.get(key);
-      if (!previous) return;
-      if (node.dataset.dragging === "true") {
-        return;
-      }
-      const deltaY = previous.top - rect.top;
-      if (Math.abs(deltaY) < 1) {
-        return;
-      }
-      node.style.transition = "none";
-      node.style.transform = `translateY(${deltaY}px)`;
-      requestAnimationFrame(() => {
-        node.style.transition = "transform 180ms ease-out";
-        node.style.transform = "";
-        const handleTransitionEnd = () => {
-          node.style.transition = "";
-          node.removeEventListener("transitionend", handleTransitionEnd);
-        };
-        node.addEventListener("transitionend", handleTransitionEnd);
+    const previous = galleryItemIdentityRef.current;
+    const used = new Set<number>();
+    const nextIdentities = galleryRenderedItems.map((item) => {
+      const altValue = item.alt ?? "";
+      const exactIndex = previous.findIndex((identity, index) => {
+        if (used.has(index)) return false;
+        return identity.url === item.url && identity.alt === altValue;
       });
+      if (exactIndex !== -1) {
+        used.add(exactIndex);
+        return previous[exactIndex];
+      }
+      const looseIndex = previous.findIndex((identity, index) => {
+        if (used.has(index)) return false;
+        return identity.url === item.url;
+      });
+      if (looseIndex !== -1) {
+        used.add(looseIndex);
+        return {
+          url: item.url,
+          alt: altValue,
+          key: previous[looseIndex].key,
+        };
+      }
+      return {
+        url: item.url,
+        alt: altValue,
+        key: createGalleryItemKey(),
+      };
     });
-    galleryPrevPositionsRef.current = nextPositions;
-  }, [galleryRenderedItems, isGalleryDragging]);
+    galleryItemIdentityRef.current = nextIdentities;
+    return nextIdentities;
+  }, [createGalleryItemKey, galleryRenderedItems]);
+
+  const ensureGalleryItemKey = useCallback(
+    (item: GalleryBlockItem) => {
+      const altValue = item.alt ?? "";
+      const match = galleryItemIdentityRef.current.find(
+        (identity) => identity.url === item.url && identity.alt === altValue,
+      );
+      if (match) {
+        return match.key;
+      }
+      const fallback = {
+        url: item.url,
+        alt: altValue,
+        key: createGalleryItemKey(),
+      };
+      galleryItemIdentityRef.current = [
+        ...galleryItemIdentityRef.current,
+        fallback,
+      ];
+      return fallback.key;
+    },
+    [createGalleryItemKey],
+  );
+
+  const sensors = useSensors(
+    useSensor(MouseSensor, {
+      activationConstraint: { distance: 4 },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 120, tolerance: 8 },
+    }),
+  );
+
+  const handleGalleryDragStart = useCallback(
+    ({ active }: DragStartEvent) => {
+      if (!selectedBlock || selectedBlock.kind !== "gallery") {
+        return;
+      }
+      setActiveGalleryDragId(String(active.id));
+    },
+    [selectedBlock],
+  );
+
+  const handleGalleryDragCancel = useCallback(() => {
+    setActiveGalleryDragId(null);
+  }, []);
+
+  const handleGalleryDragEnd = useCallback(
+    ({ active, over }: DragEndEvent) => {
+      setActiveGalleryDragId(null);
+      if (!selectedBlock || selectedBlock.kind !== "gallery") {
+        return;
+      }
+      if (!over) {
+        return;
+      }
+      const fromIndex = Number(active.id);
+      const toIndex = Number(over.id);
+      if (Number.isNaN(fromIndex) || Number.isNaN(toIndex)) {
+        return;
+      }
+      if (fromIndex === toIndex) {
+        return;
+      }
+      updateGalleryConfig(selectedBlock.id, (config) => ({
+        ...config,
+        items: arrayMove(config.items, fromIndex, toIndex),
+      }));
+    },
+    [selectedBlock, updateGalleryConfig],
+  );
+
+  const gallerySortableIds = useMemo(
+    () => galleryRenderedItems.map((_, index) => `${index}`),
+    [galleryRenderedItems],
+  );
+
+  const activeGalleryDragItem = useMemo(() => {
+    if (activeGalleryDragId === null) {
+      return null;
+    }
+    const index = Number(activeGalleryDragId);
+    if (Number.isNaN(index)) {
+      return null;
+    }
+    return galleryRenderedItems[index] ?? null;
+  }, [activeGalleryDragId, galleryRenderedItems]);
+
+  const activeGalleryDragIdentity = useMemo(() => {
+    if (activeGalleryDragId === null) {
+      return null;
+    }
+    const index = Number(activeGalleryDragId);
+    if (Number.isNaN(index)) {
+      return null;
+    }
+    return galleryItemIdentities[index] ?? null;
+  }, [activeGalleryDragId, galleryItemIdentities]);
 
   const selectedQuoteConfig = useMemo(
     () =>
@@ -5213,88 +5016,87 @@ const galleryRenderedItems = useMemo(
                                     e.target.value = "";
                                   }}
                                 />
-                                <div className="space-y-2">
-                                  {galleryRenderedItems.length === 0 ? (
-                                    <div className="flex h-24 items-center justify-center rounded border border-dashed text-xs text-neutral-500">
-                                      No images yet
-                                    </div>
-                                  ) : (
-<div className="space-y-2">
-  {galleryRenderedItems.map((item, index) => {
-    const itemKey = ensureGalleryItemKey(item);
-    return (
-      <React.Fragment key={itemKey}>
-        {isGalleryDragging &&
-          galleryPlaceholderIndex !== null &&
-          galleryPlaceholderIndex === index && (
-            <GalleryDragPlaceholder key={`${itemKey}-placeholder-before`} />
-          )}
-        <GalleryInspectorItem
-          itemKey={itemKey}
-          item={item}
-          isDragging={
-            isGalleryDragging && activeGalleryDragIndex === index
-          }
-          ref={(node) => {
-            galleryItemRefs.current[index] = node;
-          }}
-          onAltChange={(value) => {
-            updateGalleryConfig(selectedBlock.id, (config) => {
-              const targetIndex = config.items.findIndex(
-                (galleryItem) => galleryItem === item,
-              );
-              if (targetIndex === -1) {
-                return config;
-              }
-              return {
-                ...config,
-                items: config.items.map((galleryItem, galleryIndex) =>
-                  galleryIndex === targetIndex
-                    ? { ...galleryItem, alt: value }
-                    : galleryItem,
-                ),
-              };
-            });
-          }}
-          onRemove={() =>
-            updateGalleryConfig(selectedBlock.id, (config) => {
-              const nextItems = config.items.filter(
-                (galleryItem) => galleryItem !== item,
-              );
-              if (nextItems.length === config.items.length) {
-                return config;
-              }
-              return {
-                ...config,
-                items: nextItems,
-              };
-            })
-          }
-          onHandleMouseDown={(event) => {
-            if (event.button !== 0) return;
-            event.preventDefault();
-            event.stopPropagation();
-            startGalleryDrag(index, "mouse", null);
-          }}
-          onHandleTouchStart={(event) => {
-            if (event.touches.length === 0) return;
-            const touch = event.touches[0];
-            event.preventDefault();
-            event.stopPropagation();
-            startGalleryDrag(index, "touch", touch.identifier);
-          }}
-        />
-        {isGalleryDragging &&
-          galleryPlaceholderIndex !== null &&
-          galleryPlaceholderIndex === index + 1 && (
-            <GalleryDragPlaceholder key={`${itemKey}-placeholder-after`} />
-          )}
-      </React.Fragment>
-    );
-  })}
-</div>
-                                  )}
-                                </div>
+                                {galleryRenderedItems.length === 0 ? (
+                                  <div className="flex h-24 items-center justify-center rounded border border-dashed text-xs text-neutral-500">
+                                    No images yet
+                                  </div>
+                                ) : (
+                                  <DndContext
+                                    sensors={sensors}
+                                    collisionDetection={closestCenter}
+                                    onDragStart={handleGalleryDragStart}
+                                    onDragCancel={handleGalleryDragCancel}
+                                    onDragEnd={handleGalleryDragEnd}
+                                  >
+                                    <SortableContext
+                                      items={gallerySortableIds}
+                                      strategy={verticalListSortingStrategy}
+                                    >
+                                      <div className="space-y-2">
+                                        {galleryRenderedItems.map((item, index) => {
+                                          const identity =
+                                            galleryItemIdentities[index] ?? null;
+                                          const itemKey = identity
+                                            ? identity.key
+                                            : ensureGalleryItemKey(item);
+                                          return (
+                                            <GalleryInspectorItem
+                                              key={itemKey}
+                                              itemKey={itemKey}
+                                              item={item}
+                                              index={index}
+                                              onAltChange={(value) => {
+                                                updateGalleryConfig(
+                                                  selectedBlock.id,
+                                                  (config) => ({
+                                                    ...config,
+                                                    items: config.items.map(
+                                                      (galleryItem, galleryIndex) =>
+                                                        galleryIndex === index
+                                                          ? {
+                                                              ...galleryItem,
+                                                              alt: value,
+                                                            }
+                                                          : galleryItem,
+                                                    ),
+                                                  }),
+                                                );
+                                              }}
+                                              onRemove={() => {
+                                                updateGalleryConfig(
+                                                  selectedBlock.id,
+                                                  (config) => ({
+                                                    ...config,
+                                                    items: config.items.filter(
+                                                      (_, galleryIndex) =>
+                                                        galleryIndex !== index,
+                                                    ),
+                                                  }),
+                                                );
+                                              }}
+                                            />
+                                          );
+                                        })}
+                                      </div>
+                                    </SortableContext>
+                                    <DragOverlay>
+                                      {activeGalleryDragItem ? (
+                                        <GalleryInspectorItemContent
+                                          item={activeGalleryDragItem}
+                                          itemKey={
+                                            activeGalleryDragIdentity?.key ??
+                                            ensureGalleryItemKey(activeGalleryDragItem)
+                                          }
+                                          onAltChange={() => {}}
+                                          onRemove={() => {}}
+                                          isDragging
+                                          disableInteractions
+                                          style={{ transform: "scale(1.05)" }}
+                                        />
+                                      ) : null}
+                                    </DragOverlay>
+                                  </DndContext>
+                                )}
                                 <div className="space-y-3">
                                   <label className="block">
                                     <span className="text-xs font-medium text-neutral-500">
