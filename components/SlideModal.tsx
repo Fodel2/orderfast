@@ -6,14 +6,6 @@ import React, {
   useRef,
   useState,
 } from "react";
-import {
-  DndContext,
-  PointerSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
 import SlidesManager, {
   DEVICE_DIMENSIONS,
   DEFAULT_BUTTON_CONFIG,
@@ -1657,12 +1649,9 @@ export default function SlideModal({
   const galleryItemIdentityRef = useRef<
     { url: string; alt: string; key: string }[]
   >([]);
+  const galleryKeyOrderRef = useRef<string[]>([]);
   const galleryPrevPositionsRef = useRef<Map<string, DOMRect>>(new Map());
   const galleryDragFrameRef = useRef<number | null>(null);
-
-  const gallerySensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-  );
 
   const isManipulatingRef = useRef(false);
   const selectedIdRef = useRef<string | null>(null);
@@ -2577,6 +2566,7 @@ const galleryRenderedItems = useMemo(
   const galleryItemKeys = useMemo(() => {
     if (!galleryRenderedItems.length) {
       galleryItemIdentityRef.current = [];
+      galleryKeyOrderRef.current = [];
       return [];
     }
     const previous = galleryItemIdentityRef.current;
@@ -2614,7 +2604,9 @@ const galleryRenderedItems = useMemo(
       };
     });
     galleryItemIdentityRef.current = nextIdentities;
-    return nextIdentities.map((identity) => identity.key);
+    const keys = nextIdentities.map((identity) => identity.key);
+    galleryKeyOrderRef.current = keys;
+    return keys;
   }, [createGalleryItemKey, galleryRenderedItems]);
 
   const endGalleryDrag = useCallback(() => {
@@ -2632,6 +2624,7 @@ const galleryRenderedItems = useMemo(
       node.style.transform = "";
       node.style.zIndex = "";
       node.style.pointerEvents = "";
+      node.style.boxShadow = "";
     });
     if (restoreUserSelectRef.current !== null) {
       document.body.style.userSelect = restoreUserSelectRef.current;
@@ -2706,45 +2699,12 @@ const galleryRenderedItems = useMemo(
   }, [selectedBlock?.id]);
 
   const activeGalleryDragIndex = galleryDragMetaRef.current?.currentIndex ?? null;
-  const activeGalleryDropIndicatorIndex =
-    galleryDragMetaRef.current?.dropIndicatorIndex ?? null;
-  const activeGalleryDropPosition =
-    galleryDragMetaRef.current?.dropPosition ?? "before";
 
   const galleryPlaceholderIndex =
     isGalleryDragging && galleryPlaceholderIndexState !== null
       ? galleryPlaceholderIndexState
       : null;
   const galleryPlaceholderHeightValue = galleryPlaceholderHeight ?? 60;
-
-  const computeGalleryTargetIndex = useCallback(
-    (clientY: number, currentIndex: number, positions: (DOMRect | null)[]) => {
-      const draggingRect = positions[currentIndex];
-      if (!draggingRect) return currentIndex;
-      if (clientY < draggingRect.top) {
-        for (let i = 0; i < currentIndex; i += 1) {
-          const rect = positions[i];
-          if (!rect) continue;
-          if (clientY < rect.top + rect.height / 2) {
-            return i;
-          }
-        }
-        return Math.max(0, currentIndex - 1);
-      }
-      if (clientY > draggingRect.bottom) {
-        for (let i = positions.length - 1; i > currentIndex; i -= 1) {
-          const rect = positions[i];
-          if (!rect) continue;
-          if (clientY > rect.top + rect.height / 2) {
-            return i;
-          }
-        }
-        return Math.min(positions.length - 1, currentIndex + 1);
-      }
-      return currentIndex;
-    },
-    [],
-  );
 
   const applyGalleryDragFrame = useCallback(() => {
     galleryDragFrameRef.current = null;
@@ -2774,62 +2734,111 @@ const galleryRenderedItems = useMemo(
       draggingNode.style.transform = `translateY(${translateY}px) scale(1.05)`;
       draggingNode.style.zIndex = "20";
       draggingNode.style.pointerEvents = "none";
+      draggingNode.style.boxShadow =
+        "0 12px 30px rgba(15, 23, 42, 0.25), 0 2px 8px rgba(15, 23, 42, 0.18)";
     }
 
     const items = galleryItemsRef.current;
     if (!items.length) return;
 
-    const positions = nodes.map((node) =>
-      node ? node.getBoundingClientRect() : null,
-    );
-    const targetIndex = computeGalleryTargetIndex(
-      pointerY,
-      meta.currentIndex,
-      positions,
-    );
-    if (targetIndex < 0) {
+    const keyOrder = galleryKeyOrderRef.current;
+    if (!keyOrder.length && galleryItemIdentityRef.current.length) {
+      galleryKeyOrderRef.current = galleryItemIdentityRef.current.map(
+        (identity) => identity.key,
+      );
+    }
+
+    const entries = nodes
+      .map((node) => {
+        if (!node) return null;
+        const key = node.dataset.galleryKey;
+        if (!key) return null;
+        return {
+          key,
+          rect: node.getBoundingClientRect(),
+          isDragging: key === meta.draggingKey,
+        };
+      })
+      .filter((entry): entry is { key: string; rect: DOMRect; isDragging: boolean } =>
+        Boolean(entry),
+      );
+
+    if (!entries.length) {
       return;
     }
-    let dropPosition: "before" | "after" = "before";
-    const targetRect = positions[targetIndex];
-    if (targetRect) {
-      dropPosition =
-        pointerY >= targetRect.top + targetRect.height / 2
-          ? "after"
-          : "before";
+
+    const order = galleryKeyOrderRef.current;
+    const currentIndex = meta.draggingKey
+      ? order.indexOf(meta.draggingKey)
+      : meta.currentIndex;
+    const normalizedCurrentIndex =
+      currentIndex >= 0 ? currentIndex : meta.currentIndex;
+
+    if (normalizedCurrentIndex !== meta.currentIndex) {
+      meta.currentIndex = normalizedCurrentIndex;
     }
+
+    let desiredIndex = normalizedCurrentIndex;
+    let dropPosition: "before" | "after" = "after";
+
+    for (let i = 0; i < entries.length; i += 1) {
+      const entry = entries[i];
+      if (entry.isDragging) {
+        continue;
+      }
+      const midpoint = entry.rect.top + entry.rect.height / 2;
+      const entryIndex = order.indexOf(entry.key);
+      if (entryIndex === -1) {
+        continue;
+      }
+      if (pointerY < midpoint) {
+        desiredIndex = entryIndex;
+        dropPosition = "before";
+        break;
+      }
+      desiredIndex = entryIndex + 1;
+      dropPosition = "after";
+    }
+
+    desiredIndex = Math.max(0, Math.min(desiredIndex, items.length));
+
     const direction: "up" | "down" | "none" =
-      targetIndex > meta.currentIndex
+      desiredIndex > normalizedCurrentIndex
         ? "down"
-        : targetIndex < meta.currentIndex
+        : desiredIndex < normalizedCurrentIndex
         ? "up"
         : meta.lastDirection;
 
-    if (targetIndex !== meta.currentIndex) {
+    if (desiredIndex !== normalizedCurrentIndex) {
       const nextItems = [...items];
-      const [moved] = nextItems.splice(meta.currentIndex, 1);
-      if (moved) {
-        nextItems.splice(targetIndex, 0, moved);
+      const nextKeys = [...order];
+      const [movedItem] = nextItems.splice(normalizedCurrentIndex, 1);
+      const [movedKey] = nextKeys.splice(normalizedCurrentIndex, 1);
+      if (movedItem && typeof movedKey === "string") {
+        let insertionIndex = desiredIndex;
+        if (insertionIndex > normalizedCurrentIndex) {
+          insertionIndex -= 1;
+        }
+        nextItems.splice(insertionIndex, 0, movedItem);
+        nextKeys.splice(insertionIndex, 0, movedKey);
         galleryItemsRef.current = nextItems;
+        galleryKeyOrderRef.current = nextKeys;
         setGalleryDraftItems(nextItems);
+        meta.currentIndex = insertionIndex;
       }
+    } else {
+      meta.currentIndex = normalizedCurrentIndex;
     }
 
-    meta.currentIndex = targetIndex;
-    meta.dropIndicatorIndex = targetIndex;
+    meta.dropIndicatorIndex = desiredIndex;
     meta.dropPosition = dropPosition;
     meta.lastDirection = direction;
 
-    const totalItems = galleryItemsRef.current.length;
-    const placeholderIndex = Math.max(
-      0,
-      Math.min(
-        dropPosition === "after" ? targetIndex + 1 : targetIndex,
-        totalItems,
-      ),
+    const placeholderIndex = desiredIndex;
+    setGalleryPlaceholderIndexState((prev) =>
+      prev === placeholderIndex ? prev : placeholderIndex,
     );
-    setGalleryPlaceholderIndexState(placeholderIndex);
-  }, [computeGalleryTargetIndex, setGalleryDraftItems]);
+  }, [setGalleryDraftItems]);
 
   const handleGalleryPointerMove = useCallback(
     (clientY: number) => {
