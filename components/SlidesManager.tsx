@@ -89,6 +89,33 @@ export type Frame = {
   r: number;
 };
 
+const ALIGNMENT_TOLERANCE_PX = 8;
+
+const GUIDE_PRIORITY: Record<AlignmentGuideType, number> = {
+  'canvas-center': 0,
+  'block-center': 1,
+  'block-edge': 2,
+};
+
+type AlignmentGuideType = 'canvas-center' | 'block-center' | 'block-edge';
+
+type AlignmentGuide = {
+  orientation: 'vertical' | 'horizontal';
+  position: number;
+  type: AlignmentGuideType;
+};
+
+type AlignmentSnapMeta = {
+  blockId: string;
+  containerWidth: number;
+  containerHeight: number;
+};
+
+type AlignmentSnapResult = {
+  frame: Frame;
+  guides: AlignmentGuide[];
+};
+
 const TEXT_SIZING_DEVICE_ORDER: DeviceKind[] = ['mobile', 'tablet', 'desktop'];
 
 type TextSizingDimensions = { width?: number; height?: number };
@@ -462,6 +489,53 @@ export const BLOCK_INTERACTION_GLOBAL_STYLES = `
 .of-hover-rotate:hover {
   transform: rotate(3deg);
 }
+
+.of-interactive-box {
+  position: relative;
+  outline: 1px solid transparent;
+  outline-offset: 0;
+  transition: transform 160ms ease, box-shadow 160ms ease, outline-color 120ms ease;
+}
+
+.of-interactive-box[data-editable='true'] {
+  cursor: default;
+}
+
+.of-interactive-box[data-editable='true']:hover {
+  outline-style: dashed;
+  outline-width: 1.5px;
+  outline-color: rgba(56, 189, 248, 0.55);
+  cursor: grab;
+}
+
+.of-interactive-box[data-editable='true'][data-selected='true'] {
+  outline-style: solid;
+  outline-width: 2px;
+  outline-color: rgba(56, 189, 248, 0.85);
+}
+
+.of-interactive-box[data-editable='true'][data-selected='true']:hover {
+  outline-color: rgba(56, 189, 248, 0.9);
+}
+
+.of-interactive-box .block-pointer-target {
+  -webkit-user-drag: none;
+}
+
+.of-interactive-box[data-block-dragging='true'] .block-pointer-target {
+  pointer-events: none;
+}
+
+.of-interactive-box[data-editable='true'][data-dragging='true'] {
+  cursor: grabbing;
+  box-shadow: 0 18px 36px -12px rgba(15, 23, 42, 0.3);
+}
+
+.of-interactive-box[data-snapping='true'] {
+  transition-property: left, top, transform, box-shadow, outline-color;
+  transition-duration: 180ms;
+  transition-timing-function: ease-out;
+}
 `;
 
 const BLOCK_GRADIENT_DIRECTION_MAP: Record<BlockBackgroundGradientDirection, string> = {
@@ -787,9 +861,16 @@ const BlockChromeWithAutoSize = ({
     };
   }, [block.kind, scheduleMeasurement]);
 
+  const wrapperClassName = ['block-wrapper'];
+  if (isTextualKind(block.kind)) {
+    wrapperClassName.push('inline-flex', 'max-w-full');
+  } else {
+    wrapperClassName.push('flex', 'h-full', 'w-full');
+  }
+
   return (
     <BlockChrome ref={isTextualKind(block.kind) ? elementRef : undefined} block={block}>
-      {children}
+      <div className={wrapperClassName.join(' ')}>{children}</div>
     </BlockChrome>
   );
 };
@@ -806,6 +887,8 @@ export const DEFAULT_BUTTON_CONFIG: ButtonBlockConfig = {
   bgColor: '#000000',
 };
 
+export type BlockAspectRatio = 'original' | 'square' | '4:3' | '16:9';
+
 export type ImageBlockConfig = {
   url: string;
   fit: 'cover' | 'contain';
@@ -814,6 +897,7 @@ export type ImageBlockConfig = {
   radius: number;
   shadow: boolean;
   alt: string;
+  aspectRatio: BlockAspectRatio;
 };
 
 export const DEFAULT_IMAGE_CONFIG: ImageBlockConfig = {
@@ -824,6 +908,7 @@ export const DEFAULT_IMAGE_CONFIG: ImageBlockConfig = {
   radius: 0,
   shadow: false,
   alt: '',
+  aspectRatio: 'original',
 };
 
 export type GalleryBlockItem = { url: string; alt?: string };
@@ -835,6 +920,7 @@ export type GalleryBlockConfig = {
   interval: number;
   radius: number;
   shadow: boolean;
+  aspectRatio: BlockAspectRatio;
 };
 
 export const DEFAULT_GALLERY_CONFIG: GalleryBlockConfig = {
@@ -844,7 +930,48 @@ export const DEFAULT_GALLERY_CONFIG: GalleryBlockConfig = {
   interval: 3000,
   radius: 0,
   shadow: false,
+  aspectRatio: 'original',
 };
+
+const ASPECT_RATIO_ALIASES: Record<string, BlockAspectRatio> = {
+  original: 'original',
+  auto: 'original',
+  natural: 'original',
+  none: 'original',
+  square: 'square',
+  '1:1': 'square',
+  '1x1': 'square',
+  '4:3': '4:3',
+  '4x3': '4:3',
+  '16:9': '16:9',
+  '16x9': '16:9',
+};
+
+export function parseBlockAspectRatio(value: unknown): BlockAspectRatio | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase();
+  return ASPECT_RATIO_ALIASES[normalized];
+}
+
+export function normalizeBlockAspectRatio(
+  value: unknown,
+  fallback: BlockAspectRatio,
+): BlockAspectRatio {
+  return parseBlockAspectRatio(value) ?? fallback;
+}
+
+export function getAspectRatioValue(aspectRatio: BlockAspectRatio): string | undefined {
+  switch (aspectRatio) {
+    case 'square':
+      return '1 / 1';
+    case '4:3':
+      return '4 / 3';
+    case '16:9':
+      return '16 / 9';
+    default:
+      return undefined;
+  }
+}
 
 export type QuoteBlockConfig = {
   text: string;
@@ -898,6 +1025,7 @@ export type SlideBlock = {
   href?: string;
   src?: string;
   alt?: string;
+  aspectRatio?: BlockAspectRatio;
   items?: { src: string; alt?: string }[];
   frames: Partial<Record<DeviceKind, Frame>>;
   color?: string;
@@ -980,7 +1108,7 @@ type SlidesManagerProps = {
   onChange: (cfg: SlideCfg, options?: SlidesManagerChangeOptions) => void;
   editable: boolean;
   selectedId?: string | null;
-  onSelectBlock?: (id: string | null) => void;
+  onSelectBlock?: (id: string | null, options?: { openInspector?: boolean }) => void;
   openInspector?: () => void;
   onCanvasClick?: () => void;
   activeDevice?: DeviceKind;
@@ -1365,6 +1493,10 @@ export function resolveImageConfig(block: SlideBlock): ImageBlockConfig {
       : typeof block.alt === 'string'
         ? block.alt
         : DEFAULT_IMAGE_CONFIG.alt;
+  const aspectRatioSource =
+    parseBlockAspectRatio(raw.aspectRatio) ??
+    parseBlockAspectRatio((raw as any).ratio) ??
+    parseBlockAspectRatio(block.aspectRatio);
 
   const focalX = Number.isFinite(focalXSource)
     ? clamp(focalXSource as number, 0, 1)
@@ -1384,6 +1516,7 @@ export function resolveImageConfig(block: SlideBlock): ImageBlockConfig {
     radius,
     shadow: Boolean(shadowSource),
     alt: altSource,
+    aspectRatio: aspectRatioSource ?? DEFAULT_IMAGE_CONFIG.aspectRatio,
   };
 }
 
@@ -1505,6 +1638,10 @@ export function resolveGalleryConfig(block: SlideBlock): GalleryBlockConfig {
     parseBoolean(raw.shadow) ??
     parseBoolean((raw as any).hasShadow) ??
     parseBoolean((block as any).shadow);
+  const aspectRatioSource =
+    parseBlockAspectRatio(raw.aspectRatio) ??
+    parseBlockAspectRatio((raw as any).ratio) ??
+    parseBlockAspectRatio((block as any).aspectRatio);
 
   const intervalCandidate = intervalRaw && intervalRaw > 0 ? intervalRaw : undefined;
   const radiusCandidate = typeof radiusRaw === 'number' && radiusRaw >= 0 ? radiusRaw : undefined;
@@ -1516,6 +1653,7 @@ export function resolveGalleryConfig(block: SlideBlock): GalleryBlockConfig {
     interval: intervalCandidate ? Math.round(intervalCandidate) : DEFAULT_GALLERY_CONFIG.interval,
     radius: radiusCandidate ?? DEFAULT_GALLERY_CONFIG.radius,
     shadow: Boolean(shadowRaw),
+    aspectRatio: aspectRatioSource ?? DEFAULT_GALLERY_CONFIG.aspectRatio,
   };
 }
 
@@ -1675,6 +1813,166 @@ export default function SlidesManager({
 
   useGoogleFontLoader(fontsInUse);
 
+  const [activeGuides, setActiveGuides] = useState<AlignmentGuide[]>([]);
+
+  const visibleBlockFrames = useMemo(
+    () =>
+      (cfg.blocks ?? [])
+        .map((block) => {
+          const visibility = resolveBlockVisibility(block);
+          if (!visibility[activeDevice]) {
+            return null;
+          }
+          return {
+            id: block.id,
+            frame: ensureFrame(block, activeDevice),
+          };
+        })
+        .filter(Boolean) as { id: string; frame: Frame }[],
+    [cfg, activeDevice],
+  );
+
+  const resolveDragSnap = useCallback(
+    (frame: Frame, meta: AlignmentSnapMeta): AlignmentSnapResult | null => {
+      const { blockId, containerWidth, containerHeight } = meta;
+      if (containerWidth <= 0 || containerHeight <= 0) {
+        return null;
+      }
+
+      const toleranceX = containerWidth ? (ALIGNMENT_TOLERANCE_PX / containerWidth) * 100 : 0;
+      const toleranceY = containerHeight ? (ALIGNMENT_TOLERANCE_PX / containerHeight) * 100 : 0;
+
+      const verticalGuides: AlignmentGuide[] = [
+        { orientation: 'vertical', position: 50, type: 'canvas-center' },
+      ];
+      const horizontalGuides: AlignmentGuide[] = [
+        { orientation: 'horizontal', position: 50, type: 'canvas-center' },
+      ];
+
+      visibleBlockFrames.forEach(({ id, frame: other }) => {
+        if (id === blockId) {
+          return;
+        }
+        verticalGuides.push(
+          { orientation: 'vertical', position: other.x, type: 'block-edge' },
+          { orientation: 'vertical', position: other.x + other.w, type: 'block-edge' },
+          { orientation: 'vertical', position: other.x + other.w / 2, type: 'block-center' },
+        );
+        horizontalGuides.push(
+          { orientation: 'horizontal', position: other.y, type: 'block-edge' },
+          { orientation: 'horizontal', position: other.y + other.h, type: 'block-edge' },
+          { orientation: 'horizontal', position: other.y + other.h / 2, type: 'block-center' },
+        );
+      });
+
+      let snappedX = frame.x;
+      let snappedY = frame.y;
+      let verticalGuide: AlignmentGuide | null = null;
+      let horizontalGuide: AlignmentGuide | null = null;
+      let bestVerticalDelta = Number.POSITIVE_INFINITY;
+      let bestVerticalPriority = Number.POSITIVE_INFINITY;
+      let bestHorizontalDelta = Number.POSITIVE_INFINITY;
+      let bestHorizontalPriority = Number.POSITIVE_INFINITY;
+      const EPSILON = 0.0001;
+
+      const tryVertical = (delta: number, value: number, guide: AlignmentGuide) => {
+        if (delta > toleranceX) return;
+        const priority = GUIDE_PRIORITY[guide.type];
+        if (
+          verticalGuide === null ||
+          delta < bestVerticalDelta - EPSILON ||
+          (Math.abs(delta - bestVerticalDelta) <= EPSILON && priority < bestVerticalPriority)
+        ) {
+          bestVerticalDelta = delta;
+          bestVerticalPriority = priority;
+          snappedX = clamp(value, 0, Math.max(0, 100 - frame.w));
+          verticalGuide = guide;
+        }
+      };
+
+      verticalGuides.forEach((guide) => {
+        const leftDelta = Math.abs(frame.x - guide.position);
+        tryVertical(leftDelta, guide.position, guide);
+        const rightDelta = Math.abs(frame.x + frame.w - guide.position);
+        tryVertical(rightDelta, guide.position - frame.w, guide);
+        const centerDelta = Math.abs(frame.x + frame.w / 2 - guide.position);
+        tryVertical(centerDelta, guide.position - frame.w / 2, guide);
+      });
+
+      const tryHorizontal = (delta: number, value: number, guide: AlignmentGuide) => {
+        if (delta > toleranceY) return;
+        const priority = GUIDE_PRIORITY[guide.type];
+        if (
+          horizontalGuide === null ||
+          delta < bestHorizontalDelta - EPSILON ||
+          (Math.abs(delta - bestHorizontalDelta) <= EPSILON && priority < bestHorizontalPriority)
+        ) {
+          bestHorizontalDelta = delta;
+          bestHorizontalPriority = priority;
+          snappedY = clamp(value, 0, Math.max(0, 100 - frame.h));
+          horizontalGuide = guide;
+        }
+      };
+
+      horizontalGuides.forEach((guide) => {
+        const topDelta = Math.abs(frame.y - guide.position);
+        tryHorizontal(topDelta, guide.position, guide);
+        const bottomDelta = Math.abs(frame.y + frame.h - guide.position);
+        tryHorizontal(bottomDelta, guide.position - frame.h, guide);
+        const centerDelta = Math.abs(frame.y + frame.h / 2 - guide.position);
+        tryHorizontal(centerDelta, guide.position - frame.h / 2, guide);
+      });
+
+      if (!verticalGuide && !horizontalGuide) {
+        return null;
+      }
+
+      const guides: AlignmentGuide[] = [];
+      if (verticalGuide) {
+        guides.push({ ...verticalGuide });
+      }
+      if (horizontalGuide) {
+        guides.push({ ...horizontalGuide });
+      }
+
+      return {
+        frame: {
+          ...frame,
+          x: clamp(snappedX, 0, Math.max(0, 100 - frame.w)),
+          y: clamp(snappedY, 0, Math.max(0, 100 - frame.h)),
+        },
+        guides,
+      };
+    },
+    [visibleBlockFrames],
+  );
+
+  const handleGuidesChange = useCallback((guides: AlignmentGuide[]) => {
+    setActiveGuides((prev) => {
+      if (
+        prev.length === guides.length &&
+        prev.every((guide, index) => {
+          const next = guides[index];
+          return (
+            next &&
+            next.orientation === guide.orientation &&
+            next.type === guide.type &&
+            Math.abs(next.position - guide.position) < 0.001
+          );
+        })
+      ) {
+        return prev;
+      }
+      return guides;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!editable || !editInPreview) {
+      setActiveGuides([]);
+    }
+  }, [editable, editInPreview]);
+
   useEffect(() => {
     if (!editable) return;
     const updates = cfg.blocks.filter((block) => {
@@ -1818,6 +2116,8 @@ export default function SlidesManager({
     );
   };
 
+  const disableChildPointerEvents = Boolean(editable && editInPreview);
+
   const renderBlockContent = (block: SlideBlock): ReactNode => {
     switch (block.kind) {
       case 'heading':
@@ -1948,29 +2248,54 @@ export default function SlidesManager({
       case 'image': {
         const image = resolveImageConfig(block);
         const imageUrl = image.url || block.src || '';
+        const aspectRatioValue = getAspectRatioValue(image.aspectRatio);
+        const wrapperClasses = ['flex', 'h-full', 'w-full', 'items-center', 'justify-center', 'overflow-hidden'];
+        if (image.shadow) wrapperClasses.push('shadow-lg');
+        const wrapperStyle: CSSProperties = {
+          borderRadius: image.radius,
+        };
+        if (aspectRatioValue) {
+          wrapperStyle.aspectRatio = aspectRatioValue;
+          wrapperStyle.height = 'auto';
+        }
         if (!imageUrl) {
-          const placeholderClasses = ['h-full w-full bg-neutral-200'];
-          if (image.shadow) placeholderClasses.push('shadow-lg');
           return (
             <div
-              className={placeholderClasses.join(' ')}
-              style={{ borderRadius: image.radius }}
+              className={[...wrapperClasses, 'bg-neutral-200'].join(' ')}
+              style={wrapperStyle}
             />
           );
         }
-        const classes = ['h-full w-full'];
-        if (image.shadow) classes.push('shadow-lg');
+        const imageStyle: CSSProperties = {
+          objectFit: image.fit,
+          objectPosition: `${image.focalX * 100}% ${image.focalY * 100}%`,
+          borderRadius: image.radius,
+          width: '100%',
+          maxWidth: '100%',
+          maxHeight: '100%',
+        };
+        if (aspectRatioValue) {
+          imageStyle.aspectRatio = aspectRatioValue;
+          imageStyle.height = 'auto';
+        } else {
+          imageStyle.height = '100%';
+        }
+        const imageClassNames = ['block-pointer-target', 'select-none'];
+        const preventDrag = (event: React.DragEvent<HTMLImageElement>) => {
+          event.preventDefault();
+        };
+
         return (
-          <img
-            src={imageUrl}
-            alt={image.alt || ''}
-            className={classes.join(' ')}
-            style={{
-              objectFit: image.fit,
-              objectPosition: `${image.focalX * 100}% ${image.focalY * 100}%`,
-              borderRadius: image.radius,
-            }}
-          />
+          <div className={wrapperClasses.join(' ')} style={wrapperStyle}>
+            <img
+              src={imageUrl}
+              alt={image.alt || ''}
+              style={imageStyle}
+              className={imageClassNames.join(' ')}
+              draggable={false}
+              onDragStart={preventDrag}
+            />
+          </div>
         );
       }
       case 'quote': {
@@ -2073,7 +2398,7 @@ export default function SlidesManager({
         );
       }
       case 'gallery': {
-        return <GalleryBlockPreview block={block} />;
+        return <GalleryBlockPreview block={block} disablePointerGuards={disableChildPointerEvents} />;
       }
       case 'spacer':
         return <div className="w-full h-full" />;
@@ -2114,6 +2439,45 @@ export default function SlidesManager({
               className="absolute inset-0"
               style={{ pointerEvents: editable && editInPreview ? 'auto' : 'none' }}
             >
+              <div
+                className="pointer-events-none absolute inset-0 transition-opacity duration-100"
+                style={{ zIndex: 30, opacity: activeGuides.length > 0 ? 1 : 0 }}
+              >
+                {activeGuides.map((guide, index) => {
+                  const color = guide.type === 'canvas-center' ? '#64748b' : '#38bdf8';
+                  const key = `guide-${guide.orientation}-${guide.type}-${index}`;
+                  if (guide.orientation === 'vertical') {
+                    return (
+                      <div
+                        key={key}
+                        className="absolute"
+                        style={{
+                          left: `${guide.position}%`,
+                          top: 0,
+                          bottom: 0,
+                          width: '1px',
+                          transform: 'translateX(-0.5px)',
+                          backgroundColor: color,
+                        }}
+                      />
+                    );
+                  }
+                  return (
+                    <div
+                      key={key}
+                      className="absolute"
+                      style={{
+                        top: `${guide.position}%`,
+                        left: 0,
+                        right: 0,
+                        height: '1px',
+                        transform: 'translateY(-0.5px)',
+                        backgroundColor: color,
+                      }}
+                    />
+                  );
+                })}
+              </div>
               {cfg.blocks.map((block) => {
                 const visibility = resolveBlockVisibility(block);
                 if (!visibility[activeDevice]) {
@@ -2137,6 +2501,9 @@ export default function SlidesManager({
                     onSelect={() => onSelectBlock?.(block.id)}
                     onTap={() => {
                       onSelectBlock?.(block.id);
+                    }}
+                    onDoubleActivate={() => {
+                      onSelectBlock?.(block.id, { openInspector: true });
                       openInspector?.();
                     }}
                     onChange={(nextFrame, opts) => handleFrameChange(block.id, nextFrame, opts)}
@@ -2157,6 +2524,8 @@ export default function SlidesManager({
                           }
                         : undefined
                     }
+                    resolveDragSnap={resolveDragSnap}
+                    onDragGuidesChange={handleGuidesChange}
                   >
                     <BlockChromeWithAutoSize
                       block={block}
@@ -2309,11 +2678,29 @@ function EditableTextContent({
   return React.createElement(tag, props);
 }
 
-function GalleryBlockPreview({ block }: { block: SlideBlock }) {
+function GalleryBlockPreview({
+  block,
+  disablePointerGuards,
+}: {
+  block: SlideBlock;
+  disablePointerGuards?: boolean;
+}) {
   const config = useMemo(() => resolveGalleryConfig(block), [block]);
   const items = config.items;
   const [activeIndex, setActiveIndex] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const aspectRatioValue = getAspectRatioValue(config.aspectRatio);
+  const handleImageDragStart = useCallback((event: React.DragEvent<HTMLImageElement>) => {
+    event.preventDefault();
+  }, []);
+
+  const pointerGuardProps: React.ImgHTMLAttributes<HTMLImageElement> = disablePointerGuards
+    ? {
+        className: 'block-pointer-target select-none',
+        draggable: false,
+        onDragStart: handleImageDragStart,
+      }
+    : {};
 
   useEffect(() => {
     setActiveIndex(0);
@@ -2372,14 +2759,31 @@ function GalleryBlockPreview({ block }: { block: SlideBlock }) {
           {items.map((item, index) => (
             <div
               key={`${item.url}-${index}`}
-              className="flex h-full w-full flex-none snap-center"
+              className="flex h-full w-full flex-none snap-center items-center justify-center"
               style={{ minWidth: '100%' }}
             >
-              <img
-                src={item.url}
-                alt={item.alt || ''}
-                className="h-full w-full object-cover"
-              />
+              <div
+                className="flex h-full w-full items-center justify-center overflow-hidden"
+                style={
+                  aspectRatioValue
+                    ? { aspectRatio: aspectRatioValue, height: 'auto', width: '100%' }
+                    : undefined
+                }
+              >
+                <img
+                  src={item.url}
+                  alt={item.alt || ''}
+                  style={{
+                    objectFit: 'cover',
+                    width: '100%',
+                    maxWidth: '100%',
+                    maxHeight: '100%',
+                    height: aspectRatioValue ? 'auto' : '100%',
+                    aspectRatio: aspectRatioValue,
+                  }}
+                  {...pointerGuardProps}
+                />
+              </div>
             </div>
           ))}
         </div>
@@ -2395,15 +2799,31 @@ function GalleryBlockPreview({ block }: { block: SlideBlock }) {
         className="grid h-full w-full gap-2"
         style={{
           gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-          gridAutoRows: '1fr',
+          gridAutoRows: aspectRatioValue ? 'auto' : '1fr',
         }}
       >
         {items.map((item, index) => (
-          <div key={`${item.url}-${index}`} className="relative h-full w-full overflow-hidden">
+          <div
+            key={`${item.url}-${index}`}
+            className="relative flex h-full w-full items-center justify-center overflow-hidden"
+            style={
+              aspectRatioValue
+                ? { aspectRatio: aspectRatioValue, height: 'auto', width: '100%' }
+                : undefined
+            }
+          >
             <img
               src={item.url}
               alt={item.alt || ''}
-              className="h-full w-full object-cover"
+              style={{
+                objectFit: 'cover',
+                width: '100%',
+                maxWidth: '100%',
+                maxHeight: '100%',
+                height: aspectRatioValue ? 'auto' : '100%',
+                aspectRatio: aspectRatioValue,
+              }}
+              {...pointerGuardProps}
             />
           </div>
         ))}
@@ -2420,6 +2840,7 @@ type InteractiveBoxProps = {
   editable: boolean;
   onSelect: () => void;
   onTap: () => void;
+  onDoubleActivate?: () => void;
   onChange: (frame: Frame, options?: SlidesManagerChangeOptions) => void;
   children: ReactNode;
   scale: number;
@@ -2428,6 +2849,8 @@ type InteractiveBoxProps = {
   minWidthPct?: number;
   minHeightPct?: number;
   onResizeStart?: (details: { horizontal: boolean; vertical: boolean }) => void;
+  resolveDragSnap?: (frame: Frame, meta: AlignmentSnapMeta) => AlignmentSnapResult | null;
+  onDragGuidesChange?: (guides: AlignmentGuide[]) => void;
 };
 
 type PointerState = {
@@ -2447,12 +2870,14 @@ const TAP_MAX_MOVEMENT = 4;
 const TAP_MAX_DURATION = 300;
 
 function InteractiveBox({
+  id,
   frame,
   containerRef,
   selected,
   editable,
   onSelect,
   onTap,
+  onDoubleActivate,
   onChange,
   children,
   scale,
@@ -2461,12 +2886,13 @@ function InteractiveBox({
   minWidthPct,
   minHeightPct,
   onResizeStart,
+  resolveDragSnap,
+  onDragGuidesChange,
 }: InteractiveBoxProps) {
   const localRef = useRef<HTMLDivElement>(null);
   const pointerState = useRef<PointerState | null>(null);
-  const [hovered, setHovered] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
-
+const [hovered, setHovered] = useState(false);
+const [isDragging, setIsDragging] = useState(false);
   const getContainerRect = () => containerRef.current?.getBoundingClientRect();
 
   const handlePointerDown = (type: PointerState['type'], corner?: string) => (e: React.PointerEvent) => {
@@ -2474,6 +2900,7 @@ function InteractiveBox({
     e.stopPropagation();
     onSelect();
     if (locked) {
+      onDragGuidesChange?.([]);
       return;
     }
     if (type === 'move') {
@@ -2482,6 +2909,7 @@ function InteractiveBox({
     }
     const rect = getContainerRect();
     if (!rect) return;
+    onDragGuidesChange?.([]);
     const state: PointerState = {
       type,
       startX: e.clientX,
@@ -2504,6 +2932,10 @@ function InteractiveBox({
       onResizeStart?.({ horizontal, vertical });
     }
     pointerState.current = state;
+    setSnapping(false);
+    if (type !== 'move') {
+      setDragging(false);
+    }
     localRef.current?.setPointerCapture?.(e.pointerId);
   };
 
@@ -2519,7 +2951,10 @@ function InteractiveBox({
     if (distance > TAP_MAX_MOVEMENT) {
       ps.moved = true;
     }
-    if (ps.locked) return;
+    if (ps.locked) {
+      onDragGuidesChange?.([]);
+      return;
+    }
     const effectiveScale = ps.scale || 1;
     const width = rect.width / effectiveScale;
     const height = rect.height / effectiveScale;
@@ -2531,6 +2966,9 @@ function InteractiveBox({
     if ((ps.type === 'move' || ps.type === 'resize') && !ps.hasManipulated && distance > TAP_MAX_MOVEMENT) {
       ps.hasManipulated = true;
       onManipulationChange?.(true);
+      if (ps.type === 'move') {
+        setDragging(true);
+      }
     }
 
     const minWidth = clamp(
@@ -2545,13 +2983,38 @@ function InteractiveBox({
     );
 
     if (ps.type === 'move') {
-      const next: Frame = {
+      let next: Frame = {
         ...ps.startFrame,
         x: clamp(ps.startFrame.x + dx, 0, 100 - ps.startFrame.w),
         y: clamp(ps.startFrame.y + dy, 0, 100 - ps.startFrame.h),
       };
+      if (resolveDragSnap) {
+        const snap = resolveDragSnap(next, {
+          blockId: id,
+          containerWidth: width,
+          containerHeight: height,
+        });
+        if (snap) {
+          next = snap.frame;
+          onDragGuidesChange?.(snap.guides);
+          if (!snapping) {
+            setSnapping(true);
+          }
+        } else {
+          onDragGuidesChange?.([]);
+          if (snapping) {
+            setSnapping(false);
+          }
+        }
+      } else {
+        onDragGuidesChange?.([]);
+        if (snapping) {
+          setSnapping(false);
+        }
+      }
       onChange(next, { commit: false });
     } else if (ps.type === 'resize') {
+      onDragGuidesChange?.([]);
       const next: Frame = { ...ps.startFrame };
       if (ps.corner?.includes('e')) {
         next.w = clamp(ps.startFrame.w + dx, minWidth, 100 - ps.startFrame.x);
@@ -2573,6 +3036,7 @@ function InteractiveBox({
       }
       onChange(next, { commit: false });
     } else if (ps.type === 'rotate') {
+      onDragGuidesChange?.([]);
       const el = localRef.current;
       if (!el) return;
       if (!ps.hasManipulated) {
@@ -2594,7 +3058,7 @@ function InteractiveBox({
     if (!ps) return;
     pointerState.current = null;
     localRef.current?.releasePointerCapture?.(e.pointerId);
-    if (ps.type === 'move') {
+if (ps.type === 'move') {
       setIsDragging(false);
       const rect = localRef.current?.getBoundingClientRect();
       if (rect) {
@@ -2629,6 +3093,10 @@ function InteractiveBox({
     if (ps.hasManipulated) {
       onManipulationChange?.(false);
     }
+    setDragging(false);
+    if (snapping) {
+      setSnapping(false);
+    }
   };
 
   const handlePointerCancel = (e: React.PointerEvent) => {
@@ -2637,14 +3105,24 @@ function InteractiveBox({
     if (!ps) return;
     pointerState.current = null;
     localRef.current?.releasePointerCapture?.(e.pointerId);
-    if (ps.type === 'move') {
+if (ps.type === 'move') {
       setIsDragging(false);
       setHovered(false);
     }
     if (ps.hasManipulated) {
       onManipulationChange?.(false);
     }
+    setDragging(false);
+    if (snapping) {
+      setSnapping(false);
+    }
   };
+
+  const rotation = frame.r ?? 0;
+  const transformParts = [`rotate(${rotation}deg)`];
+  if (dragging) {
+    transformParts.push('scale(1.02)');
+  }
 
   const style: CSSProperties = {
     position: 'absolute',
@@ -2652,29 +3130,35 @@ function InteractiveBox({
     top: `${frame.y}%`,
     width: `${frame.w}%`,
     height: `${frame.h}%`,
-    transform: `rotate(${frame.r ?? 0}deg)`,
+    transform: transformParts.join(' '),
     transformOrigin: 'top left',
-    border: selected && editable ? '1px dashed rgba(56,189,248,0.8)' : undefined,
     borderRadius: 8,
     touchAction: 'none',
-    cursor:
-      editable && !locked ? (isDragging ? 'grabbing' : hovered ? 'grab' : 'default') : 'default',
-  };
+cursor:
+    editable && !locked ? (isDragging ? 'grabbing' : hovered ? 'grab' : 'default') : 'default',
+};
 
-  const highlightVisible = editable && !locked && (hovered || isDragging);
-  const highlightStyle: CSSProperties = {
-    position: 'absolute',
-    inset: 0,
-    border: '2px dashed var(--brand-secondary, var(--brand-primary, #0ea5e9))',
-    borderRadius: 'inherit',
-    pointerEvents: 'none',
-    opacity: highlightVisible ? 0.3 : 0,
-    transition: 'opacity 150ms ease-out',
+const highlightVisible = editable && !locked && (hovered || isDragging);
+const highlightStyle: CSSProperties = {
+  position: 'absolute',
+  inset: 0,
+  border: '2px dashed var(--brand-secondary, var(--brand-primary, #0ea5e9))',
+  borderRadius: 'inherit',
+  pointerEvents: 'none',
+  opacity: highlightVisible ? 0.3 : 0,
+  transition: 'opacity 150ms ease-out',
+};
   };
 
   return (
     <div
       ref={localRef}
+      className="of-interactive-box"
+      data-block-dragging={dragging ? 'true' : 'false'}
+      data-dragging={dragging ? 'true' : 'false'}
+      data-snapping={snapping ? 'true' : 'false'}
+      data-editable={editable && !locked ? 'true' : 'false'}
+      data-selected={selected ? 'true' : 'false'}
       style={style}
       onPointerDown={handlePointerDown('move')}
       onPointerMove={handlePointerMove}
@@ -2693,6 +3177,12 @@ function InteractiveBox({
         if (!editable) return;
         e.stopPropagation();
         onSelect();
+      }}
+      onDoubleClick={(e) => {
+        if (!editable) return;
+        e.stopPropagation();
+        onSelect();
+        onDoubleActivate?.();
       }}
     >
       <div aria-hidden style={highlightStyle} />

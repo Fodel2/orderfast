@@ -6,6 +6,21 @@ import React, {
   useRef,
   useState,
 } from "react";
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import SlidesManager, {
   DEVICE_DIMENSIONS,
   DEFAULT_BUTTON_CONFIG,
@@ -36,6 +51,8 @@ import SlidesManager, {
   type SlideBlock,
   type SlideCfg,
   type SlidesManagerChangeOptions,
+  getAspectRatioValue,
+  normalizeBlockAspectRatio,
   resolveButtonConfig,
   resolveImageConfig,
   resolveGalleryConfig,
@@ -157,6 +174,16 @@ const BLOCK_BACKGROUND_GRADIENT_DIRECTIONS: {
   { value: "to-bottom", label: "To bottom" },
   { value: "to-left", label: "To left" },
   { value: "to-right", label: "To right" },
+];
+
+const IMAGE_ASPECT_RATIO_OPTIONS: {
+  value: ImageBlockConfig["aspectRatio"];
+  label: string;
+}[] = [
+  { value: "original", label: "Original" },
+  { value: "square", label: "Square (1:1)" },
+  { value: "4:3", label: "4:3" },
+  { value: "16:9", label: "16:9" },
 ];
 
 const BLOCK_ANIMATION_OPTIONS: { value: BlockAnimationType; label: string }[] = [
@@ -651,6 +678,81 @@ const InspectorSliderControl: React.FC<InspectorSliderControlProps> = ({
   );
 };
 
+type GalleryInspectorItemProps = {
+  id: string;
+  index: number;
+  item: GalleryBlockItem;
+  onRemove: () => void;
+  onAltChange: (value: string) => void;
+};
+
+const GalleryInspectorItem: React.FC<GalleryInspectorItemProps> = ({
+  id,
+  index,
+  item,
+  onRemove,
+  onAltChange,
+}) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+  if (isDragging) {
+    style.boxShadow = "0 8px 16px rgba(15, 23, 42, 0.12)";
+    style.opacity = 0.95;
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-start gap-3 rounded border bg-white px-2 py-3 text-xs ${
+        isDragging ? "ring-1 ring-neutral-200" : ""
+      }`}
+    >
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        className="mt-1 flex h-7 w-7 items-center justify-center rounded border border-transparent text-neutral-400 hover:text-neutral-600 focus:outline-none cursor-grab active:cursor-grabbing"
+        aria-label="Reorder image"
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+      <img
+        src={item.url}
+        alt={item.alt || ""}
+        className="h-12 w-12 flex-none rounded object-cover"
+      />
+      <div className="flex flex-1 flex-col gap-2">
+        <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+          <span>Image {index + 1}</span>
+          <button
+            type="button"
+            onClick={onRemove}
+            className="rounded border px-2 py-1 text-[11px] font-medium text-red-600 hover:bg-red-50"
+          >
+            Remove
+          </button>
+        </div>
+        <p className="break-all text-[11px] text-neutral-500">{item.url}</p>
+        <label className="block">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+            Alt text
+          </span>
+          <InputText
+            value={item.alt ?? ""}
+            onChange={(e) => onAltChange(e.target.value)}
+            className={INSPECTOR_INPUT_CLASS}
+            placeholder="Describe the image"
+          />
+        </label>
+      </div>
+    </div>
+  );
+};
+
 const cloneCfg = (cfg: SlideCfg): SlideCfg => JSON.parse(JSON.stringify(cfg));
 
 function defaultBackground(): SlideCfg["background"] {
@@ -1132,19 +1234,32 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
   let workingConfig = extractConfig(block.config);
 
   if (kind === "image") {
+    const existingConfig = extractConfig(block.config);
     const imageConfig = resolveImageConfig(block);
-    block.config = { ...imageConfig };
+    const hydratedConfig = {
+      ...existingConfig,
+      ...imageConfig,
+    } satisfies Record<string, any>;
+    block.config = hydratedConfig;
     block.src = imageConfig.url;
     block.fit = imageConfig.fit;
     block.radius = imageConfig.radius;
     block.alt = imageConfig.alt;
+    block.aspectRatio = imageConfig.aspectRatio;
     workingConfig = extractConfig(block.config);
   }
   if (kind === "gallery") {
+    const existingConfig = extractConfig(block.config);
     const galleryConfig = resolveGalleryConfig(block);
     block.items = galleryConfig.items.map((item) => ({ src: item.url, alt: item.alt }));
-    block.config = { ...(block.config ?? {}), ...galleryConfig };
+    const hydratedConfig = {
+      ...existingConfig,
+      ...galleryConfig,
+      items: galleryConfig.items,
+    } satisfies Record<string, any>;
+    block.config = hydratedConfig;
     block.radius = galleryConfig.radius;
+    block.aspectRatio = galleryConfig.aspectRatio;
     workingConfig = extractConfig(block.config);
   }
   if (kind === "heading" && !block.size) block.size = "xl";
@@ -1158,10 +1273,6 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
     block.href = normalizedConfig.href;
     block.buttonVariant =
       normalizedConfig.variant === "Outline" ? "secondary" : "primary";
-    workingConfig = extractConfig(block.config);
-  }
-  if (kind === "gallery") {
-    block.config = { ...DEFAULT_GALLERY_CONFIG };
     workingConfig = extractConfig(block.config);
   }
   if (
@@ -1613,9 +1724,19 @@ export default function SlideModal({
   const galleryItemKeyMapRef = useRef(new WeakMap<GalleryBlockItem, string>());
   const galleryPrevPositionsRef = useRef<Map<string, DOMRect>>(new Map());
 
+  const gallerySensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+  );
+
   const isManipulatingRef = useRef(false);
   const selectedIdRef = useRef<string | null>(null);
+  const inspectorOpenRef = useRef(inspectorOpen);
+  const inspectorWasOpenRef = useRef(false);
   const reviewOptions = DEFAULT_REVIEW_OPTIONS;
+
+  useEffect(() => {
+    inspectorOpenRef.current = inspectorOpen;
+  }, [inspectorOpen]);
 
   useEffect(() => {
     setCfg(normalizeConfig(initialCfg ?? {}, slide));
@@ -1772,6 +1893,17 @@ export default function SlideModal({
       block.fit = imageConfig.fit;
       block.radius = imageConfig.radius;
       block.alt = imageConfig.alt;
+      block.aspectRatio = imageConfig.aspectRatio;
+    }
+    if (kind === "gallery") {
+      const galleryConfig: GalleryBlockConfig = { ...DEFAULT_GALLERY_CONFIG };
+      block.config = galleryConfig;
+      block.items = galleryConfig.items.map((item) => ({
+        src: item.url,
+        alt: item.alt,
+      }));
+      block.radius = galleryConfig.radius;
+      block.aspectRatio = galleryConfig.aspectRatio;
     }
     if (kind === "quote") {
       const quoteConfig: QuoteBlockConfig = {
@@ -1838,7 +1970,7 @@ export default function SlideModal({
     }
     block.config = mergeInteractionConfig(block, baseConfig);
     updateCfg((prev) => ({ ...prev, blocks: [...prev.blocks, block] }));
-    handleSelectBlock(id);
+    handleSelectBlock(id, { openInspector: true });
   };
 
   const removeBlock = (id: string) => {
@@ -2014,6 +2146,10 @@ export default function SlideModal({
               typeof next.alt === "string"
                 ? next.alt
                 : DEFAULT_IMAGE_CONFIG.alt,
+            aspectRatio: normalizeBlockAspectRatio(
+              next.aspectRatio,
+              DEFAULT_IMAGE_CONFIG.aspectRatio,
+            ),
           };
           const previous = extractConfig(b.config);
           const candidate = { ...previous, ...sanitized };
@@ -2023,6 +2159,7 @@ export default function SlideModal({
             fit: sanitized.fit,
             radius: sanitized.radius,
             alt: sanitized.alt,
+            aspectRatio: sanitized.aspectRatio,
             config: mergeInteractionConfig({ ...b, config: candidate }, candidate),
           };
         }),
@@ -2089,6 +2226,10 @@ export default function SlideModal({
             interval: Math.max(200, intervalCandidate),
             radius: radiusCandidate,
             shadow: Boolean(next.shadow),
+            aspectRatio: normalizeBlockAspectRatio(
+              next.aspectRatio,
+              DEFAULT_GALLERY_CONFIG.aspectRatio,
+            ),
           };
           const previous = extractConfig(b.config);
           const candidate = { ...previous, ...sanitized };
@@ -2100,6 +2241,7 @@ export default function SlideModal({
               alt: item.alt,
             })),
             radius: sanitized.radius,
+            aspectRatio: sanitized.aspectRatio,
           };
         }),
       }),
@@ -2231,27 +2373,43 @@ export default function SlideModal({
   const handleManipulationChange = useCallback((manipulating: boolean) => {
     isManipulatingRef.current = manipulating;
     if (manipulating) {
-      setInspectorOpen(false);
-    } else if (selectedIdRef.current) {
-      setInspectorOpen(true);
+      inspectorWasOpenRef.current = inspectorOpenRef.current;
+      if (inspectorOpenRef.current) {
+        setInspectorOpen(false);
+      }
+    } else {
+      if (inspectorWasOpenRef.current && selectedIdRef.current) {
+        setInspectorOpen(true);
+      }
+      inspectorWasOpenRef.current = false;
     }
   }, []);
 
-  const handleSelectBlock = useCallback((id: string | null) => {
-    setSelectedId(id);
-    selectedIdRef.current = id;
-    if (!id) {
-      setInspectorOpen(false);
-      return;
-    }
-    if (!isManipulatingRef.current) {
-      setInspectorOpen(true);
-    }
-  }, []);
+  const handleSelectBlock = useCallback(
+    (id: string | null, options?: { openInspector?: boolean }) => {
+      setSelectedId(id);
+      selectedIdRef.current = id;
+      const shouldOpen = Boolean(options?.openInspector);
+      inspectorWasOpenRef.current = shouldOpen;
+      if (!id) {
+        setInspectorOpen(false);
+        return;
+      }
+      if (isManipulatingRef.current) {
+        if (!shouldOpen) {
+          setInspectorOpen(false);
+        }
+        return;
+      }
+      setInspectorOpen(shouldOpen);
+    },
+    [],
+  );
 
   const openInspectorForSelection = useCallback(() => {
     if (isManipulatingRef.current) return;
     if (!selectedIdRef.current) return;
+    inspectorWasOpenRef.current = true;
     setInspectorOpen(true);
   }, []);
 
@@ -2261,7 +2419,7 @@ export default function SlideModal({
 
   const handleLayerSelect = useCallback(
     (id: string) => {
-      handleSelectBlock(id);
+      handleSelectBlock(id, { openInspector: true });
     },
     [handleSelectBlock],
   );
@@ -2280,7 +2438,7 @@ export default function SlideModal({
         blocks.splice(index + 1, 0, clone);
         return { ...prev, blocks };
       });
-      handleSelectBlock(newId);
+      handleSelectBlock(newId, { openInspector: true });
     },
     [handleSelectBlock, updateCfg],
   );
@@ -2440,6 +2598,14 @@ export default function SlideModal({
     [selectedBlock],
   );
 
+  const selectedImageAspectRatio = useMemo(
+    () =>
+      selectedImageConfig
+        ? getAspectRatioValue(selectedImageConfig.aspectRatio)
+        : undefined,
+    [selectedImageConfig],
+  );
+
   const selectedGalleryConfig = useMemo(
     () =>
       selectedBlock?.kind === "gallery"
@@ -2448,13 +2614,13 @@ export default function SlideModal({
     [selectedBlock],
   );
 
-  const galleryRenderedItems = useMemo(
+const galleryRenderedItems = useMemo(
     () =>
       galleryDraftItems
         ? galleryDraftItems
         : selectedGalleryConfig
-          ? selectedGalleryConfig.items
-          : [],
+        ? selectedGalleryConfig.items
+        : [],
     [galleryDraftItems, selectedGalleryConfig],
   );
 
@@ -2536,7 +2702,8 @@ export default function SlideModal({
   const activeGalleryDragIndex = galleryDragMetaRef.current?.currentIndex ?? null;
   const activeGalleryDropIndicatorIndex =
     galleryDragMetaRef.current?.dropIndicatorIndex ?? null;
-  const activeGalleryDropPosition = galleryDragMetaRef.current?.dropPosition ?? "before";
+  const activeGalleryDropPosition =
+    galleryDragMetaRef.current?.dropPosition ?? "before";
 
   const galleryPlaceholderIndex = useMemo(() => {
     if (
@@ -2631,8 +2798,8 @@ export default function SlideModal({
         targetIndex > meta.currentIndex
           ? "down"
           : targetIndex < meta.currentIndex
-            ? "up"
-            : meta.lastDirection;
+          ? "up"
+          : meta.lastDirection;
       if (targetIndex === currentIndex) {
         galleryDragMetaRef.current = {
           ...meta,
@@ -4711,25 +4878,42 @@ export default function SlideModal({
                                   <span className="text-xs font-medium text-neutral-500">
                                     Preview
                                   </span>
-                                  {selectedImageConfig.url ? (
-                                    <img
-                                      src={selectedImageConfig.url}
-                                      alt={selectedImageConfig.alt || ""}
-                                      className={`h-28 w-full rounded ${selectedImageConfig.shadow ? "shadow-lg" : ""}`}
-                                      style={{
-                                        objectFit: selectedImageConfig.fit,
-                                        objectPosition: `${selectedImageConfig.focalX * 100}% ${selectedImageConfig.focalY * 100}%`,
-                                        borderRadius: selectedImageConfig.radius,
-                                      }}
-                                    />
-                                  ) : (
-                                    <div
-                                      className={`flex h-28 w-full items-center justify-center rounded bg-neutral-200 text-xs text-neutral-500 ${selectedImageConfig.shadow ? "shadow-lg" : ""}`}
-                                      style={{ borderRadius: selectedImageConfig.radius }}
-                                    >
-                                      No image selected
-                                    </div>
-                                  )}
+                                  <div
+                                    className={[
+                                      "flex w-full items-center justify-center overflow-hidden rounded",
+                                      selectedImageConfig.shadow ? "shadow-lg" : "",
+                                      selectedImageAspectRatio ? "" : "h-28",
+                                      selectedImageConfig.url ? "bg-transparent" : "bg-neutral-200",
+                                    ]
+                                      .filter(Boolean)
+                                      .join(" ")}
+                                    style={{
+                                      borderRadius: selectedImageConfig.radius,
+                                      aspectRatio: selectedImageAspectRatio,
+                                      height: selectedImageAspectRatio ? "auto" : undefined,
+                                    }}
+                                  >
+                                    {selectedImageConfig.url ? (
+                                      <img
+                                        src={selectedImageConfig.url}
+                                        alt={selectedImageConfig.alt || ""}
+                                        style={{
+                                          objectFit: selectedImageConfig.fit,
+                                          objectPosition: `${selectedImageConfig.focalX * 100}% ${selectedImageConfig.focalY * 100}%`,
+                                          borderRadius: selectedImageConfig.radius,
+                                          width: "100%",
+                                          maxWidth: "100%",
+                                          maxHeight: "100%",
+                                          height: selectedImageAspectRatio ? "auto" : "100%",
+                                          aspectRatio: selectedImageAspectRatio,
+                                        }}
+                                      />
+                                    ) : (
+                                      <div className="flex h-full w-full items-center justify-center text-xs text-neutral-500">
+                                        No image selected
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                                 <label className="block">
                                   <span className="text-xs font-medium text-neutral-500">
@@ -4794,6 +4978,22 @@ export default function SlideModal({
                                       { value: "cover", label: "Cover" },
                                       { value: "contain", label: "Contain" },
                                     ]}
+                                  />
+                                </label>
+                                <label className="block">
+                                  <span className="text-xs font-medium text-neutral-500">
+                                    Aspect ratio
+                                  </span>
+                                  <InputSelect
+                                    value={selectedImageConfig.aspectRatio}
+                                    onChange={(e) =>
+                                      updateImageConfig(selectedBlock.id, (config) => ({
+                                        ...config,
+                                        aspectRatio: e.target
+                                          .value as ImageBlockConfig["aspectRatio"],
+                                      }))
+                                    }
+                                    options={IMAGE_ASPECT_RATIO_OPTIONS}
                                   />
                                 </label>
                                 <div>
@@ -5019,87 +5219,80 @@ export default function SlideModal({
                                       No images yet
                                     </div>
                                   ) : (
-                                    <div className="space-y-2">
-                                      {galleryRenderedItems.map((item, index) => {
-                                        const itemKey = ensureGalleryItemKey(item);
-                                        return (
-                                          <React.Fragment key={itemKey}>
-                                            {isGalleryDragging &&
-                                              galleryPlaceholderIndex !== null &&
-                                              galleryPlaceholderIndex === index && (
-                                                <GalleryDragPlaceholder key={`${itemKey}-placeholder-before`} />
-                                              )}
-                                            <GalleryInspectorItem
-                                              itemKey={itemKey}
-                                              item={item}
-                                              isDragging={
-                                                isGalleryDragging &&
-                                                activeGalleryDragIndex === index
-                                              }
-                                              ref={(node) => {
-                                                galleryItemRefs.current[index] = node;
-                                              }}
-                                              onAltChange={(value) => {
-                                                updateGalleryConfig(
-                                                  selectedBlock.id,
-                                                  (config) => {
-                                                    const targetIndex = config.items.findIndex(
-                                                      (galleryItem) => galleryItem === item,
-                                                    );
-                                                    if (targetIndex === -1) {
-                                                      return config;
-                                                    }
-                                                    return {
-                                                      ...config,
-                                                      items: config.items.map((galleryItem, galleryIndex) =>
-                                                        galleryIndex === targetIndex
-                                                          ? { ...galleryItem, alt: value }
-                                                          : galleryItem,
-                                                      ),
-                                                    };
-                                                  },
-                                                );
-                                              }}
-                                              onRemove={() =>
-                                                updateGalleryConfig(
-                                                  selectedBlock.id,
-                                                  (config) => {
-                                                    const nextItems = config.items.filter(
-                                                      (galleryItem) => galleryItem !== item,
-                                                    );
-                                                    if (nextItems.length === config.items.length) {
-                                                      return config;
-                                                    }
-                                                    return {
-                                                      ...config,
-                                                      items: nextItems,
-                                                    };
-                                                  },
-                                                )
-                                              }
-                                              onHandleMouseDown={(event) => {
-                                                if (event.button !== 0) return;
-                                                event.preventDefault();
-                                                event.stopPropagation();
-                                                startGalleryDrag(index, "mouse", null);
-                                              }}
-                                              onHandleTouchStart={(event) => {
-                                                if (event.touches.length === 0) return;
-                                                const touch = event.touches[0];
-                                                event.preventDefault();
-                                                event.stopPropagation();
-                                                startGalleryDrag(index, "touch", touch.identifier);
-                                              }}
-                                            />
-                                            {isGalleryDragging &&
-                                              galleryPlaceholderIndex !== null &&
-                                              galleryPlaceholderIndex === index + 1 && (
-                                                <GalleryDragPlaceholder key={`${itemKey}-placeholder-after`} />
-                                              )}
-                                          </React.Fragment>
-                                        );
-                                      })}
-                                    </div>
+<div className="space-y-2">
+  {galleryRenderedItems.map((item, index) => {
+    const itemKey = ensureGalleryItemKey(item);
+    return (
+      <React.Fragment key={itemKey}>
+        {isGalleryDragging &&
+          galleryPlaceholderIndex !== null &&
+          galleryPlaceholderIndex === index && (
+            <GalleryDragPlaceholder key={`${itemKey}-placeholder-before`} />
+          )}
+        <GalleryInspectorItem
+          itemKey={itemKey}
+          item={item}
+          isDragging={
+            isGalleryDragging && activeGalleryDragIndex === index
+          }
+          ref={(node) => {
+            galleryItemRefs.current[index] = node;
+          }}
+          onAltChange={(value) => {
+            updateGalleryConfig(selectedBlock.id, (config) => {
+              const targetIndex = config.items.findIndex(
+                (galleryItem) => galleryItem === item,
+              );
+              if (targetIndex === -1) {
+                return config;
+              }
+              return {
+                ...config,
+                items: config.items.map((galleryItem, galleryIndex) =>
+                  galleryIndex === targetIndex
+                    ? { ...galleryItem, alt: value }
+                    : galleryItem,
+                ),
+              };
+            });
+          }}
+          onRemove={() =>
+            updateGalleryConfig(selectedBlock.id, (config) => {
+              const nextItems = config.items.filter(
+                (galleryItem) => galleryItem !== item,
+              );
+              if (nextItems.length === config.items.length) {
+                return config;
+              }
+              return {
+                ...config,
+                items: nextItems,
+              };
+            })
+          }
+          onHandleMouseDown={(event) => {
+            if (event.button !== 0) return;
+            event.preventDefault();
+            event.stopPropagation();
+            startGalleryDrag(index, "mouse", null);
+          }}
+          onHandleTouchStart={(event) => {
+            if (event.touches.length === 0) return;
+            const touch = event.touches[0];
+            event.preventDefault();
+            event.stopPropagation();
+            startGalleryDrag(index, "touch", touch.identifier);
+          }}
+        />
+        {isGalleryDragging &&
+          galleryPlaceholderIndex !== null &&
+          galleryPlaceholderIndex === index + 1 && (
+            <GalleryDragPlaceholder key={`${itemKey}-placeholder-after`} />
+          )}
+      </React.Fragment>
+    );
+  })}
+</div>
                                   )}
                                 </div>
                                 <div className="space-y-3">
@@ -5122,6 +5315,25 @@ export default function SlideModal({
                                         { value: "grid", label: "Grid" },
                                         { value: "carousel", label: "Carousel" },
                                       ]}
+                                    />
+                                  </label>
+                                  <label className="block">
+                                    <span className="text-xs font-medium text-neutral-500">
+                                      Aspect ratio
+                                    </span>
+                                    <InputSelect
+                                      value={selectedGalleryConfig.aspectRatio}
+                                      onChange={(e) =>
+                                        updateGalleryConfig(
+                                          selectedBlock.id,
+                                          (config) => ({
+                                            ...config,
+                                            aspectRatio: e.target
+                                              .value as GalleryBlockConfig["aspectRatio"],
+                                          }),
+                                        )
+                                      }
+                                      options={IMAGE_ASPECT_RATIO_OPTIONS}
                                     />
                                   </label>
                                   {selectedGalleryConfig.layout === "carousel" && (
