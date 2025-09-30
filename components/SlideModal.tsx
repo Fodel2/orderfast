@@ -1642,7 +1642,9 @@ export default function SlideModal({
   const galleryBlockIdRef = useRef<string | null>(null);
   const restoreUserSelectRef = useRef<string | null>(null);
   const [isGalleryDragging, setIsGalleryDragging] = useState(false);
-  const galleryItemKeyMapRef = useRef(new WeakMap<GalleryBlockItem, string>());
+  const galleryItemIdentityRef = useRef<
+    { url: string; alt: string; key: string }[]
+  >([]);
   const galleryPrevPositionsRef = useRef<Map<string, DOMRect>>(new Map());
 
   const gallerySensors = useSensors(
@@ -2549,6 +2551,59 @@ const galleryRenderedItems = useMemo(
     [galleryDraftItems, selectedGalleryConfig],
   );
 
+  const createGalleryItemKey = useCallback(() => {
+    if (
+      typeof globalThis.crypto !== "undefined" &&
+      typeof globalThis.crypto.randomUUID === "function"
+    ) {
+      return `gallery-item-${globalThis.crypto.randomUUID()}`;
+    }
+    return `gallery-item-${Math.random().toString(36).slice(2)}`;
+  }, []);
+
+  const galleryItemKeys = useMemo(() => {
+    if (!galleryRenderedItems.length) {
+      galleryItemIdentityRef.current = [];
+      return [];
+    }
+    const previous = galleryItemIdentityRef.current;
+    const used = new Set<number>();
+    const nextIdentities = galleryRenderedItems.map((item) => {
+      const altValue = item.alt ?? "";
+      const exactIndex = previous.findIndex((identity, index) => {
+        if (used.has(index)) return false;
+        return identity.url === item.url && identity.alt === altValue;
+      });
+      if (exactIndex !== -1) {
+        used.add(exactIndex);
+        return {
+          url: item.url,
+          alt: altValue,
+          key: previous[exactIndex].key,
+        };
+      }
+      const looseIndex = previous.findIndex((identity, index) => {
+        if (used.has(index)) return false;
+        return identity.url === item.url;
+      });
+      if (looseIndex !== -1) {
+        used.add(looseIndex);
+        return {
+          url: item.url,
+          alt: altValue,
+          key: previous[looseIndex].key,
+        };
+      }
+      return {
+        url: item.url,
+        alt: altValue,
+        key: createGalleryItemKey(),
+      };
+    });
+    galleryItemIdentityRef.current = nextIdentities;
+    return nextIdentities.map((identity) => identity.key);
+  }, [createGalleryItemKey, galleryRenderedItems]);
+
   const endGalleryDrag = useCallback(() => {
     const blockId = galleryBlockIdRef.current;
     const prevItems = selectedGalleryConfig?.items ?? [];
@@ -2653,21 +2708,6 @@ const galleryRenderedItems = useMemo(
     galleryRenderedItems.length,
     isGalleryDragging,
   ]);
-
-  const ensureGalleryItemKey = useCallback((item: GalleryBlockItem) => {
-    const map = galleryItemKeyMapRef.current;
-    const existing = map.get(item);
-    if (existing) {
-      return existing;
-    }
-    const generated =
-      typeof globalThis.crypto !== "undefined" &&
-      typeof globalThis.crypto.randomUUID === "function"
-        ? `gallery-item-${globalThis.crypto.randomUUID()}`
-        : `gallery-item-${Math.random().toString(36).slice(2)}`;
-    map.set(item, generated);
-    return generated;
-  }, []);
 
   const computeGalleryTargetIndex = useCallback(
     (clientY: number, currentIndex: number, positions: (DOMRect | null)[]) => {
@@ -5144,87 +5184,105 @@ const galleryRenderedItems = useMemo(
                                       No images yet
                                     </div>
                                   ) : (
-<div className="space-y-2">
-  {galleryRenderedItems.map((item, index) => {
-    const itemKey = ensureGalleryItemKey(item);
-    return (
-      <React.Fragment key={itemKey}>
-        {isGalleryDragging &&
-          galleryPlaceholderIndex !== null &&
-          galleryPlaceholderIndex === index && (
-            <GalleryDragPlaceholder key={`${itemKey}-placeholder-before`} />
-          )}
-        <GalleryInspectorItem
-          itemKey={itemKey}
-          item={item}
-          isDragging={
-            isGalleryDragging && activeGalleryDragIndex === index
-          }
-          ref={(node) => {
-            galleryItemRefs.current[index] = node;
-          }}
-          onAltChange={(value) => {
-            updateGalleryConfig(selectedBlock.id, (config) => {
-              if (!config.items[index]) {
-                return config;
-              }
-              return {
-                ...config,
-                items: config.items.map((galleryItem, galleryIndex) =>
-                  galleryIndex === index
-                    ? { ...galleryItem, alt: value }
-                    : galleryItem,
-                ),
-              };
-            });
-            setGalleryDraftItems((prev) => {
-              if (!prev || !prev[index]) {
-                return prev;
-              }
-              return prev.map((galleryItem, galleryIndex) =>
-                galleryIndex === index
-                  ? { ...galleryItem, alt: value }
-                  : galleryItem,
-              );
-            });
-          }}
-          onRemove={() =>
-            updateGalleryConfig(selectedBlock.id, (config) => {
-              const nextItems = config.items.filter(
-                (galleryItem) => galleryItem !== item,
-              );
-              if (nextItems.length === config.items.length) {
-                return config;
-              }
-              return {
-                ...config,
-                items: nextItems,
-              };
-            })
-          }
-          onHandleMouseDown={(event) => {
-            if (event.button !== 0) return;
-            event.preventDefault();
-            event.stopPropagation();
-            startGalleryDrag(index, "mouse", null);
-          }}
-          onHandleTouchStart={(event) => {
-            if (event.touches.length === 0) return;
-            const touch = event.touches[0];
-            event.preventDefault();
-            event.stopPropagation();
-            startGalleryDrag(index, "touch", touch.identifier);
-          }}
-        />
-        {isGalleryDragging &&
-          galleryPlaceholderIndex !== null &&
-          galleryPlaceholderIndex === index + 1 && (
-            <GalleryDragPlaceholder key={`${itemKey}-placeholder-after`} />
-          )}
-      </React.Fragment>
-    );
-  })}
-</div>
+                                    <div className="space-y-2">
+                                      {galleryRenderedItems.map((item, index) => {
+                                        const itemKey =
+                                          galleryItemKeys[index] ??
+                                          createGalleryItemKey();
+                                        return (
+                                          <React.Fragment key={itemKey}>
+                                            {isGalleryDragging &&
+                                              galleryPlaceholderIndex !== null &&
+                                              galleryPlaceholderIndex === index && (
+                                                <GalleryDragPlaceholder
+                                                  key={`${itemKey}-placeholder-before`}
+                                                />
+                                              )}
+                                            <GalleryInspectorItem
+                                              itemKey={itemKey}
+                                              item={item}
+                                              isDragging={
+                                                isGalleryDragging &&
+                                                activeGalleryDragIndex === index
+                                              }
+                                              ref={(node) => {
+                                                galleryItemRefs.current[index] =
+                                                  node;
+                                              }}
+                                              onAltChange={(value) => {
+                                                updateGalleryConfig(
+                                                  selectedBlock.id,
+                                                  (config) => ({
+                                                    ...config,
+                                                    items: config.items.map(
+                                                      (galleryItem, galleryIndex) =>
+                                                        galleryIndex === index
+                                                          ? {
+                                                              ...galleryItem,
+                                                              alt: value,
+                                                            }
+                                                          : galleryItem,
+                                                    ),
+                                                  }),
+                                                );
+                                                setGalleryDraftItems((prev) => {
+                                                  if (!prev || !prev[index]) {
+                                                    return prev;
+                                                  }
+                                                  return prev.map(
+                                                    (galleryItem, galleryIndex) =>
+                                                      galleryIndex === index
+                                                        ? {
+                                                            ...galleryItem,
+                                                            alt: value,
+                                                          }
+                                                        : galleryItem,
+                                                  );
+                                                });
+                                              }}
+                                              onRemove={() => {
+                                                updateGalleryConfig(
+                                                  selectedBlock.id,
+                                                  (config) => ({
+                                                    ...config,
+                                                    items: config.items.filter(
+                                                      (_, galleryIndex) =>
+                                                        galleryIndex !== index,
+                                                    ),
+                                                  }),
+                                                );
+                                              }}
+                                              onHandleMouseDown={(event) => {
+                                                if (event.button !== 0) return;
+                                                event.preventDefault();
+                                                event.stopPropagation();
+                                                startGalleryDrag(index, "mouse", null);
+                                              }}
+                                              onHandleTouchStart={(event) => {
+                                                if (event.touches.length === 0)
+                                                  return;
+                                                const touch = event.touches[0];
+                                                event.preventDefault();
+                                                event.stopPropagation();
+                                                startGalleryDrag(
+                                                  index,
+                                                  "touch",
+                                                  touch.identifier,
+                                                );
+                                              }}
+                                            />
+                                            {isGalleryDragging &&
+                                              galleryPlaceholderIndex !== null &&
+                                              galleryPlaceholderIndex ===
+                                                index + 1 && (
+                                                <GalleryDragPlaceholder
+                                                  key={`${itemKey}-placeholder-after`}
+                                                />
+                                              )}
+                                          </React.Fragment>
+                                        );
+                                      })}
+                                    </div>
                                   )}
                                 </div>
                                 <div className="space-y-3">
