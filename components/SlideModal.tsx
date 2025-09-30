@@ -2516,10 +2516,29 @@ export default function SlideModal({
   ]);
 
   useEffect(() => {
+    const previousBlockId = galleryBlockIdRef.current;
+
     if (selectedBlock?.kind === "gallery") {
-      galleryBlockIdRef.current = selectedBlock.id;
+      const nextBlockId = selectedBlock.id;
+
+      if (previousBlockId !== nextBlockId) {
+        if (isGalleryDragging) {
+          galleryDragMetaRef.current = null;
+          if (restoreUserSelectRef.current !== null) {
+            document.body.style.userSelect = restoreUserSelectRef.current;
+            restoreUserSelectRef.current = null;
+          }
+          setIsGalleryDragging(false);
+        }
+        if (galleryDraftItems) {
+          setGalleryDraftItems(null);
+        }
+      }
+
+      galleryBlockIdRef.current = nextBlockId;
       return;
     }
+
     galleryBlockIdRef.current = null;
     if (galleryDraftItems) {
       setGalleryDraftItems(null);
@@ -2527,11 +2546,12 @@ export default function SlideModal({
     if (isGalleryDragging) {
       endGalleryDrag();
     }
-  }, [endGalleryDrag, galleryDraftItems, isGalleryDragging, selectedBlock]);
-
-  useEffect(() => {
-    setGalleryDraftItems(null);
-  }, [selectedBlock?.id]);
+  }, [
+    endGalleryDrag,
+    galleryDraftItems,
+    isGalleryDragging,
+    selectedBlock,
+  ]);
 
   const activeGalleryDragIndex = galleryDragMetaRef.current?.currentIndex ?? null;
   const activeGalleryDropIndicatorIndex =
