@@ -2891,9 +2891,8 @@ function InteractiveBox({
 }: InteractiveBoxProps) {
   const localRef = useRef<HTMLDivElement>(null);
   const pointerState = useRef<PointerState | null>(null);
-  const [dragging, setDragging] = useState(false);
-  const [snapping, setSnapping] = useState(false);
-
+const [hovered, setHovered] = useState(false);
+const [isDragging, setIsDragging] = useState(false);
   const getContainerRect = () => containerRef.current?.getBoundingClientRect();
 
   const handlePointerDown = (type: PointerState['type'], corner?: string) => (e: React.PointerEvent) => {
@@ -2903,6 +2902,10 @@ function InteractiveBox({
     if (locked) {
       onDragGuidesChange?.([]);
       return;
+    }
+    if (type === 'move') {
+      setHovered(true);
+      setIsDragging(true);
     }
     const rect = getContainerRect();
     if (!rect) return;
@@ -3055,7 +3058,22 @@ function InteractiveBox({
     if (!ps) return;
     pointerState.current = null;
     localRef.current?.releasePointerCapture?.(e.pointerId);
-    onDragGuidesChange?.([]);
+if (ps.type === 'move') {
+      setIsDragging(false);
+      const rect = localRef.current?.getBoundingClientRect();
+      if (rect) {
+        const inside =
+          e.clientX >= rect.left &&
+          e.clientX <= rect.right &&
+          e.clientY >= rect.top &&
+          e.clientY <= rect.bottom;
+        if (!inside) {
+          setHovered(false);
+        }
+      } else {
+        setHovered(false);
+      }
+    }
     const duration = performance.now() - ps.startTime;
     const deltaX = e.clientX - ps.startX;
     const deltaY = e.clientY - ps.startY;
@@ -3087,7 +3105,10 @@ function InteractiveBox({
     if (!ps) return;
     pointerState.current = null;
     localRef.current?.releasePointerCapture?.(e.pointerId);
-    onDragGuidesChange?.([]);
+if (ps.type === 'move') {
+      setIsDragging(false);
+      setHovered(false);
+    }
     if (ps.hasManipulated) {
       onManipulationChange?.(false);
     }
@@ -3113,6 +3134,20 @@ function InteractiveBox({
     transformOrigin: 'top left',
     borderRadius: 8,
     touchAction: 'none',
+cursor:
+    editable && !locked ? (isDragging ? 'grabbing' : hovered ? 'grab' : 'default') : 'default',
+};
+
+const highlightVisible = editable && !locked && (hovered || isDragging);
+const highlightStyle: CSSProperties = {
+  position: 'absolute',
+  inset: 0,
+  border: '2px dashed var(--brand-secondary, var(--brand-primary, #0ea5e9))',
+  borderRadius: 'inherit',
+  pointerEvents: 'none',
+  opacity: highlightVisible ? 0.3 : 0,
+  transition: 'opacity 150ms ease-out',
+};
   };
 
   return (
@@ -3129,6 +3164,15 @@ function InteractiveBox({
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerEnd}
       onPointerCancel={handlePointerCancel}
+      onPointerEnter={() => {
+        if (!editable || locked) return;
+        setHovered(true);
+      }}
+      onPointerLeave={() => {
+        if (!editable || locked) return;
+        if (isDragging) return;
+        setHovered(false);
+      }}
       onClick={(e) => {
         if (!editable) return;
         e.stopPropagation();
@@ -3141,6 +3185,7 @@ function InteractiveBox({
         onDoubleActivate?.();
       }}
     >
+      <div aria-hidden style={highlightStyle} />
       {children}
       {editable && selected && !locked && (
         <>
