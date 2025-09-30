@@ -1660,6 +1660,7 @@ export default function SlideModal({
   const galleryItemIdentityRef = useRef<
     { url: string; alt: string; key: string }[]
   >([]);
+  const galleryItemsRef = useRef<GalleryBlockItem[]>([]);
 
   const isManipulatingRef = useRef(false);
   const selectedIdRef = useRef<string | null>(null);
@@ -2605,6 +2606,17 @@ export default function SlideModal({
     return nextIdentities;
   }, [createGalleryItemKey, galleryRenderedItems]);
 
+  useEffect(() => {
+    if (!galleryRenderedItems.length) {
+      galleryItemsRef.current = [];
+      return;
+    }
+    galleryItemsRef.current = galleryRenderedItems.map((item) => ({
+      url: item.url,
+      alt: item.alt ?? "",
+    }));
+  }, [galleryRenderedItems]);
+
   const ensureGalleryItemKey = useCallback(
     (item: GalleryBlockItem) => {
       const altValue = item.alt ?? "";
@@ -2657,11 +2669,15 @@ export default function SlideModal({
       if (!selectedBlock || selectedBlock.kind !== "gallery") {
         return;
       }
-      const length = galleryRenderedItems.length;
+      const items = galleryItemsRef.current;
+      const length = items.length;
       if (length === 0 || state.fromIndex < 0 || state.fromIndex >= length) {
         return;
       }
-      const boundedSlot = Math.max(0, Math.min(state.placeholderIndex, length));
+      const boundedSlot = Math.max(
+        0,
+        Math.min(state.placeholderIndex, length),
+      );
       let targetIndex =
         boundedSlot > state.fromIndex
           ? Math.min(length - 1, boundedSlot - 1)
@@ -2670,33 +2686,18 @@ export default function SlideModal({
       if (targetIndex === state.fromIndex) {
         return;
       }
-      updateGalleryConfig(selectedBlock.id, (config) => {
-        const items = config.items ?? [];
-        if (items.length <= 1) {
-          return config;
-        }
-        if (state.fromIndex < 0 || state.fromIndex >= items.length) {
-          return config;
-        }
-        const configBoundedSlot = Math.max(
-          0,
-          Math.min(state.placeholderIndex, items.length),
-        );
-        let nextIndex =
-          configBoundedSlot > state.fromIndex
-            ? Math.min(items.length - 1, configBoundedSlot - 1)
-            : Math.min(items.length - 1, configBoundedSlot);
-        nextIndex = Math.max(0, nextIndex);
-        if (nextIndex === state.fromIndex) {
-          return config;
-        }
-        return {
-          ...config,
-          items: arrayMove(items, state.fromIndex, nextIndex),
-        };
-      });
+      const reordered = arrayMove(items, state.fromIndex, targetIndex);
+      const normalizedReordered = reordered.map((item) => ({
+        url: item.url,
+        alt: item.alt ?? "",
+      }));
+      galleryItemsRef.current = normalizedReordered;
+      updateGalleryConfig(selectedBlock.id, (config) => ({
+        ...config,
+        items: normalizedReordered,
+      }));
     },
-    [galleryRenderedItems.length, selectedBlock, updateGalleryConfig],
+    [selectedBlock, updateGalleryConfig],
   );
 
   const stopGalleryDrag = useCallback(
