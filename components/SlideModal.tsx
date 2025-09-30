@@ -1551,7 +1551,7 @@ const GalleryInspectorItem = React.forwardRef<HTMLDivElement, GalleryInspectorIt
       data-dragging={isDragging ? "true" : "false"}
       className={`group relative flex items-center gap-3 rounded border bg-white px-2 py-2 text-xs transition-all duration-200 ease-out ${
         isDragging
-          ? "z-10 scale-[1.05] border-primary/40 bg-white/90 shadow-lg ring-2 ring-primary/40"
+          ? "z-10 border-primary/40 bg-white/90 shadow-lg ring-2 ring-primary/40"
           : "hover:border-primary/30 hover:shadow-sm"
       }`}
       style={isDragging ? { opacity: 0.9 } : undefined}
@@ -1594,8 +1594,11 @@ const GalleryInspectorItem = React.forwardRef<HTMLDivElement, GalleryInspectorIt
 
 GalleryInspectorItem.displayName = "GalleryInspectorItem";
 
-const GalleryDragPlaceholder = () => (
-  <div className="pointer-events-none h-[60px] w-full rounded border-2 border-dashed border-neutral-300 bg-neutral-50 transition-all duration-200 ease-out" />
+const GalleryDragPlaceholder = ({ height }: { height: number }) => (
+  <div
+    className="pointer-events-none w-full rounded border-2 border-dashed border-neutral-300 bg-neutral-50 transition-all duration-200 ease-out"
+    style={{ height }}
+  />
 );
 
 export default function SlideModal({
@@ -1619,6 +1622,10 @@ export default function SlideModal({
   const [showGalleryAddOptions, setShowGalleryAddOptions] = useState(false);
   const [galleryUrlInput, setGalleryUrlInput] = useState("");
   const [galleryDraftItems, setGalleryDraftItems] = useState<GalleryBlockItem[] | null>(null);
+  const [galleryPlaceholderIndexState, setGalleryPlaceholderIndexState] =
+    useState<number | null>(null);
+  const [galleryPlaceholderHeight, setGalleryPlaceholderHeight] =
+    useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const pastRef = useRef<SlideCfg[]>([]);
   const futureRef = useRef<SlideCfg[]>([]);
@@ -1638,6 +1645,11 @@ export default function SlideModal({
     dropIndicatorIndex: number;
     dropPosition: "before" | "after";
     lastDirection: "up" | "down" | "none";
+    pointerOffsetY: number;
+    startClientY: number;
+    lastClientY: number;
+    pendingClientY: number | null;
+    draggingKey: string | null;
   } | null>(null);
   const galleryBlockIdRef = useRef<string | null>(null);
   const restoreUserSelectRef = useRef<string | null>(null);
@@ -1646,6 +1658,7 @@ export default function SlideModal({
     { url: string; alt: string; key: string }[]
   >([]);
   const galleryPrevPositionsRef = useRef<Map<string, DOMRect>>(new Map());
+  const galleryDragFrameRef = useRef<number | null>(null);
 
   const gallerySensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -2608,13 +2621,26 @@ const galleryRenderedItems = useMemo(
     const blockId = galleryBlockIdRef.current;
     const prevItems = selectedGalleryConfig?.items ?? [];
     const nextItems = galleryItemsRef.current;
+    if (galleryDragFrameRef.current !== null) {
+      cancelAnimationFrame(galleryDragFrameRef.current);
+      galleryDragFrameRef.current = null;
+    }
     galleryDragMetaRef.current = null;
+    galleryItemRefs.current.forEach((node) => {
+      if (!node) return;
+      node.style.transition = "";
+      node.style.transform = "";
+      node.style.zIndex = "";
+      node.style.pointerEvents = "";
+    });
     if (restoreUserSelectRef.current !== null) {
       document.body.style.userSelect = restoreUserSelectRef.current;
       restoreUserSelectRef.current = null;
     }
     setIsGalleryDragging(false);
     setGalleryDraftItems(null);
+    setGalleryPlaceholderIndexState(null);
+    setGalleryPlaceholderHeight(null);
     if (!blockId || !selectedGalleryConfig) {
       return;
     }
@@ -2685,29 +2711,11 @@ const galleryRenderedItems = useMemo(
   const activeGalleryDropPosition =
     galleryDragMetaRef.current?.dropPosition ?? "before";
 
-  const galleryPlaceholderIndex = useMemo(() => {
-    if (
-      !isGalleryDragging ||
-      galleryRenderedItems.length === 0 ||
-      activeGalleryDropIndicatorIndex === null
-    ) {
-      return null;
-    }
-    const lastIndex = galleryRenderedItems.length - 1;
-    const indicator = Math.max(
-      0,
-      Math.min(activeGalleryDropIndicatorIndex, lastIndex),
-    );
-    if (activeGalleryDropPosition === "after") {
-      return Math.min(galleryRenderedItems.length, indicator + 1);
-    }
-    return Math.max(0, indicator);
-  }, [
-    activeGalleryDropIndicatorIndex,
-    activeGalleryDropPosition,
-    galleryRenderedItems.length,
-    isGalleryDragging,
-  ]);
+  const galleryPlaceholderIndex =
+    isGalleryDragging && galleryPlaceholderIndexState !== null
+      ? galleryPlaceholderIndexState
+      : null;
+  const galleryPlaceholderHeightValue = galleryPlaceholderHeight ?? 60;
 
   const computeGalleryTargetIndex = useCallback(
     (clientY: number, currentIndex: number, positions: (DOMRect | null)[]) => {
@@ -2738,64 +2746,112 @@ const galleryRenderedItems = useMemo(
     [],
   );
 
+  const applyGalleryDragFrame = useCallback(() => {
+    galleryDragFrameRef.current = null;
+    const meta = galleryDragMetaRef.current;
+    if (!meta) return;
+
+    const pointerY =
+      meta.pendingClientY ?? meta.lastClientY ?? meta.startClientY;
+    if (typeof pointerY !== "number") {
+      return;
+    }
+
+    meta.lastClientY = pointerY;
+    meta.pendingClientY = null;
+
+    const nodes = galleryItemRefs.current;
+    const draggingNode =
+      nodes.find((node) => node?.dataset.galleryKey === meta.draggingKey) ??
+      nodes[meta.currentIndex] ??
+      null;
+
+    if (draggingNode) {
+      const rect = draggingNode.getBoundingClientRect();
+      const desiredTop = pointerY - meta.pointerOffsetY;
+      const translateY = desiredTop - rect.top;
+      draggingNode.style.transition = "transform 0ms";
+      draggingNode.style.transform = `translateY(${translateY}px) scale(1.05)`;
+      draggingNode.style.zIndex = "20";
+      draggingNode.style.pointerEvents = "none";
+    }
+
+    const items = galleryItemsRef.current;
+    if (!items.length) return;
+
+    const positions = nodes.map((node) =>
+      node ? node.getBoundingClientRect() : null,
+    );
+    const targetIndex = computeGalleryTargetIndex(
+      pointerY,
+      meta.currentIndex,
+      positions,
+    );
+    if (targetIndex < 0) {
+      return;
+    }
+    let dropPosition: "before" | "after" = "before";
+    const targetRect = positions[targetIndex];
+    if (targetRect) {
+      dropPosition =
+        pointerY >= targetRect.top + targetRect.height / 2
+          ? "after"
+          : "before";
+    }
+    const direction: "up" | "down" | "none" =
+      targetIndex > meta.currentIndex
+        ? "down"
+        : targetIndex < meta.currentIndex
+        ? "up"
+        : meta.lastDirection;
+
+    if (targetIndex !== meta.currentIndex) {
+      const nextItems = [...items];
+      const [moved] = nextItems.splice(meta.currentIndex, 1);
+      if (moved) {
+        nextItems.splice(targetIndex, 0, moved);
+        galleryItemsRef.current = nextItems;
+        setGalleryDraftItems(nextItems);
+      }
+    }
+
+    meta.currentIndex = targetIndex;
+    meta.dropIndicatorIndex = targetIndex;
+    meta.dropPosition = dropPosition;
+    meta.lastDirection = direction;
+
+    const totalItems = galleryItemsRef.current.length;
+    const placeholderIndex = Math.max(
+      0,
+      Math.min(
+        dropPosition === "after" ? targetIndex + 1 : targetIndex,
+        totalItems,
+      ),
+    );
+    setGalleryPlaceholderIndexState(placeholderIndex);
+  }, [computeGalleryTargetIndex, setGalleryDraftItems]);
+
   const handleGalleryPointerMove = useCallback(
     (clientY: number) => {
       const meta = galleryDragMetaRef.current;
       if (!meta) return;
-      const items = galleryItemsRef.current;
-      if (!items.length) return;
-      const { currentIndex } = meta;
-      if (currentIndex < 0 || currentIndex >= items.length) return;
-      const positions = galleryItemRefs.current.map((node) =>
-        node ? node.getBoundingClientRect() : null,
-      );
-      const targetIndex = computeGalleryTargetIndex(clientY, currentIndex, positions);
-      if (targetIndex < 0) {
-        return;
+      meta.pendingClientY = clientY;
+      if (galleryDragFrameRef.current === null) {
+        galleryDragFrameRef.current = requestAnimationFrame(
+          applyGalleryDragFrame,
+        );
       }
-      let dropPosition: "before" | "after" = "before";
-      const targetRect = positions[targetIndex];
-      if (targetRect) {
-        dropPosition =
-          clientY >= targetRect.top + targetRect.height / 2 ? "after" : "before";
-      }
-      const direction: "up" | "down" | "none" =
-        targetIndex > meta.currentIndex
-          ? "down"
-          : targetIndex < meta.currentIndex
-          ? "up"
-          : meta.lastDirection;
-      if (targetIndex === currentIndex) {
-        galleryDragMetaRef.current = {
-          ...meta,
-          dropIndicatorIndex: targetIndex,
-          dropPosition,
-          lastDirection: direction,
-        };
-        setGalleryDraftItems([...items]);
-        return;
-      }
-      const nextItems = [...items];
-      const [moved] = nextItems.splice(currentIndex, 1);
-      if (!moved) {
-        return;
-      }
-      nextItems.splice(targetIndex, 0, moved);
-      galleryItemsRef.current = nextItems;
-      galleryDragMetaRef.current = {
-        ...meta,
-        currentIndex: targetIndex,
-        dropIndicatorIndex: targetIndex,
-        dropPosition,
-        lastDirection: direction,
-      };
-      setGalleryDraftItems([...nextItems]);
     },
-    [computeGalleryTargetIndex],
+    [applyGalleryDragFrame],
   );
 
   const startGalleryDrag = useCallback(
-    (index: number, pointerType: "mouse" | "touch", pointerId: number | null) => {
+    (
+      index: number,
+      pointerType: "mouse" | "touch",
+      pointerId: number | null,
+      clientY: number,
+    ) => {
       if (isGalleryDragging) return;
       if (selectedGalleryConfig) {
         galleryItemsRef.current = [...selectedGalleryConfig.items];
@@ -2803,7 +2859,13 @@ const galleryRenderedItems = useMemo(
       const items = galleryItemsRef.current;
       const total = items.length;
       if (index < 0 || index >= total) return;
+      const node = galleryItemRefs.current[index];
+      const rect = node?.getBoundingClientRect();
+      const key = node?.dataset.galleryKey ?? null;
+      const offsetY = rect ? clientY - rect.top : 0;
       setGalleryDraftItems([...items]);
+      setGalleryPlaceholderIndexState(index);
+      setGalleryPlaceholderHeight(rect ? rect.height : null);
       galleryDragMetaRef.current = {
         pointerType,
         pointerId,
@@ -2811,14 +2873,25 @@ const galleryRenderedItems = useMemo(
         dropIndicatorIndex: index,
         dropPosition: "before",
         lastDirection: "none",
+        pointerOffsetY: offsetY,
+        startClientY: clientY,
+        lastClientY: clientY,
+        pendingClientY: null,
+        draggingKey: key,
       };
+      galleryDragMetaRef.current.pendingClientY = clientY;
+      if (galleryDragFrameRef.current !== null) {
+        cancelAnimationFrame(galleryDragFrameRef.current);
+        galleryDragFrameRef.current = null;
+      }
+      galleryDragFrameRef.current = requestAnimationFrame(applyGalleryDragFrame);
       if (restoreUserSelectRef.current === null) {
         restoreUserSelectRef.current = document.body.style.userSelect;
         document.body.style.userSelect = "none";
       }
       setIsGalleryDragging(true);
     },
-    [isGalleryDragging, selectedGalleryConfig],
+    [applyGalleryDragFrame, isGalleryDragging, selectedGalleryConfig],
   );
 
   useEffect(() => {
@@ -5196,6 +5269,7 @@ const galleryRenderedItems = useMemo(
                                               galleryPlaceholderIndex === index && (
                                                 <GalleryDragPlaceholder
                                                   key={`${itemKey}-placeholder-before`}
+                                                  height={galleryPlaceholderHeightValue}
                                                 />
                                               )}
                                             <GalleryInspectorItem
@@ -5256,7 +5330,12 @@ const galleryRenderedItems = useMemo(
                                                 if (event.button !== 0) return;
                                                 event.preventDefault();
                                                 event.stopPropagation();
-                                                startGalleryDrag(index, "mouse", null);
+                                                startGalleryDrag(
+                                                  index,
+                                                  "mouse",
+                                                  null,
+                                                  event.clientY,
+                                                );
                                               }}
                                               onHandleTouchStart={(event) => {
                                                 if (event.touches.length === 0)
@@ -5268,6 +5347,7 @@ const galleryRenderedItems = useMemo(
                                                   index,
                                                   "touch",
                                                   touch.identifier,
+                                                  touch.clientY,
                                                 );
                                               }}
                                             />
@@ -5277,6 +5357,7 @@ const galleryRenderedItems = useMemo(
                                                 index + 1 && (
                                                 <GalleryDragPlaceholder
                                                   key={`${itemKey}-placeholder-after`}
+                                                  height={galleryPlaceholderHeightValue}
                                                 />
                                               )}
                                           </React.Fragment>
