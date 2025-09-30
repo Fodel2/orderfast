@@ -14,13 +14,6 @@ import {
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
-import {
-  SortableContext,
-  arrayMove,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import SlidesManager, {
   DEVICE_DIMENSIONS,
   DEFAULT_BUTTON_CONFIG,
@@ -678,81 +671,6 @@ const InspectorSliderControl: React.FC<InspectorSliderControlProps> = ({
   );
 };
 
-type GalleryInspectorItemProps = {
-  id: string;
-  index: number;
-  item: GalleryBlockItem;
-  onRemove: () => void;
-  onAltChange: (value: string) => void;
-};
-
-const GalleryInspectorItem: React.FC<GalleryInspectorItemProps> = ({
-  id,
-  index,
-  item,
-  onRemove,
-  onAltChange,
-}) => {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
-  const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-  if (isDragging) {
-    style.boxShadow = "0 8px 16px rgba(15, 23, 42, 0.12)";
-    style.opacity = 0.95;
-  }
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`flex items-start gap-3 rounded border bg-white px-2 py-3 text-xs ${
-        isDragging ? "ring-1 ring-neutral-200" : ""
-      }`}
-    >
-      <button
-        type="button"
-        {...attributes}
-        {...listeners}
-        className="mt-1 flex h-7 w-7 items-center justify-center rounded border border-transparent text-neutral-400 hover:text-neutral-600 focus:outline-none cursor-grab active:cursor-grabbing"
-        aria-label="Reorder image"
-      >
-        <GripVertical className="h-4 w-4" />
-      </button>
-      <img
-        src={item.url}
-        alt={item.alt || ""}
-        className="h-12 w-12 flex-none rounded object-cover"
-      />
-      <div className="flex flex-1 flex-col gap-2">
-        <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
-          <span>Image {index + 1}</span>
-          <button
-            type="button"
-            onClick={onRemove}
-            className="rounded border px-2 py-1 text-[11px] font-medium text-red-600 hover:bg-red-50"
-          >
-            Remove
-          </button>
-        </div>
-        <p className="break-all text-[11px] text-neutral-500">{item.url}</p>
-        <label className="block">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
-            Alt text
-          </span>
-          <InputText
-            value={item.alt ?? ""}
-            onChange={(e) => onAltChange(e.target.value)}
-            className={INSPECTOR_INPUT_CLASS}
-            placeholder="Describe the image"
-          />
-        </label>
-      </div>
-    </div>
-  );
-};
-
 const cloneCfg = (cfg: SlideCfg): SlideCfg => JSON.parse(JSON.stringify(cfg));
 
 function defaultBackground(): SlideCfg["background"] {
@@ -1251,7 +1169,10 @@ function normalizeBlock(raw: any, positions?: Record<string, any>): SlideBlock {
   if (kind === "gallery") {
     const existingConfig = extractConfig(block.config);
     const galleryConfig = resolveGalleryConfig(block);
-    block.items = galleryConfig.items.map((item) => ({ src: item.url, alt: item.alt }));
+    block.items = galleryConfig.items.map((item) => ({
+      src: item.url,
+      alt: item.alt ?? "",
+    }));
     const hydratedConfig = {
       ...existingConfig,
       ...galleryConfig,
@@ -1646,7 +1567,7 @@ const GalleryInspectorItem = React.forwardRef<HTMLDivElement, GalleryInspectorIt
       </button>
       <img
         src={item.url}
-        alt={item.alt || ""}
+        alt={item.alt ?? ""}
         className="h-12 w-12 shrink-0 rounded object-cover"
         draggable={false}
         onMouseDown={(event) => event.stopPropagation()}
@@ -1900,7 +1821,7 @@ export default function SlideModal({
       block.config = galleryConfig;
       block.items = galleryConfig.items.map((item) => ({
         src: item.url,
-        alt: item.alt,
+        alt: item.alt ?? "",
       }));
       block.radius = galleryConfig.radius;
       block.aspectRatio = galleryConfig.aspectRatio;
@@ -2193,11 +2114,15 @@ export default function SlideModal({
                         : "";
                   const url = urlSource.trim();
                   if (!url) return null;
-                  const alt =
-                    typeof item.alt === "string" && item.alt.trim().length > 0
-                      ? item.alt
-                      : undefined;
-                  const normalized: GalleryBlockItem = alt ? { url, alt } : { url };
+                  const altRaw =
+                    typeof (item as any).alt === "string"
+                      ? (item as any).alt
+                      : "";
+                  const alt = altRaw.trim().length > 0 ? altRaw : "";
+                  const normalized: GalleryBlockItem = {
+                    url,
+                    alt,
+                  };
                   return normalized;
                 })
                 .filter((item): item is GalleryBlockItem => Boolean(item))
@@ -2238,7 +2163,7 @@ export default function SlideModal({
             config: mergeInteractionConfig({ ...b, config: candidate }, candidate),
             items: sanitized.items.map((item) => ({
               src: item.url,
-              alt: item.alt,
+              alt: item.alt ?? "",
             })),
             radius: sanitized.radius,
             aspectRatio: sanitized.aspectRatio,

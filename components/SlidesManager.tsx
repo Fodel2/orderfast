@@ -1601,10 +1601,11 @@ export function resolveGalleryConfig(block: SlideBlock): GalleryBlockConfig {
         if (typeof urlCandidate === 'string') {
           const trimmed = urlCandidate.trim();
           if (trimmed.length > 0) {
-            const alt =
-              typeof (item as any).alt === 'string' && (item as any).alt.trim().length > 0
+            const altRaw =
+              typeof (item as any).alt === 'string'
                 ? (item as any).alt
-                : undefined;
+                : '';
+            const alt = altRaw.trim().length > 0 ? altRaw : '';
             return { url: trimmed, alt };
           }
         }
@@ -1802,6 +1803,7 @@ export default function SlidesManager({
   const frameRef = useRef<HTMLDivElement>(null);
   const cfg = useMemo(() => initialCfg, [initialCfg]);
   const deviceSize = DEVICE_DIMENSIONS[activeDevice] ?? DEVICE_DIMENSIONS.desktop;
+  const InteractiveBoxComponent = InteractiveBox as React.ComponentType<InteractiveBoxProps>;
 
   const fontsInUse = useMemo(() => {
     const set = new Set<SlideBlockFontFamily>();
@@ -2289,7 +2291,7 @@ export default function SlidesManager({
           <div className={wrapperClasses.join(' ')} style={wrapperStyle}>
             <img
               src={imageUrl}
-              alt={image.alt || ''}
+              alt={image.alt ?? ''}
               style={imageStyle}
               className={imageClassNames.join(' ')}
               draggable={false}
@@ -2491,7 +2493,7 @@ export default function SlidesManager({
                 const autoWidthEnabled = textual ? isAutoWidthEnabled(block) : false;
                 const autoHeightEnabled = textual ? isAutoHeightEnabled(block) : false;
                 return (
-                  <InteractiveBox
+                  <InteractiveBoxComponent
                     key={block.id}
                     id={block.id}
                     frame={frame}
@@ -2539,7 +2541,7 @@ export default function SlidesManager({
                     >
                       {renderBlockContent(block)}
                     </BlockChromeWithAutoSize>
-                  </InteractiveBox>
+                  </InteractiveBoxComponent>
                 );
               })}
             </div>
@@ -2772,7 +2774,7 @@ function GalleryBlockPreview({
               >
                 <img
                   src={item.url}
-                  alt={item.alt || ''}
+                  alt={item.alt ?? ''}
                   style={{
                     objectFit: 'cover',
                     width: '100%',
@@ -2814,7 +2816,7 @@ function GalleryBlockPreview({
           >
             <img
               src={item.url}
-              alt={item.alt || ''}
+              alt={item.alt ?? ''}
               style={{
                 objectFit: 'cover',
                 width: '100%',
@@ -2891,8 +2893,10 @@ function InteractiveBox({
 }: InteractiveBoxProps) {
   const localRef = useRef<HTMLDivElement>(null);
   const pointerState = useRef<PointerState | null>(null);
-const [hovered, setHovered] = useState(false);
-const [isDragging, setIsDragging] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const [snapping, setSnapping] = useState(false);
   const getContainerRect = () => containerRef.current?.getBoundingClientRect();
 
   const handlePointerDown = (type: PointerState['type'], corner?: string) => (e: React.PointerEvent) => {
@@ -3138,16 +3142,15 @@ cursor:
     editable && !locked ? (isDragging ? 'grabbing' : hovered ? 'grab' : 'default') : 'default',
 };
 
-const highlightVisible = editable && !locked && (hovered || isDragging);
-const highlightStyle: CSSProperties = {
-  position: 'absolute',
-  inset: 0,
-  border: '2px dashed var(--brand-secondary, var(--brand-primary, #0ea5e9))',
-  borderRadius: 'inherit',
-  pointerEvents: 'none',
-  opacity: highlightVisible ? 0.3 : 0,
-  transition: 'opacity 150ms ease-out',
-};
+  const highlightVisible = editable && !locked && (hovered || isDragging);
+  const highlightStyle: CSSProperties = {
+    position: 'absolute',
+    inset: 0,
+    border: '2px dashed var(--brand-secondary, var(--brand-primary, #0ea5e9))',
+    borderRadius: 'inherit',
+    pointerEvents: 'none',
+    opacity: highlightVisible ? 0.3 : 0,
+    transition: 'opacity 150ms ease-out',
   };
 
   return (
