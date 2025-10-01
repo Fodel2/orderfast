@@ -12,6 +12,14 @@ export const tokens = {
     md: 8,
     lg: 16,
   },
+  control: {
+    height: 32,
+    numberWidth: 80,
+    labelWidth: 112,
+  },
+  breakpoints: {
+    sm: 640,
+  },
   opacity: {
     0: 0,
     25: 0.25,

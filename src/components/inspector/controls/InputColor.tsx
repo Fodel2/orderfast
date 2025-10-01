@@ -11,6 +11,7 @@ const {
   paddingY,
   radius,
   borderWidth,
+  mobileBreakpoint,
 } = inspectorLayout;
 
 const CHECKERBOARD_BACKGROUND =
@@ -136,6 +137,9 @@ export function InputColor({
           font-weight: 500;
           color: ${inspectorColors.label};
           line-height: 1.2;
+          display: flex;
+          align-items: center;
+          min-height: ${controlHeight}px;
         }
 
         .inspector-color-control {
@@ -192,9 +196,15 @@ export function InputColor({
           cursor: not-allowed;
         }
 
-        @media (max-width: 640px) {
+        @media (max-width: ${mobileBreakpoint}px) {
           .inspector-row {
             grid-template-columns: 1fr;
+            align-items: stretch;
+            row-gap: ${gap}px;
+          }
+
+          .inspector-label {
+            min-height: auto;
           }
 
           .inspector-color-control {

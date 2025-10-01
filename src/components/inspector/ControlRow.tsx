@@ -2,7 +2,7 @@ import { ReactNode } from "react";
 
 import { inspectorColors, inspectorLayout } from "./layout";
 
-const { labelWidth, gap, paddingX, paddingY } = inspectorLayout;
+const { labelWidth, gap, paddingX, paddingY, controlHeight, mobileBreakpoint } = inspectorLayout;
 
 interface ControlRowProps {
   label: string;
@@ -32,6 +32,9 @@ export function ControlRow({ label, htmlFor, children }: ControlRowProps) {
           font-weight: 500;
           color: ${inspectorColors.label};
           line-height: 1.2;
+          display: flex;
+          align-items: center;
+          min-height: ${controlHeight}px;
         }
 
         .inspector-control {
@@ -46,13 +49,18 @@ export function ControlRow({ label, htmlFor, children }: ControlRowProps) {
           width: 100%;
         }
 
-        @media (max-width: 640px) {
+        @media (max-width: ${mobileBreakpoint}px) {
           .inspector-row {
             grid-template-columns: 1fr;
           }
 
           .inspector-control {
             width: 100%;
+            justify-content: stretch;
+          }
+
+          .inspector-label {
+            min-height: auto;
           }
         }
       `}</style>

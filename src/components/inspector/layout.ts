@@ -1,14 +1,15 @@
 import { tokens } from "../../ui/tokens";
 
 export const inspectorLayout = {
-  labelWidth: tokens.spacing.xl * 3,
-  controlHeight: tokens.spacing.lg,
-  numberWidth: tokens.spacing.xl * 2,
+  labelWidth: tokens.control.labelWidth,
+  controlHeight: tokens.control.height,
+  numberWidth: tokens.control.numberWidth,
   gap: tokens.spacing.sm,
   paddingX: tokens.spacing.sm,
   paddingY: tokens.spacing.xs,
   radius: tokens.radius.sm,
   borderWidth: tokens.border.thin,
+  mobileBreakpoint: tokens.breakpoints.sm,
 };
 
 export const inspectorColors = {

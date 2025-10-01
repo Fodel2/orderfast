@@ -3,7 +3,8 @@ import { ChangeEvent } from "react";
 import { inspectorColors, inspectorLayout } from "../layout";
 import { tokens } from "../../../ui/tokens";
 
-const { labelWidth, controlHeight, gap, paddingX, paddingY, radius, borderWidth } = inspectorLayout;
+const { labelWidth, controlHeight, gap, paddingX, paddingY, radius, borderWidth, mobileBreakpoint } =
+  inspectorLayout;
 
 export interface InputSelectOption {
   label: string;
@@ -73,6 +74,9 @@ export function InputSelect({
           font-weight: 500;
           color: ${inspectorColors.label};
           line-height: 1.2;
+          display: flex;
+          align-items: center;
+          min-height: ${controlHeight}px;
         }
 
         .inspector-select {
@@ -91,9 +95,15 @@ export function InputSelect({
           cursor: not-allowed;
         }
 
-        @media (max-width: 640px) {
+        @media (max-width: ${mobileBreakpoint}px) {
           .inspector-row {
             grid-template-columns: 1fr;
+            align-items: stretch;
+            row-gap: ${gap}px;
+          }
+
+          .inspector-label {
+            min-height: auto;
           }
         }
       `}</style>

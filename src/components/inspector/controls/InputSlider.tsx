@@ -1,10 +1,19 @@
-import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { inspectorColors, inspectorLayout } from "../layout";
 import { tokens } from "../../../ui/tokens";
 
-const { labelWidth, controlHeight, numberWidth, gap, paddingX, paddingY, radius, borderWidth } =
-  inspectorLayout;
+const {
+  labelWidth,
+  controlHeight,
+  numberWidth,
+  gap,
+  paddingX,
+  paddingY,
+  radius,
+  borderWidth,
+  mobileBreakpoint,
+} = inspectorLayout;
 
 const clamp = (value: number, min: number, max: number): number => {
   if (Number.isNaN(value)) return min;
@@ -15,20 +24,16 @@ const clamp = (value: number, min: number, max: number): number => {
 
 const formatDisplay = (
   value: number | undefined,
-  fallbackValue: number | undefined,
-  resolveFallback: () => number,
-  formatValue?: (value: number | undefined, fallbackValue?: number) => string,
+  fallbackValue: number,
+  formatter?: (value: number | undefined, fallbackValue: number) => string,
 ): string => {
-  if (formatValue) {
-    return formatValue(value, fallbackValue);
+  if (formatter) {
+    return formatter(value, fallbackValue);
   }
   if (typeof value === "number" && Number.isFinite(value)) {
     return `${value}`;
   }
-  if (typeof fallbackValue === "number" && Number.isFinite(fallbackValue)) {
-    return `${fallbackValue}`;
-  }
-  return `${resolveFallback()}`;
+  return `${fallbackValue}`;
 };
 
 export interface InputSliderProps {
@@ -41,7 +46,7 @@ export interface InputSliderProps {
   step?: number;
   disabled?: boolean;
   onChange: (value: number | undefined) => void;
-  formatValue?: (value: number | undefined, fallbackValue?: number) => string;
+  formatValue?: (value: number | undefined, fallbackValue: number) => string;
   showNumberInput?: boolean;
 }
 
@@ -62,40 +67,41 @@ export function InputSlider({
   const safeMin = Number.isFinite(min) ? min : 0;
   const safeMax = Number.isFinite(max) ? max : safeMin + 100;
 
-  const resolveFallback = useMemo(() => {
-    return () => {
-      if (typeof fallbackValue === "number" && Number.isFinite(fallbackValue)) {
-        return clamp(fallbackValue, safeMin, safeMax);
-      }
-      if (typeof value === "number" && Number.isFinite(value)) {
-        return clamp(value, safeMin, safeMax);
-      }
-      return safeMin;
-    };
-  }, [fallbackValue, safeMax, safeMin, value]);
+  const fallback = useMemo(() => {
+    if (typeof fallbackValue === "number" && Number.isFinite(fallbackValue)) {
+      return clamp(fallbackValue, safeMin, safeMax);
+    }
+    return safeMin;
+  }, [fallbackValue, safeMax, safeMin]);
 
-  const sliderValue = useMemo(() => {
+  const effectiveValue = useMemo(() => {
     if (typeof value === "number" && Number.isFinite(value)) {
       return clamp(value, safeMin, safeMax);
     }
-    return resolveFallback();
-  }, [resolveFallback, safeMax, safeMin, value]);
+    return fallback;
+  }, [fallback, safeMax, safeMin, value]);
 
-  const [numberValue, setNumberValue] = useState<string>(() =>
-    formatDisplay(value, fallbackValue, resolveFallback, formatValue),
+  const formatValueForDisplay = useCallback(
+    (nextValue: number | undefined) =>
+      formatDisplay(nextValue, fallbackValue ?? fallback, formatValue),
+    [fallback, fallbackValue, formatValue],
   );
 
+  const [rangeValue, setRangeValue] = useState<number>(effectiveValue);
+  const [numberValue, setNumberValue] = useState<string>(() => formatValueForDisplay(value));
+
   useEffect(() => {
-    setNumberValue(formatDisplay(value, fallbackValue, resolveFallback, formatValue));
-  }, [fallbackValue, formatValue, resolveFallback, value]);
+    setRangeValue(effectiveValue);
+    setNumberValue(formatValueForDisplay(value));
+  }, [effectiveValue, formatValueForDisplay, value]);
 
   const sliderFillPercent = useMemo(() => {
     if (safeMax === safeMin) {
       return 0;
     }
-    const ratio = (sliderValue - safeMin) / (safeMax - safeMin);
+    const ratio = (rangeValue - safeMin) / (safeMax - safeMin);
     return Math.min(100, Math.max(0, ratio * 100));
-  }, [safeMax, safeMin, sliderValue]);
+  }, [rangeValue, safeMax, safeMin]);
 
   const sliderBackground = useMemo(
     () =>
@@ -105,7 +111,8 @@ export function InputSlider({
 
   const handleRangeChange = (event: ChangeEvent<HTMLInputElement>) => {
     const nextValue = clamp(Number(event.target.value), safeMin, safeMax);
-    setNumberValue(formatDisplay(nextValue, fallbackValue, resolveFallback, formatValue));
+    setRangeValue(nextValue);
+    setNumberValue(formatValueForDisplay(nextValue));
     onChange(nextValue);
   };
 
@@ -113,6 +120,7 @@ export function InputSlider({
     const raw = event.target.value;
     setNumberValue(raw);
     if (raw.trim().length === 0) {
+      setRangeValue(fallback);
       onChange(undefined);
       return;
     }
@@ -121,44 +129,45 @@ export function InputSlider({
       return;
     }
     const clamped = clamp(parsed, safeMin, safeMax);
+    setRangeValue(clamped);
     onChange(clamped);
     if (clamped !== parsed) {
-      setNumberValue(formatDisplay(clamped, fallbackValue, resolveFallback, formatValue));
+      setNumberValue(formatValueForDisplay(clamped));
     }
   };
 
   return (
-    <div className="inspector-row">
+    <div className={`inspector-row${showNumberInput ? " has-number" : ""}`}>
       <label className="inspector-label" htmlFor={inputId}>
         {label}
       </label>
-      <div className="inspector-slider-wrapper">
+      <div className="inspector-slider-cell">
         <input
           id={inputId}
           type="range"
           min={safeMin}
           max={safeMax}
           step={step}
-          value={sliderValue}
+          value={rangeValue}
           disabled={disabled}
           onChange={handleRangeChange}
           className="inspector-slider"
           style={{ background: sliderBackground }}
         />
-        {showNumberInput ? (
-          <input
-            aria-label={`${label} value`}
-            type="number"
-            min={safeMin}
-            max={safeMax}
-            step={step}
-            value={numberValue}
-            disabled={disabled}
-            onChange={handleNumberChange}
-            className="inspector-number"
-          />
-        ) : null}
       </div>
+      {showNumberInput ? (
+        <input
+          aria-label={`${label} value`}
+          type="number"
+          min={safeMin}
+          max={safeMax}
+          step={step}
+          value={numberValue}
+          disabled={disabled}
+          onChange={handleNumberChange}
+          className="inspector-number"
+        />
+      ) : null}
 
       <style jsx>{`
         .inspector-row {
@@ -174,13 +183,18 @@ export function InputSlider({
           font-weight: 500;
           color: ${inspectorColors.label};
           line-height: 1.2;
+          display: flex;
+          align-items: center;
+          min-height: ${controlHeight}px;
         }
 
-        .inspector-slider-wrapper {
-          display: grid;
-          grid-template-columns: 1fr ${showNumberInput ? `${numberWidth}px` : "auto"};
+        .inspector-row.has-number {
+          grid-template-columns: ${labelWidth}px 1fr ${numberWidth}px;
+        }
+
+        .inspector-slider-cell {
+          display: flex;
           align-items: center;
-          gap: ${gap}px;
         }
 
         .inspector-slider {
@@ -190,7 +204,7 @@ export function InputSlider({
           border: ${borderWidth}px solid ${inspectorColors.border};
           appearance: none;
           background: ${sliderBackground};
-          padding: 0 ${tokens.spacing.xs}px;
+          padding: 0;
         }
 
         .inspector-slider:focus-visible {
@@ -200,23 +214,37 @@ export function InputSlider({
 
         .inspector-slider::-webkit-slider-thumb {
           appearance: none;
-          width: ${tokens.spacing.sm}px;
-          height: ${tokens.spacing.sm}px;
+          width: ${tokens.spacing.md}px;
+          height: ${tokens.spacing.md}px;
           border-radius: 50%;
           background: #10b981;
           cursor: pointer;
           border: 0;
           box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12);
+          margin-top: calc((4px - ${tokens.spacing.md}px) / 2);
         }
 
         .inspector-slider::-moz-range-thumb {
-          width: ${tokens.spacing.sm}px;
-          height: ${tokens.spacing.sm}px;
+          width: ${tokens.spacing.md}px;
+          height: ${tokens.spacing.md}px;
           border-radius: 50%;
           background: #10b981;
           cursor: pointer;
           border: 0;
           box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12);
+          margin-top: calc((4px - ${tokens.spacing.md}px) / 2);
+        }
+
+        .inspector-slider::-webkit-slider-runnable-track {
+          height: 4px;
+          border-radius: ${radius}px;
+          background: transparent;
+        }
+
+        .inspector-slider::-moz-range-track {
+          height: 4px;
+          border-radius: ${radius}px;
+          background: transparent;
         }
 
         .inspector-number {
@@ -229,6 +257,8 @@ export function InputSlider({
           font-size: 0.875rem;
           color: ${inspectorColors.text};
           background-color: ${inspectorColors.background};
+          text-align: right;
+          font-feature-settings: "tnum" 1;
         }
 
         .inspector-number:disabled,
@@ -237,13 +267,38 @@ export function InputSlider({
           cursor: not-allowed;
         }
 
-        @media (max-width: 640px) {
+        .inspector-number::-webkit-outer-spin-button,
+        .inspector-number::-webkit-inner-spin-button {
+          margin: 0;
+          -webkit-appearance: none;
+        }
+
+        .inspector-number {
+          appearance: textfield;
+        }
+
+        @media (max-width: ${mobileBreakpoint}px) {
           .inspector-row {
+            grid-template-columns: 1fr;
+            align-items: stretch;
+          }
+
+          .inspector-label {
+            min-height: auto;
+          }
+
+          .inspector-row.has-number {
             grid-template-columns: 1fr;
           }
 
-          .inspector-slider-wrapper {
-            grid-template-columns: 1fr ${showNumberInput ? `${numberWidth}px` : "auto"};
+          .inspector-slider {
+            height: ${controlHeight}px;
+          }
+
+          .inspector-number {
+            justify-self: end;
+            width: ${numberWidth}px;
+            max-width: none;
           }
         }
       `}</style>
