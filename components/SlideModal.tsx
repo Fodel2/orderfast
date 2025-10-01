@@ -96,6 +96,7 @@ import InspectorInputSlider from "../src/components/inspector/controls/InputSlid
 import InspectorInputText from "../src/components/inspector/controls/InputText";
 import InspectorInputTextArea from "../src/components/inspector/controls/InputTextArea";
 import InspectorInputToggle from "../src/components/inspector/controls/InputToggle";
+import InspectorInputUpload from "../src/components/inspector/controls/InputUpload";
 import { supabase } from "@/utils/supabaseClient";
 import { STORAGE_BUCKET } from "@/lib/storage";
 import { SlideRow } from "@/components/customer/home/SlidesContainer";
@@ -4800,196 +4801,155 @@ export default function SlideModal({
                                     )}
                                   </div>
                                 </div>
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Image URL
-                                  </span>
-                                  <InputText
-                                    type="text"
+                                <InspectorSection title="Content">
+                                  <InspectorInputText
+                                    label="Image URL"
                                     value={selectedImageConfig.url}
-                                    onChange={(e) => {
-                                      const value = e.target.value;
+                                    placeholder="https://example.com/image.jpg"
+                                    onChange={(nextValue) =>
                                       updateImageConfig(selectedBlock.id, (config) => ({
                                         ...config,
-                                        url: value,
-                                      }));
-                                    }}
-                                    className={INSPECTOR_INPUT_CLASS}
-                                    placeholder="https://example.com/image.jpg"
+                                        url: nextValue,
+                                      }))
+                                    }
                                   />
-                                </label>
-                                <input
-                                  ref={blockImageInputRef}
-                                  type="file"
-                                  accept="image/*"
-                                  className="hidden"
-                                  onChange={(e) => {
-                                    const file = e.target.files?.[0];
-                                    if (file) {
+                                  <InspectorInputUpload
+                                    ref={blockImageInputRef}
+                                    label="Upload"
+                                    buttonLabel={
+                                      selectedImageConfig.url
+                                        ? "Replace image"
+                                        : "Upload image"
+                                    }
+                                    accept="image/*"
+                                    uploading={uploading}
+                                    onSelectFiles={(files) => {
+                                      const file = files?.[0];
+                                      if (!file) return;
                                       handleUpload(file, (url) => {
                                         updateImageConfig(selectedBlock.id, (config) => ({
                                           ...config,
                                           url,
                                         }));
                                       });
-                                      e.target.value = "";
-                                    }
-                                  }}
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    blockImageInputRef.current?.click()
-                                  }
-                                  className="rounded border px-3 py-1 text-xs"
-                                >
-                                  {selectedImageConfig.url
-                                    ? "Replace image"
-                                    : "Upload image"}
-                                </button>
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Object fit
-                                  </span>
-                                  <InputSelect
-                                    value={selectedImageConfig.fit}
-                                    onChange={(e) =>
+                                    }}
+                                  />
+                                  <InspectorInputText
+                                    label="Alt text"
+                                    value={selectedImageConfig.alt}
+                                    placeholder="Describe the image"
+                                    onChange={(nextValue) =>
                                       updateImageConfig(selectedBlock.id, (config) => ({
                                         ...config,
-                                        fit: e.target.value as "cover" | "contain",
+                                        alt: nextValue,
                                       }))
                                     }
+                                  />
+                                </InspectorSection>
+                                <InspectorSection title="Display">
+                                  <InspectorInputSelect
+                                    label="Object fit"
+                                    value={selectedImageConfig.fit}
+                                    onChange={(nextValue) => {
+                                      const normalized =
+                                        nextValue === "contain" ? "contain" : "cover";
+                                      updateImageConfig(selectedBlock.id, (config) => ({
+                                        ...config,
+                                        fit: normalized,
+                                      }));
+                                    }}
                                     options={[
                                       { value: "cover", label: "Cover" },
                                       { value: "contain", label: "Contain" },
                                     ]}
                                   />
-                                </label>
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Aspect ratio
-                                  </span>
-                                  <InputSelect
+                                  <InspectorInputSelect
+                                    label="Aspect ratio"
                                     value={selectedImageConfig.aspectRatio}
-                                    onChange={(e) =>
+                                    onChange={(nextValue) =>
                                       updateImageConfig(selectedBlock.id, (config) => ({
                                         ...config,
-                                        aspectRatio: e.target
-                                          .value as ImageBlockConfig["aspectRatio"],
+                                        aspectRatio: nextValue as ImageBlockConfig["aspectRatio"],
                                       }))
                                     }
-                                    options={IMAGE_ASPECT_RATIO_OPTIONS}
+                                    options={IMAGE_ASPECT_RATIO_OPTIONS.map((option) => ({
+                                      label: option.label,
+                                      value: option.value,
+                                    }))}
                                   />
-                                </label>
-                                <div>
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Focal point
-                                  </span>
-                                  <div className="mt-2 space-y-2">
-                                    <label className="block text-xs text-neutral-500">
-                                      <div className="flex items-center justify-between">
-                                        <span>X axis</span>
-                                        <span>{selectedImageConfig.focalX.toFixed(2)}</span>
-                                      </div>
-                                      <InputSlider
-                                        min={0}
-                                        max={1}
-                                        step={0.01}
-                                        value={selectedImageConfig.focalX}
-                                        fallbackValue={DEFAULT_IMAGE_CONFIG.focalX}
-                                        onValueChange={(next) => {
-                                          const value =
-                                            typeof next === "number"
-                                              ? next
-                                              : DEFAULT_IMAGE_CONFIG.focalX;
-                                          updateImageConfig(selectedBlock.id, (config) => ({
-                                            ...config,
-                                            focalX: value,
-                                          }));
-                                        }}
-                                        containerClassName="mt-1"
-                                        className="w-full"
-                                        numberInputClassName="w-24 shrink-0 text-right text-xs"
-                                      />
-                                    </label>
-                                    <label className="block text-xs text-neutral-500">
-                                      <div className="flex items-center justify-between">
-                                        <span>Y axis</span>
-                                        <span>{selectedImageConfig.focalY.toFixed(2)}</span>
-                                      </div>
-                                      <InputSlider
-                                        min={0}
-                                        max={1}
-                                        step={0.01}
-                                        value={selectedImageConfig.focalY}
-                                        fallbackValue={DEFAULT_IMAGE_CONFIG.focalY}
-                                        onValueChange={(next) => {
-                                          const value =
-                                            typeof next === "number"
-                                              ? next
-                                              : DEFAULT_IMAGE_CONFIG.focalY;
-                                          updateImageConfig(selectedBlock.id, (config) => ({
-                                            ...config,
-                                            focalY: value,
-                                          }));
-                                        }}
-                                        containerClassName="mt-1"
-                                        className="w-full"
-                                        numberInputClassName="w-24 shrink-0 text-right text-xs"
-                                      />
-                                    </label>
-                                  </div>
-                                </div>
-                                <InspectorSliderControl
-                                  label="Corner radius (px)"
-                                  value={selectedImageConfig.radius}
-                                  fallbackValue={
-                                    selectedImageConfig.radius ?? DEFAULT_IMAGE_CONFIG.radius
-                                  }
-                                  min={0}
-                                  max={50}
-                                  step={1}
-                                  onChange={(next) => {
-                                    updateImageConfig(selectedBlock.id, (config) => ({
-                                      ...config,
-                                      radius:
-                                        next === undefined || Number.isNaN(next)
-                                          ? config.radius
-                                          : Math.max(0, Math.round(next)),
-                                    }));
-                                  }}
-                                />
-                                <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
-                                  <InputCheckbox
-                                    
-                                    checked={selectedImageConfig.shadow}
-                                    onChange={(e) =>
+                                  <InspectorInputSlider
+                                    label="Focal X (%)"
+                                    min={0}
+                                    max={100}
+                                    step={1}
+                                    value={Math.round(selectedImageConfig.focalX * 100)}
+                                    fallbackValue={Math.round(
+                                      DEFAULT_IMAGE_CONFIG.focalX * 100,
+                                    )}
+                                    onChange={(next) => {
+                                      const percent =
+                                        typeof next === "number" && Number.isFinite(next)
+                                          ? next
+                                          : DEFAULT_IMAGE_CONFIG.focalX * 100;
+                                      const clamped = Math.min(100, Math.max(0, percent));
                                       updateImageConfig(selectedBlock.id, (config) => ({
                                         ...config,
-                                        shadow: e.target.checked,
-                                      }))
-                                    }
-                                  />
-                                  Shadow
-                                </label>
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Alt text
-                                  </span>
-                                  <InputText
-                                    type="text"
-                                    value={selectedImageConfig.alt}
-                                    onChange={(e) => {
-                                      const value = e.target.value;
-                                      updateImageConfig(selectedBlock.id, (config) => ({
-                                        ...config,
-                                        alt: value,
+                                        focalX: clamped / 100,
                                       }));
                                     }}
-                                    className={INSPECTOR_INPUT_CLASS}
-                                    placeholder="Describe the image"
                                   />
-                                </label>
+                                  <InspectorInputSlider
+                                    label="Focal Y (%)"
+                                    min={0}
+                                    max={100}
+                                    step={1}
+                                    value={Math.round(selectedImageConfig.focalY * 100)}
+                                    fallbackValue={Math.round(
+                                      DEFAULT_IMAGE_CONFIG.focalY * 100,
+                                    )}
+                                    onChange={(next) => {
+                                      const percent =
+                                        typeof next === "number" && Number.isFinite(next)
+                                          ? next
+                                          : DEFAULT_IMAGE_CONFIG.focalY * 100;
+                                      const clamped = Math.min(100, Math.max(0, percent));
+                                      updateImageConfig(selectedBlock.id, (config) => ({
+                                        ...config,
+                                        focalY: clamped / 100,
+                                      }));
+                                    }}
+                                  />
+                                </InspectorSection>
+                                <InspectorSection title="Effects">
+                                  <InspectorInputSlider
+                                    label="Corner radius (px)"
+                                    min={0}
+                                    max={50}
+                                    step={1}
+                                    value={selectedImageConfig.radius}
+                                    fallbackValue={DEFAULT_IMAGE_CONFIG.radius}
+                                    onChange={(next) => {
+                                      const resolved =
+                                        typeof next === "number" && Number.isFinite(next)
+                                          ? Math.max(0, Math.round(next))
+                                          : DEFAULT_IMAGE_CONFIG.radius;
+                                      updateImageConfig(selectedBlock.id, (config) => ({
+                                        ...config,
+                                        radius: resolved,
+                                      }));
+                                    }}
+                                  />
+                                  <InspectorInputToggle
+                                    label="Shadow"
+                                    checked={selectedImageConfig.shadow}
+                                    onChange={(nextChecked) =>
+                                      updateImageConfig(selectedBlock.id, (config) => ({
+                                        ...config,
+                                        shadow: nextChecked,
+                                      }))
+                                    }
+                                  />
+                                </InspectorSection>
                               </div>
                             )}
                           {selectedBlock.kind === "gallery" &&
