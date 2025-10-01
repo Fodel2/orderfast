@@ -93,7 +93,9 @@ import ControlRow from "../src/components/inspector/ControlRow";
 import InspectorInputColor from "../src/components/inspector/controls/InputColor";
 import InspectorInputSelect from "../src/components/inspector/controls/InputSelect";
 import InspectorInputSlider from "../src/components/inspector/controls/InputSlider";
+import InspectorInputText from "../src/components/inspector/controls/InputText";
 import InspectorInputTextArea from "../src/components/inspector/controls/InputTextArea";
+import InspectorInputToggle from "../src/components/inspector/controls/InputToggle";
 import { supabase } from "@/utils/supabaseClient";
 import { STORAGE_BUCKET } from "@/lib/storage";
 import { SlideRow } from "@/components/customer/home/SlidesContainer";
@@ -4509,22 +4511,16 @@ export default function SlideModal({
                           {selectedBlock.kind === "button" && selectedButtonConfig && (
                             <div className="space-y-4">
                               <InspectorSection title="Content">
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Label
-                                  </span>
-                                  <InputText
-                                    type="text"
-                                    value={selectedButtonConfig.label}
-                                    onChange={(e) =>
-                                      updateButtonConfig(selectedBlock.id, (config) => ({
-                                        ...config,
-                                        label: e.target.value,
-                                      }))
-                                    }
-                                    className={INSPECTOR_INPUT_CLASS}
-                                  />
-                                </label>
+                                <InspectorInputText
+                                  label="Label"
+                                  value={selectedButtonConfig.label}
+                                  onChange={(nextValue) =>
+                                    updateButtonConfig(selectedBlock.id, (config) => ({
+                                      ...config,
+                                      label: nextValue,
+                                    }))
+                                  }
+                                />
                                 <InspectorInputSelect
                                   label="Link"
                                   value={
@@ -4553,17 +4549,16 @@ export default function SlideModal({
                                     label: opt === "custom" ? "Custom URL" : opt,
                                   }))}
                                 />
-                                <InputText
-                                  type="text"
+                                <InspectorInputText
+                                  label="URL"
                                   value={selectedButtonConfig.href}
-                                  onChange={(e) =>
+                                  placeholder="https://"
+                                  onChange={(nextValue) =>
                                     updateButtonConfig(selectedBlock.id, (config) => ({
                                       ...config,
-                                      href: e.target.value,
+                                      href: nextValue,
                                     }))
                                   }
-                                  className={INSPECTOR_INPUT_CLASS}
-                                  placeholder="https://"
                                 />
                               </InspectorSection>
                               <InspectorSection title="Typography">
@@ -4651,30 +4646,19 @@ export default function SlideModal({
                                 />
                               </InspectorSection>
                               <InspectorSection title="Alignment">
-                                <div className="flex gap-1.5">
-                                  {TEXT_ALIGNMENT_OPTIONS.map((option) => {
-                                    const currentAlign = selectedBlock.align ?? "left";
-                                    const isActive = currentAlign === option.value;
-                                    return (
-                                      <button
-                                        key={option.value}
-                                        type="button"
-                                        onClick={() =>
-                                          patchBlock(selectedBlock.id, {
-                                            align: option.value,
-                                          })
-                                        }
-                                        className={`flex-1 rounded border px-2.5 py-1.5 text-xs font-medium capitalize transition ${
-                                          isActive
-                                            ? "border-emerald-500 bg-emerald-50 text-emerald-600"
-                                            : "border-neutral-200 text-neutral-600 hover:border-neutral-300"
-                                        }`}
-                                      >
-                                        {option.label}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
+                                <InspectorInputSelect
+                                  label="Alignment"
+                                  value={selectedBlock.align ?? "left"}
+                                  onChange={(nextValue) => {
+                                    patchBlock(selectedBlock.id, {
+                                      align: nextValue as SlideBlock["align"],
+                                    });
+                                  }}
+                                  options={TEXT_ALIGNMENT_OPTIONS.map((option) => ({
+                                    label: option.label,
+                                    value: option.value,
+                                  }))}
+                                />
                               </InspectorSection>
                               <InspectorSection title="Options">
                                 <InspectorInputSelect
@@ -4705,34 +4689,26 @@ export default function SlideModal({
                                     label: size,
                                   }))}
                                 />
-                                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                  <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
-                                    <InputCheckbox
-
-                                      checked={selectedButtonConfig.fullWidth}
-                                      onChange={(e) =>
-                                        updateButtonConfig(selectedBlock.id, (config) => ({
-                                          ...config,
-                                          fullWidth: e.target.checked,
-                                        }))
-                                      }
-                                    />
-                                    Full width
-                                  </label>
-                                  <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
-                                    <InputCheckbox
-
-                                      checked={selectedButtonConfig.shadow}
-                                      onChange={(e) =>
-                                        updateButtonConfig(selectedBlock.id, (config) => ({
-                                          ...config,
-                                          shadow: e.target.checked,
-                                        }))
-                                      }
-                                    />
-                                    Shadow
-                                  </label>
-                                </div>
+                                <InspectorInputToggle
+                                  label="Full width"
+                                  checked={selectedButtonConfig.fullWidth}
+                                  onChange={(nextChecked) =>
+                                    updateButtonConfig(selectedBlock.id, (config) => ({
+                                      ...config,
+                                      fullWidth: nextChecked,
+                                    }))
+                                  }
+                                />
+                                <InspectorInputToggle
+                                  label="Shadow"
+                                  checked={selectedButtonConfig.shadow}
+                                  onChange={(nextChecked) =>
+                                    updateButtonConfig(selectedBlock.id, (config) => ({
+                                      ...config,
+                                      shadow: nextChecked,
+                                    }))
+                                  }
+                                />
                               </InspectorSection>
                               <InspectorSection title="Effects">
                                 <InspectorInputSlider
