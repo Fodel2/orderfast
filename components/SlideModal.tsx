@@ -88,6 +88,11 @@ import {
   InputText,
   InputToggle,
 } from "./ui";
+import InspectorSection from "../src/components/inspector/InspectorSection";
+import ControlRow from "../src/components/inspector/ControlRow";
+import InspectorInputColor from "../src/components/inspector/controls/InputColor";
+import InspectorInputSelect from "../src/components/inspector/controls/InputSelect";
+import InspectorInputSlider from "../src/components/inspector/controls/InputSlider";
 import { supabase } from "@/utils/supabaseClient";
 import { STORAGE_BUCKET } from "@/lib/storage";
 import { SlideRow } from "@/components/customer/home/SlidesContainer";
@@ -3914,283 +3919,334 @@ export default function SlideModal({
                                   className={INSPECTOR_TEXTAREA_CLASS}
                                 />
                               </label>
-                              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Font family
-                                  </span>
-                                  {(() => {
-                                    const value = resolveFontFamilyValue(
-                                      selectedBlock.fontFamily,
-                                    );
-                                    return (
-                                      <FontSelect
-                                        value={value}
-                                        fonts={APP_FONTS}
-                                        onChange={(nextValue) =>
-                                          handleFontFamilyChange(
-                                            selectedBlock.id,
-                                            nextValue,
-                                          )
-                                        }
-                                      />
-                                    );
-                                  })()}
-                                </label>
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Font weight
-                                  </span>
-                                  <InputSelect
-                                    value={String(
-                                      selectedBlock.fontWeight ??
-                                        (selectedBlock.kind === "heading" ? 700 : 400),
-                                    )}
-                                    onChange={(e) => {
-                                      const parsed = Number(e.target.value);
-                                      patchBlock(selectedBlock.id, {
-                                        fontWeight: Number.isNaN(parsed)
-                                          ? selectedBlock.fontWeight
-                                          : parsed,
-                                      });
-                                    }}
-                                    options={FONT_WEIGHT_OPTIONS}
-                                  />
-                                </label>
-                              </div>
-                              <div className="space-y-3">
-                                <InspectorSliderControl
-                                  label="Font size (px)"
-                                  value={selectedBlock.fontSize}
-                                  fallbackValue={
-                                    selectedBlock.fontSize ??
-                                    (selectedBlock.size
-                                      ? SIZE_TO_FONT_SIZE_PX[selectedBlock.size]
-                                      : TEXT_KIND_FONT_DEFAULT[selectedBlock.kind] ?? 16) ?? 16
-                                  }
-                                  min={8}
-                                  max={120}
-                                  step={1}
-                                  onChange={(next) => {
-                                    if (next === undefined) {
-                                      patchBlock(selectedBlock.id, {
-                                        fontSize: undefined,
-                                      });
-                                      return;
-                                    }
-                                    const normalized = Math.round(next);
+                              {(() => {
+                                const textColorValue =
+                                  selectedBlock.textColor ??
+                                  selectedBlock.color ??
+                                  "#000000";
+                                const parsedTextColor = parseColorValue(textColorValue);
+                                const textOpacityPercent = Math.round(
+                                  clampRange(parsedTextColor.alpha * 100, 0, 100),
+                                );
+                                const handleTextColorChange = (nextValue: string) => {
+                                  const trimmed = nextValue.trim();
+                                  if (!trimmed.length) {
                                     patchBlock(selectedBlock.id, {
-                                      fontSize: Number.isNaN(normalized)
-                                        ? undefined
-                                        : normalized,
-                                    });
-                                  }}
-                                />
-                                <InspectorSliderControl
-                                  label="Line height"
-                                  value={selectedBlock.lineHeight}
-                                  fallbackValue={
-                                    selectedBlock.lineHeight ?? 1.2
-                                  }
-                                  min={0.5}
-                                  max={3}
-                                  step={0.1}
-                                  onChange={(next) => {
-                                    if (next === undefined) {
-                                      patchBlock(selectedBlock.id, {
-                                        lineHeight: undefined,
-                                        lineHeightUnit: undefined,
-                                      });
-                                      return;
-                                    }
-                                    patchBlock(selectedBlock.id, {
-                                      lineHeight: next,
-                                      lineHeightUnit: undefined,
-                                    });
-                                  }}
-                                />
-                              </div>
-                              <InspectorSliderControl
-                                label="Letter spacing (px)"
-                                value={selectedBlock.letterSpacing}
-                                fallbackValue={selectedBlock.letterSpacing ?? 0}
-                                min={-10}
-                                max={20}
-                                step={0.1}
-                                onChange={(next) => {
-                                  if (next === undefined) {
-                                    patchBlock(selectedBlock.id, {
-                                      letterSpacing: undefined,
+                                      textColor: undefined,
+                                      color: undefined,
                                     });
                                     return;
                                   }
+                                  const parsedNext = parseColorValue(nextValue);
+                                  const isHex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(trimmed);
+                                  const targetAlpha =
+                                    isHex && parsedTextColor.alpha < 0.999
+                                      ? parsedTextColor.alpha
+                                      : parsedNext.alpha;
+                                  const resolvedColor =
+                                    targetAlpha >= 0.999
+                                      ? parsedNext.hex
+                                      : hexToRgbaString(parsedNext.hex, targetAlpha);
                                   patchBlock(selectedBlock.id, {
-                                    letterSpacing: next,
+                                    textColor: resolvedColor,
+                                    color: resolvedColor,
                                   });
-                                }}
-                              />
-                              <div>
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Text color
-                                </span>
-                                <InspectorColorInput
-                                  value={
-                                    selectedBlock.textColor ??
-                                    selectedBlock.color ??
-                                    "#000000"
-                                  }
-                                  onChange={(nextColor) =>
+                                };
+                                const handleTextOpacityChange = (next: number | undefined) => {
+                                  if (next === undefined) {
                                     patchBlock(selectedBlock.id, {
-                                      textColor: nextColor,
-                                      color: nextColor,
-                                    })
-                                  }
-                                  allowAlpha
-                                />
-                              </div>
-                              <InspectorTextShadowControls
-                                block={selectedBlock}
-                                onPatch={(patch) =>
-                                  patchBlock(selectedBlock.id, patch)
-                                }
-                              />
-                              <label className="block">
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Background style
-                                </span>
-                                <InputSelect
-                                  value={selectedBlock.bgStyle ?? "none"}
-                                  onChange={(e) => {
-                                    const value = e.target.value as SlideBlock["bgStyle"];
-                                    if (value === "none") {
-                                      patchBlock(selectedBlock.id, {
-                                        bgStyle: "none",
-                                      });
-                                      return;
-                                    }
-                                    patchBlock(selectedBlock.id, {
-                                      bgStyle: value,
-                                      bgColor:
-                                        selectedBlock.bgColor ?? "#000000",
-                                      bgOpacity:
-                                        selectedBlock.bgOpacity ??
-                                        (value === "glass" ? 0.5 : 1),
-                                      radius: selectedBlock.radius ?? 0,
-                                      padding: selectedBlock.padding ?? 0,
+                                      textColor: parsedTextColor.hex,
+                                      color: parsedTextColor.hex,
                                     });
-                                  }}
-                                  options={BACKGROUND_STYLE_OPTIONS}
-                                />
-                              </label>
-                              {selectedBlock.bgStyle &&
-                                selectedBlock.bgStyle !== "none" && (
-                                  <div className="space-y-3">
-                                    <div>
-                                      <span className="text-xs font-medium text-neutral-500">
-                                        Background color
-                                      </span>
-                                      <InspectorColorInput
-                                        value={selectedBlock.bgColor ?? "#000000"}
-                                        onChange={(nextColor) =>
+                                    return;
+                                  }
+                                  const clamped = clampRange(next, 0, 100);
+                                  const normalized = clamp01(clamped / 100);
+                                  if (normalized >= 0.999) {
+                                    patchBlock(selectedBlock.id, {
+                                      textColor: parsedTextColor.hex,
+                                      color: parsedTextColor.hex,
+                                    });
+                                    return;
+                                  }
+                                  const nextColor = hexToRgbaString(
+                                    parsedTextColor.hex,
+                                    normalized,
+                                  );
+                                  patchBlock(selectedBlock.id, {
+                                    textColor: nextColor,
+                                    color: nextColor,
+                                  });
+                                };
+                                const fontSizeFallback =
+                                  selectedBlock.fontSize ??
+                                  (selectedBlock.size
+                                    ? SIZE_TO_FONT_SIZE_PX[selectedBlock.size]
+                                    : TEXT_KIND_FONT_DEFAULT[selectedBlock.kind] ?? 16) ??
+                                  16;
+                                return (
+                                  <>
+                                    <InspectorSection title="Typography">
+                                      <ControlRow label="Font family">
+                                        {(() => {
+                                          const value = resolveFontFamilyValue(
+                                            selectedBlock.fontFamily,
+                                          );
+                                          return (
+                                            <FontSelect
+                                              value={value}
+                                              fonts={APP_FONTS}
+                                              onChange={(nextValue) =>
+                                                handleFontFamilyChange(
+                                                  selectedBlock.id,
+                                                  nextValue,
+                                                )
+                                              }
+                                            />
+                                          );
+                                        })()}
+                                      </ControlRow>
+                                      <InspectorInputSelect
+                                        label="Font weight"
+                                        value={String(
+                                          selectedBlock.fontWeight ??
+                                            (selectedBlock.kind === "heading" ? 700 : 400),
+                                        )}
+                                        onChange={(nextValue) => {
+                                          const parsed = Number(nextValue);
                                           patchBlock(selectedBlock.id, {
-                                            bgColor: nextColor,
-                                          })
+                                            fontWeight: Number.isNaN(parsed)
+                                              ? selectedBlock.fontWeight
+                                              : parsed,
+                                          });
+                                        }}
+                                        options={FONT_WEIGHT_OPTIONS.map((option) => ({
+                                          label: option.label,
+                                          value: String(option.value),
+                                        }))}
+                                      />
+                                      <InspectorInputSlider
+                                        label="Font size (px)"
+                                        value={selectedBlock.fontSize}
+                                        fallbackValue={fontSizeFallback}
+                                        min={8}
+                                        max={120}
+                                        step={1}
+                                        onChange={(next) => {
+                                          if (next === undefined) {
+                                            patchBlock(selectedBlock.id, {
+                                              fontSize: undefined,
+                                            });
+                                            return;
+                                          }
+                                          const normalized = Math.round(next);
+                                          patchBlock(selectedBlock.id, {
+                                            fontSize: Number.isNaN(normalized)
+                                              ? undefined
+                                              : normalized,
+                                          });
+                                        }}
+                                      />
+                                      <InspectorInputSlider
+                                        label="Line height"
+                                        value={selectedBlock.lineHeight}
+                                        fallbackValue={selectedBlock.lineHeight ?? 1.2}
+                                        min={0.5}
+                                        max={3}
+                                        step={0.1}
+                                        formatValue={(current, fallback) => {
+                                          const resolved =
+                                            typeof current === "number" && Number.isFinite(current)
+                                              ? current
+                                              : typeof fallback === "number"
+                                                ? fallback
+                                                : 1.2;
+                                          return resolved.toFixed(2);
+                                        }}
+                                        onChange={(next) => {
+                                          if (next === undefined) {
+                                            patchBlock(selectedBlock.id, {
+                                              lineHeight: undefined,
+                                              lineHeightUnit: undefined,
+                                            });
+                                            return;
+                                          }
+                                          const normalized = Math.round(next * 100) / 100;
+                                          patchBlock(selectedBlock.id, {
+                                            lineHeight: normalized,
+                                            lineHeightUnit: undefined,
+                                          });
+                                        }}
+                                      />
+                                      <InspectorInputSlider
+                                        label="Letter spacing (px)"
+                                        value={selectedBlock.letterSpacing}
+                                        fallbackValue={selectedBlock.letterSpacing ?? 0}
+                                        min={-10}
+                                        max={20}
+                                        step={0.1}
+                                        onChange={(next) => {
+                                          if (next === undefined) {
+                                            patchBlock(selectedBlock.id, {
+                                              letterSpacing: undefined,
+                                            });
+                                            return;
+                                          }
+                                          const normalized = Math.round(next * 10) / 10;
+                                          patchBlock(selectedBlock.id, {
+                                            letterSpacing: normalized,
+                                          });
+                                        }}
+                                      />
+                                      <InspectorInputSelect
+                                        label="Alignment"
+                                        value={selectedBlock.align ?? "left"}
+                                        onChange={(nextValue) => {
+                                          patchBlock(selectedBlock.id, {
+                                            align: nextValue as SlideBlock["align"],
+                                          });
+                                        }}
+                                        options={TEXT_ALIGNMENT_OPTIONS.map((option) => ({
+                                          label: option.label,
+                                          value: option.value,
+                                        }))}
+                                      />
+                                    </InspectorSection>
+                                    <InspectorSection title="Color & Effects">
+                                      <InspectorInputColor
+                                        label="Text color"
+                                        value={textColorValue}
+                                        onChange={handleTextColorChange}
+                                      />
+                                      <InspectorInputSlider
+                                        label="Opacity (%)"
+                                        value={textOpacityPercent}
+                                        fallbackValue={100}
+                                        min={0}
+                                        max={100}
+                                        step={1}
+                                        onChange={handleTextOpacityChange}
+                                      />
+                                      <InspectorTextShadowControls
+                                        block={selectedBlock}
+                                        onPatch={(patch) =>
+                                          patchBlock(selectedBlock.id, patch)
                                         }
                                       />
-                                    </div>
-                                    <InspectorSliderControl
-                                      label="Opacity"
-                                      value={
-                                        selectedBlock.bgOpacity !== undefined
-                                          ? selectedBlock.bgOpacity * 100
-                                          : undefined
-                                      }
-                                      fallbackValue={
-                                        ((selectedBlock.bgStyle === "glass" ? 0.5 : 1) *
-                                          100) || 0
-                                      }
-                                      min={0}
-                                      max={100}
-                                      step={1}
-                                      onChange={(next) => {
-                                        const fallbackValue =
-                                          selectedBlock.bgStyle === "glass" ? 0.5 : 1;
-                                        const percent =
-                                          next === undefined
-                                            ? (selectedBlock.bgOpacity ?? fallbackValue) * 100
-                                            : next;
-                                        const clampedPercent = Math.min(
-                                          100,
-                                          Math.max(0, percent ?? 0),
-                                        );
-                                        patchBlock(
-                                          selectedBlock.id,
-                                          {
-                                            bgOpacity: clamp01(clampedPercent / 100),
-                                          },
-                                          false,
-                                        );
-                                      }}
-                                    />
-                                    <InspectorSliderControl
-                                      label="Corner radius (px)"
-                                      value={selectedBlock.radius}
-                                      fallbackValue={selectedBlock.radius ?? 0}
-                                      min={0}
-                                      max={50}
-                                      step={1}
-                                      onChange={(next) => {
-                                        const resolved = next === undefined ? 0 : Math.round(next);
-                                        patchBlock(selectedBlock.id, {
-                                          radius: resolved,
-                                        });
-                                      }}
-                                    />
-                                    <InspectorSliderControl
-                                      label="Padding (px)"
-                                      value={selectedBlock.padding}
-                                      fallbackValue={selectedBlock.padding ?? 0}
-                                      min={0}
-                                      max={100}
-                                      step={1}
-                                      onChange={(next) => {
-                                        const resolved = next === undefined ? 0 : Math.round(next);
-                                        patchBlock(selectedBlock.id, {
-                                          padding: resolved,
-                                        });
-                                      }}
-                                    />
-                                  </div>
-                                )}
-                              <div>
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Alignment
-                                </span>
-                                <div className="mt-1 flex gap-1.5">
-                                  {TEXT_ALIGNMENT_OPTIONS.map((option) => {
-                                    const currentAlign = selectedBlock.align ?? "left";
-                                    const isActive = currentAlign === option.value;
-                                    return (
-                                      <button
-                                        key={option.value}
-                                        type="button"
-                                        onClick={() =>
+                                    </InspectorSection>
+                                    <label className="block">
+                                      <span className="text-xs font-medium text-neutral-500">
+                                        Background style
+                                      </span>
+                                      <InputSelect
+                                        value={selectedBlock.bgStyle ?? "none"}
+                                        onChange={(e) => {
+                                          const value = e.target.value as SlideBlock["bgStyle"];
+                                          if (value === "none") {
+                                            patchBlock(selectedBlock.id, {
+                                              bgStyle: "none",
+                                            });
+                                            return;
+                                          }
                                           patchBlock(selectedBlock.id, {
-                                            align: option.value,
-                                          })
-                                        }
-                                        className={`flex-1 rounded border px-2.5 py-1.5 text-xs font-medium capitalize transition ${
-                                          isActive
-                                            ? "border-emerald-500 bg-emerald-50 text-emerald-600"
-                                            : "border-neutral-200 text-neutral-600 hover:border-neutral-300"
-                                        }`}
-                                      >
-                                        {option.label}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              </div>
+                                            bgStyle: value,
+                                            bgColor:
+                                              selectedBlock.bgColor ?? "#000000",
+                                            bgOpacity:
+                                              selectedBlock.bgOpacity ??
+                                              (value === "glass" ? 0.5 : 1),
+                                            radius: selectedBlock.radius ?? 0,
+                                            padding: selectedBlock.padding ?? 0,
+                                          });
+                                        }}
+                                        options={BACKGROUND_STYLE_OPTIONS}
+                                      />
+                                    </label>
+                                    {selectedBlock.bgStyle &&
+                                      selectedBlock.bgStyle !== "none" && (
+                                        <div className="space-y-3">
+                                          <div>
+                                            <span className="text-xs font-medium text-neutral-500">
+                                              Background color
+                                            </span>
+                                            <InspectorColorInput
+                                              value={selectedBlock.bgColor ?? "#000000"}
+                                              onChange={(nextColor) =>
+                                                patchBlock(selectedBlock.id, {
+                                                  bgColor: nextColor,
+                                                })
+                                              }
+                                            />
+                                          </div>
+                                          <InspectorSliderControl
+                                            label="Opacity"
+                                            value={
+                                              selectedBlock.bgOpacity !== undefined
+                                                ? selectedBlock.bgOpacity * 100
+                                                : undefined
+                                            }
+                                            fallbackValue={
+                                              ((selectedBlock.bgStyle === "glass" ? 0.5 : 1) *
+                                                100) || 0
+                                            }
+                                            min={0}
+                                            max={100}
+                                            step={1}
+                                            onChange={(next) => {
+                                              const fallbackValue =
+                                                selectedBlock.bgStyle === "glass" ? 0.5 : 1;
+                                              const percent =
+                                                next === undefined
+                                                  ? (selectedBlock.bgOpacity ?? fallbackValue) * 100
+                                                  : next;
+                                              const clampedPercent = Math.min(
+                                                100,
+                                                Math.max(0, percent ?? 0),
+                                              );
+                                              patchBlock(
+                                                selectedBlock.id,
+                                                {
+                                                  bgOpacity: clamp01(clampedPercent / 100),
+                                                },
+                                                false,
+                                              );
+                                            }}
+                                          />
+                                          <InspectorSliderControl
+                                            label="Corner radius (px)"
+                                            value={selectedBlock.radius}
+                                            fallbackValue={selectedBlock.radius ?? 0}
+                                            min={0}
+                                            max={50}
+                                            step={1}
+                                            onChange={(next) => {
+                                              const resolved =
+                                                next === undefined ? 0 : Math.round(next);
+                                              patchBlock(selectedBlock.id, {
+                                                radius: resolved,
+                                              });
+                                            }}
+                                          />
+                                          <InspectorSliderControl
+                                            label="Padding (px)"
+                                            value={selectedBlock.padding}
+                                            fallbackValue={selectedBlock.padding ?? 0}
+                                            min={0}
+                                            max={100}
+                                            step={1}
+                                            onChange={(next) => {
+                                              const resolved =
+                                                next === undefined ? 0 : Math.round(next);
+                                              patchBlock(selectedBlock.id, {
+                                                padding: resolved,
+                                              });
+                                            }}
+                                          />
+                                        </div>
+                                      )}
+                                  </>
+                                );
+                              })()}
                             </>
                           )}
                           {selectedBlock.kind === "subheading" && (

@@ -1,14 +1,9 @@
 import { ChangeEvent } from "react";
 
+import { inspectorColors, inspectorLayout } from "../layout";
 import { tokens } from "../../../ui/tokens";
 
-const CONTROL_HEIGHT = tokens.spacing.xl;
-const LABEL_WIDTH = tokens.spacing.xl * 4;
-const GAP = tokens.spacing.sm;
-const PADDING_Y = tokens.spacing.xs;
-const PADDING_X = tokens.spacing.sm;
-const RADIUS = tokens.radius.sm;
-const BORDER_WIDTH = tokens.border.thin;
+const { labelWidth, controlHeight, gap, paddingX, paddingY, radius, borderWidth } = inspectorLayout;
 
 export interface InputSelectOption {
   label: string;
@@ -67,28 +62,28 @@ export function InputSelect({
       <style jsx>{`
         .inspector-row {
           display: grid;
-          grid-template-columns: ${LABEL_WIDTH}px 1fr;
+          grid-template-columns: ${labelWidth}px 1fr;
           align-items: center;
-          gap: ${GAP}px;
-          padding: ${PADDING_Y}px ${PADDING_X}px;
+          gap: ${gap}px;
+          padding: ${paddingY}px ${paddingX}px;
         }
 
         .inspector-label {
           font-size: 0.75rem;
           font-weight: 500;
-          color: #475569;
+          color: ${inspectorColors.label};
           line-height: 1.2;
         }
 
         .inspector-select {
           width: 100%;
-          height: ${CONTROL_HEIGHT}px;
-          border-radius: ${RADIUS}px;
-          border: ${BORDER_WIDTH}px solid rgba(15, 23, 42, 0.12);
+          height: ${controlHeight}px;
+          border-radius: ${radius}px;
+          border: ${borderWidth}px solid ${inspectorColors.border};
           padding: 0 ${tokens.spacing.sm}px;
-          background-color: #ffffff;
+          background-color: ${inspectorColors.background};
           font-size: 0.875rem;
-          color: #0f172a;
+          color: ${inspectorColors.text};
         }
 
         .inspector-select:disabled {
