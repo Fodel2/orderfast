@@ -3039,7 +3039,6 @@ export default function SlideModal({
                           "image",
                           "quote",
                           "gallery",
-                          "spacer",
                         ] as SlideBlock["kind"][]
                       ).map((kind) => (
                         <button
