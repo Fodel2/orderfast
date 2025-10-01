@@ -5420,317 +5420,413 @@ export default function SlideModal({
                                 </InspectorSection>
                               </div>
                             )}
-                          {selectedBlock.kind === "quote" && selectedQuoteConfig && (
-                            <div className="space-y-4">
-                              <InspectorSection title="Content">
-                                <InputToggle
-                                  label="Use customer review"
-                                  checked={selectedQuoteConfig.useReview}
-                                  onChange={(checked) =>
-                                    updateQuoteConfig(selectedBlock.id, (config) => ({
-                                      ...config,
-                                      useReview: checked,
-                                      reviewId: checked ? config.reviewId : null,
-                                    }))
+                          {selectedBlock.kind === "quote" && selectedQuoteConfig
+                            ? (() => {
+                                const textColorValue =
+                                  selectedBlock.textColor ??
+                                  selectedBlock.color ??
+                                  "#000000";
+                                const parsedTextColor =
+                                  parseColorValue(textColorValue);
+                                const textOpacityPercent = Math.round(
+                                  clampRange(parsedTextColor.alpha * 100, 0, 100),
+                                );
+                                const handleTextColorChange = (nextValue: string) => {
+                                  const trimmed = nextValue.trim();
+                                  if (!trimmed.length) {
+                                    patchBlock(selectedBlock.id, {
+                                      textColor: undefined,
+                                      color: undefined,
+                                    });
+                                    return;
                                   }
-                                  labelClassName="flex items-center justify-between text-xs text-neutral-500"
-                                />
-                                {selectedQuoteConfig.useReview ? (
-                                  reviewOptions.length > 0 ? (
-                                    <InspectorInputSelect
-                                      label="Review"
-                                      value={selectedQuoteConfig.reviewId ?? ""}
-                                      onChange={(nextValue) => {
-                                        const review = reviewOptions.find(
-                                          (option) => option.id === nextValue,
-                                        );
-                                        updateQuoteConfig(selectedBlock.id, (config) => ({
-                                          ...config,
-                                          useReview: true,
-                                          reviewId: nextValue.length > 0 ? nextValue : null,
-                                          text: review ? review.text : config.text,
-                                          author: review ? review.author : config.author,
-                                        }));
-                                      }}
-                                      options={[
-                                        { value: "", label: "Choose a review…" },
-                                        ...reviewOptions.map((option) => ({
-                                          value: option.id,
-                                          label: formatReviewOptionLabel(option),
-                                        })),
-                                      ]}
-                                    />
-                                  ) : (
-                                    <p className="text-xs text-neutral-500">
-                                      No reviews available.
-                                    </p>
-                                  )
-                                ) : null}
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Quote text
-                                  </span>
-                                  <textarea
-                                    rows={4}
-                                    value={selectedQuoteConfig.text}
-                                    onChange={(e) =>
-                                      updateQuoteConfig(selectedBlock.id, (config) => ({
-                                        ...config,
-                                        text: e.target.value,
-                                      }))
-                                    }
-                                    className={INSPECTOR_TEXTAREA_CLASS}
-                                  />
-                                </label>
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Author (optional)
-                                  </span>
-                                  <InputText
-                                    type="text"
-                                    value={selectedQuoteConfig.author}
-                                    onChange={(e) =>
-                                      updateQuoteConfig(selectedBlock.id, (config) => ({
-                                        ...config,
-                                        author: e.target.value,
-                                      }))
-                                    }
-                                    className={INSPECTOR_INPUT_CLASS}
-                                  />
-                                </label>
-                              </InspectorSection>
-                              <InspectorSection title="Typography">
-                                <ControlRow label="Font family">
-                                  {(() => {
-                                    const value = resolveFontFamilyValue(
-                                      selectedBlock.fontFamily,
-                                    );
-                                    return (
-                                      <FontSelect
-                                        value={value}
-                                        fonts={APP_FONTS}
+                                  const parsedNext = parseColorValue(nextValue);
+                                  const isHex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(trimmed);
+                                  const targetAlpha =
+                                    isHex && parsedTextColor.alpha < 0.999
+                                      ? parsedTextColor.alpha
+                                      : parsedNext.alpha;
+                                  const resolvedColor =
+                                    targetAlpha >= 0.999
+                                      ? parsedNext.hex
+                                      : hexToRgbaString(parsedNext.hex, targetAlpha);
+                                  patchBlock(selectedBlock.id, {
+                                    textColor: resolvedColor,
+                                    color: resolvedColor,
+                                  });
+                                };
+                                const handleTextOpacityChange = (
+                                  next: number | undefined,
+                                ) => {
+                                  if (next === undefined) {
+                                    patchBlock(selectedBlock.id, {
+                                      textColor: parsedTextColor.hex,
+                                      color: parsedTextColor.hex,
+                                    });
+                                    return;
+                                  }
+                                  const clamped = clampRange(next, 0, 100);
+                                  const normalized = clamp01(clamped / 100);
+                                  if (normalized >= 0.999) {
+                                    patchBlock(selectedBlock.id, {
+                                      textColor: parsedTextColor.hex,
+                                      color: parsedTextColor.hex,
+                                    });
+                                    return;
+                                  }
+                                  const nextColor = hexToRgbaString(
+                                    parsedTextColor.hex,
+                                    normalized,
+                                  );
+                                  patchBlock(selectedBlock.id, {
+                                    textColor: nextColor,
+                                    color: nextColor,
+                                  });
+                                };
+                                const fontSizeFallback =
+                                  selectedBlock.fontSize ??
+                                  (selectedQuoteConfig.style === "emphasis" ? 24 : 16);
+
+                                return (
+                                  <div className="space-y-4">
+                                    <InspectorSection title="Content">
+                                      <InspectorInputTextArea
+                                        label="Quote text"
+                                        value={selectedQuoteConfig.text}
+                                        rows={4}
                                         onChange={(nextValue) =>
-                                          handleFontFamilyChange(
-                                            selectedBlock.id,
-                                            nextValue,
-                                          )
-                                        }
-                                      />
-                                    );
-                                  })()}
-                                </ControlRow>
-                                <InspectorInputSelect
-                                  label="Font weight"
-                                  value={String(
-                                    selectedBlock.fontWeight ??
-                                      (selectedQuoteConfig.style === "emphasis" ? 600 : 400),
-                                  )}
-                                  onChange={(nextValue) => {
-                                    const parsed = Number(nextValue);
-                                    patchBlock(selectedBlock.id, {
-                                      fontWeight: Number.isNaN(parsed)
-                                        ? selectedBlock.fontWeight
-                                        : parsed,
-                                    });
-                                  }}
-                                  options={FONT_WEIGHT_OPTIONS.map((option) => ({
-                                    label: option.label,
-                                    value: String(option.value),
-                                  }))}
-                                />
-                                <InspectorInputSlider
-                                  label="Font size (px)"
-                                  value={selectedBlock.fontSize}
-                                  fallbackValue={
-                                    selectedBlock.fontSize ??
-                                    (selectedQuoteConfig.style === "emphasis" ? 24 : 16)
-                                  }
-                                  min={8}
-                                  max={120}
-                                  step={1}
-                                  onChange={(next) => {
-                                    if (next === undefined) {
-                                      patchBlock(selectedBlock.id, {
-                                        fontSize: undefined,
-                                      });
-                                      return;
-                                    }
-                                    const normalized = Math.round(next);
-                                    patchBlock(selectedBlock.id, {
-                                      fontSize: Number.isNaN(normalized)
-                                        ? undefined
-                                        : normalized,
-                                    });
-                                  }}
-                                />
-                                <InspectorInputSlider
-                                  label="Line height"
-                                  value={selectedBlock.lineHeight}
-                                  fallbackValue={selectedBlock.lineHeight ?? 1.2}
-                                  min={0.5}
-                                  max={3}
-                                  step={0.1}
-                                  onChange={(next) => {
-                                    if (next === undefined) {
-                                      patchBlock(selectedBlock.id, {
-                                        lineHeight: undefined,
-                                        lineHeightUnit: undefined,
-                                      });
-                                      return;
-                                    }
-                                    patchBlock(selectedBlock.id, {
-                                      lineHeight: next,
-                                      lineHeightUnit: undefined,
-                                    });
-                                  }}
-                                />
-                              </InspectorSection>
-                              <InspectorSection title="Style">
-                                <InspectorInputSelect
-                                  label="Variant"
-                                  value={selectedQuoteConfig.style}
-                                  onChange={(nextValue) =>
-                                    updateQuoteConfig(selectedBlock.id, (config) => ({
-                                      ...config,
-                                      style: nextValue as QuoteBlockConfig["style"],
-                                    }))
-                                  }
-                                  options={QUOTE_STYLE_OPTIONS.map((option) => ({
-                                    label: option.label,
-                                    value: option.value,
-                                  }))}
-                                />
-                              </InspectorSection>
-                              <InspectorSection title="Effects">
-                                <InspectorTextShadowControls
-                                  block={selectedBlock}
-                                  onPatch={(patch) =>
-                                    patchBlock(selectedBlock.id, patch)
-                                  }
-                                />
-                                {(selectedQuoteConfig.style === "emphasis" ||
-                                  selectedQuoteConfig.style === "card") && (
-                                  <InspectorInputSlider
-                                    label="Corner radius (px)"
-                                    value={selectedQuoteConfig.radius}
-                                    fallbackValue={
-                                      selectedQuoteConfig.radius ?? DEFAULT_QUOTE_CONFIG.radius
-                                    }
-                                    min={0}
-                                    max={50}
-                                    step={1}
-                                    onChange={(next) => {
-                                      const resolved =
-                                        next === undefined || Number.isNaN(next)
-                                          ? selectedQuoteConfig.radius ?? DEFAULT_QUOTE_CONFIG.radius
-                                          : Math.round(next);
-                                      updateQuoteConfig(selectedBlock.id, (config) => ({
-                                        ...config,
-                                        radius: resolved,
-                                      }));
-                                    }}
-                                  />
-                                )}
-                              </InspectorSection>
-                              {(selectedQuoteConfig.style === "emphasis" ||
-                                selectedQuoteConfig.style === "card") && (
-                                <>
-                                  <InspectorSection title="Background">
-                                    <InspectorInputColor
-                                      label="Color"
-                                      value={selectedQuoteConfig.bgColor}
-                                      onChange={(nextColor) =>
-                                        updateQuoteConfig(selectedBlock.id, (config) => ({
-                                          ...config,
-                                          bgColor: nextColor,
-                                        }))
-                                      }
-                                    />
-                                    <InspectorInputSlider
-                                      label="Opacity (%)"
-                                      value={
-                                        selectedQuoteConfig.bgOpacity !== undefined
-                                          ? selectedQuoteConfig.bgOpacity * 100
-                                          : undefined
-                                      }
-                                      fallbackValue={
-                                        ((selectedQuoteConfig.bgOpacity ?? DEFAULT_QUOTE_CONFIG.bgOpacity) *
-                                          100) || 0
-                                      }
-                                      min={0}
-                                      max={100}
-                                      step={1}
-                                      onChange={(next) => {
-                                        const fallback =
-                                          selectedQuoteConfig.bgOpacity ?? DEFAULT_QUOTE_CONFIG.bgOpacity;
-                                        const percent =
-                                          next === undefined || Number.isNaN(next)
-                                            ? fallback * 100
-                                            : next;
-                                        const clampedPercent = Math.min(
-                                          100,
-                                          Math.max(0, percent ?? 0),
-                                        );
-                                        updateQuoteConfig(selectedBlock.id, (config) => ({
-                                          ...config,
-                                          bgOpacity: clamp01(clampedPercent / 100),
-                                        }));
-                                      }}
-                                    />
-                                  </InspectorSection>
-                                  <InspectorSection title="Spacing">
-                                    <InspectorInputSlider
-                                      label="Padding (px)"
-                                      value={selectedQuoteConfig.padding}
-                                      fallbackValue={
-                                        selectedQuoteConfig.padding ?? DEFAULT_QUOTE_CONFIG.padding
-                                      }
-                                      min={0}
-                                      max={100}
-                                      step={1}
-                                      onChange={(next) => {
-                                        const resolved =
-                                          next === undefined || Number.isNaN(next)
-                                            ? selectedQuoteConfig.padding ?? DEFAULT_QUOTE_CONFIG.padding
-                                            : Math.round(next);
-                                        updateQuoteConfig(selectedBlock.id, (config) => ({
-                                          ...config,
-                                          padding: resolved,
-                                        }));
-                                      }}
-                                    />
-                                  </InspectorSection>
-                                </>
-                              )}
-                              <InspectorSection title="Alignment">
-                                <div className="flex gap-1.5">
-                                  {TEXT_ALIGNMENT_OPTIONS.map((option) => {
-                                    const currentAlign = selectedQuoteConfig.align;
-                                    const isActive = currentAlign === option.value;
-                                    return (
-                                      <button
-                                        key={option.value}
-                                        type="button"
-                                        onClick={() =>
                                           updateQuoteConfig(selectedBlock.id, (config) => ({
                                             ...config,
-                                            align: option.value,
+                                            text: nextValue,
                                           }))
                                         }
-                                        className={`flex-1 rounded border px-2.5 py-1.5 text-xs font-medium capitalize transition ${
-                                          isActive
-                                            ? "border-emerald-500 bg-emerald-50 text-emerald-600"
-                                            : "border-neutral-200 text-neutral-600 hover:border-neutral-300"
-                                        }`}
-                                      >
-                                        {option.label}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              </InspectorSection>
-                            </div>
-                          )}
+                                      />
+                                      <InspectorInputText
+                                        label="Author (optional)"
+                                        value={selectedQuoteConfig.author}
+                                        onChange={(nextValue) =>
+                                          updateQuoteConfig(selectedBlock.id, (config) => ({
+                                            ...config,
+                                            author: nextValue,
+                                          }))
+                                        }
+                                      />
+                                    </InspectorSection>
+                                    <InspectorSection title="Typography">
+                                      <ControlRow label="Font family">
+                                        {(() => {
+                                          const value = resolveFontFamilyValue(
+                                            selectedBlock.fontFamily,
+                                          );
+                                          return (
+                                            <FontSelect
+                                              value={value}
+                                              fonts={APP_FONTS}
+                                              onChange={(nextValue) =>
+                                                handleFontFamilyChange(
+                                                  selectedBlock.id,
+                                                  nextValue,
+                                                )
+                                              }
+                                            />
+                                          );
+                                        })()}
+                                      </ControlRow>
+                                      <InspectorInputSelect
+                                        label="Font weight"
+                                        value={String(
+                                          selectedBlock.fontWeight ??
+                                            (selectedQuoteConfig.style === "emphasis"
+                                              ? 600
+                                              : 400),
+                                        )}
+                                        onChange={(nextValue) => {
+                                          const parsed = Number(nextValue);
+                                          patchBlock(selectedBlock.id, {
+                                            fontWeight: Number.isNaN(parsed)
+                                              ? selectedBlock.fontWeight
+                                              : parsed,
+                                          });
+                                        }}
+                                        options={FONT_WEIGHT_OPTIONS.map((option) => ({
+                                          label: option.label,
+                                          value: String(option.value),
+                                        }))}
+                                      />
+                                      <InspectorInputSlider
+                                        label="Font size (px)"
+                                        value={selectedBlock.fontSize}
+                                        fallbackValue={fontSizeFallback}
+                                        min={8}
+                                        max={120}
+                                        step={1}
+                                        onChange={(next) => {
+                                          if (next === undefined) {
+                                            patchBlock(selectedBlock.id, {
+                                              fontSize: undefined,
+                                            });
+                                            return;
+                                          }
+                                          const normalized = Math.round(next);
+                                          patchBlock(selectedBlock.id, {
+                                            fontSize: Number.isNaN(normalized)
+                                              ? undefined
+                                              : normalized,
+                                          });
+                                        }}
+                                      />
+                                      <InspectorInputSlider
+                                        label="Line height"
+                                        value={selectedBlock.lineHeight}
+                                        fallbackValue={selectedBlock.lineHeight ?? 1.2}
+                                        min={0.5}
+                                        max={3}
+                                        step={0.1}
+                                        formatValue={(current, fallback) => {
+                                          const resolved =
+                                            typeof current === "number" &&
+                                            Number.isFinite(current)
+                                              ? current
+                                              : typeof fallback === "number"
+                                                ? fallback
+                                                : 1.2;
+                                          return resolved.toFixed(2);
+                                        }}
+                                        onChange={(next) => {
+                                          if (next === undefined) {
+                                            patchBlock(selectedBlock.id, {
+                                              lineHeight: undefined,
+                                              lineHeightUnit: undefined,
+                                            });
+                                            return;
+                                          }
+                                          const normalized = Math.round(next * 100) / 100;
+                                          patchBlock(selectedBlock.id, {
+                                            lineHeight: normalized,
+                                            lineHeightUnit: undefined,
+                                          });
+                                        }}
+                                      />
+                                      <InspectorInputSlider
+                                        label="Letter spacing (px)"
+                                        value={selectedBlock.letterSpacing}
+                                        fallbackValue={selectedBlock.letterSpacing ?? 0}
+                                        min={-10}
+                                        max={20}
+                                        step={0.1}
+                                        onChange={(next) => {
+                                          if (next === undefined) {
+                                            patchBlock(selectedBlock.id, {
+                                              letterSpacing: undefined,
+                                            });
+                                            return;
+                                          }
+                                          const normalized = Math.round(next * 10) / 10;
+                                          patchBlock(selectedBlock.id, {
+                                            letterSpacing: normalized,
+                                          });
+                                        }}
+                                      />
+                                    </InspectorSection>
+                                    <InspectorSection title="Color">
+                                      <InspectorInputColor
+                                        label="Text color"
+                                        value={textColorValue}
+                                        onChange={handleTextColorChange}
+                                      />
+                                      <InspectorInputSlider
+                                        label="Opacity (%)"
+                                        value={textOpacityPercent}
+                                        fallbackValue={100}
+                                        min={0}
+                                        max={100}
+                                        step={1}
+                                        onChange={handleTextOpacityChange}
+                                      />
+                                    </InspectorSection>
+                                    <InspectorSection title="Alignment">
+                                      <InspectorInputSelect
+                                        label="Alignment"
+                                        value={selectedQuoteConfig.align ?? "left"}
+                                        onChange={(nextValue) =>
+                                          updateQuoteConfig(selectedBlock.id, (config) => ({
+                                            ...config,
+                                            align: nextValue as QuoteBlockConfig["align"],
+                                          }))
+                                        }
+                                        options={TEXT_ALIGNMENT_OPTIONS.map((option) => ({
+                                          label: option.label,
+                                          value: option.value,
+                                        }))}
+                                      />
+                                    </InspectorSection>
+                                    <InspectorSection title="Options">
+                                      <InspectorInputToggle
+                                        label="Use customer review"
+                                        checked={selectedQuoteConfig.useReview}
+                                        onChange={(checked) =>
+                                          updateQuoteConfig(selectedBlock.id, (config) => ({
+                                            ...config,
+                                            useReview: checked,
+                                            reviewId: checked ? config.reviewId : null,
+                                          }))
+                                        }
+                                      />
+                                      {selectedQuoteConfig.useReview ? (
+                                        reviewOptions.length > 0 ? (
+                                          <InspectorInputSelect
+                                            label="Review"
+                                            value={selectedQuoteConfig.reviewId ?? ""}
+                                            onChange={(nextValue) => {
+                                              const review = reviewOptions.find(
+                                                (option) => option.id === nextValue,
+                                              );
+                                              updateQuoteConfig(selectedBlock.id, (config) => ({
+                                                ...config,
+                                                useReview: true,
+                                                reviewId: nextValue.length > 0 ? nextValue : null,
+                                                text: review ? review.text : config.text,
+                                                author: review ? review.author : config.author,
+                                              }));
+                                            }}
+                                            options={[
+                                              { value: "", label: "Choose a review…" },
+                                              ...reviewOptions.map((option) => ({
+                                                value: option.id,
+                                                label: formatReviewOptionLabel(option),
+                                              })),
+                                            ]}
+                                          />
+                                        ) : (
+                                          <ControlRow label="Review">
+                                            <span className="text-xs text-neutral-500">
+                                              No reviews available.
+                                            </span>
+                                          </ControlRow>
+                                        )
+                                      ) : null}
+                                    </InspectorSection>
+                                    <InspectorSection title="Style">
+                                      <InspectorInputSelect
+                                        label="Variant"
+                                        value={selectedQuoteConfig.style}
+                                        onChange={(nextValue) =>
+                                          updateQuoteConfig(selectedBlock.id, (config) => ({
+                                            ...config,
+                                            style: nextValue as QuoteBlockConfig["style"],
+                                          }))
+                                        }
+                                        options={QUOTE_STYLE_OPTIONS.map((option) => ({
+                                          label: option.label,
+                                          value: option.value,
+                                        }))}
+                                      />
+                                    </InspectorSection>
+                                    <InspectorSection title="Effects">
+                                      <InspectorTextShadowControls
+                                        block={selectedBlock}
+                                        onPatch={(patch) =>
+                                          patchBlock(selectedBlock.id, patch)
+                                        }
+                                      />
+                                      {(selectedQuoteConfig.style === "emphasis" ||
+                                        selectedQuoteConfig.style === "card") && (
+                                        <InspectorInputSlider
+                                          label="Corner radius (px)"
+                                          value={selectedQuoteConfig.radius}
+                                          fallbackValue={
+                                            selectedQuoteConfig.radius ?? DEFAULT_QUOTE_CONFIG.radius
+                                          }
+                                          min={0}
+                                          max={50}
+                                          step={1}
+                                          onChange={(next) => {
+                                            const resolved =
+                                              next === undefined || Number.isNaN(next)
+                                                ? selectedQuoteConfig.radius ?? DEFAULT_QUOTE_CONFIG.radius
+                                                : Math.round(next);
+                                            updateQuoteConfig(selectedBlock.id, (config) => ({
+                                              ...config,
+                                              radius: resolved,
+                                            }));
+                                          }}
+                                        />
+                                      )}
+                                    </InspectorSection>
+                                    {(selectedQuoteConfig.style === "emphasis" ||
+                                      selectedQuoteConfig.style === "card") && (
+                                      <>
+                                        <InspectorSection title="Background">
+                                          <InspectorInputColor
+                                            label="Color"
+                                            value={selectedQuoteConfig.bgColor}
+                                            onChange={(nextColor) =>
+                                              updateQuoteConfig(selectedBlock.id, (config) => ({
+                                                ...config,
+                                                bgColor: nextColor,
+                                              }))
+                                            }
+                                          />
+                                          <InspectorInputSlider
+                                            label="Opacity (%)"
+                                            value={
+                                              selectedQuoteConfig.bgOpacity !== undefined
+                                                ? selectedQuoteConfig.bgOpacity * 100
+                                                : undefined
+                                            }
+                                            fallbackValue={
+                                              ((selectedQuoteConfig.bgOpacity ?? DEFAULT_QUOTE_CONFIG.bgOpacity) *
+                                                100) || 0
+                                            }
+                                            min={0}
+                                            max={100}
+                                            step={1}
+                                            onChange={(next) => {
+                                              const fallback =
+                                                selectedQuoteConfig.bgOpacity ?? DEFAULT_QUOTE_CONFIG.bgOpacity;
+                                              const percent =
+                                                next === undefined || Number.isNaN(next)
+                                                  ? fallback * 100
+                                                  : next;
+                                              const clampedPercent = Math.min(
+                                                100,
+                                                Math.max(0, percent ?? 0),
+                                              );
+                                              updateQuoteConfig(selectedBlock.id, (config) => ({
+                                                ...config,
+                                                bgOpacity: clamp01(clampedPercent / 100),
+                                              }));
+                                            }}
+                                          />
+                                        </InspectorSection>
+                                        <InspectorSection title="Spacing">
+                                          <InspectorInputSlider
+                                            label="Padding (px)"
+                                            value={selectedQuoteConfig.padding}
+                                            fallbackValue={
+                                              selectedQuoteConfig.padding ?? DEFAULT_QUOTE_CONFIG.padding
+                                            }
+                                            min={0}
+                                            max={100}
+                                            step={1}
+                                            onChange={(next) => {
+                                              const resolved =
+                                                next === undefined || Number.isNaN(next)
+                                                  ? selectedQuoteConfig.padding ?? DEFAULT_QUOTE_CONFIG.padding
+                                                  : Math.round(next);
+                                              updateQuoteConfig(selectedBlock.id, (config) => ({
+                                                ...config,
+                                                padding: resolved,
+                                              }));
+                                            }}
+                                          />
+                                        </InspectorSection>
+                                      </>
+                                    )}
+                                  </div>
+                                );
+                              })()
+                            : null}
                           <div className="rounded border px-3 py-3 space-y-3">
                             <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
                               Visibility
