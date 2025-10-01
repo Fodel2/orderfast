@@ -97,6 +97,8 @@ import InspectorInputText from "../src/components/inspector/controls/InputText";
 import InspectorInputTextArea from "../src/components/inspector/controls/InputTextArea";
 import InspectorInputToggle from "../src/components/inspector/controls/InputToggle";
 import InspectorInputUpload from "../src/components/inspector/controls/InputUpload";
+import { inspectorColors, inspectorLayout } from "../src/components/inspector/layout";
+import { tokens } from "../src/ui/tokens";
 import { supabase } from "@/utils/supabaseClient";
 import { STORAGE_BUCKET } from "@/lib/storage";
 import { SlideRow } from "@/components/customer/home/SlidesContainer";
@@ -198,6 +200,84 @@ const IMAGE_ASPECT_RATIO_OPTIONS: {
   { value: "4:3", label: "4:3" },
   { value: "16:9", label: "16:9" },
 ];
+
+type InspectorInlineButtonProps =
+  React.ButtonHTMLAttributes<HTMLButtonElement> & {
+    tone?: "default" | "danger";
+  };
+
+const InspectorInlineButton: React.FC<InspectorInlineButtonProps> = ({
+  tone = "default",
+  className = "",
+  type = "button",
+  children,
+  disabled,
+  ...rest
+}) => {
+  const classes = [
+    "inspector-inline-button",
+    `inspector-inline-button--${tone}`,
+    disabled ? "inspector-inline-button--disabled" : "",
+    className,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    <>
+      <button type={type} className={classes} disabled={disabled} {...rest}>
+        {children}
+      </button>
+      <style jsx>{`
+        .inspector-inline-button {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 0;
+          height: ${inspectorLayout.controlHeight}px;
+          padding: 0 ${tokens.spacing.md}px;
+          border-radius: ${inspectorLayout.radius}px;
+          border: ${inspectorLayout.borderWidth}px solid ${inspectorColors.border};
+          background: ${inspectorColors.background};
+          color: ${inspectorColors.text};
+          font-size: 0.875rem;
+          font-weight: 500;
+          line-height: 1;
+          white-space: nowrap;
+          transition: border-color 0.2s ease, background-color 0.2s ease,
+            color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .inspector-inline-button:focus-visible {
+          outline: 2px solid #10b981;
+          outline-offset: 2px;
+        }
+
+        .inspector-inline-button:not(.inspector-inline-button--disabled):hover {
+          border-color: rgba(15, 23, 42, 0.24);
+          box-shadow: ${tokens.shadow.sm};
+        }
+
+        .inspector-inline-button--danger {
+          color: #b91c1c;
+          border-color: rgba(220, 38, 38, 0.4);
+        }
+
+        .inspector-inline-button--danger:not(.inspector-inline-button--disabled):hover {
+          background: rgba(254, 226, 226, 0.7);
+          border-color: rgba(220, 38, 38, 0.55);
+        }
+
+        .inspector-inline-button--disabled,
+        .inspector-inline-button:disabled {
+          opacity: ${tokens.opacity[50]};
+          cursor: not-allowed;
+          box-shadow: none;
+        }
+      `}</style>
+    </>
+  );
+};
 
 const BLOCK_ANIMATION_OPTIONS: { value: BlockAnimationType; label: string }[] = [
   { value: "none", label: "None" },
@@ -1551,6 +1631,7 @@ interface SlideModalProps {
 }
 
 type GalleryInspectorItemContentProps = {
+  label: string;
   item: GalleryBlockItem;
   itemKey: string;
   onAltChange: (value: string) => void;
@@ -1569,6 +1650,7 @@ const GalleryInspectorItemContent = React.forwardRef<
 >(
   (
     {
+      label,
       item,
       itemKey,
       onAltChange,
@@ -1581,59 +1663,133 @@ const GalleryInspectorItemContent = React.forwardRef<
       style,
     },
     ref,
-  ) => (
-    <div
-      ref={ref}
-      data-gallery-key={itemKey}
-      data-dragging={isDragging ? "true" : "false"}
-      className={`group relative flex items-center gap-3 rounded border bg-white px-2 py-2 text-xs transition-all duration-200 ease-out ${
-        isDragging
-          ? "z-10 border-primary/40 shadow-md ring-2 ring-primary/40"
-          : "hover:border-primary/30 hover:shadow-sm"
-      }`}
-      style={{
-        position: "relative",
-        ...(disableInteractions ? { pointerEvents: "none" } : {}),
-        ...style,
-      }}
-    >
-      <button
-        type="button"
-        aria-label="Drag to reorder image"
-        className="flex h-10 w-6 shrink-0 select-none items-center justify-center touch-none cursor-grab text-neutral-400 transition hover:text-neutral-600 focus:outline-none focus:ring-2 focus:ring-neutral-300 active:cursor-grabbing"
-        ref={dragHandleRef}
-        {...(dragHandleAttributes ?? {})}
-        {...(dragHandleListeners ?? {})}
-      >
-        <GripVertical className="h-4 w-4" />
-      </button>
-      <img
-        src={item.url}
-        alt={item.alt ?? ""}
-        className="h-12 w-12 shrink-0 rounded object-cover"
-        draggable={false}
-        onMouseDown={(event) => event.stopPropagation()}
-        onClick={(event) => event.stopPropagation()}
-      />
-      <InputText
-        type="text"
-        value={item.alt ?? ""}
-        onChange={(e) => onAltChange(e.target.value)}
-        placeholder="Alt text"
-        className={`${INSPECTOR_INPUT_CLASS} flex-1`}
-        onMouseDown={(event) => event.stopPropagation()}
-        readOnly={disableInteractions}
-      />
-      <button
-        type="button"
-        onClick={onRemove}
-        className="rounded border px-2 py-1 text-xs text-red-600 transition hover:border-red-500 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-200"
-        disabled={disableInteractions}
-      >
-        Remove
-      </button>
-    </div>
-  ),
+  ) => {
+    const thumbnailSize = inspectorLayout.controlHeight * 1.5;
+    const handleWidth = inspectorLayout.controlHeight;
+    const itemPadding = tokens.spacing.sm;
+    const itemGap = tokens.spacing.xs;
+
+    const classes = [
+      "gallery-item",
+      isDragging ? "gallery-item--dragging" : "",
+      disableInteractions ? "gallery-item--disabled" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    return (
+      <div ref={ref} data-gallery-key={itemKey} className={classes} style={style}>
+        <InspectorInputText
+          label={label}
+          value={item.alt ?? ""}
+          placeholder="Alt text"
+          onChange={onAltChange}
+          disabled={disableInteractions}
+          leading={
+            <div className="gallery-item-leading">
+              <button
+                type="button"
+                aria-label="Drag to reorder image"
+                className="gallery-item-handle"
+                ref={dragHandleRef}
+                {...(dragHandleAttributes ?? {})}
+                {...(dragHandleListeners ?? {})}
+                disabled={disableInteractions}
+              >
+                <GripVertical size={tokens.spacing.md} />
+              </button>
+              <img
+                src={item.url}
+                alt={item.alt ?? ""}
+                className="gallery-item-thumbnail"
+                draggable={false}
+              />
+            </div>
+          }
+          trailing={
+            <InspectorInlineButton
+              tone="danger"
+              onClick={onRemove}
+              disabled={disableInteractions}
+            >
+              Remove
+            </InspectorInlineButton>
+          }
+        />
+        <style jsx>{`
+          .gallery-item {
+            display: flex;
+            flex-direction: column;
+            gap: ${itemGap}px;
+            padding: ${itemPadding}px;
+            border-radius: ${inspectorLayout.radius}px;
+            border: ${inspectorLayout.borderWidth}px solid ${inspectorColors.border};
+            background: ${inspectorColors.background};
+            transition: box-shadow 0.2s ease, border-color 0.2s ease;
+          }
+
+          .gallery-item--dragging {
+            border-color: rgba(16, 185, 129, 0.4);
+            box-shadow: ${tokens.shadow.md};
+          }
+
+          .gallery-item--disabled {
+            pointer-events: none;
+          }
+
+          .gallery-item-leading {
+            display: inline-flex;
+            align-items: center;
+            gap: ${tokens.spacing.sm}px;
+          }
+
+          .gallery-item-handle {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: ${handleWidth}px;
+            height: ${inspectorLayout.controlHeight}px;
+            border-radius: ${inspectorLayout.radius}px;
+            border: ${inspectorLayout.borderWidth}px solid ${inspectorColors.border};
+            background: transparent;
+            color: ${inspectorColors.labelMuted};
+            cursor: grab;
+            transition: border-color 0.2s ease, color 0.2s ease,
+              box-shadow 0.2s ease;
+          }
+
+          .gallery-item-handle:focus-visible {
+            outline: 2px solid #10b981;
+            outline-offset: 2px;
+          }
+
+          .gallery-item-handle:not(:disabled):hover {
+            border-color: rgba(15, 23, 42, 0.24);
+            color: ${inspectorColors.text};
+            box-shadow: ${tokens.shadow.sm};
+          }
+
+          .gallery-item-handle:active {
+            cursor: grabbing;
+          }
+
+          .gallery-item-handle:disabled {
+            cursor: not-allowed;
+            opacity: ${tokens.opacity[50]};
+            box-shadow: none;
+          }
+
+          .gallery-item-thumbnail {
+            width: ${thumbnailSize}px;
+            height: ${thumbnailSize}px;
+            border-radius: ${inspectorLayout.radius}px;
+            object-fit: cover;
+            flex-shrink: 0;
+          }
+        `}</style>
+      </div>
+    );
+  },
 );
 
 GalleryInspectorItemContent.displayName = "GalleryInspectorItemContent";
@@ -1674,6 +1830,7 @@ const GalleryInspectorItem: React.FC<GalleryInspectorItemProps> = ({
   return (
     <GalleryInspectorItemContent
       ref={setNodeRef}
+      label={`Image ${index + 1}`}
       item={item}
       itemKey={itemKey}
       onAltChange={onAltChange}
@@ -1706,7 +1863,6 @@ export default function SlideModal({
   const [previewSize, setPreviewSize] = useState({ width: 0, height: 0 });
   const [customPages, setCustomPages] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [showGalleryAddOptions, setShowGalleryAddOptions] = useState(false);
   const [galleryUrlInput, setGalleryUrlInput] = useState("");
   const [activeGalleryDragId, setActiveGalleryDragId] = useState<string | null>(
     null,
@@ -1719,7 +1875,6 @@ export default function SlideModal({
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const blockImageInputRef = useRef<HTMLInputElement | null>(null);
   const blockBackgroundImageInputRef = useRef<HTMLInputElement | null>(null);
-  const galleryInputRef = useRef<HTMLInputElement | null>(null);
   const videoPosterInputRef = useRef<HTMLInputElement | null>(null);
   const galleryItemIdentityRef = useRef<
     { url: string; alt: string; key: string }[]
@@ -2620,6 +2775,9 @@ export default function SlideModal({
     [selectedGalleryConfig],
   );
 
+  const isGalleryCarousel =
+    selectedGalleryConfig?.layout === "carousel";
+
   const createGalleryItemKey = useCallback(() => {
     if (
       typeof globalThis.crypto !== "undefined" &&
@@ -2767,6 +2925,23 @@ export default function SlideModal({
     return galleryItemIdentities[index] ?? null;
   }, [activeGalleryDragId, galleryItemIdentities]);
 
+  const handleAddGalleryImageByUrl = useCallback(
+    (blockId: string) => {
+      const url = galleryUrlInput.trim();
+      if (!url) {
+        return;
+      }
+      updateGalleryConfig(blockId, (config) => ({
+        ...config,
+        items: [...config.items, { url }],
+      }));
+      setGalleryUrlInput("");
+    },
+    [galleryUrlInput, updateGalleryConfig],
+  );
+
+  const galleryUrlHasValue = galleryUrlInput.trim().length > 0;
+
   const selectedQuoteConfig = useMemo(
     () =>
       selectedBlock?.kind === "quote"
@@ -2880,7 +3055,6 @@ export default function SlideModal({
   }, [selectedBlock]);
 
   useEffect(() => {
-    setShowGalleryAddOptions(false);
     setGalleryUrlInput("");
   }, [selectedBlock?.id]);
 
@@ -4955,190 +5129,182 @@ export default function SlideModal({
                           {selectedBlock.kind === "gallery" &&
                             selectedGalleryConfig && (
                               <div className="space-y-4">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                                    Gallery images ({selectedGalleryConfig.items.length})
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setShowGalleryAddOptions((prev) => !prev)
-                                    }
-                                    className="rounded border px-3 py-1 text-xs font-medium"
+                                <InspectorSection title="Gallery items">
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      flexDirection: "column",
+                                      gap: tokens.spacing.sm,
+                                    }}
                                   >
-                                    + Add image
-                                  </button>
-                                </div>
-                                {uploading && (
-                                  <div className="text-[11px] text-neutral-500">
-                                    Uploading…
-                                  </div>
-                                )}
-                                {showGalleryAddOptions && (
-                                  <div className="space-y-3 rounded border px-3 py-3 text-xs">
-                                    <button
-                                      type="button"
-                                      className="w-full rounded border px-3 py-2 text-xs font-medium"
-                                      onClick={() => {
-                                        galleryInputRef.current?.click();
+                                    <InspectorInputUpload
+                                      label="Upload images"
+                                      buttonLabel="Upload images"
+                                      accept="image/*"
+                                      multiple
+                                      uploading={uploading}
+                                      uploadingLabel="Uploading…"
+                                      onSelectFiles={async (files) => {
+                                        const galleryBlockId = selectedBlock.id;
+                                        const fileList = files
+                                          ? Array.from(files)
+                                          : [];
+                                        if (!fileList.length) {
+                                          return;
+                                        }
+                                        const uploaded: string[] = [];
+                                        for (const file of fileList) {
+                                          // eslint-disable-next-line no-await-in-loop
+                                          await handleUpload(file, (url) => {
+                                            if (url) uploaded.push(url);
+                                          });
+                                        }
+                                        if (uploaded.length) {
+                                          updateGalleryConfig(
+                                            galleryBlockId,
+                                            (config) => ({
+                                              ...config,
+                                              items: [
+                                                ...config.items,
+                                                ...uploaded.map((url) => ({ url })),
+                                              ],
+                                            }),
+                                          );
+                                        }
                                       }}
-                                    >
-                                      Upload from device
-                                    </button>
-                                    <div className="space-y-1">
-                                      <span className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
-                                        Image URL
-                                      </span>
-                                      <div className="flex gap-2">
-                                        <InputText
-                                          type="text"
-                                          value={galleryUrlInput}
-                                          onChange={(e) =>
-                                            setGalleryUrlInput(e.target.value)
-                                          }
-                                          className={`${INSPECTOR_INPUT_CLASS} flex-1`}
-                                          placeholder="https://example.com/image.jpg"
-                                        />
-                                        <button
-                                          type="button"
-                                          className="rounded border px-3 py-1 text-xs font-medium"
-                                          disabled={!galleryUrlInput.trim()}
-                                          onClick={() => {
-                                            const url = galleryUrlInput.trim();
-                                            if (!url) return;
-                                            updateGalleryConfig(
+                                    />
+                                    <InspectorInputText
+                                      label="Add image by URL"
+                                      value={galleryUrlInput}
+                                      placeholder="https://example.com/image.jpg"
+                                      onChange={(nextValue) =>
+                                        setGalleryUrlInput(nextValue)
+                                      }
+                                      trailing={
+                                        <InspectorInlineButton
+                                          onClick={() =>
+                                            handleAddGalleryImageByUrl(
                                               selectedBlock.id,
-                                              (config) => ({
-                                                ...config,
-                                                items: [
-                                                  ...config.items,
-                                                  { url },
-                                                ],
-                                              }),
-                                            );
-                                            setGalleryUrlInput("");
-                                          }}
+                                            )
+                                          }
+                                          disabled={!galleryUrlHasValue}
                                         >
                                           Add
-                                        </button>
+                                        </InspectorInlineButton>
+                                      }
+                                    />
+                                    {galleryRenderedItems.length === 0 ? (
+                                      <div
+                                        style={{
+                                          display: "flex",
+                                          alignItems: "center",
+                                          justifyContent: "center",
+                                          minHeight:
+                                            inspectorLayout.controlHeight * 3,
+                                          borderRadius: inspectorLayout.radius,
+                                          border: `${inspectorLayout.borderWidth}px dashed ${inspectorColors.border}`,
+                                          padding: tokens.spacing.md,
+                                          color: inspectorColors.labelMuted,
+                                          fontSize: "0.75rem",
+                                        }}
+                                      >
+                                        No images yet
                                       </div>
-                                    </div>
-                                  </div>
-                                )}
-                                <input
-                                  ref={galleryInputRef}
-                                  type="file"
-                                  accept="image/*"
-                                  multiple
-                                  className="hidden"
-                                  onChange={async (e) => {
-                                    const files = Array.from(
-                                      e.target.files || [],
-                                    );
-                                    if (!files.length) return;
-                                    const uploaded: string[] = [];
-                                    for (const file of files) {
-                                      // eslint-disable-next-line no-await-in-loop
-                                      await handleUpload(file, (url) => {
-                                        if (url) uploaded.push(url);
-                                      });
-                                    }
-                                    if (uploaded.length) {
-                                      updateGalleryConfig(
-                                        selectedBlock.id,
-                                        (config) => ({
-                                          ...config,
-                                          items: [
-                                            ...config.items,
-                                            ...uploaded.map((url) => ({ url })),
-                                          ],
-                                        }),
-                                      );
-                                    }
-                                    e.target.value = "";
-                                  }}
-                                />
-                                {galleryRenderedItems.length === 0 ? (
-                                  <div className="flex h-24 items-center justify-center rounded border border-dashed text-xs text-neutral-500">
-                                    No images yet
-                                  </div>
-                                ) : (
-                                  <DndContext
-                                    sensors={sensors}
-                                    collisionDetection={closestCenter}
-                                    onDragStart={handleGalleryDragStart}
-                                    onDragCancel={handleGalleryDragCancel}
-                                    onDragEnd={handleGalleryDragEnd}
-                                  >
-                                    <SortableContext
-                                      items={gallerySortableIds}
-                                      strategy={verticalListSortingStrategy}
-                                    >
-                                      <div className="space-y-2">
-                                        {galleryRenderedItems.map((item, index) => {
-                                          const identity =
-                                            galleryItemIdentities[index] ?? null;
-                                          const itemKey = identity
-                                            ? identity.key
-                                            : ensureGalleryItemKey(item);
-                                          return (
-                                            <GalleryInspectorItem
-                                              key={itemKey}
-                                              itemKey={itemKey}
-                                              item={item}
-                                              index={index}
-                                              onAltChange={(value) => {
-                                                updateGalleryConfig(
-                                                  selectedBlock.id,
-                                                  (config) => ({
-                                                    ...config,
-                                                    items: config.items.map(
-                                                      (galleryItem, galleryIndex) =>
-                                                        galleryIndex === index
-                                                          ? {
-                                                              ...galleryItem,
-                                                              alt: value,
-                                                            }
-                                                          : galleryItem,
-                                                    ),
-                                                  }),
-                                                );
-                                              }}
-                                              onRemove={() => {
-                                                updateGalleryConfig(
-                                                  selectedBlock.id,
-                                                  (config) => ({
-                                                    ...config,
-                                                    items: config.items.filter(
-                                                      (_, galleryIndex) =>
-                                                        galleryIndex !== index,
-                                                    ),
-                                                  }),
-                                                );
-                                              }}
+                                    ) : (
+                                      <DndContext
+                                        sensors={sensors}
+                                        collisionDetection={closestCenter}
+                                        onDragStart={handleGalleryDragStart}
+                                        onDragCancel={handleGalleryDragCancel}
+                                        onDragEnd={handleGalleryDragEnd}
+                                      >
+                                        <SortableContext
+                                          items={gallerySortableIds}
+                                          strategy={verticalListSortingStrategy}
+                                        >
+                                          <div
+                                            style={{
+                                              display: "flex",
+                                              flexDirection: "column",
+                                              gap: tokens.spacing.sm,
+                                            }}
+                                          >
+                                            {galleryRenderedItems.map((item, index) => {
+                                              const identity =
+                                                galleryItemIdentities[index] ?? null;
+                                              const itemKey = identity
+                                                ? identity.key
+                                                : ensureGalleryItemKey(item);
+                                              return (
+                                                <GalleryInspectorItem
+                                                  key={itemKey}
+                                                  itemKey={itemKey}
+                                                  item={item}
+                                                  index={index}
+                                                  onAltChange={(value) => {
+                                                    updateGalleryConfig(
+                                                      selectedBlock.id,
+                                                      (config) => ({
+                                                        ...config,
+                                                        items: config.items.map(
+                                                          (galleryItem, galleryIndex) =>
+                                                            galleryIndex === index
+                                                              ? {
+                                                                  ...galleryItem,
+                                                                  alt: value,
+                                                                }
+                                                              : galleryItem,
+                                                        ),
+                                                      }),
+                                                    );
+                                                  }}
+                                                  onRemove={() => {
+                                                    updateGalleryConfig(
+                                                      selectedBlock.id,
+                                                      (config) => ({
+                                                        ...config,
+                                                        items: config.items.filter(
+                                                          (_, galleryIndex) =>
+                                                            galleryIndex !== index,
+                                                        ),
+                                                      }),
+                                                    );
+                                                  }}
+                                                />
+                                              );
+                                            })}
+                                          </div>
+                                        </SortableContext>
+                                        <DragOverlay>
+                                          {activeGalleryDragItem ? (
+                                            <GalleryInspectorItemContent
+                                              label={
+                                                activeGalleryDragId !== null &&
+                                                Number.isFinite(
+                                                  Number(activeGalleryDragId),
+                                                )
+                                                  ? `Image ${
+                                                      Number(activeGalleryDragId) + 1
+                                                    }`
+                                                  : "Image"
+                                              }
+                                              item={activeGalleryDragItem}
+                                              itemKey={
+                                                activeGalleryDragIdentity?.key ??
+                                                ensureGalleryItemKey(activeGalleryDragItem)
+                                              }
+                                              onAltChange={() => {}}
+                                              onRemove={() => {}}
+                                              isDragging
+                                              disableInteractions
+                                              style={{ transform: "scale(1.05)" }}
                                             />
-                                          );
-                                        })}
-                                      </div>
-                                    </SortableContext>
-                                    <DragOverlay>
-                                      {activeGalleryDragItem ? (
-                                        <GalleryInspectorItemContent
-                                          item={activeGalleryDragItem}
-                                          itemKey={
-                                            activeGalleryDragIdentity?.key ??
-                                            ensureGalleryItemKey(activeGalleryDragItem)
-                                          }
-                                          onAltChange={() => {}}
-                                          onRemove={() => {}}
-                                          isDragging
-                                          disableInteractions
-                                          style={{ transform: "scale(1.05)" }}
-                                        />
-                                      ) : null}
-                                    </DragOverlay>
-                                  </DndContext>
-                                )}
+                                          ) : null}
+                                        </DragOverlay>
+                                      </DndContext>
+                                    )}
+                                  </div>
+                                </InspectorSection>
                                 <InspectorSection title="Layout">
                                   <InspectorInputSelect
                                     label="Layout"
@@ -5174,49 +5340,46 @@ export default function SlideModal({
                                       value: option.value,
                                     }))}
                                   />
-                                  {selectedGalleryConfig.layout === "carousel" ? (
-                                    <div className="space-y-2 text-xs">
-                                      <InputToggle
-                                        label="Autoplay"
-                                        checked={selectedGalleryConfig.autoplay}
-                                        onChange={(checked) =>
-                                          updateGalleryConfig(
-                                            selectedBlock.id,
-                                            (config) => ({
-                                              ...config,
-                                              autoplay: checked,
-                                            }),
-                                          )
-                                        }
-                                        labelClassName="flex items-center justify-between text-xs text-neutral-500"
-                                      />
-                                      <label className="block">
-                                        <span className="text-xs font-medium text-neutral-500">
-                                          Interval (ms)
-                                        </span>
-                                        <InputNumber
-
-                                          min={200}
-                                          step={100}
-                                          value={selectedGalleryConfig.interval}
-                                          onChange={(e) => {
-                                            const value = Number(e.target.value);
-                                            updateGalleryConfig(
-                                              selectedBlock.id,
-                                              (config) => ({
-                                                ...config,
-                                                interval: Number.isNaN(value)
-                                                  ? config.interval
-                                                  : value,
-                                              }),
-                                            );
-                                          }}
-                                          className={INSPECTOR_INPUT_CLASS}
-                                          disabled={!selectedGalleryConfig.autoplay}
-                                        />
-                                      </label>
-                                    </div>
-                                  ) : null}
+                                </InspectorSection>
+                                <InspectorSection title="Settings">
+                                  <InspectorInputToggle
+                                    label="Autoplay"
+                                    checked={selectedGalleryConfig.autoplay}
+                                    disabled={!isGalleryCarousel}
+                                    onChange={(nextChecked) =>
+                                      updateGalleryConfig(
+                                        selectedBlock.id,
+                                        (config) => ({
+                                          ...config,
+                                          autoplay: nextChecked,
+                                        }),
+                                      )
+                                    }
+                                  />
+                                  <InspectorInputSlider
+                                    label="Interval (ms)"
+                                    min={200}
+                                    max={10000}
+                                    step={100}
+                                    value={selectedGalleryConfig.interval}
+                                    fallbackValue={DEFAULT_GALLERY_CONFIG.interval}
+                                    disabled={
+                                      !isGalleryCarousel || !selectedGalleryConfig.autoplay
+                                    }
+                                    onChange={(next) => {
+                                      const resolved =
+                                        typeof next === "number" && Number.isFinite(next)
+                                          ? Math.round(next)
+                                          : DEFAULT_GALLERY_CONFIG.interval;
+                                      updateGalleryConfig(
+                                        selectedBlock.id,
+                                        (config) => ({
+                                          ...config,
+                                          interval: resolved,
+                                        }),
+                                      );
+                                    }}
+                                  />
                                 </InspectorSection>
                                 <InspectorSection title="Effects">
                                   <InspectorInputSlider
@@ -5241,19 +5404,18 @@ export default function SlideModal({
                                       );
                                     }}
                                   />
-                                  <InputToggle
+                                  <InspectorInputToggle
                                     label="Shadow"
                                     checked={selectedGalleryConfig.shadow}
-                                    onChange={(checked) =>
+                                    onChange={(nextChecked) =>
                                       updateGalleryConfig(
                                         selectedBlock.id,
                                         (config) => ({
                                           ...config,
-                                          shadow: checked,
+                                          shadow: nextChecked,
                                         }),
                                       )
                                     }
-                                    labelClassName="flex items-center justify-between text-xs text-neutral-500"
                                   />
                                 </InspectorSection>
                               </div>
