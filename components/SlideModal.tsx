@@ -76,7 +76,6 @@ import {
   DEFAULT_TEXT_FONT_FAMILY,
   normalizeFontFamily,
 } from "@/lib/slideFonts";
-import FontSelect from "./ui/FontSelect";
 import { APP_FONTS, ensureFontLoaded } from "@/lib/fonts";
 import Button from "@/components/ui/Button";
 import {
@@ -136,6 +135,11 @@ const TEXT_SIZES: { value: NonNullable<SlideBlock["size"]>; label: string }[] =
     { value: "lg", label: "Large" },
     { value: "xl", label: "Extra large" },
   ];
+
+const FONT_FAMILY_SELECT_OPTIONS = APP_FONTS.map((font) => ({
+  value: font.id,
+  label: font.label,
+}));
 
 const FONT_WEIGHT_OPTIONS: { value: number; label: string }[] = [
   { value: 400, label: "Normal (400)" },
@@ -3915,48 +3919,53 @@ export default function SlideModal({
                                 />
                               </label>
                               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Font family
-                                  </span>
-                                  {(() => {
-                                    const value = resolveFontFamilyValue(
-                                      selectedBlock.fontFamily,
+                                <InputSelect
+                                  label="Font family"
+                                  labelClassName="text-xs font-medium text-neutral-500"
+                                  className={INSPECTOR_INPUT_CLASS}
+                                  value={resolveFontFamilyValue(
+                                    selectedBlock.fontFamily,
+                                  )}
+                                  options={FONT_FAMILY_SELECT_OPTIONS}
+                                  onChange={(event) => {
+                                    const nextValue = event.target.value;
+                                    const normalized = normalizeFontFamily(
+                                      nextValue,
                                     );
-                                    return (
-                                      <FontSelect
-                                        value={value}
-                                        fonts={APP_FONTS}
-                                        onChange={(nextValue) =>
-                                          handleFontFamilyChange(
-                                            selectedBlock.id,
-                                            nextValue,
-                                          )
-                                        }
-                                      />
+                                    const match = APP_FONTS.find(
+                                      (font) =>
+                                        normalizeFontFamily(font.id) ===
+                                        normalized,
                                     );
-                                  })()}
-                                </label>
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Font weight
-                                  </span>
-                                  <InputSelect
-                                    value={String(
-                                      selectedBlock.fontWeight ??
-                                        (selectedBlock.kind === "heading" ? 700 : 400),
-                                    )}
-                                    onChange={(e) => {
-                                      const parsed = Number(e.target.value);
-                                      patchBlock(selectedBlock.id, {
-                                        fontWeight: Number.isNaN(parsed)
-                                          ? selectedBlock.fontWeight
-                                          : parsed,
-                                      });
-                                    }}
-                                    options={FONT_WEIGHT_OPTIONS}
-                                  />
-                                </label>
+                                    if (match) {
+                                      void ensureFontLoaded(match);
+                                    }
+                                    handleFontFamilyChange(
+                                      selectedBlock.id,
+                                      nextValue,
+                                    );
+                                  }}
+                                />
+                                <InputSelect
+                                  label="Font weight"
+                                  labelClassName="text-xs font-medium text-neutral-500"
+                                  className={INSPECTOR_INPUT_CLASS}
+                                  value={String(
+                                    selectedBlock.fontWeight ??
+                                      (selectedBlock.kind === "heading"
+                                        ? 700
+                                        : 400),
+                                  )}
+                                  onChange={(event) => {
+                                    const parsed = Number(event.target.value);
+                                    patchBlock(selectedBlock.id, {
+                                      fontWeight: Number.isNaN(parsed)
+                                        ? selectedBlock.fontWeight
+                                        : parsed,
+                                    });
+                                  }}
+                                  options={FONT_WEIGHT_OPTIONS}
+                                />
                               </div>
                               <div className="space-y-3">
                                 <InspectorSliderControl
@@ -4029,25 +4038,68 @@ export default function SlideModal({
                                   });
                                 }}
                               />
-                              <div>
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Text color
-                                </span>
-                                <InspectorColorInput
-                                  value={
-                                    selectedBlock.textColor ??
-                                    selectedBlock.color ??
-                                    "#000000"
-                                  }
-                                  onChange={(nextColor) =>
-                                    patchBlock(selectedBlock.id, {
-                                      textColor: nextColor,
-                                      color: nextColor,
-                                    })
-                                  }
-                                  allowAlpha
-                                />
-                              </div>
+                              {(() => {
+                                const textColorValue =
+                                  selectedBlock.textColor ??
+                                  selectedBlock.color ??
+                                  "#000000";
+                                const parsed = parseColorValue(textColorValue);
+                                const previewValue =
+                                  typeof textColorValue === "string" &&
+                                  textColorValue.trim().length > 0
+                                    ? textColorValue
+                                    : parsed.hex;
+                                const commit = (nextColor: string) => {
+                                  patchBlock(selectedBlock.id, {
+                                    textColor: nextColor,
+                                    color: nextColor,
+                                  });
+                                };
+                                return (
+                                  <div className="space-y-2">
+                                    <InputColor
+                                      label="Text color"
+                                      labelClassName="text-xs font-medium text-neutral-500"
+                                      value={textColorValue}
+                                      previewValue={previewValue}
+                                      onChange={commit}
+                                      onColorInputChange={(nextHex) => {
+                                        const nextValue =
+                                          parsed.alpha >= 0.999
+                                            ? nextHex
+                                            : hexToRgbaString(
+                                                nextHex,
+                                                parsed.alpha,
+                                              );
+                                        commit(nextValue);
+                                      }}
+                                    />
+                                    <InspectorSliderControl
+                                      label="Text opacity (%)"
+                                      value={Math.round(parsed.alpha * 100)}
+                                      fallbackValue={100}
+                                      min={0}
+                                      max={100}
+                                      step={1}
+                                      onChange={(next) => {
+                                        const percent =
+                                          typeof next === "number" ? next : 0;
+                                        const normalizedAlpha = clamp01(
+                                          percent / 100,
+                                        );
+                                        const nextValue =
+                                          normalizedAlpha >= 0.999
+                                            ? parsed.hex
+                                            : hexToRgbaString(
+                                                parsed.hex,
+                                                normalizedAlpha,
+                                              );
+                                        commit(nextValue);
+                                      }}
+                                    />
+                                  </div>
+                                );
+                              })()}
                               <InspectorTextShadowControls
                                 block={selectedBlock}
                                 onPatch={(patch) =>
@@ -4212,45 +4264,48 @@ export default function SlideModal({
                                 />
                               </label>
                               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Font family
-                                  </span>
-                                  {(() => {
-                                    const value = resolveFontFamilyValue(
-                                      selectedBlock.fontFamily,
+                                <InputSelect
+                                  label="Font family"
+                                  labelClassName="text-xs font-medium text-neutral-500"
+                                  className={INSPECTOR_INPUT_CLASS}
+                                  value={resolveFontFamilyValue(
+                                    selectedBlock.fontFamily,
+                                  )}
+                                  options={FONT_FAMILY_SELECT_OPTIONS}
+                                  onChange={(event) => {
+                                    const nextValue = event.target.value;
+                                    const normalized = normalizeFontFamily(
+                                      nextValue,
                                     );
-                                    return (
-                                      <FontSelect
-                                        value={value}
-                                        fonts={APP_FONTS}
-                                        onChange={(nextValue) =>
-                                          handleFontFamilyChange(
-                                            selectedBlock.id,
-                                            nextValue,
-                                          )
-                                        }
-                                      />
+                                    const match = APP_FONTS.find(
+                                      (font) =>
+                                        normalizeFontFamily(font.id) ===
+                                        normalized,
                                     );
-                                  })()}
-                                </label>
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Font weight
-                                  </span>
-                                  <InputSelect
-                                    value={String(selectedBlock.fontWeight ?? 600)}
-                                    onChange={(e) => {
-                                      const parsed = Number(e.target.value);
-                                      patchBlock(selectedBlock.id, {
-                                        fontWeight: Number.isNaN(parsed)
-                                          ? selectedBlock.fontWeight
-                                          : parsed,
-                                      });
-                                    }}
-                                    options={FONT_WEIGHT_OPTIONS}
-                                  />
-                                </label>
+                                    if (match) {
+                                      void ensureFontLoaded(match);
+                                    }
+                                    handleFontFamilyChange(
+                                      selectedBlock.id,
+                                      nextValue,
+                                    );
+                                  }}
+                                />
+                                <InputSelect
+                                  label="Font weight"
+                                  labelClassName="text-xs font-medium text-neutral-500"
+                                  className={INSPECTOR_INPUT_CLASS}
+                                  value={String(selectedBlock.fontWeight ?? 600)}
+                                  onChange={(event) => {
+                                    const parsed = Number(event.target.value);
+                                    patchBlock(selectedBlock.id, {
+                                      fontWeight: Number.isNaN(parsed)
+                                        ? selectedBlock.fontWeight
+                                        : parsed,
+                                    });
+                                  }}
+                                  options={FONT_WEIGHT_OPTIONS}
+                                />
                               </div>
                               <div className="space-y-3">
                                 <InspectorSliderControl
@@ -4304,21 +4359,68 @@ export default function SlideModal({
                                   }}
                                 />
                               </div>
-                              <label className="block">
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Color
-                                </span>
-                                <InspectorColorInput
-                                  value={selectedBlock.color || "#ffffff"}
-                                  onChange={(nextColor) =>
-                                    patchBlock(selectedBlock.id, {
-                                      color: nextColor,
-                                      textColor: nextColor,
-                                    })
-                                  }
-                                  allowAlpha
-                                />
-                              </label>
+                              {(() => {
+                                const textColorValue =
+                                  selectedBlock.color ??
+                                  selectedBlock.textColor ??
+                                  "#ffffff";
+                                const parsed = parseColorValue(textColorValue);
+                                const previewValue =
+                                  typeof textColorValue === "string" &&
+                                  textColorValue.trim().length > 0
+                                    ? textColorValue
+                                    : parsed.hex;
+                                const commit = (nextColor: string) => {
+                                  patchBlock(selectedBlock.id, {
+                                    color: nextColor,
+                                    textColor: nextColor,
+                                  });
+                                };
+                                return (
+                                  <div className="space-y-2">
+                                    <InputColor
+                                      label="Text color"
+                                      labelClassName="text-xs font-medium text-neutral-500"
+                                      value={textColorValue}
+                                      previewValue={previewValue}
+                                      onChange={commit}
+                                      onColorInputChange={(nextHex) => {
+                                        const nextValue =
+                                          parsed.alpha >= 0.999
+                                            ? nextHex
+                                            : hexToRgbaString(
+                                                nextHex,
+                                                parsed.alpha,
+                                              );
+                                        commit(nextValue);
+                                      }}
+                                    />
+                                    <InspectorSliderControl
+                                      label="Text opacity (%)"
+                                      value={Math.round(parsed.alpha * 100)}
+                                      fallbackValue={100}
+                                      min={0}
+                                      max={100}
+                                      step={1}
+                                      onChange={(next) => {
+                                        const percent =
+                                          typeof next === "number" ? next : 0;
+                                        const normalizedAlpha = clamp01(
+                                          percent / 100,
+                                        );
+                                        const nextValue =
+                                          normalizedAlpha >= 0.999
+                                            ? parsed.hex
+                                            : hexToRgbaString(
+                                                parsed.hex,
+                                                normalizedAlpha,
+                                              );
+                                        commit(nextValue);
+                                      }}
+                                    />
+                                  </div>
+                                );
+                              })()}
                               <InspectorTextShadowControls
                                 block={selectedBlock}
                                 onPatch={(patch) =>
@@ -4389,45 +4491,48 @@ export default function SlideModal({
                                 />
                               </label>
                               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Font family
-                                  </span>
-                                  {(() => {
-                                    const value = resolveFontFamilyValue(
-                                      selectedBlock.fontFamily,
+                                <InputSelect
+                                  label="Font family"
+                                  labelClassName="text-xs font-medium text-neutral-500"
+                                  className={INSPECTOR_INPUT_CLASS}
+                                  value={resolveFontFamilyValue(
+                                    selectedBlock.fontFamily,
+                                  )}
+                                  options={FONT_FAMILY_SELECT_OPTIONS}
+                                  onChange={(event) => {
+                                    const nextValue = event.target.value;
+                                    const normalized = normalizeFontFamily(
+                                      nextValue,
                                     );
-                                    return (
-                                      <FontSelect
-                                        value={value}
-                                        fonts={APP_FONTS}
-                                        onChange={(nextValue) =>
-                                          handleFontFamilyChange(
-                                            selectedBlock.id,
-                                            nextValue,
-                                          )
-                                        }
-                                      />
+                                    const match = APP_FONTS.find(
+                                      (font) =>
+                                        normalizeFontFamily(font.id) ===
+                                        normalized,
                                     );
-                                  })()}
-                                </label>
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Font weight
-                                  </span>
-                                  <InputSelect
-                                    value={String(selectedBlock.fontWeight ?? 600)}
-                                    onChange={(e) => {
-                                      const parsed = Number(e.target.value);
-                                      patchBlock(selectedBlock.id, {
-                                        fontWeight: Number.isNaN(parsed)
-                                          ? selectedBlock.fontWeight
-                                          : parsed,
-                                      });
-                                    }}
-                                    options={FONT_WEIGHT_OPTIONS}
-                                  />
-                                </label>
+                                    if (match) {
+                                      void ensureFontLoaded(match);
+                                    }
+                                    handleFontFamilyChange(
+                                      selectedBlock.id,
+                                      nextValue,
+                                    );
+                                  }}
+                                />
+                                <InputSelect
+                                  label="Font weight"
+                                  labelClassName="text-xs font-medium text-neutral-500"
+                                  className={INSPECTOR_INPUT_CLASS}
+                                  value={String(selectedBlock.fontWeight ?? 600)}
+                                  onChange={(event) => {
+                                    const parsed = Number(event.target.value);
+                                    patchBlock(selectedBlock.id, {
+                                      fontWeight: Number.isNaN(parsed)
+                                        ? selectedBlock.fontWeight
+                                        : parsed,
+                                    });
+                                  }}
+                                  options={FONT_WEIGHT_OPTIONS}
+                                />
                               </div>
                               <div className="space-y-3">
                                 <InspectorSliderControl
@@ -4642,21 +4747,65 @@ export default function SlideModal({
                                   }));
                                 }}
                               />
-                              <div>
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Text color
-                                </span>
-                                <InspectorColorInput
-                                  value={selectedButtonConfig.textColor}
-                                  onChange={(nextColor) =>
-                                    updateButtonConfig(selectedBlock.id, (config) => ({
-                                      ...config,
-                                      textColor: nextColor,
-                                    }))
-                                  }
-                                  allowAlpha
-                                />
-                              </div>
+                              {(() => {
+                                const textColorValue = selectedButtonConfig.textColor;
+                                const parsed = parseColorValue(textColorValue);
+                                const previewValue =
+                                  typeof textColorValue === "string" &&
+                                  textColorValue.trim().length > 0
+                                    ? textColorValue
+                                    : parsed.hex;
+                                const commit = (nextColor: string) => {
+                                  updateButtonConfig(selectedBlock.id, (config) => ({
+                                    ...config,
+                                    textColor: nextColor,
+                                  }));
+                                };
+                                return (
+                                  <div className="space-y-2">
+                                    <InputColor
+                                      label="Text color"
+                                      labelClassName="text-xs font-medium text-neutral-500"
+                                      value={textColorValue}
+                                      previewValue={previewValue}
+                                      onChange={commit}
+                                      onColorInputChange={(nextHex) => {
+                                        const nextValue =
+                                          parsed.alpha >= 0.999
+                                            ? nextHex
+                                            : hexToRgbaString(
+                                                nextHex,
+                                                parsed.alpha,
+                                              );
+                                        commit(nextValue);
+                                      }}
+                                    />
+                                    <InspectorSliderControl
+                                      label="Text opacity (%)"
+                                      value={Math.round(parsed.alpha * 100)}
+                                      fallbackValue={100}
+                                      min={0}
+                                      max={100}
+                                      step={1}
+                                      onChange={(next) => {
+                                        const percent =
+                                          typeof next === "number" ? next : 0;
+                                        const normalizedAlpha = clamp01(
+                                          percent / 100,
+                                        );
+                                        const nextValue =
+                                          normalizedAlpha >= 0.999
+                                            ? parsed.hex
+                                            : hexToRgbaString(
+                                                parsed.hex,
+                                                normalizedAlpha,
+                                              );
+                                        commit(nextValue);
+                                      }}
+                                    />
+                                  </div>
+                                );
+                              })()}
                               <div>
                                 <span className="text-xs font-medium text-neutral-500">
                                   Background color
@@ -5305,48 +5454,53 @@ export default function SlideModal({
                                 />
                               </label>
                               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Font family
-                                  </span>
-                                  {(() => {
-                                    const value = resolveFontFamilyValue(
-                                      selectedBlock.fontFamily,
+                                <InputSelect
+                                  label="Font family"
+                                  labelClassName="text-xs font-medium text-neutral-500"
+                                  className={INSPECTOR_INPUT_CLASS}
+                                  value={resolveFontFamilyValue(
+                                    selectedBlock.fontFamily,
+                                  )}
+                                  options={FONT_FAMILY_SELECT_OPTIONS}
+                                  onChange={(event) => {
+                                    const nextValue = event.target.value;
+                                    const normalized = normalizeFontFamily(
+                                      nextValue,
                                     );
-                                    return (
-                                      <FontSelect
-                                        value={value}
-                                        fonts={APP_FONTS}
-                                        onChange={(nextValue) =>
-                                          handleFontFamilyChange(
-                                            selectedBlock.id,
-                                            nextValue,
-                                          )
-                                        }
-                                      />
+                                    const match = APP_FONTS.find(
+                                      (font) =>
+                                        normalizeFontFamily(font.id) ===
+                                        normalized,
                                     );
-                                  })()}
-                                </label>
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Font weight
-                                  </span>
-                                  <InputSelect
-                                    value={String(
-                                      selectedBlock.fontWeight ??
-                                        (selectedQuoteConfig.style === "emphasis" ? 600 : 400),
-                                    )}
-                                    onChange={(e) => {
-                                      const parsed = Number(e.target.value);
-                                      patchBlock(selectedBlock.id, {
-                                        fontWeight: Number.isNaN(parsed)
-                                          ? selectedBlock.fontWeight
-                                          : parsed,
-                                      });
-                                    }}
-                                    options={FONT_WEIGHT_OPTIONS}
-                                  />
-                                </label>
+                                    if (match) {
+                                      void ensureFontLoaded(match);
+                                    }
+                                    handleFontFamilyChange(
+                                      selectedBlock.id,
+                                      nextValue,
+                                    );
+                                  }}
+                                />
+                                <InputSelect
+                                  label="Font weight"
+                                  labelClassName="text-xs font-medium text-neutral-500"
+                                  className={INSPECTOR_INPUT_CLASS}
+                                  value={String(
+                                    selectedBlock.fontWeight ??
+                                      (selectedQuoteConfig.style === "emphasis"
+                                        ? 600
+                                        : 400),
+                                  )}
+                                  onChange={(event) => {
+                                    const parsed = Number(event.target.value);
+                                    patchBlock(selectedBlock.id, {
+                                      fontWeight: Number.isNaN(parsed)
+                                        ? selectedBlock.fontWeight
+                                        : parsed,
+                                    });
+                                  }}
+                                  options={FONT_WEIGHT_OPTIONS}
+                                />
                               </div>
                               <div className="space-y-3">
                                 <InspectorSliderControl
