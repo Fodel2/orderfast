@@ -107,6 +107,13 @@ import { ChevronDown, ChevronUp, GripVertical, Trash2 } from "lucide-react";
 
 const ROUTE_OPTIONS = ["/menu", "/orders", "/more"];
 
+const INSPECTOR_NESTED_GROUP_STYLE: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: tokens.spacing.sm,
+  paddingLeft: tokens.spacing.md,
+};
+
 const DEFAULT_FRAMES: Record<SlideBlock["kind"], Frame> = {
   heading: { x: 12, y: 12, w: 76, h: 18, r: 0 },
   subheading: { x: 12, y: 32, w: 70, h: 14, r: 0 },
@@ -171,6 +178,10 @@ const BLOCK_SHADOW_OPTIONS: { value: BlockShadowPreset; label: string }[] = [
   { value: "lg", label: "Large" },
 ];
 
+const ENABLED_SHADOW_OPTIONS = BLOCK_SHADOW_OPTIONS.filter(
+  (option) => option.value !== "none",
+);
+
 const BLOCK_BACKGROUND_TYPE_OPTIONS: {
   value: NonNullable<BlockBackground["type"]>;
   label: string;
@@ -181,6 +192,10 @@ const BLOCK_BACKGROUND_TYPE_OPTIONS: {
   { value: "image", label: "Image" },
 ];
 
+const ENABLED_BACKGROUND_STYLE_OPTIONS = BLOCK_BACKGROUND_TYPE_OPTIONS.filter(
+  (option) => option.value !== "none",
+);
+
 const BLOCK_BACKGROUND_GRADIENT_DIRECTIONS: {
   value: BlockBackgroundGradientDirection;
   label: string;
@@ -190,6 +205,14 @@ const BLOCK_BACKGROUND_GRADIENT_DIRECTIONS: {
   { value: "to-left", label: "To left" },
   { value: "to-right", label: "To right" },
 ];
+
+const DEFAULT_ENABLED_SHADOW: BlockShadowPreset = "sm";
+const DEFAULT_ENABLED_BACKGROUND_TYPE: Exclude<
+  NonNullable<BlockBackground["type"]>,
+  "none"
+> = "color";
+const DEFAULT_ENABLED_ANIMATION: Exclude<BlockAnimationType, "none"> = "fade-in";
+const DEFAULT_ENABLED_TRANSITION: Exclude<BlockHoverTransition, "none"> = "grow";
 
 const IMAGE_ASPECT_RATIO_OPTIONS: {
   value: ImageBlockConfig["aspectRatio"];
@@ -289,6 +312,10 @@ const BLOCK_ANIMATION_OPTIONS: { value: BlockAnimationType; label: string }[] = 
   { value: "zoom-in", label: "Zoom In" },
 ];
 
+const ENABLED_ANIMATION_OPTIONS = BLOCK_ANIMATION_OPTIONS.filter(
+  (option) => option.value !== "none",
+);
+
 const BLOCK_TRANSITION_OPTIONS: { value: BlockHoverTransition; label: string }[] = [
   { value: "none", label: "None" },
   { value: "grow", label: "Grow" },
@@ -297,6 +324,10 @@ const BLOCK_TRANSITION_OPTIONS: { value: BlockHoverTransition; label: string }[]
   { value: "shadow", label: "Shadow" },
   { value: "rotate", label: "Rotate" },
 ];
+
+const ENABLED_TRANSITION_OPTIONS = BLOCK_TRANSITION_OPTIONS.filter(
+  (option) => option.value !== "none",
+);
 
 const DEFAULT_BLOCK_BACKGROUND_COLOR = "#ffffff";
 const DEFAULT_BLOCK_GRADIENT_FROM = "rgba(15, 23, 42, 0.45)";
@@ -1874,7 +1905,6 @@ export default function SlideModal({
   const previewContainerRef = useRef<HTMLDivElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const blockImageInputRef = useRef<HTMLInputElement | null>(null);
-  const blockBackgroundImageInputRef = useRef<HTMLInputElement | null>(null);
   const videoPosterInputRef = useRef<HTMLInputElement | null>(null);
   const galleryItemIdentityRef = useRef<
     { url: string; alt: string; key: string }[]
@@ -1885,6 +1915,11 @@ export default function SlideModal({
   const inspectorOpenRef = useRef(inspectorOpen);
   const inspectorWasOpenRef = useRef(false);
   const reviewOptions = DEFAULT_REVIEW_OPTIONS;
+
+  const shadowPresetCacheRef = useRef<Record<string, BlockShadowPreset>>({});
+  const backgroundTypeCacheRef = useRef<Record<string, BlockBackground["type"]>>({});
+  const animationTypeCacheRef = useRef<Record<string, BlockAnimationType>>({});
+  const transitionHoverCacheRef = useRef<Record<string, BlockHoverTransition>>({});
 
   useEffect(() => {
     inspectorOpenRef.current = inspectorOpen;
@@ -2982,6 +3017,46 @@ export default function SlideModal({
     [patchBlock, selectedBlock],
   );
 
+  const applyBackgroundType = useCallback(
+    (nextType: BlockBackground["type"]) => {
+      updateSelectedBlockBackground((prev) => {
+        const next = cloneBlockBackground(prev);
+        next.type = nextType;
+        if (nextType === "none") {
+          return next;
+        }
+        if (nextType === "color") {
+          next.color =
+            next.color && next.color.trim().length > 0
+              ? next.color
+              : DEFAULT_BLOCK_BACKGROUND_COLOR;
+          next.color2 = undefined;
+          next.direction = undefined;
+          next.url = undefined;
+          return next;
+        }
+        if (nextType === "gradient") {
+          next.color =
+            next.color && next.color.trim().length > 0
+              ? next.color
+              : DEFAULT_BLOCK_GRADIENT_FROM;
+          next.color2 =
+            next.color2 && next.color2.trim().length > 0
+              ? next.color2
+              : DEFAULT_BLOCK_GRADIENT_TO;
+          next.direction = next.direction ?? "to-bottom";
+          next.url = undefined;
+          return next;
+        }
+        if (nextType === "image") {
+          next.url = next.url ?? "";
+        }
+        return next;
+      });
+    },
+    [updateSelectedBlockBackground],
+  );
+
   const selectedAnimationConfig = useMemo(
     () =>
       selectedBlock
@@ -2997,6 +3072,58 @@ export default function SlideModal({
         : DEFAULT_BLOCK_TRANSITION_CONFIG,
     [selectedBlock],
   );
+
+  const selectedBlockId = selectedBlock?.id ?? null;
+  const currentShadowPreset: BlockShadowPreset = selectedBlock?.boxShadow ?? "none";
+  const shadowEnabled = currentShadowPreset !== "none";
+  const backgroundEnabled = selectedBlockBackground.type !== "none";
+  const animationEnabled = selectedAnimationConfig.type !== "none";
+  const transitionEnabled = selectedTransitionConfig.hover !== "none";
+
+  useEffect(() => {
+    if (!selectedBlockId) return;
+    if (currentShadowPreset !== "none") {
+      shadowPresetCacheRef.current[selectedBlockId] =
+        currentShadowPreset as BlockShadowPreset;
+    }
+  }, [currentShadowPreset, selectedBlockId]);
+
+  useEffect(() => {
+    if (!selectedBlockId) return;
+    const type = selectedBlockBackground.type;
+    if (type && type !== "none") {
+      backgroundTypeCacheRef.current[selectedBlockId] = type;
+    }
+  }, [selectedBlockBackground.type, selectedBlockId]);
+
+  useEffect(() => {
+    if (!selectedBlockId) return;
+    const type = selectedAnimationConfig.type;
+    if (type && type !== "none") {
+      animationTypeCacheRef.current[selectedBlockId] = type;
+    }
+  }, [selectedAnimationConfig.type, selectedBlockId]);
+
+  useEffect(() => {
+    if (!selectedBlockId) return;
+    const hover = selectedTransitionConfig.hover;
+    if (hover && hover !== "none") {
+      transitionHoverCacheRef.current[selectedBlockId] = hover;
+    }
+  }, [selectedBlockId, selectedTransitionConfig.hover]);
+
+  const cachedShadowPreset =
+    (selectedBlockId ? shadowPresetCacheRef.current[selectedBlockId] : undefined) ??
+    DEFAULT_ENABLED_SHADOW;
+  const cachedBackgroundType =
+    (selectedBlockId ? backgroundTypeCacheRef.current[selectedBlockId] : undefined) ??
+    DEFAULT_ENABLED_BACKGROUND_TYPE;
+  const cachedAnimationType =
+    (selectedBlockId ? animationTypeCacheRef.current[selectedBlockId] : undefined) ??
+    DEFAULT_ENABLED_ANIMATION;
+  const cachedTransitionHover =
+    (selectedBlockId ? transitionHoverCacheRef.current[selectedBlockId] : undefined) ??
+    DEFAULT_ENABLED_TRANSITION;
 
   const applyAnimationConfig = useCallback(
     (mutator: (prev: BlockAnimationConfig) => BlockAnimationConfig) => {
@@ -5827,12 +5954,9 @@ export default function SlideModal({
                                 );
                               })()
                             : null}
-                          <div className="rounded border px-3 py-3 space-y-3">
-                            <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                              Visibility
-                            </h4>
+                          <InspectorSection title="Visibility">
                             {DEVICE_VISIBILITY_CONTROLS.map(({ key, label }) => (
-                              <InputToggle
+                              <InspectorInputToggle
                                 key={key}
                                 label={label}
                                 checked={selectedVisibilityConfig[key]}
@@ -5842,192 +5966,163 @@ export default function SlideModal({
                                     [key]: checked,
                                   }))
                                 }
-                                labelClassName="flex items-center justify-between text-xs text-neutral-500"
                               />
                             ))}
-                          </div>
-                          <div className="rounded border px-3 py-3 space-y-3">
-                            <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                              Appearance
-                            </h4>
-                            <div>
-                              <span className="text-xs font-medium text-neutral-500">Shadow</span>
-                              <div className="mt-1 flex gap-1.5">
-                                {BLOCK_SHADOW_OPTIONS.map((option) => {
-                                  const currentShadow = selectedBlock.boxShadow ?? "none";
-                                  const isActive = currentShadow === option.value;
-                                  return (
-                                    <button
-                                      key={option.value}
-                                      type="button"
-                                      onClick={() =>
-                                        patchBlock(selectedBlock.id, { boxShadow: option.value })
-                                      }
-                                      className={`flex-1 rounded border px-2.5 py-1.5 text-xs font-medium transition ${
-                                        isActive
-                                          ? "border-emerald-500 bg-emerald-50 text-emerald-600"
-                                          : "border-neutral-200 text-neutral-600 hover:border-neutral-300"
-                                      }`}
-                                    >
-                                      {option.label}
-                                    </button>
-                                  );
-                                })}
+                          </InspectorSection>
+                          <InspectorSection title="Appearance">
+                            <InspectorInputToggle
+                              label="Enable shadow"
+                              checked={shadowEnabled}
+                              onChange={(checked) => {
+                                if (!selectedBlockId) return;
+                                if (checked) {
+                                  patchBlock(selectedBlockId, { boxShadow: cachedShadowPreset });
+                                  return;
+                                }
+                                if (currentShadowPreset !== "none") {
+                                  shadowPresetCacheRef.current[selectedBlockId] =
+                                    currentShadowPreset as BlockShadowPreset;
+                                }
+                                patchBlock(selectedBlockId, { boxShadow: "none" });
+                              }}
+                            />
+                            {shadowEnabled ? (
+                              <div style={INSPECTOR_NESTED_GROUP_STYLE}>
+                                <InspectorInputSelect
+                                  label="Shadow preset"
+                                  value={currentShadowPreset}
+                                  onChange={(nextValue) => {
+                                    if (!selectedBlockId) return;
+                                    const preset = nextValue as BlockShadowPreset;
+                                    shadowPresetCacheRef.current[selectedBlockId] = preset;
+                                    patchBlock(selectedBlockId, { boxShadow: preset });
+                                  }}
+                                  options={ENABLED_SHADOW_OPTIONS.map((option) => ({
+                                    label: option.label,
+                                    value: option.value,
+                                  }))}
+                                />
                               </div>
-                            </div>
-                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                              <label className="block sm:col-span-2">
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Border color
-                                </span>
-                                <InspectorColorInput
-                                  value={selectedBlock.borderColor ?? "transparent"}
-                                  onChange={(nextColor) => {
-                                    const normalized = nextColor?.trim();
-                                    patchBlock(selectedBlock.id, {
-                                      borderColor:
-                                        normalized && normalized.length > 0
-                                          ? normalized
-                                          : undefined,
-                                    });
-                                  }}
-                                  allowAlpha
-                                />
-                              </label>
-                              <label className="block">
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Border width (px)
-                                </span>
-                                <InputNumber
-                                  
-                                  min={0}
+                            ) : null}
+                            <InspectorInputColor
+                              label="Border color"
+                              value={selectedBlock.borderColor ?? ""}
+                              onChange={(nextColor) => {
+                                const normalized = nextColor.trim();
+                                patchBlock(selectedBlock.id, {
+                                  borderColor: normalized.length > 0 ? normalized : undefined,
+                                });
+                              }}
+                            />
+                            <InspectorInputSlider
+                              label="Border width (px)"
+                              value={selectedBlock.borderWidth}
+                              fallbackValue={selectedBlock.borderWidth ?? 0}
+                              min={0}
+                              max={20}
+                              step={1}
+                              onChange={(next) => {
+                                if (next === undefined || Number.isNaN(next)) {
+                                  patchBlock(selectedBlock.id, { borderWidth: undefined });
+                                  return;
+                                }
+                                patchBlock(selectedBlock.id, {
+                                  borderWidth: Math.max(0, Math.round(next)),
+                                });
+                              }}
+                            />
+                            <InspectorInputSlider
+                              label="Corner radius (px)"
+                              value={selectedBlock.borderRadius}
+                              fallbackValue={selectedBlock.borderRadius ?? 0}
+                              min={0}
+                              max={50}
+                              step={1}
+                              onChange={(next) => {
+                                if (next === undefined || Number.isNaN(next)) {
+                                  patchBlock(selectedBlock.id, { borderRadius: undefined });
+                                  return;
+                                }
+                                patchBlock(selectedBlock.id, {
+                                  borderRadius: Math.max(0, Math.round(next)),
+                                });
+                              }}
+                            />
+                          </InspectorSection>
+                          <InspectorSection title="Background">
+                            <InspectorInputToggle
+                              label="Enable background"
+                              checked={backgroundEnabled}
+                              onChange={(checked) => {
+                                if (!selectedBlockId) return;
+                                if (checked) {
+                                  applyBackgroundType(cachedBackgroundType);
+                                  return;
+                                }
+                                const type = selectedBlockBackground.type;
+                                if (type && type !== "none") {
+                                  backgroundTypeCacheRef.current[selectedBlockId] = type;
+                                }
+                                applyBackgroundType("none");
+                              }}
+                            />
+                            {backgroundEnabled ? (
+                              <div style={INSPECTOR_NESTED_GROUP_STYLE}>
+                                <InspectorInputSelect
+                                  label="Style"
                                   value={
-                                    selectedBlock.borderWidth !== undefined
-                                      ? selectedBlock.borderWidth
-                                      : ""
+                                    selectedBlockBackground.type === "none"
+                                      ? cachedBackgroundType
+                                      : (selectedBlockBackground.type ??
+                                        DEFAULT_ENABLED_BACKGROUND_TYPE)
                                   }
-                                  onChange={(e) => {
-                                    const value = e.target.value;
-                                    if (value === "") {
-                                      patchBlock(selectedBlock.id, { borderWidth: undefined });
-                                      return;
-                                    }
-                                    const parsed = Number(value);
-                                    patchBlock(selectedBlock.id, {
-                                      borderWidth: Number.isNaN(parsed)
-                                        ? selectedBlock.borderWidth
-                                        : Math.max(0, parsed),
-                                    });
+                                  onChange={(nextValue) => {
+                                    if (!selectedBlockId) return;
+                                    const nextType = nextValue as BlockBackground["type"];
+                                    backgroundTypeCacheRef.current[selectedBlockId] = nextType;
+                                    applyBackgroundType(nextType);
                                   }}
-                                  className={INSPECTOR_INPUT_CLASS}
+                                  options={ENABLED_BACKGROUND_STYLE_OPTIONS.map((option) => ({
+                                    label: option.label,
+                                    value: option.value,
+                                  }))}
                                 />
-                              </label>
-                              <InspectorSliderControl
-                                label="Border radius (px)"
-                                value={selectedBlock.borderRadius}
-                                fallbackValue={selectedBlock.borderRadius ?? 0}
-                                min={0}
-                                max={50}
-                                step={1}
-                                onChange={(next) => {
-                                  if (next === undefined) {
-                                    patchBlock(selectedBlock.id, { borderRadius: undefined });
-                                    return;
-                                  }
-                                  const resolved = Math.max(0, Math.round(next));
-                                  patchBlock(selectedBlock.id, {
-                                    borderRadius: resolved,
-                                  });
-                                }}
-                              />
-                            </div>
-                            <div className="space-y-3">
-                              <label className="block">
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Background type
-                                </span>
-                                <InputSelect
-                                  value={selectedBlockBackground.type ?? "none"}
-                                  onChange={(event) => {
-                                    const nextType = event.target.value as BlockBackground["type"];
-                                    updateSelectedBlockBackground((prev) => {
-                                      const next = cloneBlockBackground(prev);
-                                      next.type = nextType;
-                                      if (nextType === "none") {
-                                        next.color = undefined;
-                                        next.color2 = undefined;
-                                        next.direction = undefined;
-                                        next.url = undefined;
-                                      } else if (nextType === "color") {
-                                        next.color =
-                                          next.color && next.color.trim().length > 0
-                                            ? next.color
-                                            : DEFAULT_BLOCK_BACKGROUND_COLOR;
-                                        next.color2 = undefined;
-                                        next.direction = undefined;
-                                        next.url = undefined;
-                                      } else if (nextType === "gradient") {
-                                        next.color =
-                                          next.color && next.color.trim().length > 0
-                                            ? next.color
-                                            : DEFAULT_BLOCK_GRADIENT_FROM;
-                                        next.color2 =
-                                          next.color2 && next.color2.trim().length > 0
-                                            ? next.color2
-                                            : DEFAULT_BLOCK_GRADIENT_TO;
-                                        next.direction = next.direction ?? "to-bottom";
-                                        next.url = undefined;
-                                      } else if (nextType === "image") {
-                                        next.url = next.url ?? "";
-                                      }
-                                      return next;
-                                    });
-                                  }}
-                                  options={BLOCK_BACKGROUND_TYPE_OPTIONS}
-                                />
-                              </label>
-                              {selectedBlockBackground.type === "color" && (
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Background color
-                                  </span>
-                                  <InspectorColorInput
+                                {selectedBlockBackground.type === "color" ? (
+                                  <InspectorInputColor
+                                    label="Color"
                                     value={
-                                      selectedBlockBackground.color ?? DEFAULT_BLOCK_BACKGROUND_COLOR
+                                      selectedBlockBackground.color ??
+                                      DEFAULT_BLOCK_BACKGROUND_COLOR
                                     }
                                     onChange={(nextColor) => {
                                       updateSelectedBlockBackground((prev) => {
                                         const next = cloneBlockBackground(prev);
-                                        const normalized = nextColor?.trim();
+                                        const normalized = nextColor.trim();
                                         next.type = "color";
                                         next.color =
-                                          normalized && normalized.length > 0
+                                          normalized.length > 0
                                             ? normalized
                                             : DEFAULT_BLOCK_BACKGROUND_COLOR;
                                         return next;
                                       });
                                     }}
-                                    allowAlpha
                                   />
-                                </label>
-                              )}
-                              {selectedBlockBackground.type === "gradient" && (
-                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                                  <label className="block">
-                                    <span className="text-xs font-medium text-neutral-500">
-                                      From
-                                    </span>
-                                    <InspectorColorInput
+                                ) : null}
+                                {selectedBlockBackground.type === "gradient" ? (
+                                  <>
+                                    <InspectorInputColor
+                                      label="From"
                                       value={
-                                        selectedBlockBackground.color ?? DEFAULT_BLOCK_GRADIENT_FROM
+                                        selectedBlockBackground.color ??
+                                        DEFAULT_BLOCK_GRADIENT_FROM
                                       }
                                       onChange={(nextColor) => {
                                         updateSelectedBlockBackground((prev) => {
                                           const next = cloneBlockBackground(prev);
-                                          const normalized = nextColor?.trim();
+                                          const normalized = nextColor.trim();
                                           next.type = "gradient";
                                           next.color =
-                                            normalized && normalized.length > 0
+                                            normalized.length > 0
                                               ? normalized
                                               : DEFAULT_BLOCK_GRADIENT_FROM;
                                           next.color2 =
@@ -6038,49 +6133,41 @@ export default function SlideModal({
                                           return next;
                                         });
                                       }}
-                                      allowAlpha
                                     />
-                                  </label>
-                                  <label className="block">
-                                    <span className="text-xs font-medium text-neutral-500">
-                                      To
-                                    </span>
-                                    <InspectorColorInput
+                                    <InspectorInputColor
+                                      label="To"
                                       value={
-                                        selectedBlockBackground.color2 ?? DEFAULT_BLOCK_GRADIENT_TO
+                                        selectedBlockBackground.color2 ??
+                                        DEFAULT_BLOCK_GRADIENT_TO
                                       }
                                       onChange={(nextColor) => {
                                         updateSelectedBlockBackground((prev) => {
                                           const next = cloneBlockBackground(prev);
-                                          const normalized = nextColor?.trim();
+                                          const normalized = nextColor.trim();
                                           next.type = "gradient";
                                           next.color =
                                             next.color && next.color.trim().length > 0
                                               ? next.color
                                               : DEFAULT_BLOCK_GRADIENT_FROM;
                                           next.color2 =
-                                            normalized && normalized.length > 0
+                                            normalized.length > 0
                                               ? normalized
                                               : DEFAULT_BLOCK_GRADIENT_TO;
                                           next.direction = next.direction ?? "to-bottom";
                                           return next;
                                         });
                                       }}
-                                      allowAlpha
                                     />
-                                  </label>
-                                  <label className="block">
-                                    <span className="text-xs font-medium text-neutral-500">
-                                      Direction
-                                    </span>
-                                    <InputSelect
+                                    <InspectorInputSelect
+                                      label="Direction"
                                       value={selectedBlockBackground.direction ?? "to-bottom"}
-                                      onChange={(event) => {
+                                      onChange={(nextValue) => {
                                         const value =
-                                          event.target.value as BlockBackgroundGradientDirection;
+                                          nextValue as BlockBackgroundGradientDirection;
                                         updateSelectedBlockBackground((prev) => {
                                           const next = cloneBlockBackground(prev);
                                           next.type = "gradient";
+                                          next.direction = value;
                                           next.color =
                                             next.color && next.color.trim().length > 0
                                               ? next.color
@@ -6089,298 +6176,337 @@ export default function SlideModal({
                                             next.color2 && next.color2.trim().length > 0
                                               ? next.color2
                                               : DEFAULT_BLOCK_GRADIENT_TO;
-                                          next.direction = value;
                                           return next;
                                         });
                                       }}
-                                      options={BLOCK_BACKGROUND_GRADIENT_DIRECTIONS}
+                                      options={BLOCK_BACKGROUND_GRADIENT_DIRECTIONS.map((option) => ({
+                                        label: option.label,
+                                        value: option.value,
+                                      }))}
                                     />
-                                  </label>
-                                </div>
-                              )}
-                              {selectedBlockBackground.type === "image" && (
-                                <div className="space-y-2">
-                                  <input
-                                    ref={blockBackgroundImageInputRef}
-                                    type="file"
-                                    accept="image/*"
-                                    className="hidden"
-                                    onChange={async (e) => {
-                                      const file = e.target.files?.[0];
-                                      if (!file) return;
-                                      await handleUpload(file, (url) => {
-                                        updateSelectedBlockBackground((prev) => {
-                                          const next = cloneBlockBackground(prev);
-                                          next.type = "image";
-                                          next.url = url;
-                                          return next;
-                                        });
-                                      });
-                                      e.target.value = "";
-                                    }}
-                                  />
-                                  <label className="block">
-                                    <span className="text-xs font-medium text-neutral-500">
-                                      Image URL
-                                    </span>
-                                    <InputText
-                                      type="text"
-                                      value={selectedBlockBackground.url ?? ""}
-                                      onChange={(event) => {
-                                        const value = event.target.value;
-                                        updateSelectedBlockBackground((prev) => {
-                                          const next = cloneBlockBackground(prev);
-                                          next.type = "image";
-                                          next.url = value;
-                                          return next;
-                                        });
-                                      }}
-                                      className={INSPECTOR_INPUT_CLASS}
-                                      placeholder="https://example.com/image.jpg"
-                                    />
-                                  </label>
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        blockBackgroundImageInputRef.current?.click()
+                                  </>
+                                ) : null}
+                                {selectedBlockBackground.type === "image" ? (
+                                  <>
+                                    <InspectorInputUpload
+                                      label="Upload"
+                                      buttonLabel={
+                                        selectedBlockBackground.url
+                                          ? "Replace image"
+                                          : "Upload image"
                                       }
-                                      className="rounded border px-3 py-1 text-xs font-medium"
-                                    >
-                                      {selectedBlockBackground.url
-                                        ? "Replace image"
-                                        : "Upload image"}
-                                    </button>
-                                    {uploading && (
-                                      <span className="text-[11px] text-neutral-500">
-                                        Uploading…
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-                              <InputSlider
-                                label="Corner radius (px)"
-                                min={0}
-                                max={50}
-                                step={1}
-                                value={selectedBlockBackground.radius ?? 0}
-                                onValueChange={(value) => {
-                                  updateSelectedBlockBackground((prev) => {
-                                    const next = cloneBlockBackground(prev);
-                                    const resolved =
-                                      typeof value === "number" && Number.isFinite(value)
-                                        ? Math.max(0, Math.round(value))
-                                        : 0;
-                                    next.radius = resolved;
-                                    return next;
-                                  });
-                                }}
-                                disabled={selectedBlockBackground.type === "none"}
-                              />
-                              <InputSlider
-                                label="Background opacity (%)"
-                                min={0}
-                                max={100}
-                                step={1}
-                                value={selectedBlockBackground.opacity ?? 100}
-                                onValueChange={(value) => {
-                                  updateSelectedBlockBackground((prev) => {
-                                    const next = cloneBlockBackground(prev);
-                                    const resolved =
-                                      typeof value === "number" && Number.isFinite(value)
-                                        ? Math.min(100, Math.max(0, Math.round(value)))
-                                        : 100;
-                                    next.opacity = resolved;
-                                    return next;
-                                  });
-                                }}
-                                disabled={selectedBlockBackground.type === "none"}
-                              />
-                            </div>
-                          </div>
-                          <div className="rounded border px-3 py-3 space-y-3">
-                            <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                              Animations
-                            </h4>
-                            <label className="block">
-                              <span className="text-xs font-medium text-neutral-500">
-                                Entry animation
-                              </span>
-                              <InputSelect
-                                value={selectedAnimationConfig.type}
-                                onChange={(event) =>
+                                      accept="image/*"
+                                      uploading={uploading}
+                                      onSelectFiles={(files) => {
+                                        const file = files?.[0];
+                                        if (!file) return;
+                                        void handleUpload(file, (url) => {
+                                          updateSelectedBlockBackground((prev) => {
+                                            const next = cloneBlockBackground(prev);
+                                            next.type = "image";
+                                            next.url = url;
+                                            return next;
+                                          });
+                                        });
+                                      }}
+                                    />
+                                    <InspectorInputText
+                                      label="Image URL"
+                                      value={selectedBlockBackground.url ?? ""}
+                                      placeholder="https://example.com/image.jpg"
+                                      onChange={(nextValue) => {
+                                        updateSelectedBlockBackground((prev) => {
+                                          const next = cloneBlockBackground(prev);
+                                          next.type = "image";
+                                          next.url = nextValue;
+                                          return next;
+                                        });
+                                      }}
+                                    />
+                                  </>
+                                ) : null}
+                                <InspectorInputSlider
+                                  label="Corner radius (px)"
+                                  value={selectedBlockBackground.radius}
+                                  fallbackValue={selectedBlockBackground.radius ?? 0}
+                                  min={0}
+                                  max={50}
+                                  step={1}
+                                  onChange={(next) => {
+                                    updateSelectedBlockBackground((prev) => {
+                                      const nextBackground = cloneBlockBackground(prev);
+                                      const resolved =
+                                        next === undefined || Number.isNaN(next)
+                                          ? nextBackground.radius ?? 0
+                                          : Math.max(0, Math.round(next));
+                                      nextBackground.radius = resolved;
+                                      return nextBackground;
+                                    });
+                                  }}
+                                />
+                                <InspectorInputSlider
+                                  label="Opacity (%)"
+                                  value={selectedBlockBackground.opacity}
+                                  fallbackValue={selectedBlockBackground.opacity ?? 100}
+                                  min={0}
+                                  max={100}
+                                  step={1}
+                                  onChange={(next) => {
+                                    updateSelectedBlockBackground((prev) => {
+                                      const nextBackground = cloneBlockBackground(prev);
+                                      const resolved =
+                                        next === undefined || Number.isNaN(next)
+                                          ? nextBackground.opacity ?? 100
+                                          : Math.min(100, Math.max(0, Math.round(next)));
+                                      nextBackground.opacity = resolved;
+                                      return nextBackground;
+                                    });
+                                  }}
+                                />
+                              </div>
+                            ) : null}
+                          </InspectorSection>
+                          <InspectorSection title="Animations">
+                            <InspectorInputToggle
+                              label="Enable animation"
+                              checked={animationEnabled}
+                              onChange={(checked) => {
+                                if (!selectedBlockId) return;
+                                if (checked) {
+                                  const nextType = cachedAnimationType;
                                   applyAnimationConfig((prev) => ({
                                     ...prev,
-                                    type: event.target.value as BlockAnimationType,
-                                  }))
-                                }
-                                options={BLOCK_ANIMATION_OPTIONS}
-                              />
-                            </label>
-                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                              <label className="block">
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Duration (ms)
-                                </span>
-                                <InputNumber
-                                  
-                                  min={0}
-                                  value={selectedAnimationConfig.duration}
-                                  onChange={(event) => {
-                                    const parsed = Number(event.target.value);
-                                    applyAnimationConfig((prev) => ({
-                                      ...prev,
-                                      duration: Number.isNaN(parsed) ? prev.duration : parsed,
-                                    }));
-                                  }}
-                                  className={INSPECTOR_INPUT_CLASS}
-                                />
-                              </label>
-                              <label className="block">
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Delay (ms)
-                                </span>
-                                <InputNumber
-                                  
-                                  min={0}
-                                  value={selectedAnimationConfig.delay}
-                                  onChange={(event) => {
-                                    const parsed = Number(event.target.value);
-                                    applyAnimationConfig((prev) => ({
-                                      ...prev,
-                                      delay: Number.isNaN(parsed) ? prev.delay : parsed,
-                                    }));
-                                  }}
-                                  className={INSPECTOR_INPUT_CLASS}
-                                />
-                              </label>
-                            </div>
-                          </div>
-                          <div className="rounded border px-3 py-3 space-y-3">
-                            <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                              Transitions
-                            </h4>
-                            <label className="block">
-                              <span className="text-xs font-medium text-neutral-500">
-                                Hover effect
-                              </span>
-                              <InputSelect
-                                value={selectedTransitionConfig.hover}
-                                onChange={(event) =>
-                                  applyTransitionConfig((prev) => ({
-                                    ...prev,
-                                    hover: event.target.value as BlockHoverTransition,
-                                  }))
-                                }
-                                options={BLOCK_TRANSITION_OPTIONS}
-                              />
-                            </label>
-                            <label className="block">
-                              <span className="text-xs font-medium text-neutral-500">
-                                Transition duration (ms)
-                              </span>
-                              <InputNumber
-                                
-                                min={0}
-                                value={selectedTransitionConfig.duration}
-                                onChange={(event) => {
-                                  const parsed = Number(event.target.value);
-                                  applyTransitionConfig((prev) => ({
-                                    ...prev,
-                                    duration: Number.isNaN(parsed) ? prev.duration : parsed,
+                                    type: nextType,
                                   }));
-                                }}
-                                className={INSPECTOR_INPUT_CLASS}
-                              />
-                            </label>
-                          </div>
-                          <div className="rounded border px-3 py-3">
-                            <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                              Frame ({activeDevice})
-                            </h4>
-                            <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
-                              {frame && (
-                                <>
-                                  <label className="flex flex-col gap-1">
-                                    <span>X%</span>
-                                    <InputNumber
-                                      
-                                      value={frame.x}
-                                      onChange={(e) =>
-                                        updateFrameField(
-                                          selectedBlock.id,
-                                          "x",
-                                          parseFloat(e.target.value),
-                                        )
-                                      }
-                                      className="rounded border px-2 py-1"
-                                    />
-                                  </label>
-                                  <label className="flex flex-col gap-1">
-                                    <span>Y%</span>
-                                    <InputNumber
-                                      
-                                      value={frame.y}
-                                      onChange={(e) =>
-                                        updateFrameField(
-                                          selectedBlock.id,
-                                          "y",
-                                          parseFloat(e.target.value),
-                                        )
-                                      }
-                                      className="rounded border px-2 py-1"
-                                    />
-                                  </label>
-                                  <label className="flex flex-col gap-1">
-                                    <span>Width%</span>
-                                    <InputNumber
-                                      
-                                      value={frame.w}
-                                      onChange={(e) =>
-                                        updateFrameField(
-                                          selectedBlock.id,
-                                          "w",
-                                          parseFloat(e.target.value),
-                                        )
-                                      }
-                                      className="rounded border px-2 py-1"
-                                    />
-                                  </label>
-                                  <label className="flex flex-col gap-1">
-                                    <span>Height%</span>
-                                    <InputNumber
-                                      
-                                      value={frame.h}
-                                      onChange={(e) =>
-                                        updateFrameField(
-                                          selectedBlock.id,
-                                          "h",
-                                          parseFloat(e.target.value),
-                                        )
-                                      }
-                                      className="rounded border px-2 py-1"
-                                    />
-                                  </label>
-                                  <label className="flex flex-col gap-1">
-                                    <span>Rotation°</span>
-                                    <InputNumber
-                                      
-                                      value={frame.r}
-                                      onChange={(e) =>
-                                        updateFrameField(
-                                          selectedBlock.id,
-                                          "r",
-                                          parseFloat(e.target.value),
-                                        )
-                                      }
-                                      className="rounded border px-2 py-1"
-                                    />
-                                  </label>
-                                </>
-                              )}
-                            </div>
-                          </div>
+                                  return;
+                                }
+                                const type = selectedAnimationConfig.type;
+                                if (type && type !== "none") {
+                                  animationTypeCacheRef.current[selectedBlockId] = type;
+                                }
+                                applyAnimationConfig((prev) => ({ ...prev, type: "none" }));
+                              }}
+                            />
+                            {animationEnabled ? (
+                              <div style={INSPECTOR_NESTED_GROUP_STYLE}>
+                                <InspectorInputSelect
+                                  label="Entry animation"
+                                  value={selectedAnimationConfig.type}
+                                  onChange={(nextValue) => {
+                                    if (!selectedBlockId) return;
+                                    const nextType = nextValue as BlockAnimationType;
+                                    animationTypeCacheRef.current[selectedBlockId] = nextType;
+                                    applyAnimationConfig((prev) => ({ ...prev, type: nextType }));
+                                  }}
+                                  options={ENABLED_ANIMATION_OPTIONS.map((option) => ({
+                                    label: option.label,
+                                    value: option.value,
+                                  }))}
+                                />
+                                <InspectorInputSlider
+                                  label="Duration (ms)"
+                                  value={selectedAnimationConfig.duration}
+                                  fallbackValue={
+                                    selectedAnimationConfig.duration ??
+                                    DEFAULT_BLOCK_ANIMATION_CONFIG.duration
+                                  }
+                                  min={0}
+                                  max={5000}
+                                  step={50}
+                                  onChange={(next) => {
+                                    const fallback =
+                                      selectedAnimationConfig.duration ??
+                                      DEFAULT_BLOCK_ANIMATION_CONFIG.duration;
+                                    const resolved =
+                                      next === undefined || Number.isNaN(next)
+                                        ? fallback
+                                        : Math.max(0, Math.round(next));
+                                    applyAnimationConfig((prev) => ({
+                                      ...prev,
+                                      duration: resolved,
+                                    }));
+                                  }}
+                                />
+                                <InspectorInputSlider
+                                  label="Delay (ms)"
+                                  value={selectedAnimationConfig.delay}
+                                  fallbackValue={
+                                    selectedAnimationConfig.delay ??
+                                    DEFAULT_BLOCK_ANIMATION_CONFIG.delay
+                                  }
+                                  min={0}
+                                  max={5000}
+                                  step={50}
+                                  onChange={(next) => {
+                                    const fallback =
+                                      selectedAnimationConfig.delay ??
+                                      DEFAULT_BLOCK_ANIMATION_CONFIG.delay;
+                                    const resolved =
+                                      next === undefined || Number.isNaN(next)
+                                        ? fallback
+                                        : Math.max(0, Math.round(next));
+                                    applyAnimationConfig((prev) => ({
+                                      ...prev,
+                                      delay: resolved,
+                                    }));
+                                  }}
+                                />
+                              </div>
+                            ) : null}
+                          </InspectorSection>
+                          <InspectorSection title="Transitions">
+                            <InspectorInputToggle
+                              label="Enable hover effect"
+                              checked={transitionEnabled}
+                              onChange={(checked) => {
+                                if (!selectedBlockId) return;
+                                if (checked) {
+                                  const nextHover = cachedTransitionHover;
+                                  applyTransitionConfig((prev) => ({
+                                    ...prev,
+                                    hover: nextHover,
+                                  }));
+                                  return;
+                                }
+                                const hover = selectedTransitionConfig.hover;
+                                if (hover && hover !== "none") {
+                                  transitionHoverCacheRef.current[selectedBlockId] = hover;
+                                }
+                                applyTransitionConfig((prev) => ({ ...prev, hover: "none" }));
+                              }}
+                            />
+                            {transitionEnabled ? (
+                              <div style={INSPECTOR_NESTED_GROUP_STYLE}>
+                                <InspectorInputSelect
+                                  label="Hover effect"
+                                  value={selectedTransitionConfig.hover}
+                                  onChange={(nextValue) => {
+                                    if (!selectedBlockId) return;
+                                    const nextHover = nextValue as BlockHoverTransition;
+                                    transitionHoverCacheRef.current[selectedBlockId] = nextHover;
+                                    applyTransitionConfig((prev) => ({
+                                      ...prev,
+                                      hover: nextHover,
+                                    }));
+                                  }}
+                                  options={ENABLED_TRANSITION_OPTIONS.map((option) => ({
+                                    label: option.label,
+                                    value: option.value,
+                                  }))}
+                                />
+                                <InspectorInputSlider
+                                  label="Transition duration (ms)"
+                                  value={selectedTransitionConfig.duration}
+                                  fallbackValue={
+                                    selectedTransitionConfig.duration ??
+                                    DEFAULT_BLOCK_TRANSITION_CONFIG.duration
+                                  }
+                                  min={0}
+                                  max={5000}
+                                  step={50}
+                                  onChange={(next) => {
+                                    const fallback =
+                                      selectedTransitionConfig.duration ??
+                                      DEFAULT_BLOCK_TRANSITION_CONFIG.duration;
+                                    const resolved =
+                                      next === undefined || Number.isNaN(next)
+                                        ? fallback
+                                        : Math.max(0, Math.round(next));
+                                    applyTransitionConfig((prev) => ({
+                                      ...prev,
+                                      duration: resolved,
+                                    }));
+                                  }}
+                                />
+                              </div>
+                            ) : null}
+                          </InspectorSection>
+                          <InspectorSection title={`Frame (${activeDevice})`}>
+                            {frame ? (
+                              <>
+                                <InspectorInputSlider
+                                  label="X position (%)"
+                                  value={frame.x}
+                                  fallbackValue={frame.x ?? 0}
+                                  min={0}
+                                  max={100}
+                                  step={1}
+                                  onChange={(next) => {
+                                    const fallback = frame.x ?? 0;
+                                    const resolved =
+                                      next === undefined || Number.isNaN(next)
+                                        ? fallback
+                                        : Math.round(next);
+                                    updateFrameField(selectedBlock.id, "x", resolved);
+                                  }}
+                                />
+                                <InspectorInputSlider
+                                  label="Y position (%)"
+                                  value={frame.y}
+                                  fallbackValue={frame.y ?? 0}
+                                  min={0}
+                                  max={100}
+                                  step={1}
+                                  onChange={(next) => {
+                                    const fallback = frame.y ?? 0;
+                                    const resolved =
+                                      next === undefined || Number.isNaN(next)
+                                        ? fallback
+                                        : Math.round(next);
+                                    updateFrameField(selectedBlock.id, "y", resolved);
+                                  }}
+                                />
+                                <InspectorInputSlider
+                                  label="Width (%)"
+                                  value={frame.w}
+                                  fallbackValue={frame.w ?? 0}
+                                  min={0}
+                                  max={100}
+                                  step={1}
+                                  onChange={(next) => {
+                                    const fallback = frame.w ?? 0;
+                                    const resolved =
+                                      next === undefined || Number.isNaN(next)
+                                        ? fallback
+                                        : Math.round(next);
+                                    updateFrameField(selectedBlock.id, "w", resolved);
+                                  }}
+                                />
+                                <InspectorInputSlider
+                                  label="Height (%)"
+                                  value={frame.h}
+                                  fallbackValue={frame.h ?? 0}
+                                  min={0}
+                                  max={100}
+                                  step={1}
+                                  onChange={(next) => {
+                                    const fallback = frame.h ?? 0;
+                                    const resolved =
+                                      next === undefined || Number.isNaN(next)
+                                        ? fallback
+                                        : Math.round(next);
+                                    updateFrameField(selectedBlock.id, "h", resolved);
+                                  }}
+                                />
+                                <InspectorInputSlider
+                                  label="Rotation (°)"
+                                  value={frame.r}
+                                  fallbackValue={frame.r ?? 0}
+                                  min={-180}
+                                  max={180}
+                                  step={1}
+                                  onChange={(next) => {
+                                    const fallback = frame.r ?? 0;
+                                    const resolved =
+                                      next === undefined || Number.isNaN(next)
+                                        ? fallback
+                                        : Math.round(next);
+                                    updateFrameField(selectedBlock.id, "r", resolved);
+                                  }}
+                                />
+                              </>
+                            ) : null}
+                          </InspectorSection>
                         </div>
                     </section>
                   </div>
