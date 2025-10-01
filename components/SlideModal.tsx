@@ -4112,7 +4112,7 @@ export default function SlideModal({
                                         }))}
                                       />
                                     </InspectorSection>
-                                    <InspectorSection title="Color & Effects">
+                                    <InspectorSection title="Color">
                                       <InspectorInputColor
                                         label="Text color"
                                         value={textColorValue}
@@ -4127,21 +4127,39 @@ export default function SlideModal({
                                         step={1}
                                         onChange={handleTextOpacityChange}
                                       />
+                                    </InspectorSection>
+                                    <InspectorSection title="Effects">
                                       <InspectorTextShadowControls
                                         block={selectedBlock}
                                         onPatch={(patch) =>
                                           patchBlock(selectedBlock.id, patch)
                                         }
                                       />
+                                      {selectedBlock.bgStyle &&
+                                      selectedBlock.bgStyle !== "none" ? (
+                                        <InspectorInputSlider
+                                          label="Corner radius (px)"
+                                          value={selectedBlock.radius}
+                                          fallbackValue={selectedBlock.radius ?? 0}
+                                          min={0}
+                                          max={50}
+                                          step={1}
+                                          onChange={(next) => {
+                                            const resolved =
+                                              next === undefined ? 0 : Math.round(next);
+                                            patchBlock(selectedBlock.id, {
+                                              radius: resolved,
+                                            });
+                                          }}
+                                        />
+                                      ) : null}
                                     </InspectorSection>
-                                    <label className="block">
-                                      <span className="text-xs font-medium text-neutral-500">
-                                        Background style
-                                      </span>
-                                      <InputSelect
+                                    <InspectorSection title="Background">
+                                      <InspectorInputSelect
+                                        label="Style"
                                         value={selectedBlock.bgStyle ?? "none"}
-                                        onChange={(e) => {
-                                          const value = e.target.value as SlideBlock["bgStyle"];
+                                        onChange={(nextValue) => {
+                                          const value = nextValue as SlideBlock["bgStyle"];
                                           if (value === "none") {
                                             patchBlock(selectedBlock.id, {
                                               bgStyle: "none",
@@ -4150,8 +4168,7 @@ export default function SlideModal({
                                           }
                                           patchBlock(selectedBlock.id, {
                                             bgStyle: value,
-                                            bgColor:
-                                              selectedBlock.bgColor ?? "#000000",
+                                            bgColor: selectedBlock.bgColor ?? "#000000",
                                             bgOpacity:
                                               selectedBlock.bgOpacity ??
                                               (value === "glass" ? 0.5 : 1),
@@ -4159,27 +4176,25 @@ export default function SlideModal({
                                             padding: selectedBlock.padding ?? 0,
                                           });
                                         }}
-                                        options={BACKGROUND_STYLE_OPTIONS}
+                                        options={BACKGROUND_STYLE_OPTIONS.map((option) => ({
+                                          label: option.label,
+                                          value: option.value,
+                                        }))}
                                       />
-                                    </label>
-                                    {selectedBlock.bgStyle &&
-                                      selectedBlock.bgStyle !== "none" && (
-                                        <div className="space-y-3">
-                                          <div>
-                                            <span className="text-xs font-medium text-neutral-500">
-                                              Background color
-                                            </span>
-                                            <InspectorColorInput
-                                              value={selectedBlock.bgColor ?? "#000000"}
-                                              onChange={(nextColor) =>
-                                                patchBlock(selectedBlock.id, {
-                                                  bgColor: nextColor,
-                                                })
-                                              }
-                                            />
-                                          </div>
-                                          <InspectorSliderControl
-                                            label="Opacity"
+                                      {selectedBlock.bgStyle &&
+                                      selectedBlock.bgStyle !== "none" ? (
+                                        <>
+                                          <InspectorInputColor
+                                            label="Background color"
+                                            value={selectedBlock.bgColor ?? "#000000"}
+                                            onChange={(nextColor) =>
+                                              patchBlock(selectedBlock.id, {
+                                                bgColor: nextColor,
+                                              })
+                                            }
+                                          />
+                                          <InspectorInputSlider
+                                            label="Background opacity (%)"
                                             value={
                                               selectedBlock.bgOpacity !== undefined
                                                 ? selectedBlock.bgOpacity * 100
@@ -4212,38 +4227,29 @@ export default function SlideModal({
                                               );
                                             }}
                                           />
-                                          <InspectorSliderControl
-                                            label="Corner radius (px)"
-                                            value={selectedBlock.radius}
-                                            fallbackValue={selectedBlock.radius ?? 0}
-                                            min={0}
-                                            max={50}
-                                            step={1}
-                                            onChange={(next) => {
-                                              const resolved =
-                                                next === undefined ? 0 : Math.round(next);
-                                              patchBlock(selectedBlock.id, {
-                                                radius: resolved,
-                                              });
-                                            }}
-                                          />
-                                          <InspectorSliderControl
-                                            label="Padding (px)"
-                                            value={selectedBlock.padding}
-                                            fallbackValue={selectedBlock.padding ?? 0}
-                                            min={0}
-                                            max={100}
-                                            step={1}
-                                            onChange={(next) => {
-                                              const resolved =
-                                                next === undefined ? 0 : Math.round(next);
-                                              patchBlock(selectedBlock.id, {
-                                                padding: resolved,
-                                              });
-                                            }}
-                                          />
-                                        </div>
-                                      )}
+                                        </>
+                                      ) : null}
+                                    </InspectorSection>
+                                    {selectedBlock.bgStyle &&
+                                    selectedBlock.bgStyle !== "none" ? (
+                                      <InspectorSection title="Spacing">
+                                        <InspectorInputSlider
+                                          label="Padding (px)"
+                                          value={selectedBlock.padding}
+                                          fallbackValue={selectedBlock.padding ?? 0}
+                                          min={0}
+                                          max={100}
+                                          step={1}
+                                          onChange={(next) => {
+                                            const resolved =
+                                              next === undefined ? 0 : Math.round(next);
+                                            patchBlock(selectedBlock.id, {
+                                              padding: resolved,
+                                            });
+                                          }}
+                                        />
+                                      </InspectorSection>
+                                    ) : null}
                                   </>
                                 );
                               })()}
@@ -4428,27 +4434,66 @@ export default function SlideModal({
                           )}
                           {selectedBlock.kind === "button" && selectedButtonConfig && (
                             <div className="space-y-4">
-                              <label className="block">
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Label
-                                </span>
+                              <InspectorSection title="Content">
+                                <label className="block">
+                                  <span className="text-xs font-medium text-neutral-500">
+                                    Label
+                                  </span>
+                                  <InputText
+                                    type="text"
+                                    value={selectedButtonConfig.label}
+                                    onChange={(e) =>
+                                      updateButtonConfig(selectedBlock.id, (config) => ({
+                                        ...config,
+                                        label: e.target.value,
+                                      }))
+                                    }
+                                    className={INSPECTOR_INPUT_CLASS}
+                                  />
+                                </label>
+                                <InspectorInputSelect
+                                  label="Link"
+                                  value={
+                                    linkOptions.includes(selectedButtonConfig.href)
+                                      ? selectedButtonConfig.href
+                                      : "custom"
+                                  }
+                                  onChange={(nextValue) => {
+                                    if (nextValue === "custom") {
+                                      updateButtonConfig(selectedBlock.id, (config) => ({
+                                        ...config,
+                                        href:
+                                          config.href && !linkOptions.includes(config.href)
+                                            ? config.href
+                                            : "",
+                                      }));
+                                      return;
+                                    }
+                                    updateButtonConfig(selectedBlock.id, (config) => ({
+                                      ...config,
+                                      href: nextValue,
+                                    }));
+                                  }}
+                                  options={linkOptions.map((opt) => ({
+                                    value: opt,
+                                    label: opt === "custom" ? "Custom URL" : opt,
+                                  }))}
+                                />
                                 <InputText
                                   type="text"
-                                  value={selectedButtonConfig.label}
+                                  value={selectedButtonConfig.href}
                                   onChange={(e) =>
                                     updateButtonConfig(selectedBlock.id, (config) => ({
                                       ...config,
-                                      label: e.target.value,
+                                      href: e.target.value,
                                     }))
                                   }
                                   className={INSPECTOR_INPUT_CLASS}
+                                  placeholder="https://"
                                 />
-                              </label>
-                              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Font family
-                                  </span>
+                              </InspectorSection>
+                              <InspectorSection title="Typography">
+                                <ControlRow label="Font family">
                                   {(() => {
                                     const value = resolveFontFamilyValue(
                                       selectedBlock.fontFamily,
@@ -4466,27 +4511,24 @@ export default function SlideModal({
                                       />
                                     );
                                   })()}
-                                </label>
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Font weight
-                                  </span>
-                                  <InputSelect
-                                    value={String(selectedBlock.fontWeight ?? 600)}
-                                    onChange={(e) => {
-                                      const parsed = Number(e.target.value);
-                                      patchBlock(selectedBlock.id, {
-                                        fontWeight: Number.isNaN(parsed)
-                                          ? selectedBlock.fontWeight
-                                          : parsed,
-                                      });
-                                    }}
-                                    options={FONT_WEIGHT_OPTIONS}
-                                  />
-                                </label>
-                              </div>
-                              <div className="space-y-3">
-                                <InspectorSliderControl
+                                </ControlRow>
+                                <InspectorInputSelect
+                                  label="Font weight"
+                                  value={String(selectedBlock.fontWeight ?? 600)}
+                                  onChange={(nextValue) => {
+                                    const parsed = Number(nextValue);
+                                    patchBlock(selectedBlock.id, {
+                                      fontWeight: Number.isNaN(parsed)
+                                        ? selectedBlock.fontWeight
+                                        : parsed,
+                                    });
+                                  }}
+                                  options={FONT_WEIGHT_OPTIONS.map((option) => ({
+                                    label: option.label,
+                                    value: String(option.value),
+                                  }))}
+                                />
+                                <InspectorInputSlider
                                   label="Font size (px)"
                                   value={selectedBlock.fontSize}
                                   fallbackValue={
@@ -4512,12 +4554,10 @@ export default function SlideModal({
                                     });
                                   }}
                                 />
-                                <InspectorSliderControl
+                                <InspectorInputSlider
                                   label="Line height"
                                   value={selectedBlock.lineHeight}
-                                  fallbackValue={
-                                    selectedBlock.lineHeight ?? 1.2
-                                  }
+                                  fallbackValue={selectedBlock.lineHeight ?? 1.2}
                                   min={0.5}
                                   max={3}
                                   step={0.1}
@@ -4535,12 +4575,9 @@ export default function SlideModal({
                                     });
                                   }}
                                 />
-                              </div>
-                              <div>
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Alignment
-                                </span>
-                                <div className="mt-1 flex gap-1.5">
+                              </InspectorSection>
+                              <InspectorSection title="Alignment">
+                                <div className="flex gap-1.5">
                                   {TEXT_ALIGNMENT_OPTIONS.map((option) => {
                                     const currentAlign = selectedBlock.align ?? "left";
                                     const isActive = currentAlign === option.value;
@@ -4564,145 +4601,90 @@ export default function SlideModal({
                                     );
                                   })}
                                 </div>
-                              </div>
-                              <div>
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Link
-                                </span>
-                                <div className="mt-1 space-y-2">
-                                  <InputSelect
-                                    value={
-                                      linkOptions.includes(selectedButtonConfig.href)
-                                        ? selectedButtonConfig.href
-                                        : "custom"
-                                    }
-                                    onChange={(e) => {
-                                      const value = e.target.value;
-                                      if (value === "custom") {
+                              </InspectorSection>
+                              <InspectorSection title="Options">
+                                <InspectorInputSelect
+                                  label="Variant"
+                                  value={selectedButtonConfig.variant}
+                                  onChange={(nextValue) =>
+                                    updateButtonConfig(selectedBlock.id, (config) => ({
+                                      ...config,
+                                      variant: nextValue as ButtonBlockVariant,
+                                    }))
+                                  }
+                                  options={BUTTON_VARIANTS.map((variant) => ({
+                                    value: variant,
+                                    label: variant,
+                                  }))}
+                                />
+                                <InspectorInputSelect
+                                  label="Size"
+                                  value={selectedButtonConfig.size}
+                                  onChange={(nextValue) =>
+                                    updateButtonConfig(selectedBlock.id, (config) => ({
+                                      ...config,
+                                      size: nextValue as ButtonBlockSize,
+                                    }))
+                                  }
+                                  options={BUTTON_SIZES.map((size) => ({
+                                    value: size,
+                                    label: size,
+                                  }))}
+                                />
+                                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                  <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
+                                    <InputCheckbox
+
+                                      checked={selectedButtonConfig.fullWidth}
+                                      onChange={(e) =>
                                         updateButtonConfig(selectedBlock.id, (config) => ({
                                           ...config,
-                                          href:
-                                            config.href && !linkOptions.includes(config.href)
-                                              ? config.href
-                                              : "",
-                                        }));
-                                        return;
+                                          fullWidth: e.target.checked,
+                                        }))
                                       }
-                                      updateButtonConfig(selectedBlock.id, (config) => ({
-                                        ...config,
-                                        href: value,
-                                      }));
-                                    }}
-                                    options={linkOptions.map((opt) => ({
-                                      value: opt,
-                                      label: opt === "custom" ? "Custom URL" : opt,
-                                    }))}
-                                  />
-                                  <InputText
-                                    type="text"
-                                    value={selectedButtonConfig.href}
-                                    onChange={(e) =>
-                                      updateButtonConfig(selectedBlock.id, (config) => ({
-                                        ...config,
-                                        href: e.target.value,
-                                      }))
-                                    }
-                                    className={INSPECTOR_INPUT_CLASS}
-                                    placeholder="https://"
-                                  />
+                                    />
+                                    Full width
+                                  </label>
+                                  <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
+                                    <InputCheckbox
+
+                                      checked={selectedButtonConfig.shadow}
+                                      onChange={(e) =>
+                                        updateButtonConfig(selectedBlock.id, (config) => ({
+                                          ...config,
+                                          shadow: e.target.checked,
+                                        }))
+                                      }
+                                    />
+                                    Shadow
+                                  </label>
                                 </div>
-                              </div>
-                              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Variant
-                                  </span>
-                                  <InputSelect
-                                    value={selectedButtonConfig.variant}
-                                    onChange={(e) =>
-                                      updateButtonConfig(selectedBlock.id, (config) => ({
-                                        ...config,
-                                        variant: e.target.value as ButtonBlockVariant,
-                                      }))
-                                    }
-                                    options={BUTTON_VARIANTS.map((variant) => ({
-                                      value: variant,
-                                      label: variant,
-                                    }))}
-                                  />
-                                </label>
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Size
-                                  </span>
-                                  <InputSelect
-                                    value={selectedButtonConfig.size}
-                                    onChange={(e) =>
-                                      updateButtonConfig(selectedBlock.id, (config) => ({
-                                        ...config,
-                                        size: e.target.value as ButtonBlockSize,
-                                      }))
-                                    }
-                                    options={BUTTON_SIZES.map((size) => ({
-                                      value: size,
-                                      label: size,
-                                    }))}
-                                  />
-                                </label>
-                              </div>
-                              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
-                                  <InputCheckbox
-                                    
-                                    checked={selectedButtonConfig.fullWidth}
-                                    onChange={(e) =>
-                                      updateButtonConfig(selectedBlock.id, (config) => ({
-                                        ...config,
-                                        fullWidth: e.target.checked,
-                                      }))
-                                    }
-                                  />
-                                  Full width
-                                </label>
-                                <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
-                                  <InputCheckbox
-                                    
-                                    checked={selectedButtonConfig.shadow}
-                                    onChange={(e) =>
-                                      updateButtonConfig(selectedBlock.id, (config) => ({
-                                        ...config,
-                                        shadow: e.target.checked,
-                                      }))
-                                    }
-                                  />
-                                  Shadow
-                                </label>
-                              </div>
-                              <InspectorSliderControl
-                                label="Corner radius (px)"
-                                value={selectedButtonConfig.radius}
-                                fallbackValue={
-                                  selectedButtonConfig.radius ?? DEFAULT_BUTTON_CONFIG.radius
-                                }
-                                min={0}
-                                max={50}
-                                step={1}
-                                onChange={(next) => {
-                                  const resolved =
-                                    next === undefined || Number.isNaN(next)
-                                      ? 0
-                                      : Math.max(0, Math.round(next));
-                                  updateButtonConfig(selectedBlock.id, (config) => ({
-                                    ...config,
-                                    radius: resolved,
-                                  }));
-                                }}
-                              />
-                              <div>
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Text color
-                                </span>
-                                <InspectorColorInput
+                              </InspectorSection>
+                              <InspectorSection title="Effects">
+                                <InspectorInputSlider
+                                  label="Corner radius (px)"
+                                  value={selectedButtonConfig.radius}
+                                  fallbackValue={
+                                    selectedButtonConfig.radius ?? DEFAULT_BUTTON_CONFIG.radius
+                                  }
+                                  min={0}
+                                  max={50}
+                                  step={1}
+                                  onChange={(next) => {
+                                    const resolved =
+                                      next === undefined || Number.isNaN(next)
+                                        ? 0
+                                        : Math.max(0, Math.round(next));
+                                    updateButtonConfig(selectedBlock.id, (config) => ({
+                                      ...config,
+                                      radius: resolved,
+                                    }));
+                                  }}
+                                />
+                              </InspectorSection>
+                              <InspectorSection title="Colors">
+                                <InspectorInputColor
+                                  label="Text color"
                                   value={selectedButtonConfig.textColor}
                                   onChange={(nextColor) =>
                                     updateButtonConfig(selectedBlock.id, (config) => ({
@@ -4710,14 +4692,9 @@ export default function SlideModal({
                                       textColor: nextColor,
                                     }))
                                   }
-                                  allowAlpha
                                 />
-                              </div>
-                              <div>
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Background color
-                                </span>
-                                <InspectorColorInput
+                                <InspectorInputColor
+                                  label="Background color"
                                   value={selectedButtonConfig.bgColor}
                                   onChange={(nextColor) =>
                                     updateButtonConfig(selectedBlock.id, (config) => ({
@@ -4725,9 +4702,8 @@ export default function SlideModal({
                                       bgColor: nextColor,
                                     }))
                                   }
-                                  allowAlpha
                                 />
-                              </div>
+                              </InspectorSection>
                             </div>
                           )}
                           {selectedBlock.kind === "image" &&
@@ -5153,49 +5129,43 @@ export default function SlideModal({
                                     </DragOverlay>
                                   </DndContext>
                                 )}
-                                <div className="space-y-3">
-                                  <label className="block">
-                                    <span className="text-xs font-medium text-neutral-500">
-                                      Layout
-                                    </span>
-                                    <InputSelect
-                                      value={selectedGalleryConfig.layout}
-                                      onChange={(e) =>
-                                        updateGalleryConfig(
-                                          selectedBlock.id,
-                                          (config) => ({
-                                            ...config,
-                                            layout: e.target.value as GalleryBlockConfig["layout"],
-                                          }),
-                                        )
-                                      }
-                                      options={[
-                                        { value: "grid", label: "Grid" },
-                                        { value: "carousel", label: "Carousel" },
-                                      ]}
-                                    />
-                                  </label>
-                                  <label className="block">
-                                    <span className="text-xs font-medium text-neutral-500">
-                                      Aspect ratio
-                                    </span>
-                                    <InputSelect
-                                      value={selectedGalleryConfig.aspectRatio}
-                                      onChange={(e) =>
-                                        updateGalleryConfig(
-                                          selectedBlock.id,
-                                          (config) => ({
-                                            ...config,
-                                            aspectRatio: e.target
-                                              .value as GalleryBlockConfig["aspectRatio"],
-                                          }),
-                                        )
-                                      }
-                                      options={IMAGE_ASPECT_RATIO_OPTIONS}
-                                    />
-                                  </label>
-                                  {selectedGalleryConfig.layout === "carousel" && (
-                                    <div className="space-y-2 rounded border px-3 py-2 text-xs">
+                                <InspectorSection title="Layout">
+                                  <InspectorInputSelect
+                                    label="Layout"
+                                    value={selectedGalleryConfig.layout}
+                                    onChange={(nextValue) =>
+                                      updateGalleryConfig(
+                                        selectedBlock.id,
+                                        (config) => ({
+                                          ...config,
+                                          layout: nextValue as GalleryBlockConfig["layout"],
+                                        }),
+                                      )
+                                    }
+                                    options={[
+                                      { value: "grid", label: "Grid" },
+                                      { value: "carousel", label: "Carousel" },
+                                    ]}
+                                  />
+                                  <InspectorInputSelect
+                                    label="Aspect ratio"
+                                    value={selectedGalleryConfig.aspectRatio}
+                                    onChange={(nextValue) =>
+                                      updateGalleryConfig(
+                                        selectedBlock.id,
+                                        (config) => ({
+                                          ...config,
+                                          aspectRatio: nextValue as GalleryBlockConfig["aspectRatio"],
+                                        }),
+                                      )
+                                    }
+                                    options={IMAGE_ASPECT_RATIO_OPTIONS.map((option) => ({
+                                      label: option.label,
+                                      value: option.value,
+                                    }))}
+                                  />
+                                  {selectedGalleryConfig.layout === "carousel" ? (
+                                    <div className="space-y-2 text-xs">
                                       <InputToggle
                                         label="Autoplay"
                                         checked={selectedGalleryConfig.autoplay}
@@ -5215,7 +5185,7 @@ export default function SlideModal({
                                           Interval (ms)
                                         </span>
                                         <InputNumber
-                                          
+
                                           min={200}
                                           step={100}
                                           value={selectedGalleryConfig.interval}
@@ -5236,8 +5206,10 @@ export default function SlideModal({
                                         />
                                       </label>
                                     </div>
-                                  )}
-                                  <InspectorSliderControl
+                                  ) : null}
+                                </InspectorSection>
+                                <InspectorSection title="Effects">
+                                  <InspectorInputSlider
                                     label="Corner radius (px)"
                                     value={selectedGalleryConfig.radius}
                                     fallbackValue={
@@ -5273,12 +5245,12 @@ export default function SlideModal({
                                     }
                                     labelClassName="flex items-center justify-between text-xs text-neutral-500"
                                   />
-                                </div>
+                                </InspectorSection>
                               </div>
                             )}
                           {selectedBlock.kind === "quote" && selectedQuoteConfig && (
                             <div className="space-y-4">
-                              <div className="space-y-2">
+                              <InspectorSection title="Content">
                                 <InputToggle
                                   label="Use customer review"
                                   checked={selectedQuoteConfig.useReview}
@@ -5291,80 +5263,72 @@ export default function SlideModal({
                                   }
                                   labelClassName="flex items-center justify-between text-xs text-neutral-500"
                                 />
-                                {selectedQuoteConfig.useReview && (
+                                {selectedQuoteConfig.useReview ? (
                                   reviewOptions.length > 0 ? (
-                                    <label className="block">
-                                      <span className="text-xs font-medium text-neutral-500">
-                                        Select review
-                                      </span>
-                                      <InputSelect
-                                        value={selectedQuoteConfig.reviewId ?? ""}
-                                        onChange={(e) => {
-                                          const nextId = e.target.value;
-                                          const review = reviewOptions.find(
-                                            (option) => option.id === nextId,
-                                          );
-                                          updateQuoteConfig(selectedBlock.id, (config) => ({
-                                            ...config,
-                                            useReview: true,
-                                            reviewId: nextId.length > 0 ? nextId : null,
-                                            text: review ? review.text : config.text,
-                                            author: review ? review.author : config.author,
-                                          }));
-                                        }}
-                                      >
-                                        <option value="">Choose a review…</option>
-                                        {reviewOptions.map((option) => (
-                                          <option key={option.id} value={option.id}>
-                                            {formatReviewOptionLabel(option)}
-                                          </option>
-                                        ))}
-                                      </InputSelect>
-                                    </label>
+                                    <InspectorInputSelect
+                                      label="Review"
+                                      value={selectedQuoteConfig.reviewId ?? ""}
+                                      onChange={(nextValue) => {
+                                        const review = reviewOptions.find(
+                                          (option) => option.id === nextValue,
+                                        );
+                                        updateQuoteConfig(selectedBlock.id, (config) => ({
+                                          ...config,
+                                          useReview: true,
+                                          reviewId: nextValue.length > 0 ? nextValue : null,
+                                          text: review ? review.text : config.text,
+                                          author: review ? review.author : config.author,
+                                        }));
+                                      }}
+                                      options={[
+                                        { value: "", label: "Choose a review…" },
+                                        ...reviewOptions.map((option) => ({
+                                          value: option.id,
+                                          label: formatReviewOptionLabel(option),
+                                        })),
+                                      ]}
+                                    />
                                   ) : (
                                     <p className="text-xs text-neutral-500">
                                       No reviews available.
                                     </p>
                                   )
-                                )}
-                              </div>
-                              <label className="block">
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Quote text
-                                </span>
-                                <textarea
-                                  rows={4}
-                                  value={selectedQuoteConfig.text}
-                                  onChange={(e) =>
-                                    updateQuoteConfig(selectedBlock.id, (config) => ({
-                                      ...config,
-                                      text: e.target.value,
-                                    }))
-                                  }
-                                  className={INSPECTOR_TEXTAREA_CLASS}
-                                />
-                              </label>
-                              <label className="block">
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Author (optional)
-                                </span>
-                                <InputText
-                                  type="text"
-                                  value={selectedQuoteConfig.author}
-                                  onChange={(e) =>
-                                    updateQuoteConfig(selectedBlock.id, (config) => ({
-                                      ...config,
-                                      author: e.target.value,
-                                    }))
-                                  }
-                                  className={INSPECTOR_INPUT_CLASS}
-                                />
-                              </label>
-                              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                ) : null}
                                 <label className="block">
                                   <span className="text-xs font-medium text-neutral-500">
-                                    Font family
+                                    Quote text
                                   </span>
+                                  <textarea
+                                    rows={4}
+                                    value={selectedQuoteConfig.text}
+                                    onChange={(e) =>
+                                      updateQuoteConfig(selectedBlock.id, (config) => ({
+                                        ...config,
+                                        text: e.target.value,
+                                      }))
+                                    }
+                                    className={INSPECTOR_TEXTAREA_CLASS}
+                                  />
+                                </label>
+                                <label className="block">
+                                  <span className="text-xs font-medium text-neutral-500">
+                                    Author (optional)
+                                  </span>
+                                  <InputText
+                                    type="text"
+                                    value={selectedQuoteConfig.author}
+                                    onChange={(e) =>
+                                      updateQuoteConfig(selectedBlock.id, (config) => ({
+                                        ...config,
+                                        author: e.target.value,
+                                      }))
+                                    }
+                                    className={INSPECTOR_INPUT_CLASS}
+                                  />
+                                </label>
+                              </InspectorSection>
+                              <InspectorSection title="Typography">
+                                <ControlRow label="Font family">
                                   {(() => {
                                     const value = resolveFontFamilyValue(
                                       selectedBlock.fontFamily,
@@ -5382,30 +5346,27 @@ export default function SlideModal({
                                       />
                                     );
                                   })()}
-                                </label>
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Font weight
-                                  </span>
-                                  <InputSelect
-                                    value={String(
-                                      selectedBlock.fontWeight ??
-                                        (selectedQuoteConfig.style === "emphasis" ? 600 : 400),
-                                    )}
-                                    onChange={(e) => {
-                                      const parsed = Number(e.target.value);
-                                      patchBlock(selectedBlock.id, {
-                                        fontWeight: Number.isNaN(parsed)
-                                          ? selectedBlock.fontWeight
-                                          : parsed,
-                                      });
-                                    }}
-                                    options={FONT_WEIGHT_OPTIONS}
-                                  />
-                                </label>
-                              </div>
-                              <div className="space-y-3">
-                                <InspectorSliderControl
+                                </ControlRow>
+                                <InspectorInputSelect
+                                  label="Font weight"
+                                  value={String(
+                                    selectedBlock.fontWeight ??
+                                      (selectedQuoteConfig.style === "emphasis" ? 600 : 400),
+                                  )}
+                                  onChange={(nextValue) => {
+                                    const parsed = Number(nextValue);
+                                    patchBlock(selectedBlock.id, {
+                                      fontWeight: Number.isNaN(parsed)
+                                        ? selectedBlock.fontWeight
+                                        : parsed,
+                                    });
+                                  }}
+                                  options={FONT_WEIGHT_OPTIONS.map((option) => ({
+                                    label: option.label,
+                                    value: String(option.value),
+                                  }))}
+                                />
+                                <InspectorInputSlider
                                   label="Font size (px)"
                                   value={selectedBlock.fontSize}
                                   fallbackValue={
@@ -5430,12 +5391,10 @@ export default function SlideModal({
                                     });
                                   }}
                                 />
-                                <InspectorSliderControl
+                                <InspectorInputSlider
                                   label="Line height"
                                   value={selectedBlock.lineHeight}
-                                  fallbackValue={
-                                    selectedBlock.lineHeight ?? 1.2
-                                  }
+                                  fallbackValue={selectedBlock.lineHeight ?? 1.2}
                                   min={0.5}
                                   max={3}
                                   step={0.1}
@@ -5453,75 +5412,33 @@ export default function SlideModal({
                                     });
                                   }}
                                 />
-                              </div>
-                              <InspectorTextShadowControls
-                                block={selectedBlock}
-                                onPatch={(patch) =>
-                                  patchBlock(selectedBlock.id, patch)
-                                }
-                              />
-                              <label className="block">
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Style
-                                </span>
-                                <InputSelect
+                              </InspectorSection>
+                              <InspectorSection title="Style">
+                                <InspectorInputSelect
+                                  label="Variant"
                                   value={selectedQuoteConfig.style}
-                                  onChange={(e) =>
+                                  onChange={(nextValue) =>
                                     updateQuoteConfig(selectedBlock.id, (config) => ({
                                       ...config,
-                                      style: e.target.value as QuoteBlockConfig["style"],
+                                      style: nextValue as QuoteBlockConfig["style"],
                                     }))
                                   }
-                                  options={QUOTE_STYLE_OPTIONS}
+                                  options={QUOTE_STYLE_OPTIONS.map((option) => ({
+                                    label: option.label,
+                                    value: option.value,
+                                  }))}
                                 />
-                              </label>
-                              {(selectedQuoteConfig.style === "emphasis" ||
-                                selectedQuoteConfig.style === "card") && (
-                                <div className="space-y-3 rounded border px-3 py-3">
-                                  <label className="block text-xs font-medium text-neutral-500">
-                                    Background color
-                                    <InspectorColorInput
-                                      value={selectedQuoteConfig.bgColor}
-                                      onChange={(nextColor) =>
-                                        updateQuoteConfig(selectedBlock.id, (config) => ({
-                                          ...config,
-                                          bgColor: nextColor,
-                                        }))
-                                      }
-                                    />
-                                  </label>
-                                  <InspectorSliderControl
-                                    label="Background opacity"
-                                    value={
-                                      selectedQuoteConfig.bgOpacity !== undefined
-                                        ? selectedQuoteConfig.bgOpacity * 100
-                                        : undefined
-                                    }
-                                    fallbackValue={
-                                      ((selectedQuoteConfig.bgOpacity ?? DEFAULT_QUOTE_CONFIG.bgOpacity) *
-                                        100) || 0
-                                    }
-                                    min={0}
-                                    max={100}
-                                    step={1}
-                                    onChange={(next) => {
-                                      const fallback =
-                                        selectedQuoteConfig.bgOpacity ?? DEFAULT_QUOTE_CONFIG.bgOpacity;
-                                      const percent =
-                                        next === undefined || Number.isNaN(next)
-                                          ? fallback * 100
-                                          : next;
-                                      const clampedPercent = Math.min(
-                                        100,
-                                        Math.max(0, percent ?? 0),
-                                      );
-                                      updateQuoteConfig(selectedBlock.id, (config) => ({
-                                        ...config,
-                                        bgOpacity: clamp01(clampedPercent / 100),
-                                      }));
-                                    }}
-                                  />
-                                  <InspectorSliderControl
+                              </InspectorSection>
+                              <InspectorSection title="Effects">
+                                <InspectorTextShadowControls
+                                  block={selectedBlock}
+                                  onPatch={(patch) =>
+                                    patchBlock(selectedBlock.id, patch)
+                                  }
+                                />
+                                {(selectedQuoteConfig.style === "emphasis" ||
+                                  selectedQuoteConfig.style === "card") && (
+                                  <InspectorInputSlider
                                     label="Corner radius (px)"
                                     value={selectedQuoteConfig.radius}
                                     fallbackValue={
@@ -5541,33 +5458,80 @@ export default function SlideModal({
                                       }));
                                     }}
                                   />
-                                  <InspectorSliderControl
-                                    label="Padding (px)"
-                                    value={selectedQuoteConfig.padding}
-                                    fallbackValue={
-                                      selectedQuoteConfig.padding ?? DEFAULT_QUOTE_CONFIG.padding
-                                    }
-                                    min={0}
-                                    max={100}
-                                    step={1}
-                                    onChange={(next) => {
-                                      const resolved =
-                                        next === undefined || Number.isNaN(next)
-                                          ? selectedQuoteConfig.padding ?? DEFAULT_QUOTE_CONFIG.padding
-                                          : Math.round(next);
-                                      updateQuoteConfig(selectedBlock.id, (config) => ({
-                                        ...config,
-                                        padding: resolved,
-                                      }));
-                                    }}
-                                  />
-                                </div>
+                                )}
+                              </InspectorSection>
+                              {(selectedQuoteConfig.style === "emphasis" ||
+                                selectedQuoteConfig.style === "card") && (
+                                <>
+                                  <InspectorSection title="Background">
+                                    <InspectorInputColor
+                                      label="Color"
+                                      value={selectedQuoteConfig.bgColor}
+                                      onChange={(nextColor) =>
+                                        updateQuoteConfig(selectedBlock.id, (config) => ({
+                                          ...config,
+                                          bgColor: nextColor,
+                                        }))
+                                      }
+                                    />
+                                    <InspectorInputSlider
+                                      label="Opacity (%)"
+                                      value={
+                                        selectedQuoteConfig.bgOpacity !== undefined
+                                          ? selectedQuoteConfig.bgOpacity * 100
+                                          : undefined
+                                      }
+                                      fallbackValue={
+                                        ((selectedQuoteConfig.bgOpacity ?? DEFAULT_QUOTE_CONFIG.bgOpacity) *
+                                          100) || 0
+                                      }
+                                      min={0}
+                                      max={100}
+                                      step={1}
+                                      onChange={(next) => {
+                                        const fallback =
+                                          selectedQuoteConfig.bgOpacity ?? DEFAULT_QUOTE_CONFIG.bgOpacity;
+                                        const percent =
+                                          next === undefined || Number.isNaN(next)
+                                            ? fallback * 100
+                                            : next;
+                                        const clampedPercent = Math.min(
+                                          100,
+                                          Math.max(0, percent ?? 0),
+                                        );
+                                        updateQuoteConfig(selectedBlock.id, (config) => ({
+                                          ...config,
+                                          bgOpacity: clamp01(clampedPercent / 100),
+                                        }));
+                                      }}
+                                    />
+                                  </InspectorSection>
+                                  <InspectorSection title="Spacing">
+                                    <InspectorInputSlider
+                                      label="Padding (px)"
+                                      value={selectedQuoteConfig.padding}
+                                      fallbackValue={
+                                        selectedQuoteConfig.padding ?? DEFAULT_QUOTE_CONFIG.padding
+                                      }
+                                      min={0}
+                                      max={100}
+                                      step={1}
+                                      onChange={(next) => {
+                                        const resolved =
+                                          next === undefined || Number.isNaN(next)
+                                            ? selectedQuoteConfig.padding ?? DEFAULT_QUOTE_CONFIG.padding
+                                            : Math.round(next);
+                                        updateQuoteConfig(selectedBlock.id, (config) => ({
+                                          ...config,
+                                          padding: resolved,
+                                        }));
+                                      }}
+                                    />
+                                  </InspectorSection>
+                                </>
                               )}
-                              <div>
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Alignment
-                                </span>
-                                <div className="mt-1 flex gap-1.5">
+                              <InspectorSection title="Alignment">
+                                <div className="flex gap-1.5">
                                   {TEXT_ALIGNMENT_OPTIONS.map((option) => {
                                     const currentAlign = selectedQuoteConfig.align;
                                     const isActive = currentAlign === option.value;
@@ -5592,7 +5556,7 @@ export default function SlideModal({
                                     );
                                   })}
                                 </div>
-                              </div>
+                              </InspectorSection>
                             </div>
                           )}
                           <div className="rounded border px-3 py-3 space-y-3">
