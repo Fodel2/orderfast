@@ -429,6 +429,34 @@ const INSPECTOR_CONTENT_CLASS = [
   "[&_.space-y-6]:space-y-4",
 ].join(" ");
 
+const TEXTUAL_INPUT_TYPES = new Set([
+  "text",
+  "search",
+  "email",
+  "url",
+  "tel",
+  "password",
+  "number",
+]);
+
+const TEXTUAL_INPUT_SELECTOR =
+  'input[type="text"], input[type="search"], input[type="email"], input[type="url"], input[type="tel"], input[type="password"], input[type="number"], textarea, [contenteditable="true"]';
+
+const isTextualInteractiveElement = (
+  element: Element | null,
+): element is HTMLInputElement | HTMLTextAreaElement | HTMLElement => {
+  if (!element) return false;
+  if (element instanceof HTMLTextAreaElement) return true;
+  if (element instanceof HTMLInputElement) {
+    const type = element.type?.toLowerCase() ?? "";
+    return type === "" || TEXTUAL_INPUT_TYPES.has(type);
+  }
+  if (element instanceof HTMLElement && element.isContentEditable) {
+    return true;
+  }
+  return false;
+};
+
 const INSPECTOR_INPUT_CLASS = [
   "w-full",
   "rounded-md",
@@ -2650,6 +2678,57 @@ export default function SlideModal({
     handleSelectBlock(null);
   }, [handleSelectBlock]);
 
+  const blurActiveTextInput = useCallback(() => {
+    if (typeof document === "undefined") return;
+    const activeElement = document.activeElement;
+    if (!activeElement) return;
+    if (
+      isTextualInteractiveElement(activeElement) &&
+      activeElement instanceof HTMLElement
+    ) {
+      activeElement.blur();
+    }
+  }, []);
+
+  const handleInspectorPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+
+      const interactiveTarget = target.closest(
+        "input, textarea, select, button, [contenteditable=\"true\"]",
+      ) as HTMLElement | null;
+
+      if (isTextualInteractiveElement(interactiveTarget)) {
+        return;
+      }
+
+      if (interactiveTarget) {
+        blurActiveTextInput();
+        return;
+      }
+
+      const labelTarget = target.closest("label");
+      if (labelTarget) {
+        const containsTextField = labelTarget.querySelector(
+          TEXTUAL_INPUT_SELECTOR,
+        );
+        if (containsTextField) {
+          event.preventDefault();
+          blurActiveTextInput();
+          return;
+        }
+      }
+
+      blurActiveTextInput();
+    },
+    [blurActiveTextInput],
+  );
+
+  useEffect(() => {
+    blurActiveTextInput();
+  }, [blurActiveTextInput, selectedId]);
+
   const handleBackgroundTypeChange = useCallback(
     (type: SlideBackground["type"]) => {
       updateBackground((prev) => {
@@ -4199,7 +4278,10 @@ export default function SlideModal({
                         </div>
                       </div>
                     </div>
-                    <div className={INSPECTOR_CONTENT_CLASS}>
+                    <div
+                      className={INSPECTOR_CONTENT_CLASS}
+                      onPointerDownCapture={handleInspectorPointerDown}
+                    >
                       <section>
                         <div className="mt-2 space-y-3 text-sm">
                           {(selectedBlock.kind === "heading" ||
