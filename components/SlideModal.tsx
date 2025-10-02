@@ -60,6 +60,8 @@ import SlidesManager, {
   resolveButtonConfig,
   resolveImageConfig,
   resolveGalleryConfig,
+  MIN_GALLERY_AUTOPLAY_INTERVAL,
+  MAX_GALLERY_AUTOPLAY_INTERVAL,
   resolveQuoteConfig,
   resolveBlockVisibility,
   resolveBlockAnimationConfig,
@@ -2438,6 +2440,10 @@ export default function SlideModal({
             Number.isFinite(intervalRaw) && intervalRaw > 0
               ? Math.round(intervalRaw)
               : DEFAULT_GALLERY_CONFIG.interval;
+          const intervalSeconds = Math.min(
+            MAX_GALLERY_AUTOPLAY_INTERVAL,
+            Math.max(MIN_GALLERY_AUTOPLAY_INTERVAL, intervalCandidate),
+          );
           const radiusCandidate =
             Number.isFinite(radiusRaw) && radiusRaw >= 0
               ? radiusRaw
@@ -2447,7 +2453,7 @@ export default function SlideModal({
             layout: next.layout === "carousel" ? "carousel" : "grid",
             autoplay:
               next.layout === "carousel" ? Boolean(next.autoplay) : false,
-            interval: Math.max(200, intervalCandidate),
+            interval: intervalSeconds,
             radius: radiusCandidate,
             shadow: Boolean(next.shadow),
             aspectRatio: normalizeBlockAspectRatio(
@@ -5556,9 +5562,9 @@ export default function SlideModal({
                                     }))}
                                   />
                                 </InspectorSection>
-                                <InspectorSection title="Settings">
+                                <InspectorSection title="Autoplay">
                                   <InspectorInputToggle
-                                    label="Autoplay"
+                                    label="Enable autoplay"
                                     checked={selectedGalleryConfig.autoplay}
                                     disabled={!isGalleryCarousel}
                                     onChange={(nextChecked) =>
@@ -5571,30 +5577,36 @@ export default function SlideModal({
                                       )
                                     }
                                   />
-                                  <InspectorInputSlider
-                                    label="Interval (ms)"
-                                    min={200}
-                                    max={10000}
-                                    step={100}
-                                    value={selectedGalleryConfig.interval}
-                                    fallbackValue={DEFAULT_GALLERY_CONFIG.interval}
-                                    disabled={
-                                      !isGalleryCarousel || !selectedGalleryConfig.autoplay
-                                    }
-                                    onChange={(next) => {
-                                      const resolved =
-                                        typeof next === "number" && Number.isFinite(next)
-                                          ? Math.round(next)
-                                          : DEFAULT_GALLERY_CONFIG.interval;
-                                      updateGalleryConfig(
-                                        selectedBlock.id,
-                                        (config) => ({
-                                          ...config,
-                                          interval: resolved,
-                                        }),
-                                      );
-                                    }}
-                                  />
+                                  {isGalleryCarousel && selectedGalleryConfig.autoplay ? (
+                                    <div style={INSPECTOR_NESTED_GROUP_STYLE}>
+                                      <InspectorInputSlider
+                                        label="Interval (seconds)"
+                                        min={MIN_GALLERY_AUTOPLAY_INTERVAL}
+                                        max={MAX_GALLERY_AUTOPLAY_INTERVAL}
+                                        step={1}
+                                        value={selectedGalleryConfig.interval}
+                                        fallbackValue={DEFAULT_GALLERY_CONFIG.interval}
+                                        onChange={(next) => {
+                                          const numeric =
+                                            typeof next === "number" && Number.isFinite(next)
+                                              ? next
+                                              : DEFAULT_GALLERY_CONFIG.interval;
+                                          const rounded = Math.round(numeric);
+                                          const clamped = Math.min(
+                                            MAX_GALLERY_AUTOPLAY_INTERVAL,
+                                            Math.max(MIN_GALLERY_AUTOPLAY_INTERVAL, rounded),
+                                          );
+                                          updateGalleryConfig(
+                                            selectedBlock.id,
+                                            (config) => ({
+                                              ...config,
+                                              interval: clamped,
+                                            }),
+                                          );
+                                        }}
+                                      />
+                                    </div>
+                                  ) : null}
                                 </InspectorSection>
                                 <InspectorSection title="Effects">
                                   <InspectorInputSlider

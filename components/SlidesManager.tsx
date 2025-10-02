@@ -924,11 +924,14 @@ export type GalleryBlockConfig = {
   aspectRatio: BlockAspectRatio;
 };
 
+export const MIN_GALLERY_AUTOPLAY_INTERVAL = 1;
+export const MAX_GALLERY_AUTOPLAY_INTERVAL = 30;
+
 export const DEFAULT_GALLERY_CONFIG: GalleryBlockConfig = {
   items: [],
   layout: 'grid',
   autoplay: false,
-  interval: 3000,
+  interval: 3,
   radius: 0,
   shadow: false,
   aspectRatio: 'original',
@@ -1646,13 +1649,26 @@ export function resolveGalleryConfig(block: SlideBlock): GalleryBlockConfig {
     parseBlockAspectRatio((block as any).aspectRatio);
 
   const intervalCandidate = intervalRaw && intervalRaw > 0 ? intervalRaw : undefined;
+  const legacyIntervalThreshold = Math.max(MAX_GALLERY_AUTOPLAY_INTERVAL * 2, 100);
+  let intervalSeconds = intervalCandidate ?? DEFAULT_GALLERY_CONFIG.interval;
+  if (intervalSeconds > MAX_GALLERY_AUTOPLAY_INTERVAL && intervalSeconds > legacyIntervalThreshold) {
+    intervalSeconds = intervalSeconds / 1000;
+  }
+  intervalSeconds = Math.round(intervalSeconds);
+  if (!Number.isFinite(intervalSeconds) || intervalSeconds <= 0) {
+    intervalSeconds = DEFAULT_GALLERY_CONFIG.interval;
+  }
+  intervalSeconds = Math.min(
+    MAX_GALLERY_AUTOPLAY_INTERVAL,
+    Math.max(MIN_GALLERY_AUTOPLAY_INTERVAL, intervalSeconds),
+  );
   const radiusCandidate = typeof radiusRaw === 'number' && radiusRaw >= 0 ? radiusRaw : undefined;
 
   return {
     items,
     layout,
     autoplay: layout === 'carousel' ? Boolean(autoplayRaw) : false,
-    interval: intervalCandidate ? Math.round(intervalCandidate) : DEFAULT_GALLERY_CONFIG.interval,
+    interval: intervalSeconds,
     radius: radiusCandidate ?? DEFAULT_GALLERY_CONFIG.radius,
     shadow: Boolean(shadowRaw),
     aspectRatio: aspectRatioSource ?? DEFAULT_GALLERY_CONFIG.aspectRatio,
@@ -2728,13 +2744,20 @@ function GalleryBlockPreview({
     if (config.layout !== 'carousel') return;
     if (!config.autoplay) return;
     if (items.length <= 1) return;
-    const interval = Math.max(200, Number.isFinite(config.interval) ? config.interval : DEFAULT_GALLERY_CONFIG.interval);
+    const seconds = Number.isFinite(config.interval)
+      ? (config.interval as number)
+      : DEFAULT_GALLERY_CONFIG.interval;
+    const clampedSeconds = Math.min(
+      MAX_GALLERY_AUTOPLAY_INTERVAL,
+      Math.max(MIN_GALLERY_AUTOPLAY_INTERVAL, seconds),
+    );
+    const intervalMs = Math.max(1, Math.round(clampedSeconds * 1000));
     const id = window.setInterval(() => {
       setActiveIndex((prev) => {
         const next = prev + 1;
         return next >= items.length ? 0 : next;
       });
-    }, interval);
+    }, intervalMs);
     return () => window.clearInterval(id);
   }, [config.autoplay, config.interval, config.layout, items.length]);
 
