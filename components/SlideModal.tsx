@@ -655,129 +655,6 @@ const InspectorColorInput: React.FC<InspectorColorInputProps> = ({
   );
 };
 
-type InspectorTextShadowControlsProps = {
-  block: SlideBlock;
-  onPatch: (patch: Partial<SlideBlock>) => void;
-};
-
-const InspectorTextShadowControls: React.FC<InspectorTextShadowControlsProps> = ({
-  block,
-  onPatch,
-}) => {
-  const shadowEnabled = Boolean(block.textShadow);
-  const resolvedX =
-    typeof block.shadowX === "number"
-      ? block.shadowX
-      : block.textShadow?.x ?? DEFAULT_TEXT_SHADOW.x;
-  const resolvedY =
-    typeof block.shadowY === "number"
-      ? block.shadowY
-      : block.textShadow?.y ?? DEFAULT_TEXT_SHADOW.y;
-  const resolvedBlur =
-    typeof block.shadowBlur === "number"
-      ? block.shadowBlur
-      : block.textShadow?.blur ?? DEFAULT_TEXT_SHADOW.blur;
-  const resolvedColor =
-    typeof block.shadowColor === "string" && block.shadowColor.trim().length > 0
-      ? block.shadowColor
-      : block.textShadow?.color ?? DEFAULT_TEXT_SHADOW.color;
-
-  const buildShadow = useCallback(
-    (overrides?: Partial<NonNullable<SlideBlock["textShadow"]>>) => ({
-      x: overrides?.x ?? resolvedX ?? DEFAULT_TEXT_SHADOW.x,
-      y: overrides?.y ?? resolvedY ?? DEFAULT_TEXT_SHADOW.y,
-      blur: overrides?.blur ?? resolvedBlur ?? DEFAULT_TEXT_SHADOW.blur,
-      color: overrides?.color ?? resolvedColor ?? DEFAULT_TEXT_SHADOW.color,
-    }),
-    [resolvedBlur, resolvedColor, resolvedX, resolvedY],
-  );
-
-  const applyShadowPatch = useCallback(
-    (overrides?: Partial<NonNullable<SlideBlock["textShadow"]>>) => {
-      const nextShadow = buildShadow(overrides);
-      onPatch({
-        textShadow: nextShadow,
-        shadowX: nextShadow.x,
-        shadowY: nextShadow.y,
-        shadowBlur: nextShadow.blur,
-        shadowColor: nextShadow.color,
-      });
-    },
-    [buildShadow, onPatch],
-  );
-
-  const handleToggle = useCallback(
-    (checked: boolean) => {
-      if (checked) {
-        applyShadowPatch();
-        return;
-      }
-      onPatch({ textShadow: null });
-    },
-    [applyShadowPatch, onPatch],
-  );
-
-  return (
-    <div>
-      <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
-        <InputCheckbox
-          checked={shadowEnabled}
-          onChange={(e) => handleToggle(e.target.checked)}
-        />
-        Text shadow
-      </label>
-      {shadowEnabled && (
-        <div className="mt-2 space-y-2">
-          <InspectorSliderControl
-            label="Offset X (px)"
-            value={resolvedX}
-            fallbackValue={resolvedX ?? DEFAULT_TEXT_SHADOW.x}
-            min={-50}
-            max={50}
-            step={1}
-            onChange={(next) => {
-              if (typeof next !== "number" || Number.isNaN(next)) return;
-              applyShadowPatch({ x: Math.round(next) });
-            }}
-          />
-          <InspectorSliderControl
-            label="Offset Y (px)"
-            value={resolvedY}
-            fallbackValue={resolvedY ?? DEFAULT_TEXT_SHADOW.y}
-            min={-50}
-            max={50}
-            step={1}
-            onChange={(next) => {
-              if (typeof next !== "number" || Number.isNaN(next)) return;
-              applyShadowPatch({ y: Math.round(next) });
-            }}
-          />
-          <InspectorSliderControl
-            label="Blur (px)"
-            value={resolvedBlur}
-            fallbackValue={resolvedBlur ?? DEFAULT_TEXT_SHADOW.blur}
-            min={0}
-            max={50}
-            step={1}
-            onChange={(next) => {
-              if (typeof next !== "number" || Number.isNaN(next)) return;
-              applyShadowPatch({ blur: Math.max(0, Math.round(next)) });
-            }}
-          />
-          <div>
-            <span className="text-xs font-medium text-neutral-500">Shadow color</span>
-            <InspectorColorInput
-              value={resolvedColor ?? DEFAULT_TEXT_SHADOW.color}
-              onChange={(nextColor) => applyShadowPatch({ color: nextColor })}
-              allowAlpha
-            />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
 type InspectorSliderControlProps = {
   label: React.ReactNode;
   value: number | undefined;
@@ -4526,15 +4403,9 @@ export default function SlideModal({
                                         onChange={handleTextOpacityChange}
                                       />
                                     </InspectorSection>
-                                    <InspectorSection title="Effects">
-                                      <InspectorTextShadowControls
-                                        block={selectedBlock}
-                                        onPatch={(patch) =>
-                                          patchBlock(selectedBlock.id, patch)
-                                        }
-                                      />
-                                      {selectedBlock.bgStyle &&
-                                      selectedBlock.bgStyle !== "none" ? (
+                                    {selectedBlock.bgStyle &&
+                                    selectedBlock.bgStyle !== "none" ? (
+                                      <InspectorSection title="Effects">
                                         <InspectorInputSlider
                                           label="Corner radius (px)"
                                           value={selectedBlock.radius}
@@ -4550,8 +4421,8 @@ export default function SlideModal({
                                             });
                                           }}
                                         />
-                                      ) : null}
-                                    </InspectorSection>
+                                      </InspectorSection>
+                                    ) : null}
                                     <InspectorSection title="Background">
                                       <InspectorInputSelect
                                         label="Style"
@@ -4891,14 +4762,6 @@ export default function SlideModal({
                                         label: option.label,
                                         value: option.value,
                                       }))}
-                                    />
-                                  </InspectorSection>
-                                  <InspectorSection title="Effects">
-                                    <InspectorTextShadowControls
-                                      block={selectedBlock}
-                                      onPatch={(patch) =>
-                                        patchBlock(selectedBlock.id, patch)
-                                      }
                                     />
                                   </InspectorSection>
                                 </>
@@ -5334,16 +5197,6 @@ export default function SlideModal({
                                       }));
                                     }}
                                   />
-                                  <InspectorInputToggle
-                                    label="Shadow"
-                                    checked={selectedImageConfig.shadow}
-                                    onChange={(nextChecked) =>
-                                      updateImageConfig(selectedBlock.id, (config) => ({
-                                        ...config,
-                                        shadow: nextChecked,
-                                      }))
-                                    }
-                                  />
                                 </InspectorSection>
                               </div>
                             )}
@@ -5630,19 +5483,6 @@ export default function SlideModal({
                                         }),
                                       );
                                     }}
-                                  />
-                                  <InspectorInputToggle
-                                    label="Shadow"
-                                    checked={selectedGalleryConfig.shadow}
-                                    onChange={(nextChecked) =>
-                                      updateGalleryConfig(
-                                        selectedBlock.id,
-                                        (config) => ({
-                                          ...config,
-                                          shadow: nextChecked,
-                                        }),
-                                      )
-                                    }
                                   />
                                 </InspectorSection>
                               </div>
@@ -5949,15 +5789,9 @@ export default function SlideModal({
                                         }))}
                                       />
                                     </InspectorSection>
-                                    <InspectorSection title="Effects">
-                                      <InspectorTextShadowControls
-                                        block={selectedBlock}
-                                        onPatch={(patch) =>
-                                          patchBlock(selectedBlock.id, patch)
-                                        }
-                                      />
-                                      {(selectedQuoteConfig.style === "emphasis" ||
-                                        selectedQuoteConfig.style === "card") && (
+                                    {(selectedQuoteConfig.style === "emphasis" ||
+                                      selectedQuoteConfig.style === "card") && (
+                                      <InspectorSection title="Effects">
                                         <InspectorInputSlider
                                           label="Corner radius (px)"
                                           value={selectedQuoteConfig.radius}
@@ -5978,8 +5812,8 @@ export default function SlideModal({
                                             }));
                                           }}
                                         />
-                                      )}
-                                    </InspectorSection>
+                                      </InspectorSection>
+                                    )}
                                     {(selectedQuoteConfig.style === "emphasis" ||
                                       selectedQuoteConfig.style === "card") && (
                                       <>
