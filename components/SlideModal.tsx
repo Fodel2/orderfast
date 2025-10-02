@@ -114,6 +114,8 @@ const INSPECTOR_NESTED_GROUP_STYLE: React.CSSProperties = {
   paddingLeft: tokens.spacing.md,
 };
 
+const DEFAULT_BORDER_COLOR = "rgba(15, 23, 42, 0.12)";
+
 const DEFAULT_FRAMES: Record<SlideBlock["kind"], Frame> = {
   heading: { x: 12, y: 12, w: 76, h: 18, r: 0 },
   subheading: { x: 12, y: 32, w: 70, h: 14, r: 0 },
@@ -1945,6 +1947,9 @@ export default function SlideModal({
   const reviewOptions = DEFAULT_REVIEW_OPTIONS;
 
   const shadowPresetCacheRef = useRef<Record<string, BlockShadowPreset>>({});
+  const borderCacheRef = useRef<
+    Record<string, { color?: string; width?: number; radius?: number }>
+  >({});
   const backgroundTypeCacheRef = useRef<Record<string, BlockBackground["type"]>>({});
   const animationTypeCacheRef = useRef<Record<string, BlockAnimationType>>({});
   const transitionHoverCacheRef = useRef<Record<string, BlockHoverTransition>>({});
@@ -2540,37 +2545,6 @@ export default function SlideModal({
     );
   };
 
-  const updateFrameField = (id: string, field: keyof Frame, value: number) => {
-    updateCfg((prev) => ({
-      ...prev,
-      blocks: prev.blocks.map((b) => {
-        if (b.id !== id) return b;
-        const existing = ensureFrame(b, activeDevice);
-        const nextFrame: Frame = {
-          ...existing,
-          [field]: field === "r" ? value : clampPct(value),
-        };
-        const updatedFrames = {
-          ...b.frames,
-          [activeDevice]: nextFrame,
-        };
-        if (!isTextualBlock(b.kind)) {
-          return {
-            ...b,
-            frames: updatedFrames,
-          };
-        }
-        const previous = extractConfig(b.config);
-        const nextConfig = writeTextSizingToConfig(previous, activeDevice, nextFrame);
-        return {
-          ...b,
-          frames: updatedFrames,
-          config: mergeInteractionConfig({ ...b, frames: updatedFrames, config: nextConfig }, nextConfig),
-        };
-      }),
-    }));
-  };
-
   const updateBackground = useCallback(
     (
       mutator: (
@@ -3154,7 +3128,23 @@ export default function SlideModal({
 
   const selectedBlockId = selectedBlock?.id ?? null;
   const currentShadowPreset: BlockShadowPreset = selectedBlock?.boxShadow ?? "none";
+  const borderWidthValue =
+    typeof selectedBlock?.borderWidth === "number" &&
+    Number.isFinite(selectedBlock.borderWidth)
+      ? selectedBlock.borderWidth
+      : undefined;
+  const borderColorValue =
+    typeof selectedBlock?.borderColor === "string" &&
+    selectedBlock.borderColor.trim().length > 0
+      ? selectedBlock.borderColor
+      : undefined;
+  const borderRadiusValue =
+    typeof selectedBlock?.borderRadius === "number" &&
+    Number.isFinite(selectedBlock.borderRadius)
+      ? selectedBlock.borderRadius
+      : undefined;
   const shadowEnabled = currentShadowPreset !== "none";
+  const borderEnabled = Boolean(borderWidthValue && borderWidthValue > 0);
   const backgroundEnabled = selectedBlockBackground.type !== "none";
   const animationEnabled = selectedAnimationConfig.type !== "none";
   const transitionEnabled = selectedTransitionConfig.hover !== "none";
@@ -3166,6 +3156,18 @@ export default function SlideModal({
         currentShadowPreset as BlockShadowPreset;
     }
   }, [currentShadowPreset, selectedBlockId]);
+
+  useEffect(() => {
+    if (!selectedBlockId || !borderEnabled) return;
+    borderCacheRef.current[selectedBlockId] = {
+      color: borderColorValue ?? DEFAULT_BORDER_COLOR,
+      width:
+        typeof borderWidthValue === "number" && borderWidthValue > 0
+          ? borderWidthValue
+          : 1,
+      radius: borderRadiusValue,
+    };
+  }, [borderColorValue, borderEnabled, borderRadiusValue, borderWidthValue, selectedBlockId]);
 
   useEffect(() => {
     if (!selectedBlockId) return;
@@ -3194,6 +3196,12 @@ export default function SlideModal({
   const cachedShadowPreset =
     (selectedBlockId ? shadowPresetCacheRef.current[selectedBlockId] : undefined) ??
     DEFAULT_ENABLED_SHADOW;
+  const cachedBorderConfig =
+    (selectedBlockId ? borderCacheRef.current[selectedBlockId] : undefined) ?? {
+      color: borderColorValue ?? DEFAULT_BORDER_COLOR,
+      width: borderWidthValue && borderWidthValue > 0 ? borderWidthValue : 1,
+      radius: borderRadiusValue,
+    };
   const cachedBackgroundType =
     (selectedBlockId ? backgroundTypeCacheRef.current[selectedBlockId] : undefined) ??
     DEFAULT_ENABLED_BACKGROUND_TYPE;
@@ -3308,8 +3316,6 @@ export default function SlideModal({
       handleSelectBlock(null);
     }
   }, [cfg.blocks, handleSelectBlock]);
-
-  const frame = selectedBlock ? ensureFrame(selectedBlock, activeDevice) : null;
 
   const linkOptions = useMemo(
     () => [...ROUTE_OPTIONS, ...customPages, "custom"],
@@ -6086,50 +6092,96 @@ export default function SlideModal({
                                 />
                               </div>
                             ) : null}
-                            <InspectorInputColor
-                              label="Border color"
-                              value={selectedBlock.borderColor ?? ""}
-                              onChange={(nextColor) => {
-                                const normalized = nextColor.trim();
-                                patchBlock(selectedBlock.id, {
-                                  borderColor: normalized.length > 0 ? normalized : undefined,
-                                });
-                              }}
-                            />
-                            <InspectorInputSlider
-                              label="Border width (px)"
-                              value={selectedBlock.borderWidth}
-                              fallbackValue={selectedBlock.borderWidth ?? 0}
-                              min={0}
-                              max={20}
-                              step={1}
-                              onChange={(next) => {
-                                if (next === undefined || Number.isNaN(next)) {
-                                  patchBlock(selectedBlock.id, { borderWidth: undefined });
+                            <InspectorInputToggle
+                              label="Enable border"
+                              checked={borderEnabled}
+                              onChange={(checked) => {
+                                if (!selectedBlockId) return;
+                                if (checked) {
+                                  const cached = cachedBorderConfig;
+                                  const nextWidth =
+                                    typeof cached.width === "number" && cached.width > 0
+                                      ? cached.width
+                                      : 1;
+                                  const patch: Partial<SlideBlock> = {
+                                    borderWidth: Math.max(1, Math.round(nextWidth)),
+                                    borderColor: cached.color ?? DEFAULT_BORDER_COLOR,
+                                  };
+                                  if (typeof cached.radius === "number") {
+                                    patch.borderRadius = cached.radius;
+                                  }
+                                  patchBlock(selectedBlockId, patch);
                                   return;
                                 }
-                                patchBlock(selectedBlock.id, {
-                                  borderWidth: Math.max(0, Math.round(next)),
+                                borderCacheRef.current[selectedBlockId] = {
+                                  color: borderColorValue ?? cachedBorderConfig.color ?? DEFAULT_BORDER_COLOR,
+                                  width:
+                                    typeof borderWidthValue === "number" && borderWidthValue > 0
+                                      ? borderWidthValue
+                                      : cachedBorderConfig.width,
+                                  radius: borderRadiusValue ?? cachedBorderConfig.radius,
+                                };
+                                patchBlock(selectedBlockId, {
+                                  borderColor: undefined,
+                                  borderWidth: undefined,
                                 });
                               }}
                             />
-                            <InspectorInputSlider
-                              label="Corner radius (px)"
-                              value={selectedBlock.borderRadius}
-                              fallbackValue={selectedBlock.borderRadius ?? 0}
-                              min={0}
-                              max={50}
-                              step={1}
-                              onChange={(next) => {
-                                if (next === undefined || Number.isNaN(next)) {
-                                  patchBlock(selectedBlock.id, { borderRadius: undefined });
-                                  return;
-                                }
-                                patchBlock(selectedBlock.id, {
-                                  borderRadius: Math.max(0, Math.round(next)),
-                                });
-                              }}
-                            />
+                            {borderEnabled ? (
+                              <div style={INSPECTOR_NESTED_GROUP_STYLE}>
+                                <InspectorInputColor
+                                  label="Border color"
+                                  value={selectedBlock.borderColor ?? ""}
+                                  onChange={(nextColor) => {
+                                    const normalized = nextColor.trim();
+                                    patchBlock(selectedBlock.id, {
+                                      borderColor:
+                                        normalized.length > 0 ? normalized : undefined,
+                                    });
+                                  }}
+                                />
+                                <InspectorInputSlider
+                                  label="Border width (px)"
+                                  value={selectedBlock.borderWidth}
+                                  fallbackValue={
+                                    selectedBlock.borderWidth ?? cachedBorderConfig.width ?? 0
+                                  }
+                                  min={0}
+                                  max={20}
+                                  step={1}
+                                  onChange={(next) => {
+                                    if (next === undefined || Number.isNaN(next)) {
+                                      patchBlock(selectedBlock.id, { borderWidth: undefined });
+                                      return;
+                                    }
+                                    patchBlock(selectedBlock.id, {
+                                      borderWidth: Math.max(0, Math.round(next)),
+                                    });
+                                  }}
+                                />
+                                <InspectorInputSlider
+                                  label="Corner radius (px)"
+                                  value={selectedBlock.borderRadius}
+                                  fallbackValue={
+                                    selectedBlock.borderRadius ??
+                                    cachedBorderConfig.radius ??
+                                    0
+                                  }
+                                  min={0}
+                                  max={50}
+                                  step={1}
+                                  onChange={(next) => {
+                                    if (next === undefined || Number.isNaN(next)) {
+                                      patchBlock(selectedBlock.id, { borderRadius: undefined });
+                                      return;
+                                    }
+                                    patchBlock(selectedBlock.id, {
+                                      borderRadius: Math.max(0, Math.round(next)),
+                                    });
+                                  }}
+                                />
+                              </div>
+                            ) : null}
                           </InspectorSection>
                           <InspectorSection title="Background">
                             <InspectorInputToggle
@@ -6503,92 +6555,7 @@ export default function SlideModal({
                               </div>
                             ) : null}
                           </InspectorSection>
-                          <InspectorSection title={`Frame (${activeDevice})`}>
-                            {frame ? (
-                              <>
-                                <InspectorInputSlider
-                                  label="X position (%)"
-                                  value={frame.x}
-                                  fallbackValue={frame.x ?? 0}
-                                  min={0}
-                                  max={100}
-                                  step={1}
-                                  onChange={(next) => {
-                                    const fallback = frame.x ?? 0;
-                                    const resolved =
-                                      next === undefined || Number.isNaN(next)
-                                        ? fallback
-                                        : Math.round(next);
-                                    updateFrameField(selectedBlock.id, "x", resolved);
-                                  }}
-                                />
-                                <InspectorInputSlider
-                                  label="Y position (%)"
-                                  value={frame.y}
-                                  fallbackValue={frame.y ?? 0}
-                                  min={0}
-                                  max={100}
-                                  step={1}
-                                  onChange={(next) => {
-                                    const fallback = frame.y ?? 0;
-                                    const resolved =
-                                      next === undefined || Number.isNaN(next)
-                                        ? fallback
-                                        : Math.round(next);
-                                    updateFrameField(selectedBlock.id, "y", resolved);
-                                  }}
-                                />
-                                <InspectorInputSlider
-                                  label="Width (%)"
-                                  value={frame.w}
-                                  fallbackValue={frame.w ?? 0}
-                                  min={0}
-                                  max={100}
-                                  step={1}
-                                  onChange={(next) => {
-                                    const fallback = frame.w ?? 0;
-                                    const resolved =
-                                      next === undefined || Number.isNaN(next)
-                                        ? fallback
-                                        : Math.round(next);
-                                    updateFrameField(selectedBlock.id, "w", resolved);
-                                  }}
-                                />
-                                <InspectorInputSlider
-                                  label="Height (%)"
-                                  value={frame.h}
-                                  fallbackValue={frame.h ?? 0}
-                                  min={0}
-                                  max={100}
-                                  step={1}
-                                  onChange={(next) => {
-                                    const fallback = frame.h ?? 0;
-                                    const resolved =
-                                      next === undefined || Number.isNaN(next)
-                                        ? fallback
-                                        : Math.round(next);
-                                    updateFrameField(selectedBlock.id, "h", resolved);
-                                  }}
-                                />
-                                <InspectorInputSlider
-                                  label="Rotation (°)"
-                                  value={frame.r}
-                                  fallbackValue={frame.r ?? 0}
-                                  min={-180}
-                                  max={180}
-                                  step={1}
-                                  onChange={(next) => {
-                                    const fallback = frame.r ?? 0;
-                                    const resolved =
-                                      next === undefined || Number.isNaN(next)
-                                        ? fallback
-                                        : Math.round(next);
-                                    updateFrameField(selectedBlock.id, "r", resolved);
-                                  }}
-                                />
-                              </>
-                            ) : null}
-                          </InspectorSection>
+
                         </div>
                     </section>
                   </div>
