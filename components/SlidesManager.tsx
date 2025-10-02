@@ -2827,7 +2827,7 @@ function EditableTextContent({
     },
     className: combinedClassName.join(' '),
     style: baseStyle,
-    tabIndex: canEdit ? -1 : undefined,
+    tabIndex: canEdit && isActive ? -1 : undefined,
   };
 
   if (canEdit && isActive) {
