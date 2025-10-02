@@ -93,7 +93,9 @@ import {
 import InspectorSection from "../src/components/inspector/InspectorSection";
 import ControlRow from "../src/components/inspector/ControlRow";
 import InspectorInputColor from "../src/components/inspector/controls/InputColor";
-import InspectorInputSelect from "../src/components/inspector/controls/InputSelect";
+import InspectorInputSelect, {
+  type InputSelectOption,
+} from "../src/components/inspector/controls/InputSelect";
 import InspectorInputSlider from "../src/components/inspector/controls/InputSlider";
 import InspectorInputText from "../src/components/inspector/controls/InputText";
 import InspectorInputTextArea from "../src/components/inspector/controls/InputTextArea";
@@ -107,7 +109,18 @@ import { SlideRow } from "@/components/customer/home/SlidesContainer";
 import { LockClosedIcon } from "@heroicons/react/24/solid";
 import { ChevronDown, ChevronUp, GripVertical, Trash2 } from "lucide-react";
 
-const ROUTE_OPTIONS = ["/menu", "/orders", "/more"];
+type LinkOption = InputSelectOption;
+
+const ROUTE_OPTIONS: LinkOption[] = [
+  { value: "/menu", label: "Menu" },
+  { value: "/orders", label: "Orders" },
+  { value: "/more", label: "More" },
+];
+
+const CUSTOM_LINK_OPTION: LinkOption = {
+  value: "custom",
+  label: "Custom URL",
+};
 
 const INSPECTOR_NESTED_GROUP_STYLE: React.CSSProperties = {
   display: "flex",
@@ -1801,7 +1814,7 @@ export default function SlideModal({
   const [editInPreview, setEditInPreview] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [previewSize, setPreviewSize] = useState({ width: 0, height: 0 });
-  const [customPages, setCustomPages] = useState<string[]>([]);
+  const [customPages, setCustomPages] = useState<LinkOption[]>([]);
   const [uploading, setUploading] = useState(false);
   const [galleryUrlInput, setGalleryUrlInput] = useState("");
   const [activeGalleryDragId, setActiveGalleryDragId] = useState<string | null>(
@@ -1848,14 +1861,29 @@ export default function SlideModal({
   }, [initialCfg, slide]);
 
   useEffect(() => {
-    if (!restaurantId) return;
+    if (!restaurantId) {
+      setCustomPages([]);
+      return;
+    }
     supabase
       .from("custom_pages")
-      .select("slug")
+      .select("slug, title")
       .eq("restaurant_id", restaurantId)
       .order("slug")
       .then(({ data }) => {
-        if (data) setCustomPages(data.map((row) => `/p/${row.slug}`));
+        if (!data) {
+          setCustomPages([]);
+          return;
+        }
+        setCustomPages(
+          data.map((row) => {
+            const title = typeof row.title === "string" ? row.title.trim() : "";
+            return {
+              value: `/p/${row.slug}`,
+              label: title.length > 0 ? title : row.slug,
+            } satisfies LinkOption;
+          }),
+        );
       });
   }, [restaurantId]);
 
@@ -3201,8 +3229,18 @@ export default function SlideModal({
   }, [cfg.blocks, handleSelectBlock]);
 
   const linkOptions = useMemo(
-    () => [...ROUTE_OPTIONS, ...customPages, "custom"],
+    () => [...ROUTE_OPTIONS, ...customPages, CUSTOM_LINK_OPTION],
     [customPages],
+  );
+
+  const knownLinkValues = useMemo(
+    () =>
+      new Set(
+        linkOptions
+          .filter((option) => option.value !== CUSTOM_LINK_OPTION.value)
+          .map((option) => option.value),
+      ),
+    [linkOptions],
   );
 
   const selectionLabel = selectedBlock
@@ -4783,16 +4821,18 @@ export default function SlideModal({
                                 <InspectorInputSelect
                                   label="Link"
                                   value={
-                                    linkOptions.includes(selectedButtonConfig.href)
+                                    selectedButtonConfig.href &&
+                                    knownLinkValues.has(selectedButtonConfig.href)
                                       ? selectedButtonConfig.href
-                                      : "custom"
+                                      : CUSTOM_LINK_OPTION.value
                                   }
                                   onChange={(nextValue) => {
-                                    if (nextValue === "custom") {
+                                    if (nextValue === CUSTOM_LINK_OPTION.value) {
                                       updateButtonConfig(selectedBlock.id, (config) => ({
                                         ...config,
                                         href:
-                                          config.href && !linkOptions.includes(config.href)
+                                          config.href &&
+                                          !knownLinkValues.has(config.href)
                                             ? config.href
                                             : "",
                                       }));
@@ -4803,10 +4843,7 @@ export default function SlideModal({
                                       href: nextValue,
                                     }));
                                   }}
-                                  options={linkOptions.map((opt) => ({
-                                    value: opt,
-                                    label: opt === "custom" ? "Custom URL" : opt,
-                                  }))}
+                                  options={linkOptions}
                                 />
                                 <InspectorInputText
                                   label="URL"
