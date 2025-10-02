@@ -17,6 +17,9 @@ export const tokens = {
     numberWidth: 80,
     labelWidth: 112,
   },
+  colors: {
+    accent: '#0ea5e9',
+  },
   breakpoints: {
     sm: 640,
   },
