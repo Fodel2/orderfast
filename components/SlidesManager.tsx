@@ -97,6 +97,21 @@ export type Frame = {
 };
 
 const ALIGNMENT_TOLERANCE_PX = 8;
+const MIN_PREVIEW_SCALE = 0.05;
+const MAX_PREVIEW_SCALE = 3;
+const RESIZE_CURSOR_BY_HANDLE: Record<string, CSSProperties['cursor']> = {
+  n: 'ns-resize',
+  s: 'ns-resize',
+  e: 'ew-resize',
+  w: 'ew-resize',
+  ne: 'nesw-resize',
+  sw: 'nesw-resize',
+  nw: 'nwse-resize',
+  se: 'nwse-resize',
+};
+
+const getResizeCursor = (handle: string): CSSProperties['cursor'] =>
+  RESIZE_CURSOR_BY_HANDLE[handle] ?? 'nwse-resize';
 
 const GUIDE_PRIORITY: Record<AlignmentGuideType, number> = {
   'canvas-center': 0,
@@ -2591,7 +2606,10 @@ export default function SlidesManager({
     }
   };
 
-  const clampedScale = Math.min(Math.max(scale || 1, 0.05), 1);
+  const clampedScale = Math.min(
+    Math.max(scale || 1, MIN_PREVIEW_SCALE),
+    MAX_PREVIEW_SCALE,
+  );
 
   return (
     <>
@@ -3698,7 +3716,7 @@ function InteractiveBox({
             onPointerDown={handlePointerDown('rotate')}
             className="absolute left-1/2 top-[-32px] h-5 w-5 -translate-x-1/2 rounded-full border border-sky-500 bg-white"
           />
-          {[
+          {[ 
             ['n', '50%', 0],
             ['s', '50%', 100],
             ['w', 0, '50%'],
@@ -3716,6 +3734,7 @@ function InteractiveBox({
                 left: typeof left === 'number' ? `${left}%` : left,
                 top: typeof top === 'number' ? `${top}%` : top,
                 transform: 'translate(-50%, -50%)',
+                cursor: getResizeCursor(corner as string),
               }}
             />
           ))}

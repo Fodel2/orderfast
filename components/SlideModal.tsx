@@ -107,7 +107,16 @@ import { supabase } from "@/utils/supabaseClient";
 import { STORAGE_BUCKET } from "@/lib/storage";
 import { SlideRow } from "@/components/customer/home/SlidesContainer";
 import { LockClosedIcon } from "@heroicons/react/24/solid";
-import { ChevronDown, ChevronUp, GripVertical, Star, Trash2 } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  GripVertical,
+  Star,
+  Trash2,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw,
+} from "lucide-react";
 
 type LinkOption = InputSelectOption;
 
@@ -552,8 +561,13 @@ const BLOCK_KIND_LABELS: Record<SlideBlock["kind"], string> = {
   spacer: "Spacer",
 };
 
-const PREVIEW_PADDING_X = 16;
-const PREVIEW_PADDING_Y = 16;
+const PREVIEW_PADDING_X = tokens.spacing.md;
+const PREVIEW_PADDING_Y = tokens.spacing.md;
+const INSPECTOR_MIN_WIDTH = tokens.spacing.xl * 8;
+const INSPECTOR_MAX_WIDTH = tokens.spacing.xl * 14;
+const ZOOM_STEP = 0.1;
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 2;
 
 const INSPECTOR_CONTENT_CLASS = [
   "space-y-4 px-4 pb-4 pt-3",
@@ -1939,6 +1953,7 @@ export default function SlideModal({
   const [editInPreview, setEditInPreview] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [previewSize, setPreviewSize] = useState({ width: 0, height: 0 });
+  const [zoom, setZoom] = useState(1);
   const [customPages, setCustomPages] = useState<LinkOption[]>([]);
   const [uploading, setUploading] = useState(false);
   const [galleryUrlInput, setGalleryUrlInput] = useState("");
@@ -2827,7 +2842,7 @@ export default function SlideModal({
     DEVICE_DIMENSIONS[activeDevice] ?? DEVICE_DIMENSIONS.desktop;
   const availableWidth = Math.max(previewSize.width - PREVIEW_PADDING_X * 2, 0);
   const availableHeight = Math.max(previewSize.height - PREVIEW_PADDING_Y * 2, 0);
-  const scale = useMemo(() => {
+  const fitScale = useMemo(() => {
     if (availableWidth <= 0 || availableHeight <= 0) return 1;
     const widthScale = availableWidth / deviceWidth;
     const heightScale = availableHeight / deviceHeight;
@@ -2835,6 +2850,26 @@ export default function SlideModal({
     if (!Number.isFinite(computed) || computed <= 0) return 1;
     return computed;
   }, [availableWidth, availableHeight, deviceHeight, deviceWidth]);
+  const clampZoomValue = useCallback(
+    (value: number) => clampRange(value, ZOOM_MIN, ZOOM_MAX),
+    [],
+  );
+  const handleZoomIn = useCallback(() => {
+    setZoom((prev) => clampZoomValue(prev + ZOOM_STEP));
+  }, [clampZoomValue]);
+  const handleZoomOut = useCallback(() => {
+    setZoom((prev) => clampZoomValue(prev - ZOOM_STEP));
+  }, [clampZoomValue]);
+  const handleZoomReset = useCallback(() => {
+    setZoom(1);
+  }, []);
+  const previewScale = useMemo(() => {
+    const computed = fitScale * zoom;
+    if (!Number.isFinite(computed) || computed <= 0) {
+      return fitScale;
+    }
+    return computed;
+  }, [fitScale, zoom]);
 
   const selectedBlock = useMemo(
     () => cfg.blocks.find((b) => b.id === selectedId) || null,
@@ -3377,6 +3412,41 @@ export default function SlideModal({
   const imageBackground = background?.type === "image" ? background : undefined;
   const videoBackground = background?.type === "video" ? background : undefined;
   const hasPreviewBounds = previewSize.width > 0 && previewSize.height > 0;
+  const zoomPercent = Math.round(zoom * 100);
+  const canZoomIn = zoom < ZOOM_MAX - 1e-3;
+  const canZoomOut = zoom > ZOOM_MIN + 1e-3;
+  const canResetZoom = Math.abs(zoom - 1) > 1e-3;
+  const previewToolbarStyle: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: `${tokens.spacing.sm}px ${tokens.spacing.md}px`,
+    borderBottom: `${tokens.border.thin}px solid ${inspectorColors.border}`,
+    background: "#ffffff",
+    gap: tokens.spacing.md,
+  };
+  const zoomControlsStyle: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: tokens.spacing.xs,
+  };
+  const zoomButtonBaseStyle: React.CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: tokens.control.height,
+    height: tokens.control.height,
+    borderRadius: tokens.radius.sm,
+    border: `${tokens.border.thin}px solid ${inspectorColors.border}`,
+    background: "#ffffff",
+    transition: "background-color 120ms ease, color 120ms ease, opacity 120ms ease",
+  };
+  const zoomResetButtonBaseStyle: React.CSSProperties = {
+    ...zoomButtonBaseStyle,
+    width: "auto",
+    paddingLeft: tokens.spacing.sm,
+    paddingRight: tokens.spacing.sm,
+  };
 
   return (
     <div className="fixed inset-0 z-[80] flex">
@@ -4242,11 +4312,72 @@ export default function SlideModal({
                 </div>
               </aside>
             )}
-            <div className="flex flex-1 flex-col overflow-hidden">
-              <main className="flex flex-1 overflow-hidden bg-neutral-50">
+            <div className="flex flex-1 overflow-hidden bg-neutral-50">
+              <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+                <div style={previewToolbarStyle}>
+                  <span className="text-xs font-semibold uppercase tracking-wide text-neutral-600">
+                    Preview
+                  </span>
+                  <div style={zoomControlsStyle}>
+                    <button
+                      type="button"
+                      onClick={handleZoomOut}
+                      disabled={!canZoomOut}
+                      style={{
+                        ...zoomButtonBaseStyle,
+                        color: canZoomOut
+                          ? inspectorColors.text
+                          : inspectorColors.labelMuted,
+                        cursor: canZoomOut ? "pointer" : "not-allowed",
+                        opacity: canZoomOut ? 1 : 0.6,
+                      }}
+                      aria-label="Zoom out"
+                    >
+                      <ZoomOut size={tokens.spacing.md} strokeWidth={1.5} />
+                    </button>
+                    <span className="text-sm font-medium text-neutral-700">
+                      {zoomPercent}%
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleZoomIn}
+                      disabled={!canZoomIn}
+                      style={{
+                        ...zoomButtonBaseStyle,
+                        color: canZoomIn
+                          ? inspectorColors.text
+                          : inspectorColors.labelMuted,
+                        cursor: canZoomIn ? "pointer" : "not-allowed",
+                        opacity: canZoomIn ? 1 : 0.6,
+                      }}
+                      aria-label="Zoom in"
+                    >
+                      <ZoomIn size={tokens.spacing.md} strokeWidth={1.5} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleZoomReset}
+                      disabled={!canResetZoom}
+                      style={{
+                        ...zoomResetButtonBaseStyle,
+                        color: canResetZoom
+                          ? inspectorColors.text
+                          : inspectorColors.labelMuted,
+                        cursor: canResetZoom ? "pointer" : "not-allowed",
+                        opacity: canResetZoom ? 1 : 0.6,
+                        gap: tokens.spacing.xs,
+                      }}
+                    >
+                      <RotateCcw size={tokens.spacing.md} strokeWidth={1.5} />
+                      <span className="text-xs font-medium text-neutral-700">
+                        Reset
+                      </span>
+                    </button>
+                  </div>
+                </div>
                 <div
                   ref={previewContainerRef}
-                  className="flex h-full w-full min-h-0 overflow-hidden"
+                  className="flex flex-1 min-h-0 overflow-hidden"
                 >
                   <div
                     className="flex h-full w-full min-h-0 items-start justify-center overflow-hidden"
@@ -4268,18 +4399,35 @@ export default function SlideModal({
                         onCanvasClick={handleCanvasClick}
                         activeDevice={activeDevice}
                         editInPreview={editInPreview}
-                        scale={scale}
+                        scale={previewScale}
                         onManipulationChange={handleManipulationChange}
                       />
                     )}
                   </div>
                 </div>
-              </main>
+              </div>
               {inspectorOpen && selectedBlock && (
-                <div className="border-t bg-white">
-                  <div className="max-h-[60vh] overflow-y-auto">
-                    <div className="sticky top-0 z-10 border-b bg-white px-4 py-2">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
+                <aside
+                  className="flex h-full flex-col border-l bg-white"
+                  style={{
+                    flexBasis: `min(50%, ${INSPECTOR_MAX_WIDTH}px)`,
+                    minWidth: INSPECTOR_MIN_WIDTH,
+                  }}
+                >
+                  <div className="flex-1 overflow-y-auto">
+                    <div
+                      className="sticky top-0 z-10 border-b bg-white"
+                      style={{
+                        paddingLeft: tokens.spacing.md,
+                        paddingRight: tokens.spacing.md,
+                        paddingTop: tokens.spacing.sm,
+                        paddingBottom: tokens.spacing.sm,
+                      }}
+                    >
+                      <div
+                        className="flex flex-wrap items-center justify-between"
+                        style={{ gap: tokens.spacing.sm }}
+                      >
                         <span className="text-xs font-semibold uppercase tracking-wide text-neutral-600">
                           Inspector
                         </span>
@@ -4287,8 +4435,14 @@ export default function SlideModal({
                           Selected: {selectionLabel}
                         </span>
                       </div>
-                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                        <div className="min-w-0 flex flex-wrap items-center gap-2">
+                      <div
+                        className="mt-2 flex flex-wrap items-center justify-between"
+                        style={{ gap: tokens.spacing.sm }}
+                      >
+                        <div
+                          className="min-w-0 flex flex-wrap items-center"
+                          style={{ gap: tokens.spacing.xs }}
+                        >
                           <span className="text-sm font-semibold text-neutral-900">
                             {selectionLabel}
                           </span>
@@ -4298,7 +4452,10 @@ export default function SlideModal({
                             </span>
                           )}
                         </div>
-                        <div className="flex flex-wrap items-center gap-1.5">
+                        <div
+                          className="flex flex-wrap items-center"
+                          style={{ gap: tokens.spacing.xs }}
+                        >
                           <button
                             type="button"
                             onClick={() => handleDuplicateBlock(selectedBlock.id)}
@@ -6577,7 +6734,7 @@ export default function SlideModal({
                     </section>
                   </div>
                 </div>
-              </div>
+              </aside>
               )}
             </div>
           </div>
