@@ -73,3 +73,10 @@ body {
 .scrollbar-hide::-webkit-scrollbar {
   display: none; /* Chrome, Safari, Opera */
 }
+
+.readonlyText {
+  user-select: none;
+  -webkit-user-select: none;
+  caret-color: transparent;
+  touch-action: manipulation;
+}

@@ -2186,6 +2186,14 @@ export default function SlidesManager({
         onRequestExit={() => {
           setInlineEditingId((prev) => (prev === block.id ? null : prev));
         }}
+        onDoubleTap={
+          editable
+            ? () => {
+                emitSelectBlock(block.id, { openInspector: true });
+                openInspector?.();
+              }
+            : undefined
+        }
       />
     );
   };
@@ -2321,6 +2329,14 @@ export default function SlidesManager({
             onRequestExit={() => {
               setInlineEditingId((prev) => (prev === block.id ? null : prev));
             }}
+            onDoubleTap={
+              editable
+                ? () => {
+                    emitSelectBlock(block.id, { openInspector: true });
+                    openInspector?.();
+                  }
+                : undefined
+            }
           />
         );
         return (
@@ -2484,6 +2500,14 @@ export default function SlidesManager({
             onRequestExit={() => {
               setInlineEditingId((prev) => (prev === block.id ? null : prev));
             }}
+            onDoubleTap={
+              editable
+                ? () => {
+                    emitSelectBlock(block.id, { openInspector: true });
+                    openInspector?.();
+                  }
+                : undefined
+            }
           />
         );
         return (
@@ -2677,6 +2701,7 @@ type EditableTextContentProps = {
   placeholder?: string;
   onCommit: (text: string) => void;
   onRequestExit: () => void;
+  onDoubleTap?: () => void;
 };
 
 function EditableTextContent({
@@ -2689,11 +2714,13 @@ function EditableTextContent({
   placeholder = DEFAULT_TEXT_PLACEHOLDER,
   onCommit,
   onRequestExit,
+  onDoubleTap,
 }: EditableTextContentProps) {
   const elementRef = useRef<HTMLElement | null>(null);
   const exitRequestedRef = useRef(false);
   const prevActiveRef = useRef(isActive);
   const displayValue = resolveDisplayText(value, placeholder);
+  const lastTapRef = useRef(0);
 
   useLayoutEffect(() => {
     const node = elementRef.current;
@@ -2730,6 +2757,12 @@ function EditableTextContent({
   useEffect(() => {
     if (!isActive) {
       exitRequestedRef.current = false;
+    }
+  }, [isActive]);
+
+  useEffect(() => {
+    if (isActive) {
+      lastTapRef.current = 0;
     }
   }, [isActive]);
 
@@ -2814,6 +2847,9 @@ function EditableTextContent({
   };
 
   const combinedClassName = ['whitespace-pre-wrap', 'focus:outline-none'];
+  if (!isActive) {
+    combinedClassName.push('readonlyText');
+  }
   if (className) combinedClassName.push(className);
 
   const baseStyle: CSSProperties = {
@@ -2827,7 +2863,23 @@ function EditableTextContent({
     },
     className: combinedClassName.join(' '),
     style: baseStyle,
-    tabIndex: canEdit && isActive ? -1 : undefined,
+    tabIndex: canEdit && isActive ? 0 : -1,
+  };
+
+  const handleContextMenu = (event: React.MouseEvent<HTMLElement>) => {
+    event.preventDefault();
+  };
+
+  const handleTouchEnd = (event: React.TouchEvent<HTMLElement>) => {
+    const now = Date.now();
+    if (now - lastTapRef.current < 250) {
+      lastTapRef.current = 0;
+      event.preventDefault();
+      event.stopPropagation();
+      onDoubleTap?.();
+      return;
+    }
+    lastTapRef.current = now;
   };
 
   if (canEdit && isActive) {
@@ -2838,6 +2890,12 @@ function EditableTextContent({
     props.onBlur = handleBlur;
     props.onKeyDown = handleKeyDown;
     props.onPaste = handlePaste;
+  } else {
+    props.contentEditable = false;
+    props.onContextMenu = handleContextMenu;
+    if (onDoubleTap) {
+      props.onTouchEnd = handleTouchEnd;
+    }
   }
 
   props.children = canEdit && isActive ? undefined : displayValue;
