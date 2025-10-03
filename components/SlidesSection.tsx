@@ -10,6 +10,7 @@ import {
   type BlockBackgroundGradientDirection,
   type BlockShadowPreset,
   resolveQuoteConfig,
+  resolveGalleryConfig,
   resolveBlockVisibility,
 } from './SlidesManager';
 import type { SlideRow } from '@/components/customer/home/SlidesContainer';
@@ -19,6 +20,7 @@ import {
   getFontStackForFamily,
   useGoogleFontLoader,
 } from '@/lib/slideFonts';
+import GalleryBlock from './blocks/GalleryBlock';
 
 const TEXT_SIZE_MAP: Record<string, string> = {
   sm: '1.125rem',
@@ -239,14 +241,20 @@ function renderBlock(block: SlideBlock) {
           </blockquote>
         );
       }
-    case 'gallery':
+    case 'gallery': {
+      const gallery = resolveGalleryConfig(block);
       return (
-        <div className="flex h-full w-full gap-2 overflow-hidden rounded-xl">
-          {(block.items || []).map((item) => (
-            <img key={item.src} src={item.src} alt={item.alt ?? ''} className="h-full flex-1 object-cover" />
-          ))}
-        </div>
+        <GalleryBlock
+          items={gallery.items}
+          layout={gallery.layout}
+          radius={gallery.radius}
+          shadow={gallery.shadow}
+          aspectRatio={gallery.aspectRatio}
+          autoplay={gallery.autoplay}
+          interval={gallery.interval}
+        />
       );
+    }
     case 'spacer':
       return <div className="h-full w-full" />;
     default:

@@ -60,6 +60,8 @@ import SlidesManager, {
   resolveButtonConfig,
   resolveImageConfig,
   resolveGalleryConfig,
+  MIN_GALLERY_AUTOPLAY_INTERVAL,
+  MAX_GALLERY_AUTOPLAY_INTERVAL,
   resolveQuoteConfig,
   resolveBlockVisibility,
   resolveBlockAnimationConfig,
@@ -88,13 +90,46 @@ import {
   InputText,
   InputToggle,
 } from "./ui";
+import InspectorSection from "../src/components/inspector/InspectorSection";
+import ControlRow from "../src/components/inspector/ControlRow";
+import InspectorInputColor from "../src/components/inspector/controls/InputColor";
+import InspectorInputSelect, {
+  type InputSelectOption,
+} from "../src/components/inspector/controls/InputSelect";
+import InspectorInputSlider from "../src/components/inspector/controls/InputSlider";
+import InspectorInputText from "../src/components/inspector/controls/InputText";
+import InspectorInputTextArea from "../src/components/inspector/controls/InputTextArea";
+import InspectorInputToggle from "../src/components/inspector/controls/InputToggle";
+import InspectorInputUpload from "../src/components/inspector/controls/InputUpload";
+import { inspectorColors, inspectorLayout } from "../src/components/inspector/layout";
+import { tokens } from "../src/ui/tokens";
 import { supabase } from "@/utils/supabaseClient";
 import { STORAGE_BUCKET } from "@/lib/storage";
 import { SlideRow } from "@/components/customer/home/SlidesContainer";
 import { LockClosedIcon } from "@heroicons/react/24/solid";
 import { ChevronDown, ChevronUp, GripVertical, Trash2 } from "lucide-react";
 
-const ROUTE_OPTIONS = ["/menu", "/orders", "/more"];
+type LinkOption = InputSelectOption;
+
+const ROUTE_OPTIONS: LinkOption[] = [
+  { value: "/menu", label: "Menu" },
+  { value: "/orders", label: "Orders" },
+  { value: "/more", label: "More" },
+];
+
+const CUSTOM_LINK_OPTION: LinkOption = {
+  value: "custom",
+  label: "Custom URL",
+};
+
+const INSPECTOR_NESTED_GROUP_STYLE: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: tokens.spacing.sm,
+  paddingLeft: tokens.spacing.md,
+};
+
+const DEFAULT_BORDER_COLOR = "rgba(15, 23, 42, 0.12)";
 
 const DEFAULT_FRAMES: Record<SlideBlock["kind"], Frame> = {
   heading: { x: 12, y: 12, w: 76, h: 18, r: 0 },
@@ -160,6 +195,10 @@ const BLOCK_SHADOW_OPTIONS: { value: BlockShadowPreset; label: string }[] = [
   { value: "lg", label: "Large" },
 ];
 
+const ENABLED_SHADOW_OPTIONS = BLOCK_SHADOW_OPTIONS.filter(
+  (option) => option.value !== "none",
+);
+
 const BLOCK_BACKGROUND_TYPE_OPTIONS: {
   value: NonNullable<BlockBackground["type"]>;
   label: string;
@@ -169,6 +208,10 @@ const BLOCK_BACKGROUND_TYPE_OPTIONS: {
   { value: "gradient", label: "Gradient" },
   { value: "image", label: "Image" },
 ];
+
+const ENABLED_BACKGROUND_STYLE_OPTIONS = BLOCK_BACKGROUND_TYPE_OPTIONS.filter(
+  (option) => option.value !== "none",
+);
 
 const BLOCK_BACKGROUND_GRADIENT_DIRECTIONS: {
   value: BlockBackgroundGradientDirection;
@@ -180,6 +223,14 @@ const BLOCK_BACKGROUND_GRADIENT_DIRECTIONS: {
   { value: "to-right", label: "To right" },
 ];
 
+const DEFAULT_ENABLED_SHADOW: BlockShadowPreset = "sm";
+const DEFAULT_ENABLED_BACKGROUND_TYPE: Exclude<
+  NonNullable<BlockBackground["type"]>,
+  "none"
+> = "color";
+const DEFAULT_ENABLED_ANIMATION: Exclude<BlockAnimationType, "none"> = "fade-in";
+const DEFAULT_ENABLED_TRANSITION: Exclude<BlockHoverTransition, "none"> = "grow";
+
 const IMAGE_ASPECT_RATIO_OPTIONS: {
   value: ImageBlockConfig["aspectRatio"];
   label: string;
@@ -189,6 +240,84 @@ const IMAGE_ASPECT_RATIO_OPTIONS: {
   { value: "4:3", label: "4:3" },
   { value: "16:9", label: "16:9" },
 ];
+
+type InspectorInlineButtonProps =
+  React.ButtonHTMLAttributes<HTMLButtonElement> & {
+    tone?: "default" | "danger";
+  };
+
+const InspectorInlineButton: React.FC<InspectorInlineButtonProps> = ({
+  tone = "default",
+  className = "",
+  type = "button",
+  children,
+  disabled,
+  ...rest
+}) => {
+  const classes = [
+    "inspector-inline-button",
+    `inspector-inline-button--${tone}`,
+    disabled ? "inspector-inline-button--disabled" : "",
+    className,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    <>
+      <button type={type} className={classes} disabled={disabled} {...rest}>
+        {children}
+      </button>
+      <style jsx>{`
+        .inspector-inline-button {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 0;
+          height: ${inspectorLayout.controlHeight}px;
+          padding: 0 ${tokens.spacing.md}px;
+          border-radius: ${inspectorLayout.radius}px;
+          border: ${inspectorLayout.borderWidth}px solid ${inspectorColors.border};
+          background: ${inspectorColors.background};
+          color: ${inspectorColors.text};
+          font-size: 0.875rem;
+          font-weight: 500;
+          line-height: 1;
+          white-space: nowrap;
+          transition: border-color 0.2s ease, background-color 0.2s ease,
+            color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .inspector-inline-button:focus-visible {
+          outline: 2px solid #10b981;
+          outline-offset: 2px;
+        }
+
+        .inspector-inline-button:not(.inspector-inline-button--disabled):hover {
+          border-color: rgba(15, 23, 42, 0.24);
+          box-shadow: ${tokens.shadow.sm};
+        }
+
+        .inspector-inline-button--danger {
+          color: #b91c1c;
+          border-color: rgba(220, 38, 38, 0.4);
+        }
+
+        .inspector-inline-button--danger:not(.inspector-inline-button--disabled):hover {
+          background: rgba(254, 226, 226, 0.7);
+          border-color: rgba(220, 38, 38, 0.55);
+        }
+
+        .inspector-inline-button--disabled,
+        .inspector-inline-button:disabled {
+          opacity: ${tokens.opacity[50]};
+          cursor: not-allowed;
+          box-shadow: none;
+        }
+      `}</style>
+    </>
+  );
+};
 
 const BLOCK_ANIMATION_OPTIONS: { value: BlockAnimationType; label: string }[] = [
   { value: "none", label: "None" },
@@ -200,6 +329,10 @@ const BLOCK_ANIMATION_OPTIONS: { value: BlockAnimationType; label: string }[] = 
   { value: "zoom-in", label: "Zoom In" },
 ];
 
+const ENABLED_ANIMATION_OPTIONS = BLOCK_ANIMATION_OPTIONS.filter(
+  (option) => option.value !== "none",
+);
+
 const BLOCK_TRANSITION_OPTIONS: { value: BlockHoverTransition; label: string }[] = [
   { value: "none", label: "None" },
   { value: "grow", label: "Grow" },
@@ -208,6 +341,10 @@ const BLOCK_TRANSITION_OPTIONS: { value: BlockHoverTransition; label: string }[]
   { value: "shadow", label: "Shadow" },
   { value: "rotate", label: "Rotate" },
 ];
+
+const ENABLED_TRANSITION_OPTIONS = BLOCK_TRANSITION_OPTIONS.filter(
+  (option) => option.value !== "none",
+);
 
 const DEFAULT_BLOCK_BACKGROUND_COLOR = "#ffffff";
 const DEFAULT_BLOCK_GRADIENT_FROM = "rgba(15, 23, 42, 0.45)";
@@ -309,6 +446,34 @@ const INSPECTOR_CONTENT_CLASS = [
   "[&_.space-y-6]:space-y-4",
 ].join(" ");
 
+const TEXTUAL_INPUT_TYPES = new Set([
+  "text",
+  "search",
+  "email",
+  "url",
+  "tel",
+  "password",
+  "number",
+]);
+
+const TEXTUAL_INPUT_SELECTOR =
+  'input[type="text"], input[type="search"], input[type="email"], input[type="url"], input[type="tel"], input[type="password"], input[type="number"], textarea, [contenteditable="true"]';
+
+const isTextualInteractiveElement = (
+  element: Element | null,
+): element is HTMLInputElement | HTMLTextAreaElement | HTMLElement => {
+  if (!element) return false;
+  if (element instanceof HTMLTextAreaElement) return true;
+  if (element instanceof HTMLInputElement) {
+    const type = element.type?.toLowerCase() ?? "";
+    return type === "" || TEXTUAL_INPUT_TYPES.has(type);
+  }
+  if (element instanceof HTMLElement && element.isContentEditable) {
+    return true;
+  }
+  return false;
+};
+
 const INSPECTOR_INPUT_CLASS = [
   "w-full",
   "rounded-md",
@@ -324,11 +489,6 @@ const INSPECTOR_INPUT_CLASS = [
   "focus:outline-none",
   "focus:ring-1",
   "focus:ring-neutral-400",
-].join(" ");
-
-const INSPECTOR_TEXTAREA_CLASS = [
-  INSPECTOR_INPUT_CLASS,
-  "min-h-[84px]",
 ].join(" ");
 
 const CHECKERBOARD_BACKGROUND =
@@ -498,129 +658,6 @@ const InspectorColorInput: React.FC<InspectorColorInputProps> = ({
           numberInputClassName="w-16 shrink-0 text-right text-xs"
           numberInputProps={{ inputMode: "numeric" }}
         />
-      )}
-    </div>
-  );
-};
-
-type InspectorTextShadowControlsProps = {
-  block: SlideBlock;
-  onPatch: (patch: Partial<SlideBlock>) => void;
-};
-
-const InspectorTextShadowControls: React.FC<InspectorTextShadowControlsProps> = ({
-  block,
-  onPatch,
-}) => {
-  const shadowEnabled = Boolean(block.textShadow);
-  const resolvedX =
-    typeof block.shadowX === "number"
-      ? block.shadowX
-      : block.textShadow?.x ?? DEFAULT_TEXT_SHADOW.x;
-  const resolvedY =
-    typeof block.shadowY === "number"
-      ? block.shadowY
-      : block.textShadow?.y ?? DEFAULT_TEXT_SHADOW.y;
-  const resolvedBlur =
-    typeof block.shadowBlur === "number"
-      ? block.shadowBlur
-      : block.textShadow?.blur ?? DEFAULT_TEXT_SHADOW.blur;
-  const resolvedColor =
-    typeof block.shadowColor === "string" && block.shadowColor.trim().length > 0
-      ? block.shadowColor
-      : block.textShadow?.color ?? DEFAULT_TEXT_SHADOW.color;
-
-  const buildShadow = useCallback(
-    (overrides?: Partial<NonNullable<SlideBlock["textShadow"]>>) => ({
-      x: overrides?.x ?? resolvedX ?? DEFAULT_TEXT_SHADOW.x,
-      y: overrides?.y ?? resolvedY ?? DEFAULT_TEXT_SHADOW.y,
-      blur: overrides?.blur ?? resolvedBlur ?? DEFAULT_TEXT_SHADOW.blur,
-      color: overrides?.color ?? resolvedColor ?? DEFAULT_TEXT_SHADOW.color,
-    }),
-    [resolvedBlur, resolvedColor, resolvedX, resolvedY],
-  );
-
-  const applyShadowPatch = useCallback(
-    (overrides?: Partial<NonNullable<SlideBlock["textShadow"]>>) => {
-      const nextShadow = buildShadow(overrides);
-      onPatch({
-        textShadow: nextShadow,
-        shadowX: nextShadow.x,
-        shadowY: nextShadow.y,
-        shadowBlur: nextShadow.blur,
-        shadowColor: nextShadow.color,
-      });
-    },
-    [buildShadow, onPatch],
-  );
-
-  const handleToggle = useCallback(
-    (checked: boolean) => {
-      if (checked) {
-        applyShadowPatch();
-        return;
-      }
-      onPatch({ textShadow: null });
-    },
-    [applyShadowPatch, onPatch],
-  );
-
-  return (
-    <div>
-      <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
-        <InputCheckbox
-          checked={shadowEnabled}
-          onChange={(e) => handleToggle(e.target.checked)}
-        />
-        Text shadow
-      </label>
-      {shadowEnabled && (
-        <div className="mt-2 space-y-2">
-          <InspectorSliderControl
-            label="Offset X (px)"
-            value={resolvedX}
-            fallbackValue={resolvedX ?? DEFAULT_TEXT_SHADOW.x}
-            min={-50}
-            max={50}
-            step={1}
-            onChange={(next) => {
-              if (typeof next !== "number" || Number.isNaN(next)) return;
-              applyShadowPatch({ x: Math.round(next) });
-            }}
-          />
-          <InspectorSliderControl
-            label="Offset Y (px)"
-            value={resolvedY}
-            fallbackValue={resolvedY ?? DEFAULT_TEXT_SHADOW.y}
-            min={-50}
-            max={50}
-            step={1}
-            onChange={(next) => {
-              if (typeof next !== "number" || Number.isNaN(next)) return;
-              applyShadowPatch({ y: Math.round(next) });
-            }}
-          />
-          <InspectorSliderControl
-            label="Blur (px)"
-            value={resolvedBlur}
-            fallbackValue={resolvedBlur ?? DEFAULT_TEXT_SHADOW.blur}
-            min={0}
-            max={50}
-            step={1}
-            onChange={(next) => {
-              if (typeof next !== "number" || Number.isNaN(next)) return;
-              applyShadowPatch({ blur: Math.max(0, Math.round(next)) });
-            }}
-          />
-          <div>
-            <span className="text-xs font-medium text-neutral-500">Shadow color</span>
-            <InspectorColorInput
-              value={resolvedColor ?? DEFAULT_TEXT_SHADOW.color}
-              onChange={(nextColor) => applyShadowPatch({ color: nextColor })}
-              allowAlpha
-            />
-          </div>
-        </div>
       )}
     </div>
   );
@@ -1542,6 +1579,7 @@ interface SlideModalProps {
 }
 
 type GalleryInspectorItemContentProps = {
+  label: string;
   item: GalleryBlockItem;
   itemKey: string;
   onAltChange: (value: string) => void;
@@ -1560,6 +1598,7 @@ const GalleryInspectorItemContent = React.forwardRef<
 >(
   (
     {
+      label,
       item,
       itemKey,
       onAltChange,
@@ -1572,59 +1611,133 @@ const GalleryInspectorItemContent = React.forwardRef<
       style,
     },
     ref,
-  ) => (
-    <div
-      ref={ref}
-      data-gallery-key={itemKey}
-      data-dragging={isDragging ? "true" : "false"}
-      className={`group relative flex items-center gap-3 rounded border bg-white px-2 py-2 text-xs transition-all duration-200 ease-out ${
-        isDragging
-          ? "z-10 border-primary/40 shadow-md ring-2 ring-primary/40"
-          : "hover:border-primary/30 hover:shadow-sm"
-      }`}
-      style={{
-        position: "relative",
-        ...(disableInteractions ? { pointerEvents: "none" } : {}),
-        ...style,
-      }}
-    >
-      <button
-        type="button"
-        aria-label="Drag to reorder image"
-        className="flex h-10 w-6 shrink-0 select-none items-center justify-center touch-none cursor-grab text-neutral-400 transition hover:text-neutral-600 focus:outline-none focus:ring-2 focus:ring-neutral-300 active:cursor-grabbing"
-        ref={dragHandleRef}
-        {...(dragHandleAttributes ?? {})}
-        {...(dragHandleListeners ?? {})}
-      >
-        <GripVertical className="h-4 w-4" />
-      </button>
-      <img
-        src={item.url}
-        alt={item.alt ?? ""}
-        className="h-12 w-12 shrink-0 rounded object-cover"
-        draggable={false}
-        onMouseDown={(event) => event.stopPropagation()}
-        onClick={(event) => event.stopPropagation()}
-      />
-      <InputText
-        type="text"
-        value={item.alt ?? ""}
-        onChange={(e) => onAltChange(e.target.value)}
-        placeholder="Alt text"
-        className={`${INSPECTOR_INPUT_CLASS} flex-1`}
-        onMouseDown={(event) => event.stopPropagation()}
-        readOnly={disableInteractions}
-      />
-      <button
-        type="button"
-        onClick={onRemove}
-        className="rounded border px-2 py-1 text-xs text-red-600 transition hover:border-red-500 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-200"
-        disabled={disableInteractions}
-      >
-        Remove
-      </button>
-    </div>
-  ),
+  ) => {
+    const thumbnailSize = inspectorLayout.controlHeight * 1.5;
+    const handleWidth = inspectorLayout.controlHeight;
+    const itemPadding = tokens.spacing.sm;
+    const itemGap = tokens.spacing.xs;
+
+    const classes = [
+      "gallery-item",
+      isDragging ? "gallery-item--dragging" : "",
+      disableInteractions ? "gallery-item--disabled" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    return (
+      <div ref={ref} data-gallery-key={itemKey} className={classes} style={style}>
+        <InspectorInputText
+          label={label}
+          value={item.alt ?? ""}
+          placeholder="Alt text"
+          onChange={onAltChange}
+          disabled={disableInteractions}
+          leading={
+            <div className="gallery-item-leading">
+              <button
+                type="button"
+                aria-label="Drag to reorder image"
+                className="gallery-item-handle"
+                ref={dragHandleRef}
+                {...(dragHandleAttributes ?? {})}
+                {...(dragHandleListeners ?? {})}
+                disabled={disableInteractions}
+              >
+                <GripVertical size={tokens.spacing.md} />
+              </button>
+              <img
+                src={item.url}
+                alt={item.alt ?? ""}
+                className="gallery-item-thumbnail"
+                draggable={false}
+              />
+            </div>
+          }
+          trailing={
+            <InspectorInlineButton
+              tone="danger"
+              onClick={onRemove}
+              disabled={disableInteractions}
+            >
+              Remove
+            </InspectorInlineButton>
+          }
+        />
+        <style jsx>{`
+          .gallery-item {
+            display: flex;
+            flex-direction: column;
+            gap: ${itemGap}px;
+            padding: ${itemPadding}px;
+            border-radius: ${inspectorLayout.radius}px;
+            border: ${inspectorLayout.borderWidth}px solid ${inspectorColors.border};
+            background: ${inspectorColors.background};
+            transition: box-shadow 0.2s ease, border-color 0.2s ease;
+          }
+
+          .gallery-item--dragging {
+            border-color: rgba(16, 185, 129, 0.4);
+            box-shadow: ${tokens.shadow.md};
+          }
+
+          .gallery-item--disabled {
+            pointer-events: none;
+          }
+
+          .gallery-item-leading {
+            display: inline-flex;
+            align-items: center;
+            gap: ${tokens.spacing.sm}px;
+          }
+
+          .gallery-item-handle {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: ${handleWidth}px;
+            height: ${inspectorLayout.controlHeight}px;
+            border-radius: ${inspectorLayout.radius}px;
+            border: ${inspectorLayout.borderWidth}px solid ${inspectorColors.border};
+            background: transparent;
+            color: ${inspectorColors.labelMuted};
+            cursor: grab;
+            transition: border-color 0.2s ease, color 0.2s ease,
+              box-shadow 0.2s ease;
+          }
+
+          .gallery-item-handle:focus-visible {
+            outline: 2px solid #10b981;
+            outline-offset: 2px;
+          }
+
+          .gallery-item-handle:not(:disabled):hover {
+            border-color: rgba(15, 23, 42, 0.24);
+            color: ${inspectorColors.text};
+            box-shadow: ${tokens.shadow.sm};
+          }
+
+          .gallery-item-handle:active {
+            cursor: grabbing;
+          }
+
+          .gallery-item-handle:disabled {
+            cursor: not-allowed;
+            opacity: ${tokens.opacity[50]};
+            box-shadow: none;
+          }
+
+          .gallery-item-thumbnail {
+            width: ${thumbnailSize}px;
+            height: ${thumbnailSize}px;
+            border-radius: ${inspectorLayout.radius}px;
+            object-fit: cover;
+            flex-shrink: 0;
+          }
+        `}</style>
+      </div>
+    );
+  },
 );
 
 GalleryInspectorItemContent.displayName = "GalleryInspectorItemContent";
@@ -1665,6 +1778,7 @@ const GalleryInspectorItem: React.FC<GalleryInspectorItemProps> = ({
   return (
     <GalleryInspectorItemContent
       ref={setNodeRef}
+      label={`Image ${index + 1}`}
       item={item}
       itemKey={itemKey}
       onAltChange={onAltChange}
@@ -1695,9 +1809,8 @@ export default function SlideModal({
   const [editInPreview, setEditInPreview] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [previewSize, setPreviewSize] = useState({ width: 0, height: 0 });
-  const [customPages, setCustomPages] = useState<string[]>([]);
+  const [customPages, setCustomPages] = useState<LinkOption[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [showGalleryAddOptions, setShowGalleryAddOptions] = useState(false);
   const [galleryUrlInput, setGalleryUrlInput] = useState("");
   const [activeGalleryDragId, setActiveGalleryDragId] = useState<string | null>(
     null,
@@ -1709,8 +1822,6 @@ export default function SlideModal({
   const previewContainerRef = useRef<HTMLDivElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const blockImageInputRef = useRef<HTMLInputElement | null>(null);
-  const blockBackgroundImageInputRef = useRef<HTMLInputElement | null>(null);
-  const galleryInputRef = useRef<HTMLInputElement | null>(null);
   const videoPosterInputRef = useRef<HTMLInputElement | null>(null);
   const galleryItemIdentityRef = useRef<
     { url: string; alt: string; key: string }[]
@@ -1721,6 +1832,14 @@ export default function SlideModal({
   const inspectorOpenRef = useRef(inspectorOpen);
   const inspectorWasOpenRef = useRef(false);
   const reviewOptions = DEFAULT_REVIEW_OPTIONS;
+
+  const shadowPresetCacheRef = useRef<Record<string, BlockShadowPreset>>({});
+  const borderCacheRef = useRef<
+    Record<string, { color?: string; width?: number; radius?: number }>
+  >({});
+  const backgroundTypeCacheRef = useRef<Record<string, BlockBackground["type"]>>({});
+  const animationTypeCacheRef = useRef<Record<string, BlockAnimationType>>({});
+  const transitionHoverCacheRef = useRef<Record<string, BlockHoverTransition>>({});
 
   useEffect(() => {
     inspectorOpenRef.current = inspectorOpen;
@@ -1737,14 +1856,29 @@ export default function SlideModal({
   }, [initialCfg, slide]);
 
   useEffect(() => {
-    if (!restaurantId) return;
+    if (!restaurantId) {
+      setCustomPages([]);
+      return;
+    }
     supabase
       .from("custom_pages")
-      .select("slug")
+      .select("slug, title")
       .eq("restaurant_id", restaurantId)
       .order("slug")
       .then(({ data }) => {
-        if (data) setCustomPages(data.map((row) => `/p/${row.slug}`));
+        if (!data) {
+          setCustomPages([]);
+          return;
+        }
+        setCustomPages(
+          data.map((row) => {
+            const title = typeof row.title === "string" ? row.title.trim() : "";
+            return {
+              value: `/p/${row.slug}`,
+              label: title.length > 0 ? title : row.slug,
+            } satisfies LinkOption;
+          }),
+        );
       });
   }, [restaurantId]);
 
@@ -2206,6 +2340,10 @@ export default function SlideModal({
             Number.isFinite(intervalRaw) && intervalRaw > 0
               ? Math.round(intervalRaw)
               : DEFAULT_GALLERY_CONFIG.interval;
+          const intervalSeconds = Math.min(
+            MAX_GALLERY_AUTOPLAY_INTERVAL,
+            Math.max(MIN_GALLERY_AUTOPLAY_INTERVAL, intervalCandidate),
+          );
           const radiusCandidate =
             Number.isFinite(radiusRaw) && radiusRaw >= 0
               ? radiusRaw
@@ -2215,7 +2353,7 @@ export default function SlideModal({
             layout: next.layout === "carousel" ? "carousel" : "grid",
             autoplay:
               next.layout === "carousel" ? Boolean(next.autoplay) : false,
-            interval: Math.max(200, intervalCandidate),
+            interval: intervalSeconds,
             radius: radiusCandidate,
             shadow: Boolean(next.shadow),
             aspectRatio: normalizeBlockAspectRatio(
@@ -2311,37 +2449,6 @@ export default function SlideModal({
       }),
       commit,
     );
-  };
-
-  const updateFrameField = (id: string, field: keyof Frame, value: number) => {
-    updateCfg((prev) => ({
-      ...prev,
-      blocks: prev.blocks.map((b) => {
-        if (b.id !== id) return b;
-        const existing = ensureFrame(b, activeDevice);
-        const nextFrame: Frame = {
-          ...existing,
-          [field]: field === "r" ? value : clampPct(value),
-        };
-        const updatedFrames = {
-          ...b.frames,
-          [activeDevice]: nextFrame,
-        };
-        if (!isTextualBlock(b.kind)) {
-          return {
-            ...b,
-            frames: updatedFrames,
-          };
-        }
-        const previous = extractConfig(b.config);
-        const nextConfig = writeTextSizingToConfig(previous, activeDevice, nextFrame);
-        return {
-          ...b,
-          frames: updatedFrames,
-          config: mergeInteractionConfig({ ...b, frames: updatedFrames, config: nextConfig }, nextConfig),
-        };
-      }),
-    }));
   };
 
   const updateBackground = useCallback(
@@ -2450,6 +2557,57 @@ export default function SlideModal({
   const handleInspectorDone = useCallback(() => {
     handleSelectBlock(null);
   }, [handleSelectBlock]);
+
+  const blurActiveTextInput = useCallback(() => {
+    if (typeof document === "undefined") return;
+    const activeElement = document.activeElement;
+    if (!activeElement) return;
+    if (
+      isTextualInteractiveElement(activeElement) &&
+      activeElement instanceof HTMLElement
+    ) {
+      activeElement.blur();
+    }
+  }, []);
+
+  const handleInspectorPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+
+      const interactiveTarget = target.closest(
+        "input, textarea, select, button, [contenteditable=\"true\"]",
+      ) as HTMLElement | null;
+
+      if (isTextualInteractiveElement(interactiveTarget)) {
+        return;
+      }
+
+      if (interactiveTarget) {
+        blurActiveTextInput();
+        return;
+      }
+
+      const labelTarget = target.closest("label");
+      if (labelTarget) {
+        const containsTextField = labelTarget.querySelector(
+          TEXTUAL_INPUT_SELECTOR,
+        );
+        if (containsTextField) {
+          event.preventDefault();
+          blurActiveTextInput();
+          return;
+        }
+      }
+
+      blurActiveTextInput();
+    },
+    [blurActiveTextInput],
+  );
+
+  useEffect(() => {
+    blurActiveTextInput();
+  }, [blurActiveTextInput, selectedId]);
 
   const handleBackgroundTypeChange = useCallback(
     (type: SlideBackground["type"]) => {
@@ -2611,6 +2769,9 @@ export default function SlideModal({
     [selectedGalleryConfig],
   );
 
+  const isGalleryCarousel =
+    selectedGalleryConfig?.layout === "carousel";
+
   const createGalleryItemKey = useCallback(() => {
     if (
       typeof globalThis.crypto !== "undefined" &&
@@ -2758,6 +2919,23 @@ export default function SlideModal({
     return galleryItemIdentities[index] ?? null;
   }, [activeGalleryDragId, galleryItemIdentities]);
 
+  const handleAddGalleryImageByUrl = useCallback(
+    (blockId: string) => {
+      const url = galleryUrlInput.trim();
+      if (!url) {
+        return;
+      }
+      updateGalleryConfig(blockId, (config) => ({
+        ...config,
+        items: [...config.items, { url }],
+      }));
+      setGalleryUrlInput("");
+    },
+    [galleryUrlInput, updateGalleryConfig],
+  );
+
+  const galleryUrlHasValue = galleryUrlInput.trim().length > 0;
+
   const selectedQuoteConfig = useMemo(
     () =>
       selectedBlock?.kind === "quote"
@@ -2798,6 +2976,46 @@ export default function SlideModal({
     [patchBlock, selectedBlock],
   );
 
+  const applyBackgroundType = useCallback(
+    (nextType: BlockBackground["type"]) => {
+      updateSelectedBlockBackground((prev) => {
+        const next = cloneBlockBackground(prev);
+        next.type = nextType;
+        if (nextType === "none") {
+          return next;
+        }
+        if (nextType === "color") {
+          next.color =
+            next.color && next.color.trim().length > 0
+              ? next.color
+              : DEFAULT_BLOCK_BACKGROUND_COLOR;
+          next.color2 = undefined;
+          next.direction = undefined;
+          next.url = undefined;
+          return next;
+        }
+        if (nextType === "gradient") {
+          next.color =
+            next.color && next.color.trim().length > 0
+              ? next.color
+              : DEFAULT_BLOCK_GRADIENT_FROM;
+          next.color2 =
+            next.color2 && next.color2.trim().length > 0
+              ? next.color2
+              : DEFAULT_BLOCK_GRADIENT_TO;
+          next.direction = next.direction ?? "to-bottom";
+          next.url = undefined;
+          return next;
+        }
+        if (nextType === "image") {
+          next.url = next.url ?? "";
+        }
+        return next;
+      });
+    },
+    [updateSelectedBlockBackground],
+  );
+
   const selectedAnimationConfig = useMemo(
     () =>
       selectedBlock
@@ -2813,6 +3031,92 @@ export default function SlideModal({
         : DEFAULT_BLOCK_TRANSITION_CONFIG,
     [selectedBlock],
   );
+
+  const selectedBlockId = selectedBlock?.id ?? null;
+  const currentShadowPreset: BlockShadowPreset = selectedBlock?.boxShadow ?? "none";
+  const borderWidthValue =
+    typeof selectedBlock?.borderWidth === "number" &&
+    Number.isFinite(selectedBlock.borderWidth)
+      ? selectedBlock.borderWidth
+      : undefined;
+  const borderColorValue =
+    typeof selectedBlock?.borderColor === "string" &&
+    selectedBlock.borderColor.trim().length > 0
+      ? selectedBlock.borderColor
+      : undefined;
+  const borderRadiusValue =
+    typeof selectedBlock?.borderRadius === "number" &&
+    Number.isFinite(selectedBlock.borderRadius)
+      ? selectedBlock.borderRadius
+      : undefined;
+  const shadowEnabled = currentShadowPreset !== "none";
+  const borderEnabled = Boolean(borderWidthValue && borderWidthValue > 0);
+  const backgroundEnabled = selectedBlockBackground.type !== "none";
+  const animationEnabled = selectedAnimationConfig.type !== "none";
+  const transitionEnabled = selectedTransitionConfig.hover !== "none";
+
+  useEffect(() => {
+    if (!selectedBlockId) return;
+    if (currentShadowPreset !== "none") {
+      shadowPresetCacheRef.current[selectedBlockId] =
+        currentShadowPreset as BlockShadowPreset;
+    }
+  }, [currentShadowPreset, selectedBlockId]);
+
+  useEffect(() => {
+    if (!selectedBlockId || !borderEnabled) return;
+    borderCacheRef.current[selectedBlockId] = {
+      color: borderColorValue ?? DEFAULT_BORDER_COLOR,
+      width:
+        typeof borderWidthValue === "number" && borderWidthValue > 0
+          ? borderWidthValue
+          : 1,
+      radius: borderRadiusValue,
+    };
+  }, [borderColorValue, borderEnabled, borderRadiusValue, borderWidthValue, selectedBlockId]);
+
+  useEffect(() => {
+    if (!selectedBlockId) return;
+    const type = selectedBlockBackground.type;
+    if (type && type !== "none") {
+      backgroundTypeCacheRef.current[selectedBlockId] = type;
+    }
+  }, [selectedBlockBackground.type, selectedBlockId]);
+
+  useEffect(() => {
+    if (!selectedBlockId) return;
+    const type = selectedAnimationConfig.type;
+    if (type && type !== "none") {
+      animationTypeCacheRef.current[selectedBlockId] = type;
+    }
+  }, [selectedAnimationConfig.type, selectedBlockId]);
+
+  useEffect(() => {
+    if (!selectedBlockId) return;
+    const hover = selectedTransitionConfig.hover;
+    if (hover && hover !== "none") {
+      transitionHoverCacheRef.current[selectedBlockId] = hover;
+    }
+  }, [selectedBlockId, selectedTransitionConfig.hover]);
+
+  const cachedShadowPreset =
+    (selectedBlockId ? shadowPresetCacheRef.current[selectedBlockId] : undefined) ??
+    DEFAULT_ENABLED_SHADOW;
+  const cachedBorderConfig =
+    (selectedBlockId ? borderCacheRef.current[selectedBlockId] : undefined) ?? {
+      color: borderColorValue ?? DEFAULT_BORDER_COLOR,
+      width: borderWidthValue && borderWidthValue > 0 ? borderWidthValue : 1,
+      radius: borderRadiusValue,
+    };
+  const cachedBackgroundType =
+    (selectedBlockId ? backgroundTypeCacheRef.current[selectedBlockId] : undefined) ??
+    DEFAULT_ENABLED_BACKGROUND_TYPE;
+  const cachedAnimationType =
+    (selectedBlockId ? animationTypeCacheRef.current[selectedBlockId] : undefined) ??
+    DEFAULT_ENABLED_ANIMATION;
+  const cachedTransitionHover =
+    (selectedBlockId ? transitionHoverCacheRef.current[selectedBlockId] : undefined) ??
+    DEFAULT_ENABLED_TRANSITION;
 
   const applyAnimationConfig = useCallback(
     (mutator: (prev: BlockAnimationConfig) => BlockAnimationConfig) => {
@@ -2871,7 +3175,6 @@ export default function SlideModal({
   }, [selectedBlock]);
 
   useEffect(() => {
-    setShowGalleryAddOptions(false);
     setGalleryUrlInput("");
   }, [selectedBlock?.id]);
 
@@ -2920,11 +3223,19 @@ export default function SlideModal({
     }
   }, [cfg.blocks, handleSelectBlock]);
 
-  const frame = selectedBlock ? ensureFrame(selectedBlock, activeDevice) : null;
-
   const linkOptions = useMemo(
-    () => [...ROUTE_OPTIONS, ...customPages, "custom"],
+    () => [...ROUTE_OPTIONS, ...customPages, CUSTOM_LINK_OPTION],
     [customPages],
+  );
+
+  const knownLinkValues = useMemo(
+    () =>
+      new Set(
+        linkOptions
+          .filter((option) => option.value !== CUSTOM_LINK_OPTION.value)
+          .map((option) => option.value),
+      ),
+    [linkOptions],
   );
 
   const selectionLabel = selectedBlock
@@ -3034,7 +3345,6 @@ export default function SlideModal({
                           "image",
                           "quote",
                           "gallery",
-                          "spacer",
                         ] as SlideBlock["kind"][]
                       ).map((kind) => (
                         <button
@@ -3890,509 +4200,657 @@ export default function SlideModal({
                         </div>
                       </div>
                     </div>
-                    <div className={INSPECTOR_CONTENT_CLASS}>
+                    <div
+                      className={INSPECTOR_CONTENT_CLASS}
+                      onPointerDownCapture={handleInspectorPointerDown}
+                    >
                       <section>
                         <div className="mt-2 space-y-3 text-sm">
                           {(selectedBlock.kind === "heading" ||
-                            selectedBlock.kind === "text") && (
-                            <>
-                              <label className="block">
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Content
-                                </span>
-                                <textarea
-                                  rows={4}
-                                  value={
-                                    selectedBlock.content ?? selectedBlock.text ?? ""
-                                  }
-                                  onChange={(e) =>
-                                    patchBlock(selectedBlock.id, {
-                                      content: e.target.value,
-                                      text: e.target.value,
-                                    })
-                                  }
-                                  className={INSPECTOR_TEXTAREA_CLASS}
-                                />
-                              </label>
-                              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Font family
-                                  </span>
-                                  {(() => {
-                                    const value = resolveFontFamilyValue(
-                                      selectedBlock.fontFamily,
-                                    );
-                                    return (
-                                      <FontSelect
-                                        value={value}
-                                        fonts={APP_FONTS}
-                                        onChange={(nextValue) =>
-                                          handleFontFamilyChange(
-                                            selectedBlock.id,
-                                            nextValue,
-                                          )
-                                        }
-                                      />
-                                    );
-                                  })()}
-                                </label>
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Font weight
-                                  </span>
-                                  <InputSelect
-                                    value={String(
-                                      selectedBlock.fontWeight ??
-                                        (selectedBlock.kind === "heading" ? 700 : 400),
-                                    )}
-                                    onChange={(e) => {
-                                      const parsed = Number(e.target.value);
-                                      patchBlock(selectedBlock.id, {
-                                        fontWeight: Number.isNaN(parsed)
-                                          ? selectedBlock.fontWeight
-                                          : parsed,
-                                      });
-                                    }}
-                                    options={FONT_WEIGHT_OPTIONS}
-                                  />
-                                </label>
-                              </div>
-                              <div className="space-y-3">
-                                <InspectorSliderControl
-                                  label="Font size (px)"
-                                  value={selectedBlock.fontSize}
-                                  fallbackValue={
-                                    selectedBlock.fontSize ??
-                                    (selectedBlock.size
-                                      ? SIZE_TO_FONT_SIZE_PX[selectedBlock.size]
-                                      : TEXT_KIND_FONT_DEFAULT[selectedBlock.kind] ?? 16) ?? 16
-                                  }
-                                  min={8}
-                                  max={120}
-                                  step={1}
-                                  onChange={(next) => {
-                                    if (next === undefined) {
-                                      patchBlock(selectedBlock.id, {
-                                        fontSize: undefined,
-                                      });
-                                      return;
-                                    }
-                                    const normalized = Math.round(next);
-                                    patchBlock(selectedBlock.id, {
-                                      fontSize: Number.isNaN(normalized)
-                                        ? undefined
-                                        : normalized,
-                                    });
-                                  }}
-                                />
-                                <InspectorSliderControl
-                                  label="Line height"
-                                  value={selectedBlock.lineHeight}
-                                  fallbackValue={
-                                    selectedBlock.lineHeight ?? 1.2
-                                  }
-                                  min={0.5}
-                                  max={3}
-                                  step={0.1}
-                                  onChange={(next) => {
-                                    if (next === undefined) {
-                                      patchBlock(selectedBlock.id, {
-                                        lineHeight: undefined,
-                                        lineHeightUnit: undefined,
-                                      });
-                                      return;
-                                    }
-                                    patchBlock(selectedBlock.id, {
-                                      lineHeight: next,
-                                      lineHeightUnit: undefined,
-                                    });
-                                  }}
-                                />
-                              </div>
-                              <InspectorSliderControl
-                                label="Letter spacing (px)"
-                                value={selectedBlock.letterSpacing}
-                                fallbackValue={selectedBlock.letterSpacing ?? 0}
-                                min={-10}
-                                max={20}
-                                step={0.1}
-                                onChange={(next) => {
-                                  if (next === undefined) {
-                                    patchBlock(selectedBlock.id, {
-                                      letterSpacing: undefined,
-                                    });
-                                    return;
-                                  }
+                            selectedBlock.kind === "text") &&
+                            (() => {
+                              const textValue =
+                                selectedBlock.content ?? selectedBlock.text ?? "";
+                              const handleTextChange = (nextValue: string) => {
+                                patchBlock(selectedBlock.id, {
+                                  content: nextValue,
+                                  text: nextValue,
+                                });
+                              };
+                              const textColorValue =
+                                selectedBlock.textColor ??
+                                selectedBlock.color ??
+                                "#000000";
+                              const parsedTextColor = parseColorValue(textColorValue);
+                              const textOpacityPercent = Math.round(
+                                clampRange(parsedTextColor.alpha * 100, 0, 100),
+                              );
+                              const handleTextColorChange = (nextValue: string) => {
+                                const trimmed = nextValue.trim();
+                                if (!trimmed.length) {
                                   patchBlock(selectedBlock.id, {
-                                    letterSpacing: next,
+                                    textColor: undefined,
+                                    color: undefined,
                                   });
-                                }}
-                              />
-                              <div>
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Text color
-                                </span>
-                                <InspectorColorInput
-                                  value={
-                                    selectedBlock.textColor ??
-                                    selectedBlock.color ??
-                                    "#000000"
-                                  }
-                                  onChange={(nextColor) =>
-                                    patchBlock(selectedBlock.id, {
-                                      textColor: nextColor,
-                                      color: nextColor,
-                                    })
-                                  }
-                                  allowAlpha
-                                />
-                              </div>
-                              <InspectorTextShadowControls
-                                block={selectedBlock}
-                                onPatch={(patch) =>
-                                  patchBlock(selectedBlock.id, patch)
+                                  return;
                                 }
-                              />
-                              <label className="block">
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Background style
-                                </span>
-                                <InputSelect
-                                  value={selectedBlock.bgStyle ?? "none"}
-                                  onChange={(e) => {
-                                    const value = e.target.value as SlideBlock["bgStyle"];
-                                    if (value === "none") {
-                                      patchBlock(selectedBlock.id, {
-                                        bgStyle: "none",
-                                      });
-                                      return;
-                                    }
-                                    patchBlock(selectedBlock.id, {
-                                      bgStyle: value,
-                                      bgColor:
-                                        selectedBlock.bgColor ?? "#000000",
-                                      bgOpacity:
-                                        selectedBlock.bgOpacity ??
-                                        (value === "glass" ? 0.5 : 1),
-                                      radius: selectedBlock.radius ?? 0,
-                                      padding: selectedBlock.padding ?? 0,
-                                    });
-                                  }}
-                                  options={BACKGROUND_STYLE_OPTIONS}
-                                />
-                              </label>
-                              {selectedBlock.bgStyle &&
-                                selectedBlock.bgStyle !== "none" && (
-                                  <div className="space-y-3">
-                                    <div>
-                                      <span className="text-xs font-medium text-neutral-500">
-                                        Background color
-                                      </span>
-                                      <InspectorColorInput
-                                        value={selectedBlock.bgColor ?? "#000000"}
-                                        onChange={(nextColor) =>
-                                          patchBlock(selectedBlock.id, {
-                                            bgColor: nextColor,
-                                          })
-                                        }
-                                      />
-                                    </div>
-                                    <InspectorSliderControl
-                                      label="Opacity"
-                                      value={
-                                        selectedBlock.bgOpacity !== undefined
-                                          ? selectedBlock.bgOpacity * 100
-                                          : undefined
-                                      }
-                                      fallbackValue={
-                                        ((selectedBlock.bgStyle === "glass" ? 0.5 : 1) *
-                                          100) || 0
-                                      }
-                                      min={0}
-                                      max={100}
-                                      step={1}
-                                      onChange={(next) => {
-                                        const fallbackValue =
-                                          selectedBlock.bgStyle === "glass" ? 0.5 : 1;
-                                        const percent =
-                                          next === undefined
-                                            ? (selectedBlock.bgOpacity ?? fallbackValue) * 100
-                                            : next;
-                                        const clampedPercent = Math.min(
-                                          100,
-                                          Math.max(0, percent ?? 0),
-                                        );
-                                        patchBlock(
-                                          selectedBlock.id,
-                                          {
-                                            bgOpacity: clamp01(clampedPercent / 100),
-                                          },
-                                          false,
-                                        );
-                                      }}
+                                const parsedNext = parseColorValue(nextValue);
+                                const isHex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(trimmed);
+                                const targetAlpha =
+                                  isHex && parsedTextColor.alpha < 0.999
+                                    ? parsedTextColor.alpha
+                                    : parsedNext.alpha;
+                                const resolvedColor =
+                                  targetAlpha >= 0.999
+                                    ? parsedNext.hex
+                                    : hexToRgbaString(parsedNext.hex, targetAlpha);
+                                patchBlock(selectedBlock.id, {
+                                  textColor: resolvedColor,
+                                  color: resolvedColor,
+                                });
+                              };
+                              const handleTextOpacityChange = (next: number | undefined) => {
+                                if (next === undefined) {
+                                  patchBlock(selectedBlock.id, {
+                                    textColor: parsedTextColor.hex,
+                                    color: parsedTextColor.hex,
+                                  });
+                                  return;
+                                }
+                                const clamped = clampRange(next, 0, 100);
+                                const normalized = clamp01(clamped / 100);
+                                if (normalized >= 0.999) {
+                                  patchBlock(selectedBlock.id, {
+                                    textColor: parsedTextColor.hex,
+                                    color: parsedTextColor.hex,
+                                  });
+                                  return;
+                                }
+                                const nextColor = hexToRgbaString(
+                                  parsedTextColor.hex,
+                                  normalized,
+                                );
+                                patchBlock(selectedBlock.id, {
+                                  textColor: nextColor,
+                                  color: nextColor,
+                                });
+                              };
+                              const fontSizeFallback =
+                                selectedBlock.fontSize ??
+                                (selectedBlock.size
+                                  ? SIZE_TO_FONT_SIZE_PX[selectedBlock.size]
+                                  : TEXT_KIND_FONT_DEFAULT[selectedBlock.kind] ?? 16) ??
+                                16;
+                              return (
+                                <>
+                                  <InspectorSection title="Content">
+                                    <InspectorInputTextArea
+                                      label="Text"
+                                      value={textValue}
+                                      rows={selectedBlock.kind === "text" ? 4 : 3}
+                                      onChange={handleTextChange}
                                     />
-                                    <InspectorSliderControl
-                                      label="Corner radius (px)"
-                                      value={selectedBlock.radius}
-                                      fallbackValue={selectedBlock.radius ?? 0}
-                                      min={0}
-                                      max={50}
+                                  </InspectorSection>
+                                  <InspectorSection title="Typography">
+                                    <ControlRow label="Font family">
+                                      {(() => {
+                                        const value = resolveFontFamilyValue(
+                                          selectedBlock.fontFamily,
+                                        );
+                                        return (
+                                          <FontSelect
+                                            value={value}
+                                            fonts={APP_FONTS}
+                                            onChange={(nextValue) =>
+                                              handleFontFamilyChange(
+                                                selectedBlock.id,
+                                                nextValue,
+                                              )
+                                            }
+                                          />
+                                        );
+                                      })()}
+                                    </ControlRow>
+                                    <InspectorInputSelect
+                                      label="Font weight"
+                                      value={String(
+                                        selectedBlock.fontWeight ??
+                                          (selectedBlock.kind === "heading" ? 700 : 400),
+                                      )}
+                                      onChange={(nextValue) => {
+                                        const parsed = Number(nextValue);
+                                        patchBlock(selectedBlock.id, {
+                                          fontWeight: Number.isNaN(parsed)
+                                            ? selectedBlock.fontWeight
+                                            : parsed,
+                                        });
+                                      }}
+                                      options={FONT_WEIGHT_OPTIONS.map((option) => ({
+                                        label: option.label,
+                                        value: String(option.value),
+                                      }))}
+                                    />
+                                    <InspectorInputSlider
+                                      label="Font size (px)"
+                                      value={selectedBlock.fontSize}
+                                      fallbackValue={fontSizeFallback}
+                                      min={8}
+                                      max={120}
                                       step={1}
                                       onChange={(next) => {
-                                        const resolved = next === undefined ? 0 : Math.round(next);
+                                        if (next === undefined) {
+                                          patchBlock(selectedBlock.id, {
+                                            fontSize: undefined,
+                                          });
+                                          return;
+                                        }
+                                        const normalized = Math.round(next);
                                         patchBlock(selectedBlock.id, {
-                                          radius: resolved,
+                                          fontSize: Number.isNaN(normalized)
+                                            ? undefined
+                                            : normalized,
                                         });
                                       }}
                                     />
-                                    <InspectorSliderControl
-                                      label="Padding (px)"
-                                      value={selectedBlock.padding}
-                                      fallbackValue={selectedBlock.padding ?? 0}
-                                      min={0}
-                                      max={100}
-                                      step={1}
+                                    <InspectorInputSlider
+                                      label="Line height"
+                                      value={selectedBlock.lineHeight}
+                                      fallbackValue={selectedBlock.lineHeight ?? 1.2}
+                                      min={0.5}
+                                      max={3}
+                                      step={0.1}
+                                      formatValue={(current, fallback) => {
+                                        const resolved =
+                                          typeof current === "number" && Number.isFinite(current)
+                                            ? current
+                                            : typeof fallback === "number"
+                                              ? fallback
+                                              : 1.2;
+                                        return resolved.toFixed(2);
+                                      }}
                                       onChange={(next) => {
-                                        const resolved = next === undefined ? 0 : Math.round(next);
+                                        if (next === undefined) {
+                                          patchBlock(selectedBlock.id, {
+                                            lineHeight: undefined,
+                                            lineHeightUnit: undefined,
+                                          });
+                                          return;
+                                        }
+                                        const normalized = Math.round(next * 100) / 100;
                                         patchBlock(selectedBlock.id, {
-                                          padding: resolved,
+                                          lineHeight: normalized,
+                                          lineHeightUnit: undefined,
                                         });
                                       }}
                                     />
-                                  </div>
-                                )}
-                              <div>
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Alignment
-                                </span>
-                                <div className="mt-1 flex gap-1.5">
-                                  {TEXT_ALIGNMENT_OPTIONS.map((option) => {
-                                    const currentAlign = selectedBlock.align ?? "left";
-                                    const isActive = currentAlign === option.value;
-                                    return (
-                                      <button
-                                        key={option.value}
-                                        type="button"
-                                        onClick={() =>
+                                    <InspectorInputSlider
+                                      label="Letter spacing (px)"
+                                      value={selectedBlock.letterSpacing}
+                                      fallbackValue={selectedBlock.letterSpacing ?? 0}
+                                      min={-10}
+                                      max={20}
+                                      step={0.1}
+                                      onChange={(next) => {
+                                        if (next === undefined) {
                                           patchBlock(selectedBlock.id, {
-                                            align: option.value,
-                                          })
+                                            letterSpacing: undefined,
+                                          });
+                                          return;
                                         }
-                                        className={`flex-1 rounded border px-2.5 py-1.5 text-xs font-medium capitalize transition ${
-                                          isActive
-                                            ? "border-emerald-500 bg-emerald-50 text-emerald-600"
-                                            : "border-neutral-200 text-neutral-600 hover:border-neutral-300"
-                                        }`}
-                                      >
-                                        {option.label}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            </>
-                          )}
-                          {selectedBlock.kind === "subheading" && (
-                            <>
-                              <label className="block">
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Text
-                                </span>
-                                <textarea
-                                  rows={3}
-                                  value={selectedBlock.text ?? ""}
-                                  onChange={(e) =>
-                                    patchBlock(selectedBlock.id, {
-                                      text: e.target.value,
-                                      content: e.target.value,
-                                    })
-                                  }
-                                  className={INSPECTOR_TEXTAREA_CLASS}
-                                />
-                              </label>
-                              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Font family
-                                  </span>
-                                  {(() => {
-                                    const value = resolveFontFamilyValue(
-                                      selectedBlock.fontFamily,
-                                    );
-                                    return (
-                                      <FontSelect
-                                        value={value}
-                                        fonts={APP_FONTS}
-                                        onChange={(nextValue) =>
-                                          handleFontFamilyChange(
-                                            selectedBlock.id,
-                                            nextValue,
-                                          )
-                                        }
+                                        const normalized = Math.round(next * 10) / 10;
+                                        patchBlock(selectedBlock.id, {
+                                          letterSpacing: normalized,
+                                        });
+                                      }}
+                                    />
+                                  </InspectorSection>
+                                  <InspectorSection title="Color">
+                                    <InspectorInputColor
+                                      label="Text color"
+                                      value={textColorValue}
+                                      onChange={handleTextColorChange}
+                                    />
+                                    <InspectorInputSlider
+                                      label="Opacity (%)"
+                                      value={textOpacityPercent}
+                                      fallbackValue={100}
+                                      min={0}
+                                      max={100}
+                                      step={1}
+                                      onChange={handleTextOpacityChange}
+                                    />
+                                  </InspectorSection>
+                                  <InspectorSection title="Alignment">
+                                    <InspectorInputSelect
+                                      label="Alignment"
+                                      value={selectedBlock.align ?? "left"}
+                                      onChange={(nextValue) => {
+                                        patchBlock(selectedBlock.id, {
+                                          align: nextValue as SlideBlock["align"],
+                                        });
+                                      }}
+                                      options={TEXT_ALIGNMENT_OPTIONS.map((option) => ({
+                                        label: option.label,
+                                        value: option.value,
+                                      }))}
+                                    />
+                                  </InspectorSection>
+                                  {selectedBlock.bgStyle &&
+                                  selectedBlock.bgStyle !== "none" ? (
+                                    <InspectorSection title="Effects">
+                                      <InspectorInputSlider
+                                        label="Corner radius (px)"
+                                        value={selectedBlock.radius}
+                                        fallbackValue={selectedBlock.radius ?? 0}
+                                        min={0}
+                                        max={50}
+                                        step={1}
+                                        onChange={(next) => {
+                                          const resolved =
+                                            next === undefined ? 0 : Math.round(next);
+                                          patchBlock(selectedBlock.id, {
+                                            radius: resolved,
+                                          });
+                                        }}
                                       />
-                                    );
-                                  })()}
-                                </label>
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Font weight
-                                  </span>
-                                  <InputSelect
-                                    value={String(selectedBlock.fontWeight ?? 600)}
-                                    onChange={(e) => {
-                                      const parsed = Number(e.target.value);
-                                      patchBlock(selectedBlock.id, {
-                                        fontWeight: Number.isNaN(parsed)
-                                          ? selectedBlock.fontWeight
-                                          : parsed,
-                                      });
-                                    }}
-                                    options={FONT_WEIGHT_OPTIONS}
-                                  />
-                                </label>
-                              </div>
-                              <div className="space-y-3">
-                                <InspectorSliderControl
-                                  label="Font size (px)"
-                                  value={selectedBlock.fontSize}
-                                  fallbackValue={
-                                    selectedBlock.fontSize ??
-                                    (selectedBlock.size
-                                      ? SIZE_TO_FONT_SIZE_PX[selectedBlock.size]
-                                      : SIZE_TO_FONT_SIZE_PX.md) ?? 16
-                                  }
-                                  min={8}
-                                  max={120}
-                                  step={1}
-                                  onChange={(next) => {
-                                    if (next === undefined) {
-                                      patchBlock(selectedBlock.id, {
-                                        fontSize: undefined,
-                                      });
-                                      return;
-                                    }
-                                    const normalized = Math.round(next);
-                                    patchBlock(selectedBlock.id, {
-                                      fontSize: Number.isNaN(normalized)
-                                        ? undefined
-                                        : normalized,
-                                    });
-                                  }}
-                                />
-                                <InspectorSliderControl
-                                  label="Line height"
-                                  value={selectedBlock.lineHeight}
-                                  fallbackValue={
-                                    selectedBlock.lineHeight ?? 1.2
-                                  }
-                                  min={0.5}
-                                  max={3}
-                                  step={0.1}
-                                  onChange={(next) => {
-                                    if (next === undefined) {
-                                      patchBlock(selectedBlock.id, {
-                                        lineHeight: undefined,
-                                        lineHeightUnit: undefined,
-                                      });
-                                      return;
-                                    }
-                                    patchBlock(selectedBlock.id, {
-                                      lineHeight: next,
-                                      lineHeightUnit: undefined,
-                                    });
-                                  }}
-                                />
-                              </div>
-                              <label className="block">
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Color
-                                </span>
-                                <InspectorColorInput
-                                  value={selectedBlock.color || "#ffffff"}
-                                  onChange={(nextColor) =>
-                                    patchBlock(selectedBlock.id, {
-                                      color: nextColor,
-                                      textColor: nextColor,
-                                    })
-                                  }
-                                  allowAlpha
-                                />
-                              </label>
-                              <InspectorTextShadowControls
-                                block={selectedBlock}
-                                onPatch={(patch) =>
-                                  patchBlock(selectedBlock.id, patch)
-                                }
-                              />
-                              <label className="block">
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Size
-                                </span>
-                                <InputSelect
-                                  value={selectedBlock.size || "md"}
-                                  onChange={(e) =>
-                                    patchBlock(selectedBlock.id, {
-                                      size: e.target.value as any,
-                                    })
-                                  }
-                                  options={TEXT_SIZES}
-                                />
-                              </label>
-                              <div>
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Alignment
-                                </span>
-                                <div className="mt-1 flex gap-1.5">
-                                  {TEXT_ALIGNMENT_OPTIONS.map((option) => {
-                                    const currentAlign = selectedBlock.align ?? "left";
-                                    const isActive = currentAlign === option.value;
-                                    return (
-                                      <button
-                                        key={option.value}
-                                        type="button"
-                                        onClick={() =>
+                                    </InspectorSection>
+                                  ) : null}
+                                  <InspectorSection title="Background">
+                                    <InspectorInputSelect
+                                      label="Style"
+                                      value={selectedBlock.bgStyle ?? "none"}
+                                      onChange={(nextValue) => {
+                                        const value = nextValue as SlideBlock["bgStyle"];
+                                        if (value === "none") {
                                           patchBlock(selectedBlock.id, {
-                                            align: option.value,
-                                          })
+                                            bgStyle: "none",
+                                          });
+                                          return;
                                         }
-                                        className={`flex-1 rounded border px-2.5 py-1.5 text-xs font-medium capitalize transition ${
-                                          isActive
-                                            ? "border-emerald-500 bg-emerald-50 text-emerald-600"
-                                            : "border-neutral-200 text-neutral-600 hover:border-neutral-300"
-                                        }`}
-                                      >
-                                        {option.label}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            </>
-                          )}
+                                        patchBlock(selectedBlock.id, {
+                                          bgStyle: value,
+                                          bgColor: selectedBlock.bgColor ?? "#000000",
+                                          bgOpacity:
+                                            selectedBlock.bgOpacity ??
+                                            (value === "glass" ? 0.5 : 1),
+                                          radius: selectedBlock.radius ?? 0,
+                                          padding: selectedBlock.padding ?? 0,
+                                        });
+                                      }}
+                                      options={BACKGROUND_STYLE_OPTIONS.map((option) => ({
+                                        label: option.label,
+                                        value: option.value,
+                                      }))}
+                                    />
+                                    {selectedBlock.bgStyle &&
+                                    selectedBlock.bgStyle !== "none" ? (
+                                      <>
+                                        <InspectorInputColor
+                                          label="Background color"
+                                          value={selectedBlock.bgColor ?? "#000000"}
+                                          onChange={(nextColor) =>
+                                            patchBlock(selectedBlock.id, {
+                                              bgColor: nextColor,
+                                            })
+                                          }
+                                        />
+                                        <InspectorInputSlider
+                                          label="Background opacity (%)"
+                                          value={
+                                            selectedBlock.bgOpacity !== undefined
+                                              ? selectedBlock.bgOpacity * 100
+                                              : undefined
+                                          }
+                                          fallbackValue={
+                                            ((selectedBlock.bgStyle === "glass" ? 0.5 : 1) *
+                                              100) || 0
+                                          }
+                                          min={0}
+                                          max={100}
+                                          step={1}
+                                          onChange={(next) => {
+                                            const fallbackValue =
+                                              selectedBlock.bgStyle === "glass" ? 0.5 : 1;
+                                            const percent =
+                                              next === undefined
+                                                ? (selectedBlock.bgOpacity ?? fallbackValue) * 100
+                                                : next;
+                                            const clampedPercent = Math.min(
+                                              100,
+                                              Math.max(0, percent ?? 0),
+                                            );
+                                            patchBlock(
+                                              selectedBlock.id,
+                                              {
+                                                bgOpacity: clamp01(clampedPercent / 100),
+                                              },
+                                              false,
+                                            );
+                                          }}
+                                        />
+                                      </>
+                                    ) : null}
+                                  </InspectorSection>
+                                  {selectedBlock.bgStyle &&
+                                  selectedBlock.bgStyle !== "none" ? (
+                                    <InspectorSection title="Spacing">
+                                      <InspectorInputSlider
+                                        label="Padding (px)"
+                                        value={selectedBlock.padding}
+                                        fallbackValue={selectedBlock.padding ?? 0}
+                                        min={0}
+                                        max={100}
+                                        step={1}
+                                        onChange={(next) => {
+                                          const resolved =
+                                            next === undefined ? 0 : Math.round(next);
+                                          patchBlock(selectedBlock.id, {
+                                            padding: resolved,
+                                          });
+                                        }}
+                                      />
+                                    </InspectorSection>
+                                  ) : null}
+                                </>
+                              );
+                            })()}
+                          {selectedBlock.kind === "subheading" &&
+                            (() => {
+                              const textColorValue =
+                                selectedBlock.textColor ??
+                                selectedBlock.color ??
+                                "#000000";
+                              const parsedTextColor =
+                                parseColorValue(textColorValue);
+                              const textOpacityPercent = Math.round(
+                                clampRange(parsedTextColor.alpha * 100, 0, 100),
+                              );
+                              const handleTextColorChange = (nextValue: string) => {
+                                const trimmed = nextValue.trim();
+                                if (!trimmed.length) {
+                                  patchBlock(selectedBlock.id, {
+                                    textColor: undefined,
+                                    color: undefined,
+                                  });
+                                  return;
+                                }
+                                const parsedNext = parseColorValue(nextValue);
+                                const isHex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(trimmed);
+                                const targetAlpha =
+                                  isHex && parsedTextColor.alpha < 0.999
+                                    ? parsedTextColor.alpha
+                                    : parsedNext.alpha;
+                                const resolvedColor =
+                                  targetAlpha >= 0.999
+                                    ? parsedNext.hex
+                                    : hexToRgbaString(parsedNext.hex, targetAlpha);
+                                patchBlock(selectedBlock.id, {
+                                  textColor: resolvedColor,
+                                  color: resolvedColor,
+                                });
+                              };
+                              const handleTextOpacityChange = (
+                                next: number | undefined,
+                              ) => {
+                                if (next === undefined) {
+                                  patchBlock(selectedBlock.id, {
+                                    textColor: parsedTextColor.hex,
+                                    color: parsedTextColor.hex,
+                                  });
+                                  return;
+                                }
+                                const clamped = clampRange(next, 0, 100);
+                                const normalized = clamp01(clamped / 100);
+                                if (normalized >= 0.999) {
+                                  patchBlock(selectedBlock.id, {
+                                    textColor: parsedTextColor.hex,
+                                    color: parsedTextColor.hex,
+                                  });
+                                  return;
+                                }
+                                const nextColor = hexToRgbaString(
+                                  parsedTextColor.hex,
+                                  normalized,
+                                );
+                                patchBlock(selectedBlock.id, {
+                                  textColor: nextColor,
+                                  color: nextColor,
+                                });
+                              };
+                              const fontSizeFallback =
+                                selectedBlock.fontSize ??
+                                (selectedBlock.size
+                                  ? SIZE_TO_FONT_SIZE_PX[selectedBlock.size]
+                                  : TEXT_KIND_FONT_DEFAULT.subheading ??
+                                    SIZE_TO_FONT_SIZE_PX.md) ??
+                                SIZE_TO_FONT_SIZE_PX.md;
+                              return (
+                                <>
+                                  <InspectorSection title="Content">
+                                    <InspectorInputTextArea
+                                      label="Text"
+                                      value={selectedBlock.text ?? ""}
+                                      rows={3}
+                                      onChange={(nextValue) =>
+                                        patchBlock(selectedBlock.id, {
+                                          text: nextValue,
+                                          content: nextValue,
+                                        })
+                                      }
+                                    />
+                                  </InspectorSection>
+                                  <InspectorSection title="Typography">
+                                    <ControlRow label="Font family">
+                                      {(() => {
+                                        const value = resolveFontFamilyValue(
+                                          selectedBlock.fontFamily,
+                                        );
+                                        return (
+                                          <FontSelect
+                                            value={value}
+                                            fonts={APP_FONTS}
+                                            onChange={(nextValue) =>
+                                              handleFontFamilyChange(
+                                                selectedBlock.id,
+                                                nextValue,
+                                              )
+                                            }
+                                          />
+                                        );
+                                      })()}
+                                    </ControlRow>
+                                    <InspectorInputSelect
+                                      label="Font weight"
+                                      value={String(selectedBlock.fontWeight ?? 600)}
+                                      onChange={(nextValue) => {
+                                        const parsed = Number(nextValue);
+                                        patchBlock(selectedBlock.id, {
+                                          fontWeight: Number.isNaN(parsed)
+                                            ? selectedBlock.fontWeight
+                                            : parsed,
+                                        });
+                                      }}
+                                      options={FONT_WEIGHT_OPTIONS.map((option) => ({
+                                        label: option.label,
+                                        value: String(option.value),
+                                      }))}
+                                    />
+                                    <InspectorInputSelect
+                                      label="Size"
+                                      value={selectedBlock.size ?? "md"}
+                                      onChange={(nextValue) => {
+                                        patchBlock(selectedBlock.id, {
+                                          size: nextValue as SlideBlock["size"],
+                                        });
+                                      }}
+                                      options={TEXT_SIZES.map((option) => ({
+                                        label: option.label,
+                                        value: option.value,
+                                      }))}
+                                    />
+                                    <InspectorInputSlider
+                                      label="Font size (px)"
+                                      value={selectedBlock.fontSize}
+                                      fallbackValue={fontSizeFallback}
+                                      min={8}
+                                      max={120}
+                                      step={1}
+                                      onChange={(next) => {
+                                        if (next === undefined) {
+                                          patchBlock(selectedBlock.id, {
+                                            fontSize: undefined,
+                                          });
+                                          return;
+                                        }
+                                        const normalized = Math.round(next);
+                                        patchBlock(selectedBlock.id, {
+                                          fontSize: Number.isNaN(normalized)
+                                            ? undefined
+                                            : normalized,
+                                        });
+                                      }}
+                                    />
+                                    <InspectorInputSlider
+                                      label="Line height"
+                                      value={selectedBlock.lineHeight}
+                                      fallbackValue={selectedBlock.lineHeight ?? 1.2}
+                                      min={0.5}
+                                      max={3}
+                                      step={0.1}
+                                      formatValue={(current, fallback) => {
+                                        const resolved =
+                                          typeof current === "number" &&
+                                          Number.isFinite(current)
+                                            ? current
+                                            : typeof fallback === "number"
+                                              ? fallback
+                                              : 1.2;
+                                        return resolved.toFixed(2);
+                                      }}
+                                      onChange={(next) => {
+                                        if (next === undefined) {
+                                          patchBlock(selectedBlock.id, {
+                                            lineHeight: undefined,
+                                            lineHeightUnit: undefined,
+                                          });
+                                          return;
+                                        }
+                                        const normalized = Math.round(next * 100) / 100;
+                                        patchBlock(selectedBlock.id, {
+                                          lineHeight: normalized,
+                                          lineHeightUnit: undefined,
+                                        });
+                                      }}
+                                    />
+                                    <InspectorInputSlider
+                                      label="Letter spacing (px)"
+                                      value={selectedBlock.letterSpacing}
+                                      fallbackValue={selectedBlock.letterSpacing ?? 0}
+                                      min={-10}
+                                      max={20}
+                                      step={0.1}
+                                      onChange={(next) => {
+                                        if (next === undefined) {
+                                          patchBlock(selectedBlock.id, {
+                                            letterSpacing: undefined,
+                                          });
+                                          return;
+                                        }
+                                        const normalized = Math.round(next * 10) / 10;
+                                        patchBlock(selectedBlock.id, {
+                                          letterSpacing: normalized,
+                                        });
+                                      }}
+                                    />
+                                  </InspectorSection>
+                                  <InspectorSection title="Color">
+                                    <InspectorInputColor
+                                      label="Text color"
+                                      value={textColorValue}
+                                      onChange={handleTextColorChange}
+                                    />
+                                    <InspectorInputSlider
+                                      label="Opacity (%)"
+                                      value={textOpacityPercent}
+                                      fallbackValue={100}
+                                      min={0}
+                                      max={100}
+                                      step={1}
+                                      onChange={handleTextOpacityChange}
+                                    />
+                                  </InspectorSection>
+                                  <InspectorSection title="Alignment">
+                                    <InspectorInputSelect
+                                      label="Alignment"
+                                      value={selectedBlock.align ?? "left"}
+                                      onChange={(nextValue) => {
+                                        patchBlock(selectedBlock.id, {
+                                          align: nextValue as SlideBlock["align"],
+                                        });
+                                      }}
+                                      options={TEXT_ALIGNMENT_OPTIONS.map((option) => ({
+                                        label: option.label,
+                                        value: option.value,
+                                      }))}
+                                    />
+                                  </InspectorSection>
+                                </>
+                              );
+                            })()}
                           {selectedBlock.kind === "button" && selectedButtonConfig && (
                             <div className="space-y-4">
-                              <label className="block">
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Label
-                                </span>
-                                <InputText
-                                  type="text"
+                              <InspectorSection title="Content">
+                                <InspectorInputText
+                                  label="Label"
                                   value={selectedButtonConfig.label}
-                                  onChange={(e) =>
+                                  onChange={(nextValue) =>
                                     updateButtonConfig(selectedBlock.id, (config) => ({
                                       ...config,
-                                      label: e.target.value,
+                                      label: nextValue,
                                     }))
                                   }
-                                  className={INSPECTOR_INPUT_CLASS}
                                 />
-                              </label>
-                              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Font family
-                                  </span>
+                                <InspectorInputSelect
+                                  label="Link"
+                                  value={
+                                    selectedButtonConfig.href &&
+                                    knownLinkValues.has(selectedButtonConfig.href)
+                                      ? selectedButtonConfig.href
+                                      : CUSTOM_LINK_OPTION.value
+                                  }
+                                  onChange={(nextValue) => {
+                                    if (nextValue === CUSTOM_LINK_OPTION.value) {
+                                      updateButtonConfig(selectedBlock.id, (config) => ({
+                                        ...config,
+                                        href:
+                                          config.href &&
+                                          !knownLinkValues.has(config.href)
+                                            ? config.href
+                                            : "",
+                                      }));
+                                      return;
+                                    }
+                                    updateButtonConfig(selectedBlock.id, (config) => ({
+                                      ...config,
+                                      href: nextValue,
+                                    }));
+                                  }}
+                                  options={linkOptions}
+                                />
+                                <InspectorInputText
+                                  label="URL"
+                                  value={selectedButtonConfig.href}
+                                  placeholder="https://"
+                                  onChange={(nextValue) =>
+                                    updateButtonConfig(selectedBlock.id, (config) => ({
+                                      ...config,
+                                      href: nextValue,
+                                    }))
+                                  }
+                                />
+                              </InspectorSection>
+                              <InspectorSection title="Typography">
+                                <ControlRow label="Font family">
                                   {(() => {
                                     const value = resolveFontFamilyValue(
                                       selectedBlock.fontFamily,
@@ -4410,27 +4868,24 @@ export default function SlideModal({
                                       />
                                     );
                                   })()}
-                                </label>
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Font weight
-                                  </span>
-                                  <InputSelect
-                                    value={String(selectedBlock.fontWeight ?? 600)}
-                                    onChange={(e) => {
-                                      const parsed = Number(e.target.value);
-                                      patchBlock(selectedBlock.id, {
-                                        fontWeight: Number.isNaN(parsed)
-                                          ? selectedBlock.fontWeight
-                                          : parsed,
-                                      });
-                                    }}
-                                    options={FONT_WEIGHT_OPTIONS}
-                                  />
-                                </label>
-                              </div>
-                              <div className="space-y-3">
-                                <InspectorSliderControl
+                                </ControlRow>
+                                <InspectorInputSelect
+                                  label="Font weight"
+                                  value={String(selectedBlock.fontWeight ?? 600)}
+                                  onChange={(nextValue) => {
+                                    const parsed = Number(nextValue);
+                                    patchBlock(selectedBlock.id, {
+                                      fontWeight: Number.isNaN(parsed)
+                                        ? selectedBlock.fontWeight
+                                        : parsed,
+                                    });
+                                  }}
+                                  options={FONT_WEIGHT_OPTIONS.map((option) => ({
+                                    label: option.label,
+                                    value: String(option.value),
+                                  }))}
+                                />
+                                <InspectorInputSlider
                                   label="Font size (px)"
                                   value={selectedBlock.fontSize}
                                   fallbackValue={
@@ -4456,12 +4911,10 @@ export default function SlideModal({
                                     });
                                   }}
                                 />
-                                <InspectorSliderControl
+                                <InspectorInputSlider
                                   label="Line height"
                                   value={selectedBlock.lineHeight}
-                                  fallbackValue={
-                                    selectedBlock.lineHeight ?? 1.2
-                                  }
+                                  fallbackValue={selectedBlock.lineHeight ?? 1.2}
                                   min={0.5}
                                   max={3}
                                   step={0.1}
@@ -4479,174 +4932,10 @@ export default function SlideModal({
                                     });
                                   }}
                                 />
-                              </div>
-                              <div>
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Alignment
-                                </span>
-                                <div className="mt-1 flex gap-1.5">
-                                  {TEXT_ALIGNMENT_OPTIONS.map((option) => {
-                                    const currentAlign = selectedBlock.align ?? "left";
-                                    const isActive = currentAlign === option.value;
-                                    return (
-                                      <button
-                                        key={option.value}
-                                        type="button"
-                                        onClick={() =>
-                                          patchBlock(selectedBlock.id, {
-                                            align: option.value,
-                                          })
-                                        }
-                                        className={`flex-1 rounded border px-2.5 py-1.5 text-xs font-medium capitalize transition ${
-                                          isActive
-                                            ? "border-emerald-500 bg-emerald-50 text-emerald-600"
-                                            : "border-neutral-200 text-neutral-600 hover:border-neutral-300"
-                                        }`}
-                                      >
-                                        {option.label}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                              <div>
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Link
-                                </span>
-                                <div className="mt-1 space-y-2">
-                                  <InputSelect
-                                    value={
-                                      linkOptions.includes(selectedButtonConfig.href)
-                                        ? selectedButtonConfig.href
-                                        : "custom"
-                                    }
-                                    onChange={(e) => {
-                                      const value = e.target.value;
-                                      if (value === "custom") {
-                                        updateButtonConfig(selectedBlock.id, (config) => ({
-                                          ...config,
-                                          href:
-                                            config.href && !linkOptions.includes(config.href)
-                                              ? config.href
-                                              : "",
-                                        }));
-                                        return;
-                                      }
-                                      updateButtonConfig(selectedBlock.id, (config) => ({
-                                        ...config,
-                                        href: value,
-                                      }));
-                                    }}
-                                    options={linkOptions.map((opt) => ({
-                                      value: opt,
-                                      label: opt === "custom" ? "Custom URL" : opt,
-                                    }))}
-                                  />
-                                  <InputText
-                                    type="text"
-                                    value={selectedButtonConfig.href}
-                                    onChange={(e) =>
-                                      updateButtonConfig(selectedBlock.id, (config) => ({
-                                        ...config,
-                                        href: e.target.value,
-                                      }))
-                                    }
-                                    className={INSPECTOR_INPUT_CLASS}
-                                    placeholder="https://"
-                                  />
-                                </div>
-                              </div>
-                              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Variant
-                                  </span>
-                                  <InputSelect
-                                    value={selectedButtonConfig.variant}
-                                    onChange={(e) =>
-                                      updateButtonConfig(selectedBlock.id, (config) => ({
-                                        ...config,
-                                        variant: e.target.value as ButtonBlockVariant,
-                                      }))
-                                    }
-                                    options={BUTTON_VARIANTS.map((variant) => ({
-                                      value: variant,
-                                      label: variant,
-                                    }))}
-                                  />
-                                </label>
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Size
-                                  </span>
-                                  <InputSelect
-                                    value={selectedButtonConfig.size}
-                                    onChange={(e) =>
-                                      updateButtonConfig(selectedBlock.id, (config) => ({
-                                        ...config,
-                                        size: e.target.value as ButtonBlockSize,
-                                      }))
-                                    }
-                                    options={BUTTON_SIZES.map((size) => ({
-                                      value: size,
-                                      label: size,
-                                    }))}
-                                  />
-                                </label>
-                              </div>
-                              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
-                                  <InputCheckbox
-                                    
-                                    checked={selectedButtonConfig.fullWidth}
-                                    onChange={(e) =>
-                                      updateButtonConfig(selectedBlock.id, (config) => ({
-                                        ...config,
-                                        fullWidth: e.target.checked,
-                                      }))
-                                    }
-                                  />
-                                  Full width
-                                </label>
-                                <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
-                                  <InputCheckbox
-                                    
-                                    checked={selectedButtonConfig.shadow}
-                                    onChange={(e) =>
-                                      updateButtonConfig(selectedBlock.id, (config) => ({
-                                        ...config,
-                                        shadow: e.target.checked,
-                                      }))
-                                    }
-                                  />
-                                  Shadow
-                                </label>
-                              </div>
-                              <InspectorSliderControl
-                                label="Corner radius (px)"
-                                value={selectedButtonConfig.radius}
-                                fallbackValue={
-                                  selectedButtonConfig.radius ?? DEFAULT_BUTTON_CONFIG.radius
-                                }
-                                min={0}
-                                max={50}
-                                step={1}
-                                onChange={(next) => {
-                                  const resolved =
-                                    next === undefined || Number.isNaN(next)
-                                      ? 0
-                                      : Math.max(0, Math.round(next));
-                                  updateButtonConfig(selectedBlock.id, (config) => ({
-                                    ...config,
-                                    radius: resolved,
-                                  }));
-                                }}
-                              />
-                              <div>
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Text color
-                                </span>
-                                <InspectorColorInput
+                              </InspectorSection>
+                              <InspectorSection title="Color">
+                                <InspectorInputColor
+                                  label="Text color"
                                   value={selectedButtonConfig.textColor}
                                   onChange={(nextColor) =>
                                     updateButtonConfig(selectedBlock.id, (config) => ({
@@ -4654,14 +4943,9 @@ export default function SlideModal({
                                       textColor: nextColor,
                                     }))
                                   }
-                                  allowAlpha
                                 />
-                              </div>
-                              <div>
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Background color
-                                </span>
-                                <InspectorColorInput
+                                <InspectorInputColor
+                                  label="Background color"
                                   value={selectedButtonConfig.bgColor}
                                   onChange={(nextColor) =>
                                     updateButtonConfig(selectedBlock.id, (config) => ({
@@ -4669,9 +4953,95 @@ export default function SlideModal({
                                       bgColor: nextColor,
                                     }))
                                   }
-                                  allowAlpha
                                 />
-                              </div>
+                              </InspectorSection>
+                              <InspectorSection title="Alignment">
+                                <InspectorInputSelect
+                                  label="Alignment"
+                                  value={selectedBlock.align ?? "left"}
+                                  onChange={(nextValue) => {
+                                    patchBlock(selectedBlock.id, {
+                                      align: nextValue as SlideBlock["align"],
+                                    });
+                                  }}
+                                  options={TEXT_ALIGNMENT_OPTIONS.map((option) => ({
+                                    label: option.label,
+                                    value: option.value,
+                                  }))}
+                                />
+                              </InspectorSection>
+                              <InspectorSection title="Options">
+                                <InspectorInputSelect
+                                  label="Variant"
+                                  value={selectedButtonConfig.variant}
+                                  onChange={(nextValue) =>
+                                    updateButtonConfig(selectedBlock.id, (config) => ({
+                                      ...config,
+                                      variant: nextValue as ButtonBlockVariant,
+                                    }))
+                                  }
+                                  options={BUTTON_VARIANTS.map((variant) => ({
+                                    value: variant,
+                                    label: variant,
+                                  }))}
+                                />
+                                <InspectorInputSelect
+                                  label="Size"
+                                  value={selectedButtonConfig.size}
+                                  onChange={(nextValue) =>
+                                    updateButtonConfig(selectedBlock.id, (config) => ({
+                                      ...config,
+                                      size: nextValue as ButtonBlockSize,
+                                    }))
+                                  }
+                                  options={BUTTON_SIZES.map((size) => ({
+                                    value: size,
+                                    label: size,
+                                  }))}
+                                />
+                                <InspectorInputToggle
+                                  label="Full width"
+                                  checked={selectedButtonConfig.fullWidth}
+                                  onChange={(nextChecked) =>
+                                    updateButtonConfig(selectedBlock.id, (config) => ({
+                                      ...config,
+                                      fullWidth: nextChecked,
+                                    }))
+                                  }
+                                />
+                                <InspectorInputToggle
+                                  label="Button shadow"
+                                  checked={selectedButtonConfig.shadow}
+                                  onChange={(nextChecked) =>
+                                    updateButtonConfig(selectedBlock.id, (config) => ({
+                                      ...config,
+                                      shadow: nextChecked,
+                                    }))
+                                  }
+                                />
+                              </InspectorSection>
+                              <InspectorSection title="Effects">
+                                <InspectorInputSlider
+                                  label="Corner radius (px)"
+                                  value={selectedButtonConfig.radius}
+                                  fallbackValue={
+                                    selectedButtonConfig.radius ?? DEFAULT_BUTTON_CONFIG.radius
+                                  }
+                                  min={0}
+                                  max={50}
+                                  step={1}
+                                  onChange={(next) => {
+                                    const resolved =
+                                      next === undefined || Number.isNaN(next)
+                                        ? 0
+                                        : Math.max(0, Math.round(next));
+                                    updateButtonConfig(selectedBlock.id, (config) => ({
+                                      ...config,
+                                      radius: resolved,
+                                    }));
+                                  }}
+                                />
+                              </InspectorSection>
                             </div>
                           )}
                           {selectedBlock.kind === "image" &&
@@ -4718,470 +5088,410 @@ export default function SlideModal({
                                     )}
                                   </div>
                                 </div>
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Image URL
-                                  </span>
-                                  <InputText
-                                    type="text"
+                                <InspectorSection title="Content">
+                                  <InspectorInputText
+                                    label="Image URL"
                                     value={selectedImageConfig.url}
-                                    onChange={(e) => {
-                                      const value = e.target.value;
+                                    placeholder="https://example.com/image.jpg"
+                                    onChange={(nextValue) =>
                                       updateImageConfig(selectedBlock.id, (config) => ({
                                         ...config,
-                                        url: value,
-                                      }));
-                                    }}
-                                    className={INSPECTOR_INPUT_CLASS}
-                                    placeholder="https://example.com/image.jpg"
+                                        url: nextValue,
+                                      }))
+                                    }
                                   />
-                                </label>
-                                <input
-                                  ref={blockImageInputRef}
-                                  type="file"
-                                  accept="image/*"
-                                  className="hidden"
-                                  onChange={(e) => {
-                                    const file = e.target.files?.[0];
-                                    if (file) {
+                                  <InspectorInputUpload
+                                    ref={blockImageInputRef}
+                                    label="Upload"
+                                    buttonLabel={
+                                      selectedImageConfig.url
+                                        ? "Replace image"
+                                        : "Upload image"
+                                    }
+                                    accept="image/*"
+                                    uploading={uploading}
+                                    onSelectFiles={(files) => {
+                                      const file = files?.[0];
+                                      if (!file) return;
                                       handleUpload(file, (url) => {
                                         updateImageConfig(selectedBlock.id, (config) => ({
                                           ...config,
                                           url,
                                         }));
                                       });
-                                      e.target.value = "";
-                                    }
-                                  }}
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    blockImageInputRef.current?.click()
-                                  }
-                                  className="rounded border px-3 py-1 text-xs"
-                                >
-                                  {selectedImageConfig.url
-                                    ? "Replace image"
-                                    : "Upload image"}
-                                </button>
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Object fit
-                                  </span>
-                                  <InputSelect
-                                    value={selectedImageConfig.fit}
-                                    onChange={(e) =>
+                                    }}
+                                  />
+                                  <InspectorInputText
+                                    label="Alt text"
+                                    value={selectedImageConfig.alt}
+                                    placeholder="Describe the image"
+                                    onChange={(nextValue) =>
                                       updateImageConfig(selectedBlock.id, (config) => ({
                                         ...config,
-                                        fit: e.target.value as "cover" | "contain",
+                                        alt: nextValue,
                                       }))
                                     }
+                                  />
+                                </InspectorSection>
+                                <InspectorSection title="Display">
+                                  <InspectorInputSelect
+                                    label="Object fit"
+                                    value={selectedImageConfig.fit}
+                                    onChange={(nextValue) => {
+                                      const normalized =
+                                        nextValue === "contain" ? "contain" : "cover";
+                                      updateImageConfig(selectedBlock.id, (config) => ({
+                                        ...config,
+                                        fit: normalized,
+                                      }));
+                                    }}
                                     options={[
                                       { value: "cover", label: "Cover" },
                                       { value: "contain", label: "Contain" },
                                     ]}
                                   />
-                                </label>
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Aspect ratio
-                                  </span>
-                                  <InputSelect
+                                  <InspectorInputSelect
+                                    label="Aspect ratio"
                                     value={selectedImageConfig.aspectRatio}
-                                    onChange={(e) =>
+                                    onChange={(nextValue) =>
                                       updateImageConfig(selectedBlock.id, (config) => ({
                                         ...config,
-                                        aspectRatio: e.target
-                                          .value as ImageBlockConfig["aspectRatio"],
+                                        aspectRatio: nextValue as ImageBlockConfig["aspectRatio"],
                                       }))
                                     }
-                                    options={IMAGE_ASPECT_RATIO_OPTIONS}
+                                    options={IMAGE_ASPECT_RATIO_OPTIONS.map((option) => ({
+                                      label: option.label,
+                                      value: option.value,
+                                    }))}
                                   />
-                                </label>
-                                <div>
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Focal point
-                                  </span>
-                                  <div className="mt-2 space-y-2">
-                                    <label className="block text-xs text-neutral-500">
-                                      <div className="flex items-center justify-between">
-                                        <span>X axis</span>
-                                        <span>{selectedImageConfig.focalX.toFixed(2)}</span>
-                                      </div>
-                                      <InputSlider
-                                        min={0}
-                                        max={1}
-                                        step={0.01}
-                                        value={selectedImageConfig.focalX}
-                                        fallbackValue={DEFAULT_IMAGE_CONFIG.focalX}
-                                        onValueChange={(next) => {
-                                          const value =
-                                            typeof next === "number"
-                                              ? next
-                                              : DEFAULT_IMAGE_CONFIG.focalX;
-                                          updateImageConfig(selectedBlock.id, (config) => ({
-                                            ...config,
-                                            focalX: value,
-                                          }));
-                                        }}
-                                        containerClassName="mt-1"
-                                        className="w-full"
-                                        numberInputClassName="w-24 shrink-0 text-right text-xs"
-                                      />
-                                    </label>
-                                    <label className="block text-xs text-neutral-500">
-                                      <div className="flex items-center justify-between">
-                                        <span>Y axis</span>
-                                        <span>{selectedImageConfig.focalY.toFixed(2)}</span>
-                                      </div>
-                                      <InputSlider
-                                        min={0}
-                                        max={1}
-                                        step={0.01}
-                                        value={selectedImageConfig.focalY}
-                                        fallbackValue={DEFAULT_IMAGE_CONFIG.focalY}
-                                        onValueChange={(next) => {
-                                          const value =
-                                            typeof next === "number"
-                                              ? next
-                                              : DEFAULT_IMAGE_CONFIG.focalY;
-                                          updateImageConfig(selectedBlock.id, (config) => ({
-                                            ...config,
-                                            focalY: value,
-                                          }));
-                                        }}
-                                        containerClassName="mt-1"
-                                        className="w-full"
-                                        numberInputClassName="w-24 shrink-0 text-right text-xs"
-                                      />
-                                    </label>
-                                  </div>
-                                </div>
-                                <InspectorSliderControl
-                                  label="Corner radius (px)"
-                                  value={selectedImageConfig.radius}
-                                  fallbackValue={
-                                    selectedImageConfig.radius ?? DEFAULT_IMAGE_CONFIG.radius
-                                  }
-                                  min={0}
-                                  max={50}
-                                  step={1}
-                                  onChange={(next) => {
-                                    updateImageConfig(selectedBlock.id, (config) => ({
-                                      ...config,
-                                      radius:
-                                        next === undefined || Number.isNaN(next)
-                                          ? config.radius
-                                          : Math.max(0, Math.round(next)),
-                                    }));
-                                  }}
-                                />
-                                <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
-                                  <InputCheckbox
-                                    
-                                    checked={selectedImageConfig.shadow}
-                                    onChange={(e) =>
+                                  <InspectorInputSlider
+                                    label="Focal X (%)"
+                                    min={0}
+                                    max={100}
+                                    step={1}
+                                    value={Math.round(selectedImageConfig.focalX * 100)}
+                                    fallbackValue={Math.round(
+                                      DEFAULT_IMAGE_CONFIG.focalX * 100,
+                                    )}
+                                    onChange={(next) => {
+                                      const percent =
+                                        typeof next === "number" && Number.isFinite(next)
+                                          ? next
+                                          : DEFAULT_IMAGE_CONFIG.focalX * 100;
+                                      const clamped = Math.min(100, Math.max(0, percent));
                                       updateImageConfig(selectedBlock.id, (config) => ({
                                         ...config,
-                                        shadow: e.target.checked,
-                                      }))
-                                    }
-                                  />
-                                  Shadow
-                                </label>
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Alt text
-                                  </span>
-                                  <InputText
-                                    type="text"
-                                    value={selectedImageConfig.alt}
-                                    onChange={(e) => {
-                                      const value = e.target.value;
-                                      updateImageConfig(selectedBlock.id, (config) => ({
-                                        ...config,
-                                        alt: value,
+                                        focalX: clamped / 100,
                                       }));
                                     }}
-                                    className={INSPECTOR_INPUT_CLASS}
-                                    placeholder="Describe the image"
                                   />
-                                </label>
+                                  <InspectorInputSlider
+                                    label="Focal Y (%)"
+                                    min={0}
+                                    max={100}
+                                    step={1}
+                                    value={Math.round(selectedImageConfig.focalY * 100)}
+                                    fallbackValue={Math.round(
+                                      DEFAULT_IMAGE_CONFIG.focalY * 100,
+                                    )}
+                                    onChange={(next) => {
+                                      const percent =
+                                        typeof next === "number" && Number.isFinite(next)
+                                          ? next
+                                          : DEFAULT_IMAGE_CONFIG.focalY * 100;
+                                      const clamped = Math.min(100, Math.max(0, percent));
+                                      updateImageConfig(selectedBlock.id, (config) => ({
+                                        ...config,
+                                        focalY: clamped / 100,
+                                      }));
+                                    }}
+                                  />
+                                </InspectorSection>
+                                <InspectorSection title="Effects">
+                                  <InspectorInputSlider
+                                    label="Corner radius (px)"
+                                    min={0}
+                                    max={50}
+                                    step={1}
+                                    value={selectedImageConfig.radius}
+                                    fallbackValue={DEFAULT_IMAGE_CONFIG.radius}
+                                    onChange={(next) => {
+                                      const resolved =
+                                        typeof next === "number" && Number.isFinite(next)
+                                          ? Math.max(0, Math.round(next))
+                                          : DEFAULT_IMAGE_CONFIG.radius;
+                                      updateImageConfig(selectedBlock.id, (config) => ({
+                                        ...config,
+                                        radius: resolved,
+                                      }));
+                                    }}
+                                  />
+                                </InspectorSection>
                               </div>
                             )}
                           {selectedBlock.kind === "gallery" &&
                             selectedGalleryConfig && (
                               <div className="space-y-4">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                                    Gallery images ({selectedGalleryConfig.items.length})
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setShowGalleryAddOptions((prev) => !prev)
-                                    }
-                                    className="rounded border px-3 py-1 text-xs font-medium"
+                                <InspectorSection title="Content">
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      flexDirection: "column",
+                                      gap: tokens.spacing.sm,
+                                    }}
                                   >
-                                    + Add image
-                                  </button>
-                                </div>
-                                {uploading && (
-                                  <div className="text-[11px] text-neutral-500">
-                                    Uploading…
-                                  </div>
-                                )}
-                                {showGalleryAddOptions && (
-                                  <div className="space-y-3 rounded border px-3 py-3 text-xs">
-                                    <button
-                                      type="button"
-                                      className="w-full rounded border px-3 py-2 text-xs font-medium"
-                                      onClick={() => {
-                                        galleryInputRef.current?.click();
+                                    <InspectorInputUpload
+                                      label="Upload images"
+                                      buttonLabel="Upload images"
+                                      accept="image/*"
+                                      multiple
+                                      uploading={uploading}
+                                      uploadingLabel="Uploading…"
+                                      onSelectFiles={async (files) => {
+                                        const galleryBlockId = selectedBlock.id;
+                                        const fileList = files
+                                          ? Array.from(files)
+                                          : [];
+                                        if (!fileList.length) {
+                                          return;
+                                        }
+                                        const uploaded: string[] = [];
+                                        for (const file of fileList) {
+                                          // eslint-disable-next-line no-await-in-loop
+                                          await handleUpload(file, (url) => {
+                                            if (url) uploaded.push(url);
+                                          });
+                                        }
+                                        if (uploaded.length) {
+                                          updateGalleryConfig(
+                                            galleryBlockId,
+                                            (config) => ({
+                                              ...config,
+                                              items: [
+                                                ...config.items,
+                                                ...uploaded.map((url) => ({ url })),
+                                              ],
+                                            }),
+                                          );
+                                        }
                                       }}
-                                    >
-                                      Upload from device
-                                    </button>
-                                    <div className="space-y-1">
-                                      <span className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
-                                        Image URL
-                                      </span>
-                                      <div className="flex gap-2">
-                                        <InputText
-                                          type="text"
-                                          value={galleryUrlInput}
-                                          onChange={(e) =>
-                                            setGalleryUrlInput(e.target.value)
-                                          }
-                                          className={`${INSPECTOR_INPUT_CLASS} flex-1`}
-                                          placeholder="https://example.com/image.jpg"
-                                        />
-                                        <button
-                                          type="button"
-                                          className="rounded border px-3 py-1 text-xs font-medium"
-                                          disabled={!galleryUrlInput.trim()}
-                                          onClick={() => {
-                                            const url = galleryUrlInput.trim();
-                                            if (!url) return;
-                                            updateGalleryConfig(
+                                    />
+                                    <InspectorInputText
+                                      label="Add image by URL"
+                                      value={galleryUrlInput}
+                                      placeholder="https://example.com/image.jpg"
+                                      onChange={(nextValue) =>
+                                        setGalleryUrlInput(nextValue)
+                                      }
+                                      trailing={
+                                        <InspectorInlineButton
+                                          onClick={() =>
+                                            handleAddGalleryImageByUrl(
                                               selectedBlock.id,
-                                              (config) => ({
-                                                ...config,
-                                                items: [
-                                                  ...config.items,
-                                                  { url },
-                                                ],
-                                              }),
-                                            );
-                                            setGalleryUrlInput("");
-                                          }}
+                                            )
+                                          }
+                                          disabled={!galleryUrlHasValue}
                                         >
                                           Add
-                                        </button>
+                                        </InspectorInlineButton>
+                                      }
+                                    />
+                                    {galleryRenderedItems.length === 0 ? (
+                                      <div
+                                        style={{
+                                          display: "flex",
+                                          alignItems: "center",
+                                          justifyContent: "center",
+                                          minHeight:
+                                            inspectorLayout.controlHeight * 3,
+                                          borderRadius: inspectorLayout.radius,
+                                          border: `${inspectorLayout.borderWidth}px dashed ${inspectorColors.border}`,
+                                          padding: tokens.spacing.md,
+                                          color: inspectorColors.labelMuted,
+                                          fontSize: "0.75rem",
+                                        }}
+                                      >
+                                        No images yet
                                       </div>
-                                    </div>
+                                    ) : (
+                                      <DndContext
+                                        sensors={sensors}
+                                        collisionDetection={closestCenter}
+                                        onDragStart={handleGalleryDragStart}
+                                        onDragCancel={handleGalleryDragCancel}
+                                        onDragEnd={handleGalleryDragEnd}
+                                      >
+                                        <SortableContext
+                                          items={gallerySortableIds}
+                                          strategy={verticalListSortingStrategy}
+                                        >
+                                          <div
+                                            style={{
+                                              display: "flex",
+                                              flexDirection: "column",
+                                              gap: tokens.spacing.sm,
+                                            }}
+                                          >
+                                            {galleryRenderedItems.map((item, index) => {
+                                              const identity =
+                                                galleryItemIdentities[index] ?? null;
+                                              const itemKey = identity
+                                                ? identity.key
+                                                : ensureGalleryItemKey(item);
+                                              return (
+                                                <GalleryInspectorItem
+                                                  key={itemKey}
+                                                  itemKey={itemKey}
+                                                  item={item}
+                                                  index={index}
+                                                  onAltChange={(value) => {
+                                                    updateGalleryConfig(
+                                                      selectedBlock.id,
+                                                      (config) => ({
+                                                        ...config,
+                                                        items: config.items.map(
+                                                          (galleryItem, galleryIndex) =>
+                                                            galleryIndex === index
+                                                              ? {
+                                                                  ...galleryItem,
+                                                                  alt: value,
+                                                                }
+                                                              : galleryItem,
+                                                        ),
+                                                      }),
+                                                    );
+                                                  }}
+                                                  onRemove={() => {
+                                                    updateGalleryConfig(
+                                                      selectedBlock.id,
+                                                      (config) => ({
+                                                        ...config,
+                                                        items: config.items.filter(
+                                                          (_, galleryIndex) =>
+                                                            galleryIndex !== index,
+                                                        ),
+                                                      }),
+                                                    );
+                                                  }}
+                                                />
+                                              );
+                                            })}
+                                          </div>
+                                        </SortableContext>
+                                        <DragOverlay>
+                                          {activeGalleryDragItem ? (
+                                            <GalleryInspectorItemContent
+                                              label={
+                                                activeGalleryDragId !== null &&
+                                                Number.isFinite(
+                                                  Number(activeGalleryDragId),
+                                                )
+                                                  ? `Image ${
+                                                      Number(activeGalleryDragId) + 1
+                                                    }`
+                                                  : "Image"
+                                              }
+                                              item={activeGalleryDragItem}
+                                              itemKey={
+                                                activeGalleryDragIdentity?.key ??
+                                                ensureGalleryItemKey(activeGalleryDragItem)
+                                              }
+                                              onAltChange={() => {}}
+                                              onRemove={() => {}}
+                                              isDragging
+                                              disableInteractions
+                                              style={{ transform: "scale(1.05)" }}
+                                            />
+                                          ) : null}
+                                        </DragOverlay>
+                                      </DndContext>
+                                    )}
                                   </div>
-                                )}
-                                <input
-                                  ref={galleryInputRef}
-                                  type="file"
-                                  accept="image/*"
-                                  multiple
-                                  className="hidden"
-                                  onChange={async (e) => {
-                                    const files = Array.from(
-                                      e.target.files || [],
-                                    );
-                                    if (!files.length) return;
-                                    const uploaded: string[] = [];
-                                    for (const file of files) {
-                                      // eslint-disable-next-line no-await-in-loop
-                                      await handleUpload(file, (url) => {
-                                        if (url) uploaded.push(url);
-                                      });
-                                    }
-                                    if (uploaded.length) {
+                                </InspectorSection>
+                                <InspectorSection title="Layout">
+                                  <InspectorInputSelect
+                                    label="Layout"
+                                    value={selectedGalleryConfig.layout}
+                                    onChange={(nextValue) =>
                                       updateGalleryConfig(
                                         selectedBlock.id,
                                         (config) => ({
                                           ...config,
-                                          items: [
-                                            ...config.items,
-                                            ...uploaded.map((url) => ({ url })),
-                                          ],
+                                          layout: nextValue as GalleryBlockConfig["layout"],
                                         }),
-                                      );
+                                      )
                                     }
-                                    e.target.value = "";
-                                  }}
-                                />
-                                {galleryRenderedItems.length === 0 ? (
-                                  <div className="flex h-24 items-center justify-center rounded border border-dashed text-xs text-neutral-500">
-                                    No images yet
-                                  </div>
-                                ) : (
-                                  <DndContext
-                                    sensors={sensors}
-                                    collisionDetection={closestCenter}
-                                    onDragStart={handleGalleryDragStart}
-                                    onDragCancel={handleGalleryDragCancel}
-                                    onDragEnd={handleGalleryDragEnd}
-                                  >
-                                    <SortableContext
-                                      items={gallerySortableIds}
-                                      strategy={verticalListSortingStrategy}
-                                    >
-                                      <div className="space-y-2">
-                                        {galleryRenderedItems.map((item, index) => {
-                                          const identity =
-                                            galleryItemIdentities[index] ?? null;
-                                          const itemKey = identity
-                                            ? identity.key
-                                            : ensureGalleryItemKey(item);
-                                          return (
-                                            <GalleryInspectorItem
-                                              key={itemKey}
-                                              itemKey={itemKey}
-                                              item={item}
-                                              index={index}
-                                              onAltChange={(value) => {
-                                                updateGalleryConfig(
-                                                  selectedBlock.id,
-                                                  (config) => ({
-                                                    ...config,
-                                                    items: config.items.map(
-                                                      (galleryItem, galleryIndex) =>
-                                                        galleryIndex === index
-                                                          ? {
-                                                              ...galleryItem,
-                                                              alt: value,
-                                                            }
-                                                          : galleryItem,
-                                                    ),
-                                                  }),
-                                                );
-                                              }}
-                                              onRemove={() => {
-                                                updateGalleryConfig(
-                                                  selectedBlock.id,
-                                                  (config) => ({
-                                                    ...config,
-                                                    items: config.items.filter(
-                                                      (_, galleryIndex) =>
-                                                        galleryIndex !== index,
-                                                    ),
-                                                  }),
-                                                );
-                                              }}
-                                            />
+                                    options={[
+                                      { value: "grid", label: "Grid" },
+                                      { value: "carousel", label: "Carousel" },
+                                    ]}
+                                  />
+                                  <InspectorInputSelect
+                                    label="Aspect ratio"
+                                    value={selectedGalleryConfig.aspectRatio}
+                                    onChange={(nextValue) =>
+                                      updateGalleryConfig(
+                                        selectedBlock.id,
+                                        (config) => ({
+                                          ...config,
+                                          aspectRatio: nextValue as GalleryBlockConfig["aspectRatio"],
+                                        }),
+                                      )
+                                    }
+                                    options={IMAGE_ASPECT_RATIO_OPTIONS.map((option) => ({
+                                      label: option.label,
+                                      value: option.value,
+                                    }))}
+                                  />
+                                </InspectorSection>
+                                <InspectorSection title="Autoplay">
+                                  <InspectorInputToggle
+                                    label="Enable autoplay"
+                                    checked={selectedGalleryConfig.autoplay}
+                                    disabled={!isGalleryCarousel}
+                                    onChange={(nextChecked) =>
+                                      updateGalleryConfig(
+                                        selectedBlock.id,
+                                        (config) => ({
+                                          ...config,
+                                          autoplay: nextChecked,
+                                        }),
+                                      )
+                                    }
+                                  />
+                                  {isGalleryCarousel && selectedGalleryConfig.autoplay ? (
+                                    <div style={INSPECTOR_NESTED_GROUP_STYLE}>
+                                      <InspectorInputSlider
+                                        label="Interval (seconds)"
+                                        min={MIN_GALLERY_AUTOPLAY_INTERVAL}
+                                        max={MAX_GALLERY_AUTOPLAY_INTERVAL}
+                                        step={1}
+                                        value={selectedGalleryConfig.interval}
+                                        fallbackValue={DEFAULT_GALLERY_CONFIG.interval}
+                                        onChange={(next) => {
+                                          const numeric =
+                                            typeof next === "number" && Number.isFinite(next)
+                                              ? next
+                                              : DEFAULT_GALLERY_CONFIG.interval;
+                                          const rounded = Math.round(numeric);
+                                          const clamped = Math.min(
+                                            MAX_GALLERY_AUTOPLAY_INTERVAL,
+                                            Math.max(MIN_GALLERY_AUTOPLAY_INTERVAL, rounded),
                                           );
-                                        })}
-                                      </div>
-                                    </SortableContext>
-                                    <DragOverlay>
-                                      {activeGalleryDragItem ? (
-                                        <GalleryInspectorItemContent
-                                          item={activeGalleryDragItem}
-                                          itemKey={
-                                            activeGalleryDragIdentity?.key ??
-                                            ensureGalleryItemKey(activeGalleryDragItem)
-                                          }
-                                          onAltChange={() => {}}
-                                          onRemove={() => {}}
-                                          isDragging
-                                          disableInteractions
-                                          style={{ transform: "scale(1.05)" }}
-                                        />
-                                      ) : null}
-                                    </DragOverlay>
-                                  </DndContext>
-                                )}
-                                <div className="space-y-3">
-                                  <label className="block">
-                                    <span className="text-xs font-medium text-neutral-500">
-                                      Layout
-                                    </span>
-                                    <InputSelect
-                                      value={selectedGalleryConfig.layout}
-                                      onChange={(e) =>
-                                        updateGalleryConfig(
-                                          selectedBlock.id,
-                                          (config) => ({
-                                            ...config,
-                                            layout: e.target.value as GalleryBlockConfig["layout"],
-                                          }),
-                                        )
-                                      }
-                                      options={[
-                                        { value: "grid", label: "Grid" },
-                                        { value: "carousel", label: "Carousel" },
-                                      ]}
-                                    />
-                                  </label>
-                                  <label className="block">
-                                    <span className="text-xs font-medium text-neutral-500">
-                                      Aspect ratio
-                                    </span>
-                                    <InputSelect
-                                      value={selectedGalleryConfig.aspectRatio}
-                                      onChange={(e) =>
-                                        updateGalleryConfig(
-                                          selectedBlock.id,
-                                          (config) => ({
-                                            ...config,
-                                            aspectRatio: e.target
-                                              .value as GalleryBlockConfig["aspectRatio"],
-                                          }),
-                                        )
-                                      }
-                                      options={IMAGE_ASPECT_RATIO_OPTIONS}
-                                    />
-                                  </label>
-                                  {selectedGalleryConfig.layout === "carousel" && (
-                                    <div className="space-y-2 rounded border px-3 py-2 text-xs">
-                                      <InputToggle
-                                        label="Autoplay"
-                                        checked={selectedGalleryConfig.autoplay}
-                                        onChange={(checked) =>
                                           updateGalleryConfig(
                                             selectedBlock.id,
                                             (config) => ({
                                               ...config,
-                                              autoplay: checked,
+                                              interval: clamped,
                                             }),
-                                          )
-                                        }
-                                        labelClassName="flex items-center justify-between text-xs text-neutral-500"
+                                          );
+                                        }}
                                       />
-                                      <label className="block">
-                                        <span className="text-xs font-medium text-neutral-500">
-                                          Interval (ms)
-                                        </span>
-                                        <InputNumber
-                                          
-                                          min={200}
-                                          step={100}
-                                          value={selectedGalleryConfig.interval}
-                                          onChange={(e) => {
-                                            const value = Number(e.target.value);
-                                            updateGalleryConfig(
-                                              selectedBlock.id,
-                                              (config) => ({
-                                                ...config,
-                                                interval: Number.isNaN(value)
-                                                  ? config.interval
-                                                  : value,
-                                              }),
-                                            );
-                                          }}
-                                          className={INSPECTOR_INPUT_CLASS}
-                                          disabled={!selectedGalleryConfig.autoplay}
-                                        />
-                                      </label>
                                     </div>
-                                  )}
-                                  <InspectorSliderControl
+                                  ) : null}
+                                </InspectorSection>
+                                <InspectorSection title="Effects">
+                                  <InspectorInputSlider
                                     label="Corner radius (px)"
                                     value={selectedGalleryConfig.radius}
                                     fallbackValue={
@@ -5203,348 +5513,911 @@ export default function SlideModal({
                                       );
                                     }}
                                   />
-                                  <InputToggle
-                                    label="Shadow"
-                                    checked={selectedGalleryConfig.shadow}
-                                    onChange={(checked) =>
-                                      updateGalleryConfig(
-                                        selectedBlock.id,
-                                        (config) => ({
-                                          ...config,
-                                          shadow: checked,
-                                        }),
-                                      )
-                                    }
-                                    labelClassName="flex items-center justify-between text-xs text-neutral-500"
-                                  />
-                                </div>
+                                </InspectorSection>
                               </div>
                             )}
-                          {selectedBlock.kind === "quote" && selectedQuoteConfig && (
-                            <div className="space-y-4">
-                              <div className="space-y-2">
-                                <InputToggle
-                                  label="Use customer review"
-                                  checked={selectedQuoteConfig.useReview}
-                                  onChange={(checked) =>
-                                    updateQuoteConfig(selectedBlock.id, (config) => ({
-                                      ...config,
-                                      useReview: checked,
-                                      reviewId: checked ? config.reviewId : null,
-                                    }))
+                          {selectedBlock.kind === "quote" && selectedQuoteConfig
+                            ? (() => {
+                                const textColorValue =
+                                  selectedBlock.textColor ??
+                                  selectedBlock.color ??
+                                  "#000000";
+                                const parsedTextColor =
+                                  parseColorValue(textColorValue);
+                                const textOpacityPercent = Math.round(
+                                  clampRange(parsedTextColor.alpha * 100, 0, 100),
+                                );
+                                const handleTextColorChange = (nextValue: string) => {
+                                  const trimmed = nextValue.trim();
+                                  if (!trimmed.length) {
+                                    patchBlock(selectedBlock.id, {
+                                      textColor: undefined,
+                                      color: undefined,
+                                    });
+                                    return;
                                   }
-                                  labelClassName="flex items-center justify-between text-xs text-neutral-500"
-                                />
-                                {selectedQuoteConfig.useReview && (
-                                  reviewOptions.length > 0 ? (
-                                    <label className="block">
-                                      <span className="text-xs font-medium text-neutral-500">
-                                        Select review
-                                      </span>
-                                      <InputSelect
-                                        value={selectedQuoteConfig.reviewId ?? ""}
-                                        onChange={(e) => {
-                                          const nextId = e.target.value;
-                                          const review = reviewOptions.find(
-                                            (option) => option.id === nextId,
-                                          );
-                                          updateQuoteConfig(selectedBlock.id, (config) => ({
-                                            ...config,
-                                            useReview: true,
-                                            reviewId: nextId.length > 0 ? nextId : null,
-                                            text: review ? review.text : config.text,
-                                            author: review ? review.author : config.author,
-                                          }));
-                                        }}
-                                      >
-                                        <option value="">Choose a review…</option>
-                                        {reviewOptions.map((option) => (
-                                          <option key={option.id} value={option.id}>
-                                            {formatReviewOptionLabel(option)}
-                                          </option>
-                                        ))}
-                                      </InputSelect>
-                                    </label>
-                                  ) : (
-                                    <p className="text-xs text-neutral-500">
-                                      No reviews available.
-                                    </p>
-                                  )
-                                )}
-                              </div>
-                              <label className="block">
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Quote text
-                                </span>
-                                <textarea
-                                  rows={4}
-                                  value={selectedQuoteConfig.text}
-                                  onChange={(e) =>
-                                    updateQuoteConfig(selectedBlock.id, (config) => ({
-                                      ...config,
-                                      text: e.target.value,
-                                    }))
+                                  const parsedNext = parseColorValue(nextValue);
+                                  const isHex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(trimmed);
+                                  const targetAlpha =
+                                    isHex && parsedTextColor.alpha < 0.999
+                                      ? parsedTextColor.alpha
+                                      : parsedNext.alpha;
+                                  const resolvedColor =
+                                    targetAlpha >= 0.999
+                                      ? parsedNext.hex
+                                      : hexToRgbaString(parsedNext.hex, targetAlpha);
+                                  patchBlock(selectedBlock.id, {
+                                    textColor: resolvedColor,
+                                    color: resolvedColor,
+                                  });
+                                };
+                                const handleTextOpacityChange = (
+                                  next: number | undefined,
+                                ) => {
+                                  if (next === undefined) {
+                                    patchBlock(selectedBlock.id, {
+                                      textColor: parsedTextColor.hex,
+                                      color: parsedTextColor.hex,
+                                    });
+                                    return;
                                   }
-                                  className={INSPECTOR_TEXTAREA_CLASS}
-                                />
-                              </label>
-                              <label className="block">
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Author (optional)
-                                </span>
-                                <InputText
-                                  type="text"
-                                  value={selectedQuoteConfig.author}
-                                  onChange={(e) =>
-                                    updateQuoteConfig(selectedBlock.id, (config) => ({
-                                      ...config,
-                                      author: e.target.value,
-                                    }))
+                                  const clamped = clampRange(next, 0, 100);
+                                  const normalized = clamp01(clamped / 100);
+                                  if (normalized >= 0.999) {
+                                    patchBlock(selectedBlock.id, {
+                                      textColor: parsedTextColor.hex,
+                                      color: parsedTextColor.hex,
+                                    });
+                                    return;
                                   }
-                                  className={INSPECTOR_INPUT_CLASS}
-                                />
-                              </label>
-                              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Font family
-                                  </span>
-                                  {(() => {
-                                    const value = resolveFontFamilyValue(
-                                      selectedBlock.fontFamily,
-                                    );
-                                    return (
-                                      <FontSelect
-                                        value={value}
-                                        fonts={APP_FONTS}
+                                  const nextColor = hexToRgbaString(
+                                    parsedTextColor.hex,
+                                    normalized,
+                                  );
+                                  patchBlock(selectedBlock.id, {
+                                    textColor: nextColor,
+                                    color: nextColor,
+                                  });
+                                };
+                                const fontSizeFallback =
+                                  selectedBlock.fontSize ??
+                                  (selectedQuoteConfig.style === "emphasis" ? 24 : 16);
+
+                                return (
+                                  <div className="space-y-4">
+                                    <InspectorSection title="Content">
+                                      <InspectorInputTextArea
+                                        label="Quote text"
+                                        value={selectedQuoteConfig.text}
+                                        rows={4}
                                         onChange={(nextValue) =>
-                                          handleFontFamilyChange(
-                                            selectedBlock.id,
-                                            nextValue,
-                                          )
-                                        }
-                                      />
-                                    );
-                                  })()}
-                                </label>
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Font weight
-                                  </span>
-                                  <InputSelect
-                                    value={String(
-                                      selectedBlock.fontWeight ??
-                                        (selectedQuoteConfig.style === "emphasis" ? 600 : 400),
-                                    )}
-                                    onChange={(e) => {
-                                      const parsed = Number(e.target.value);
-                                      patchBlock(selectedBlock.id, {
-                                        fontWeight: Number.isNaN(parsed)
-                                          ? selectedBlock.fontWeight
-                                          : parsed,
-                                      });
-                                    }}
-                                    options={FONT_WEIGHT_OPTIONS}
-                                  />
-                                </label>
-                              </div>
-                              <div className="space-y-3">
-                                <InspectorSliderControl
-                                  label="Font size (px)"
-                                  value={selectedBlock.fontSize}
-                                  fallbackValue={
-                                    selectedBlock.fontSize ??
-                                    (selectedQuoteConfig.style === "emphasis" ? 24 : 16)
-                                  }
-                                  min={8}
-                                  max={120}
-                                  step={1}
-                                  onChange={(next) => {
-                                    if (next === undefined) {
-                                      patchBlock(selectedBlock.id, {
-                                        fontSize: undefined,
-                                      });
-                                      return;
-                                    }
-                                    const normalized = Math.round(next);
-                                    patchBlock(selectedBlock.id, {
-                                      fontSize: Number.isNaN(normalized)
-                                        ? undefined
-                                        : normalized,
-                                    });
-                                  }}
-                                />
-                                <InspectorSliderControl
-                                  label="Line height"
-                                  value={selectedBlock.lineHeight}
-                                  fallbackValue={
-                                    selectedBlock.lineHeight ?? 1.2
-                                  }
-                                  min={0.5}
-                                  max={3}
-                                  step={0.1}
-                                  onChange={(next) => {
-                                    if (next === undefined) {
-                                      patchBlock(selectedBlock.id, {
-                                        lineHeight: undefined,
-                                        lineHeightUnit: undefined,
-                                      });
-                                      return;
-                                    }
-                                    patchBlock(selectedBlock.id, {
-                                      lineHeight: next,
-                                      lineHeightUnit: undefined,
-                                    });
-                                  }}
-                                />
-                              </div>
-                              <InspectorTextShadowControls
-                                block={selectedBlock}
-                                onPatch={(patch) =>
-                                  patchBlock(selectedBlock.id, patch)
-                                }
-                              />
-                              <label className="block">
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Style
-                                </span>
-                                <InputSelect
-                                  value={selectedQuoteConfig.style}
-                                  onChange={(e) =>
-                                    updateQuoteConfig(selectedBlock.id, (config) => ({
-                                      ...config,
-                                      style: e.target.value as QuoteBlockConfig["style"],
-                                    }))
-                                  }
-                                  options={QUOTE_STYLE_OPTIONS}
-                                />
-                              </label>
-                              {(selectedQuoteConfig.style === "emphasis" ||
-                                selectedQuoteConfig.style === "card") && (
-                                <div className="space-y-3 rounded border px-3 py-3">
-                                  <label className="block text-xs font-medium text-neutral-500">
-                                    Background color
-                                    <InspectorColorInput
-                                      value={selectedQuoteConfig.bgColor}
-                                      onChange={(nextColor) =>
-                                        updateQuoteConfig(selectedBlock.id, (config) => ({
-                                          ...config,
-                                          bgColor: nextColor,
-                                        }))
-                                      }
-                                    />
-                                  </label>
-                                  <InspectorSliderControl
-                                    label="Background opacity"
-                                    value={
-                                      selectedQuoteConfig.bgOpacity !== undefined
-                                        ? selectedQuoteConfig.bgOpacity * 100
-                                        : undefined
-                                    }
-                                    fallbackValue={
-                                      ((selectedQuoteConfig.bgOpacity ?? DEFAULT_QUOTE_CONFIG.bgOpacity) *
-                                        100) || 0
-                                    }
-                                    min={0}
-                                    max={100}
-                                    step={1}
-                                    onChange={(next) => {
-                                      const fallback =
-                                        selectedQuoteConfig.bgOpacity ?? DEFAULT_QUOTE_CONFIG.bgOpacity;
-                                      const percent =
-                                        next === undefined || Number.isNaN(next)
-                                          ? fallback * 100
-                                          : next;
-                                      const clampedPercent = Math.min(
-                                        100,
-                                        Math.max(0, percent ?? 0),
-                                      );
-                                      updateQuoteConfig(selectedBlock.id, (config) => ({
-                                        ...config,
-                                        bgOpacity: clamp01(clampedPercent / 100),
-                                      }));
-                                    }}
-                                  />
-                                  <InspectorSliderControl
-                                    label="Corner radius (px)"
-                                    value={selectedQuoteConfig.radius}
-                                    fallbackValue={
-                                      selectedQuoteConfig.radius ?? DEFAULT_QUOTE_CONFIG.radius
-                                    }
-                                    min={0}
-                                    max={50}
-                                    step={1}
-                                    onChange={(next) => {
-                                      const resolved =
-                                        next === undefined || Number.isNaN(next)
-                                          ? selectedQuoteConfig.radius ?? DEFAULT_QUOTE_CONFIG.radius
-                                          : Math.round(next);
-                                      updateQuoteConfig(selectedBlock.id, (config) => ({
-                                        ...config,
-                                        radius: resolved,
-                                      }));
-                                    }}
-                                  />
-                                  <InspectorSliderControl
-                                    label="Padding (px)"
-                                    value={selectedQuoteConfig.padding}
-                                    fallbackValue={
-                                      selectedQuoteConfig.padding ?? DEFAULT_QUOTE_CONFIG.padding
-                                    }
-                                    min={0}
-                                    max={100}
-                                    step={1}
-                                    onChange={(next) => {
-                                      const resolved =
-                                        next === undefined || Number.isNaN(next)
-                                          ? selectedQuoteConfig.padding ?? DEFAULT_QUOTE_CONFIG.padding
-                                          : Math.round(next);
-                                      updateQuoteConfig(selectedBlock.id, (config) => ({
-                                        ...config,
-                                        padding: resolved,
-                                      }));
-                                    }}
-                                  />
-                                </div>
-                              )}
-                              <div>
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Alignment
-                                </span>
-                                <div className="mt-1 flex gap-1.5">
-                                  {TEXT_ALIGNMENT_OPTIONS.map((option) => {
-                                    const currentAlign = selectedQuoteConfig.align;
-                                    const isActive = currentAlign === option.value;
-                                    return (
-                                      <button
-                                        key={option.value}
-                                        type="button"
-                                        onClick={() =>
                                           updateQuoteConfig(selectedBlock.id, (config) => ({
                                             ...config,
-                                            align: option.value,
+                                            text: nextValue,
                                           }))
                                         }
-                                        className={`flex-1 rounded border px-2.5 py-1.5 text-xs font-medium capitalize transition ${
-                                          isActive
-                                            ? "border-emerald-500 bg-emerald-50 text-emerald-600"
-                                            : "border-neutral-200 text-neutral-600 hover:border-neutral-300"
-                                        }`}
-                                      >
-                                        {option.label}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
+                                      />
+                                      <InspectorInputText
+                                        label="Author (optional)"
+                                        value={selectedQuoteConfig.author}
+                                        onChange={(nextValue) =>
+                                          updateQuoteConfig(selectedBlock.id, (config) => ({
+                                            ...config,
+                                            author: nextValue,
+                                          }))
+                                        }
+                                      />
+                                    </InspectorSection>
+                                    <InspectorSection title="Typography">
+                                      <ControlRow label="Font family">
+                                        {(() => {
+                                          const value = resolveFontFamilyValue(
+                                            selectedBlock.fontFamily,
+                                          );
+                                          return (
+                                            <FontSelect
+                                              value={value}
+                                              fonts={APP_FONTS}
+                                              onChange={(nextValue) =>
+                                                handleFontFamilyChange(
+                                                  selectedBlock.id,
+                                                  nextValue,
+                                                )
+                                              }
+                                            />
+                                          );
+                                        })()}
+                                      </ControlRow>
+                                      <InspectorInputSelect
+                                        label="Font weight"
+                                        value={String(
+                                          selectedBlock.fontWeight ??
+                                            (selectedQuoteConfig.style === "emphasis"
+                                              ? 600
+                                              : 400),
+                                        )}
+                                        onChange={(nextValue) => {
+                                          const parsed = Number(nextValue);
+                                          patchBlock(selectedBlock.id, {
+                                            fontWeight: Number.isNaN(parsed)
+                                              ? selectedBlock.fontWeight
+                                              : parsed,
+                                          });
+                                        }}
+                                        options={FONT_WEIGHT_OPTIONS.map((option) => ({
+                                          label: option.label,
+                                          value: String(option.value),
+                                        }))}
+                                      />
+                                      <InspectorInputSlider
+                                        label="Font size (px)"
+                                        value={selectedBlock.fontSize}
+                                        fallbackValue={fontSizeFallback}
+                                        min={8}
+                                        max={120}
+                                        step={1}
+                                        onChange={(next) => {
+                                          if (next === undefined) {
+                                            patchBlock(selectedBlock.id, {
+                                              fontSize: undefined,
+                                            });
+                                            return;
+                                          }
+                                          const normalized = Math.round(next);
+                                          patchBlock(selectedBlock.id, {
+                                            fontSize: Number.isNaN(normalized)
+                                              ? undefined
+                                              : normalized,
+                                          });
+                                        }}
+                                      />
+                                      <InspectorInputSlider
+                                        label="Line height"
+                                        value={selectedBlock.lineHeight}
+                                        fallbackValue={selectedBlock.lineHeight ?? 1.2}
+                                        min={0.5}
+                                        max={3}
+                                        step={0.1}
+                                        formatValue={(current, fallback) => {
+                                          const resolved =
+                                            typeof current === "number" &&
+                                            Number.isFinite(current)
+                                              ? current
+                                              : typeof fallback === "number"
+                                                ? fallback
+                                                : 1.2;
+                                          return resolved.toFixed(2);
+                                        }}
+                                        onChange={(next) => {
+                                          if (next === undefined) {
+                                            patchBlock(selectedBlock.id, {
+                                              lineHeight: undefined,
+                                              lineHeightUnit: undefined,
+                                            });
+                                            return;
+                                          }
+                                          const normalized = Math.round(next * 100) / 100;
+                                          patchBlock(selectedBlock.id, {
+                                            lineHeight: normalized,
+                                            lineHeightUnit: undefined,
+                                          });
+                                        }}
+                                      />
+                                      <InspectorInputSlider
+                                        label="Letter spacing (px)"
+                                        value={selectedBlock.letterSpacing}
+                                        fallbackValue={selectedBlock.letterSpacing ?? 0}
+                                        min={-10}
+                                        max={20}
+                                        step={0.1}
+                                        onChange={(next) => {
+                                          if (next === undefined) {
+                                            patchBlock(selectedBlock.id, {
+                                              letterSpacing: undefined,
+                                            });
+                                            return;
+                                          }
+                                          const normalized = Math.round(next * 10) / 10;
+                                          patchBlock(selectedBlock.id, {
+                                            letterSpacing: normalized,
+                                          });
+                                        }}
+                                      />
+                                    </InspectorSection>
+                                    <InspectorSection title="Color">
+                                      <InspectorInputColor
+                                        label="Text color"
+                                        value={textColorValue}
+                                        onChange={handleTextColorChange}
+                                      />
+                                      <InspectorInputSlider
+                                        label="Opacity (%)"
+                                        value={textOpacityPercent}
+                                        fallbackValue={100}
+                                        min={0}
+                                        max={100}
+                                        step={1}
+                                        onChange={handleTextOpacityChange}
+                                      />
+                                    </InspectorSection>
+                                    <InspectorSection title="Alignment">
+                                      <InspectorInputSelect
+                                        label="Alignment"
+                                        value={selectedQuoteConfig.align ?? "left"}
+                                        onChange={(nextValue) =>
+                                          updateQuoteConfig(selectedBlock.id, (config) => ({
+                                            ...config,
+                                            align: nextValue as QuoteBlockConfig["align"],
+                                          }))
+                                        }
+                                        options={TEXT_ALIGNMENT_OPTIONS.map((option) => ({
+                                          label: option.label,
+                                          value: option.value,
+                                        }))}
+                                      />
+                                    </InspectorSection>
+                                    <InspectorSection title="Options">
+                                      <InspectorInputToggle
+                                        label="Use customer review"
+                                        checked={selectedQuoteConfig.useReview}
+                                        onChange={(checked) =>
+                                          updateQuoteConfig(selectedBlock.id, (config) => ({
+                                            ...config,
+                                            useReview: checked,
+                                            reviewId: checked ? config.reviewId : null,
+                                          }))
+                                        }
+                                      />
+                                      {selectedQuoteConfig.useReview ? (
+                                        reviewOptions.length > 0 ? (
+                                          <InspectorInputSelect
+                                            label="Review"
+                                            value={selectedQuoteConfig.reviewId ?? ""}
+                                            onChange={(nextValue) => {
+                                              const review = reviewOptions.find(
+                                                (option) => option.id === nextValue,
+                                              );
+                                              updateQuoteConfig(selectedBlock.id, (config) => ({
+                                                ...config,
+                                                useReview: true,
+                                                reviewId: nextValue.length > 0 ? nextValue : null,
+                                                text: review ? review.text : config.text,
+                                                author: review ? review.author : config.author,
+                                              }));
+                                            }}
+                                            options={[
+                                              { value: "", label: "Choose a review…" },
+                                              ...reviewOptions.map((option) => ({
+                                                value: option.id,
+                                                label: formatReviewOptionLabel(option),
+                                              })),
+                                            ]}
+                                          />
+                                        ) : (
+                                          <ControlRow label="Review">
+                                            <span className="text-xs text-neutral-500">
+                                              No reviews available.
+                                            </span>
+                                          </ControlRow>
+                                        )
+                                      ) : null}
+                                    </InspectorSection>
+                                    <InspectorSection title="Style">
+                                      <InspectorInputSelect
+                                        label="Variant"
+                                        value={selectedQuoteConfig.style}
+                                        onChange={(nextValue) =>
+                                          updateQuoteConfig(selectedBlock.id, (config) => ({
+                                            ...config,
+                                            style: nextValue as QuoteBlockConfig["style"],
+                                          }))
+                                        }
+                                        options={QUOTE_STYLE_OPTIONS.map((option) => ({
+                                          label: option.label,
+                                          value: option.value,
+                                        }))}
+                                      />
+                                    </InspectorSection>
+                                    {(selectedQuoteConfig.style === "emphasis" ||
+                                      selectedQuoteConfig.style === "card") && (
+                                      <InspectorSection title="Effects">
+                                        <InspectorInputSlider
+                                          label="Corner radius (px)"
+                                          value={selectedQuoteConfig.radius}
+                                          fallbackValue={
+                                            selectedQuoteConfig.radius ?? DEFAULT_QUOTE_CONFIG.radius
+                                          }
+                                          min={0}
+                                          max={50}
+                                          step={1}
+                                          onChange={(next) => {
+                                            const resolved =
+                                              next === undefined || Number.isNaN(next)
+                                                ? selectedQuoteConfig.radius ?? DEFAULT_QUOTE_CONFIG.radius
+                                                : Math.round(next);
+                                            updateQuoteConfig(selectedBlock.id, (config) => ({
+                                              ...config,
+                                              radius: resolved,
+                                            }));
+                                          }}
+                                        />
+                                      </InspectorSection>
+                                    )}
+                                    {(selectedQuoteConfig.style === "emphasis" ||
+                                      selectedQuoteConfig.style === "card") && (
+                                      <>
+                                        <InspectorSection title="Background">
+                                          <InspectorInputColor
+                                            label="Color"
+                                            value={selectedQuoteConfig.bgColor}
+                                            onChange={(nextColor) =>
+                                              updateQuoteConfig(selectedBlock.id, (config) => ({
+                                                ...config,
+                                                bgColor: nextColor,
+                                              }))
+                                            }
+                                          />
+                                          <InspectorInputSlider
+                                            label="Opacity (%)"
+                                            value={
+                                              selectedQuoteConfig.bgOpacity !== undefined
+                                                ? selectedQuoteConfig.bgOpacity * 100
+                                                : undefined
+                                            }
+                                            fallbackValue={
+                                              ((selectedQuoteConfig.bgOpacity ?? DEFAULT_QUOTE_CONFIG.bgOpacity) *
+                                                100) || 0
+                                            }
+                                            min={0}
+                                            max={100}
+                                            step={1}
+                                            onChange={(next) => {
+                                              const fallback =
+                                                selectedQuoteConfig.bgOpacity ?? DEFAULT_QUOTE_CONFIG.bgOpacity;
+                                              const percent =
+                                                next === undefined || Number.isNaN(next)
+                                                  ? fallback * 100
+                                                  : next;
+                                              const clampedPercent = Math.min(
+                                                100,
+                                                Math.max(0, percent ?? 0),
+                                              );
+                                              updateQuoteConfig(selectedBlock.id, (config) => ({
+                                                ...config,
+                                                bgOpacity: clamp01(clampedPercent / 100),
+                                              }));
+                                            }}
+                                          />
+                                        </InspectorSection>
+                                        <InspectorSection title="Spacing">
+                                          <InspectorInputSlider
+                                            label="Padding (px)"
+                                            value={selectedQuoteConfig.padding}
+                                            fallbackValue={
+                                              selectedQuoteConfig.padding ?? DEFAULT_QUOTE_CONFIG.padding
+                                            }
+                                            min={0}
+                                            max={100}
+                                            step={1}
+                                            onChange={(next) => {
+                                              const resolved =
+                                                next === undefined || Number.isNaN(next)
+                                                  ? selectedQuoteConfig.padding ?? DEFAULT_QUOTE_CONFIG.padding
+                                                  : Math.round(next);
+                                              updateQuoteConfig(selectedBlock.id, (config) => ({
+                                                ...config,
+                                                padding: resolved,
+                                              }));
+                                            }}
+                                          />
+                                        </InspectorSection>
+                                      </>
+                                    )}
+                                  </div>
+                                );
+                              })()
+                            : null}
+                          <InspectorSection title="Appearance">
+                            <InspectorInputToggle
+                              label="Enable shadow"
+                              checked={shadowEnabled}
+                              onChange={(checked) => {
+                                if (!selectedBlockId) return;
+                                if (checked) {
+                                  patchBlock(selectedBlockId, { boxShadow: cachedShadowPreset });
+                                  return;
+                                }
+                                if (currentShadowPreset !== "none") {
+                                  shadowPresetCacheRef.current[selectedBlockId] =
+                                    currentShadowPreset as BlockShadowPreset;
+                                }
+                                patchBlock(selectedBlockId, { boxShadow: "none" });
+                              }}
+                            />
+                            {shadowEnabled ? (
+                              <div style={INSPECTOR_NESTED_GROUP_STYLE}>
+                                <InspectorInputSelect
+                                  label="Shadow preset"
+                                  value={currentShadowPreset}
+                                  onChange={(nextValue) => {
+                                    if (!selectedBlockId) return;
+                                    const preset = nextValue as BlockShadowPreset;
+                                    shadowPresetCacheRef.current[selectedBlockId] = preset;
+                                    patchBlock(selectedBlockId, { boxShadow: preset });
+                                  }}
+                                  options={ENABLED_SHADOW_OPTIONS.map((option) => ({
+                                    label: option.label,
+                                    value: option.value,
+                                  }))}
+                                />
                               </div>
-                            </div>
-                          )}
-                          <div className="rounded border px-3 py-3 space-y-3">
-                            <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                              Visibility
-                            </h4>
+                            ) : null}
+                            <InspectorInputToggle
+                              label="Enable border"
+                              checked={borderEnabled}
+                              onChange={(checked) => {
+                                if (!selectedBlockId) return;
+                                if (checked) {
+                                  const cached = cachedBorderConfig;
+                                  const nextWidth =
+                                    typeof cached.width === "number" && cached.width > 0
+                                      ? cached.width
+                                      : 1;
+                                  const patch: Partial<SlideBlock> = {
+                                    borderWidth: Math.max(1, Math.round(nextWidth)),
+                                    borderColor: cached.color ?? DEFAULT_BORDER_COLOR,
+                                  };
+                                  if (typeof cached.radius === "number") {
+                                    patch.borderRadius = cached.radius;
+                                  }
+                                  patchBlock(selectedBlockId, patch);
+                                  return;
+                                }
+                                borderCacheRef.current[selectedBlockId] = {
+                                  color: borderColorValue ?? cachedBorderConfig.color ?? DEFAULT_BORDER_COLOR,
+                                  width:
+                                    typeof borderWidthValue === "number" && borderWidthValue > 0
+                                      ? borderWidthValue
+                                      : cachedBorderConfig.width,
+                                  radius: borderRadiusValue ?? cachedBorderConfig.radius,
+                                };
+                                patchBlock(selectedBlockId, {
+                                  borderColor: undefined,
+                                  borderWidth: undefined,
+                                });
+                              }}
+                            />
+                            {borderEnabled ? (
+                              <div style={INSPECTOR_NESTED_GROUP_STYLE}>
+                                <InspectorInputColor
+                                  label="Border color"
+                                  value={selectedBlock.borderColor ?? ""}
+                                  onChange={(nextColor) => {
+                                    const normalized = nextColor.trim();
+                                    patchBlock(selectedBlock.id, {
+                                      borderColor:
+                                        normalized.length > 0 ? normalized : undefined,
+                                    });
+                                  }}
+                                />
+                                <InspectorInputSlider
+                                  label="Border width (px)"
+                                  value={selectedBlock.borderWidth}
+                                  fallbackValue={
+                                    selectedBlock.borderWidth ?? cachedBorderConfig.width ?? 0
+                                  }
+                                  min={0}
+                                  max={20}
+                                  step={1}
+                                  onChange={(next) => {
+                                    if (next === undefined || Number.isNaN(next)) {
+                                      patchBlock(selectedBlock.id, { borderWidth: undefined });
+                                      return;
+                                    }
+                                    patchBlock(selectedBlock.id, {
+                                      borderWidth: Math.max(0, Math.round(next)),
+                                    });
+                                  }}
+                                />
+                                <InspectorInputSlider
+                                  label="Corner radius (px)"
+                                  value={selectedBlock.borderRadius}
+                                  fallbackValue={
+                                    selectedBlock.borderRadius ??
+                                    cachedBorderConfig.radius ??
+                                    0
+                                  }
+                                  min={0}
+                                  max={50}
+                                  step={1}
+                                  onChange={(next) => {
+                                    if (next === undefined || Number.isNaN(next)) {
+                                      patchBlock(selectedBlock.id, { borderRadius: undefined });
+                                      return;
+                                    }
+                                    patchBlock(selectedBlock.id, {
+                                      borderRadius: Math.max(0, Math.round(next)),
+                                    });
+                                  }}
+                                />
+                              </div>
+                            ) : null}
+                          </InspectorSection>
+                          <InspectorSection title="Background">
+                            <InspectorInputToggle
+                              label="Enable background"
+                              checked={backgroundEnabled}
+                              onChange={(checked) => {
+                                if (!selectedBlockId) return;
+                                if (checked) {
+                                  applyBackgroundType(cachedBackgroundType);
+                                  return;
+                                }
+                                const type = selectedBlockBackground.type;
+                                if (type && type !== "none") {
+                                  backgroundTypeCacheRef.current[selectedBlockId] = type;
+                                }
+                                applyBackgroundType("none");
+                              }}
+                            />
+                            {backgroundEnabled ? (
+                              <div style={INSPECTOR_NESTED_GROUP_STYLE}>
+                                <InspectorInputSelect
+                                  label="Style"
+                                  value={
+                                    selectedBlockBackground.type === "none"
+                                      ? cachedBackgroundType
+                                      : (selectedBlockBackground.type ??
+                                        DEFAULT_ENABLED_BACKGROUND_TYPE)
+                                  }
+                                  onChange={(nextValue) => {
+                                    if (!selectedBlockId) return;
+                                    const nextType = nextValue as BlockBackground["type"];
+                                    backgroundTypeCacheRef.current[selectedBlockId] = nextType;
+                                    applyBackgroundType(nextType);
+                                  }}
+                                  options={ENABLED_BACKGROUND_STYLE_OPTIONS.map((option) => ({
+                                    label: option.label,
+                                    value: option.value,
+                                  }))}
+                                />
+                                {selectedBlockBackground.type === "color" ? (
+                                  <InspectorInputColor
+                                    label="Color"
+                                    value={
+                                      selectedBlockBackground.color ??
+                                      DEFAULT_BLOCK_BACKGROUND_COLOR
+                                    }
+                                    onChange={(nextColor) => {
+                                      updateSelectedBlockBackground((prev) => {
+                                        const next = cloneBlockBackground(prev);
+                                        const normalized = nextColor.trim();
+                                        next.type = "color";
+                                        next.color =
+                                          normalized.length > 0
+                                            ? normalized
+                                            : DEFAULT_BLOCK_BACKGROUND_COLOR;
+                                        return next;
+                                      });
+                                    }}
+                                  />
+                                ) : null}
+                                {selectedBlockBackground.type === "gradient" ? (
+                                  <>
+                                    <InspectorInputColor
+                                      label="From"
+                                      value={
+                                        selectedBlockBackground.color ??
+                                        DEFAULT_BLOCK_GRADIENT_FROM
+                                      }
+                                      onChange={(nextColor) => {
+                                        updateSelectedBlockBackground((prev) => {
+                                          const next = cloneBlockBackground(prev);
+                                          const normalized = nextColor.trim();
+                                          next.type = "gradient";
+                                          next.color =
+                                            normalized.length > 0
+                                              ? normalized
+                                              : DEFAULT_BLOCK_GRADIENT_FROM;
+                                          next.color2 =
+                                            next.color2 && next.color2.trim().length > 0
+                                              ? next.color2
+                                              : DEFAULT_BLOCK_GRADIENT_TO;
+                                          next.direction = next.direction ?? "to-bottom";
+                                          return next;
+                                        });
+                                      }}
+                                    />
+                                    <InspectorInputColor
+                                      label="To"
+                                      value={
+                                        selectedBlockBackground.color2 ??
+                                        DEFAULT_BLOCK_GRADIENT_TO
+                                      }
+                                      onChange={(nextColor) => {
+                                        updateSelectedBlockBackground((prev) => {
+                                          const next = cloneBlockBackground(prev);
+                                          const normalized = nextColor.trim();
+                                          next.type = "gradient";
+                                          next.color =
+                                            next.color && next.color.trim().length > 0
+                                              ? next.color
+                                              : DEFAULT_BLOCK_GRADIENT_FROM;
+                                          next.color2 =
+                                            normalized.length > 0
+                                              ? normalized
+                                              : DEFAULT_BLOCK_GRADIENT_TO;
+                                          next.direction = next.direction ?? "to-bottom";
+                                          return next;
+                                        });
+                                      }}
+                                    />
+                                    <InspectorInputSelect
+                                      label="Direction"
+                                      value={selectedBlockBackground.direction ?? "to-bottom"}
+                                      onChange={(nextValue) => {
+                                        const value =
+                                          nextValue as BlockBackgroundGradientDirection;
+                                        updateSelectedBlockBackground((prev) => {
+                                          const next = cloneBlockBackground(prev);
+                                          next.type = "gradient";
+                                          next.direction = value;
+                                          next.color =
+                                            next.color && next.color.trim().length > 0
+                                              ? next.color
+                                              : DEFAULT_BLOCK_GRADIENT_FROM;
+                                          next.color2 =
+                                            next.color2 && next.color2.trim().length > 0
+                                              ? next.color2
+                                              : DEFAULT_BLOCK_GRADIENT_TO;
+                                          return next;
+                                        });
+                                      }}
+                                      options={BLOCK_BACKGROUND_GRADIENT_DIRECTIONS.map((option) => ({
+                                        label: option.label,
+                                        value: option.value,
+                                      }))}
+                                    />
+                                  </>
+                                ) : null}
+                                {selectedBlockBackground.type === "image" ? (
+                                  <>
+                                    <InspectorInputUpload
+                                      label="Upload"
+                                      buttonLabel={
+                                        selectedBlockBackground.url
+                                          ? "Replace image"
+                                          : "Upload image"
+                                      }
+                                      accept="image/*"
+                                      uploading={uploading}
+                                      onSelectFiles={(files) => {
+                                        const file = files?.[0];
+                                        if (!file) return;
+                                        void handleUpload(file, (url) => {
+                                          updateSelectedBlockBackground((prev) => {
+                                            const next = cloneBlockBackground(prev);
+                                            next.type = "image";
+                                            next.url = url;
+                                            return next;
+                                          });
+                                        });
+                                      }}
+                                    />
+                                    <InspectorInputText
+                                      label="Image URL"
+                                      value={selectedBlockBackground.url ?? ""}
+                                      placeholder="https://example.com/image.jpg"
+                                      onChange={(nextValue) => {
+                                        updateSelectedBlockBackground((prev) => {
+                                          const next = cloneBlockBackground(prev);
+                                          next.type = "image";
+                                          next.url = nextValue;
+                                          return next;
+                                        });
+                                      }}
+                                    />
+                                  </>
+                                ) : null}
+                                <InspectorInputSlider
+                                  label="Corner radius (px)"
+                                  value={selectedBlockBackground.radius}
+                                  fallbackValue={selectedBlockBackground.radius ?? 0}
+                                  min={0}
+                                  max={50}
+                                  step={1}
+                                  onChange={(next) => {
+                                    updateSelectedBlockBackground((prev) => {
+                                      const nextBackground = cloneBlockBackground(prev);
+                                      const resolved =
+                                        next === undefined || Number.isNaN(next)
+                                          ? nextBackground.radius ?? 0
+                                          : Math.max(0, Math.round(next));
+                                      nextBackground.radius = resolved;
+                                      return nextBackground;
+                                    });
+                                  }}
+                                />
+                                <InspectorInputSlider
+                                  label="Opacity (%)"
+                                  value={selectedBlockBackground.opacity}
+                                  fallbackValue={selectedBlockBackground.opacity ?? 100}
+                                  min={0}
+                                  max={100}
+                                  step={1}
+                                  onChange={(next) => {
+                                    updateSelectedBlockBackground((prev) => {
+                                      const nextBackground = cloneBlockBackground(prev);
+                                      const resolved =
+                                        next === undefined || Number.isNaN(next)
+                                          ? nextBackground.opacity ?? 100
+                                          : Math.min(100, Math.max(0, Math.round(next)));
+                                      nextBackground.opacity = resolved;
+                                      return nextBackground;
+                                    });
+                                  }}
+                                />
+                              </div>
+                            ) : null}
+                          </InspectorSection>
+                          <InspectorSection title="Animations">
+                            <InspectorInputToggle
+                              label="Enable animation"
+                              checked={animationEnabled}
+                              onChange={(checked) => {
+                                if (!selectedBlockId) return;
+                                if (checked) {
+                                  const nextType = cachedAnimationType;
+                                  applyAnimationConfig((prev) => ({
+                                    ...prev,
+                                    type: nextType,
+                                  }));
+                                  return;
+                                }
+                                const type = selectedAnimationConfig.type;
+                                if (type && type !== "none") {
+                                  animationTypeCacheRef.current[selectedBlockId] = type;
+                                }
+                                applyAnimationConfig((prev) => ({ ...prev, type: "none" }));
+                              }}
+                            />
+                            {animationEnabled ? (
+                              <div style={INSPECTOR_NESTED_GROUP_STYLE}>
+                                <InspectorInputSelect
+                                  label="Entry animation"
+                                  value={selectedAnimationConfig.type}
+                                  onChange={(nextValue) => {
+                                    if (!selectedBlockId) return;
+                                    const nextType = nextValue as BlockAnimationType;
+                                    animationTypeCacheRef.current[selectedBlockId] = nextType;
+                                    applyAnimationConfig((prev) => ({ ...prev, type: nextType }));
+                                  }}
+                                  options={ENABLED_ANIMATION_OPTIONS.map((option) => ({
+                                    label: option.label,
+                                    value: option.value,
+                                  }))}
+                                />
+                                <InspectorInputSlider
+                                  label="Duration (ms)"
+                                  value={selectedAnimationConfig.duration}
+                                  fallbackValue={
+                                    selectedAnimationConfig.duration ??
+                                    DEFAULT_BLOCK_ANIMATION_CONFIG.duration
+                                  }
+                                  min={0}
+                                  max={5000}
+                                  step={50}
+                                  onChange={(next) => {
+                                    const fallback =
+                                      selectedAnimationConfig.duration ??
+                                      DEFAULT_BLOCK_ANIMATION_CONFIG.duration;
+                                    const resolved =
+                                      next === undefined || Number.isNaN(next)
+                                        ? fallback
+                                        : Math.max(0, Math.round(next));
+                                    applyAnimationConfig((prev) => ({
+                                      ...prev,
+                                      duration: resolved,
+                                    }));
+                                  }}
+                                />
+                                <InspectorInputSlider
+                                  label="Delay (ms)"
+                                  value={selectedAnimationConfig.delay}
+                                  fallbackValue={
+                                    selectedAnimationConfig.delay ??
+                                    DEFAULT_BLOCK_ANIMATION_CONFIG.delay
+                                  }
+                                  min={0}
+                                  max={5000}
+                                  step={50}
+                                  onChange={(next) => {
+                                    const fallback =
+                                      selectedAnimationConfig.delay ??
+                                      DEFAULT_BLOCK_ANIMATION_CONFIG.delay;
+                                    const resolved =
+                                      next === undefined || Number.isNaN(next)
+                                        ? fallback
+                                        : Math.max(0, Math.round(next));
+                                    applyAnimationConfig((prev) => ({
+                                      ...prev,
+                                      delay: resolved,
+                                    }));
+                                  }}
+                                />
+                              </div>
+                            ) : null}
+                          </InspectorSection>
+                          <InspectorSection title="Transitions">
+                            <InspectorInputToggle
+                              label="Enable hover effect"
+                              checked={transitionEnabled}
+                              onChange={(checked) => {
+                                if (!selectedBlockId) return;
+                                if (checked) {
+                                  const nextHover = cachedTransitionHover;
+                                  applyTransitionConfig((prev) => ({
+                                    ...prev,
+                                    hover: nextHover,
+                                  }));
+                                  return;
+                                }
+                                const hover = selectedTransitionConfig.hover;
+                                if (hover && hover !== "none") {
+                                  transitionHoverCacheRef.current[selectedBlockId] = hover;
+                                }
+                                applyTransitionConfig((prev) => ({ ...prev, hover: "none" }));
+                              }}
+                            />
+                            {transitionEnabled ? (
+                              <div style={INSPECTOR_NESTED_GROUP_STYLE}>
+                                <InspectorInputSelect
+                                  label="Hover effect"
+                                  value={selectedTransitionConfig.hover}
+                                  onChange={(nextValue) => {
+                                    if (!selectedBlockId) return;
+                                    const nextHover = nextValue as BlockHoverTransition;
+                                    transitionHoverCacheRef.current[selectedBlockId] = nextHover;
+                                    applyTransitionConfig((prev) => ({
+                                      ...prev,
+                                      hover: nextHover,
+                                    }));
+                                  }}
+                                  options={ENABLED_TRANSITION_OPTIONS.map((option) => ({
+                                    label: option.label,
+                                    value: option.value,
+                                  }))}
+                                />
+                                <InspectorInputSlider
+                                  label="Transition duration (ms)"
+                                  value={selectedTransitionConfig.duration}
+                                  fallbackValue={
+                                    selectedTransitionConfig.duration ??
+                                    DEFAULT_BLOCK_TRANSITION_CONFIG.duration
+                                  }
+                                  min={0}
+                                  max={5000}
+                                  step={50}
+                                  onChange={(next) => {
+                                    const fallback =
+                                      selectedTransitionConfig.duration ??
+                                      DEFAULT_BLOCK_TRANSITION_CONFIG.duration;
+                                    const resolved =
+                                      next === undefined || Number.isNaN(next)
+                                        ? fallback
+                                        : Math.max(0, Math.round(next));
+                                    applyTransitionConfig((prev) => ({
+                                      ...prev,
+                                      duration: resolved,
+                                    }));
+                                  }}
+                                />
+                              </div>
+                            ) : null}
+                          </InspectorSection>
+                          <InspectorSection title="Visibility">
                             {DEVICE_VISIBILITY_CONTROLS.map(({ key, label }) => (
-                              <InputToggle
+                              <InspectorInputToggle
                                 key={key}
                                 label={label}
                                 checked={selectedVisibilityConfig[key]}
@@ -5554,545 +6427,10 @@ export default function SlideModal({
                                     [key]: checked,
                                   }))
                                 }
-                                labelClassName="flex items-center justify-between text-xs text-neutral-500"
                               />
                             ))}
-                          </div>
-                          <div className="rounded border px-3 py-3 space-y-3">
-                            <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                              Appearance
-                            </h4>
-                            <div>
-                              <span className="text-xs font-medium text-neutral-500">Shadow</span>
-                              <div className="mt-1 flex gap-1.5">
-                                {BLOCK_SHADOW_OPTIONS.map((option) => {
-                                  const currentShadow = selectedBlock.boxShadow ?? "none";
-                                  const isActive = currentShadow === option.value;
-                                  return (
-                                    <button
-                                      key={option.value}
-                                      type="button"
-                                      onClick={() =>
-                                        patchBlock(selectedBlock.id, { boxShadow: option.value })
-                                      }
-                                      className={`flex-1 rounded border px-2.5 py-1.5 text-xs font-medium transition ${
-                                        isActive
-                                          ? "border-emerald-500 bg-emerald-50 text-emerald-600"
-                                          : "border-neutral-200 text-neutral-600 hover:border-neutral-300"
-                                      }`}
-                                    >
-                                      {option.label}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                              <label className="block sm:col-span-2">
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Border color
-                                </span>
-                                <InspectorColorInput
-                                  value={selectedBlock.borderColor ?? "transparent"}
-                                  onChange={(nextColor) => {
-                                    const normalized = nextColor?.trim();
-                                    patchBlock(selectedBlock.id, {
-                                      borderColor:
-                                        normalized && normalized.length > 0
-                                          ? normalized
-                                          : undefined,
-                                    });
-                                  }}
-                                  allowAlpha
-                                />
-                              </label>
-                              <label className="block">
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Border width (px)
-                                </span>
-                                <InputNumber
-                                  
-                                  min={0}
-                                  value={
-                                    selectedBlock.borderWidth !== undefined
-                                      ? selectedBlock.borderWidth
-                                      : ""
-                                  }
-                                  onChange={(e) => {
-                                    const value = e.target.value;
-                                    if (value === "") {
-                                      patchBlock(selectedBlock.id, { borderWidth: undefined });
-                                      return;
-                                    }
-                                    const parsed = Number(value);
-                                    patchBlock(selectedBlock.id, {
-                                      borderWidth: Number.isNaN(parsed)
-                                        ? selectedBlock.borderWidth
-                                        : Math.max(0, parsed),
-                                    });
-                                  }}
-                                  className={INSPECTOR_INPUT_CLASS}
-                                />
-                              </label>
-                              <InspectorSliderControl
-                                label="Border radius (px)"
-                                value={selectedBlock.borderRadius}
-                                fallbackValue={selectedBlock.borderRadius ?? 0}
-                                min={0}
-                                max={50}
-                                step={1}
-                                onChange={(next) => {
-                                  if (next === undefined) {
-                                    patchBlock(selectedBlock.id, { borderRadius: undefined });
-                                    return;
-                                  }
-                                  const resolved = Math.max(0, Math.round(next));
-                                  patchBlock(selectedBlock.id, {
-                                    borderRadius: resolved,
-                                  });
-                                }}
-                              />
-                            </div>
-                            <div className="space-y-3">
-                              <label className="block">
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Background type
-                                </span>
-                                <InputSelect
-                                  value={selectedBlockBackground.type ?? "none"}
-                                  onChange={(event) => {
-                                    const nextType = event.target.value as BlockBackground["type"];
-                                    updateSelectedBlockBackground((prev) => {
-                                      const next = cloneBlockBackground(prev);
-                                      next.type = nextType;
-                                      if (nextType === "none") {
-                                        next.color = undefined;
-                                        next.color2 = undefined;
-                                        next.direction = undefined;
-                                        next.url = undefined;
-                                      } else if (nextType === "color") {
-                                        next.color =
-                                          next.color && next.color.trim().length > 0
-                                            ? next.color
-                                            : DEFAULT_BLOCK_BACKGROUND_COLOR;
-                                        next.color2 = undefined;
-                                        next.direction = undefined;
-                                        next.url = undefined;
-                                      } else if (nextType === "gradient") {
-                                        next.color =
-                                          next.color && next.color.trim().length > 0
-                                            ? next.color
-                                            : DEFAULT_BLOCK_GRADIENT_FROM;
-                                        next.color2 =
-                                          next.color2 && next.color2.trim().length > 0
-                                            ? next.color2
-                                            : DEFAULT_BLOCK_GRADIENT_TO;
-                                        next.direction = next.direction ?? "to-bottom";
-                                        next.url = undefined;
-                                      } else if (nextType === "image") {
-                                        next.url = next.url ?? "";
-                                      }
-                                      return next;
-                                    });
-                                  }}
-                                  options={BLOCK_BACKGROUND_TYPE_OPTIONS}
-                                />
-                              </label>
-                              {selectedBlockBackground.type === "color" && (
-                                <label className="block">
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    Background color
-                                  </span>
-                                  <InspectorColorInput
-                                    value={
-                                      selectedBlockBackground.color ?? DEFAULT_BLOCK_BACKGROUND_COLOR
-                                    }
-                                    onChange={(nextColor) => {
-                                      updateSelectedBlockBackground((prev) => {
-                                        const next = cloneBlockBackground(prev);
-                                        const normalized = nextColor?.trim();
-                                        next.type = "color";
-                                        next.color =
-                                          normalized && normalized.length > 0
-                                            ? normalized
-                                            : DEFAULT_BLOCK_BACKGROUND_COLOR;
-                                        return next;
-                                      });
-                                    }}
-                                    allowAlpha
-                                  />
-                                </label>
-                              )}
-                              {selectedBlockBackground.type === "gradient" && (
-                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                                  <label className="block">
-                                    <span className="text-xs font-medium text-neutral-500">
-                                      From
-                                    </span>
-                                    <InspectorColorInput
-                                      value={
-                                        selectedBlockBackground.color ?? DEFAULT_BLOCK_GRADIENT_FROM
-                                      }
-                                      onChange={(nextColor) => {
-                                        updateSelectedBlockBackground((prev) => {
-                                          const next = cloneBlockBackground(prev);
-                                          const normalized = nextColor?.trim();
-                                          next.type = "gradient";
-                                          next.color =
-                                            normalized && normalized.length > 0
-                                              ? normalized
-                                              : DEFAULT_BLOCK_GRADIENT_FROM;
-                                          next.color2 =
-                                            next.color2 && next.color2.trim().length > 0
-                                              ? next.color2
-                                              : DEFAULT_BLOCK_GRADIENT_TO;
-                                          next.direction = next.direction ?? "to-bottom";
-                                          return next;
-                                        });
-                                      }}
-                                      allowAlpha
-                                    />
-                                  </label>
-                                  <label className="block">
-                                    <span className="text-xs font-medium text-neutral-500">
-                                      To
-                                    </span>
-                                    <InspectorColorInput
-                                      value={
-                                        selectedBlockBackground.color2 ?? DEFAULT_BLOCK_GRADIENT_TO
-                                      }
-                                      onChange={(nextColor) => {
-                                        updateSelectedBlockBackground((prev) => {
-                                          const next = cloneBlockBackground(prev);
-                                          const normalized = nextColor?.trim();
-                                          next.type = "gradient";
-                                          next.color =
-                                            next.color && next.color.trim().length > 0
-                                              ? next.color
-                                              : DEFAULT_BLOCK_GRADIENT_FROM;
-                                          next.color2 =
-                                            normalized && normalized.length > 0
-                                              ? normalized
-                                              : DEFAULT_BLOCK_GRADIENT_TO;
-                                          next.direction = next.direction ?? "to-bottom";
-                                          return next;
-                                        });
-                                      }}
-                                      allowAlpha
-                                    />
-                                  </label>
-                                  <label className="block">
-                                    <span className="text-xs font-medium text-neutral-500">
-                                      Direction
-                                    </span>
-                                    <InputSelect
-                                      value={selectedBlockBackground.direction ?? "to-bottom"}
-                                      onChange={(event) => {
-                                        const value =
-                                          event.target.value as BlockBackgroundGradientDirection;
-                                        updateSelectedBlockBackground((prev) => {
-                                          const next = cloneBlockBackground(prev);
-                                          next.type = "gradient";
-                                          next.color =
-                                            next.color && next.color.trim().length > 0
-                                              ? next.color
-                                              : DEFAULT_BLOCK_GRADIENT_FROM;
-                                          next.color2 =
-                                            next.color2 && next.color2.trim().length > 0
-                                              ? next.color2
-                                              : DEFAULT_BLOCK_GRADIENT_TO;
-                                          next.direction = value;
-                                          return next;
-                                        });
-                                      }}
-                                      options={BLOCK_BACKGROUND_GRADIENT_DIRECTIONS}
-                                    />
-                                  </label>
-                                </div>
-                              )}
-                              {selectedBlockBackground.type === "image" && (
-                                <div className="space-y-2">
-                                  <input
-                                    ref={blockBackgroundImageInputRef}
-                                    type="file"
-                                    accept="image/*"
-                                    className="hidden"
-                                    onChange={async (e) => {
-                                      const file = e.target.files?.[0];
-                                      if (!file) return;
-                                      await handleUpload(file, (url) => {
-                                        updateSelectedBlockBackground((prev) => {
-                                          const next = cloneBlockBackground(prev);
-                                          next.type = "image";
-                                          next.url = url;
-                                          return next;
-                                        });
-                                      });
-                                      e.target.value = "";
-                                    }}
-                                  />
-                                  <label className="block">
-                                    <span className="text-xs font-medium text-neutral-500">
-                                      Image URL
-                                    </span>
-                                    <InputText
-                                      type="text"
-                                      value={selectedBlockBackground.url ?? ""}
-                                      onChange={(event) => {
-                                        const value = event.target.value;
-                                        updateSelectedBlockBackground((prev) => {
-                                          const next = cloneBlockBackground(prev);
-                                          next.type = "image";
-                                          next.url = value;
-                                          return next;
-                                        });
-                                      }}
-                                      className={INSPECTOR_INPUT_CLASS}
-                                      placeholder="https://example.com/image.jpg"
-                                    />
-                                  </label>
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        blockBackgroundImageInputRef.current?.click()
-                                      }
-                                      className="rounded border px-3 py-1 text-xs font-medium"
-                                    >
-                                      {selectedBlockBackground.url
-                                        ? "Replace image"
-                                        : "Upload image"}
-                                    </button>
-                                    {uploading && (
-                                      <span className="text-[11px] text-neutral-500">
-                                        Uploading…
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-                              <InputSlider
-                                label="Corner radius (px)"
-                                min={0}
-                                max={50}
-                                step={1}
-                                value={selectedBlockBackground.radius ?? 0}
-                                onValueChange={(value) => {
-                                  updateSelectedBlockBackground((prev) => {
-                                    const next = cloneBlockBackground(prev);
-                                    const resolved =
-                                      typeof value === "number" && Number.isFinite(value)
-                                        ? Math.max(0, Math.round(value))
-                                        : 0;
-                                    next.radius = resolved;
-                                    return next;
-                                  });
-                                }}
-                                disabled={selectedBlockBackground.type === "none"}
-                              />
-                              <InputSlider
-                                label="Background opacity (%)"
-                                min={0}
-                                max={100}
-                                step={1}
-                                value={selectedBlockBackground.opacity ?? 100}
-                                onValueChange={(value) => {
-                                  updateSelectedBlockBackground((prev) => {
-                                    const next = cloneBlockBackground(prev);
-                                    const resolved =
-                                      typeof value === "number" && Number.isFinite(value)
-                                        ? Math.min(100, Math.max(0, Math.round(value)))
-                                        : 100;
-                                    next.opacity = resolved;
-                                    return next;
-                                  });
-                                }}
-                                disabled={selectedBlockBackground.type === "none"}
-                              />
-                            </div>
-                          </div>
-                          <div className="rounded border px-3 py-3 space-y-3">
-                            <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                              Animations
-                            </h4>
-                            <label className="block">
-                              <span className="text-xs font-medium text-neutral-500">
-                                Entry animation
-                              </span>
-                              <InputSelect
-                                value={selectedAnimationConfig.type}
-                                onChange={(event) =>
-                                  applyAnimationConfig((prev) => ({
-                                    ...prev,
-                                    type: event.target.value as BlockAnimationType,
-                                  }))
-                                }
-                                options={BLOCK_ANIMATION_OPTIONS}
-                              />
-                            </label>
-                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                              <label className="block">
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Duration (ms)
-                                </span>
-                                <InputNumber
-                                  
-                                  min={0}
-                                  value={selectedAnimationConfig.duration}
-                                  onChange={(event) => {
-                                    const parsed = Number(event.target.value);
-                                    applyAnimationConfig((prev) => ({
-                                      ...prev,
-                                      duration: Number.isNaN(parsed) ? prev.duration : parsed,
-                                    }));
-                                  }}
-                                  className={INSPECTOR_INPUT_CLASS}
-                                />
-                              </label>
-                              <label className="block">
-                                <span className="text-xs font-medium text-neutral-500">
-                                  Delay (ms)
-                                </span>
-                                <InputNumber
-                                  
-                                  min={0}
-                                  value={selectedAnimationConfig.delay}
-                                  onChange={(event) => {
-                                    const parsed = Number(event.target.value);
-                                    applyAnimationConfig((prev) => ({
-                                      ...prev,
-                                      delay: Number.isNaN(parsed) ? prev.delay : parsed,
-                                    }));
-                                  }}
-                                  className={INSPECTOR_INPUT_CLASS}
-                                />
-                              </label>
-                            </div>
-                          </div>
-                          <div className="rounded border px-3 py-3 space-y-3">
-                            <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                              Transitions
-                            </h4>
-                            <label className="block">
-                              <span className="text-xs font-medium text-neutral-500">
-                                Hover effect
-                              </span>
-                              <InputSelect
-                                value={selectedTransitionConfig.hover}
-                                onChange={(event) =>
-                                  applyTransitionConfig((prev) => ({
-                                    ...prev,
-                                    hover: event.target.value as BlockHoverTransition,
-                                  }))
-                                }
-                                options={BLOCK_TRANSITION_OPTIONS}
-                              />
-                            </label>
-                            <label className="block">
-                              <span className="text-xs font-medium text-neutral-500">
-                                Transition duration (ms)
-                              </span>
-                              <InputNumber
-                                
-                                min={0}
-                                value={selectedTransitionConfig.duration}
-                                onChange={(event) => {
-                                  const parsed = Number(event.target.value);
-                                  applyTransitionConfig((prev) => ({
-                                    ...prev,
-                                    duration: Number.isNaN(parsed) ? prev.duration : parsed,
-                                  }));
-                                }}
-                                className={INSPECTOR_INPUT_CLASS}
-                              />
-                            </label>
-                          </div>
-                          <div className="rounded border px-3 py-3">
-                            <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                              Frame ({activeDevice})
-                            </h4>
-                            <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
-                              {frame && (
-                                <>
-                                  <label className="flex flex-col gap-1">
-                                    <span>X%</span>
-                                    <InputNumber
-                                      
-                                      value={frame.x}
-                                      onChange={(e) =>
-                                        updateFrameField(
-                                          selectedBlock.id,
-                                          "x",
-                                          parseFloat(e.target.value),
-                                        )
-                                      }
-                                      className="rounded border px-2 py-1"
-                                    />
-                                  </label>
-                                  <label className="flex flex-col gap-1">
-                                    <span>Y%</span>
-                                    <InputNumber
-                                      
-                                      value={frame.y}
-                                      onChange={(e) =>
-                                        updateFrameField(
-                                          selectedBlock.id,
-                                          "y",
-                                          parseFloat(e.target.value),
-                                        )
-                                      }
-                                      className="rounded border px-2 py-1"
-                                    />
-                                  </label>
-                                  <label className="flex flex-col gap-1">
-                                    <span>Width%</span>
-                                    <InputNumber
-                                      
-                                      value={frame.w}
-                                      onChange={(e) =>
-                                        updateFrameField(
-                                          selectedBlock.id,
-                                          "w",
-                                          parseFloat(e.target.value),
-                                        )
-                                      }
-                                      className="rounded border px-2 py-1"
-                                    />
-                                  </label>
-                                  <label className="flex flex-col gap-1">
-                                    <span>Height%</span>
-                                    <InputNumber
-                                      
-                                      value={frame.h}
-                                      onChange={(e) =>
-                                        updateFrameField(
-                                          selectedBlock.id,
-                                          "h",
-                                          parseFloat(e.target.value),
-                                        )
-                                      }
-                                      className="rounded border px-2 py-1"
-                                    />
-                                  </label>
-                                  <label className="flex flex-col gap-1">
-                                    <span>Rotation°</span>
-                                    <InputNumber
-                                      
-                                      value={frame.r}
-                                      onChange={(e) =>
-                                        updateFrameField(
-                                          selectedBlock.id,
-                                          "r",
-                                          parseFloat(e.target.value),
-                                        )
-                                      }
-                                      className="rounded border px-2 py-1"
-                                    />
-                                  </label>
-                                </>
-                              )}
-                            </div>
-                          </div>
+                          </InspectorSection>
+
                         </div>
                     </section>
                   </div>

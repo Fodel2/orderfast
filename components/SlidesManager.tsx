@@ -35,6 +35,7 @@ import {
   useGoogleFontLoader,
   type SlideBlockFontFamily,
 } from '@/lib/slideFonts';
+import { tokens } from '../src/ui/tokens';
 
 const TEXTUAL_BLOCK_KIND_NAMES = new Set([
   'heading',
@@ -45,6 +46,11 @@ const TEXTUAL_BLOCK_KIND_NAMES = new Set([
 ] as const);
 
 export const DEFAULT_TEXT_PLACEHOLDER = 'Edit me';
+
+const INLINE_EDIT_ACCENT_VAR = `var(--brand-secondary, var(--brand-primary, ${tokens.colors.accent}))`;
+const INLINE_EDIT_BACKGROUND = `color-mix(in srgb, ${INLINE_EDIT_ACCENT_VAR} 8%, transparent)`;
+const INLINE_EDIT_BORDER = `color-mix(in srgb, ${INLINE_EDIT_ACCENT_VAR} 35%, transparent)`;
+const DEFAULT_BUTTON_LABEL = 'Button';
 
 const DEFAULT_TEXT_SHADOW = {
   x: 0,
@@ -246,15 +252,15 @@ export const updateConfigWithTextContent = (
   return Object.keys(base).length > 0 ? base : undefined;
 };
 
-const sanitizeEditableText = (raw: string): string => {
+const sanitizeEditableText = (raw: string, fallback: string = DEFAULT_TEXT_PLACEHOLDER): string => {
   const normalized = raw.replace(/\u00A0/g, ' ').replace(/\r\n?/g, '\n');
   const trimmed = normalized.trim();
-  return trimmed.length === 0 ? DEFAULT_TEXT_PLACEHOLDER : normalized;
+  return trimmed.length === 0 ? fallback : normalized;
 };
 
-const resolveDisplayText = (value: string): string => {
+const resolveDisplayText = (value: string, fallback: string = DEFAULT_TEXT_PLACEHOLDER): string => {
   const trimmed = value.trim();
-  return trimmed.length === 0 ? DEFAULT_TEXT_PLACEHOLDER : value;
+  return trimmed.length === 0 ? fallback : value;
 };
 
 export type ButtonBlockVariant = 'Primary' | 'Outline' | 'Ghost';
@@ -877,7 +883,7 @@ const BlockChromeWithAutoSize = ({
 };
 
 export const DEFAULT_BUTTON_CONFIG: ButtonBlockConfig = {
-  label: 'Button',
+  label: DEFAULT_BUTTON_LABEL,
   href: '/menu',
   variant: 'Primary',
   size: 'Medium',
@@ -924,11 +930,14 @@ export type GalleryBlockConfig = {
   aspectRatio: BlockAspectRatio;
 };
 
+export const MIN_GALLERY_AUTOPLAY_INTERVAL = 1;
+export const MAX_GALLERY_AUTOPLAY_INTERVAL = 30;
+
 export const DEFAULT_GALLERY_CONFIG: GalleryBlockConfig = {
   items: [],
   layout: 'grid',
   autoplay: false,
-  interval: 3000,
+  interval: 3,
   radius: 0,
   shadow: false,
   aspectRatio: 'original',
@@ -1646,13 +1655,26 @@ export function resolveGalleryConfig(block: SlideBlock): GalleryBlockConfig {
     parseBlockAspectRatio((block as any).aspectRatio);
 
   const intervalCandidate = intervalRaw && intervalRaw > 0 ? intervalRaw : undefined;
+  const legacyIntervalThreshold = Math.max(MAX_GALLERY_AUTOPLAY_INTERVAL * 2, 100);
+  let intervalSeconds = intervalCandidate ?? DEFAULT_GALLERY_CONFIG.interval;
+  if (intervalSeconds > MAX_GALLERY_AUTOPLAY_INTERVAL && intervalSeconds > legacyIntervalThreshold) {
+    intervalSeconds = intervalSeconds / 1000;
+  }
+  intervalSeconds = Math.round(intervalSeconds);
+  if (!Number.isFinite(intervalSeconds) || intervalSeconds <= 0) {
+    intervalSeconds = DEFAULT_GALLERY_CONFIG.interval;
+  }
+  intervalSeconds = Math.min(
+    MAX_GALLERY_AUTOPLAY_INTERVAL,
+    Math.max(MIN_GALLERY_AUTOPLAY_INTERVAL, intervalSeconds),
+  );
   const radiusCandidate = typeof radiusRaw === 'number' && radiusRaw >= 0 ? radiusRaw : undefined;
 
   return {
     items,
     layout,
     autoplay: layout === 'carousel' ? Boolean(autoplayRaw) : false,
-    interval: intervalCandidate ? Math.round(intervalCandidate) : DEFAULT_GALLERY_CONFIG.interval,
+    interval: intervalSeconds,
     radius: radiusCandidate ?? DEFAULT_GALLERY_CONFIG.radius,
     shadow: Boolean(shadowRaw),
     aspectRatio: aspectRatioSource ?? DEFAULT_GALLERY_CONFIG.aspectRatio,
@@ -1817,6 +1839,7 @@ export default function SlidesManager({
   useGoogleFontLoader(fontsInUse);
 
   const [activeGuides, setActiveGuides] = useState<AlignmentGuide[]>([]);
+  const [inlineEditingId, setInlineEditingId] = useState<string | null>(null);
 
   const visibleBlockFrames = useMemo(
     () =>
@@ -1981,6 +2004,42 @@ export default function SlidesManager({
   }, [editable, editInPreview]);
 
   useEffect(() => {
+    if (!inlineEditingId) return;
+    if (!editable || !editInPreview) {
+      setInlineEditingId(null);
+      return;
+    }
+    if (selectedId !== inlineEditingId) {
+      setInlineEditingId(null);
+    }
+  }, [editable, editInPreview, inlineEditingId, selectedId]);
+
+  const emitSelectBlock = useCallback(
+    (blockId: string | null, options?: { openInspector?: boolean }) => {
+      setInlineEditingId((prev) => {
+        if (blockId === null) {
+          return null;
+        }
+        if (prev && prev !== blockId) {
+          return null;
+        }
+        return prev;
+      });
+      onSelectBlock?.(blockId, options);
+    },
+    [onSelectBlock],
+  );
+
+  const enterInlineEditing = useCallback(
+    (block: SlideBlock) => {
+      if (!editable || !editInPreview) return;
+      if (!isTextualKind(block.kind)) return;
+      setInlineEditingId(block.id);
+    },
+    [editable, editInPreview],
+  );
+
+  useEffect(() => {
     if (!editable) return;
     const updates = cfg.blocks.filter((block) => {
       if (!isTextualKind(block.kind)) return false;
@@ -2083,11 +2142,12 @@ export default function SlidesManager({
   );
 
   const handleInlineText = (blockId: string, text: string) => {
-    const normalizedText = sanitizeEditableText(text);
     const target = cfg.blocks.find((b) => b.id === blockId);
+    const fallback = target?.kind === 'button' ? DEFAULT_BUTTON_LABEL : DEFAULT_TEXT_PLACEHOLDER;
+    const normalizedText = sanitizeEditableText(text, fallback);
     const currentValue = target
-      ? resolveDisplayText(target.content ?? target.text ?? '')
-      : DEFAULT_TEXT_PLACEHOLDER;
+      ? resolveDisplayText(target.content ?? target.text ?? '', fallback)
+      : fallback;
     if (currentValue === normalizedText) return;
     const next: SlideCfg = {
       ...cfg,
@@ -2111,14 +2171,21 @@ export default function SlidesManager({
     style: CSSProperties,
   ) => {
     const content = block.content ?? block.text ?? '';
+    const isInlineEditing = inlineEditingId === block.id;
+    const placeholder = block.kind === 'button' ? DEFAULT_BUTTON_LABEL : DEFAULT_TEXT_PLACEHOLDER;
     return (
       <EditableTextContent
         tag={Tag}
         value={content}
         style={style}
-        className="leading-tight"
-        editable={Boolean(editable && editInPreview)}
+        className="block-pointer-target leading-tight"
+        canEdit={Boolean(editable && editInPreview)}
+        isActive={isInlineEditing}
+        placeholder={placeholder}
         onCommit={(next) => handleInlineText(block.id, next)}
+        onRequestExit={() => {
+          setInlineEditingId((prev) => (prev === block.id ? null : prev));
+        }}
       />
     );
   };
@@ -2126,6 +2193,8 @@ export default function SlidesManager({
   const disableChildPointerEvents = Boolean(editable && editInPreview);
 
   const renderBlockContent = (block: SlideBlock): ReactNode => {
+    const inlineEditing = inlineEditingId === block.id;
+    const canInlineEdit = Boolean(editable && editInPreview);
     switch (block.kind) {
       case 'heading':
       case 'subheading':
@@ -2239,6 +2308,21 @@ export default function SlidesManager({
           style.width = '100%';
         }
         const wrapperStyle: CSSProperties = { width: '100%', textAlign: align };
+        const labelNode = (
+          <EditableTextContent
+            tag="span"
+            value={button.label ?? ''}
+            style={{ display: 'inline' }}
+            className="block-pointer-target"
+            canEdit={canInlineEdit}
+            isActive={inlineEditing}
+            placeholder={DEFAULT_BUTTON_LABEL}
+            onCommit={(next) => handleInlineText(block.id, next)}
+            onRequestExit={() => {
+              setInlineEditingId((prev) => (prev === block.id ? null : prev));
+            }}
+          />
+        );
         return (
           <div style={wrapperStyle}>
             <a
@@ -2247,7 +2331,7 @@ export default function SlidesManager({
               className={classes}
               style={style}
             >
-              {button.label || 'Button'}
+              {labelNode}
             </a>
           </div>
         );
@@ -2388,10 +2472,28 @@ export default function SlidesManager({
         if (textShadowValue) {
           ratingStyle.textShadow = textShadowValue;
         }
+        const quoteTextNode = (
+          <EditableTextContent
+            tag="span"
+            value={quote.text}
+            style={{ whiteSpace: 'pre-line', display: 'inline' }}
+            className="block-pointer-target"
+            canEdit={canInlineEdit}
+            isActive={inlineEditing}
+            onCommit={(next) => handleInlineText(block.id, next)}
+            onRequestExit={() => {
+              setInlineEditingId((prev) => (prev === block.id ? null : prev));
+            }}
+          />
+        );
         return (
           <div style={wrapperStyle}>
             <div className={innerClasses.join(' ')} style={innerStyle}>
-              <p className={textClasses.join(' ')} style={textStyle}>“{quote.text}”</p>
+              <p className={textClasses.join(' ')} style={textStyle}>
+                <span aria-hidden>“</span>
+                {quoteTextNode}
+                <span aria-hidden>”</span>
+              </p>
               {trimmedAuthor.length > 0 ? (
                 <p className={authorClasses.join(' ')} style={authorStyle}>— {trimmedAuthor}</p>
               ) : null}
@@ -2436,7 +2538,7 @@ export default function SlidesManager({
             style={{ width: deviceSize.width, height: deviceSize.height }}
             onClick={() => {
               if (editable && editInPreview) {
-                onSelectBlock?.(null);
+                emitSelectBlock(null);
                 onCanvasClick?.();
               }
             }}
@@ -2500,6 +2602,7 @@ export default function SlidesManager({
                 const effectiveMinSize = minSizePct ?? { width: 5, height: 5 };
                 const autoWidthEnabled = textual ? isAutoWidthEnabled(block) : false;
                 const autoHeightEnabled = textual ? isAutoHeightEnabled(block) : false;
+                const inlineEditing = inlineEditingId === block.id;
                 return (
                   <InteractiveBoxComponent
                     key={block.id}
@@ -2508,13 +2611,17 @@ export default function SlidesManager({
                     containerRef={frameRef}
                     selected={selectedId === block.id}
                     editable={editable && editInPreview}
-                    onSelect={() => onSelectBlock?.(block.id)}
+                    inlineEditing={inlineEditing}
+                    onSelect={() => emitSelectBlock(block.id)}
                     onTap={() => {
-                      onSelectBlock?.(block.id);
+                      emitSelectBlock(block.id);
                     }}
-                    onDoubleActivate={() => {
-                      onSelectBlock?.(block.id, { openInspector: true });
+                    onDoubleActivate={(details) => {
+                      emitSelectBlock(block.id, { openInspector: true });
                       openInspector?.();
+                      if (textual && details?.pointerType !== 'touch') {
+                        enterInlineEditing(block);
+                      }
                     }}
                     onChange={(nextFrame, opts) => handleFrameChange(block.id, nextFrame, opts)}
                     scale={clampedScale}
@@ -2561,12 +2668,15 @@ export default function SlidesManager({
 }
 
 type EditableTextContentProps = {
-  tag: TextTag;
+  tag: TextTag | 'span';
   value: string;
   style: CSSProperties;
   className?: string;
-  editable: boolean;
+  canEdit: boolean;
+  isActive: boolean;
+  placeholder?: string;
   onCommit: (text: string) => void;
+  onRequestExit: () => void;
 };
 
 function EditableTextContent({
@@ -2574,18 +2684,22 @@ function EditableTextContent({
   value,
   style,
   className,
-  editable,
+  canEdit,
+  isActive,
+  placeholder = DEFAULT_TEXT_PLACEHOLDER,
   onCommit,
+  onRequestExit,
 }: EditableTextContentProps) {
   const elementRef = useRef<HTMLElement | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
-  const displayValue = resolveDisplayText(value);
+  const exitRequestedRef = useRef(false);
+  const prevActiveRef = useRef(isActive);
+  const displayValue = resolveDisplayText(value, placeholder);
 
   useLayoutEffect(() => {
     const node = elementRef.current;
     if (!node) return;
     const current = node.textContent ?? '';
-    if (isEditing) {
+    if (canEdit && isActive) {
       if (current.length === 0 && displayValue.length > 0) {
         node.textContent = displayValue;
       }
@@ -2594,26 +2708,68 @@ function EditableTextContent({
     if (current !== displayValue) {
       node.textContent = displayValue;
     }
-  }, [displayValue, isEditing]);
+  }, [canEdit, displayValue, isActive]);
 
-  const commitIfChanged = (nextValue: string) => {
-    const sanitized = sanitizeEditableText(nextValue);
-    if (sanitized === resolveDisplayText(value)) return;
-    onCommit(sanitized);
-  };
+  useEffect(() => {
+    if (!canEdit || !isActive) return;
+    const node = elementRef.current;
+    if (!node) return;
+    const handle = requestAnimationFrame(() => {
+      node.focus({ preventScroll: true });
+      const selection = window.getSelection();
+      if (!selection) return;
+      selection.removeAllRanges();
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      range.collapse(false);
+      selection.addRange(range);
+    });
+    return () => cancelAnimationFrame(handle);
+  }, [canEdit, isActive]);
+
+  useEffect(() => {
+    if (!isActive) {
+      exitRequestedRef.current = false;
+    }
+  }, [isActive]);
+
+  const commitIfChanged = useCallback(
+    (nextValue: string) => {
+      const sanitized = sanitizeEditableText(nextValue, placeholder);
+      if (sanitized === resolveDisplayText(value, placeholder)) return;
+      onCommit(sanitized);
+    },
+    [onCommit, placeholder, value],
+  );
+
+  useEffect(() => {
+    const wasActive = prevActiveRef.current;
+    prevActiveRef.current = isActive;
+    if (!canEdit) return;
+    if (wasActive && !isActive) {
+      const node = elementRef.current;
+      if (!node) return;
+      commitIfChanged(node.innerText ?? '');
+    }
+  }, [canEdit, commitIfChanged, isActive]);
+
+  const requestExit = useCallback(() => {
+    if (exitRequestedRef.current) return;
+    exitRequestedRef.current = true;
+    onRequestExit();
+  }, [onRequestExit]);
 
   const handleBlur = (event: React.FocusEvent<HTMLElement>) => {
-    setIsEditing(false);
     commitIfChanged(event.currentTarget.innerText ?? '');
-  };
-
-  const handleFocus = () => {
-    setIsEditing(true);
+    requestExit();
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (!canEdit) return;
     if (event.key === 'Escape') {
       event.preventDefault();
+      commitIfChanged(event.currentTarget.innerText ?? '');
+      requestExit();
       (event.currentTarget as HTMLElement).blur();
       return;
     }
@@ -2635,12 +2791,13 @@ function EditableTextContent({
       }
       event.preventDefault();
       commitIfChanged(event.currentTarget.innerText ?? '');
+      requestExit();
       (event.currentTarget as HTMLElement).blur();
     }
   };
 
   const handlePaste = (event: React.ClipboardEvent<HTMLElement>) => {
-    if (!editable) return;
+    if (!canEdit || !isActive) return;
     event.preventDefault();
     const text = event.clipboardData.getData('text/plain');
     const selection = window.getSelection();
@@ -2660,8 +2817,8 @@ function EditableTextContent({
   if (className) combinedClassName.push(className);
 
   const baseStyle: CSSProperties = {
-    ...style,
     whiteSpace: 'pre-wrap',
+    ...style,
   };
 
   const props: Record<string, any> = {
@@ -2670,20 +2827,20 @@ function EditableTextContent({
     },
     className: combinedClassName.join(' '),
     style: baseStyle,
+    tabIndex: canEdit && isActive ? -1 : undefined,
   };
 
-  if (editable) {
+  if (canEdit && isActive) {
     props.contentEditable = true;
     props.suppressContentEditableWarning = true;
     props.spellCheck = true;
     props['aria-multiline'] = true;
     props.onBlur = handleBlur;
-    props.onFocus = handleFocus;
     props.onKeyDown = handleKeyDown;
     props.onPaste = handlePaste;
   }
 
-  props.children = editable ? (isEditing ? undefined : displayValue) : displayValue;
+  props.children = canEdit && isActive ? undefined : displayValue;
 
   return React.createElement(tag, props);
 }
@@ -2728,13 +2885,20 @@ function GalleryBlockPreview({
     if (config.layout !== 'carousel') return;
     if (!config.autoplay) return;
     if (items.length <= 1) return;
-    const interval = Math.max(200, Number.isFinite(config.interval) ? config.interval : DEFAULT_GALLERY_CONFIG.interval);
+    const seconds = Number.isFinite(config.interval)
+      ? (config.interval as number)
+      : DEFAULT_GALLERY_CONFIG.interval;
+    const clampedSeconds = Math.min(
+      MAX_GALLERY_AUTOPLAY_INTERVAL,
+      Math.max(MIN_GALLERY_AUTOPLAY_INTERVAL, seconds),
+    );
+    const intervalMs = Math.max(1, Math.round(clampedSeconds * 1000));
     const id = window.setInterval(() => {
       setActiveIndex((prev) => {
         const next = prev + 1;
         return next >= items.length ? 0 : next;
       });
-    }, interval);
+    }, intervalMs);
     return () => window.clearInterval(id);
   }, [config.autoplay, config.interval, config.layout, items.length]);
 
@@ -2842,15 +3006,20 @@ function GalleryBlockPreview({
   );
 }
 
+type DoubleActivateDetails = {
+  pointerType?: 'mouse' | 'touch' | 'pen' | 'keyboard';
+};
+
 type InteractiveBoxProps = {
   id: string;
   frame: Frame;
   containerRef: React.RefObject<HTMLDivElement>;
   selected: boolean;
   editable: boolean;
+  inlineEditing?: boolean;
   onSelect: () => void;
   onTap: () => void;
-  onDoubleActivate?: () => void;
+  onDoubleActivate?: (details?: DoubleActivateDetails) => void;
   onChange: (frame: Frame, options?: SlidesManagerChangeOptions) => void;
   children: ReactNode;
   scale: number;
@@ -2902,6 +3071,7 @@ function InteractiveBox({
   containerRef,
   selected,
   editable,
+  inlineEditing = false,
   onSelect,
   onTap,
   onDoubleActivate,
@@ -3037,6 +3207,10 @@ function InteractiveBox({
     if (!editable) return;
     e.stopPropagation();
     onSelect();
+    if (inlineEditing) {
+      updateGuides([]);
+      return;
+    }
     if (locked) {
       updateGuides([]);
       return;
@@ -3092,7 +3266,7 @@ function InteractiveBox({
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
-    if (!editable) return;
+    if (!editable || inlineEditing) return;
     const ps = pointerState.current;
     if (!ps) return;
     const rect = getContainerRect();
@@ -3229,7 +3403,7 @@ function InteractiveBox({
   };
 
   const handlePointerEnd = (e: React.PointerEvent) => {
-    if (!editable) return;
+    if (!editable || inlineEditing) return;
     const ps = pointerState.current;
     if (!ps) return;
     flushPending();
@@ -3275,7 +3449,7 @@ function InteractiveBox({
           Math.abs(e.clientY - lastTap.y) <= DOUBLE_TAP_DISTANCE;
         if (doubleTap) {
           lastTapRef.current = null;
-          onDoubleActivate?.();
+          onDoubleActivate?.({ pointerType: 'touch' });
         } else {
           lastTapRef.current = { time: now, x: e.clientX, y: e.clientY };
           onTap();
@@ -3297,7 +3471,7 @@ function InteractiveBox({
   };
 
   const handlePointerCancel = (e: React.PointerEvent) => {
-    if (!editable) return;
+    if (!editable || inlineEditing) return;
     const ps = pointerState.current;
     if (!ps) return;
     flushPending();
@@ -3332,11 +3506,30 @@ function InteractiveBox({
     height: `${frame.h}%`,
     transform: transformParts.join(' '),
     transformOrigin: 'top left',
-    borderRadius: 8,
+    borderRadius: tokens.radius.md,
     touchAction: 'none',
-cursor:
-    editable && !locked ? (isDragging ? 'grabbing' : hovered ? 'grab' : 'default') : 'default',
-};
+    cursor: inlineEditing
+      ? 'text'
+      : editable && !locked
+        ? isDragging
+          ? 'grabbing'
+          : hovered
+            ? 'grab'
+            : 'default'
+        : 'default',
+  };
+
+  const inlineEditingStyle: CSSProperties | null = inlineEditing
+    ? {
+        position: 'absolute',
+        inset: 0,
+        borderRadius: tokens.radius.md,
+        background: INLINE_EDIT_BACKGROUND,
+        boxShadow: tokens.shadow.sm,
+        border: `${tokens.border.thin}px solid ${INLINE_EDIT_BORDER}`,
+        pointerEvents: 'none',
+      }
+    : null;
 
   const highlightVisible = editable && !locked && (hovered || isDragging);
   const highlightStyle: CSSProperties = {
@@ -3358,32 +3551,36 @@ cursor:
       data-snapping={snapping ? 'true' : 'false'}
       data-editable={editable && !locked ? 'true' : 'false'}
       data-selected={selected ? 'true' : 'false'}
+      data-inline-editing={inlineEditing ? 'true' : 'false'}
       style={style}
       onPointerDown={handlePointerDown('move')}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerEnd}
       onPointerCancel={handlePointerCancel}
       onPointerEnter={() => {
-        if (!editable || locked) return;
+        if (!editable || locked || inlineEditing) return;
         setHovered(true);
       }}
       onPointerLeave={() => {
-        if (!editable || locked) return;
+        if (!editable || locked || inlineEditing) return;
         if (isDragging) return;
         setHovered(false);
       }}
       onClick={(e) => {
         if (!editable) return;
         e.stopPropagation();
+        if (inlineEditing) return;
         onSelect();
       }}
       onDoubleClick={(e) => {
         if (!editable) return;
         e.stopPropagation();
+        if (inlineEditing) return;
         onSelect();
-        onDoubleActivate?.();
+        onDoubleActivate?.({ pointerType: 'mouse' });
       }}
     >
+      {inlineEditingStyle ? <div aria-hidden style={inlineEditingStyle} /> : null}
       <div aria-hidden style={highlightStyle} />
       {children}
       {editable && selected && !locked && (
