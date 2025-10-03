@@ -24,6 +24,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { ArrowsUpDownIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
+import { Star } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { supabase } from '@/utils/supabaseClient';
 import type { SlideRow } from '@/components/customer/home/SlidesContainer';
@@ -994,6 +995,7 @@ export type QuoteBlockConfig = {
   align: 'left' | 'center' | 'right';
   useReview: boolean;
   reviewId: string | null;
+  starRating: number;
 };
 
 export const DEFAULT_QUOTE_CONFIG: QuoteBlockConfig = {
@@ -1007,6 +1009,7 @@ export const DEFAULT_QUOTE_CONFIG: QuoteBlockConfig = {
   align: 'left',
   useReview: false,
   reviewId: null,
+  starRating: 0,
 };
 
 export type BlockShadowPreset = 'none' | 'sm' | 'md' | 'lg';
@@ -1757,6 +1760,21 @@ export function resolveQuoteConfig(block: SlideBlock): QuoteBlockConfig {
         : null;
   const reviewIdNormalized = reviewIdRaw && reviewIdRaw.trim().length > 0 ? reviewIdRaw.trim() : null;
 
+  const starRatingCandidate =
+    parseNumber(raw.starRating) ??
+    parseNumber((raw as any).rating) ??
+    parseNumber((raw as any).reviewRating) ??
+    parseNumber((block as any).starRating) ??
+    parseNumber((block as any).rating) ??
+    parseNumber((block as any).reviewRating);
+  const hasExplicitStarRating = starRatingCandidate !== undefined;
+  let starRating = hasExplicitStarRating
+    ? clamp(Math.round(starRatingCandidate as number), 0, 5)
+    : DEFAULT_QUOTE_CONFIG.starRating;
+  if (!hasExplicitStarRating && Boolean(useReviewSource)) {
+    starRating = 5;
+  }
+
   return {
     text: textSource,
     author: authorSource,
@@ -1768,6 +1786,7 @@ export function resolveQuoteConfig(block: SlideBlock): QuoteBlockConfig {
     align,
     useReview: Boolean(useReviewSource),
     reviewId: reviewIdNormalized,
+    starRating,
   };
 }
 
@@ -2479,6 +2498,9 @@ export default function SlidesManager({
         }
         const trimmedAuthor = quote.author.trim();
         const showReviewRating = quote.useReview && Boolean(quote.reviewId);
+        const resolvedStarRating = clamp(Math.round(quote.starRating ?? 0), 0, 5);
+        const ratingValue = resolvedStarRating > 0 ? resolvedStarRating : showReviewRating ? 5 : 0;
+        const shouldRenderRating = ratingValue > 0;
         const ratingClasses = ['text-base', 'opacity-90'];
         ratingClasses.push(trimmedAuthor.length > 0 ? 'mt-1' : 'mt-3');
         const ratingStyle: CSSProperties = {};
@@ -2488,6 +2510,15 @@ export default function SlidesManager({
         if (textShadowValue) {
           ratingStyle.textShadow = textShadowValue;
         }
+        if (shouldRenderRating) {
+          ratingStyle.display = 'inline-flex';
+          ratingStyle.alignItems = 'center';
+          ratingStyle.columnGap = tokens.spacing.xs;
+          ratingStyle.color = `var(--brand-primary, ${tokens.colors.accent})`;
+        }
+        const ratingLabelBase = quote.useReview ? 'review' : 'rating';
+        const ratingLabelCount = ratingValue === 1 ? '1 star' : `${ratingValue} stars`;
+        const ratingAriaLabel = `${ratingLabelCount} ${ratingLabelBase}`;
         const quoteTextNode = (
           <EditableTextContent
             tag="span"
@@ -2521,9 +2552,29 @@ export default function SlidesManager({
               {trimmedAuthor.length > 0 ? (
                 <p className={authorClasses.join(' ')} style={authorStyle}>— {trimmedAuthor}</p>
               ) : null}
-              {showReviewRating ? (
-                <p className={ratingClasses.join(' ')} style={ratingStyle} aria-label="Five star review">
-                  {'⭐️⭐️⭐️⭐️⭐️'}
+              {shouldRenderRating ? (
+                <p
+                  className={ratingClasses.join(' ')}
+                  style={ratingStyle}
+                  aria-label={ratingAriaLabel}
+                  role="img"
+                >
+                  {Array.from({ length: 5 }).map((_, index) => {
+                    const isFilled = index < ratingValue;
+                    return (
+                      <Star
+                        key={index}
+                        aria-hidden
+                        size={tokens.spacing.md}
+                        strokeWidth={1.5}
+                        style={{
+                          stroke: 'currentColor',
+                          fill: isFilled ? 'currentColor' : 'transparent',
+                          opacity: isFilled ? 1 : 0.35,
+                        }}
+                      />
+                    );
+                  })}
                 </p>
               ) : null}
             </div>

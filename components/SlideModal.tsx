@@ -107,7 +107,7 @@ import { supabase } from "@/utils/supabaseClient";
 import { STORAGE_BUCKET } from "@/lib/storage";
 import { SlideRow } from "@/components/customer/home/SlidesContainer";
 import { LockClosedIcon } from "@heroicons/react/24/solid";
-import { ChevronDown, ChevronUp, GripVertical, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, GripVertical, Star, Trash2 } from "lucide-react";
 
 type LinkOption = InputSelectOption;
 
@@ -367,6 +367,136 @@ const QUOTE_STYLE_OPTIONS: { value: QuoteBlockConfig["style"]; label: string }[]
   { value: "emphasis", label: "Emphasis" },
   { value: "card", label: "Card" },
 ];
+
+const QUOTE_STAR_COUNT = 5;
+
+type QuoteStarRatingSelectorProps = {
+  value: number;
+  onChange: (next: number) => void;
+  disabled?: boolean;
+};
+
+function QuoteStarRatingSelector({
+  value,
+  onChange,
+  disabled = false,
+}: QuoteStarRatingSelectorProps) {
+  const [hoverValue, setHoverValue] = useState<number | null>(null);
+  const activeValue = disabled ? value : hoverValue ?? value;
+
+  return (
+    <>
+      <div
+        className={`quote-star-rating-control${disabled ? " is-disabled" : ""}`}
+        role="group"
+        aria-label="Star rating"
+        aria-disabled={disabled || undefined}
+      >
+        {Array.from({ length: QUOTE_STAR_COUNT }).map((_, index) => {
+          const starValue = index + 1;
+          const isActive = activeValue >= starValue;
+          const isSelected = value >= starValue;
+          const label = `${starValue} star${starValue === 1 ? "" : "s"}`;
+
+          const handleSelect = () => {
+            if (disabled) return;
+            onChange(value === starValue ? 0 : starValue);
+          };
+
+          const handleEnter = () => {
+            if (disabled) return;
+            setHoverValue(starValue);
+          };
+
+          const handleLeave = () => {
+            if (disabled) return;
+            setHoverValue(null);
+          };
+
+          return (
+            <button
+              key={starValue}
+              type="button"
+              className={`quote-star-rating-control__button${
+                isActive ? " is-active" : ""
+              }${isSelected ? " is-selected" : ""}`}
+              aria-label={label}
+              aria-pressed={isSelected}
+              onMouseEnter={handleEnter}
+              onMouseLeave={handleLeave}
+              onFocus={handleEnter}
+              onBlur={handleLeave}
+              onClick={handleSelect}
+              disabled={disabled}
+            >
+              <Star
+                className="quote-star-rating-control__icon"
+                aria-hidden
+                strokeWidth={1.5}
+              />
+            </button>
+          );
+        })}
+      </div>
+      <style jsx>{`
+        .quote-star-rating-control {
+          display: inline-flex;
+          gap: ${tokens.spacing.xs}px;
+          align-items: center;
+          color: var(--brand-primary, ${tokens.colors.accent});
+        }
+        .quote-star-rating-control.is-disabled {
+          opacity: 0.6;
+        }
+        .quote-star-rating-control__button {
+          appearance: none;
+          border: none;
+          background: transparent;
+          padding: ${tokens.spacing.xs / 2}px;
+          border-radius: ${tokens.radius.sm}px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: transform 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+          outline: none;
+        }
+        .quote-star-rating-control__button:hover,
+        .quote-star-rating-control__button:focus-visible {
+          box-shadow: ${tokens.shadow.sm};
+          background-color: rgba(15, 23, 42, 0.06);
+          transform: translateY(-1px);
+        }
+        .quote-star-rating-control__button:focus-visible {
+          outline: 2px solid currentColor;
+          outline-offset: 2px;
+        }
+        .quote-star-rating-control__button:disabled {
+          cursor: not-allowed;
+          box-shadow: none;
+          transform: none;
+          background: transparent;
+        }
+        .quote-star-rating-control__button:disabled:focus-visible {
+          outline: none;
+        }
+        .quote-star-rating-control__icon {
+          width: ${tokens.spacing.md}px;
+          height: ${tokens.spacing.md}px;
+          stroke: currentColor;
+          fill: transparent;
+          opacity: 0.35;
+          transition: fill 120ms ease, opacity 120ms ease;
+        }
+        .quote-star-rating-control__button.is-active .quote-star-rating-control__icon,
+        .quote-star-rating-control__button.is-selected .quote-star-rating-control__icon {
+          fill: currentColor;
+          opacity: 1;
+        }
+      `}</style>
+    </>
+  );
+}
 
 type ReviewOption = {
   id: string;
@@ -5607,6 +5737,18 @@ export default function SlideModal({
                                           }))
                                         }
                                       />
+                                      <ControlRow label="Star rating">
+                                        <QuoteStarRatingSelector
+                                          value={selectedQuoteConfig.starRating}
+                                          disabled={selectedQuoteConfig.useReview}
+                                          onChange={(nextValue) =>
+                                            updateQuoteConfig(selectedBlock.id, (config) => ({
+                                              ...config,
+                                              starRating: nextValue,
+                                            }))
+                                          }
+                                        />
+                                      </ControlRow>
                                     </InspectorSection>
                                     <InspectorSection title="Typography">
                                       <ControlRow label="Font family">
