@@ -2616,10 +2616,10 @@ export default function SlidesManager({
                     onTap={() => {
                       emitSelectBlock(block.id);
                     }}
-                    onDoubleActivate={() => {
+                    onDoubleActivate={(details) => {
                       emitSelectBlock(block.id, { openInspector: true });
                       openInspector?.();
-                      if (textual) {
+                      if (textual && details?.pointerType !== 'touch') {
                         enterInlineEditing(block);
                       }
                     }}
@@ -3006,6 +3006,10 @@ function GalleryBlockPreview({
   );
 }
 
+type DoubleActivateDetails = {
+  pointerType?: 'mouse' | 'touch' | 'pen' | 'keyboard';
+};
+
 type InteractiveBoxProps = {
   id: string;
   frame: Frame;
@@ -3015,7 +3019,7 @@ type InteractiveBoxProps = {
   inlineEditing?: boolean;
   onSelect: () => void;
   onTap: () => void;
-  onDoubleActivate?: () => void;
+  onDoubleActivate?: (details?: DoubleActivateDetails) => void;
   onChange: (frame: Frame, options?: SlidesManagerChangeOptions) => void;
   children: ReactNode;
   scale: number;
@@ -3445,7 +3449,7 @@ function InteractiveBox({
           Math.abs(e.clientY - lastTap.y) <= DOUBLE_TAP_DISTANCE;
         if (doubleTap) {
           lastTapRef.current = null;
-          onDoubleActivate?.();
+          onDoubleActivate?.({ pointerType: 'touch' });
         } else {
           lastTapRef.current = { time: now, x: e.clientX, y: e.clientY };
           onTap();
@@ -3573,7 +3577,7 @@ function InteractiveBox({
         e.stopPropagation();
         if (inlineEditing) return;
         onSelect();
-        onDoubleActivate?.();
+        onDoubleActivate?.({ pointerType: 'mouse' });
       }}
     >
       {inlineEditingStyle ? <div aria-hidden style={inlineEditingStyle} /> : null}
