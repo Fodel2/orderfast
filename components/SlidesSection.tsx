@@ -20,6 +20,8 @@ import {
   getFontStackForFamily,
   useGoogleFontLoader,
 } from '@/lib/slideFonts';
+import { Star } from 'lucide-react';
+import { tokens } from '../src/ui/tokens';
 import GalleryBlock from './blocks/GalleryBlock';
 
 const TEXT_SIZE_MAP: Record<string, string> = {
@@ -218,6 +220,11 @@ function renderBlock(block: SlideBlock) {
         const quote = resolveQuoteConfig(block);
         const trimmedAuthor = quote.author.trim();
         const showReviewRating = quote.useReview && Boolean(quote.reviewId);
+        const resolvedStarRating = Math.max(0, Math.min(5, Math.round(quote.starRating ?? 0)));
+        const ratingValue = resolvedStarRating > 0 ? resolvedStarRating : showReviewRating ? 5 : 0;
+        const shouldRenderRating = ratingValue > 0;
+        const ratingLabelBase = quote.useReview ? 'review' : 'rating';
+        const ratingLabelCount = ratingValue === 1 ? '1 star' : `${ratingValue} stars`;
         return (
           <blockquote
             className="text-white"
@@ -229,13 +236,35 @@ function renderBlock(block: SlideBlock) {
                 — {trimmedAuthor}
               </cite>
             ) : null}
-            {showReviewRating ? (
+            {shouldRenderRating ? (
               <p
                 className={`text-base opacity-90 ${trimmedAuthor.length > 0 ? 'mt-1' : 'mt-3'}`}
-                aria-label="Five star review"
-                style={{ fontFamily: resolvedFontFamily ?? undefined }}
+                aria-label={`${ratingLabelCount} ${ratingLabelBase}`}
+                role="img"
+                style={{
+                  fontFamily: resolvedFontFamily ?? undefined,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  columnGap: tokens.spacing.xs,
+                  color: `var(--brand-primary, ${tokens.colors.accent})`,
+                }}
               >
-                {'⭐️⭐️⭐️⭐️⭐️'}
+                {Array.from({ length: 5 }).map((_, index) => {
+                  const isFilled = index < ratingValue;
+                  return (
+                    <Star
+                      key={index}
+                      aria-hidden
+                      size={tokens.spacing.md}
+                      strokeWidth={1.5}
+                      style={{
+                        stroke: 'currentColor',
+                        fill: isFilled ? 'currentColor' : 'transparent',
+                        opacity: isFilled ? 1 : 0.35,
+                      }}
+                    />
+                  );
+                })}
               </p>
             ) : null}
           </blockquote>

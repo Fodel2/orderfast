@@ -24,6 +24,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { ArrowsUpDownIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
+import { Star } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { supabase } from '@/utils/supabaseClient';
 import type { SlideRow } from '@/components/customer/home/SlidesContainer';
@@ -96,6 +97,21 @@ export type Frame = {
 };
 
 const ALIGNMENT_TOLERANCE_PX = 8;
+const MIN_PREVIEW_SCALE = 0.05;
+const MAX_PREVIEW_SCALE = 3;
+const RESIZE_CURSOR_BY_HANDLE: Record<string, CSSProperties['cursor']> = {
+  n: 'ns-resize',
+  s: 'ns-resize',
+  e: 'ew-resize',
+  w: 'ew-resize',
+  ne: 'nesw-resize',
+  sw: 'nesw-resize',
+  nw: 'nwse-resize',
+  se: 'nwse-resize',
+};
+
+const getResizeCursor = (handle: string): CSSProperties['cursor'] =>
+  RESIZE_CURSOR_BY_HANDLE[handle] ?? 'nwse-resize';
 
 const GUIDE_PRIORITY: Record<AlignmentGuideType, number> = {
   'canvas-center': 0,
@@ -994,6 +1010,7 @@ export type QuoteBlockConfig = {
   align: 'left' | 'center' | 'right';
   useReview: boolean;
   reviewId: string | null;
+  starRating: number;
 };
 
 export const DEFAULT_QUOTE_CONFIG: QuoteBlockConfig = {
@@ -1007,6 +1024,7 @@ export const DEFAULT_QUOTE_CONFIG: QuoteBlockConfig = {
   align: 'left',
   useReview: false,
   reviewId: null,
+  starRating: 0,
 };
 
 export type BlockShadowPreset = 'none' | 'sm' | 'md' | 'lg';
@@ -1757,6 +1775,21 @@ export function resolveQuoteConfig(block: SlideBlock): QuoteBlockConfig {
         : null;
   const reviewIdNormalized = reviewIdRaw && reviewIdRaw.trim().length > 0 ? reviewIdRaw.trim() : null;
 
+  const starRatingCandidate =
+    parseNumber(raw.starRating) ??
+    parseNumber((raw as any).rating) ??
+    parseNumber((raw as any).reviewRating) ??
+    parseNumber((block as any).starRating) ??
+    parseNumber((block as any).rating) ??
+    parseNumber((block as any).reviewRating);
+  const hasExplicitStarRating = starRatingCandidate !== undefined;
+  let starRating = hasExplicitStarRating
+    ? clamp(Math.round(starRatingCandidate as number), 0, 5)
+    : DEFAULT_QUOTE_CONFIG.starRating;
+  if (!hasExplicitStarRating && Boolean(useReviewSource)) {
+    starRating = 5;
+  }
+
   return {
     text: textSource,
     author: authorSource,
@@ -1768,6 +1801,7 @@ export function resolveQuoteConfig(block: SlideBlock): QuoteBlockConfig {
     align,
     useReview: Boolean(useReviewSource),
     reviewId: reviewIdNormalized,
+    starRating,
   };
 }
 
@@ -2186,6 +2220,14 @@ export default function SlidesManager({
         onRequestExit={() => {
           setInlineEditingId((prev) => (prev === block.id ? null : prev));
         }}
+        onDoubleTap={
+          editable
+            ? () => {
+                emitSelectBlock(block.id, { openInspector: true });
+                openInspector?.();
+              }
+            : undefined
+        }
       />
     );
   };
@@ -2321,6 +2363,14 @@ export default function SlidesManager({
             onRequestExit={() => {
               setInlineEditingId((prev) => (prev === block.id ? null : prev));
             }}
+            onDoubleTap={
+              editable
+                ? () => {
+                    emitSelectBlock(block.id, { openInspector: true });
+                    openInspector?.();
+                  }
+                : undefined
+            }
           />
         );
         return (
@@ -2463,6 +2513,9 @@ export default function SlidesManager({
         }
         const trimmedAuthor = quote.author.trim();
         const showReviewRating = quote.useReview && Boolean(quote.reviewId);
+        const resolvedStarRating = clamp(Math.round(quote.starRating ?? 0), 0, 5);
+        const ratingValue = resolvedStarRating > 0 ? resolvedStarRating : showReviewRating ? 5 : 0;
+        const shouldRenderRating = ratingValue > 0;
         const ratingClasses = ['text-base', 'opacity-90'];
         ratingClasses.push(trimmedAuthor.length > 0 ? 'mt-1' : 'mt-3');
         const ratingStyle: CSSProperties = {};
@@ -2472,6 +2525,15 @@ export default function SlidesManager({
         if (textShadowValue) {
           ratingStyle.textShadow = textShadowValue;
         }
+        if (shouldRenderRating) {
+          ratingStyle.display = 'inline-flex';
+          ratingStyle.alignItems = 'center';
+          ratingStyle.columnGap = tokens.spacing.xs;
+          ratingStyle.color = `var(--brand-primary, ${tokens.colors.accent})`;
+        }
+        const ratingLabelBase = quote.useReview ? 'review' : 'rating';
+        const ratingLabelCount = ratingValue === 1 ? '1 star' : `${ratingValue} stars`;
+        const ratingAriaLabel = `${ratingLabelCount} ${ratingLabelBase}`;
         const quoteTextNode = (
           <EditableTextContent
             tag="span"
@@ -2484,6 +2546,14 @@ export default function SlidesManager({
             onRequestExit={() => {
               setInlineEditingId((prev) => (prev === block.id ? null : prev));
             }}
+            onDoubleTap={
+              editable
+                ? () => {
+                    emitSelectBlock(block.id, { openInspector: true });
+                    openInspector?.();
+                  }
+                : undefined
+            }
           />
         );
         return (
@@ -2497,9 +2567,29 @@ export default function SlidesManager({
               {trimmedAuthor.length > 0 ? (
                 <p className={authorClasses.join(' ')} style={authorStyle}>— {trimmedAuthor}</p>
               ) : null}
-              {showReviewRating ? (
-                <p className={ratingClasses.join(' ')} style={ratingStyle} aria-label="Five star review">
-                  {'⭐️⭐️⭐️⭐️⭐️'}
+              {shouldRenderRating ? (
+                <p
+                  className={ratingClasses.join(' ')}
+                  style={ratingStyle}
+                  aria-label={ratingAriaLabel}
+                  role="img"
+                >
+                  {Array.from({ length: 5 }).map((_, index) => {
+                    const isFilled = index < ratingValue;
+                    return (
+                      <Star
+                        key={index}
+                        aria-hidden
+                        size={tokens.spacing.md}
+                        strokeWidth={1.5}
+                        style={{
+                          stroke: 'currentColor',
+                          fill: isFilled ? 'currentColor' : 'transparent',
+                          opacity: isFilled ? 1 : 0.35,
+                        }}
+                      />
+                    );
+                  })}
                 </p>
               ) : null}
             </div>
@@ -2516,7 +2606,10 @@ export default function SlidesManager({
     }
   };
 
-  const clampedScale = Math.min(Math.max(scale || 1, 0.05), 1);
+  const clampedScale = Math.min(
+    Math.max(scale || 1, MIN_PREVIEW_SCALE),
+    MAX_PREVIEW_SCALE,
+  );
 
   return (
     <>
@@ -2677,6 +2770,7 @@ type EditableTextContentProps = {
   placeholder?: string;
   onCommit: (text: string) => void;
   onRequestExit: () => void;
+  onDoubleTap?: () => void;
 };
 
 function EditableTextContent({
@@ -2689,11 +2783,13 @@ function EditableTextContent({
   placeholder = DEFAULT_TEXT_PLACEHOLDER,
   onCommit,
   onRequestExit,
+  onDoubleTap,
 }: EditableTextContentProps) {
   const elementRef = useRef<HTMLElement | null>(null);
   const exitRequestedRef = useRef(false);
   const prevActiveRef = useRef(isActive);
   const displayValue = resolveDisplayText(value, placeholder);
+  const lastTapRef = useRef(0);
 
   useLayoutEffect(() => {
     const node = elementRef.current;
@@ -2730,6 +2826,12 @@ function EditableTextContent({
   useEffect(() => {
     if (!isActive) {
       exitRequestedRef.current = false;
+    }
+  }, [isActive]);
+
+  useEffect(() => {
+    if (isActive) {
+      lastTapRef.current = 0;
     }
   }, [isActive]);
 
@@ -2814,6 +2916,9 @@ function EditableTextContent({
   };
 
   const combinedClassName = ['whitespace-pre-wrap', 'focus:outline-none'];
+  if (!isActive) {
+    combinedClassName.push('readonlyText');
+  }
   if (className) combinedClassName.push(className);
 
   const baseStyle: CSSProperties = {
@@ -2827,7 +2932,23 @@ function EditableTextContent({
     },
     className: combinedClassName.join(' '),
     style: baseStyle,
-    tabIndex: canEdit && isActive ? -1 : undefined,
+    tabIndex: canEdit && isActive ? 0 : -1,
+  };
+
+  const handleContextMenu = (event: React.MouseEvent<HTMLElement>) => {
+    event.preventDefault();
+  };
+
+  const handleTouchEnd = (event: React.TouchEvent<HTMLElement>) => {
+    const now = Date.now();
+    if (now - lastTapRef.current < 250) {
+      lastTapRef.current = 0;
+      event.preventDefault();
+      event.stopPropagation();
+      onDoubleTap?.();
+      return;
+    }
+    lastTapRef.current = now;
   };
 
   if (canEdit && isActive) {
@@ -2838,6 +2959,12 @@ function EditableTextContent({
     props.onBlur = handleBlur;
     props.onKeyDown = handleKeyDown;
     props.onPaste = handlePaste;
+  } else {
+    props.contentEditable = false;
+    props.onContextMenu = handleContextMenu;
+    if (onDoubleTap) {
+      props.onTouchEnd = handleTouchEnd;
+    }
   }
 
   props.children = canEdit && isActive ? undefined : displayValue;
@@ -3589,7 +3716,7 @@ function InteractiveBox({
             onPointerDown={handlePointerDown('rotate')}
             className="absolute left-1/2 top-[-32px] h-5 w-5 -translate-x-1/2 rounded-full border border-sky-500 bg-white"
           />
-          {[
+          {[ 
             ['n', '50%', 0],
             ['s', '50%', 100],
             ['w', 0, '50%'],
@@ -3607,6 +3734,7 @@ function InteractiveBox({
                 left: typeof left === 'number' ? `${left}%` : left,
                 top: typeof top === 'number' ? `${top}%` : top,
                 transform: 'translate(-50%, -50%)',
+                cursor: getResizeCursor(corner as string),
               }}
             />
           ))}
