@@ -63,6 +63,7 @@ import SlidesManager, {
   MIN_GALLERY_AUTOPLAY_INTERVAL,
   MAX_GALLERY_AUTOPLAY_INTERVAL,
   resolveQuoteConfig,
+  getQuoteStarColorValue,
   resolveBlockVisibility,
   resolveBlockAnimationConfig,
   resolveBlockTransitionConfig,
@@ -379,16 +380,24 @@ const QUOTE_STYLE_OPTIONS: { value: QuoteBlockConfig["style"]; label: string }[]
 
 const QUOTE_STAR_COUNT = 5;
 
+const QUOTE_STAR_COLOR_OPTIONS: { value: QuoteBlockConfig["starColor"]; label: string }[] = [
+  { value: "gold", label: "Gold" },
+  { value: "brandPrimary", label: "Brand primary" },
+  { value: "brandSecondary", label: "Brand secondary" },
+];
+
 type QuoteStarRatingSelectorProps = {
   value: number;
   onChange: (next: number) => void;
   disabled?: boolean;
+  color?: string;
 };
 
 function QuoteStarRatingSelector({
   value,
   onChange,
   disabled = false,
+  color,
 }: QuoteStarRatingSelectorProps) {
   const [hoverValue, setHoverValue] = useState<number | null>(null);
   const activeValue = disabled ? value : hoverValue ?? value;
@@ -400,6 +409,7 @@ function QuoteStarRatingSelector({
         role="group"
         aria-label="Star rating"
         aria-disabled={disabled || undefined}
+        style={color ? { color } : undefined}
       >
         {Array.from({ length: QUOTE_STAR_COUNT }).map((_, index) => {
           const starValue = index + 1;
@@ -452,7 +462,7 @@ function QuoteStarRatingSelector({
           display: inline-flex;
           gap: ${tokens.spacing.xs}px;
           align-items: center;
-          color: var(--brand-primary, ${tokens.colors.accent});
+          color: inherit;
         }
         .quote-star-rating-control.is-disabled {
           opacity: 0.6;
@@ -5980,6 +5990,7 @@ export default function SlideModal({
                                         <QuoteStarRatingSelector
                                           value={selectedQuoteConfig.starRating}
                                           disabled={selectedQuoteConfig.useReview}
+                                          color={getQuoteStarColorValue(selectedQuoteConfig.starColor)}
                                           onChange={(nextValue) =>
                                             updateQuoteConfig(selectedBlock.id, (config) => ({
                                               ...config,
@@ -5988,6 +5999,20 @@ export default function SlideModal({
                                           }
                                         />
                                       </ControlRow>
+                                      <InspectorInputSelect
+                                        label="Star color"
+                                        value={selectedQuoteConfig.starColor}
+                                        onChange={(nextValue) =>
+                                          updateQuoteConfig(selectedBlock.id, (config) => ({
+                                            ...config,
+                                            starColor: nextValue as QuoteBlockConfig["starColor"],
+                                          }))
+                                        }
+                                        options={QUOTE_STAR_COLOR_OPTIONS.map((option) => ({
+                                          label: option.label,
+                                          value: option.value,
+                                        }))}
+                                      />
                                     </InspectorSection>
                                     <InspectorSection title="Typography">
                                       <ControlRow label="Font family">

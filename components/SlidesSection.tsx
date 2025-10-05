@@ -10,6 +10,8 @@ import {
   type BlockBackgroundGradientDirection,
   type BlockShadowPreset,
   resolveQuoteConfig,
+  getQuoteStarColorValue,
+  getQuoteVariantBaseStyles,
   resolveGalleryConfig,
   resolveBlockVisibility,
 } from './SlidesManager';
@@ -218,6 +220,25 @@ function renderBlock(block: SlideBlock) {
     case 'quote':
       {
         const quote = resolveQuoteConfig(block);
+        const variantStyles = getQuoteVariantBaseStyles(quote);
+        const starColorValue = getQuoteStarColorValue(quote.starColor);
+        const defaultTextColor = quote.style === 'plain' ? '#ffffff' : '#111111';
+        const textColor = block.textColor ?? block.color ?? defaultTextColor;
+        const fallbackWeight = block.fontWeight ?? (quote.style === 'emphasis' ? 600 : 400);
+        const fontSizePx =
+          typeof block.fontSize === 'number'
+            ? block.fontSize
+            : quote.style === 'emphasis'
+              ? tokens.spacing.xl
+              : quote.style === 'plain'
+                ? tokens.spacing.md
+                : tokens.spacing.lg;
+        const lineHeightValue =
+          typeof block.lineHeight === 'number'
+            ? block.lineHeightUnit === 'px'
+              ? `${block.lineHeight}px`
+              : block.lineHeight
+            : undefined;
         const trimmedAuthor = quote.author.trim();
         const showReviewRating = quote.useReview && Boolean(quote.reviewId);
         const resolvedStarRating = Math.max(0, Math.min(5, Math.round(quote.starRating ?? 0)));
@@ -227,46 +248,98 @@ function renderBlock(block: SlideBlock) {
         const ratingLabelCount = ratingValue === 1 ? '1 star' : `${ratingValue} stars`;
         return (
           <blockquote
-            className="text-white"
-            style={{ textAlign: quote.align, fontFamily: resolvedFontFamily ?? undefined }}
+            style={{
+              textAlign: quote.align,
+              fontFamily: resolvedFontFamily ?? undefined,
+              color: textColor,
+            }}
           >
-            <p className="text-lg italic">“{quote.text}”</p>
-            {trimmedAuthor.length > 0 ? (
-              <cite className="mt-2 block text-sm" style={{ fontFamily: resolvedFontFamily ?? undefined }}>
-                — {trimmedAuthor}
-              </cite>
-            ) : null}
-            {shouldRenderRating ? (
+            <div
+              style={{
+                padding: variantStyles.padding,
+                borderRadius: variantStyles.borderRadius,
+                backgroundColor: variantStyles.backgroundColor,
+                boxShadow: variantStyles.boxShadow,
+                display: 'inline-flex',
+                flexDirection: 'column',
+                alignItems:
+                  quote.align === 'center'
+                    ? 'center'
+                    : quote.align === 'right'
+                      ? 'flex-end'
+                      : 'flex-start',
+                maxWidth: '100%',
+                gap: 0,
+              }}
+            >
               <p
-                className={`text-base opacity-90 ${trimmedAuthor.length > 0 ? 'mt-1' : 'mt-3'}`}
-                aria-label={`${ratingLabelCount} ${ratingLabelBase}`}
-                role="img"
                 style={{
-                  fontFamily: resolvedFontFamily ?? undefined,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  columnGap: tokens.spacing.xs,
-                  color: `var(--brand-primary, ${tokens.colors.accent})`,
+                  fontStyle: 'italic',
+                  fontWeight: fallbackWeight,
+                  fontSize: `${fontSizePx}px`,
+                  lineHeight: lineHeightValue,
+                  letterSpacing:
+                    typeof block.letterSpacing === 'number'
+                      ? `${block.letterSpacing}px`
+                      : undefined,
+                  whiteSpace: 'pre-line',
+                  textAlign: quote.align,
+                  margin: 0,
                 }}
               >
-                {Array.from({ length: 5 }).map((_, index) => {
-                  const isFilled = index < ratingValue;
-                  return (
-                    <Star
-                      key={index}
-                      aria-hidden
-                      size={tokens.spacing.md}
-                      strokeWidth={1.5}
-                      style={{
-                        stroke: 'currentColor',
-                        fill: isFilled ? 'currentColor' : 'transparent',
-                        opacity: isFilled ? 1 : 0.35,
-                      }}
-                    />
-                  );
-                })}
+                <span aria-hidden>“</span>
+                {quote.text}
+                <span aria-hidden>”</span>
               </p>
-            ) : null}
+              {trimmedAuthor.length > 0 ? (
+                <cite
+                  style={{
+                    marginTop: tokens.spacing.sm,
+                    fontSize: `${tokens.spacing.md - tokens.spacing.xs}px`,
+                    opacity: 0.75,
+                    whiteSpace: 'pre-line',
+                    fontFamily: resolvedFontFamily ?? undefined,
+                    fontWeight: typeof block.fontWeight === 'number' ? block.fontWeight : undefined,
+                    lineHeight: lineHeightValue,
+                  }}
+                >
+                  — {trimmedAuthor}
+                </cite>
+              ) : null}
+              {shouldRenderRating ? (
+                <p
+                  aria-label={`${ratingLabelCount} ${ratingLabelBase}`}
+                  role="img"
+                  style={{
+                    fontFamily: resolvedFontFamily ?? undefined,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    columnGap: tokens.spacing.xs,
+                    color: starColorValue,
+                    marginTop: trimmedAuthor.length > 0 ? tokens.spacing.xs : tokens.spacing.sm,
+                    opacity: 0.9,
+                    fontSize: `${tokens.spacing.md}px`,
+                  }}
+                >
+                  {Array.from({ length: 5 }).map((_, index) => {
+                    const isFilled = index < ratingValue;
+                    return (
+                      <Star
+                        key={index}
+                        aria-hidden
+                        size={tokens.spacing.md}
+                        strokeWidth={1.5}
+                        style={{
+                          stroke: 'currentColor',
+                          fill: isFilled ? 'currentColor' : 'transparent',
+                          opacity: isFilled ? 1 : 0.35,
+                        }}
+                      />
+                    );
+                  })}
+                </p>
+              ) : null}
+            </div>
           </blockquote>
         );
       }

@@ -49,6 +49,15 @@ const TEXTUAL_BLOCK_KIND_NAMES = new Set([
 export const DEFAULT_TEXT_PLACEHOLDER = 'Edit me';
 
 const INLINE_EDIT_ACCENT_VAR = `var(--brand-secondary, var(--brand-primary, ${tokens.colors.accent}))`;
+const BRAND_PRIMARY_COLOR = `var(--brand-primary, ${tokens.colors.accent})`;
+const BRAND_SECONDARY_COLOR = `var(--brand-secondary, ${BRAND_PRIMARY_COLOR})`;
+const QUOTE_STAR_COLOR_VALUE: Record<'gold' | 'brandPrimary' | 'brandSecondary', string> = {
+  gold: '#FFD700',
+  brandPrimary: BRAND_PRIMARY_COLOR,
+  brandSecondary: BRAND_SECONDARY_COLOR,
+};
+const QUOTE_EMPHASIS_BACKGROUND = `color-mix(in srgb, ${BRAND_PRIMARY_COLOR} 5%, transparent)`;
+const QUOTE_CARD_BACKGROUND = `color-mix(in srgb, #ffffff 95%, ${BRAND_PRIMARY_COLOR} 5%)`;
 const INLINE_EDIT_BACKGROUND = `color-mix(in srgb, ${INLINE_EDIT_ACCENT_VAR} 8%, transparent)`;
 const INLINE_EDIT_BORDER = `color-mix(in srgb, ${INLINE_EDIT_ACCENT_VAR} 35%, transparent)`;
 const DEFAULT_BUTTON_LABEL = 'Button';
@@ -999,6 +1008,8 @@ export function getAspectRatioValue(aspectRatio: BlockAspectRatio): string | und
   }
 }
 
+export type QuoteStarColor = 'gold' | 'brandPrimary' | 'brandSecondary';
+
 export type QuoteBlockConfig = {
   text: string;
   author: string;
@@ -1011,21 +1022,133 @@ export type QuoteBlockConfig = {
   useReview: boolean;
   reviewId: string | null;
   starRating: number;
+  starColor: QuoteStarColor;
 };
 
 export const DEFAULT_QUOTE_CONFIG: QuoteBlockConfig = {
   text: DEFAULT_TEXT_PLACEHOLDER,
   author: '',
   style: 'plain',
-  bgColor: '#ffffff',
-  bgOpacity: 1,
-  radius: 0,
-  padding: 0,
+  bgColor: '#0ea5e9',
+  bgOpacity: 0.05,
+  radius: tokens.radius.lg,
+  padding: tokens.spacing.xl,
   align: 'left',
   useReview: false,
   reviewId: null,
   starRating: 0,
+  starColor: 'gold',
 };
+
+const normalizeQuoteStarColor = (value: unknown): QuoteStarColor => {
+  if (typeof value !== 'string') {
+    return 'gold';
+  }
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return 'gold';
+  }
+  if (normalized.includes('secondary')) {
+    return 'brandSecondary';
+  }
+  if (normalized.includes('primary') || normalized.includes('accent')) {
+    return 'brandPrimary';
+  }
+  if (normalized === '#ffd700' || normalized === '#ffc700' || normalized === 'golden') {
+    return 'gold';
+  }
+  if (normalized === 'brandsecondary') {
+    return 'brandSecondary';
+  }
+  if (normalized === 'brandprimary') {
+    return 'brandPrimary';
+  }
+  if (normalized === 'gold') {
+    return 'gold';
+  }
+  return 'gold';
+};
+
+export const getQuoteStarColorValue = (color: QuoteStarColor): string =>
+  QUOTE_STAR_COLOR_VALUE[color] ?? QUOTE_STAR_COLOR_VALUE.gold;
+
+export type QuoteVariantBaseStyles = {
+  padding: number;
+  borderRadius: number;
+  backgroundColor?: string;
+  boxShadow?: string;
+};
+
+const resolveQuoteBackgroundOverride = (
+  quote: QuoteBlockConfig,
+  normalizedOpacity: number,
+): string | undefined => {
+  const rawColor = typeof quote.bgColor === 'string' ? quote.bgColor.trim() : '';
+  if (!rawColor) {
+    return undefined;
+  }
+  const defaultColor = DEFAULT_QUOTE_CONFIG.bgColor.toLowerCase();
+  const normalizedColor = rawColor.toLowerCase();
+  const defaultOpacity = DEFAULT_QUOTE_CONFIG.bgOpacity;
+  const matchesDefaultColor = normalizedColor === defaultColor;
+  const matchesDefaultOpacity = Math.abs(normalizedOpacity - defaultOpacity) < 0.001;
+  if (matchesDefaultColor && matchesDefaultOpacity) {
+    return undefined;
+  }
+  return hexToRgba(rawColor, normalizedOpacity) ?? undefined;
+};
+
+export function getQuoteVariantBaseStyles(quote: QuoteBlockConfig): QuoteVariantBaseStyles {
+  const normalizedPadding =
+    typeof quote.padding === 'number' && Number.isFinite(quote.padding)
+      ? Math.max(0, quote.padding)
+      : undefined;
+  const normalizedRadius =
+    typeof quote.radius === 'number' && Number.isFinite(quote.radius)
+      ? Math.max(0, quote.radius)
+      : undefined;
+  const matchesDefaultPadding =
+    normalizedPadding !== undefined && normalizedPadding === DEFAULT_QUOTE_CONFIG.padding;
+  const matchesDefaultRadius =
+    normalizedRadius !== undefined && normalizedRadius === DEFAULT_QUOTE_CONFIG.radius;
+  const normalizedOpacity =
+    typeof quote.bgOpacity === 'number' && Number.isFinite(quote.bgOpacity)
+      ? clamp(quote.bgOpacity, 0, 1)
+      : DEFAULT_QUOTE_CONFIG.bgOpacity;
+  const backgroundOverride = resolveQuoteBackgroundOverride(quote, normalizedOpacity);
+
+  switch (quote.style) {
+    case 'plain':
+      return {
+        padding:
+          normalizedPadding !== undefined && !matchesDefaultPadding
+            ? normalizedPadding
+            : tokens.spacing.md,
+        borderRadius:
+          normalizedRadius !== undefined && !matchesDefaultRadius
+            ? normalizedRadius
+            : tokens.radius.sm,
+        backgroundColor: backgroundOverride,
+      };
+    case 'emphasis':
+      return {
+        padding: normalizedPadding ?? tokens.spacing.xl,
+        borderRadius: normalizedRadius ?? tokens.radius.lg,
+        backgroundColor: backgroundOverride ?? QUOTE_EMPHASIS_BACKGROUND,
+      };
+    case 'card':
+    default:
+      return {
+        padding:
+          normalizedPadding !== undefined && !matchesDefaultPadding
+            ? normalizedPadding
+            : tokens.spacing.lg,
+        borderRadius: normalizedRadius ?? tokens.radius.lg,
+        backgroundColor: backgroundOverride ?? QUOTE_CARD_BACKGROUND,
+        boxShadow: tokens.shadow.md,
+      };
+  }
+}
 
 export type BlockShadowPreset = 'none' | 'sm' | 'md' | 'lg';
 
@@ -1790,6 +1913,18 @@ export function resolveQuoteConfig(block: SlideBlock): QuoteBlockConfig {
     starRating = 5;
   }
 
+  const starColorSource =
+    (raw as any).starColor !== undefined
+      ? (raw as any).starColor
+      : (block as any).starColor !== undefined
+        ? (block as any).starColor
+        : undefined;
+  const hasExplicitStarColor =
+    (raw as any).starColor !== undefined || (block as any).starColor !== undefined;
+  const starColor = hasExplicitStarColor
+    ? normalizeQuoteStarColor(starColorSource)
+    : 'brandPrimary';
+
   return {
     text: textSource,
     author: authorSource,
@@ -1802,6 +1937,7 @@ export function resolveQuoteConfig(block: SlideBlock): QuoteBlockConfig {
     useReview: Boolean(useReviewSource),
     reviewId: reviewIdNormalized,
     starRating,
+    starColor,
   };
 }
 
@@ -2450,10 +2586,14 @@ export default function SlidesManager({
           typeof block.fontSize === 'number'
             ? block.fontSize
             : quote.style === 'emphasis'
-              ? 24
-              : 16;
+              ? tokens.spacing.xl
+              : quote.style === 'plain'
+                ? tokens.spacing.md
+                : tokens.spacing.lg;
         const lineHeightValue = resolveLineHeightValue(block.lineHeight, block.lineHeightUnit);
         const textShadowValue = resolveTextShadowStyle(block);
+        const variantStyles = getQuoteVariantBaseStyles(quote);
+        const starColorValue = getQuoteStarColorValue(quote.starColor);
         const wrapperStyle: CSSProperties = {
           width: '100%',
           textAlign: quote.align,
@@ -2461,35 +2601,39 @@ export default function SlidesManager({
         const innerStyle: CSSProperties = {
           color: textColor,
           textAlign: quote.align,
+          padding: variantStyles.padding,
+          borderRadius: variantStyles.borderRadius,
+          display: 'inline-flex',
+          flexDirection: 'column',
+          alignItems:
+            quote.align === 'center'
+              ? 'center'
+              : quote.align === 'right'
+                ? 'flex-end'
+                : 'flex-start',
+          maxWidth: '100%',
         };
+        if (variantStyles.backgroundColor) {
+          innerStyle.backgroundColor = variantStyles.backgroundColor;
+        }
+        if (variantStyles.boxShadow) {
+          innerStyle.boxShadow = variantStyles.boxShadow;
+        }
         if (resolvedFontFamily) {
           innerStyle.fontFamily = resolvedFontFamily;
-        }
-        const innerClasses = ['max-w-full'];
-        if (quote.style === 'emphasis' || quote.style === 'card') {
-          const backgroundColor = hexToRgba(quote.bgColor, quote.bgOpacity);
-          if (backgroundColor) {
-            innerStyle.backgroundColor = backgroundColor;
-          }
-          innerStyle.borderRadius = quote.radius;
-          innerStyle.padding = quote.padding;
-          innerStyle.display = 'inline-block';
-        }
-        if (quote.style === 'card') {
-          innerClasses.push('shadow-lg');
-        }
-        const textClasses = ['whitespace-pre-line'];
-        if (quote.style === 'emphasis') {
-          textClasses.push('italic', 'text-2xl', 'font-semibold');
-        } else {
-          textClasses.push('italic');
         }
         const textStyle: CSSProperties = {
           fontWeight: fallbackWeight,
           lineHeight: lineHeightValue,
+          fontStyle: 'italic',
+          whiteSpace: 'pre-line',
+          display: 'inline',
         };
         if (resolvedFontFamily) {
           textStyle.fontFamily = resolvedFontFamily;
+        }
+        if (typeof block.letterSpacing === 'number') {
+          textStyle.letterSpacing = `${block.letterSpacing}px`;
         }
         if (fontSizePx) {
           textStyle.fontSize = `${fontSizePx}px`;
@@ -2497,8 +2641,12 @@ export default function SlidesManager({
         if (textShadowValue) {
           textStyle.textShadow = textShadowValue;
         }
-        const authorClasses = ['mt-3', 'text-sm', 'opacity-80', 'whitespace-pre-line'];
-        const authorStyle: CSSProperties = {};
+        const authorStyle: CSSProperties = {
+          marginTop: tokens.spacing.sm,
+          fontSize: `${tokens.spacing.md - tokens.spacing.xs}px`,
+          opacity: 0.75,
+          whiteSpace: 'pre-line',
+        };
         if (resolvedFontFamily) {
           authorStyle.fontFamily = resolvedFontFamily;
         }
@@ -2516,20 +2664,20 @@ export default function SlidesManager({
         const resolvedStarRating = clamp(Math.round(quote.starRating ?? 0), 0, 5);
         const ratingValue = resolvedStarRating > 0 ? resolvedStarRating : showReviewRating ? 5 : 0;
         const shouldRenderRating = ratingValue > 0;
-        const ratingClasses = ['text-base', 'opacity-90'];
-        ratingClasses.push(trimmedAuthor.length > 0 ? 'mt-1' : 'mt-3');
-        const ratingStyle: CSSProperties = {};
+        const ratingStyle: CSSProperties = {
+          display: 'inline-flex',
+          alignItems: 'center',
+          columnGap: tokens.spacing.xs,
+          color: starColorValue,
+          marginTop: trimmedAuthor.length > 0 ? tokens.spacing.xs : tokens.spacing.sm,
+          opacity: 0.9,
+          fontSize: `${tokens.spacing.md}px`,
+        };
         if (resolvedFontFamily) {
           ratingStyle.fontFamily = resolvedFontFamily;
         }
         if (textShadowValue) {
           ratingStyle.textShadow = textShadowValue;
-        }
-        if (shouldRenderRating) {
-          ratingStyle.display = 'inline-flex';
-          ratingStyle.alignItems = 'center';
-          ratingStyle.columnGap = tokens.spacing.xs;
-          ratingStyle.color = `var(--brand-primary, ${tokens.colors.accent})`;
         }
         const ratingLabelBase = quote.useReview ? 'review' : 'rating';
         const ratingLabelCount = ratingValue === 1 ? '1 star' : `${ratingValue} stars`;
@@ -2558,18 +2706,15 @@ export default function SlidesManager({
         );
         return (
           <div style={wrapperStyle}>
-            <div className={innerClasses.join(' ')} style={innerStyle}>
-              <p className={textClasses.join(' ')} style={textStyle}>
+            <div className="max-w-full" style={innerStyle}>
+              <p style={textStyle}>
                 <span aria-hidden>“</span>
                 {quoteTextNode}
                 <span aria-hidden>”</span>
               </p>
-              {trimmedAuthor.length > 0 ? (
-                <p className={authorClasses.join(' ')} style={authorStyle}>— {trimmedAuthor}</p>
-              ) : null}
+              {trimmedAuthor.length > 0 ? <p style={authorStyle}>— {trimmedAuthor}</p> : null}
               {shouldRenderRating ? (
                 <p
-                  className={ratingClasses.join(' ')}
                   style={ratingStyle}
                   aria-label={ratingAriaLabel}
                   role="img"
