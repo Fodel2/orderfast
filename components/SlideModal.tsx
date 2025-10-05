@@ -1819,6 +1819,22 @@ const GalleryInspectorItemContent = React.forwardRef<
           </div>
         </ControlRow>
         <style jsx>{`
+          .gallery-item :global(.inspector-row) {
+            grid-template-columns: 1fr;
+            padding: 0;
+          }
+
+          .gallery-item :global(.inspector-label) {
+            display: none;
+          }
+
+          .gallery-item :global(.inspector-control) {
+            display: block;
+            width: 100%;
+            gap: 0;
+            padding: 0;
+          }
+
           .gallery-item {
             display: flex;
             flex-direction: column;
@@ -1899,19 +1915,24 @@ const GalleryInspectorItemContent = React.forwardRef<
           }
 
           .gallery-item-fields {
+            position: relative;
             display: flex;
             flex-direction: column;
             gap: ${tokens.spacing.xs}px;
-            align-items: flex-end;
+            align-items: stretch;
             width: 100%;
           }
 
           .gallery-item-alt-label {
-            font-size: 0.75rem;
-            font-weight: 500;
-            color: ${inspectorColors.label};
-            align-self: stretch;
-            text-align: right;
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
           }
 
           .gallery-item-alt-input {
