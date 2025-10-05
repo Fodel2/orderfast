@@ -379,6 +379,8 @@ const QUOTE_STYLE_OPTIONS: { value: QuoteBlockConfig["style"]; label: string }[]
 ];
 
 const QUOTE_STAR_COUNT = 5;
+const QUOTE_STAR_OUTLINE_COLOR = "rgba(15, 23, 42, 0.3)";
+const QUOTE_STAR_TRANSITION_MS = 180;
 
 const QUOTE_STAR_COLOR_OPTIONS: { value: QuoteBlockConfig["starColor"]; label: string }[] = [
   { value: "gold", label: "Gold" },
@@ -400,6 +402,15 @@ function QuoteStarRatingSelector({
   color,
 }: QuoteStarRatingSelectorProps) {
   const [hoverValue, setHoverValue] = useState<number | null>(null);
+  const resolvedColor = color ?? getQuoteStarColorValue("gold");
+  const controlStyle = useMemo<React.CSSProperties>(
+    () =>
+      ({
+        "--quote-star-active-color": resolvedColor,
+        "--quote-star-outline-color": QUOTE_STAR_OUTLINE_COLOR,
+      }) as React.CSSProperties,
+    [resolvedColor],
+  );
   const activeValue = disabled ? value : hoverValue ?? value;
 
   return (
@@ -409,7 +420,7 @@ function QuoteStarRatingSelector({
         role="group"
         aria-label="Star rating"
         aria-disabled={disabled || undefined}
-        style={color ? { color } : undefined}
+        style={controlStyle}
       >
         {Array.from({ length: QUOTE_STAR_COUNT }).map((_, index) => {
           const starValue = index + 1;
@@ -459,10 +470,12 @@ function QuoteStarRatingSelector({
       </div>
       <style jsx>{`
         .quote-star-rating-control {
+          --quote-star-outline-color: ${QUOTE_STAR_OUTLINE_COLOR};
+          --quote-star-active-color: ${getQuoteStarColorValue("gold")};
           display: inline-flex;
           gap: ${tokens.spacing.xs}px;
           align-items: center;
-          color: inherit;
+          color: var(--quote-star-outline-color);
         }
         .quote-star-rating-control.is-disabled {
           opacity: 0.6;
@@ -477,8 +490,11 @@ function QuoteStarRatingSelector({
           align-items: center;
           justify-content: center;
           cursor: pointer;
-          transition: transform 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+          transition: transform ${QUOTE_STAR_TRANSITION_MS}ms ease,
+            box-shadow ${QUOTE_STAR_TRANSITION_MS}ms ease,
+            background-color ${QUOTE_STAR_TRANSITION_MS}ms ease;
           outline: none;
+          color: var(--quote-star-outline-color);
         }
         .quote-star-rating-control__button:hover,
         .quote-star-rating-control__button:focus-visible {
@@ -499,18 +515,24 @@ function QuoteStarRatingSelector({
         .quote-star-rating-control__button:disabled:focus-visible {
           outline: none;
         }
+        .quote-star-rating-control__button.is-active,
+        .quote-star-rating-control__button.is-selected {
+          color: var(--quote-star-active-color);
+        }
         .quote-star-rating-control__icon {
           width: ${tokens.spacing.md}px;
           height: ${tokens.spacing.md}px;
-          stroke: currentColor;
+          stroke: var(--quote-star-outline-color);
           fill: transparent;
-          opacity: 0.35;
-          transition: fill 120ms ease, opacity 120ms ease;
+          opacity: 1;
+          transition: fill ${QUOTE_STAR_TRANSITION_MS}ms ease,
+            stroke ${QUOTE_STAR_TRANSITION_MS}ms ease,
+            opacity ${QUOTE_STAR_TRANSITION_MS}ms ease;
         }
         .quote-star-rating-control__button.is-active .quote-star-rating-control__icon,
         .quote-star-rating-control__button.is-selected .quote-star-rating-control__icon {
-          fill: currentColor;
-          opacity: 1;
+          fill: var(--quote-star-active-color);
+          stroke: var(--quote-star-active-color);
         }
       `}</style>
     </>
