@@ -1723,7 +1723,6 @@ interface SlideModalProps {
 }
 
 type GalleryInspectorItemContentProps = {
-  label: string;
   item: GalleryBlockItem;
   itemKey: string;
   onAltChange: (value: string) => void;
@@ -1742,7 +1741,6 @@ const GalleryInspectorItemContent = React.forwardRef<
 >(
   (
     {
-      label,
       item,
       itemKey,
       onAltChange,
@@ -1757,9 +1755,8 @@ const GalleryInspectorItemContent = React.forwardRef<
     ref,
   ) => {
     const thumbnailSize = inspectorLayout.controlHeight * 1.5;
-    const handleWidth = inspectorLayout.controlHeight;
-    const itemPadding = tokens.spacing.sm;
-    const itemGap = tokens.spacing.xs;
+    const handleSize = inspectorLayout.controlHeight;
+    const itemPadding = tokens.spacing.xs;
 
     const classes = [
       "gallery-item",
@@ -1771,25 +1768,20 @@ const GalleryInspectorItemContent = React.forwardRef<
 
     return (
       <div ref={ref} data-gallery-key={itemKey} className={classes} style={style}>
-        <InspectorInputText
-          label={label}
-          value={item.alt ?? ""}
-          placeholder="Alt text"
-          onChange={onAltChange}
-          disabled={disableInteractions}
-          leading={
-            <div className="gallery-item-leading">
-              <button
-                type="button"
-                aria-label="Drag to reorder image"
-                className="gallery-item-handle"
-                ref={dragHandleRef}
-                {...(dragHandleAttributes ?? {})}
-                {...(dragHandleListeners ?? {})}
-                disabled={disableInteractions}
-              >
-                <GripVertical size={tokens.spacing.md} />
-              </button>
+        <ControlRow label="">
+          <div className="gallery-item-row">
+            <button
+              type="button"
+              aria-label="Drag to reorder image"
+              className="gallery-item-handle"
+              ref={dragHandleRef}
+              {...(dragHandleAttributes ?? {})}
+              {...(dragHandleListeners ?? {})}
+              disabled={disableInteractions}
+            >
+              <GripVertical size={tokens.spacing.md} />
+            </button>
+            <div className="gallery-item-thumbnail-wrapper">
               <img
                 src={item.url}
                 alt={item.alt ?? ""}
@@ -1797,22 +1789,39 @@ const GalleryInspectorItemContent = React.forwardRef<
                 draggable={false}
               />
             </div>
-          }
-          trailing={
-            <InspectorInlineButton
-              tone="danger"
-              onClick={onRemove}
-              disabled={disableInteractions}
-            >
-              Remove
-            </InspectorInlineButton>
-          }
-        />
+            <div className="gallery-item-fields">
+              <label
+                className="gallery-item-alt-label"
+                htmlFor={`gallery-alt-${itemKey}`}
+              >
+                Alt text
+              </label>
+              <input
+                id={`gallery-alt-${itemKey}`}
+                className="gallery-item-alt-input"
+                type="text"
+                value={item.alt ?? ""}
+                placeholder="Describe the image"
+                onChange={(event) => onAltChange(event.target.value)}
+                disabled={disableInteractions}
+              />
+              <div className="gallery-item-actions">
+                <InspectorInlineButton
+                  tone="danger"
+                  onClick={onRemove}
+                  disabled={disableInteractions}
+                  className="gallery-item-remove"
+                >
+                  Remove
+                </InspectorInlineButton>
+              </div>
+            </div>
+          </div>
+        </ControlRow>
         <style jsx>{`
           .gallery-item {
             display: flex;
             flex-direction: column;
-            gap: ${itemGap}px;
             padding: ${itemPadding}px;
             border-radius: ${inspectorLayout.radius}px;
             border: ${inspectorLayout.borderWidth}px solid ${inspectorColors.border};
@@ -1829,20 +1838,22 @@ const GalleryInspectorItemContent = React.forwardRef<
             pointer-events: none;
           }
 
-          .gallery-item-leading {
-            display: inline-flex;
+          .gallery-item-row {
+            display: grid;
+            grid-template-columns: auto auto 1fr;
             align-items: center;
             gap: ${tokens.spacing.sm}px;
+            width: 100%;
           }
 
           .gallery-item-handle {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: ${handleWidth}px;
-            height: ${inspectorLayout.controlHeight}px;
+            width: ${handleSize}px;
+            height: ${handleSize}px;
             border-radius: ${inspectorLayout.radius}px;
-            border: ${inspectorLayout.borderWidth}px solid ${inspectorColors.border};
+            border: ${inspectorLayout.borderWidth}px solid transparent;
             background: transparent;
             color: ${inspectorColors.labelMuted};
             cursor: grab;
@@ -1861,7 +1872,7 @@ const GalleryInspectorItemContent = React.forwardRef<
             box-shadow: ${tokens.shadow.sm};
           }
 
-          .gallery-item-handle:active {
+          .gallery-item-handle:not(:disabled):active {
             cursor: grabbing;
           }
 
@@ -1871,12 +1882,73 @@ const GalleryInspectorItemContent = React.forwardRef<
             box-shadow: none;
           }
 
-          .gallery-item-thumbnail {
+          .gallery-item-thumbnail-wrapper {
             width: ${thumbnailSize}px;
             height: ${thumbnailSize}px;
-            border-radius: ${inspectorLayout.radius}px;
-            object-fit: cover;
+            border-radius: ${tokens.radius.sm}px;
+            overflow: hidden;
+            border: ${inspectorLayout.borderWidth}px solid ${inspectorColors.border};
             flex-shrink: 0;
+            display: flex;
+          }
+
+          .gallery-item-thumbnail {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+          }
+
+          .gallery-item-fields {
+            display: flex;
+            flex-direction: column;
+            gap: ${tokens.spacing.xs}px;
+            align-items: flex-end;
+            width: 100%;
+          }
+
+          .gallery-item-alt-label {
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: ${inspectorColors.label};
+            align-self: stretch;
+            text-align: right;
+          }
+
+          .gallery-item-alt-input {
+            width: 100%;
+            height: ${inspectorLayout.controlHeight}px;
+            border-radius: ${inspectorLayout.radius}px;
+            border: ${inspectorLayout.borderWidth}px solid ${inspectorColors.border};
+            padding: 0 ${tokens.spacing.sm}px;
+            font-size: 0.875rem;
+            color: ${inspectorColors.text};
+            background: ${inspectorColors.background};
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+          }
+
+          .gallery-item-alt-input::placeholder {
+            color: ${inspectorColors.labelMuted};
+          }
+
+          .gallery-item-alt-input:focus-visible {
+            outline: 2px solid #10b981;
+            outline-offset: 2px;
+          }
+
+          .gallery-item-alt-input:disabled {
+            opacity: ${tokens.opacity[50]};
+            cursor: not-allowed;
+          }
+
+          .gallery-item-actions {
+            display: flex;
+            justify-content: flex-end;
+            width: 100%;
+          }
+
+          .gallery-item-remove {
+            width: auto !important;
+            align-self: flex-end;
           }
         `}</style>
       </div>
@@ -1922,7 +1994,6 @@ const GalleryInspectorItem: React.FC<GalleryInspectorItemProps> = ({
   return (
     <GalleryInspectorItemContent
       ref={setNodeRef}
-      label={`Image ${index + 1}`}
       item={item}
       itemKey={itemKey}
       onAltChange={onAltChange}
@@ -5616,7 +5687,7 @@ export default function SlideModal({
                                             style={{
                                               display: "flex",
                                               flexDirection: "column",
-                                              gap: tokens.spacing.sm,
+                                              gap: tokens.spacing.xs,
                                             }}
                                           >
                                             {galleryRenderedItems.map((item, index) => {
@@ -5668,16 +5739,6 @@ export default function SlideModal({
                                         <DragOverlay>
                                           {activeGalleryDragItem ? (
                                             <GalleryInspectorItemContent
-                                              label={
-                                                activeGalleryDragId !== null &&
-                                                Number.isFinite(
-                                                  Number(activeGalleryDragId),
-                                                )
-                                                  ? `Image ${
-                                                      Number(activeGalleryDragId) + 1
-                                                    }`
-                                                  : "Image"
-                                              }
                                               item={activeGalleryDragItem}
                                               itemKey={
                                                 activeGalleryDragIdentity?.key ??
