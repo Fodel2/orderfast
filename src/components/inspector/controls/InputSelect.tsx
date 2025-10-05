@@ -3,6 +3,11 @@ import { ChangeEvent } from "react";
 import { inspectorColors, inspectorLayout } from "../layout";
 import { tokens } from "../../../ui/tokens";
 
+const SELECT_CHEVRON_ICON = encodeURIComponent(
+  `<svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 4.5L6 7.5L9 4.5" stroke="#64748b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+);
+const SELECT_ICON_SIZE = tokens.spacing.sm * 1.5;
+
 const { labelWidth, controlHeight, gap, paddingX, paddingY, radius, borderWidth, mobileBreakpoint } =
   inspectorLayout;
 
@@ -84,10 +89,22 @@ export function InputSelect({
           height: ${controlHeight}px;
           border-radius: ${radius}px;
           border: ${borderWidth}px solid ${inspectorColors.border};
-          padding: 0 ${tokens.spacing.sm}px;
+          padding: 0 ${tokens.spacing.md}px 0 ${tokens.spacing.sm}px;
           background-color: ${inspectorColors.background};
+          background-image: url("data:image/svg+xml,${SELECT_CHEVRON_ICON}");
+          background-repeat: no-repeat;
+          background-position: right ${tokens.spacing.sm}px center;
+          background-size: ${SELECT_ICON_SIZE}px ${SELECT_ICON_SIZE}px;
           font-size: 0.875rem;
           color: ${inspectorColors.text};
+          appearance: none;
+          -webkit-appearance: none;
+          line-height: 1.2;
+        }
+
+        .inspector-select:focus-visible {
+          outline: 2px solid #10b981;
+          outline-offset: 2px;
         }
 
         .inspector-select:disabled {

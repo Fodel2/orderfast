@@ -5987,10 +5987,55 @@ export default function SlideModal({
                                 return (
                                   <div className="space-y-4">
                                     <InspectorSection title="Content">
+                                      <InspectorInputToggle
+                                        label="Use customer review"
+                                        checked={selectedQuoteConfig.useReview}
+                                        onChange={(checked) =>
+                                          updateQuoteConfig(selectedBlock.id, (config) => ({
+                                            ...config,
+                                            useReview: checked,
+                                            reviewId: checked ? config.reviewId : null,
+                                          }))
+                                        }
+                                      />
+                                      {selectedQuoteConfig.useReview ? (
+                                        reviewOptions.length > 0 ? (
+                                          <InspectorInputSelect
+                                            label="Review"
+                                            value={selectedQuoteConfig.reviewId ?? ""}
+                                            onChange={(nextValue) => {
+                                              const review = reviewOptions.find(
+                                                (option) => option.id === nextValue,
+                                              );
+                                              updateQuoteConfig(selectedBlock.id, (config) => ({
+                                                ...config,
+                                                useReview: true,
+                                                reviewId: nextValue.length > 0 ? nextValue : null,
+                                                text: review ? review.text : config.text,
+                                                author: review ? review.author : config.author,
+                                              }));
+                                            }}
+                                            options={[
+                                              { value: "", label: "Choose a review…" },
+                                              ...reviewOptions.map((option) => ({
+                                                value: option.id,
+                                                label: formatReviewOptionLabel(option),
+                                              })),
+                                            ]}
+                                          />
+                                        ) : (
+                                          <ControlRow label="Review">
+                                            <span className="text-xs text-neutral-500">
+                                              No reviews available.
+                                            </span>
+                                          </ControlRow>
+                                        )
+                                      ) : null}
                                       <InspectorInputTextArea
                                         label="Quote text"
                                         value={selectedQuoteConfig.text}
                                         rows={4}
+                                        disabled={selectedQuoteConfig.useReview}
                                         onChange={(nextValue) =>
                                           updateQuoteConfig(selectedBlock.id, (config) => ({
                                             ...config,
@@ -6001,6 +6046,7 @@ export default function SlideModal({
                                       <InspectorInputText
                                         label="Author (optional)"
                                         value={selectedQuoteConfig.author}
+                                        disabled={selectedQuoteConfig.useReview}
                                         onChange={(nextValue) =>
                                           updateQuoteConfig(selectedBlock.id, (config) => ({
                                             ...config,
@@ -6024,6 +6070,7 @@ export default function SlideModal({
                                       <InspectorInputSelect
                                         label="Star color"
                                         value={selectedQuoteConfig.starColor}
+                                        disabled={selectedQuoteConfig.useReview}
                                         onChange={(nextValue) =>
                                           updateQuoteConfig(selectedBlock.id, (config) => ({
                                             ...config,
@@ -6183,52 +6230,6 @@ export default function SlideModal({
                                           value: option.value,
                                         }))}
                                       />
-                                    </InspectorSection>
-                                    <InspectorSection title="Options">
-                                      <InspectorInputToggle
-                                        label="Use customer review"
-                                        checked={selectedQuoteConfig.useReview}
-                                        onChange={(checked) =>
-                                          updateQuoteConfig(selectedBlock.id, (config) => ({
-                                            ...config,
-                                            useReview: checked,
-                                            reviewId: checked ? config.reviewId : null,
-                                          }))
-                                        }
-                                      />
-                                      {selectedQuoteConfig.useReview ? (
-                                        reviewOptions.length > 0 ? (
-                                          <InspectorInputSelect
-                                            label="Review"
-                                            value={selectedQuoteConfig.reviewId ?? ""}
-                                            onChange={(nextValue) => {
-                                              const review = reviewOptions.find(
-                                                (option) => option.id === nextValue,
-                                              );
-                                              updateQuoteConfig(selectedBlock.id, (config) => ({
-                                                ...config,
-                                                useReview: true,
-                                                reviewId: nextValue.length > 0 ? nextValue : null,
-                                                text: review ? review.text : config.text,
-                                                author: review ? review.author : config.author,
-                                              }));
-                                            }}
-                                            options={[
-                                              { value: "", label: "Choose a review…" },
-                                              ...reviewOptions.map((option) => ({
-                                                value: option.id,
-                                                label: formatReviewOptionLabel(option),
-                                              })),
-                                            ]}
-                                          />
-                                        ) : (
-                                          <ControlRow label="Review">
-                                            <span className="text-xs text-neutral-500">
-                                              No reviews available.
-                                            </span>
-                                          </ControlRow>
-                                        )
-                                      ) : null}
                                     </InspectorSection>
                                     <InspectorSection title="Style">
                                       <InspectorInputSelect
