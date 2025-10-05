@@ -6,7 +6,6 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { ChevronDown } from "lucide-react";
 
 import { inspectorColors, inspectorLayout } from "../../src/components/inspector/layout";
 import { tokens } from "../../src/ui/tokens";
@@ -16,6 +15,11 @@ const ITEM_HEIGHT = 36;
 const VISIBLE_BUFFER = 4;
 
 const sanitizeDomId = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, "-");
+
+const SELECT_CHEVRON_ICON = encodeURIComponent(
+  `<svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 4.5L6 7.5L9 4.5" stroke="#64748b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+);
+const SELECT_ICON_SIZE = tokens.spacing.sm * 1.5;
 
 const systemFallback = '"Inter", "Helvetica Neue", Arial, sans-serif';
 
@@ -230,7 +234,6 @@ const FontSelect: React.FC<FontSelectProps> = ({
       : systemFallback;
 
   const { controlHeight, radius, borderWidth } = inspectorLayout;
-  const chevronClassName = `font-select-chevron${open ? " is-open" : ""}`;
 
   return (
     <div className="font-select-root">
@@ -247,7 +250,6 @@ const FontSelect: React.FC<FontSelectProps> = ({
         <span className="font-select-label" style={{ fontFamily: triggerFontStack }}>
           {triggerLabel}
         </span>
-        <ChevronDown className={chevronClassName} aria-hidden />
       </button>
       {open && (
         <div
@@ -320,24 +322,24 @@ const FontSelect: React.FC<FontSelectProps> = ({
         .font-select-trigger {
           display: inline-flex;
           align-items: center;
-          justify-content: space-between;
-          gap: ${tokens.spacing.xs}px;
+          justify-content: flex-start;
           width: 100%;
           height: ${controlHeight}px;
-          padding: 0 ${tokens.spacing.sm}px;
+          padding: 0 ${tokens.spacing.md}px 0 ${tokens.spacing.sm}px;
           border-radius: ${radius}px;
           border: ${borderWidth}px solid ${inspectorColors.border};
           background-color: ${inspectorColors.background};
+          background-image: url("data:image/svg+xml,${SELECT_CHEVRON_ICON}");
+          background-repeat: no-repeat;
+          background-position: right ${tokens.spacing.sm}px center;
+          background-size: ${SELECT_ICON_SIZE}px ${SELECT_ICON_SIZE}px;
           color: ${inspectorColors.text};
           font-size: 0.875rem;
           font-weight: 500;
           line-height: 1.2;
+          text-align: left;
           cursor: pointer;
           transition: border-color 0.18s ease, box-shadow 0.18s ease;
-        }
-
-        .font-select-trigger:hover {
-          border-color: rgba(15, 23, 42, 0.18);
         }
 
         .font-select-trigger:focus-visible {
@@ -351,22 +353,6 @@ const FontSelect: React.FC<FontSelectProps> = ({
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
-        }
-
-        .font-select-chevron {
-          flex-shrink: 0;
-          width: ${tokens.spacing.sm * 1.5}px;
-          height: ${tokens.spacing.sm * 1.5}px;
-          color: ${inspectorColors.labelMuted};
-          transition: transform 0.18s ease, color 0.18s ease;
-        }
-
-        .font-select-trigger:hover .font-select-chevron {
-          color: rgba(100, 116, 139, 0.9);
-        }
-
-        .font-select-chevron.is-open {
-          transform: rotate(180deg);
         }
 
         .font-select-panel {
