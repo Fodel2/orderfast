@@ -11,6 +11,8 @@ const {
   gap,
   mobileBreakpoint,
 } = inspectorLayout;
+const UPLOAD_FOCUS_RING = `var(--inspector-upload-focus-ring, ${tokens.colors.focusRing})`;
+const UPLOAD_HOVER_BORDER = `var(--inspector-upload-hover-border, ${tokens.colors.neutral[400]})`;
 
 export interface InputUploadProps {
   id?: string;
@@ -127,11 +129,17 @@ const InputUpload = forwardRef<HTMLInputElement, InputUploadProps>(
             font-size: 0.875rem;
             font-weight: 500;
             transition: border-color 0.15s ease, box-shadow 0.15s ease;
+            cursor: pointer;
+          }
+
+          .upload-button:hover:not(:disabled) {
+            border-color: ${UPLOAD_HOVER_BORDER};
           }
 
           .upload-button:focus-visible {
-            outline: 2px solid #10b981;
+            outline: ${tokens.border.thick}px solid ${UPLOAD_FOCUS_RING};
             outline-offset: 2px;
+            border-color: ${UPLOAD_FOCUS_RING};
           }
 
           .upload-button:disabled {

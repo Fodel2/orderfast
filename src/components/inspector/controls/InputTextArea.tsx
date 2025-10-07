@@ -5,6 +5,8 @@ import { inspectorColors, inspectorLayout } from "../layout";
 import { tokens } from "../../../ui/tokens";
 
 const { controlHeight, radius, borderWidth, mobileBreakpoint } = inspectorLayout;
+const TEXTAREA_FOCUS_RING = `var(--inspector-textarea-focus-ring, ${tokens.colors.focusRing})`;
+const TEXTAREA_HOVER_BORDER = `var(--inspector-textarea-hover-border, ${tokens.colors.neutral[400]})`;
 
 export interface InputTextAreaProps {
   id?: string;
@@ -65,9 +67,14 @@ export function InputTextArea({
           color: ${inspectorColors.labelMuted};
         }
 
+        .inspector-textarea:hover:not(:disabled) {
+          border-color: ${TEXTAREA_HOVER_BORDER};
+        }
+
         .inspector-textarea:focus-visible {
-          outline: 2px solid #10b981;
+          outline: ${tokens.border.thick}px solid ${TEXTAREA_FOCUS_RING};
           outline-offset: 2px;
+          border-color: ${TEXTAREA_FOCUS_RING};
         }
 
         .inspector-textarea:disabled {
