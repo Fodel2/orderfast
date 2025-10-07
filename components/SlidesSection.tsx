@@ -12,6 +12,7 @@ import {
   resolveQuoteConfig,
   getQuoteStarColorValue,
   getQuoteVariantBaseStyles,
+  getQuoteVariantFontSizeFallback,
   resolveGalleryConfig,
   resolveBlockVisibility,
 } from './SlidesManager';
@@ -224,15 +225,12 @@ function renderBlock(block: SlideBlock) {
         const starColorValue = getQuoteStarColorValue(quote.starColor);
         const defaultTextColor = quote.style === 'plain' ? '#ffffff' : '#111111';
         const textColor = block.textColor ?? block.color ?? defaultTextColor;
-        const fallbackWeight = block.fontWeight ?? (quote.style === 'emphasis' ? 600 : 400);
-        const fontSizePx =
-          typeof block.fontSize === 'number'
-            ? block.fontSize
-            : quote.style === 'emphasis'
-              ? tokens.spacing.xl
-              : quote.style === 'plain'
-                ? tokens.spacing.md
-                : tokens.spacing.lg;
+        const fallbackWeight =
+          block.fontWeight ?? (quote.style === 'emphasis' ? 600 : quote.style === 'card' ? 500 : 400);
+        const hasCustomFontSize = typeof block.fontSize === 'number';
+        const fontSizeValue = hasCustomFontSize
+          ? `${block.fontSize}px`
+          : getQuoteVariantFontSizeFallback(quote.style);
         const lineHeightValue =
           typeof block.lineHeight === 'number'
             ? block.lineHeightUnit === 'px'
@@ -260,6 +258,7 @@ function renderBlock(block: SlideBlock) {
                 borderRadius: variantStyles.borderRadius,
                 backgroundColor: variantStyles.backgroundColor,
                 boxShadow: variantStyles.boxShadow,
+                border: variantStyles.border,
                 display: 'inline-flex',
                 flexDirection: 'column',
                 alignItems:
@@ -276,7 +275,7 @@ function renderBlock(block: SlideBlock) {
                 style={{
                   fontStyle: 'italic',
                   fontWeight: fallbackWeight,
-                  fontSize: `${fontSizePx}px`,
+                  fontSize: fontSizeValue,
                   lineHeight: lineHeightValue,
                   letterSpacing:
                     typeof block.letterSpacing === 'number'
@@ -319,6 +318,8 @@ function renderBlock(block: SlideBlock) {
                     marginTop: trimmedAuthor.length > 0 ? tokens.spacing.xs : tokens.spacing.sm,
                     opacity: 0.9,
                     fontSize: `${tokens.spacing.md}px`,
+                    alignSelf: quote.style === 'card' ? 'center' : undefined,
+                    justifyContent: quote.style === 'card' ? 'center' : undefined,
                   }}
                 >
                   {Array.from({ length: 5 }).map((_, index) => {

@@ -51,13 +51,15 @@ export const DEFAULT_TEXT_PLACEHOLDER = 'Edit me';
 const INLINE_EDIT_ACCENT_VAR = `var(--brand-secondary, var(--brand-primary, ${tokens.colors.accent}))`;
 const BRAND_PRIMARY_COLOR = `var(--brand-primary, ${tokens.colors.accent})`;
 const BRAND_SECONDARY_COLOR = `var(--brand-secondary, ${BRAND_PRIMARY_COLOR})`;
+const BRAND_SURFACE_COLOR = 'var(--surface, #f8fafc)';
 const QUOTE_STAR_COLOR_VALUE: Record<'gold' | 'brandPrimary' | 'brandSecondary', string> = {
   gold: '#FFD700',
   brandPrimary: BRAND_PRIMARY_COLOR,
   brandSecondary: BRAND_SECONDARY_COLOR,
 };
 const QUOTE_EMPHASIS_BACKGROUND = `color-mix(in srgb, ${BRAND_PRIMARY_COLOR} 5%, transparent)`;
-const QUOTE_CARD_BACKGROUND = `color-mix(in srgb, #ffffff 95%, ${BRAND_PRIMARY_COLOR} 5%)`;
+const QUOTE_CARD_BACKGROUND = `color-mix(in srgb, ${BRAND_SURFACE_COLOR} 88%, ${BRAND_PRIMARY_COLOR} 12%)`;
+const QUOTE_CARD_BORDER = `${tokens.border.thin}px solid var(--border-light, rgba(15, 23, 42, 0.12))`;
 const INLINE_EDIT_BACKGROUND = `color-mix(in srgb, ${INLINE_EDIT_ACCENT_VAR} 8%, transparent)`;
 const INLINE_EDIT_BORDER = `color-mix(in srgb, ${INLINE_EDIT_ACCENT_VAR} 35%, transparent)`;
 const DEFAULT_BUTTON_LABEL = 'Button';
@@ -1040,6 +1042,17 @@ export const DEFAULT_QUOTE_CONFIG: QuoteBlockConfig = {
   starColor: 'gold',
 };
 
+const QUOTE_FONT_SIZE_FALLBACK: Record<QuoteBlockConfig['style'], string> = {
+  plain: `clamp(${tokens.spacing.md}px, ${tokens.spacing.md}px + 1vw, ${tokens.spacing.lg}px)`,
+  emphasis: `clamp(${tokens.spacing.lg}px, ${tokens.spacing.lg}px + 1.5vw, ${tokens.spacing.xl + tokens.spacing.sm}px)`,
+  card: `clamp(${tokens.spacing.md + tokens.spacing.xs}px, ${
+    tokens.spacing.md + tokens.spacing.xs
+  }px + 1vw, ${tokens.spacing.lg + tokens.spacing.sm}px)`,
+};
+
+export const getQuoteVariantFontSizeFallback = (style: QuoteBlockConfig['style']): string =>
+  QUOTE_FONT_SIZE_FALLBACK[style];
+
 const normalizeQuoteStarColor = (value: unknown): QuoteStarColor => {
   if (typeof value !== 'string') {
     return 'gold';
@@ -1073,10 +1086,11 @@ export const getQuoteStarColorValue = (color: QuoteStarColor): string =>
   QUOTE_STAR_COLOR_VALUE[color] ?? QUOTE_STAR_COLOR_VALUE.gold;
 
 export type QuoteVariantBaseStyles = {
-  padding: number;
+  padding: number | string;
   borderRadius: number;
   backgroundColor?: string;
   boxShadow?: string;
+  border?: string;
 };
 
 const resolveQuoteBackgroundOverride = (
@@ -1123,7 +1137,7 @@ export function getQuoteVariantBaseStyles(quote: QuoteBlockConfig): QuoteVariant
         padding:
           normalizedPadding !== undefined && !matchesDefaultPadding
             ? normalizedPadding
-            : tokens.spacing.md,
+            : `${tokens.spacing.sm}px ${tokens.spacing.md}px`,
         borderRadius:
           normalizedRadius !== undefined && !matchesDefaultRadius
             ? normalizedRadius
@@ -1132,8 +1146,14 @@ export function getQuoteVariantBaseStyles(quote: QuoteBlockConfig): QuoteVariant
       };
     case 'emphasis':
       return {
-        padding: normalizedPadding ?? tokens.spacing.xl,
-        borderRadius: normalizedRadius ?? tokens.radius.lg,
+        padding:
+          normalizedPadding !== undefined && !matchesDefaultPadding
+            ? normalizedPadding
+            : `clamp(${tokens.spacing.lg}px, ${tokens.spacing.lg}px + 1.5vw, ${tokens.spacing.xl}px)`,
+        borderRadius:
+          normalizedRadius !== undefined && !matchesDefaultRadius
+            ? normalizedRadius
+            : tokens.radius.md,
         backgroundColor: backgroundOverride ?? QUOTE_EMPHASIS_BACKGROUND,
       };
     case 'card':
@@ -1142,10 +1162,14 @@ export function getQuoteVariantBaseStyles(quote: QuoteBlockConfig): QuoteVariant
         padding:
           normalizedPadding !== undefined && !matchesDefaultPadding
             ? normalizedPadding
-            : tokens.spacing.lg,
-        borderRadius: normalizedRadius ?? tokens.radius.lg,
+            : `clamp(${tokens.spacing.lg}px, ${tokens.spacing.lg}px + 1vw, ${tokens.spacing.xl}px)`,
+        borderRadius:
+          normalizedRadius !== undefined && !matchesDefaultRadius
+            ? normalizedRadius
+            : tokens.radius.lg,
         backgroundColor: backgroundOverride ?? QUOTE_CARD_BACKGROUND,
         boxShadow: tokens.shadow.md,
+        border: QUOTE_CARD_BORDER,
       };
   }
 }
@@ -2581,15 +2605,12 @@ export default function SlidesManager({
         const textColor = block.textColor ?? block.color ?? defaultTextColor;
         const fontFamilyKey = getBlockFontFamily(block);
         const resolvedFontFamily = getResolvedFontStack(fontFamilyKey);
-        const fallbackWeight = block.fontWeight ?? (quote.style === 'emphasis' ? 600 : 400);
-        const fontSizePx =
-          typeof block.fontSize === 'number'
-            ? block.fontSize
-            : quote.style === 'emphasis'
-              ? tokens.spacing.xl
-              : quote.style === 'plain'
-                ? tokens.spacing.md
-                : tokens.spacing.lg;
+        const fallbackWeight =
+          block.fontWeight ?? (quote.style === 'emphasis' ? 600 : quote.style === 'card' ? 500 : 400);
+        const hasCustomFontSize = typeof block.fontSize === 'number';
+        const fontSizeValue = hasCustomFontSize
+          ? `${block.fontSize}px`
+          : QUOTE_FONT_SIZE_FALLBACK[quote.style];
         const lineHeightValue = resolveLineHeightValue(block.lineHeight, block.lineHeightUnit);
         const textShadowValue = resolveTextShadowStyle(block);
         const variantStyles = getQuoteVariantBaseStyles(quote);
@@ -2619,6 +2640,9 @@ export default function SlidesManager({
         if (variantStyles.boxShadow) {
           innerStyle.boxShadow = variantStyles.boxShadow;
         }
+        if (variantStyles.border) {
+          innerStyle.border = variantStyles.border;
+        }
         if (resolvedFontFamily) {
           innerStyle.fontFamily = resolvedFontFamily;
         }
@@ -2635,8 +2659,8 @@ export default function SlidesManager({
         if (typeof block.letterSpacing === 'number') {
           textStyle.letterSpacing = `${block.letterSpacing}px`;
         }
-        if (fontSizePx) {
-          textStyle.fontSize = `${fontSizePx}px`;
+        if (fontSizeValue) {
+          textStyle.fontSize = fontSizeValue;
         }
         if (textShadowValue) {
           textStyle.textShadow = textShadowValue;
@@ -2678,6 +2702,10 @@ export default function SlidesManager({
         }
         if (textShadowValue) {
           ratingStyle.textShadow = textShadowValue;
+        }
+        if (quote.style === 'card') {
+          ratingStyle.alignSelf = 'center';
+          ratingStyle.justifyContent = 'center';
         }
         const ratingLabelBase = quote.useReview ? 'review' : 'rating';
         const ratingLabelCount = ratingValue === 1 ? '1 star' : `${ratingValue} stars`;
