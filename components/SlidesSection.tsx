@@ -9,7 +9,15 @@ import {
   type BlockBackground,
   type BlockBackgroundGradientDirection,
   type BlockShadowPreset,
+  BUTTON_HORIZONTAL_PADDING,
+  BUTTON_VERTICAL_PADDING,
+  getAspectRatioValue,
+  hexToRgba,
+  resolveButtonConfig,
+  resolveImageConfig,
+  resolveLineHeightValue,
   resolveQuoteConfig,
+  resolveTextShadowStyle,
   getQuoteStarColorValue,
   getQuoteVariantBaseStyles,
   getQuoteVariantFontSizeFallback,
@@ -34,7 +42,11 @@ const TEXT_SIZE_MAP: Record<string, number> = {
   xl: tokens.fontSize['4xl'],
 };
 
-const BUTTON_CLASS = 'inline-flex items-center justify-center rounded-full px-5 py-3 text-base font-semibold';
+const BUTTON_FONT_SIZE_MAP: Record<string, number> = {
+  Small: tokens.fontSize.sm,
+  Medium: tokens.fontSize.md,
+  Large: tokens.fontSize.lg,
+};
 
 const BLOCK_SHADOW_VALUE: Record<BlockShadowPreset, string | undefined> = {
   none: undefined,
@@ -177,9 +189,15 @@ function renderBlock(block: SlideBlock) {
     case 'text': {
       const Tag = block.kind === 'heading' ? 'h2' : block.kind === 'subheading' ? 'h3' : 'p';
       const mappedSize = block.size ? TEXT_SIZE_MAP[block.size] : undefined;
+      const align = block.align ?? 'left';
+      const lineHeightValue = resolveLineHeightValue(block.lineHeight, block.lineHeightUnit);
+      const textShadow = resolveTextShadowStyle(block);
+      const letterSpacing =
+        typeof block.letterSpacing === 'number' ? `${block.letterSpacing}px` : undefined;
+      const textColor = block.textColor ?? block.color ?? tokens.colors.textOnDark;
       const style: CSSProperties = {
-        color: block.color || tokens.colors.textOnDark,
-        textAlign: block.align ?? 'left',
+        color: textColor,
+        textAlign: align,
         fontSize:
           typeof block.fontSize === 'number'
             ? `${block.fontSize}px`
@@ -193,63 +211,143 @@ function renderBlock(block: SlideBlock) {
             : block.kind === 'subheading'
               ? tokens.fontWeight.semibold
               : tokens.fontWeight.regular),
+        lineHeight: lineHeightValue,
+        letterSpacing,
+        textShadow,
         margin: 0,
       };
       if (resolvedFontFamily) {
         style.fontFamily = resolvedFontFamily;
       }
-      return <Tag style={style}>{block.text}</Tag>;
+      const content = block.content ?? block.text ?? '';
+      const textElement = <Tag style={style}>{content}</Tag>;
+      if ((block.kind === 'heading' || block.kind === 'text') && block.bgStyle && block.bgStyle !== 'none') {
+        const resolvedOpacity =
+          typeof block.bgOpacity === 'number'
+            ? block.bgOpacity
+            : block.bgStyle === 'glass'
+              ? 0.5
+              : 1;
+        const backgroundColor =
+          hexToRgba(block.bgColor ?? tokens.colors.surfaceInverse, resolvedOpacity) ??
+          hexToRgba(tokens.colors.surfaceInverse, resolvedOpacity);
+        const backgroundStyle: CSSProperties = {
+          display: 'inline-block',
+          borderRadius: block.radius ?? 0,
+          padding: block.padding ?? 0,
+          backgroundColor,
+        };
+        if (block.bgStyle === 'glass') {
+          backgroundStyle.backdropFilter = 'blur(8px)';
+        }
+        return (
+          <div style={{ width: '100%', textAlign: align }}>
+            <div style={backgroundStyle}>{textElement}</div>
+          </div>
+        );
+      }
+      return textElement;
     }
     case 'button': {
-      const blockColors = block as { bgColor?: string; color?: string };
+      const button = resolveButtonConfig(block);
+      const align = block.align ?? 'left';
+      const fontSizeValue =
+        typeof block.fontSize === 'number'
+          ? block.fontSize
+          : BUTTON_FONT_SIZE_MAP[button.size] ?? BUTTON_FONT_SIZE_MAP.Medium;
+      const lineHeightValue = resolveLineHeightValue(block.lineHeight, block.lineHeightUnit);
+      const paddingX = BUTTON_HORIZONTAL_PADDING[button.size] ?? BUTTON_HORIZONTAL_PADDING.Medium;
+      const paddingY = BUTTON_VERTICAL_PADDING[button.size] ?? BUTTON_VERTICAL_PADDING.Medium;
+      const style: CSSProperties = {
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: `${paddingY}px ${paddingX}px`,
+        borderRadius: button.radius,
+        color: button.textColor,
+        backgroundColor: button.variant === 'Primary' ? button.bgColor : 'transparent',
+        borderColor: button.variant === 'Outline' ? button.bgColor : 'transparent',
+        borderWidth: button.variant === 'Outline' ? tokens.border.thin : 0,
+        borderStyle: 'solid',
+        fontWeight: block.fontWeight ?? tokens.fontWeight.semibold,
+        textDecoration: 'none',
+        boxShadow: button.shadow ? tokens.shadow.md : tokens.shadow.none,
+        transition:
+          'transform 150ms ease-out, box-shadow 150ms ease-out, background-color 150ms ease-out, color 150ms ease-out',
+      };
+      if (resolvedFontFamily) {
+        style.fontFamily = resolvedFontFamily;
+      }
+      if (fontSizeValue) {
+        style.fontSize = `${fontSizeValue}px`;
+      }
+      if (lineHeightValue !== undefined) {
+        style.lineHeight = lineHeightValue;
+      }
+      if (button.fullWidth) {
+        style.width = '100%';
+      }
+      if (typeof block.letterSpacing === 'number') {
+        style.letterSpacing = `${block.letterSpacing}px`;
+      }
       return (
-        <a
-          href={block.href || '#'}
-          className={BUTTON_CLASS}
-          style={{
-            backgroundColor: blockColors.bgColor ?? tokens.colors.surface,
-            color: blockColors.color ?? tokens.colors.textPrimary,
-            boxShadow: tokens.shadow.md,
-          }}
-        >
-          <span
-            style={{
-              fontFamily: resolvedFontFamily ?? undefined,
-              fontWeight: block.fontWeight ?? tokens.fontWeight.semibold,
-              fontSize: typeof block.fontSize === 'number' ? `${block.fontSize}px` : undefined,
-            }}
-          >
-            {block.text || 'Button'}
-          </span>
-        </a>
+        <div style={{ width: '100%', textAlign: align }}>
+          <a href={button.href || '#'} style={style}>
+            {button.label || block.text || 'Button'}
+          </a>
+        </div>
       );
     }
-    case 'image':
-      if (!block.src)
+    case 'image': {
+      const image = resolveImageConfig(block);
+      const imageUrl = image.url || block.src || '';
+      const aspectRatioValue = getAspectRatioValue(image.aspectRatio);
+      const wrapperStyle: CSSProperties = {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: '100%',
+        height: '100%',
+        overflow: 'hidden',
+        borderRadius: image.radius,
+        boxShadow: image.shadow ? tokens.shadow.lg : tokens.shadow.none,
+        backgroundColor: 'transparent',
+      };
+      if (aspectRatioValue) {
+        wrapperStyle.aspectRatio = aspectRatioValue;
+        wrapperStyle.height = 'auto';
+      }
+      if (!imageUrl) {
         return (
           <div
-            className="h-full w-full"
             style={{
-              borderRadius: tokens.radius.md,
+              ...wrapperStyle,
               backgroundColor: tokens.colors.neutral[200],
             }}
           />
         );
-      const imageBlockRadius =
-        typeof (block as { radius?: number }).radius === 'number'
-          ? Math.max(0, (block as { radius?: number }).radius as number)
-          : tokens.radius.lg;
+      }
+      const imageStyle: CSSProperties = {
+        width: '100%',
+        maxWidth: '100%',
+        maxHeight: '100%',
+        borderRadius: image.radius,
+        objectFit: image.fit,
+        objectPosition: `${image.focalX * 100}% ${image.focalY * 100}%`,
+        display: 'block',
+      };
+      if (aspectRatioValue) {
+        imageStyle.aspectRatio = aspectRatioValue;
+        imageStyle.height = 'auto';
+      } else {
+        imageStyle.height = '100%';
+      }
       return (
-        <img
-          src={block.src}
-          alt=""
-          className="h-full w-full"
-          style={{
-            objectFit: block.fit || 'cover',
-            borderRadius: imageBlockRadius,
-          }}
-        />
+        <div style={wrapperStyle}>
+          <img src={imageUrl} alt={image.alt ?? ''} style={imageStyle} />
+        </div>
       );
+    }
     case 'quote':
       {
         const quote = resolveQuoteConfig(block);
@@ -269,12 +367,8 @@ function renderBlock(block: SlideBlock) {
         const fontSizeValue = hasCustomFontSize
           ? `${block.fontSize}px`
           : getQuoteVariantFontSizeFallback(quote.style);
-        const lineHeightValue =
-          typeof block.lineHeight === 'number'
-            ? block.lineHeightUnit === 'px'
-              ? `${block.lineHeight}px`
-              : block.lineHeight
-            : undefined;
+        const lineHeightValue = resolveLineHeightValue(block.lineHeight, block.lineHeightUnit);
+        const textShadow = resolveTextShadowStyle(block);
         const trimmedAuthor = quote.author.trim();
         const showReviewRating = quote.useReview && Boolean(quote.reviewId);
         const resolvedStarRating = Math.max(0, Math.min(5, Math.round(quote.starRating ?? 0)));
@@ -322,6 +416,7 @@ function renderBlock(block: SlideBlock) {
                   whiteSpace: 'pre-line',
                   textAlign: quote.align,
                   margin: 0,
+                  textShadow,
                 }}
               >
                 <span aria-hidden>“</span>
@@ -338,6 +433,7 @@ function renderBlock(block: SlideBlock) {
                     fontFamily: resolvedFontFamily ?? undefined,
                     fontWeight: typeof block.fontWeight === 'number' ? block.fontWeight : undefined,
                     lineHeight: lineHeightValue ?? tokens.lineHeight.normal,
+                    textShadow,
                   }}
                 >
                   — {trimmedAuthor}
@@ -354,10 +450,11 @@ function renderBlock(block: SlideBlock) {
                     columnGap: tokens.spacing.xs,
                     color: starColorValue,
                     marginTop: trimmedAuthor.length > 0 ? tokens.spacing.xs : tokens.spacing.sm,
-                    opacity: tokens.opacity[75],
+                    opacity: tokens.opacity[90],
                     fontSize: `${tokens.fontSize.md}px`,
                     alignSelf: quote.style === 'card' ? 'center' : undefined,
                     justifyContent: quote.style === 'card' ? 'center' : undefined,
+                    textShadow,
                   }}
                 >
                   {Array.from({ length: 5 }).map((_, index) => {
