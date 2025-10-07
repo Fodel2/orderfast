@@ -4,6 +4,7 @@ import SlidesSection from '@/components/SlidesSection';
 import resolveRestaurantId from '@/lib/resolveRestaurantId';
 import { supabase } from '@/lib/supabaseClient';
 import type { SlideCfg } from '@/components/SlideModal';
+import { tokens } from '../../../src/ui/tokens';
 
 export interface SlideRow {
   id?: string;
@@ -58,20 +59,30 @@ function coerceConfig(raw: any, slide: SlideRow): SlideCfg {
   const background = source.background?.type ? source.background : normalizeLegacyBackground(source.background);
   const blocks = Array.isArray(source.blocks) ? source.blocks : Array.isArray(slide.config_json?.blocks) ? slide.config_json.blocks : [];
   return {
-    background: background ?? { type: 'color', color: '#111' },
+    background: background ?? { type: 'color', color: tokens.colors.surfaceInverse },
     blocks,
   } as SlideCfg;
 }
 
 function normalizeLegacyBackground(raw: any) {
-  if (!raw) return { type: 'color', color: '#111', overlay: { color: '#000', opacity: 0.25 } };
+  if (!raw)
+    return {
+      type: 'color',
+      color: tokens.colors.surfaceInverse,
+      overlay: { color: tokens.colors.overlay.strong, opacity: tokens.opacity[25] },
+    };
   if (raw.type === 'color' || raw.type === 'image' || raw.type === 'video') return raw;
   if (raw.kind === 'image' || raw.kind === 'video') {
     return {
       type: raw.kind,
       url: raw.value,
-      overlay: raw.overlay ? { color: raw.overlayColor || '#000', opacity: raw.overlayOpacity ?? 0.25 } : undefined,
+      overlay: raw.overlay
+        ? {
+            color: raw.overlayColor || tokens.colors.overlay.strong,
+            opacity: raw.overlayOpacity ?? tokens.opacity[25],
+          }
+        : undefined,
     };
   }
-  return { type: 'color', color: raw.value || '#111' };
+  return { type: 'color', color: raw.value || tokens.colors.surfaceInverse };
 }

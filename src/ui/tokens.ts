@@ -12,6 +12,34 @@ export const tokens = {
     md: 8,
     lg: 16,
   },
+  fontSize: {
+    xs: 12,
+    sm: 14,
+    md: 16,
+    lg: 18,
+    xl: 24,
+    "2xl": 32,
+    "3xl": 40,
+    "4xl": 56,
+  },
+  fontWeight: {
+    regular: 400,
+    medium: 500,
+    semibold: 600,
+    bold: 700,
+  },
+  lineHeight: {
+    tight: 1.2,
+    snug: 1.35,
+    normal: 1.5,
+    relaxed: 1.75,
+  },
+  letterSpacing: {
+    tighter: -0.02,
+    tight: -0.01,
+    normal: 0,
+    wide: 0.02,
+  },
   control: {
     height: 32,
     numberWidth: 80,
@@ -25,10 +53,12 @@ export const tokens = {
     surfaceSubtle: "var(--surface-subtle, #f8fafc)",
     surfaceHover: "var(--surface-hover, rgba(15, 23, 42, 0.04))",
     surfaceActive: "var(--surface-active, rgba(15, 23, 42, 0.08))",
+    surfaceInverse: "var(--surface-inverse, #0f172a)",
     textPrimary: "var(--text-primary, #0f172a)",
     textSecondary: "var(--text-secondary, #475569)",
     textMuted: "var(--text-muted, #64748b)",
     textSubtle: "var(--text-subtle, rgba(100, 116, 139, 0.9))",
+    textOnDark: "var(--text-on-dark, #ffffff)",
     neutral: {
       100: "var(--neutral-100, #f1f5f9)",
       200: "var(--neutral-200, #e2e8f0)",
@@ -39,6 +69,13 @@ export const tokens = {
     },
     borderLight: "var(--border-light, rgba(15, 23, 42, 0.08))",
     borderStrong: "var(--border-strong, rgba(15, 23, 42, 0.12))",
+    overlay: {
+      soft: "var(--overlay-soft, rgba(15, 23, 42, 0.05))",
+      strong: "var(--overlay-strong, rgba(15, 23, 42, 0.45))",
+    },
+    highlight: {
+      gold: "var(--highlight-gold, #facc15)",
+    },
   },
   breakpoints: {
     sm: 640,
@@ -48,6 +85,7 @@ export const tokens = {
     25: 0.25,
     50: 0.5,
     75: 0.75,
+    90: 0.9,
     100: 1,
   },
   border: {
@@ -55,8 +93,10 @@ export const tokens = {
     thick: 2,
   },
   shadow: {
-    sm: "0 1px 2px rgba(0,0,0,.1)",
-    md: "0 2px 4px rgba(0,0,0,.1)",
+    none: "none",
+    sm: "var(--shadow-sm, 0 1px 2px rgba(15, 23, 42, 0.08))",
+    md: "var(--shadow-md, 0 4px 6px rgba(15, 23, 42, 0.12))",
+    lg: "var(--shadow-lg, 0 10px 15px rgba(15, 23, 42, 0.15))",
   },
 } as const;
 

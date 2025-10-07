@@ -27,20 +27,20 @@ import { Star } from 'lucide-react';
 import { tokens } from '../src/ui/tokens';
 import GalleryBlock from './blocks/GalleryBlock';
 
-const TEXT_SIZE_MAP: Record<string, string> = {
-  sm: '1.125rem',
-  md: '1.5rem',
-  lg: '2.5rem',
-  xl: '3.5rem',
+const TEXT_SIZE_MAP: Record<string, number> = {
+  sm: tokens.fontSize.lg,
+  md: tokens.fontSize.xl,
+  lg: tokens.fontSize['3xl'],
+  xl: tokens.fontSize['4xl'],
 };
 
-const BUTTON_CLASS = 'inline-flex items-center justify-center rounded-full px-5 py-3 text-base font-semibold shadow';
+const BUTTON_CLASS = 'inline-flex items-center justify-center rounded-full px-5 py-3 text-base font-semibold';
 
 const BLOCK_SHADOW_VALUE: Record<BlockShadowPreset, string | undefined> = {
   none: undefined,
-  sm: '0 1px 2px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.04)',
-  md: '0 4px 6px rgba(15, 23, 42, 0.1), 0 2px 4px rgba(15, 23, 42, 0.06)',
-  lg: '0 10px 15px rgba(15, 23, 42, 0.12), 0 4px 6px rgba(15, 23, 42, 0.05)',
+  sm: tokens.shadow.sm,
+  md: tokens.shadow.md,
+  lg: tokens.shadow.lg,
 };
 
 const BLOCK_GRADIENT_DIRECTION_MAP: Record<BlockBackgroundGradientDirection, string> = {
@@ -50,9 +50,9 @@ const BLOCK_GRADIENT_DIRECTION_MAP: Record<BlockBackgroundGradientDirection, str
   'to-right': 'to right',
 };
 
-const DEFAULT_BLOCK_BACKGROUND_COLOR = '#ffffff';
-const DEFAULT_BLOCK_GRADIENT_FROM = 'rgba(15, 23, 42, 0.45)';
-const DEFAULT_BLOCK_GRADIENT_TO = 'rgba(15, 23, 42, 0.05)';
+const DEFAULT_BLOCK_BACKGROUND_COLOR = tokens.colors.surface;
+const DEFAULT_BLOCK_GRADIENT_FROM = tokens.colors.overlay.strong;
+const DEFAULT_BLOCK_GRADIENT_TO = tokens.colors.overlay.soft;
 
 const clampBackgroundOpacity = (value?: number): number => {
   if (typeof value !== 'number' || Number.isNaN(value)) {
@@ -176,17 +176,23 @@ function renderBlock(block: SlideBlock) {
     case 'subheading':
     case 'text': {
       const Tag = block.kind === 'heading' ? 'h2' : block.kind === 'subheading' ? 'h3' : 'p';
+      const mappedSize = block.size ? TEXT_SIZE_MAP[block.size] : undefined;
       const style: CSSProperties = {
-        color: block.color || '#ffffff',
+        color: block.color || tokens.colors.textOnDark,
         textAlign: block.align ?? 'left',
         fontSize:
           typeof block.fontSize === 'number'
             ? `${block.fontSize}px`
-            : block.size
-              ? TEXT_SIZE_MAP[block.size] ?? TEXT_SIZE_MAP.md
+            : mappedSize !== undefined
+              ? `${mappedSize}px`
               : undefined,
         fontWeight:
-          block.fontWeight ?? (block.kind === 'heading' ? 700 : block.kind === 'subheading' ? 600 : 400),
+          block.fontWeight ??
+          (block.kind === 'heading'
+            ? tokens.fontWeight.bold
+            : block.kind === 'subheading'
+              ? tokens.fontWeight.semibold
+              : tokens.fontWeight.regular),
         margin: 0,
       };
       if (resolvedFontFamily) {
@@ -194,13 +200,22 @@ function renderBlock(block: SlideBlock) {
       }
       return <Tag style={style}>{block.text}</Tag>;
     }
-    case 'button':
+    case 'button': {
+      const blockColors = block as { bgColor?: string; color?: string };
       return (
-        <a href={block.href || '#'} className={`${BUTTON_CLASS} bg-white text-black`}>
+        <a
+          href={block.href || '#'}
+          className={BUTTON_CLASS}
+          style={{
+            backgroundColor: blockColors.bgColor ?? tokens.colors.surface,
+            color: blockColors.color ?? tokens.colors.textPrimary,
+            boxShadow: tokens.shadow.md,
+          }}
+        >
           <span
             style={{
               fontFamily: resolvedFontFamily ?? undefined,
-              fontWeight: block.fontWeight ?? 600,
+              fontWeight: block.fontWeight ?? tokens.fontWeight.semibold,
               fontSize: typeof block.fontSize === 'number' ? `${block.fontSize}px` : undefined,
             }}
           >
@@ -208,14 +223,31 @@ function renderBlock(block: SlideBlock) {
           </span>
         </a>
       );
+    }
     case 'image':
-      if (!block.src) return <div className="h-full w-full rounded-lg bg-neutral-200" />;
+      if (!block.src)
+        return (
+          <div
+            className="h-full w-full"
+            style={{
+              borderRadius: tokens.radius.md,
+              backgroundColor: tokens.colors.neutral[200],
+            }}
+          />
+        );
+      const imageBlockRadius =
+        typeof (block as { radius?: number }).radius === 'number'
+          ? Math.max(0, (block as { radius?: number }).radius as number)
+          : tokens.radius.lg;
       return (
         <img
           src={block.src}
           alt=""
-          className="h-full w-full rounded-xl"
-          style={{ objectFit: block.fit || 'cover' }}
+          className="h-full w-full"
+          style={{
+            objectFit: block.fit || 'cover',
+            borderRadius: imageBlockRadius,
+          }}
         />
       );
     case 'quote':
@@ -223,10 +255,16 @@ function renderBlock(block: SlideBlock) {
         const quote = resolveQuoteConfig(block);
         const variantStyles = getQuoteVariantBaseStyles(quote);
         const starColorValue = getQuoteStarColorValue(quote.starColor);
-        const defaultTextColor = quote.style === 'plain' ? '#ffffff' : '#111111';
+        const defaultTextColor =
+          quote.style === 'plain' ? tokens.colors.textOnDark : tokens.colors.textPrimary;
         const textColor = block.textColor ?? block.color ?? defaultTextColor;
         const fallbackWeight =
-          block.fontWeight ?? (quote.style === 'emphasis' ? 600 : quote.style === 'card' ? 500 : 400);
+          block.fontWeight ??
+          (quote.style === 'emphasis'
+            ? tokens.fontWeight.semibold
+            : quote.style === 'card'
+              ? tokens.fontWeight.medium
+              : tokens.fontWeight.regular);
         const hasCustomFontSize = typeof block.fontSize === 'number';
         const fontSizeValue = hasCustomFontSize
           ? `${block.fontSize}px`
@@ -276,7 +314,7 @@ function renderBlock(block: SlideBlock) {
                   fontStyle: 'italic',
                   fontWeight: fallbackWeight,
                   fontSize: fontSizeValue,
-                  lineHeight: lineHeightValue,
+                  lineHeight: lineHeightValue ?? tokens.lineHeight.relaxed,
                   letterSpacing:
                     typeof block.letterSpacing === 'number'
                       ? `${block.letterSpacing}px`
@@ -294,12 +332,12 @@ function renderBlock(block: SlideBlock) {
                 <cite
                   style={{
                     marginTop: tokens.spacing.sm,
-                    fontSize: `${tokens.spacing.md - tokens.spacing.xs}px`,
-                    opacity: 0.75,
+                    fontSize: `${tokens.fontSize.xs}px`,
+                    opacity: tokens.opacity[90],
                     whiteSpace: 'pre-line',
                     fontFamily: resolvedFontFamily ?? undefined,
                     fontWeight: typeof block.fontWeight === 'number' ? block.fontWeight : undefined,
-                    lineHeight: lineHeightValue,
+                    lineHeight: lineHeightValue ?? tokens.lineHeight.normal,
                   }}
                 >
                   — {trimmedAuthor}
@@ -316,8 +354,8 @@ function renderBlock(block: SlideBlock) {
                     columnGap: tokens.spacing.xs,
                     color: starColorValue,
                     marginTop: trimmedAuthor.length > 0 ? tokens.spacing.xs : tokens.spacing.sm,
-                    opacity: 0.9,
-                    fontSize: `${tokens.spacing.md}px`,
+                    opacity: tokens.opacity[75],
+                    fontSize: `${tokens.fontSize.md}px`,
                     alignSelf: quote.style === 'card' ? 'center' : undefined,
                     justifyContent: quote.style === 'card' ? 'center' : undefined,
                   }}
@@ -371,13 +409,16 @@ function Background({ cfg }: { cfg: SlideCfg }) {
   if (bg.type === 'color') {
     return (
       <>
-        <div className="absolute inset-0" style={{ background: bg.color || '#111', pointerEvents: 'none' }} />
+        <div
+          className="absolute inset-0"
+          style={{ background: bg.color || tokens.colors.surfaceInverse, pointerEvents: 'none' }}
+        />
         {bg.overlay && (
           <div
             className="absolute inset-0"
             style={{
-              background: bg.overlay.color,
-              opacity: bg.overlay.opacity,
+              background: bg.overlay.color || tokens.colors.overlay.strong,
+              opacity: bg.overlay.opacity ?? tokens.opacity[50],
               pointerEvents: 'none',
             }}
           />
@@ -400,7 +441,11 @@ function Background({ cfg }: { cfg: SlideCfg }) {
         {bg.overlay && (
           <div
             className="absolute inset-0"
-            style={{ background: bg.overlay.color, opacity: bg.overlay.opacity, pointerEvents: 'none' }}
+            style={{
+              background: bg.overlay.color || tokens.colors.overlay.strong,
+              opacity: bg.overlay.opacity ?? tokens.opacity[50],
+              pointerEvents: 'none',
+            }}
           />
         )}
       </>
@@ -420,7 +465,11 @@ function Background({ cfg }: { cfg: SlideCfg }) {
         {bg.overlay && (
           <div
             className="absolute inset-0"
-            style={{ background: bg.overlay.color, opacity: bg.overlay.opacity, pointerEvents: 'none' }}
+            style={{
+              background: bg.overlay.color || tokens.colors.overlay.strong,
+              opacity: bg.overlay.opacity ?? tokens.opacity[50],
+              pointerEvents: 'none',
+            }}
           />
         )}
       </>
@@ -456,9 +505,9 @@ function getBlockChromeStyle(
   if (borderWidth && borderWidth > 0) {
     style.borderWidth = borderWidth;
     style.borderStyle = 'solid';
-    style.borderColor = borderColor ?? 'rgba(15, 23, 42, 0.12)';
+    style.borderColor = borderColor ?? tokens.colors.borderStrong;
   } else if (borderColor && borderColor !== 'transparent') {
-    style.borderWidth = 1;
+    style.borderWidth = tokens.border.thin;
     style.borderStyle = 'solid';
     style.borderColor = borderColor;
   }
