@@ -24,6 +24,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { ArrowsUpDownIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
+import { Star } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { supabase } from '@/utils/supabaseClient';
 import type { SlideRow } from '@/components/customer/home/SlidesContainer';
@@ -48,6 +49,17 @@ const TEXTUAL_BLOCK_KIND_NAMES = new Set([
 export const DEFAULT_TEXT_PLACEHOLDER = 'Edit me';
 
 const INLINE_EDIT_ACCENT_VAR = `var(--brand-secondary, var(--brand-primary, ${tokens.colors.accent}))`;
+const BRAND_PRIMARY_COLOR = `var(--brand-primary, ${tokens.colors.accent})`;
+const BRAND_SECONDARY_COLOR = `var(--brand-secondary, ${BRAND_PRIMARY_COLOR})`;
+const BRAND_SURFACE_COLOR = 'var(--surface, #f8fafc)';
+const QUOTE_STAR_COLOR_VALUE: Record<'gold' | 'brandPrimary' | 'brandSecondary', string> = {
+  gold: '#FFD700',
+  brandPrimary: BRAND_PRIMARY_COLOR,
+  brandSecondary: BRAND_SECONDARY_COLOR,
+};
+const QUOTE_EMPHASIS_BACKGROUND = `color-mix(in srgb, ${BRAND_PRIMARY_COLOR} 5%, transparent)`;
+const QUOTE_CARD_BACKGROUND = `color-mix(in srgb, ${BRAND_SURFACE_COLOR} 88%, ${BRAND_PRIMARY_COLOR} 12%)`;
+const QUOTE_CARD_BORDER = `${tokens.border.thin}px solid var(--border-light, rgba(15, 23, 42, 0.12))`;
 const INLINE_EDIT_BACKGROUND = `color-mix(in srgb, ${INLINE_EDIT_ACCENT_VAR} 8%, transparent)`;
 const INLINE_EDIT_BORDER = `color-mix(in srgb, ${INLINE_EDIT_ACCENT_VAR} 35%, transparent)`;
 const DEFAULT_BUTTON_LABEL = 'Button';
@@ -96,6 +108,21 @@ export type Frame = {
 };
 
 const ALIGNMENT_TOLERANCE_PX = 8;
+const MIN_PREVIEW_SCALE = 0.05;
+const MAX_PREVIEW_SCALE = 3;
+const RESIZE_CURSOR_BY_HANDLE: Record<string, CSSProperties['cursor']> = {
+  n: 'ns-resize',
+  s: 'ns-resize',
+  e: 'ew-resize',
+  w: 'ew-resize',
+  ne: 'nesw-resize',
+  sw: 'nesw-resize',
+  nw: 'nwse-resize',
+  se: 'nwse-resize',
+};
+
+const getResizeCursor = (handle: string): CSSProperties['cursor'] =>
+  RESIZE_CURSOR_BY_HANDLE[handle] ?? 'nwse-resize';
 
 const GUIDE_PRIORITY: Record<AlignmentGuideType, number> = {
   'canvas-center': 0,
@@ -983,6 +1010,8 @@ export function getAspectRatioValue(aspectRatio: BlockAspectRatio): string | und
   }
 }
 
+export type QuoteStarColor = 'gold' | 'brandPrimary' | 'brandSecondary';
+
 export type QuoteBlockConfig = {
   text: string;
   author: string;
@@ -994,20 +1023,156 @@ export type QuoteBlockConfig = {
   align: 'left' | 'center' | 'right';
   useReview: boolean;
   reviewId: string | null;
+  starRating: number;
+  starColor: QuoteStarColor;
 };
 
 export const DEFAULT_QUOTE_CONFIG: QuoteBlockConfig = {
   text: DEFAULT_TEXT_PLACEHOLDER,
   author: '',
   style: 'plain',
-  bgColor: '#ffffff',
-  bgOpacity: 1,
-  radius: 0,
-  padding: 0,
+  bgColor: '#0ea5e9',
+  bgOpacity: 0.05,
+  radius: tokens.radius.lg,
+  padding: tokens.spacing.xl,
   align: 'left',
   useReview: false,
   reviewId: null,
+  starRating: 0,
+  starColor: 'gold',
 };
+
+const QUOTE_FONT_SIZE_FALLBACK: Record<QuoteBlockConfig['style'], string> = {
+  plain: `clamp(${tokens.spacing.md}px, ${tokens.spacing.md}px + 1vw, ${tokens.spacing.lg}px)`,
+  emphasis: `clamp(${tokens.spacing.lg}px, ${tokens.spacing.lg}px + 1.5vw, ${tokens.spacing.xl + tokens.spacing.sm}px)`,
+  card: `clamp(${tokens.spacing.md + tokens.spacing.xs}px, ${
+    tokens.spacing.md + tokens.spacing.xs
+  }px + 1vw, ${tokens.spacing.lg + tokens.spacing.sm}px)`,
+};
+
+export const getQuoteVariantFontSizeFallback = (style: QuoteBlockConfig['style']): string =>
+  QUOTE_FONT_SIZE_FALLBACK[style];
+
+const normalizeQuoteStarColor = (value: unknown): QuoteStarColor => {
+  if (typeof value !== 'string') {
+    return 'gold';
+  }
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return 'gold';
+  }
+  if (normalized.includes('secondary')) {
+    return 'brandSecondary';
+  }
+  if (normalized.includes('primary') || normalized.includes('accent')) {
+    return 'brandPrimary';
+  }
+  if (normalized === '#ffd700' || normalized === '#ffc700' || normalized === 'golden') {
+    return 'gold';
+  }
+  if (normalized === 'brandsecondary') {
+    return 'brandSecondary';
+  }
+  if (normalized === 'brandprimary') {
+    return 'brandPrimary';
+  }
+  if (normalized === 'gold') {
+    return 'gold';
+  }
+  return 'gold';
+};
+
+export const getQuoteStarColorValue = (color: QuoteStarColor): string =>
+  QUOTE_STAR_COLOR_VALUE[color] ?? QUOTE_STAR_COLOR_VALUE.gold;
+
+export type QuoteVariantBaseStyles = {
+  padding: number | string;
+  borderRadius: number;
+  backgroundColor?: string;
+  boxShadow?: string;
+  border?: string;
+};
+
+const resolveQuoteBackgroundOverride = (
+  quote: QuoteBlockConfig,
+  normalizedOpacity: number,
+): string | undefined => {
+  const rawColor = typeof quote.bgColor === 'string' ? quote.bgColor.trim() : '';
+  if (!rawColor) {
+    return undefined;
+  }
+  const defaultColor = DEFAULT_QUOTE_CONFIG.bgColor.toLowerCase();
+  const normalizedColor = rawColor.toLowerCase();
+  const defaultOpacity = DEFAULT_QUOTE_CONFIG.bgOpacity;
+  const matchesDefaultColor = normalizedColor === defaultColor;
+  const matchesDefaultOpacity = Math.abs(normalizedOpacity - defaultOpacity) < 0.001;
+  if (matchesDefaultColor && matchesDefaultOpacity) {
+    return undefined;
+  }
+  return hexToRgba(rawColor, normalizedOpacity) ?? undefined;
+};
+
+export function getQuoteVariantBaseStyles(quote: QuoteBlockConfig): QuoteVariantBaseStyles {
+  const normalizedPadding =
+    typeof quote.padding === 'number' && Number.isFinite(quote.padding)
+      ? Math.max(0, quote.padding)
+      : undefined;
+  const normalizedRadius =
+    typeof quote.radius === 'number' && Number.isFinite(quote.radius)
+      ? Math.max(0, quote.radius)
+      : undefined;
+  const matchesDefaultPadding =
+    normalizedPadding !== undefined && normalizedPadding === DEFAULT_QUOTE_CONFIG.padding;
+  const matchesDefaultRadius =
+    normalizedRadius !== undefined && normalizedRadius === DEFAULT_QUOTE_CONFIG.radius;
+  const normalizedOpacity =
+    typeof quote.bgOpacity === 'number' && Number.isFinite(quote.bgOpacity)
+      ? clamp(quote.bgOpacity, 0, 1)
+      : DEFAULT_QUOTE_CONFIG.bgOpacity;
+  const backgroundOverride = resolveQuoteBackgroundOverride(quote, normalizedOpacity);
+
+  switch (quote.style) {
+    case 'plain':
+      return {
+        padding:
+          normalizedPadding !== undefined && !matchesDefaultPadding
+            ? normalizedPadding
+            : `${tokens.spacing.sm}px ${tokens.spacing.md}px`,
+        borderRadius:
+          normalizedRadius !== undefined && !matchesDefaultRadius
+            ? normalizedRadius
+            : tokens.radius.sm,
+        backgroundColor: backgroundOverride,
+      };
+    case 'emphasis':
+      return {
+        padding:
+          normalizedPadding !== undefined && !matchesDefaultPadding
+            ? normalizedPadding
+            : `clamp(${tokens.spacing.lg}px, ${tokens.spacing.lg}px + 1.5vw, ${tokens.spacing.xl}px)`,
+        borderRadius:
+          normalizedRadius !== undefined && !matchesDefaultRadius
+            ? normalizedRadius
+            : tokens.radius.md,
+        backgroundColor: backgroundOverride ?? QUOTE_EMPHASIS_BACKGROUND,
+      };
+    case 'card':
+    default:
+      return {
+        padding:
+          normalizedPadding !== undefined && !matchesDefaultPadding
+            ? normalizedPadding
+            : `clamp(${tokens.spacing.lg}px, ${tokens.spacing.lg}px + 1vw, ${tokens.spacing.xl}px)`,
+        borderRadius:
+          normalizedRadius !== undefined && !matchesDefaultRadius
+            ? normalizedRadius
+            : tokens.radius.lg,
+        backgroundColor: backgroundOverride ?? QUOTE_CARD_BACKGROUND,
+        boxShadow: tokens.shadow.md,
+        border: QUOTE_CARD_BORDER,
+      };
+  }
+}
 
 export type BlockShadowPreset = 'none' | 'sm' | 'md' | 'lg';
 
@@ -1757,6 +1922,33 @@ export function resolveQuoteConfig(block: SlideBlock): QuoteBlockConfig {
         : null;
   const reviewIdNormalized = reviewIdRaw && reviewIdRaw.trim().length > 0 ? reviewIdRaw.trim() : null;
 
+  const starRatingCandidate =
+    parseNumber(raw.starRating) ??
+    parseNumber((raw as any).rating) ??
+    parseNumber((raw as any).reviewRating) ??
+    parseNumber((block as any).starRating) ??
+    parseNumber((block as any).rating) ??
+    parseNumber((block as any).reviewRating);
+  const hasExplicitStarRating = starRatingCandidate !== undefined;
+  let starRating = hasExplicitStarRating
+    ? clamp(Math.round(starRatingCandidate as number), 0, 5)
+    : DEFAULT_QUOTE_CONFIG.starRating;
+  if (!hasExplicitStarRating && Boolean(useReviewSource)) {
+    starRating = 5;
+  }
+
+  const starColorSource =
+    (raw as any).starColor !== undefined
+      ? (raw as any).starColor
+      : (block as any).starColor !== undefined
+        ? (block as any).starColor
+        : undefined;
+  const hasExplicitStarColor =
+    (raw as any).starColor !== undefined || (block as any).starColor !== undefined;
+  const starColor = hasExplicitStarColor
+    ? normalizeQuoteStarColor(starColorSource)
+    : 'brandPrimary';
+
   return {
     text: textSource,
     author: authorSource,
@@ -1768,6 +1960,8 @@ export function resolveQuoteConfig(block: SlideBlock): QuoteBlockConfig {
     align,
     useReview: Boolean(useReviewSource),
     reviewId: reviewIdNormalized,
+    starRating,
+    starColor,
   };
 }
 
@@ -2186,6 +2380,14 @@ export default function SlidesManager({
         onRequestExit={() => {
           setInlineEditingId((prev) => (prev === block.id ? null : prev));
         }}
+        onDoubleTap={
+          editable
+            ? () => {
+                emitSelectBlock(block.id, { openInspector: true });
+                openInspector?.();
+              }
+            : undefined
+        }
       />
     );
   };
@@ -2321,6 +2523,14 @@ export default function SlidesManager({
             onRequestExit={() => {
               setInlineEditingId((prev) => (prev === block.id ? null : prev));
             }}
+            onDoubleTap={
+              editable
+                ? () => {
+                    emitSelectBlock(block.id, { openInspector: true });
+                    openInspector?.();
+                  }
+                : undefined
+            }
           />
         );
         return (
@@ -2395,15 +2605,16 @@ export default function SlidesManager({
         const textColor = block.textColor ?? block.color ?? defaultTextColor;
         const fontFamilyKey = getBlockFontFamily(block);
         const resolvedFontFamily = getResolvedFontStack(fontFamilyKey);
-        const fallbackWeight = block.fontWeight ?? (quote.style === 'emphasis' ? 600 : 400);
-        const fontSizePx =
-          typeof block.fontSize === 'number'
-            ? block.fontSize
-            : quote.style === 'emphasis'
-              ? 24
-              : 16;
+        const fallbackWeight =
+          block.fontWeight ?? (quote.style === 'emphasis' ? 600 : quote.style === 'card' ? 500 : 400);
+        const hasCustomFontSize = typeof block.fontSize === 'number';
+        const fontSizeValue = hasCustomFontSize
+          ? `${block.fontSize}px`
+          : QUOTE_FONT_SIZE_FALLBACK[quote.style];
         const lineHeightValue = resolveLineHeightValue(block.lineHeight, block.lineHeightUnit);
         const textShadowValue = resolveTextShadowStyle(block);
+        const variantStyles = getQuoteVariantBaseStyles(quote);
+        const starColorValue = getQuoteStarColorValue(quote.starColor);
         const wrapperStyle: CSSProperties = {
           width: '100%',
           textAlign: quote.align,
@@ -2411,44 +2622,55 @@ export default function SlidesManager({
         const innerStyle: CSSProperties = {
           color: textColor,
           textAlign: quote.align,
+          padding: variantStyles.padding,
+          borderRadius: variantStyles.borderRadius,
+          display: 'inline-flex',
+          flexDirection: 'column',
+          alignItems:
+            quote.align === 'center'
+              ? 'center'
+              : quote.align === 'right'
+                ? 'flex-end'
+                : 'flex-start',
+          maxWidth: '100%',
         };
+        if (variantStyles.backgroundColor) {
+          innerStyle.backgroundColor = variantStyles.backgroundColor;
+        }
+        if (variantStyles.boxShadow) {
+          innerStyle.boxShadow = variantStyles.boxShadow;
+        }
+        if (variantStyles.border) {
+          innerStyle.border = variantStyles.border;
+        }
         if (resolvedFontFamily) {
           innerStyle.fontFamily = resolvedFontFamily;
-        }
-        const innerClasses = ['max-w-full'];
-        if (quote.style === 'emphasis' || quote.style === 'card') {
-          const backgroundColor = hexToRgba(quote.bgColor, quote.bgOpacity);
-          if (backgroundColor) {
-            innerStyle.backgroundColor = backgroundColor;
-          }
-          innerStyle.borderRadius = quote.radius;
-          innerStyle.padding = quote.padding;
-          innerStyle.display = 'inline-block';
-        }
-        if (quote.style === 'card') {
-          innerClasses.push('shadow-lg');
-        }
-        const textClasses = ['whitespace-pre-line'];
-        if (quote.style === 'emphasis') {
-          textClasses.push('italic', 'text-2xl', 'font-semibold');
-        } else {
-          textClasses.push('italic');
         }
         const textStyle: CSSProperties = {
           fontWeight: fallbackWeight,
           lineHeight: lineHeightValue,
+          fontStyle: 'italic',
+          whiteSpace: 'pre-line',
+          display: 'inline',
         };
         if (resolvedFontFamily) {
           textStyle.fontFamily = resolvedFontFamily;
         }
-        if (fontSizePx) {
-          textStyle.fontSize = `${fontSizePx}px`;
+        if (typeof block.letterSpacing === 'number') {
+          textStyle.letterSpacing = `${block.letterSpacing}px`;
+        }
+        if (fontSizeValue) {
+          textStyle.fontSize = fontSizeValue;
         }
         if (textShadowValue) {
           textStyle.textShadow = textShadowValue;
         }
-        const authorClasses = ['mt-3', 'text-sm', 'opacity-80', 'whitespace-pre-line'];
-        const authorStyle: CSSProperties = {};
+        const authorStyle: CSSProperties = {
+          marginTop: tokens.spacing.sm,
+          fontSize: `${tokens.spacing.md - tokens.spacing.xs}px`,
+          opacity: 0.75,
+          whiteSpace: 'pre-line',
+        };
         if (resolvedFontFamily) {
           authorStyle.fontFamily = resolvedFontFamily;
         }
@@ -2463,15 +2685,31 @@ export default function SlidesManager({
         }
         const trimmedAuthor = quote.author.trim();
         const showReviewRating = quote.useReview && Boolean(quote.reviewId);
-        const ratingClasses = ['text-base', 'opacity-90'];
-        ratingClasses.push(trimmedAuthor.length > 0 ? 'mt-1' : 'mt-3');
-        const ratingStyle: CSSProperties = {};
+        const resolvedStarRating = clamp(Math.round(quote.starRating ?? 0), 0, 5);
+        const ratingValue = resolvedStarRating > 0 ? resolvedStarRating : showReviewRating ? 5 : 0;
+        const shouldRenderRating = ratingValue > 0;
+        const ratingStyle: CSSProperties = {
+          display: 'inline-flex',
+          alignItems: 'center',
+          columnGap: tokens.spacing.xs,
+          color: starColorValue,
+          marginTop: trimmedAuthor.length > 0 ? tokens.spacing.xs : tokens.spacing.sm,
+          opacity: 0.9,
+          fontSize: `${tokens.spacing.md}px`,
+        };
         if (resolvedFontFamily) {
           ratingStyle.fontFamily = resolvedFontFamily;
         }
         if (textShadowValue) {
           ratingStyle.textShadow = textShadowValue;
         }
+        if (quote.style === 'card') {
+          ratingStyle.alignSelf = 'center';
+          ratingStyle.justifyContent = 'center';
+        }
+        const ratingLabelBase = quote.useReview ? 'review' : 'rating';
+        const ratingLabelCount = ratingValue === 1 ? '1 star' : `${ratingValue} stars`;
+        const ratingAriaLabel = `${ratingLabelCount} ${ratingLabelBase}`;
         const quoteTextNode = (
           <EditableTextContent
             tag="span"
@@ -2484,22 +2722,47 @@ export default function SlidesManager({
             onRequestExit={() => {
               setInlineEditingId((prev) => (prev === block.id ? null : prev));
             }}
+            onDoubleTap={
+              editable
+                ? () => {
+                    emitSelectBlock(block.id, { openInspector: true });
+                    openInspector?.();
+                  }
+                : undefined
+            }
           />
         );
         return (
           <div style={wrapperStyle}>
-            <div className={innerClasses.join(' ')} style={innerStyle}>
-              <p className={textClasses.join(' ')} style={textStyle}>
+            <div className="max-w-full" style={innerStyle}>
+              <p style={textStyle}>
                 <span aria-hidden>“</span>
                 {quoteTextNode}
                 <span aria-hidden>”</span>
               </p>
-              {trimmedAuthor.length > 0 ? (
-                <p className={authorClasses.join(' ')} style={authorStyle}>— {trimmedAuthor}</p>
-              ) : null}
-              {showReviewRating ? (
-                <p className={ratingClasses.join(' ')} style={ratingStyle} aria-label="Five star review">
-                  {'⭐️⭐️⭐️⭐️⭐️'}
+              {trimmedAuthor.length > 0 ? <p style={authorStyle}>— {trimmedAuthor}</p> : null}
+              {shouldRenderRating ? (
+                <p
+                  style={ratingStyle}
+                  aria-label={ratingAriaLabel}
+                  role="img"
+                >
+                  {Array.from({ length: 5 }).map((_, index) => {
+                    const isFilled = index < ratingValue;
+                    return (
+                      <Star
+                        key={index}
+                        aria-hidden
+                        size={tokens.spacing.md}
+                        strokeWidth={1.5}
+                        style={{
+                          stroke: 'currentColor',
+                          fill: isFilled ? 'currentColor' : 'transparent',
+                          opacity: isFilled ? 1 : 0.35,
+                        }}
+                      />
+                    );
+                  })}
                 </p>
               ) : null}
             </div>
@@ -2516,7 +2779,10 @@ export default function SlidesManager({
     }
   };
 
-  const clampedScale = Math.min(Math.max(scale || 1, 0.05), 1);
+  const clampedScale = Math.min(
+    Math.max(scale || 1, MIN_PREVIEW_SCALE),
+    MAX_PREVIEW_SCALE,
+  );
 
   return (
     <>
@@ -2677,6 +2943,7 @@ type EditableTextContentProps = {
   placeholder?: string;
   onCommit: (text: string) => void;
   onRequestExit: () => void;
+  onDoubleTap?: () => void;
 };
 
 function EditableTextContent({
@@ -2689,11 +2956,13 @@ function EditableTextContent({
   placeholder = DEFAULT_TEXT_PLACEHOLDER,
   onCommit,
   onRequestExit,
+  onDoubleTap,
 }: EditableTextContentProps) {
   const elementRef = useRef<HTMLElement | null>(null);
   const exitRequestedRef = useRef(false);
   const prevActiveRef = useRef(isActive);
   const displayValue = resolveDisplayText(value, placeholder);
+  const lastTapRef = useRef(0);
 
   useLayoutEffect(() => {
     const node = elementRef.current;
@@ -2730,6 +2999,12 @@ function EditableTextContent({
   useEffect(() => {
     if (!isActive) {
       exitRequestedRef.current = false;
+    }
+  }, [isActive]);
+
+  useEffect(() => {
+    if (isActive) {
+      lastTapRef.current = 0;
     }
   }, [isActive]);
 
@@ -2814,6 +3089,9 @@ function EditableTextContent({
   };
 
   const combinedClassName = ['whitespace-pre-wrap', 'focus:outline-none'];
+  if (!isActive) {
+    combinedClassName.push('readonlyText');
+  }
   if (className) combinedClassName.push(className);
 
   const baseStyle: CSSProperties = {
@@ -2827,7 +3105,23 @@ function EditableTextContent({
     },
     className: combinedClassName.join(' '),
     style: baseStyle,
-    tabIndex: canEdit && isActive ? -1 : undefined,
+    tabIndex: canEdit && isActive ? 0 : -1,
+  };
+
+  const handleContextMenu = (event: React.MouseEvent<HTMLElement>) => {
+    event.preventDefault();
+  };
+
+  const handleTouchEnd = (event: React.TouchEvent<HTMLElement>) => {
+    const now = Date.now();
+    if (now - lastTapRef.current < 250) {
+      lastTapRef.current = 0;
+      event.preventDefault();
+      event.stopPropagation();
+      onDoubleTap?.();
+      return;
+    }
+    lastTapRef.current = now;
   };
 
   if (canEdit && isActive) {
@@ -2838,6 +3132,12 @@ function EditableTextContent({
     props.onBlur = handleBlur;
     props.onKeyDown = handleKeyDown;
     props.onPaste = handlePaste;
+  } else {
+    props.contentEditable = false;
+    props.onContextMenu = handleContextMenu;
+    if (onDoubleTap) {
+      props.onTouchEnd = handleTouchEnd;
+    }
   }
 
   props.children = canEdit && isActive ? undefined : displayValue;
@@ -3589,7 +3889,7 @@ function InteractiveBox({
             onPointerDown={handlePointerDown('rotate')}
             className="absolute left-1/2 top-[-32px] h-5 w-5 -translate-x-1/2 rounded-full border border-sky-500 bg-white"
           />
-          {[
+          {[ 
             ['n', '50%', 0],
             ['s', '50%', 100],
             ['w', 0, '50%'],
@@ -3607,6 +3907,7 @@ function InteractiveBox({
                 left: typeof left === 'number' ? `${left}%` : left,
                 top: typeof top === 'number' ? `${top}%` : top,
                 transform: 'translate(-50%, -50%)',
+                cursor: getResizeCursor(corner as string),
               }}
             />
           ))}

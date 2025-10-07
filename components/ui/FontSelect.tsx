@@ -6,14 +6,20 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { ChevronDown } from "lucide-react";
 
+import { inspectorColors, inspectorLayout } from "../../src/components/inspector/layout";
+import { tokens } from "../../src/ui/tokens";
 import { APP_FONTS, AppFont, ensureFontLoaded, useFontSearch } from "@/lib/fonts";
 
 const ITEM_HEIGHT = 36;
 const VISIBLE_BUFFER = 4;
 
 const sanitizeDomId = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, "-");
+
+const SELECT_CHEVRON_ICON = encodeURIComponent(
+  `<svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 4.5L6 7.5L9 4.5" stroke="#64748b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+);
+const SELECT_ICON_SIZE = tokens.spacing.sm * 1.5;
 
 const systemFallback = '"Inter", "Helvetica Neue", Arial, sans-serif';
 
@@ -227,31 +233,32 @@ const FontSelect: React.FC<FontSelectProps> = ({
       ? toFontStack(value)
       : systemFallback;
 
+  const { controlHeight, radius, borderWidth } = inspectorLayout;
+
   return (
-    <div className="relative w-full text-left">
+    <div className="font-select-root">
       <button
         ref={triggerRef}
         type="button"
-        className="flex w-full items-center justify-between rounded border border-neutral-200 bg-white px-2.5 py-1.5 text-xs font-medium text-neutral-700 transition focus:outline-none focus:ring-2 focus:ring-neutral-400/40"
+        className="font-select-trigger"
         onClick={() => setOpen((prev) => !prev)}
         onKeyDown={handleTriggerKeyDown}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? listboxId : undefined}
       >
-        <span className="truncate" style={{ fontFamily: triggerFontStack }}>
+        <span className="font-select-label" style={{ fontFamily: triggerFontStack }}>
           {triggerLabel}
         </span>
-        <ChevronDown className="ml-2 h-3.5 w-3.5 text-neutral-400" aria-hidden />
       </button>
       {open && (
         <div
           ref={panelRef}
-          className="absolute z-30 mt-1 w-full rounded-md border border-neutral-200 bg-white shadow-lg"
+          className="font-select-panel"
           role="presentation"
           onKeyDown={handlePanelKeyDown}
         >
-          <div className="border-b border-neutral-100 px-2 py-2">
+          <div className="font-select-search">
             <input
               ref={searchInputRef}
               type="search"
@@ -259,7 +266,7 @@ const FontSelect: React.FC<FontSelectProps> = ({
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={handleSearchKeyDown}
               placeholder="Search fonts"
-              className="w-full rounded border border-neutral-200 px-2 py-1 text-xs text-neutral-700 focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-300"
+              className="font-select-search-input"
             />
           </div>
           <ul
@@ -268,10 +275,10 @@ const FontSelect: React.FC<FontSelectProps> = ({
             role="listbox"
             tabIndex={-1}
             aria-activedescendant={filteredFonts[activeIndex] ? sanitizeDomId(filteredFonts[activeIndex].id) : undefined}
-            className="font-select-panel max-h-64 overflow-y-auto py-1"
+            className="font-select-list"
           >
             {filteredFonts.length === 0 ? (
-              <li className="px-3 py-2 text-xs text-neutral-400">No fonts found</li>
+              <li className="font-select-empty">No fonts found</li>
             ) : (
               filteredFonts.map((font, index) => {
                 const domId = sanitizeDomId(font.id);
@@ -286,16 +293,18 @@ const FontSelect: React.FC<FontSelectProps> = ({
                     }}
                     role="option"
                     aria-selected={isSelected}
-                    className={`flex cursor-pointer items-center justify-between px-3 py-2 text-xs transition ${
-                      isActive ? "bg-neutral-100" : "hover:bg-neutral-50"
-                    } ${isSelected ? "text-neutral-900" : "text-neutral-600"}`}
+                    className={`font-select-option${isActive ? " is-active" : ""}${
+                      isSelected ? " is-selected" : ""
+                    }`}
                     style={{ fontFamily: font.cssFamily }}
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => selectFont(font)}
                     onMouseEnter={() => setActiveIndex(index)}
                   >
-                    <span className="truncate">{font.label}</span>
-                    {isSelected ? <span className="ml-2 text-[10px] text-neutral-400">Selected</span> : null}
+                    <span className="font-select-option-label">{font.label}</span>
+                    {isSelected ? (
+                      <span className="font-select-option-selected">Selected</span>
+                    ) : null}
                   </li>
                 );
               })
@@ -303,6 +312,138 @@ const FontSelect: React.FC<FontSelectProps> = ({
           </ul>
         </div>
       )}
+      <style jsx>{`
+        .font-select-root {
+          position: relative;
+          width: 100%;
+          text-align: left;
+        }
+
+        .font-select-trigger {
+          display: inline-flex;
+          align-items: center;
+          justify-content: flex-start;
+          width: 100%;
+          height: ${controlHeight}px;
+          padding: 0 ${tokens.spacing.md}px 0 ${tokens.spacing.sm}px;
+          border-radius: ${radius}px;
+          border: ${borderWidth}px solid ${inspectorColors.border};
+          background-color: ${inspectorColors.background};
+          background-image: url("data:image/svg+xml,${SELECT_CHEVRON_ICON}");
+          background-repeat: no-repeat;
+          background-position: right ${tokens.spacing.sm}px center;
+          background-size: ${SELECT_ICON_SIZE}px ${SELECT_ICON_SIZE}px;
+          color: ${inspectorColors.text};
+          font-size: 0.875rem;
+          font-weight: 500;
+          line-height: 1.2;
+          text-align: left;
+          cursor: pointer;
+          transition: border-color 0.18s ease, box-shadow 0.18s ease;
+        }
+
+        .font-select-trigger:focus-visible {
+          outline: 2px solid #10b981;
+          outline-offset: 2px;
+        }
+
+        .font-select-label {
+          flex: 1;
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .font-select-panel {
+          position: absolute;
+          top: calc(100% + ${tokens.spacing.xs}px);
+          left: 0;
+          z-index: 30;
+          width: 100%;
+          border-radius: ${tokens.radius.md}px;
+          border: ${borderWidth}px solid ${inspectorColors.border};
+          background-color: ${inspectorColors.background};
+          box-shadow: ${tokens.shadow.md};
+          overflow: hidden;
+        }
+
+        .font-select-search {
+          border-bottom: ${borderWidth}px solid rgba(15, 23, 42, 0.08);
+          padding: ${tokens.spacing.sm}px;
+          background-color: ${inspectorColors.background};
+        }
+
+        .font-select-search-input {
+          width: 100%;
+          border-radius: ${tokens.radius.sm}px;
+          border: ${borderWidth}px solid ${inspectorColors.border};
+          padding: ${tokens.spacing.xs}px ${tokens.spacing.sm}px;
+          font-size: 0.8125rem;
+          color: ${inspectorColors.text};
+          background-color: ${inspectorColors.background};
+        }
+
+        .font-select-search-input:focus-visible {
+          outline: 2px solid #10b981;
+          outline-offset: 2px;
+        }
+
+        .font-select-list {
+          max-height: 16rem;
+          overflow-y: auto;
+          padding: ${tokens.spacing.xs}px 0;
+          margin: 0;
+          list-style: none;
+        }
+
+        .font-select-option {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          column-gap: ${tokens.spacing.xs}px;
+          padding: ${tokens.spacing.xs}px ${tokens.spacing.sm}px;
+          font-size: 0.875rem;
+          color: ${inspectorColors.label};
+          cursor: pointer;
+          transition: background-color 0.18s ease, color 0.18s ease;
+        }
+
+        .font-select-option:hover {
+          background-color: rgba(15, 23, 42, 0.04);
+        }
+
+        .font-select-option.is-active {
+          background-color: rgba(15, 23, 42, 0.08);
+        }
+
+        .font-select-option.is-selected {
+          color: ${inspectorColors.text};
+        }
+
+        .font-select-option-label {
+          flex: 1;
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .font-select-option-selected {
+          flex-shrink: 0;
+          margin-left: ${tokens.spacing.xs}px;
+          font-size: 0.6875rem;
+          color: rgba(100, 116, 139, 0.9);
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+
+        .font-select-empty {
+          padding: ${tokens.spacing.xs}px ${tokens.spacing.sm}px;
+          font-size: 0.8125rem;
+          color: rgba(100, 116, 139, 0.9);
+        }
+      `}</style>
     </div>
   );
 };

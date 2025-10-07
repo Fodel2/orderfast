@@ -63,6 +63,7 @@ import SlidesManager, {
   MIN_GALLERY_AUTOPLAY_INTERVAL,
   MAX_GALLERY_AUTOPLAY_INTERVAL,
   resolveQuoteConfig,
+  getQuoteStarColorValue,
   resolveBlockVisibility,
   resolveBlockAnimationConfig,
   resolveBlockTransitionConfig,
@@ -107,7 +108,16 @@ import { supabase } from "@/utils/supabaseClient";
 import { STORAGE_BUCKET } from "@/lib/storage";
 import { SlideRow } from "@/components/customer/home/SlidesContainer";
 import { LockClosedIcon } from "@heroicons/react/24/solid";
-import { ChevronDown, ChevronUp, GripVertical, Trash2 } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  GripVertical,
+  Star,
+  Trash2,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw,
+} from "lucide-react";
 
 type LinkOption = InputSelectOption;
 
@@ -368,6 +378,167 @@ const QUOTE_STYLE_OPTIONS: { value: QuoteBlockConfig["style"]; label: string }[]
   { value: "card", label: "Card" },
 ];
 
+const QUOTE_STAR_COUNT = 5;
+const QUOTE_STAR_OUTLINE_COLOR = "rgba(15, 23, 42, 0.3)";
+const QUOTE_STAR_TRANSITION_MS = 180;
+
+const QUOTE_STAR_COLOR_OPTIONS: { value: QuoteBlockConfig["starColor"]; label: string }[] = [
+  { value: "gold", label: "Gold" },
+  { value: "brandPrimary", label: "Brand primary" },
+  { value: "brandSecondary", label: "Brand secondary" },
+];
+
+type QuoteStarRatingSelectorProps = {
+  value: number;
+  onChange: (next: number) => void;
+  disabled?: boolean;
+  color?: string;
+};
+
+function QuoteStarRatingSelector({
+  value,
+  onChange,
+  disabled = false,
+  color,
+}: QuoteStarRatingSelectorProps) {
+  const [hoverValue, setHoverValue] = useState<number | null>(null);
+  const resolvedColor = color ?? getQuoteStarColorValue("gold");
+  const controlStyle = useMemo<React.CSSProperties>(
+    () =>
+      ({
+        "--quote-star-active-color": resolvedColor,
+        "--quote-star-outline-color": QUOTE_STAR_OUTLINE_COLOR,
+      }) as React.CSSProperties,
+    [resolvedColor],
+  );
+  const activeValue = disabled ? value : hoverValue ?? value;
+
+  return (
+    <>
+      <div
+        className={`quote-star-rating-control${disabled ? " is-disabled" : ""}`}
+        role="group"
+        aria-label="Star rating"
+        aria-disabled={disabled || undefined}
+        style={controlStyle}
+      >
+        {Array.from({ length: QUOTE_STAR_COUNT }).map((_, index) => {
+          const starValue = index + 1;
+          const isActive = activeValue >= starValue;
+          const isSelected = value >= starValue;
+          const label = `${starValue} star${starValue === 1 ? "" : "s"}`;
+
+          const handleSelect = () => {
+            if (disabled) return;
+            onChange(value === starValue ? 0 : starValue);
+          };
+
+          const handleEnter = () => {
+            if (disabled) return;
+            setHoverValue(starValue);
+          };
+
+          const handleLeave = () => {
+            if (disabled) return;
+            setHoverValue(null);
+          };
+
+          return (
+            <button
+              key={starValue}
+              type="button"
+              className={`quote-star-rating-control__button${
+                isActive ? " is-active" : ""
+              }${isSelected ? " is-selected" : ""}`}
+              aria-label={label}
+              aria-pressed={isSelected}
+              onMouseEnter={handleEnter}
+              onMouseLeave={handleLeave}
+              onFocus={handleEnter}
+              onBlur={handleLeave}
+              onClick={handleSelect}
+              disabled={disabled}
+            >
+              <Star
+                className="quote-star-rating-control__icon"
+                aria-hidden
+                strokeWidth={1.5}
+              />
+            </button>
+          );
+        })}
+      </div>
+      <style jsx>{`
+        .quote-star-rating-control {
+          --quote-star-outline-color: ${QUOTE_STAR_OUTLINE_COLOR};
+          --quote-star-active-color: ${getQuoteStarColorValue("gold")};
+          display: inline-flex;
+          gap: ${tokens.spacing.xs}px;
+          align-items: center;
+          color: var(--quote-star-outline-color);
+        }
+        .quote-star-rating-control.is-disabled {
+          opacity: 0.6;
+        }
+        .quote-star-rating-control__button {
+          appearance: none;
+          border: none;
+          background: transparent;
+          padding: ${tokens.spacing.xs / 2}px;
+          border-radius: ${tokens.radius.sm}px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: transform ${QUOTE_STAR_TRANSITION_MS}ms ease,
+            box-shadow ${QUOTE_STAR_TRANSITION_MS}ms ease,
+            background-color ${QUOTE_STAR_TRANSITION_MS}ms ease;
+          outline: none;
+          color: var(--quote-star-outline-color);
+        }
+        .quote-star-rating-control__button:hover,
+        .quote-star-rating-control__button:focus-visible {
+          box-shadow: ${tokens.shadow.sm};
+          background-color: rgba(15, 23, 42, 0.06);
+          transform: translateY(-1px);
+        }
+        .quote-star-rating-control__button:focus-visible {
+          outline: 2px solid currentColor;
+          outline-offset: 2px;
+        }
+        .quote-star-rating-control__button:disabled {
+          cursor: not-allowed;
+          box-shadow: none;
+          transform: none;
+          background: transparent;
+        }
+        .quote-star-rating-control__button:disabled:focus-visible {
+          outline: none;
+        }
+        .quote-star-rating-control__button.is-active,
+        .quote-star-rating-control__button.is-selected {
+          color: var(--quote-star-active-color);
+        }
+        .quote-star-rating-control__icon {
+          width: ${tokens.spacing.md}px;
+          height: ${tokens.spacing.md}px;
+          stroke: var(--quote-star-outline-color);
+          fill: transparent;
+          opacity: 1;
+          transition: fill ${QUOTE_STAR_TRANSITION_MS}ms ease,
+            stroke ${QUOTE_STAR_TRANSITION_MS}ms ease,
+            opacity ${QUOTE_STAR_TRANSITION_MS}ms ease;
+        }
+        .quote-star-rating-control__button.is-active .quote-star-rating-control__icon,
+        .quote-star-rating-control__button.is-selected .quote-star-rating-control__icon {
+          fill: var(--quote-star-active-color);
+          stroke: var(--quote-star-active-color);
+        }
+      `}</style>
+    </>
+  );
+}
+
 type ReviewOption = {
   id: string;
   author: string;
@@ -422,8 +593,13 @@ const BLOCK_KIND_LABELS: Record<SlideBlock["kind"], string> = {
   spacer: "Spacer",
 };
 
-const PREVIEW_PADDING_X = 16;
-const PREVIEW_PADDING_Y = 16;
+const PREVIEW_PADDING_X = tokens.spacing.md;
+const PREVIEW_PADDING_Y = tokens.spacing.md;
+const INSPECTOR_MIN_WIDTH = tokens.spacing.xl * 8;
+const INSPECTOR_MAX_WIDTH = tokens.spacing.xl * 14;
+const ZOOM_STEP = 0.1;
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 2;
 
 const INSPECTOR_CONTENT_CLASS = [
   "space-y-4 px-4 pb-4 pt-3",
@@ -1579,7 +1755,6 @@ interface SlideModalProps {
 }
 
 type GalleryInspectorItemContentProps = {
-  label: string;
   item: GalleryBlockItem;
   itemKey: string;
   onAltChange: (value: string) => void;
@@ -1598,7 +1773,6 @@ const GalleryInspectorItemContent = React.forwardRef<
 >(
   (
     {
-      label,
       item,
       itemKey,
       onAltChange,
@@ -1613,9 +1787,8 @@ const GalleryInspectorItemContent = React.forwardRef<
     ref,
   ) => {
     const thumbnailSize = inspectorLayout.controlHeight * 1.5;
-    const handleWidth = inspectorLayout.controlHeight;
-    const itemPadding = tokens.spacing.sm;
-    const itemGap = tokens.spacing.xs;
+    const handleSize = inspectorLayout.controlHeight;
+    const itemPadding = tokens.spacing.xs;
 
     const classes = [
       "gallery-item",
@@ -1627,25 +1800,20 @@ const GalleryInspectorItemContent = React.forwardRef<
 
     return (
       <div ref={ref} data-gallery-key={itemKey} className={classes} style={style}>
-        <InspectorInputText
-          label={label}
-          value={item.alt ?? ""}
-          placeholder="Alt text"
-          onChange={onAltChange}
-          disabled={disableInteractions}
-          leading={
-            <div className="gallery-item-leading">
-              <button
-                type="button"
-                aria-label="Drag to reorder image"
-                className="gallery-item-handle"
-                ref={dragHandleRef}
-                {...(dragHandleAttributes ?? {})}
-                {...(dragHandleListeners ?? {})}
-                disabled={disableInteractions}
-              >
-                <GripVertical size={tokens.spacing.md} />
-              </button>
+        <ControlRow label="">
+          <div className="gallery-item-row">
+            <button
+              type="button"
+              aria-label="Drag to reorder image"
+              className="gallery-item-handle"
+              ref={dragHandleRef}
+              {...(dragHandleAttributes ?? {})}
+              {...(dragHandleListeners ?? {})}
+              disabled={disableInteractions}
+            >
+              <GripVertical size={tokens.spacing.md} />
+            </button>
+            <div className="gallery-item-thumbnail-wrapper">
               <img
                 src={item.url}
                 alt={item.alt ?? ""}
@@ -1653,22 +1821,55 @@ const GalleryInspectorItemContent = React.forwardRef<
                 draggable={false}
               />
             </div>
-          }
-          trailing={
-            <InspectorInlineButton
-              tone="danger"
-              onClick={onRemove}
-              disabled={disableInteractions}
-            >
-              Remove
-            </InspectorInlineButton>
-          }
-        />
+            <div className="gallery-item-fields">
+              <label
+                className="gallery-item-alt-label"
+                htmlFor={`gallery-alt-${itemKey}`}
+              >
+                Alt text
+              </label>
+              <input
+                id={`gallery-alt-${itemKey}`}
+                className="gallery-item-alt-input"
+                type="text"
+                value={item.alt ?? ""}
+                placeholder="Describe the image"
+                onChange={(event) => onAltChange(event.target.value)}
+                disabled={disableInteractions}
+              />
+              <div className="gallery-item-actions">
+                <InspectorInlineButton
+                  tone="danger"
+                  onClick={onRemove}
+                  disabled={disableInteractions}
+                  className="gallery-item-remove"
+                >
+                  Remove
+                </InspectorInlineButton>
+              </div>
+            </div>
+          </div>
+        </ControlRow>
         <style jsx>{`
+          .gallery-item :global(.inspector-row) {
+            grid-template-columns: 1fr;
+            padding: 0;
+          }
+
+          .gallery-item :global(.inspector-label) {
+            display: none;
+          }
+
+          .gallery-item :global(.inspector-control) {
+            display: block;
+            width: 100%;
+            gap: 0;
+            padding: 0;
+          }
+
           .gallery-item {
             display: flex;
             flex-direction: column;
-            gap: ${itemGap}px;
             padding: ${itemPadding}px;
             border-radius: ${inspectorLayout.radius}px;
             border: ${inspectorLayout.borderWidth}px solid ${inspectorColors.border};
@@ -1685,20 +1886,22 @@ const GalleryInspectorItemContent = React.forwardRef<
             pointer-events: none;
           }
 
-          .gallery-item-leading {
-            display: inline-flex;
+          .gallery-item-row {
+            display: grid;
+            grid-template-columns: auto auto 1fr;
             align-items: center;
             gap: ${tokens.spacing.sm}px;
+            width: 100%;
           }
 
           .gallery-item-handle {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: ${handleWidth}px;
-            height: ${inspectorLayout.controlHeight}px;
+            width: ${handleSize}px;
+            height: ${handleSize}px;
             border-radius: ${inspectorLayout.radius}px;
-            border: ${inspectorLayout.borderWidth}px solid ${inspectorColors.border};
+            border: ${inspectorLayout.borderWidth}px solid transparent;
             background: transparent;
             color: ${inspectorColors.labelMuted};
             cursor: grab;
@@ -1717,7 +1920,7 @@ const GalleryInspectorItemContent = React.forwardRef<
             box-shadow: ${tokens.shadow.sm};
           }
 
-          .gallery-item-handle:active {
+          .gallery-item-handle:not(:disabled):active {
             cursor: grabbing;
           }
 
@@ -1727,12 +1930,78 @@ const GalleryInspectorItemContent = React.forwardRef<
             box-shadow: none;
           }
 
-          .gallery-item-thumbnail {
+          .gallery-item-thumbnail-wrapper {
             width: ${thumbnailSize}px;
             height: ${thumbnailSize}px;
-            border-radius: ${inspectorLayout.radius}px;
-            object-fit: cover;
+            border-radius: ${tokens.radius.sm}px;
+            overflow: hidden;
+            border: ${inspectorLayout.borderWidth}px solid ${inspectorColors.border};
             flex-shrink: 0;
+            display: flex;
+          }
+
+          .gallery-item-thumbnail {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+          }
+
+          .gallery-item-fields {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            gap: ${tokens.spacing.xs}px;
+            align-items: stretch;
+            width: 100%;
+          }
+
+          .gallery-item-alt-label {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+          }
+
+          .gallery-item-alt-input {
+            width: 100%;
+            height: ${inspectorLayout.controlHeight}px;
+            border-radius: ${inspectorLayout.radius}px;
+            border: ${inspectorLayout.borderWidth}px solid ${inspectorColors.border};
+            padding: 0 ${tokens.spacing.sm}px;
+            font-size: 0.875rem;
+            color: ${inspectorColors.text};
+            background: ${inspectorColors.background};
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+          }
+
+          .gallery-item-alt-input::placeholder {
+            color: ${inspectorColors.labelMuted};
+          }
+
+          .gallery-item-alt-input:focus-visible {
+            outline: 2px solid #10b981;
+            outline-offset: 2px;
+          }
+
+          .gallery-item-alt-input:disabled {
+            opacity: ${tokens.opacity[50]};
+            cursor: not-allowed;
+          }
+
+          .gallery-item-actions {
+            display: flex;
+            justify-content: flex-end;
+            width: 100%;
+          }
+
+          .gallery-item-remove {
+            width: auto !important;
+            align-self: flex-end;
           }
         `}</style>
       </div>
@@ -1778,7 +2047,6 @@ const GalleryInspectorItem: React.FC<GalleryInspectorItemProps> = ({
   return (
     <GalleryInspectorItemContent
       ref={setNodeRef}
-      label={`Image ${index + 1}`}
       item={item}
       itemKey={itemKey}
       onAltChange={onAltChange}
@@ -1809,6 +2077,7 @@ export default function SlideModal({
   const [editInPreview, setEditInPreview] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [previewSize, setPreviewSize] = useState({ width: 0, height: 0 });
+  const [zoom, setZoom] = useState(1);
   const [customPages, setCustomPages] = useState<LinkOption[]>([]);
   const [uploading, setUploading] = useState(false);
   const [galleryUrlInput, setGalleryUrlInput] = useState("");
@@ -2697,7 +2966,7 @@ export default function SlideModal({
     DEVICE_DIMENSIONS[activeDevice] ?? DEVICE_DIMENSIONS.desktop;
   const availableWidth = Math.max(previewSize.width - PREVIEW_PADDING_X * 2, 0);
   const availableHeight = Math.max(previewSize.height - PREVIEW_PADDING_Y * 2, 0);
-  const scale = useMemo(() => {
+  const fitScale = useMemo(() => {
     if (availableWidth <= 0 || availableHeight <= 0) return 1;
     const widthScale = availableWidth / deviceWidth;
     const heightScale = availableHeight / deviceHeight;
@@ -2705,6 +2974,26 @@ export default function SlideModal({
     if (!Number.isFinite(computed) || computed <= 0) return 1;
     return computed;
   }, [availableWidth, availableHeight, deviceHeight, deviceWidth]);
+  const clampZoomValue = useCallback(
+    (value: number) => clampRange(value, ZOOM_MIN, ZOOM_MAX),
+    [],
+  );
+  const handleZoomIn = useCallback(() => {
+    setZoom((prev) => clampZoomValue(prev + ZOOM_STEP));
+  }, [clampZoomValue]);
+  const handleZoomOut = useCallback(() => {
+    setZoom((prev) => clampZoomValue(prev - ZOOM_STEP));
+  }, [clampZoomValue]);
+  const handleZoomReset = useCallback(() => {
+    setZoom(1);
+  }, []);
+  const previewScale = useMemo(() => {
+    const computed = fitScale * zoom;
+    if (!Number.isFinite(computed) || computed <= 0) {
+      return fitScale;
+    }
+    return computed;
+  }, [fitScale, zoom]);
 
   const selectedBlock = useMemo(
     () => cfg.blocks.find((b) => b.id === selectedId) || null,
@@ -3247,6 +3536,41 @@ export default function SlideModal({
   const imageBackground = background?.type === "image" ? background : undefined;
   const videoBackground = background?.type === "video" ? background : undefined;
   const hasPreviewBounds = previewSize.width > 0 && previewSize.height > 0;
+  const zoomPercent = Math.round(zoom * 100);
+  const canZoomIn = zoom < ZOOM_MAX - 1e-3;
+  const canZoomOut = zoom > ZOOM_MIN + 1e-3;
+  const canResetZoom = Math.abs(zoom - 1) > 1e-3;
+  const previewToolbarStyle: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: `${tokens.spacing.sm}px ${tokens.spacing.md}px`,
+    borderBottom: `${tokens.border.thin}px solid ${inspectorColors.border}`,
+    background: "#ffffff",
+    gap: tokens.spacing.md,
+  };
+  const zoomControlsStyle: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: tokens.spacing.xs,
+  };
+  const zoomButtonBaseStyle: React.CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: tokens.control.height,
+    height: tokens.control.height,
+    borderRadius: tokens.radius.sm,
+    border: `${tokens.border.thin}px solid ${inspectorColors.border}`,
+    background: "#ffffff",
+    transition: "background-color 120ms ease, color 120ms ease, opacity 120ms ease",
+  };
+  const zoomResetButtonBaseStyle: React.CSSProperties = {
+    ...zoomButtonBaseStyle,
+    width: "auto",
+    paddingLeft: tokens.spacing.sm,
+    paddingRight: tokens.spacing.sm,
+  };
 
   return (
     <div className="fixed inset-0 z-[80] flex">
@@ -4112,11 +4436,72 @@ export default function SlideModal({
                 </div>
               </aside>
             )}
-            <div className="flex flex-1 flex-col overflow-hidden">
-              <main className="flex flex-1 overflow-hidden bg-neutral-50">
+            <div className="flex flex-1 overflow-hidden bg-neutral-50">
+              <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+                <div style={previewToolbarStyle}>
+                  <span className="text-xs font-semibold uppercase tracking-wide text-neutral-600">
+                    Preview
+                  </span>
+                  <div style={zoomControlsStyle}>
+                    <button
+                      type="button"
+                      onClick={handleZoomOut}
+                      disabled={!canZoomOut}
+                      style={{
+                        ...zoomButtonBaseStyle,
+                        color: canZoomOut
+                          ? inspectorColors.text
+                          : inspectorColors.labelMuted,
+                        cursor: canZoomOut ? "pointer" : "not-allowed",
+                        opacity: canZoomOut ? 1 : 0.6,
+                      }}
+                      aria-label="Zoom out"
+                    >
+                      <ZoomOut size={tokens.spacing.md} strokeWidth={1.5} />
+                    </button>
+                    <span className="text-sm font-medium text-neutral-700">
+                      {zoomPercent}%
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleZoomIn}
+                      disabled={!canZoomIn}
+                      style={{
+                        ...zoomButtonBaseStyle,
+                        color: canZoomIn
+                          ? inspectorColors.text
+                          : inspectorColors.labelMuted,
+                        cursor: canZoomIn ? "pointer" : "not-allowed",
+                        opacity: canZoomIn ? 1 : 0.6,
+                      }}
+                      aria-label="Zoom in"
+                    >
+                      <ZoomIn size={tokens.spacing.md} strokeWidth={1.5} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleZoomReset}
+                      disabled={!canResetZoom}
+                      style={{
+                        ...zoomResetButtonBaseStyle,
+                        color: canResetZoom
+                          ? inspectorColors.text
+                          : inspectorColors.labelMuted,
+                        cursor: canResetZoom ? "pointer" : "not-allowed",
+                        opacity: canResetZoom ? 1 : 0.6,
+                        gap: tokens.spacing.xs,
+                      }}
+                    >
+                      <RotateCcw size={tokens.spacing.md} strokeWidth={1.5} />
+                      <span className="text-xs font-medium text-neutral-700">
+                        Reset
+                      </span>
+                    </button>
+                  </div>
+                </div>
                 <div
                   ref={previewContainerRef}
-                  className="flex h-full w-full min-h-0 overflow-hidden"
+                  className="flex flex-1 min-h-0 overflow-hidden"
                 >
                   <div
                     className="flex h-full w-full min-h-0 items-start justify-center overflow-hidden"
@@ -4138,18 +4523,35 @@ export default function SlideModal({
                         onCanvasClick={handleCanvasClick}
                         activeDevice={activeDevice}
                         editInPreview={editInPreview}
-                        scale={scale}
+                        scale={previewScale}
                         onManipulationChange={handleManipulationChange}
                       />
                     )}
                   </div>
                 </div>
-              </main>
+              </div>
               {inspectorOpen && selectedBlock && (
-                <div className="border-t bg-white">
-                  <div className="max-h-[60vh] overflow-y-auto">
-                    <div className="sticky top-0 z-10 border-b bg-white px-4 py-2">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
+                <aside
+                  className="flex h-full flex-col border-l bg-white"
+                  style={{
+                    flexBasis: `min(50%, ${INSPECTOR_MAX_WIDTH}px)`,
+                    minWidth: INSPECTOR_MIN_WIDTH,
+                  }}
+                >
+                  <div className="flex-1 overflow-y-auto">
+                    <div
+                      className="sticky top-0 z-10 border-b bg-white"
+                      style={{
+                        paddingLeft: tokens.spacing.md,
+                        paddingRight: tokens.spacing.md,
+                        paddingTop: tokens.spacing.sm,
+                        paddingBottom: tokens.spacing.sm,
+                      }}
+                    >
+                      <div
+                        className="flex flex-wrap items-center justify-between"
+                        style={{ gap: tokens.spacing.sm }}
+                      >
                         <span className="text-xs font-semibold uppercase tracking-wide text-neutral-600">
                           Inspector
                         </span>
@@ -4157,8 +4559,14 @@ export default function SlideModal({
                           Selected: {selectionLabel}
                         </span>
                       </div>
-                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                        <div className="min-w-0 flex flex-wrap items-center gap-2">
+                      <div
+                        className="mt-2 flex flex-wrap items-center justify-between"
+                        style={{ gap: tokens.spacing.sm }}
+                      >
+                        <div
+                          className="min-w-0 flex flex-wrap items-center"
+                          style={{ gap: tokens.spacing.xs }}
+                        >
                           <span className="text-sm font-semibold text-neutral-900">
                             {selectionLabel}
                           </span>
@@ -4168,7 +4576,10 @@ export default function SlideModal({
                             </span>
                           )}
                         </div>
-                        <div className="flex flex-wrap items-center gap-1.5">
+                        <div
+                          className="flex flex-wrap items-center"
+                          style={{ gap: tokens.spacing.xs }}
+                        >
                           <button
                             type="button"
                             onClick={() => handleDuplicateBlock(selectedBlock.id)}
@@ -5329,7 +5740,7 @@ export default function SlideModal({
                                             style={{
                                               display: "flex",
                                               flexDirection: "column",
-                                              gap: tokens.spacing.sm,
+                                              gap: tokens.spacing.xs,
                                             }}
                                           >
                                             {galleryRenderedItems.map((item, index) => {
@@ -5381,16 +5792,6 @@ export default function SlideModal({
                                         <DragOverlay>
                                           {activeGalleryDragItem ? (
                                             <GalleryInspectorItemContent
-                                              label={
-                                                activeGalleryDragId !== null &&
-                                                Number.isFinite(
-                                                  Number(activeGalleryDragId),
-                                                )
-                                                  ? `Image ${
-                                                      Number(activeGalleryDragId) + 1
-                                                    }`
-                                                  : "Image"
-                                              }
                                               item={activeGalleryDragItem}
                                               itemKey={
                                                 activeGalleryDragIdentity?.key ??
@@ -5586,10 +5987,55 @@ export default function SlideModal({
                                 return (
                                   <div className="space-y-4">
                                     <InspectorSection title="Content">
+                                      <InspectorInputToggle
+                                        label="Use customer review"
+                                        checked={selectedQuoteConfig.useReview}
+                                        onChange={(checked) =>
+                                          updateQuoteConfig(selectedBlock.id, (config) => ({
+                                            ...config,
+                                            useReview: checked,
+                                            reviewId: checked ? config.reviewId : null,
+                                          }))
+                                        }
+                                      />
+                                      {selectedQuoteConfig.useReview ? (
+                                        reviewOptions.length > 0 ? (
+                                          <InspectorInputSelect
+                                            label="Review"
+                                            value={selectedQuoteConfig.reviewId ?? ""}
+                                            onChange={(nextValue) => {
+                                              const review = reviewOptions.find(
+                                                (option) => option.id === nextValue,
+                                              );
+                                              updateQuoteConfig(selectedBlock.id, (config) => ({
+                                                ...config,
+                                                useReview: true,
+                                                reviewId: nextValue.length > 0 ? nextValue : null,
+                                                text: review ? review.text : config.text,
+                                                author: review ? review.author : config.author,
+                                              }));
+                                            }}
+                                            options={[
+                                              { value: "", label: "Choose a review…" },
+                                              ...reviewOptions.map((option) => ({
+                                                value: option.id,
+                                                label: formatReviewOptionLabel(option),
+                                              })),
+                                            ]}
+                                          />
+                                        ) : (
+                                          <ControlRow label="Review">
+                                            <span className="text-xs text-neutral-500">
+                                              No reviews available.
+                                            </span>
+                                          </ControlRow>
+                                        )
+                                      ) : null}
                                       <InspectorInputTextArea
                                         label="Quote text"
                                         value={selectedQuoteConfig.text}
                                         rows={4}
+                                        disabled={selectedQuoteConfig.useReview}
                                         onChange={(nextValue) =>
                                           updateQuoteConfig(selectedBlock.id, (config) => ({
                                             ...config,
@@ -5600,12 +6046,41 @@ export default function SlideModal({
                                       <InspectorInputText
                                         label="Author (optional)"
                                         value={selectedQuoteConfig.author}
+                                        disabled={selectedQuoteConfig.useReview}
                                         onChange={(nextValue) =>
                                           updateQuoteConfig(selectedBlock.id, (config) => ({
                                             ...config,
                                             author: nextValue,
                                           }))
                                         }
+                                      />
+                                      <ControlRow label="Star rating">
+                                        <QuoteStarRatingSelector
+                                          value={selectedQuoteConfig.starRating}
+                                          disabled={selectedQuoteConfig.useReview}
+                                          color={getQuoteStarColorValue(selectedQuoteConfig.starColor)}
+                                          onChange={(nextValue) =>
+                                            updateQuoteConfig(selectedBlock.id, (config) => ({
+                                              ...config,
+                                              starRating: nextValue,
+                                            }))
+                                          }
+                                        />
+                                      </ControlRow>
+                                      <InspectorInputSelect
+                                        label="Star color"
+                                        value={selectedQuoteConfig.starColor}
+                                        disabled={selectedQuoteConfig.useReview}
+                                        onChange={(nextValue) =>
+                                          updateQuoteConfig(selectedBlock.id, (config) => ({
+                                            ...config,
+                                            starColor: nextValue as QuoteBlockConfig["starColor"],
+                                          }))
+                                        }
+                                        options={QUOTE_STAR_COLOR_OPTIONS.map((option) => ({
+                                          label: option.label,
+                                          value: option.value,
+                                        }))}
                                       />
                                     </InspectorSection>
                                     <InspectorSection title="Typography">
@@ -5755,52 +6230,6 @@ export default function SlideModal({
                                           value: option.value,
                                         }))}
                                       />
-                                    </InspectorSection>
-                                    <InspectorSection title="Options">
-                                      <InspectorInputToggle
-                                        label="Use customer review"
-                                        checked={selectedQuoteConfig.useReview}
-                                        onChange={(checked) =>
-                                          updateQuoteConfig(selectedBlock.id, (config) => ({
-                                            ...config,
-                                            useReview: checked,
-                                            reviewId: checked ? config.reviewId : null,
-                                          }))
-                                        }
-                                      />
-                                      {selectedQuoteConfig.useReview ? (
-                                        reviewOptions.length > 0 ? (
-                                          <InspectorInputSelect
-                                            label="Review"
-                                            value={selectedQuoteConfig.reviewId ?? ""}
-                                            onChange={(nextValue) => {
-                                              const review = reviewOptions.find(
-                                                (option) => option.id === nextValue,
-                                              );
-                                              updateQuoteConfig(selectedBlock.id, (config) => ({
-                                                ...config,
-                                                useReview: true,
-                                                reviewId: nextValue.length > 0 ? nextValue : null,
-                                                text: review ? review.text : config.text,
-                                                author: review ? review.author : config.author,
-                                              }));
-                                            }}
-                                            options={[
-                                              { value: "", label: "Choose a review…" },
-                                              ...reviewOptions.map((option) => ({
-                                                value: option.id,
-                                                label: formatReviewOptionLabel(option),
-                                              })),
-                                            ]}
-                                          />
-                                        ) : (
-                                          <ControlRow label="Review">
-                                            <span className="text-xs text-neutral-500">
-                                              No reviews available.
-                                            </span>
-                                          </ControlRow>
-                                        )
-                                      ) : null}
                                     </InspectorSection>
                                     <InspectorSection title="Style">
                                       <InspectorInputSelect
@@ -6435,7 +6864,7 @@ export default function SlideModal({
                     </section>
                   </div>
                 </div>
-              </div>
+              </aside>
               )}
             </div>
           </div>
