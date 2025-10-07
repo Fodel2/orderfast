@@ -71,11 +71,11 @@ const DEFAULT_TEXT_SHADOW = {
   color: 'rgba(0, 0, 0, 0.3)',
 };
 
-const DEFAULT_BLOCK_BACKGROUND_COLOR = '#ffffff';
-const DEFAULT_BLOCK_GRADIENT_FROM = 'rgba(15, 23, 42, 0.45)';
-const DEFAULT_BLOCK_GRADIENT_TO = 'rgba(15, 23, 42, 0.05)';
+const DEFAULT_BLOCK_BACKGROUND_COLOR = tokens.colors.surface;
+const DEFAULT_BLOCK_GRADIENT_FROM = tokens.colors.overlay.strong;
+const DEFAULT_BLOCK_GRADIENT_TO = tokens.colors.overlay.soft;
 
-const isTextualKind = (kind: string): boolean => TEXTUAL_BLOCK_KIND_NAMES.has(kind as any);
+export const isTextualBlockKind = (kind: string): boolean => TEXTUAL_BLOCK_KIND_NAMES.has(kind as any);
 
 export type DeviceKind = 'mobile' | 'tablet' | 'desktop';
 
@@ -257,7 +257,7 @@ export const updateConfigWithTextContent = (
   block: SlideBlock,
   text: string,
 ): SlideBlock['config'] | undefined => {
-  if (!isTextualKind(block.kind)) return block.config;
+  if (!isTextualBlockKind(block.kind)) return block.config;
   const base = cloneConfigRecord(block.config);
   if (block.kind === 'button') {
     base.label = text;
@@ -308,10 +308,10 @@ export type ButtonBlockConfig = {
 export const BUTTON_VARIANTS: ButtonBlockVariant[] = ['Primary', 'Outline', 'Ghost'];
 export const BUTTON_SIZES: ButtonBlockSize[] = ['Small', 'Medium', 'Large'];
 
-const BUTTON_FONT_SIZE_PX: Record<ButtonBlockSize, number> = {
-  Small: 14,
-  Medium: 16,
-  Large: 18,
+export const BUTTON_FONT_SIZE_SCALE: Record<ButtonBlockSize, number> = {
+  Small: tokens.fontSize.sm,
+  Medium: tokens.fontSize.md,
+  Large: tokens.fontSize.lg,
 };
 
 const BLOCK_SHADOW_VALUE: Record<BlockShadowPreset, string | undefined> = {
@@ -596,12 +596,12 @@ const clampBackgroundRadius = (value?: number): number => {
   return Math.max(0, value);
 };
 
-type BlockBackgroundPresentation = {
+export type BlockBackgroundPresentation = {
   style: CSSProperties;
   radius: number;
 };
 
-const getBlockBackgroundPresentation = (
+export const getBlockBackgroundPresentation = (
   background?: BlockBackground | null,
 ): BlockBackgroundPresentation | null => {
   if (!background || background.type === 'none') {
@@ -661,11 +661,11 @@ const getBlockBackgroundPresentation = (
   return null;
 };
 
-function getBlockChromeStyle(
+export function getBlockChromeStyle(
   block: SlideBlock,
   backgroundPresentation?: BlockBackgroundPresentation | null,
 ): CSSProperties {
-  const textual = isTextualKind(block.kind);
+  const textual = isTextualBlockKind(block.kind);
   const style: CSSProperties = {
     width: textual ? 'fit-content' : '100%',
     height: textual ? 'fit-content' : '100%',
@@ -729,7 +729,7 @@ const BlockChrome = React.forwardRef<HTMLDivElement, BlockChromeProps>(({ block,
   const baseStyle = getBlockChromeStyle(block, backgroundPresentation);
   const interaction = getBlockInteractionPresentation(block);
   const style = { ...baseStyle, ...(interaction.style || {}) } as CSSProperties;
-  const textual = isTextualKind(block.kind);
+  const textual = isTextualBlockKind(block.kind);
   const className = ['relative'];
   if (textual) {
     className.push('inline-flex', 'max-w-full');
@@ -788,7 +788,7 @@ const BlockChromeWithAutoSize = ({
   frameRef.current = frame;
 
   const scheduleMeasurement = useCallback(() => {
-    if (!isTextualKind(block.kind)) return;
+    if (!isTextualBlockKind(block.kind)) return;
     const node = elementRef.current;
     if (!node) return;
     const container = node.parentElement as HTMLElement | null;
@@ -876,12 +876,12 @@ const BlockChromeWithAutoSize = ({
   }, [autoHeightEnabled, autoWidthEnabled, block.kind, blockId, deviceSize.height, deviceSize.width, minSizePct.height, minSizePct.width, onFrameChange]);
 
   useLayoutEffect(() => {
-    if (!isTextualKind(block.kind)) return;
+    if (!isTextualBlockKind(block.kind)) return;
     scheduleMeasurement();
   }, [block, frame, scheduleMeasurement]);
 
   useLayoutEffect(() => {
-    if (!isTextualKind(block.kind)) return;
+    if (!isTextualBlockKind(block.kind)) return;
     const node = elementRef.current;
     if (!node) return;
     const observer = new ResizeObserver(() => scheduleMeasurement());
@@ -896,14 +896,14 @@ const BlockChromeWithAutoSize = ({
   }, [block.kind, scheduleMeasurement]);
 
   const wrapperClassName = ['block-wrapper'];
-  if (isTextualKind(block.kind)) {
+  if (isTextualBlockKind(block.kind)) {
     wrapperClassName.push('inline-flex', 'max-w-full');
   } else {
     wrapperClassName.push('flex', 'h-full', 'w-full');
   }
 
   return (
-    <BlockChrome ref={isTextualKind(block.kind) ? elementRef : undefined} block={block}>
+    <BlockChrome ref={isTextualBlockKind(block.kind) ? elementRef : undefined} block={block}>
       <div className={wrapperClassName.join(' ')}>{children}</div>
     </BlockChrome>
   );
@@ -1301,11 +1301,11 @@ const getResolvedFontStack = (
   family: SlideBlockFontFamily,
 ): string | undefined => getFontStackForFamily(family);
 
-const SIZE_TO_FONT_SIZE: Record<NonNullable<SlideBlock['size']>, number> = {
-  sm: 18,
-  md: 24,
-  lg: 40,
-  xl: 56,
+export const TEXT_BLOCK_SIZE_TO_FONT: Record<NonNullable<SlideBlock['size']>, number> = {
+  sm: tokens.fontSize.lg,
+  md: tokens.fontSize.xl,
+  lg: tokens.fontSize['3xl'],
+  xl: tokens.fontSize['4xl'],
 };
 
 export const resolveLineHeightValue = (
@@ -1552,11 +1552,11 @@ function resolveTextBlockFontSize(block: SlideBlock): number {
   }
   if (block.kind === 'button') {
     const button = resolveButtonConfig(block);
-    const fontSize = BUTTON_FONT_SIZE_PX[button.size] ?? BUTTON_FONT_SIZE_PX.Medium;
+    const fontSize = BUTTON_FONT_SIZE_SCALE[button.size] ?? BUTTON_FONT_SIZE_SCALE.Medium;
     return Math.max(fontSize, 1);
   }
   if (block.size) {
-    const mapped = SIZE_TO_FONT_SIZE[block.size];
+    const mapped = TEXT_BLOCK_SIZE_TO_FONT[block.size];
     if (typeof mapped === 'number') {
       return Math.max(mapped, 1);
     }
@@ -1565,7 +1565,7 @@ function resolveTextBlockFontSize(block: SlideBlock): number {
     case 'heading':
       return 56;
     case 'subheading':
-      return SIZE_TO_FONT_SIZE.md;
+      return TEXT_BLOCK_SIZE_TO_FONT.md;
     case 'quote':
       return 18;
     default:
@@ -1978,7 +1978,7 @@ export function resolveBlockVisibility(block: SlideBlock): BlockVisibilityConfig
 
 function ensureFrame(block: SlideBlock, device: DeviceKind): Frame {
   const fallback: Frame = { x: 10, y: 10, w: 40, h: 20, r: 0 };
-  const sizing = isTextualKind(block.kind) ? readTextSizingConfig(block.config) : undefined;
+  const sizing = isTextualBlockKind(block.kind) ? readTextSizingConfig(block.config) : undefined;
   const pickForDevice = (frame: Frame): Frame => {
     const sanitized: Frame = {
       x: clamp(typeof frame.x === 'number' ? frame.x : fallback.x, 0, 100),
@@ -1987,7 +1987,7 @@ function ensureFrame(block: SlideBlock, device: DeviceKind): Frame {
       h: clamp(typeof frame.h === 'number' ? frame.h : fallback.h, 0, 100),
       r: typeof frame.r === 'number' && Number.isFinite(frame.r) ? frame.r : 0,
     };
-    if (isTextualKind(block.kind) && sizing) {
+    if (isTextualBlockKind(block.kind) && sizing) {
       const dims = pickTextSizingDimensions(sizing, device);
       if (dims?.width !== undefined) {
         sanitized.w = clamp(dims.width, 0, 100);
@@ -2227,7 +2227,7 @@ export default function SlidesManager({
   const enterInlineEditing = useCallback(
     (block: SlideBlock) => {
       if (!editable || !editInPreview) return;
-      if (!isTextualKind(block.kind)) return;
+      if (!isTextualBlockKind(block.kind)) return;
       setInlineEditingId(block.id);
     },
     [editable, editInPreview],
@@ -2236,7 +2236,7 @@ export default function SlidesManager({
   useEffect(() => {
     if (!editable) return;
     const updates = cfg.blocks.filter((block) => {
-      if (!isTextualKind(block.kind)) return false;
+      if (!isTextualBlockKind(block.kind)) return false;
       const content = block.content ?? block.text ?? '';
       return content.trim().length === 0;
     });
@@ -2276,7 +2276,7 @@ export default function SlidesManager({
                   ...b.frames,
                   [activeDevice]: sanitized,
                 },
-                config: isTextualKind(b.kind)
+                config: isTextualBlockKind(b.kind)
                   ? writeTextSizingToConfig(b.config, activeDevice, sanitized)
                   : b.config,
               }
@@ -2410,7 +2410,7 @@ export default function SlidesManager({
           typeof block.fontSize === 'number'
             ? block.fontSize
             : block.size
-              ? SIZE_TO_FONT_SIZE[block.size]
+              ? TEXT_BLOCK_SIZE_TO_FONT[block.size]
               : undefined;
         const lineHeightValue = resolveLineHeightValue(block.lineHeight, block.lineHeightUnit);
         const letterSpacingValue =
@@ -2463,7 +2463,7 @@ export default function SlidesManager({
         const fontSizePx =
           typeof block.fontSize === 'number'
             ? block.fontSize
-            : BUTTON_FONT_SIZE_PX[button.size] ?? BUTTON_FONT_SIZE_PX.Medium;
+            : BUTTON_FONT_SIZE_SCALE[button.size] ?? BUTTON_FONT_SIZE_SCALE.Medium;
         const lineHeightValue = resolveLineHeightValue(block.lineHeight, block.lineHeightUnit);
         const align = block.align ?? 'left';
         const paddingX = BUTTON_HORIZONTAL_PADDING[button.size] ?? BUTTON_HORIZONTAL_PADDING.Medium;
@@ -2879,7 +2879,7 @@ export default function SlidesManager({
                 }
                 const frame = ensureFrame(block, activeDevice);
                 const locked = Boolean(block.locked);
-                const textual = isTextualKind(block.kind);
+                const textual = isTextualBlockKind(block.kind);
                 const minSizePct = textual ? getTextBlockMinSizePct(block, deviceSize) : undefined;
                 const effectiveMinSize = minSizePct ?? { width: 5, height: 5 };
                 const autoWidthEnabled = textual ? isAutoWidthEnabled(block) : false;
