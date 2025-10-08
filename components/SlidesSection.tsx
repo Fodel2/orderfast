@@ -2,139 +2,24 @@ import React, { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import {
   BLOCK_INTERACTION_GLOBAL_STYLES,
+  getBlockBackgroundPresentation,
+  getBlockChromeStyle,
   getBlockInteractionPresentation,
-  type SlideCfg,
-  type SlideBlock,
-  type DeviceKind,
-  type BlockBackground,
-  type BlockBackgroundGradientDirection,
-  type BlockShadowPreset,
-  resolveQuoteConfig,
-  getQuoteStarColorValue,
-  getQuoteVariantBaseStyles,
-  getQuoteVariantFontSizeFallback,
-  resolveGalleryConfig,
+  isTextualBlockKind,
   resolveBlockVisibility,
+  type DeviceKind,
+  type SlideBlock,
+  type SlideCfg,
 } from './SlidesManager';
 import type { SlideRow } from '@/components/customer/home/SlidesContainer';
 import {
   DEFAULT_TEXT_FONT_FAMILY,
   resolveBlockFontFamily,
-  getFontStackForFamily,
   useGoogleFontLoader,
 } from '@/lib/slideFonts';
-import { Star } from 'lucide-react';
 import { tokens } from '../src/ui/tokens';
-import GalleryBlock from './blocks/GalleryBlock';
-
-const TEXT_SIZE_MAP: Record<string, string> = {
-  sm: '1.125rem',
-  md: '1.5rem',
-  lg: '2.5rem',
-  xl: '3.5rem',
-};
-
-const BUTTON_CLASS = 'inline-flex items-center justify-center rounded-full px-5 py-3 text-base font-semibold shadow';
-
-const BLOCK_SHADOW_VALUE: Record<BlockShadowPreset, string | undefined> = {
-  none: undefined,
-  sm: '0 1px 2px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.04)',
-  md: '0 4px 6px rgba(15, 23, 42, 0.1), 0 2px 4px rgba(15, 23, 42, 0.06)',
-  lg: '0 10px 15px rgba(15, 23, 42, 0.12), 0 4px 6px rgba(15, 23, 42, 0.05)',
-};
-
-const BLOCK_GRADIENT_DIRECTION_MAP: Record<BlockBackgroundGradientDirection, string> = {
-  'to-top': 'to top',
-  'to-bottom': 'to bottom',
-  'to-left': 'to left',
-  'to-right': 'to right',
-};
-
-const DEFAULT_BLOCK_BACKGROUND_COLOR = '#ffffff';
-const DEFAULT_BLOCK_GRADIENT_FROM = 'rgba(15, 23, 42, 0.45)';
-const DEFAULT_BLOCK_GRADIENT_TO = 'rgba(15, 23, 42, 0.05)';
-
-const clampBackgroundOpacity = (value?: number): number => {
-  if (typeof value !== 'number' || Number.isNaN(value)) {
-    return 100;
-  }
-  if (value <= 1) {
-    return Math.round(Math.min(1, Math.max(0, value)) * 100);
-  }
-  return Math.round(Math.min(100, Math.max(0, value)));
-};
-
-const clampBackgroundRadius = (value?: number): number => {
-  if (typeof value !== 'number' || Number.isNaN(value)) {
-    return 0;
-  }
-  return Math.max(0, value);
-};
-
-type BlockBackgroundPresentation = {
-  style: CSSProperties;
-  radius: number;
-};
-
-const getBlockBackgroundPresentation = (
-  background?: BlockBackground | null,
-): BlockBackgroundPresentation | null => {
-  if (!background || background.type === 'none') {
-    return null;
-  }
-
-  const radius = clampBackgroundRadius(background.radius);
-  const opacity = clampBackgroundOpacity(background.opacity) / 100;
-  const overlayStyle: CSSProperties = {
-    position: 'absolute',
-    inset: 0,
-    pointerEvents: 'none',
-    borderRadius: radius,
-    opacity,
-    zIndex: -1,
-  };
-
-  if (background.type === 'color') {
-    const color =
-      typeof background.color === 'string' && background.color.trim().length > 0
-        ? background.color
-        : DEFAULT_BLOCK_BACKGROUND_COLOR;
-    overlayStyle.backgroundColor = color;
-    return { style: overlayStyle, radius };
-  }
-
-  if (background.type === 'gradient') {
-    const from =
-      typeof background.color === 'string' && background.color.trim().length > 0
-        ? background.color
-        : DEFAULT_BLOCK_GRADIENT_FROM;
-    const to =
-      typeof background.color2 === 'string' && background.color2.trim().length > 0
-        ? background.color2
-        : DEFAULT_BLOCK_GRADIENT_TO;
-    const directionKey =
-      background.direction && BLOCK_GRADIENT_DIRECTION_MAP[background.direction]
-        ? background.direction
-        : 'to-bottom';
-    const direction = BLOCK_GRADIENT_DIRECTION_MAP[directionKey];
-    overlayStyle.backgroundImage = `linear-gradient(${direction}, ${from}, ${to})`;
-    return { style: overlayStyle, radius };
-  }
-
-  if (background.type === 'image') {
-    const url = typeof background.url === 'string' && background.url.trim().length > 0 ? background.url : undefined;
-    if (!url) {
-      return null;
-    }
-    overlayStyle.backgroundImage = `url(${url})`;
-    overlayStyle.backgroundSize = 'cover';
-    overlayStyle.backgroundPosition = 'center';
-    overlayStyle.backgroundRepeat = 'no-repeat';
-    return { style: overlayStyle, radius };
-  }
-
-  return null;
-};
+import { renderStaticBlock } from './slides/staticRenderer';
+import { resolveTypographySpacing } from '@/src/utils/typography';
 
 function useDeviceKind(): DeviceKind {
   const [device, setDevice] = useState<DeviceKind>('desktop');
@@ -168,202 +53,6 @@ function pickFrame(block: SlideBlock, device: DeviceKind) {
   );
 }
 
-function renderBlock(block: SlideBlock) {
-  const fontFamilyKey = resolveBlockFontFamily(block);
-  const resolvedFontFamily = getFontStackForFamily(fontFamilyKey);
-  switch (block.kind) {
-    case 'heading':
-    case 'subheading':
-    case 'text': {
-      const Tag = block.kind === 'heading' ? 'h2' : block.kind === 'subheading' ? 'h3' : 'p';
-      const style: CSSProperties = {
-        color: block.color || '#ffffff',
-        textAlign: block.align ?? 'left',
-        fontSize:
-          typeof block.fontSize === 'number'
-            ? `${block.fontSize}px`
-            : block.size
-              ? TEXT_SIZE_MAP[block.size] ?? TEXT_SIZE_MAP.md
-              : undefined,
-        fontWeight:
-          block.fontWeight ?? (block.kind === 'heading' ? 700 : block.kind === 'subheading' ? 600 : 400),
-        margin: 0,
-      };
-      if (resolvedFontFamily) {
-        style.fontFamily = resolvedFontFamily;
-      }
-      return <Tag style={style}>{block.text}</Tag>;
-    }
-    case 'button':
-      return (
-        <a href={block.href || '#'} className={`${BUTTON_CLASS} bg-white text-black`}>
-          <span
-            style={{
-              fontFamily: resolvedFontFamily ?? undefined,
-              fontWeight: block.fontWeight ?? 600,
-              fontSize: typeof block.fontSize === 'number' ? `${block.fontSize}px` : undefined,
-            }}
-          >
-            {block.text || 'Button'}
-          </span>
-        </a>
-      );
-    case 'image':
-      if (!block.src) return <div className="h-full w-full rounded-lg bg-neutral-200" />;
-      return (
-        <img
-          src={block.src}
-          alt=""
-          className="h-full w-full rounded-xl"
-          style={{ objectFit: block.fit || 'cover' }}
-        />
-      );
-    case 'quote':
-      {
-        const quote = resolveQuoteConfig(block);
-        const variantStyles = getQuoteVariantBaseStyles(quote);
-        const starColorValue = getQuoteStarColorValue(quote.starColor);
-        const defaultTextColor = quote.style === 'plain' ? '#ffffff' : '#111111';
-        const textColor = block.textColor ?? block.color ?? defaultTextColor;
-        const fallbackWeight =
-          block.fontWeight ?? (quote.style === 'emphasis' ? 600 : quote.style === 'card' ? 500 : 400);
-        const hasCustomFontSize = typeof block.fontSize === 'number';
-        const fontSizeValue = hasCustomFontSize
-          ? `${block.fontSize}px`
-          : getQuoteVariantFontSizeFallback(quote.style);
-        const lineHeightValue =
-          typeof block.lineHeight === 'number'
-            ? block.lineHeightUnit === 'px'
-              ? `${block.lineHeight}px`
-              : block.lineHeight
-            : undefined;
-        const trimmedAuthor = quote.author.trim();
-        const showReviewRating = quote.useReview && Boolean(quote.reviewId);
-        const resolvedStarRating = Math.max(0, Math.min(5, Math.round(quote.starRating ?? 0)));
-        const ratingValue = resolvedStarRating > 0 ? resolvedStarRating : showReviewRating ? 5 : 0;
-        const shouldRenderRating = ratingValue > 0;
-        const ratingLabelBase = quote.useReview ? 'review' : 'rating';
-        const ratingLabelCount = ratingValue === 1 ? '1 star' : `${ratingValue} stars`;
-        return (
-          <blockquote
-            style={{
-              textAlign: quote.align,
-              fontFamily: resolvedFontFamily ?? undefined,
-              color: textColor,
-            }}
-          >
-            <div
-              style={{
-                padding: variantStyles.padding,
-                borderRadius: variantStyles.borderRadius,
-                backgroundColor: variantStyles.backgroundColor,
-                boxShadow: variantStyles.boxShadow,
-                border: variantStyles.border,
-                display: 'inline-flex',
-                flexDirection: 'column',
-                alignItems:
-                  quote.align === 'center'
-                    ? 'center'
-                    : quote.align === 'right'
-                      ? 'flex-end'
-                      : 'flex-start',
-                maxWidth: '100%',
-                gap: 0,
-              }}
-            >
-              <p
-                style={{
-                  fontStyle: 'italic',
-                  fontWeight: fallbackWeight,
-                  fontSize: fontSizeValue,
-                  lineHeight: lineHeightValue,
-                  letterSpacing:
-                    typeof block.letterSpacing === 'number'
-                      ? `${block.letterSpacing}px`
-                      : undefined,
-                  whiteSpace: 'pre-line',
-                  textAlign: quote.align,
-                  margin: 0,
-                }}
-              >
-                <span aria-hidden>“</span>
-                {quote.text}
-                <span aria-hidden>”</span>
-              </p>
-              {trimmedAuthor.length > 0 ? (
-                <cite
-                  style={{
-                    marginTop: tokens.spacing.sm,
-                    fontSize: `${tokens.spacing.md - tokens.spacing.xs}px`,
-                    opacity: 0.75,
-                    whiteSpace: 'pre-line',
-                    fontFamily: resolvedFontFamily ?? undefined,
-                    fontWeight: typeof block.fontWeight === 'number' ? block.fontWeight : undefined,
-                    lineHeight: lineHeightValue,
-                  }}
-                >
-                  — {trimmedAuthor}
-                </cite>
-              ) : null}
-              {shouldRenderRating ? (
-                <p
-                  aria-label={`${ratingLabelCount} ${ratingLabelBase}`}
-                  role="img"
-                  style={{
-                    fontFamily: resolvedFontFamily ?? undefined,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    columnGap: tokens.spacing.xs,
-                    color: starColorValue,
-                    marginTop: trimmedAuthor.length > 0 ? tokens.spacing.xs : tokens.spacing.sm,
-                    opacity: 0.9,
-                    fontSize: `${tokens.spacing.md}px`,
-                    alignSelf: quote.style === 'card' ? 'center' : undefined,
-                    justifyContent: quote.style === 'card' ? 'center' : undefined,
-                  }}
-                >
-                  {Array.from({ length: 5 }).map((_, index) => {
-                    const isFilled = index < ratingValue;
-                    return (
-                      <Star
-                        key={index}
-                        aria-hidden
-                        size={tokens.spacing.md}
-                        strokeWidth={1.5}
-                        style={{
-                          stroke: 'currentColor',
-                          fill: isFilled ? 'currentColor' : 'transparent',
-                          opacity: isFilled ? 1 : 0.35,
-                        }}
-                      />
-                    );
-                  })}
-                </p>
-              ) : null}
-            </div>
-          </blockquote>
-        );
-      }
-    case 'gallery': {
-      const gallery = resolveGalleryConfig(block);
-      return (
-        <GalleryBlock
-          items={gallery.items}
-          layout={gallery.layout}
-          radius={gallery.radius}
-          shadow={gallery.shadow}
-          aspectRatio={gallery.aspectRatio}
-          autoplay={gallery.autoplay}
-          interval={gallery.interval}
-        />
-      );
-    }
-    case 'spacer':
-      return <div className="h-full w-full" />;
-    default:
-      return null;
-  }
-}
 
 function Background({ cfg }: { cfg: SlideCfg }) {
   const bg = cfg.background;
@@ -371,13 +60,16 @@ function Background({ cfg }: { cfg: SlideCfg }) {
   if (bg.type === 'color') {
     return (
       <>
-        <div className="absolute inset-0" style={{ background: bg.color || '#111', pointerEvents: 'none' }} />
+        <div
+          className="of-canvas-bg absolute inset-0"
+          style={{ background: bg.color || tokens.colors.surfaceInverse, pointerEvents: 'none' }}
+        />
         {bg.overlay && (
           <div
-            className="absolute inset-0"
+            className="of-canvas-bg absolute inset-0"
             style={{
-              background: bg.overlay.color,
-              opacity: bg.overlay.opacity,
+              background: bg.overlay.color || tokens.colors.overlay.strong,
+              opacity: bg.overlay.opacity ?? tokens.opacity[50],
               pointerEvents: 'none',
             }}
           />
@@ -389,7 +81,7 @@ function Background({ cfg }: { cfg: SlideCfg }) {
     return (
       <>
         <div
-          className="absolute inset-0"
+          className="of-canvas-bg absolute inset-0"
           style={{
             backgroundImage: bg.url ? `url(${bg.url})` : undefined,
             backgroundSize: 'cover',
@@ -399,8 +91,12 @@ function Background({ cfg }: { cfg: SlideCfg }) {
         />
         {bg.overlay && (
           <div
-            className="absolute inset-0"
-            style={{ background: bg.overlay.color, opacity: bg.overlay.opacity, pointerEvents: 'none' }}
+            className="of-canvas-bg absolute inset-0"
+            style={{
+              background: bg.overlay.color || tokens.colors.overlay.strong,
+              opacity: bg.overlay.opacity ?? tokens.opacity[50],
+              pointerEvents: 'none',
+            }}
           />
         )}
       </>
@@ -415,71 +111,22 @@ function Background({ cfg }: { cfg: SlideCfg }) {
           loop
           muted
           playsInline
-          className="absolute inset-0 h-full w-full object-cover"
+          className="of-canvas-bg absolute inset-0 h-full w-full object-cover"
         />
         {bg.overlay && (
           <div
-            className="absolute inset-0"
-            style={{ background: bg.overlay.color, opacity: bg.overlay.opacity, pointerEvents: 'none' }}
+            className="of-canvas-bg absolute inset-0"
+            style={{
+              background: bg.overlay.color || tokens.colors.overlay.strong,
+              opacity: bg.overlay.opacity ?? tokens.opacity[50],
+              pointerEvents: 'none',
+            }}
           />
         )}
       </>
     );
   }
   return null;
-}
-
-function getBlockChromeStyle(
-  block: SlideBlock,
-  backgroundPresentation?: BlockBackgroundPresentation | null,
-): CSSProperties {
-  const style: CSSProperties = {
-    width: '100%',
-    height: '100%',
-    boxSizing: 'border-box',
-    backgroundColor: 'transparent',
-  };
-
-  const shadowKey = (block.boxShadow ?? 'none') as BlockShadowPreset;
-  const shadowValue = BLOCK_SHADOW_VALUE[shadowKey];
-  if (shadowValue) {
-    style.boxShadow = shadowValue;
-  }
-
-  const borderWidth =
-    typeof block.borderWidth === 'number' && Number.isFinite(block.borderWidth)
-      ? Math.max(0, block.borderWidth)
-      : undefined;
-  const borderColor =
-    typeof block.borderColor === 'string' ? block.borderColor : undefined;
-
-  if (borderWidth && borderWidth > 0) {
-    style.borderWidth = borderWidth;
-    style.borderStyle = 'solid';
-    style.borderColor = borderColor ?? 'rgba(15, 23, 42, 0.12)';
-  } else if (borderColor && borderColor !== 'transparent') {
-    style.borderWidth = 1;
-    style.borderStyle = 'solid';
-    style.borderColor = borderColor;
-  }
-
-  const borderRadius =
-    typeof block.borderRadius === 'number' && Number.isFinite(block.borderRadius)
-      ? Math.max(0, block.borderRadius)
-      : undefined;
-  const backgroundRadius = backgroundPresentation ? backgroundPresentation.radius : undefined;
-  const resolvedRadius =
-    borderRadius !== undefined || backgroundRadius !== undefined
-      ? Math.max(borderRadius ?? 0, backgroundRadius ?? 0)
-      : undefined;
-
-  if (resolvedRadius !== undefined && resolvedRadius > 0) {
-    style.borderRadius = resolvedRadius;
-  } else if (borderRadius !== undefined) {
-    style.borderRadius = borderRadius;
-  }
-
-  return style;
 }
 
 export default function SlidesSection({ slide, cfg }: { slide: SlideRow; cfg: SlideCfg }) {
@@ -502,7 +149,7 @@ export default function SlidesSection({ slide, cfg }: { slide: SlideRow; cfg: Sl
   return (
     <>
       <style jsx global>{BLOCK_INTERACTION_GLOBAL_STYLES}</style>
-      <section className="relative flex min-h-screen snap-start items-center justify-center" style={{ height: '100dvh' }}>
+      <section className="of-canvas relative flex snap-start items-center justify-center overflow-hidden">
         <Background cfg={cfg} />
         <div className="relative h-full w-full" style={{ pointerEvents: 'none' }}>
           {blocks.map((block) => {
@@ -527,13 +174,27 @@ export default function SlidesSection({ slide, cfg }: { slide: SlideRow; cfg: Sl
               ...getBlockChromeStyle(block, backgroundPresentation),
               ...(interaction.style || {}),
             } as CSSProperties;
-            const chromeClasses = [
-              'relative flex h-full w-full items-center justify-center',
-              ...(interaction.classNames ?? []),
-            ].join(' ');
+            const textual = isTextualBlockKind(block.kind);
+            const typography = textual ? resolveTypographySpacing(block) : undefined;
+            const chromeClasses = ['relative'];
+            if (textual) {
+              chromeClasses.push('inline-flex', 'max-w-full');
+            } else {
+              chromeClasses.push('h-full', 'w-full');
+            }
+            if (interaction.classNames && interaction.classNames.length > 0) {
+              chromeClasses.push(...interaction.classNames);
+            }
+            const wrapperClasses = ['block-wrapper'];
+            if (textual) {
+              wrapperClasses.push('inline-flex', 'max-w-full');
+            } else {
+              wrapperClasses.push('flex', 'h-full', 'w-full');
+            }
+
             return (
-              <div key={block.id} style={style} className="flex h-full w-full items-center justify-center">
-                <div style={chromeStyle} className={chromeClasses}>
+              <div key={block.id} style={style} data-slide-block-id={block.id}>
+                <div style={chromeStyle} className={chromeClasses.join(' ')}>
                   {backgroundPresentation && (
                     <div
                       aria-hidden
@@ -541,8 +202,11 @@ export default function SlidesSection({ slide, cfg }: { slide: SlideRow; cfg: Sl
                       style={backgroundPresentation.style}
                     />
                   )}
-                  <div className="relative z-[1] flex h-full w-full items-center justify-center">
-                    {renderBlock(block)}
+                  <div className={wrapperClasses.join(' ')}>
+                    {renderStaticBlock(
+                      block,
+                      typography ? { typography } : undefined,
+                    )}
                   </div>
                 </div>
               </div>

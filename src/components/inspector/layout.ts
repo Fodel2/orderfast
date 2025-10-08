@@ -13,9 +13,11 @@ export const inspectorLayout = {
 };
 
 export const inspectorColors = {
-  label: "#475569",
-  labelMuted: "#64748b",
-  text: "#0f172a",
-  border: "rgba(15, 23, 42, 0.12)",
-  background: "#ffffff",
+  label: `var(--inspector-label, ${tokens.colors.textSecondary})`,
+  labelMuted: `var(--inspector-label-muted, ${tokens.colors.textMuted})`,
+  text: `var(--inspector-text, ${tokens.colors.textPrimary})`,
+  border: `var(--inspector-border, ${tokens.colors.borderStrong})`,
+  background: `var(--inspector-background, ${tokens.colors.surface})`,
+  surfaceHover: `var(--inspector-surface-hover, ${tokens.colors.surfaceHover})`,
+  surfaceActive: `var(--inspector-surface-active, ${tokens.colors.surfaceActive})`,
 };

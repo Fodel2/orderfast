@@ -11,15 +11,18 @@ import { inspectorColors, inspectorLayout } from "../../src/components/inspector
 import { tokens } from "../../src/ui/tokens";
 import { APP_FONTS, AppFont, ensureFontLoaded, useFontSearch } from "@/lib/fonts";
 
-const ITEM_HEIGHT = 36;
+const ITEM_HEIGHT = inspectorLayout.controlHeight + tokens.spacing.xs;
 const VISIBLE_BUFFER = 4;
 
 const sanitizeDomId = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, "-");
-
-const SELECT_CHEVRON_ICON = encodeURIComponent(
-  `<svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 4.5L6 7.5L9 4.5" stroke="#64748b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
-);
 const SELECT_ICON_SIZE = tokens.spacing.sm * 1.5;
+const SELECT_PADDING_RIGHT = tokens.spacing.sm + SELECT_ICON_SIZE;
+const FONT_SELECT_ICON_COLOR = `var(--font-select-icon, ${tokens.colors.neutral[500]})`;
+const FONT_SELECT_ICON_DISABLED_COLOR = `var(--font-select-icon-disabled, ${tokens.colors.neutral[400]})`;
+const FONT_SELECT_ICON_ACTIVE_COLOR = `var(--font-select-icon-active, ${tokens.colors.accent})`;
+const FONT_SELECT_BORDER_HOVER = `var(--font-select-border-hover, ${tokens.colors.neutral[400]})`;
+const FONT_SELECT_FOCUS_RING = `var(--font-select-focus-ring, ${tokens.colors.focusRing})`;
+const FONT_SELECT_PANEL_DIVIDER = `var(--font-select-panel-divider, ${tokens.colors.borderLight})`;
 
 const systemFallback = '"Inter", "Helvetica Neue", Arial, sans-serif';
 
@@ -250,6 +253,17 @@ const FontSelect: React.FC<FontSelectProps> = ({
         <span className="font-select-label" style={{ fontFamily: triggerFontStack }}>
           {triggerLabel}
         </span>
+        <span className="font-select-icon" aria-hidden="true">
+          <svg width={SELECT_ICON_SIZE} height={SELECT_ICON_SIZE} viewBox="0 0 12 12" fill="none">
+            <path
+              d="M3 4.5L6 7.5L9 4.5"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </span>
       </button>
       {open && (
         <div
@@ -325,26 +339,37 @@ const FontSelect: React.FC<FontSelectProps> = ({
           justify-content: flex-start;
           width: 100%;
           height: ${controlHeight}px;
-          padding: 0 ${tokens.spacing.md}px 0 ${tokens.spacing.sm}px;
+          padding: 0 ${SELECT_PADDING_RIGHT}px 0 ${tokens.spacing.sm}px;
           border-radius: ${radius}px;
           border: ${borderWidth}px solid ${inspectorColors.border};
           background-color: ${inspectorColors.background};
-          background-image: url("data:image/svg+xml,${SELECT_CHEVRON_ICON}");
-          background-repeat: no-repeat;
-          background-position: right ${tokens.spacing.sm}px center;
-          background-size: ${SELECT_ICON_SIZE}px ${SELECT_ICON_SIZE}px;
           color: ${inspectorColors.text};
           font-size: 0.875rem;
           font-weight: 500;
           line-height: 1.2;
           text-align: left;
           cursor: pointer;
-          transition: border-color 0.18s ease, box-shadow 0.18s ease;
+          transition: border-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease;
+        }
+
+        .font-select-trigger:hover {
+          border-color: ${FONT_SELECT_BORDER_HOVER};
         }
 
         .font-select-trigger:focus-visible {
-          outline: 2px solid #10b981;
+          outline: ${tokens.border.thick}px solid ${FONT_SELECT_FOCUS_RING};
           outline-offset: 2px;
+          border-color: ${FONT_SELECT_FOCUS_RING};
+        }
+
+        .font-select-trigger[aria-expanded='true'] {
+          border-color: ${FONT_SELECT_FOCUS_RING};
+          box-shadow: 0 0 0 1px ${FONT_SELECT_FOCUS_RING};
+        }
+
+        .font-select-trigger:disabled {
+          cursor: not-allowed;
+          opacity: ${tokens.opacity[50]};
         }
 
         .font-select-label {
@@ -353,6 +378,29 @@ const FontSelect: React.FC<FontSelectProps> = ({
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
+        }
+
+        .font-select-icon {
+          flex-shrink: 0;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: ${SELECT_ICON_SIZE}px;
+          height: ${SELECT_ICON_SIZE}px;
+          margin-left: ${tokens.spacing.xs}px;
+          color: ${FONT_SELECT_ICON_COLOR};
+          pointer-events: none;
+          transition: color 0.18s ease;
+        }
+
+        .font-select-trigger:hover .font-select-icon,
+        .font-select-trigger:focus-visible .font-select-icon,
+        .font-select-trigger[aria-expanded='true'] .font-select-icon {
+          color: ${FONT_SELECT_ICON_ACTIVE_COLOR};
+        }
+
+        .font-select-trigger:disabled .font-select-icon {
+          color: ${FONT_SELECT_ICON_DISABLED_COLOR};
         }
 
         .font-select-panel {
@@ -369,7 +417,7 @@ const FontSelect: React.FC<FontSelectProps> = ({
         }
 
         .font-select-search {
-          border-bottom: ${borderWidth}px solid rgba(15, 23, 42, 0.08);
+          border-bottom: ${borderWidth}px solid ${FONT_SELECT_PANEL_DIVIDER};
           padding: ${tokens.spacing.sm}px;
           background-color: ${inspectorColors.background};
         }
@@ -382,11 +430,21 @@ const FontSelect: React.FC<FontSelectProps> = ({
           font-size: 0.8125rem;
           color: ${inspectorColors.text};
           background-color: ${inspectorColors.background};
+          transition: border-color 0.18s ease, box-shadow 0.18s ease;
+        }
+
+        .font-select-search-input::placeholder {
+          color: ${inspectorColors.labelMuted};
+        }
+
+        .font-select-search-input:hover {
+          border-color: ${FONT_SELECT_BORDER_HOVER};
         }
 
         .font-select-search-input:focus-visible {
-          outline: 2px solid #10b981;
+          outline: ${tokens.border.thick}px solid ${FONT_SELECT_FOCUS_RING};
           outline-offset: 2px;
+          border-color: ${FONT_SELECT_FOCUS_RING};
         }
 
         .font-select-list {
@@ -410,11 +468,11 @@ const FontSelect: React.FC<FontSelectProps> = ({
         }
 
         .font-select-option:hover {
-          background-color: rgba(15, 23, 42, 0.04);
+          background-color: ${inspectorColors.surfaceHover};
         }
 
         .font-select-option.is-active {
-          background-color: rgba(15, 23, 42, 0.08);
+          background-color: ${inspectorColors.surfaceActive};
         }
 
         .font-select-option.is-selected {
@@ -433,7 +491,7 @@ const FontSelect: React.FC<FontSelectProps> = ({
           flex-shrink: 0;
           margin-left: ${tokens.spacing.xs}px;
           font-size: 0.6875rem;
-          color: rgba(100, 116, 139, 0.9);
+          color: ${tokens.colors.textSubtle};
           text-transform: uppercase;
           letter-spacing: 0.04em;
         }
@@ -441,7 +499,7 @@ const FontSelect: React.FC<FontSelectProps> = ({
         .font-select-empty {
           padding: ${tokens.spacing.xs}px ${tokens.spacing.sm}px;
           font-size: 0.8125rem;
-          color: rgba(100, 116, 139, 0.9);
+          color: ${tokens.colors.textSubtle};
         }
       `}</style>
     </div>

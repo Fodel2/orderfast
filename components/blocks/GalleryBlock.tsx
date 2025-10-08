@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getAspectRatio, type AspectRatio } from "./ImageBlock";
+import { tokens } from "../../src/ui/tokens";
 import {
   DEFAULT_GALLERY_CONFIG,
   MAX_GALLERY_AUTOPLAY_INTERVAL,
@@ -116,15 +117,30 @@ const GalleryBlock: React.FC<GalleryBlockProps> = ({
   }, [activeIndex, items.length]);
 
   const wrapperClasses = ["flex", "h-full", "w-full", "overflow-hidden"];
-  if (shadow) wrapperClasses.push("shadow-lg");
   if (className) wrapperClasses.push(className);
 
-  const wrapperStyle: React.CSSProperties = { borderRadius: radius };
+  const wrapperStyle: React.CSSProperties = {
+    borderRadius: radius,
+    boxShadow: shadow ? tokens.shadow.lg : tokens.shadow.none,
+  };
 
   if (!items || items.length === 0) {
     return (
-      <div className={wrapperClasses.join(" ")} style={wrapperStyle}>
-        <div className="flex w-full items-center justify-center text-xs text-neutral-500">
+      <div
+        className={wrapperClasses.join(" ")}
+        style={{
+          ...wrapperStyle,
+          backgroundColor: tokens.colors.neutral[200],
+        }}
+      >
+        <div
+          className="flex w-full items-center justify-center"
+          style={{
+            color: tokens.colors.textSecondary,
+            fontSize: `${tokens.fontSize.xs}px`,
+            padding: tokens.spacing.md,
+          }}
+        >
           No images
         </div>
       </div>
@@ -172,10 +188,11 @@ const GalleryBlock: React.FC<GalleryBlockProps> = ({
   return (
     <div className={wrapperClasses.join(" ")} style={wrapperStyle}>
       <div
-        className="grid h-full w-full gap-2"
+        className="grid h-full w-full"
         style={{
           gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
           gridAutoRows: aspectValue ? "auto" : "1fr",
+          gap: tokens.spacing.sm,
         }}
       >
         {items.map((item, index) => (

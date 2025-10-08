@@ -37,6 +37,11 @@ import {
   type SlideBlockFontFamily,
 } from '@/lib/slideFonts';
 import { tokens } from '../src/ui/tokens';
+import {
+  resolveLineHeightValue,
+  resolveTypographySpacing,
+  TEXT_BLOCK_SIZE_TO_FONT,
+} from '@/src/utils/typography';
 
 const TEXTUAL_BLOCK_KIND_NAMES = new Set([
   'heading',
@@ -71,11 +76,11 @@ const DEFAULT_TEXT_SHADOW = {
   color: 'rgba(0, 0, 0, 0.3)',
 };
 
-const DEFAULT_BLOCK_BACKGROUND_COLOR = '#ffffff';
-const DEFAULT_BLOCK_GRADIENT_FROM = 'rgba(15, 23, 42, 0.45)';
-const DEFAULT_BLOCK_GRADIENT_TO = 'rgba(15, 23, 42, 0.05)';
+const DEFAULT_BLOCK_BACKGROUND_COLOR = tokens.colors.surface;
+const DEFAULT_BLOCK_GRADIENT_FROM = tokens.colors.overlay.strong;
+const DEFAULT_BLOCK_GRADIENT_TO = tokens.colors.overlay.soft;
 
-const isTextualKind = (kind: string): boolean => TEXTUAL_BLOCK_KIND_NAMES.has(kind as any);
+export const isTextualBlockKind = (kind: string): boolean => TEXTUAL_BLOCK_KIND_NAMES.has(kind as any);
 
 export type DeviceKind = 'mobile' | 'tablet' | 'desktop';
 
@@ -257,7 +262,7 @@ export const updateConfigWithTextContent = (
   block: SlideBlock,
   text: string,
 ): SlideBlock['config'] | undefined => {
-  if (!isTextualKind(block.kind)) return block.config;
+  if (!isTextualBlockKind(block.kind)) return block.config;
   const base = cloneConfigRecord(block.config);
   if (block.kind === 'button') {
     base.label = text;
@@ -308,10 +313,10 @@ export type ButtonBlockConfig = {
 export const BUTTON_VARIANTS: ButtonBlockVariant[] = ['Primary', 'Outline', 'Ghost'];
 export const BUTTON_SIZES: ButtonBlockSize[] = ['Small', 'Medium', 'Large'];
 
-const BUTTON_FONT_SIZE_PX: Record<ButtonBlockSize, number> = {
-  Small: 14,
-  Medium: 16,
-  Large: 18,
+export const BUTTON_FONT_SIZE_SCALE: Record<ButtonBlockSize, number> = {
+  Small: tokens.fontSize.sm,
+  Medium: tokens.fontSize.md,
+  Large: tokens.fontSize.lg,
 };
 
 const BLOCK_SHADOW_VALUE: Record<BlockShadowPreset, string | undefined> = {
@@ -596,12 +601,12 @@ const clampBackgroundRadius = (value?: number): number => {
   return Math.max(0, value);
 };
 
-type BlockBackgroundPresentation = {
+export type BlockBackgroundPresentation = {
   style: CSSProperties;
   radius: number;
 };
 
-const getBlockBackgroundPresentation = (
+export const getBlockBackgroundPresentation = (
   background?: BlockBackground | null,
 ): BlockBackgroundPresentation | null => {
   if (!background || background.type === 'none') {
@@ -661,11 +666,11 @@ const getBlockBackgroundPresentation = (
   return null;
 };
 
-function getBlockChromeStyle(
+export function getBlockChromeStyle(
   block: SlideBlock,
   backgroundPresentation?: BlockBackgroundPresentation | null,
 ): CSSProperties {
-  const textual = isTextualKind(block.kind);
+  const textual = isTextualBlockKind(block.kind);
   const style: CSSProperties = {
     width: textual ? 'fit-content' : '100%',
     height: textual ? 'fit-content' : '100%',
@@ -729,7 +734,7 @@ const BlockChrome = React.forwardRef<HTMLDivElement, BlockChromeProps>(({ block,
   const baseStyle = getBlockChromeStyle(block, backgroundPresentation);
   const interaction = getBlockInteractionPresentation(block);
   const style = { ...baseStyle, ...(interaction.style || {}) } as CSSProperties;
-  const textual = isTextualKind(block.kind);
+  const textual = isTextualBlockKind(block.kind);
   const className = ['relative'];
   if (textual) {
     className.push('inline-flex', 'max-w-full');
@@ -788,7 +793,7 @@ const BlockChromeWithAutoSize = ({
   frameRef.current = frame;
 
   const scheduleMeasurement = useCallback(() => {
-    if (!isTextualKind(block.kind)) return;
+    if (!isTextualBlockKind(block.kind)) return;
     const node = elementRef.current;
     if (!node) return;
     const container = node.parentElement as HTMLElement | null;
@@ -876,12 +881,12 @@ const BlockChromeWithAutoSize = ({
   }, [autoHeightEnabled, autoWidthEnabled, block.kind, blockId, deviceSize.height, deviceSize.width, minSizePct.height, minSizePct.width, onFrameChange]);
 
   useLayoutEffect(() => {
-    if (!isTextualKind(block.kind)) return;
+    if (!isTextualBlockKind(block.kind)) return;
     scheduleMeasurement();
   }, [block, frame, scheduleMeasurement]);
 
   useLayoutEffect(() => {
-    if (!isTextualKind(block.kind)) return;
+    if (!isTextualBlockKind(block.kind)) return;
     const node = elementRef.current;
     if (!node) return;
     const observer = new ResizeObserver(() => scheduleMeasurement());
@@ -896,14 +901,14 @@ const BlockChromeWithAutoSize = ({
   }, [block.kind, scheduleMeasurement]);
 
   const wrapperClassName = ['block-wrapper'];
-  if (isTextualKind(block.kind)) {
+  if (isTextualBlockKind(block.kind)) {
     wrapperClassName.push('inline-flex', 'max-w-full');
   } else {
     wrapperClassName.push('flex', 'h-full', 'w-full');
   }
 
   return (
-    <BlockChrome ref={isTextualKind(block.kind) ? elementRef : undefined} block={block}>
+    <BlockChrome ref={isTextualBlockKind(block.kind) ? elementRef : undefined} block={block}>
       <div className={wrapperClassName.join(' ')}>{children}</div>
     </BlockChrome>
   );
@@ -915,10 +920,10 @@ export const DEFAULT_BUTTON_CONFIG: ButtonBlockConfig = {
   variant: 'Primary',
   size: 'Medium',
   fullWidth: false,
-  radius: 4,
+  radius: tokens.radius.sm,
   shadow: false,
-  textColor: '#ffffff',
-  bgColor: '#000000',
+  textColor: tokens.colors.textOnDark,
+  bgColor: tokens.colors.surfaceInverse,
 };
 
 export type BlockAspectRatio = 'original' | 'square' | '4:3' | '16:9';
@@ -1301,24 +1306,7 @@ const getResolvedFontStack = (
   family: SlideBlockFontFamily,
 ): string | undefined => getFontStackForFamily(family);
 
-const SIZE_TO_FONT_SIZE: Record<NonNullable<SlideBlock['size']>, number> = {
-  sm: 18,
-  md: 24,
-  lg: 40,
-  xl: 56,
-};
-
-const resolveLineHeightValue = (
-  value?: number,
-  unit?: SlideBlock['lineHeightUnit'],
-): string | number | undefined => {
-  if (typeof value !== 'number') return undefined;
-  if (unit === 'px') return `${value}px`;
-  if (unit === 'em') return `${value}em`;
-  return value;
-};
-
-const hexToRgba = (hex: string, opacity: number) => {
+export const hexToRgba = (hex: string, opacity: number) => {
   if (!hex) return undefined;
   const normalized = hex.trim();
   if (!normalized.startsWith('#')) {
@@ -1350,7 +1338,7 @@ const hexToRgba = (hex: string, opacity: number) => {
   return `rgba(${r}, ${g}, ${b}, ${clamp(alpha, 0, 1)})`;
 };
 
-const resolveTextShadowStyle = (block: SlideBlock): string | undefined => {
+export const resolveTextShadowStyle = (block: SlideBlock): string | undefined => {
   if (!block.textShadow) return undefined;
   const x =
     typeof block.textShadow.x === 'number'
@@ -1508,7 +1496,7 @@ export function resolveButtonConfig(block: SlideBlock): ButtonBlockConfig {
     if (typeof raw.textColor === 'string' && raw.textColor.trim().length > 0) {
       return raw.textColor;
     }
-    if (block.buttonVariant === 'secondary') return '#000000';
+    if (block.buttonVariant === 'secondary') return tokens.colors.textPrimary;
     if (typeof block.color === 'string' && block.color.trim().length > 0) return block.color;
     return DEFAULT_BUTTON_CONFIG.textColor;
   })();
@@ -1517,7 +1505,7 @@ export function resolveButtonConfig(block: SlideBlock): ButtonBlockConfig {
     if (typeof raw.bgColor === 'string' && raw.bgColor.trim().length > 0) {
       return raw.bgColor;
     }
-    if (block.buttonVariant === 'secondary') return '#ffffff';
+    if (block.buttonVariant === 'secondary') return tokens.colors.surface;
     return DEFAULT_BUTTON_CONFIG.bgColor;
   })();
 
@@ -1534,16 +1522,16 @@ export function resolveButtonConfig(block: SlideBlock): ButtonBlockConfig {
   };
 }
 
-const BUTTON_HORIZONTAL_PADDING: Record<ButtonBlockSize, number> = {
-  Small: 12,
-  Medium: 20,
-  Large: 24,
+export const BUTTON_HORIZONTAL_PADDING: Record<ButtonBlockSize, number> = {
+  Small: tokens.spacing.sm + tokens.spacing.xs,
+  Medium: tokens.spacing.md + tokens.spacing.xs,
+  Large: tokens.spacing.lg,
 };
 
-const BUTTON_VERTICAL_PADDING: Record<ButtonBlockSize, number> = {
-  Small: 8,
-  Medium: 12,
-  Large: 14,
+export const BUTTON_VERTICAL_PADDING: Record<ButtonBlockSize, number> = {
+  Small: tokens.spacing.sm,
+  Medium: tokens.spacing.md - tokens.spacing.xs,
+  Large: tokens.spacing.md - tokens.spacing.xs / 2,
 };
 
 function resolveTextBlockFontSize(block: SlideBlock): number {
@@ -1552,11 +1540,11 @@ function resolveTextBlockFontSize(block: SlideBlock): number {
   }
   if (block.kind === 'button') {
     const button = resolveButtonConfig(block);
-    const fontSize = BUTTON_FONT_SIZE_PX[button.size] ?? BUTTON_FONT_SIZE_PX.Medium;
+    const fontSize = BUTTON_FONT_SIZE_SCALE[button.size] ?? BUTTON_FONT_SIZE_SCALE.Medium;
     return Math.max(fontSize, 1);
   }
   if (block.size) {
-    const mapped = SIZE_TO_FONT_SIZE[block.size];
+    const mapped = TEXT_BLOCK_SIZE_TO_FONT[block.size];
     if (typeof mapped === 'number') {
       return Math.max(mapped, 1);
     }
@@ -1565,7 +1553,7 @@ function resolveTextBlockFontSize(block: SlideBlock): number {
     case 'heading':
       return 56;
     case 'subheading':
-      return SIZE_TO_FONT_SIZE.md;
+      return TEXT_BLOCK_SIZE_TO_FONT.md;
     case 'quote':
       return 18;
     default:
@@ -1602,12 +1590,14 @@ function getTextBlockMinSizePct(
     };
   }
 
-  const uniformPadding =
+  const backgroundPadding =
     typeof block.padding === 'number' && Number.isFinite(block.padding)
       ? Math.max(block.padding, 0)
       : 0;
-  const minWidthPx = Math.max(fontSize + uniformPadding * 2, 32);
-  const minHeightPx = Math.max(lineHeight + uniformPadding * 2, fontSize * 0.9 + uniformPadding * 2);
+  const typography = resolveTypographySpacing(block);
+  const verticalPadding = typography.paddingTop + typography.paddingBottom + backgroundPadding * 2;
+  const minWidthPx = Math.max(fontSize + backgroundPadding * 2, 32);
+  const minHeightPx = Math.max(lineHeight + verticalPadding, fontSize * 0.9 + verticalPadding);
   return {
     width: clamp((minWidthPx / deviceSize.width) * 100, 1, 100),
     height: clamp((minHeightPx / deviceSize.height) * 100, 1, 100),
@@ -1978,7 +1968,7 @@ export function resolveBlockVisibility(block: SlideBlock): BlockVisibilityConfig
 
 function ensureFrame(block: SlideBlock, device: DeviceKind): Frame {
   const fallback: Frame = { x: 10, y: 10, w: 40, h: 20, r: 0 };
-  const sizing = isTextualKind(block.kind) ? readTextSizingConfig(block.config) : undefined;
+  const sizing = isTextualBlockKind(block.kind) ? readTextSizingConfig(block.config) : undefined;
   const pickForDevice = (frame: Frame): Frame => {
     const sanitized: Frame = {
       x: clamp(typeof frame.x === 'number' ? frame.x : fallback.x, 0, 100),
@@ -1987,7 +1977,7 @@ function ensureFrame(block: SlideBlock, device: DeviceKind): Frame {
       h: clamp(typeof frame.h === 'number' ? frame.h : fallback.h, 0, 100),
       r: typeof frame.r === 'number' && Number.isFinite(frame.r) ? frame.r : 0,
     };
-    if (isTextualKind(block.kind) && sizing) {
+    if (isTextualBlockKind(block.kind) && sizing) {
       const dims = pickTextSizingDimensions(sizing, device);
       if (dims?.width !== undefined) {
         sanitized.w = clamp(dims.width, 0, 100);
@@ -2017,7 +2007,7 @@ export default function SlidesManager({
   scale = 1,
   onManipulationChange,
 }: SlidesManagerProps) {
-  const frameRef = useRef<HTMLDivElement>(null);
+  const frameRef = useRef<HTMLElement>(null);
   const cfg = useMemo(() => initialCfg, [initialCfg]);
   const deviceSize = DEVICE_DIMENSIONS[activeDevice] ?? DEVICE_DIMENSIONS.desktop;
   const InteractiveBoxComponent = InteractiveBox as React.ComponentType<InteractiveBoxProps>;
@@ -2227,7 +2217,7 @@ export default function SlidesManager({
   const enterInlineEditing = useCallback(
     (block: SlideBlock) => {
       if (!editable || !editInPreview) return;
-      if (!isTextualKind(block.kind)) return;
+      if (!isTextualBlockKind(block.kind)) return;
       setInlineEditingId(block.id);
     },
     [editable, editInPreview],
@@ -2236,7 +2226,7 @@ export default function SlidesManager({
   useEffect(() => {
     if (!editable) return;
     const updates = cfg.blocks.filter((block) => {
-      if (!isTextualKind(block.kind)) return false;
+      if (!isTextualBlockKind(block.kind)) return false;
       const content = block.content ?? block.text ?? '';
       return content.trim().length === 0;
     });
@@ -2276,7 +2266,7 @@ export default function SlidesManager({
                   ...b.frames,
                   [activeDevice]: sanitized,
                 },
-                config: isTextualKind(b.kind)
+                config: isTextualBlockKind(b.kind)
                   ? writeTextSizingToConfig(b.config, activeDevice, sanitized)
                   : b.config,
               }
@@ -2403,28 +2393,31 @@ export default function SlidesManager({
       case 'text': {
         const Tag = block.kind === 'heading' ? 'h2' : block.kind === 'subheading' ? 'h3' : 'p';
         const align = block.align ?? 'left';
-        const fallbackWeight = block.kind === 'heading' ? 700 : block.kind === 'subheading' ? 600 : 400;
+        const fallbackWeight =
+          block.kind === 'heading'
+            ? tokens.fontWeight.bold
+            : block.kind === 'subheading'
+              ? tokens.fontWeight.semibold
+              : tokens.fontWeight.regular;
         const fontFamilyKey = getBlockFontFamily(block);
         const resolvedFontFamily = getResolvedFontStack(fontFamilyKey);
-        const fontSizePx =
-          typeof block.fontSize === 'number'
-            ? block.fontSize
-            : block.size
-              ? SIZE_TO_FONT_SIZE[block.size]
-              : undefined;
-        const lineHeightValue = resolveLineHeightValue(block.lineHeight, block.lineHeightUnit);
+        const typography = resolveTypographySpacing(block);
         const letterSpacingValue =
           typeof block.letterSpacing === 'number' ? `${block.letterSpacing}px` : undefined;
         const textShadowValue = resolveTextShadowStyle(block);
-        const textColor = block.textColor ?? block.color ?? '#ffffff';
+        const textColor = block.textColor ?? block.color ?? tokens.colors.textOnDark;
         const style: CSSProperties = {
           color: textColor,
           textAlign: align,
           fontWeight: block.fontWeight ?? fallbackWeight,
-          fontSize: fontSizePx ? `${fontSizePx}px` : undefined,
-          lineHeight: lineHeightValue,
+          fontSize: typography.fontSize ? `${typography.fontSize}px` : undefined,
+          lineHeight: typography.lineHeight,
           letterSpacing: letterSpacingValue,
           textShadow: textShadowValue,
+          paddingTop: typography.paddingTop,
+          paddingBottom: typography.paddingBottom,
+          marginTop: typography.marginTop,
+          marginBottom: typography.marginBottom,
         };
         if (resolvedFontFamily) {
           style.fontFamily = resolvedFontFamily;
@@ -2437,8 +2430,8 @@ export default function SlidesManager({
         ) {
           const resolvedOpacity = block.bgOpacity ?? (block.bgStyle === 'glass' ? 0.5 : 1);
           const backgroundColor =
-            hexToRgba(block.bgColor ?? '#000000', resolvedOpacity) ??
-            hexToRgba('#000000', resolvedOpacity);
+            hexToRgba(block.bgColor ?? tokens.colors.surfaceInverse, resolvedOpacity) ??
+            hexToRgba(tokens.colors.surfaceInverse, resolvedOpacity);
           const backgroundStyle: CSSProperties = {
             display: 'inline-block',
             borderRadius: block.radius ?? 0,
@@ -2458,44 +2451,46 @@ export default function SlidesManager({
       }
       case 'button': {
         const button = resolveButtonConfig(block);
-        const sizeClassMap: Record<ButtonBlockSize, string> = {
-          Small: 'px-3 py-2 text-sm',
-          Medium: 'px-5 py-3 text-base',
-          Large: 'px-6 py-3.5 text-lg',
-        };
-        const sizeClasses = sizeClassMap[button.size] ?? sizeClassMap.Medium;
-        const variantClasses =
-          button.variant === 'Primary'
-            ? 'btn-primary'
-            : button.variant === 'Outline'
-              ? 'btn-outline bg-transparent border'
-              : 'btn-ghost bg-transparent';
-        const shadowClass = button.shadow ? 'shadow-lg' : 'shadow-none';
-        const classes = [
-          'inline-flex items-center justify-center font-semibold no-underline transition duration-150 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
-          sizeClasses,
-          button.fullWidth ? 'w-full' : undefined,
-          variantClasses,
-          shadowClass,
-        ]
-          .filter(Boolean)
-          .join(' ');
         const fontFamilyKey = getBlockFontFamily(block);
         const resolvedFontFamily = getResolvedFontStack(fontFamilyKey);
         const fontSizePx =
           typeof block.fontSize === 'number'
             ? block.fontSize
-            : BUTTON_FONT_SIZE_PX[button.size] ?? BUTTON_FONT_SIZE_PX.Medium;
+            : BUTTON_FONT_SIZE_SCALE[button.size] ?? BUTTON_FONT_SIZE_SCALE.Medium;
         const lineHeightValue = resolveLineHeightValue(block.lineHeight, block.lineHeightUnit);
         const align = block.align ?? 'left';
+        const paddingX = BUTTON_HORIZONTAL_PADDING[button.size] ?? BUTTON_HORIZONTAL_PADDING.Medium;
+        const paddingY = BUTTON_VERTICAL_PADDING[button.size] ?? BUTTON_VERTICAL_PADDING.Medium;
+        const classes = [
+          'block-pointer-target',
+          'inline-flex',
+          'items-center',
+          'justify-center',
+          'font-semibold',
+          'no-underline',
+          'transition',
+          'duration-150',
+          'ease-out',
+          'focus:outline-none',
+          'focus-visible:ring-2',
+          'focus-visible:ring-offset-2',
+        ].join(' ');
         const style: CSSProperties = {
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: `${paddingY}px ${paddingX}px`,
           borderRadius: button.radius,
           color: button.textColor,
           backgroundColor: button.variant === 'Primary' ? button.bgColor : 'transparent',
           borderColor: button.variant === 'Outline' ? button.bgColor : 'transparent',
-          borderWidth: button.variant === 'Outline' ? 1 : 0,
+          borderWidth: button.variant === 'Outline' ? tokens.border.thin : 0,
           borderStyle: 'solid',
-          fontWeight: block.fontWeight ?? 600,
+          fontWeight: block.fontWeight ?? tokens.fontWeight.semibold,
+          textDecoration: 'none',
+          boxShadow: button.shadow ? tokens.shadow.md : tokens.shadow.none,
+          transition:
+            'transform 150ms ease-out, box-shadow 150ms ease-out, background-color 150ms ease-out, color 150ms ease-out',
         };
         if (resolvedFontFamily) {
           style.fontFamily = resolvedFontFamily;
@@ -2508,6 +2503,9 @@ export default function SlidesManager({
         }
         if (button.fullWidth) {
           style.width = '100%';
+        }
+        if (typeof block.letterSpacing === 'number') {
+          style.letterSpacing = `${block.letterSpacing}px`;
         }
         const wrapperStyle: CSSProperties = { width: '100%', textAlign: align };
         const labelNode = (
@@ -2550,10 +2548,16 @@ export default function SlidesManager({
         const image = resolveImageConfig(block);
         const imageUrl = image.url || block.src || '';
         const aspectRatioValue = getAspectRatioValue(image.aspectRatio);
-        const wrapperClasses = ['flex', 'h-full', 'w-full', 'items-center', 'justify-center', 'overflow-hidden'];
-        if (image.shadow) wrapperClasses.push('shadow-lg');
         const wrapperStyle: CSSProperties = {
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          overflow: 'hidden',
+          width: '100%',
+          height: '100%',
           borderRadius: image.radius,
+          boxShadow: image.shadow ? tokens.shadow.lg : tokens.shadow.none,
+          backgroundColor: 'transparent',
         };
         if (aspectRatioValue) {
           wrapperStyle.aspectRatio = aspectRatioValue;
@@ -2562,8 +2566,11 @@ export default function SlidesManager({
         if (!imageUrl) {
           return (
             <div
-              className={[...wrapperClasses, 'bg-neutral-200'].join(' ')}
-              style={wrapperStyle}
+              className="block-pointer-target"
+              style={{
+                ...wrapperStyle,
+                backgroundColor: tokens.colors.neutral[200],
+              }}
             />
           );
         }
@@ -2574,6 +2581,7 @@ export default function SlidesManager({
           width: '100%',
           maxWidth: '100%',
           maxHeight: '100%',
+          display: 'block',
         };
         if (aspectRatioValue) {
           imageStyle.aspectRatio = aspectRatioValue;
@@ -2587,7 +2595,7 @@ export default function SlidesManager({
         };
 
         return (
-          <div className={wrapperClasses.join(' ')} style={wrapperStyle}>
+          <div style={wrapperStyle}>
             <img
               src={imageUrl}
               alt={image.alt ?? ''}
@@ -2601,7 +2609,8 @@ export default function SlidesManager({
       }
       case 'quote': {
         const quote = resolveQuoteConfig(block);
-        const defaultTextColor = quote.style === 'plain' ? '#ffffff' : '#111111';
+        const defaultTextColor =
+          quote.style === 'plain' ? tokens.colors.textOnDark : tokens.colors.textPrimary;
         const textColor = block.textColor ?? block.color ?? defaultTextColor;
         const fontFamilyKey = getBlockFontFamily(block);
         const resolvedFontFamily = getResolvedFontStack(fontFamilyKey);
@@ -2694,7 +2703,7 @@ export default function SlidesManager({
           columnGap: tokens.spacing.xs,
           color: starColorValue,
           marginTop: trimmedAuthor.length > 0 ? tokens.spacing.xs : tokens.spacing.sm,
-          opacity: 0.9,
+          opacity: tokens.opacity[90],
           fontSize: `${tokens.spacing.md}px`,
         };
         if (resolvedFontFamily) {
@@ -2784,12 +2793,21 @@ export default function SlidesManager({
     MAX_PREVIEW_SCALE,
   );
 
+  const canvasStyle = useMemo(
+    () =>
+      ({
+        ['--of-canvas-w' as const]: `${deviceSize.width}px`,
+        ['--of-canvas-h' as const]: `${deviceSize.height}px`,
+      }) as CSSProperties,
+    [deviceSize.height, deviceSize.width],
+  );
+
   return (
     <>
       <style jsx global>{BLOCK_INTERACTION_GLOBAL_STYLES}</style>
-      <div className="flex h-full w-full items-start justify-center overflow-hidden">
+      <div className="of-viewport">
         <div
-          className="relative"
+          className="of-viewportScale relative"
           style={{
             width: deviceSize.width,
             height: deviceSize.height,
@@ -2798,21 +2816,22 @@ export default function SlidesManager({
             margin: '0 auto',
           }}
         >
-          <div
-            ref={frameRef}
-            className="relative overflow-hidden rounded-2xl bg-white shadow-xl"
-            style={{ width: deviceSize.width, height: deviceSize.height }}
-            onClick={() => {
-              if (editable && editInPreview) {
-                emitSelectBlock(null);
-                onCanvasClick?.();
-              }
-            }}
-          >
-            <SlideBackground cfg={cfg} />
-            <div
-              className="absolute inset-0"
-              style={{ pointerEvents: editable && editInPreview ? 'auto' : 'none' }}
+          <div className="of-viewportFrame">
+            <section
+              ref={frameRef}
+              className="of-canvas relative flex items-center justify-center overflow-hidden"
+              style={canvasStyle}
+              onClick={() => {
+                if (editable && editInPreview) {
+                  emitSelectBlock(null);
+                  onCanvasClick?.();
+                }
+              }}
+            >
+              <SlideBackground cfg={cfg} />
+              <div
+                className="absolute inset-0"
+                style={{ pointerEvents: editable && editInPreview ? 'auto' : 'none' }}
             >
               <div
                 className="pointer-events-none absolute inset-0 transition-opacity duration-100"
@@ -2863,7 +2882,7 @@ export default function SlidesManager({
                 }
                 const frame = ensureFrame(block, activeDevice);
                 const locked = Boolean(block.locked);
-                const textual = isTextualKind(block.kind);
+                const textual = isTextualBlockKind(block.kind);
                 const minSizePct = textual ? getTextBlockMinSizePct(block, deviceSize) : undefined;
                 const effectiveMinSize = minSizePct ?? { width: 5, height: 5 };
                 const autoWidthEnabled = textual ? isAutoWidthEnabled(block) : false;
@@ -2926,6 +2945,7 @@ export default function SlidesManager({
                 );
               })}
             </div>
+            </section>
           </div>
         </div>
       </div>
@@ -3313,7 +3333,7 @@ type DoubleActivateDetails = {
 type InteractiveBoxProps = {
   id: string;
   frame: Frame;
-  containerRef: React.RefObject<HTMLDivElement>;
+  containerRef: React.RefObject<HTMLElement>;
   selected: boolean;
   editable: boolean;
   inlineEditing?: boolean;
@@ -3925,12 +3945,12 @@ function SlideBackground({ cfg }: { cfg: SlideCfg }) {
     return (
       <>
         <div
-          className="absolute inset-0"
+          className="of-canvas-bg absolute inset-0"
           style={{ background: bg.color || '#111', opacity, pointerEvents: 'none' }}
         />
         {bg.overlay && (
           <div
-            className="absolute inset-0"
+            className="of-canvas-bg absolute inset-0"
             style={{
               background: bg.overlay.color,
               opacity: bg.overlay.opacity,
@@ -3948,7 +3968,7 @@ function SlideBackground({ cfg }: { cfg: SlideCfg }) {
     return (
       <>
         <div
-          className="absolute inset-0"
+          className="of-canvas-bg absolute inset-0"
           style={{
             backgroundImage: bg.url ? `url(${bg.url})` : undefined,
             backgroundSize: bg.fit || 'cover',
@@ -3959,7 +3979,7 @@ function SlideBackground({ cfg }: { cfg: SlideCfg }) {
         />
         {bg.overlay && (
           <div
-            className="absolute inset-0"
+            className="of-canvas-bg absolute inset-0"
             style={{
               background: bg.overlay.color,
               opacity: bg.overlay.opacity,
@@ -3983,7 +4003,7 @@ function SlideBackground({ cfg }: { cfg: SlideCfg }) {
           muted={bg.mute ?? true}
           autoPlay={bg.autoplay ?? true}
           playsInline
-          className="absolute inset-0 h-full w-full object-cover"
+          className="of-canvas-bg absolute inset-0 h-full w-full object-cover"
           style={{
             objectFit: bg.fit || 'cover',
             objectPosition: `${(focalX * 100).toFixed(2)}% ${(focalY * 100).toFixed(2)}%`,
@@ -3992,7 +4012,7 @@ function SlideBackground({ cfg }: { cfg: SlideCfg }) {
         />
         {bg.overlay && (
           <div
-            className="absolute inset-0"
+            className="of-canvas-bg absolute inset-0"
             style={{
               background: bg.overlay.color,
               opacity: bg.overlay.opacity,

@@ -27,9 +27,9 @@ export function InspectorSection({ title, description, children }: InspectorSect
 
       <style jsx>{`
         .inspector-section {
-          background-color: #ffffff;
+          background-color: ${tokens.colors.surface};
           border-radius: ${SECTION_RADIUS}px;
-          border: ${SECTION_BORDER_WIDTH}px solid rgba(15, 23, 42, 0.08);
+          border: ${SECTION_BORDER_WIDTH}px solid ${tokens.colors.borderLight};
           box-shadow: ${SECTION_SHADOW};
           padding: ${SECTION_PADDING}px;
           display: flex;
@@ -47,13 +47,13 @@ export function InspectorSection({ title, description, children }: InspectorSect
           margin: 0;
           font-size: 0.875rem;
           font-weight: 600;
-          color: #0f172a;
+          color: ${tokens.colors.textPrimary};
         }
 
         .inspector-description {
           margin: 0;
           font-size: 0.75rem;
-          color: #64748b;
+          color: ${tokens.colors.textMuted};
           line-height: 1.4;
         }
 

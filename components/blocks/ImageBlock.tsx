@@ -1,4 +1,5 @@
 import React from "react";
+import { tokens } from "../../src/ui/tokens";
 
 type AspectRatio = "original" | "square" | "4:3" | "16:9";
 
@@ -43,28 +44,37 @@ const ImageBlock: React.FC<ImageBlockProps> = ({
   onImageDragStart,
 }) => {
   const aspectValue = getAspectRatio(aspectRatio);
-  const wrapperClasses = [
-    "flex",
-    "w-full",
-    "items-center",
-    "justify-center",
-    "overflow-hidden",
-    "rounded",
-  ];
-  if (shadow) wrapperClasses.push("shadow-lg");
+  const wrapperClasses = ["flex", "w-full", "items-center", "justify-center", "overflow-hidden"];
   if (className) wrapperClasses.push(className);
 
-  const wrapperStyle: React.CSSProperties = { borderRadius: radius };
+  const wrapperStyle: React.CSSProperties = {
+    borderRadius: radius,
+    boxShadow: shadow ? tokens.shadow.lg : tokens.shadow.none,
+  };
   if (aspectValue) {
     wrapperStyle.aspectRatio = aspectValue;
     wrapperStyle.height = "auto";
   }
 
   if (!url) {
-    wrapperClasses.push("bg-neutral-200");
     return (
-      <div className={wrapperClasses.join(" ")} style={wrapperStyle} aria-hidden>
-        <span className="text-xs text-neutral-500">No image</span>
+      <div
+        className={wrapperClasses.join(" ")}
+        style={{
+          ...wrapperStyle,
+          backgroundColor: tokens.colors.neutral[200],
+        }}
+        aria-hidden
+      >
+        <span
+          style={{
+            color: tokens.colors.textSecondary,
+            fontSize: `${tokens.fontSize.xs}px`,
+            padding: tokens.spacing.md,
+          }}
+        >
+          No image
+        </span>
       </div>
     );
   }

@@ -14,6 +14,15 @@ const {
   borderWidth,
   mobileBreakpoint,
 } = inspectorLayout;
+const SLIDER_ACTIVE_COLOR = `var(--slider-active, ${tokens.colors.accent})`;
+const SLIDER_TRACK_COLOR = `var(--slider-track, ${tokens.colors.neutral[200]})`;
+const SLIDER_THUMB_COLOR = `var(--slider-thumb, ${tokens.colors.accent})`;
+const SLIDER_THUMB_ACTIVE_COLOR = `var(--slider-thumb-active, ${tokens.colors.accentStrong})`;
+const SLIDER_THUMB_SHADOW = `var(--slider-thumb-shadow, ${tokens.colors.borderStrong})`;
+const SLIDER_FOCUS_RING = `var(--slider-focus-ring, ${tokens.colors.focusRing})`;
+const SLIDER_HOVER_BORDER = `var(--slider-hover-border, ${tokens.colors.neutral[400]})`;
+const NUMBER_FOCUS_RING = `var(--number-focus-ring, ${tokens.colors.focusRing})`;
+const SLIDER_TRACK_HEIGHT = tokens.spacing.xs;
 
 const clamp = (value: number, min: number, max: number): number => {
   if (Number.isNaN(value)) return min;
@@ -105,7 +114,7 @@ export function InputSlider({
 
   const sliderBackground = useMemo(
     () =>
-      `linear-gradient(to right, var(--slider-active, #10b981) 0%, var(--slider-active, #10b981) ${sliderFillPercent}%, var(--slider-track, #e2e8f0) ${sliderFillPercent}%, var(--slider-track, #e2e8f0) 100%)`,
+      `linear-gradient(to right, ${SLIDER_ACTIVE_COLOR} 0%, ${SLIDER_ACTIVE_COLOR} ${sliderFillPercent}%, ${SLIDER_TRACK_COLOR} ${sliderFillPercent}%, ${SLIDER_TRACK_COLOR} 100%)`,
     [sliderFillPercent],
   );
 
@@ -205,11 +214,18 @@ export function InputSlider({
           appearance: none;
           background: ${sliderBackground};
           padding: 0;
+          cursor: pointer;
+          transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        .inspector-slider:hover:not(:disabled) {
+          border-color: ${SLIDER_HOVER_BORDER};
         }
 
         .inspector-slider:focus-visible {
-          outline: 2px solid #10b981;
+          outline: ${tokens.border.thick}px solid ${SLIDER_FOCUS_RING};
           outline-offset: 2px;
+          border-color: ${SLIDER_FOCUS_RING};
         }
 
         .inspector-slider::-webkit-slider-thumb {
@@ -217,34 +233,53 @@ export function InputSlider({
           width: ${tokens.spacing.md}px;
           height: ${tokens.spacing.md}px;
           border-radius: 50%;
-          background: #10b981;
+          background: ${SLIDER_THUMB_COLOR};
           cursor: pointer;
           border: 0;
-          box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12);
-          margin-top: calc((4px - ${tokens.spacing.md}px) / 2);
+          box-shadow: 0 0 0 1px ${SLIDER_THUMB_SHADOW};
+          margin-top: calc((${SLIDER_TRACK_HEIGHT}px - ${tokens.spacing.md}px) / 2);
+          transition: background-color 0.15s ease, box-shadow 0.15s ease;
         }
 
         .inspector-slider::-moz-range-thumb {
           width: ${tokens.spacing.md}px;
           height: ${tokens.spacing.md}px;
           border-radius: 50%;
-          background: #10b981;
+          background: ${SLIDER_THUMB_COLOR};
           cursor: pointer;
           border: 0;
-          box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12);
-          margin-top: calc((4px - ${tokens.spacing.md}px) / 2);
+          box-shadow: 0 0 0 1px ${SLIDER_THUMB_SHADOW};
+          margin-top: calc((${SLIDER_TRACK_HEIGHT}px - ${tokens.spacing.md}px) / 2);
+          transition: background-color 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        .inspector-slider::-webkit-slider-thumb:hover,
+        .inspector-slider::-moz-range-thumb:hover {
+          background: ${SLIDER_THUMB_ACTIVE_COLOR};
+        }
+
+        .inspector-slider::-webkit-slider-thumb:active,
+        .inspector-slider::-moz-range-thumb:active {
+          background: ${SLIDER_THUMB_ACTIVE_COLOR};
+          box-shadow: 0 0 0 1px ${SLIDER_THUMB_SHADOW}, 0 0 0 6px ${tokens.colors.surfaceActive};
         }
 
         .inspector-slider::-webkit-slider-runnable-track {
-          height: 4px;
+          height: ${SLIDER_TRACK_HEIGHT}px;
           border-radius: ${radius}px;
           background: transparent;
         }
 
         .inspector-slider::-moz-range-track {
-          height: 4px;
+          height: ${SLIDER_TRACK_HEIGHT}px;
           border-radius: ${radius}px;
           background: transparent;
+        }
+
+        .inspector-slider::-moz-range-progress {
+          height: ${SLIDER_TRACK_HEIGHT}px;
+          border-radius: ${radius}px;
+          background: ${SLIDER_ACTIVE_COLOR};
         }
 
         .inspector-number {
@@ -259,6 +294,17 @@ export function InputSlider({
           background-color: ${inspectorColors.background};
           text-align: right;
           font-feature-settings: "tnum" 1;
+          transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        .inspector-number:hover:not(:disabled) {
+          border-color: ${SLIDER_HOVER_BORDER};
+        }
+
+        .inspector-number:focus-visible {
+          outline: ${tokens.border.thick}px solid ${NUMBER_FOCUS_RING};
+          outline-offset: 2px;
+          border-color: ${NUMBER_FOCUS_RING};
         }
 
         .inspector-number:disabled,
