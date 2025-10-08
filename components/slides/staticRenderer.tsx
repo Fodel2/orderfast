@@ -70,8 +70,8 @@ export function renderStaticBlock(block: SlideBlock): ReactNode {
         lineHeight: typography.lineHeight,
         letterSpacing,
         textShadow,
-        marginTop: 0,
-        marginBottom: 0,
+        marginTop: typography.marginTop,
+        marginBottom: typography.marginBottom,
         paddingTop: typography.paddingTop,
         paddingBottom: typography.paddingBottom,
       };

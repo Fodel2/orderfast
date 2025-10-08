@@ -1314,14 +1314,42 @@ const TYPOGRAPHY_VERTICAL_PADDING: Record<'heading' | 'subheading' | 'text', num
   text: tokens.spacing.sm,
 };
 
+const createSpacingVar = (name: string, fallback: number) => `var(--${name}, ${fallback}px)`;
+const createLineHeightVar = (name: string, fallback: number) => `var(--${name}, ${fallback})`;
+
+const TYPOGRAPHY_MARGINS: Record<'heading' | 'subheading' | 'text', { top: string; bottom: string }> = {
+  heading: {
+    top: createSpacingVar('space-heading-top', 0),
+    bottom: createSpacingVar('space-heading-bottom', tokens.spacing.md),
+  },
+  subheading: {
+    top: createSpacingVar('space-subheading-top', tokens.spacing.xs),
+    bottom: createSpacingVar('space-subheading-bottom', tokens.spacing.sm),
+  },
+  text: {
+    top: createSpacingVar('space-text-top', tokens.spacing.xs),
+    bottom: createSpacingVar('space-text-bottom', tokens.spacing.xs),
+  },
+};
+
+const TYPOGRAPHY_LINE_HEIGHTS: Record<'heading' | 'subheading' | 'text', string> = {
+  heading: createLineHeightVar('line-height-heading', tokens.lineHeight.snug),
+  subheading: createLineHeightVar('line-height-subheading', tokens.lineHeight.normal),
+  text: createLineHeightVar('line-height-text', tokens.lineHeight.relaxed),
+};
+
 export type TypographySpacing = {
   fontSize?: number;
   lineHeight: string | number;
   paddingTop: number;
   paddingBottom: number;
+  marginTop: string | number;
+  marginBottom: string | number;
 };
 
 export function resolveTypographySpacing(block: SlideBlock): TypographySpacing {
+  const typographyKind: 'heading' | 'subheading' | 'text' =
+    block.kind === 'heading' || block.kind === 'subheading' ? block.kind : 'text';
   const baseFontSize = (() => {
     if (typeof block.fontSize === 'number' && Number.isFinite(block.fontSize)) {
       return Math.max(block.fontSize, 1);
@@ -1342,14 +1370,18 @@ export function resolveTypographySpacing(block: SlideBlock): TypographySpacing {
   })();
 
   const lineHeight =
-    resolveLineHeightValue(block.lineHeight, block.lineHeightUnit) ?? tokens.lineHeight.normal;
-  const paddingScale = TYPOGRAPHY_VERTICAL_PADDING[block.kind as 'heading' | 'subheading' | 'text'];
+    resolveLineHeightValue(block.lineHeight, block.lineHeightUnit) ??
+    TYPOGRAPHY_LINE_HEIGHTS[typographyKind];
+  const paddingScale = TYPOGRAPHY_VERTICAL_PADDING[typographyKind];
+  const margins = TYPOGRAPHY_MARGINS[typographyKind];
 
   return {
     fontSize: baseFontSize,
     lineHeight,
     paddingTop: paddingScale ?? tokens.spacing.sm,
     paddingBottom: paddingScale ?? tokens.spacing.sm,
+    marginTop: margins?.top ?? createSpacingVar('space-text-top', tokens.spacing.xs),
+    marginBottom: margins?.bottom ?? createSpacingVar('space-text-bottom', tokens.spacing.xs),
   };
 }
 
@@ -2473,8 +2505,8 @@ export default function SlidesManager({
           textShadow: textShadowValue,
           paddingTop: typography.paddingTop,
           paddingBottom: typography.paddingBottom,
-          marginTop: 0,
-          marginBottom: 0,
+          marginTop: typography.marginTop,
+          marginBottom: typography.marginBottom,
         };
         if (resolvedFontFamily) {
           style.fontFamily = resolvedFontFamily;
