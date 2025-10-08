@@ -13,12 +13,15 @@ import {
   resolveButtonConfig,
   resolveGalleryConfig,
   resolveImageConfig,
-  resolveLineHeightValue,
   resolveQuoteConfig,
   resolveTextShadowStyle,
-  resolveTypographySpacing,
   type SlideBlock,
 } from '../SlidesManager';
+import {
+  resolveLineHeightValue,
+  resolveTypographySpacing,
+  type TypographySpacing,
+} from '@/src/utils/typography';
 import { getFontStackForFamily, resolveBlockFontFamily } from '@/lib/slideFonts';
 import { tokens } from '../../src/ui/tokens';
 
@@ -46,14 +49,17 @@ const withBackgroundWrapper = (
   </div>
 );
 
-export function renderStaticBlock(block: SlideBlock): ReactNode {
+export function renderStaticBlock(
+  block: SlideBlock,
+  options?: { typography?: TypographySpacing },
+): ReactNode {
   switch (block.kind) {
     case 'heading':
     case 'subheading':
     case 'text': {
       const Tag = block.kind === 'heading' ? 'h2' : block.kind === 'subheading' ? 'h3' : 'p';
       const align = (block.align ?? 'left') as 'left' | 'center' | 'right';
-      const typography = resolveTypographySpacing(block);
+      const typography = options?.typography ?? resolveTypographySpacing(block);
       const textShadow = resolveTextShadowStyle(block);
       const letterSpacing = getLetterSpacing(block.letterSpacing);
       const style: CSSProperties = {

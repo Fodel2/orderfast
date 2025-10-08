@@ -19,6 +19,7 @@ import {
 } from '@/lib/slideFonts';
 import { tokens } from '../src/ui/tokens';
 import { renderStaticBlock } from './slides/staticRenderer';
+import { resolveTypographySpacing } from '@/src/utils/typography';
 
 function useDeviceKind(): DeviceKind {
   const [device, setDevice] = useState<DeviceKind>('desktop');
@@ -174,6 +175,7 @@ export default function SlidesSection({ slide, cfg }: { slide: SlideRow; cfg: Sl
               ...(interaction.style || {}),
             } as CSSProperties;
             const textual = isTextualBlockKind(block.kind);
+            const typography = textual ? resolveTypographySpacing(block) : undefined;
             const chromeClasses = ['relative'];
             if (textual) {
               chromeClasses.push('inline-flex', 'max-w-full');
@@ -200,7 +202,12 @@ export default function SlidesSection({ slide, cfg }: { slide: SlideRow; cfg: Sl
                       style={backgroundPresentation.style}
                     />
                   )}
-                  <div className={wrapperClasses.join(' ')}>{renderStaticBlock(block)}</div>
+                  <div className={wrapperClasses.join(' ')}>
+                    {renderStaticBlock(
+                      block,
+                      typography ? { typography } : undefined,
+                    )}
+                  </div>
                 </div>
               </div>
             );

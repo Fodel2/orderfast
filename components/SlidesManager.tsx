@@ -37,6 +37,11 @@ import {
   type SlideBlockFontFamily,
 } from '@/lib/slideFonts';
 import { tokens } from '../src/ui/tokens';
+import {
+  resolveLineHeightValue,
+  resolveTypographySpacing,
+  TEXT_BLOCK_SIZE_TO_FONT,
+} from '@/src/utils/typography';
 
 const TEXTUAL_BLOCK_KIND_NAMES = new Set([
   'heading',
@@ -1300,100 +1305,6 @@ const getBlockFontFamily = (block: SlideBlock): SlideBlockFontFamily =>
 const getResolvedFontStack = (
   family: SlideBlockFontFamily,
 ): string | undefined => getFontStackForFamily(family);
-
-export const TEXT_BLOCK_SIZE_TO_FONT: Record<NonNullable<SlideBlock['size']>, number> = {
-  sm: tokens.fontSize.lg,
-  md: tokens.fontSize.xl,
-  lg: tokens.fontSize['3xl'],
-  xl: tokens.fontSize['4xl'],
-};
-
-const TYPOGRAPHY_VERTICAL_PADDING: Record<'heading' | 'subheading' | 'text', number> = {
-  heading: tokens.spacing.lg,
-  subheading: tokens.spacing.md,
-  text: tokens.spacing.sm,
-};
-
-const createSpacingVar = (name: string, fallback: number) => `var(--${name}, ${fallback}px)`;
-const createLineHeightVar = (name: string, fallback: number) => `var(--${name}, ${fallback})`;
-
-const TYPOGRAPHY_MARGINS: Record<'heading' | 'subheading' | 'text', { top: string; bottom: string }> = {
-  heading: {
-    top: createSpacingVar('space-heading-top', 0),
-    bottom: createSpacingVar('space-heading-bottom', tokens.spacing.md),
-  },
-  subheading: {
-    top: createSpacingVar('space-subheading-top', tokens.spacing.xs),
-    bottom: createSpacingVar('space-subheading-bottom', tokens.spacing.sm),
-  },
-  text: {
-    top: createSpacingVar('space-text-top', tokens.spacing.xs),
-    bottom: createSpacingVar('space-text-bottom', tokens.spacing.xs),
-  },
-};
-
-const TYPOGRAPHY_LINE_HEIGHTS: Record<'heading' | 'subheading' | 'text', string> = {
-  heading: createLineHeightVar('line-height-heading', tokens.lineHeight.snug),
-  subheading: createLineHeightVar('line-height-subheading', tokens.lineHeight.normal),
-  text: createLineHeightVar('line-height-text', tokens.lineHeight.relaxed),
-};
-
-export type TypographySpacing = {
-  fontSize?: number;
-  lineHeight: string | number;
-  paddingTop: number;
-  paddingBottom: number;
-  marginTop: string | number;
-  marginBottom: string | number;
-};
-
-export function resolveTypographySpacing(block: SlideBlock): TypographySpacing {
-  const typographyKind: 'heading' | 'subheading' | 'text' =
-    block.kind === 'heading' || block.kind === 'subheading' ? block.kind : 'text';
-  const baseFontSize = (() => {
-    if (typeof block.fontSize === 'number' && Number.isFinite(block.fontSize)) {
-      return Math.max(block.fontSize, 1);
-    }
-    if (block.size && TEXT_BLOCK_SIZE_TO_FONT[block.size]) {
-      return TEXT_BLOCK_SIZE_TO_FONT[block.size];
-    }
-    if (block.kind === 'heading') {
-      return tokens.fontSize['4xl'];
-    }
-    if (block.kind === 'subheading') {
-      return TEXT_BLOCK_SIZE_TO_FONT.md;
-    }
-    if (block.kind === 'text') {
-      return tokens.fontSize.md;
-    }
-    return undefined;
-  })();
-
-  const lineHeight =
-    resolveLineHeightValue(block.lineHeight, block.lineHeightUnit) ??
-    TYPOGRAPHY_LINE_HEIGHTS[typographyKind];
-  const paddingScale = TYPOGRAPHY_VERTICAL_PADDING[typographyKind];
-  const margins = TYPOGRAPHY_MARGINS[typographyKind];
-
-  return {
-    fontSize: baseFontSize,
-    lineHeight,
-    paddingTop: paddingScale ?? tokens.spacing.sm,
-    paddingBottom: paddingScale ?? tokens.spacing.sm,
-    marginTop: margins?.top ?? createSpacingVar('space-text-top', tokens.spacing.xs),
-    marginBottom: margins?.bottom ?? createSpacingVar('space-text-bottom', tokens.spacing.xs),
-  };
-}
-
-export const resolveLineHeightValue = (
-  value?: number,
-  unit?: SlideBlock['lineHeightUnit'],
-): string | number | undefined => {
-  if (typeof value !== 'number') return undefined;
-  if (unit === 'px') return `${value}px`;
-  if (unit === 'em') return `${value}em`;
-  return value;
-};
 
 export const hexToRgba = (hex: string, opacity: number) => {
   if (!hex) return undefined;

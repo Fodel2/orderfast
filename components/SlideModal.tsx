@@ -104,6 +104,7 @@ import InspectorInputToggle from "../src/components/inspector/controls/InputTogg
 import InspectorInputUpload from "../src/components/inspector/controls/InputUpload";
 import { inspectorColors, inspectorLayout } from "../src/components/inspector/layout";
 import { tokens } from "../src/ui/tokens";
+import { resolveTypographySpacing } from "@/src/utils/typography";
 import { supabase } from "@/utils/supabaseClient";
 import { STORAGE_BUCKET } from "@/lib/storage";
 import { SlideRow } from "@/components/customer/home/SlidesContainer";
@@ -3000,6 +3001,35 @@ export default function SlideModal({
     [cfg.blocks, selectedId],
   );
 
+  const selectedTypography = useMemo(() => {
+    if (
+      !selectedBlock ||
+      (selectedBlock.kind !== "heading" &&
+        selectedBlock.kind !== "subheading" &&
+        selectedBlock.kind !== "text")
+    ) {
+      return null;
+    }
+    return resolveTypographySpacing(selectedBlock);
+  }, [selectedBlock]);
+
+  const defaultTypographyLineHeight = useMemo(() => {
+    if (!selectedTypography) {
+      return 1.2;
+    }
+    const { lineHeight } = selectedTypography;
+    if (typeof lineHeight === "number" && Number.isFinite(lineHeight)) {
+      return lineHeight;
+    }
+    if (typeof lineHeight === "string") {
+      const parsed = parseFloat(lineHeight);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+    return 1.2;
+  }, [selectedTypography]);
+
   useEffect(() => {
     if (!selectedBlock || !isFontEnabledBlock(selectedBlock.kind)) {
       return;
@@ -4766,7 +4796,11 @@ export default function SlideModal({
                                     <InspectorInputSlider
                                       label="Line height"
                                       value={selectedBlock.lineHeight}
-                                      fallbackValue={selectedBlock.lineHeight ?? 1.2}
+                                      fallbackValue={
+                                        selectedBlock.lineHeight !== undefined
+                                          ? selectedBlock.lineHeight
+                                          : defaultTypographyLineHeight
+                                      }
                                       min={0.5}
                                       max={3}
                                       step={0.1}
@@ -5124,7 +5158,11 @@ export default function SlideModal({
                                     <InspectorInputSlider
                                       label="Line height"
                                       value={selectedBlock.lineHeight}
-                                      fallbackValue={selectedBlock.lineHeight ?? 1.2}
+                                      fallbackValue={
+                                        selectedBlock.lineHeight !== undefined
+                                          ? selectedBlock.lineHeight
+                                          : defaultTypographyLineHeight
+                                      }
                                       min={0.5}
                                       max={3}
                                       step={0.1}
@@ -5322,10 +5360,14 @@ export default function SlideModal({
                                     });
                                   }}
                                 />
-                                <InspectorInputSlider
-                                  label="Line height"
-                                  value={selectedBlock.lineHeight}
-                                  fallbackValue={selectedBlock.lineHeight ?? 1.2}
+                                  <InspectorInputSlider
+                                    label="Line height"
+                                    value={selectedBlock.lineHeight}
+                                    fallbackValue={
+                                      selectedBlock.lineHeight !== undefined
+                                        ? selectedBlock.lineHeight
+                                        : defaultTypographyLineHeight
+                                    }
                                   min={0.5}
                                   max={3}
                                   step={0.1}
@@ -6149,7 +6191,11 @@ export default function SlideModal({
                                       <InspectorInputSlider
                                         label="Line height"
                                         value={selectedBlock.lineHeight}
-                                        fallbackValue={selectedBlock.lineHeight ?? 1.2}
+                                        fallbackValue={
+                                          selectedBlock.lineHeight !== undefined
+                                            ? selectedBlock.lineHeight
+                                            : defaultTypographyLineHeight
+                                        }
                                         min={0.5}
                                         max={3}
                                         step={0.1}
