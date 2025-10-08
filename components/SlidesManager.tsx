@@ -2064,7 +2064,7 @@ export default function SlidesManager({
   scale = 1,
   onManipulationChange,
 }: SlidesManagerProps) {
-  const frameRef = useRef<HTMLDivElement>(null);
+  const frameRef = useRef<HTMLElement>(null);
   const cfg = useMemo(() => initialCfg, [initialCfg]);
   const deviceSize = DEVICE_DIMENSIONS[activeDevice] ?? DEVICE_DIMENSIONS.desktop;
   const InteractiveBoxComponent = InteractiveBox as React.ComponentType<InteractiveBoxProps>;
@@ -2850,12 +2850,21 @@ export default function SlidesManager({
     MAX_PREVIEW_SCALE,
   );
 
+  const canvasStyle = useMemo(
+    () =>
+      ({
+        ['--of-canvas-w' as const]: `${deviceSize.width}px`,
+        ['--of-canvas-h' as const]: `${deviceSize.height}px`,
+      }) as CSSProperties,
+    [deviceSize.height, deviceSize.width],
+  );
+
   return (
     <>
       <style jsx global>{BLOCK_INTERACTION_GLOBAL_STYLES}</style>
-      <div className="flex h-full w-full items-start justify-center overflow-hidden">
+      <div className="of-viewport">
         <div
-          className="relative"
+          className="of-viewportScale relative"
           style={{
             width: deviceSize.width,
             height: deviceSize.height,
@@ -2864,21 +2873,22 @@ export default function SlidesManager({
             margin: '0 auto',
           }}
         >
-          <div
-            ref={frameRef}
-            className="relative overflow-hidden rounded-2xl bg-white shadow-xl"
-            style={{ width: deviceSize.width, height: deviceSize.height }}
-            onClick={() => {
-              if (editable && editInPreview) {
-                emitSelectBlock(null);
-                onCanvasClick?.();
-              }
-            }}
-          >
-            <SlideBackground cfg={cfg} />
-            <div
-              className="absolute inset-0"
-              style={{ pointerEvents: editable && editInPreview ? 'auto' : 'none' }}
+          <div className="of-viewportFrame">
+            <section
+              ref={frameRef}
+              className="of-canvas relative flex items-center justify-center overflow-hidden"
+              style={canvasStyle}
+              onClick={() => {
+                if (editable && editInPreview) {
+                  emitSelectBlock(null);
+                  onCanvasClick?.();
+                }
+              }}
+            >
+              <SlideBackground cfg={cfg} />
+              <div
+                className="absolute inset-0"
+                style={{ pointerEvents: editable && editInPreview ? 'auto' : 'none' }}
             >
               <div
                 className="pointer-events-none absolute inset-0 transition-opacity duration-100"
@@ -2992,6 +3002,7 @@ export default function SlidesManager({
                 );
               })}
             </div>
+            </section>
           </div>
         </div>
       </div>
@@ -3379,7 +3390,7 @@ type DoubleActivateDetails = {
 type InteractiveBoxProps = {
   id: string;
   frame: Frame;
-  containerRef: React.RefObject<HTMLDivElement>;
+  containerRef: React.RefObject<HTMLElement>;
   selected: boolean;
   editable: boolean;
   inlineEditing?: boolean;
@@ -3991,12 +4002,12 @@ function SlideBackground({ cfg }: { cfg: SlideCfg }) {
     return (
       <>
         <div
-          className="absolute inset-0"
+          className="of-canvas-bg absolute inset-0"
           style={{ background: bg.color || '#111', opacity, pointerEvents: 'none' }}
         />
         {bg.overlay && (
           <div
-            className="absolute inset-0"
+            className="of-canvas-bg absolute inset-0"
             style={{
               background: bg.overlay.color,
               opacity: bg.overlay.opacity,
@@ -4014,7 +4025,7 @@ function SlideBackground({ cfg }: { cfg: SlideCfg }) {
     return (
       <>
         <div
-          className="absolute inset-0"
+          className="of-canvas-bg absolute inset-0"
           style={{
             backgroundImage: bg.url ? `url(${bg.url})` : undefined,
             backgroundSize: bg.fit || 'cover',
@@ -4025,7 +4036,7 @@ function SlideBackground({ cfg }: { cfg: SlideCfg }) {
         />
         {bg.overlay && (
           <div
-            className="absolute inset-0"
+            className="of-canvas-bg absolute inset-0"
             style={{
               background: bg.overlay.color,
               opacity: bg.overlay.opacity,
@@ -4049,7 +4060,7 @@ function SlideBackground({ cfg }: { cfg: SlideCfg }) {
           muted={bg.mute ?? true}
           autoPlay={bg.autoplay ?? true}
           playsInline
-          className="absolute inset-0 h-full w-full object-cover"
+          className="of-canvas-bg absolute inset-0 h-full w-full object-cover"
           style={{
             objectFit: bg.fit || 'cover',
             objectPosition: `${(focalX * 100).toFixed(2)}% ${(focalY * 100).toFixed(2)}%`,
@@ -4058,7 +4069,7 @@ function SlideBackground({ cfg }: { cfg: SlideCfg }) {
         />
         {bg.overlay && (
           <div
-            className="absolute inset-0"
+            className="of-canvas-bg absolute inset-0"
             style={{
               background: bg.overlay.color,
               opacity: bg.overlay.opacity,

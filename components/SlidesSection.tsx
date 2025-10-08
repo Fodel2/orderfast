@@ -60,12 +60,12 @@ function Background({ cfg }: { cfg: SlideCfg }) {
     return (
       <>
         <div
-          className="absolute inset-0"
+          className="of-canvas-bg absolute inset-0"
           style={{ background: bg.color || tokens.colors.surfaceInverse, pointerEvents: 'none' }}
         />
         {bg.overlay && (
           <div
-            className="absolute inset-0"
+            className="of-canvas-bg absolute inset-0"
             style={{
               background: bg.overlay.color || tokens.colors.overlay.strong,
               opacity: bg.overlay.opacity ?? tokens.opacity[50],
@@ -80,7 +80,7 @@ function Background({ cfg }: { cfg: SlideCfg }) {
     return (
       <>
         <div
-          className="absolute inset-0"
+          className="of-canvas-bg absolute inset-0"
           style={{
             backgroundImage: bg.url ? `url(${bg.url})` : undefined,
             backgroundSize: 'cover',
@@ -90,7 +90,7 @@ function Background({ cfg }: { cfg: SlideCfg }) {
         />
         {bg.overlay && (
           <div
-            className="absolute inset-0"
+            className="of-canvas-bg absolute inset-0"
             style={{
               background: bg.overlay.color || tokens.colors.overlay.strong,
               opacity: bg.overlay.opacity ?? tokens.opacity[50],
@@ -110,11 +110,11 @@ function Background({ cfg }: { cfg: SlideCfg }) {
           loop
           muted
           playsInline
-          className="absolute inset-0 h-full w-full object-cover"
+          className="of-canvas-bg absolute inset-0 h-full w-full object-cover"
         />
         {bg.overlay && (
           <div
-            className="absolute inset-0"
+            className="of-canvas-bg absolute inset-0"
             style={{
               background: bg.overlay.color || tokens.colors.overlay.strong,
               opacity: bg.overlay.opacity ?? tokens.opacity[50],
@@ -148,7 +148,7 @@ export default function SlidesSection({ slide, cfg }: { slide: SlideRow; cfg: Sl
   return (
     <>
       <style jsx global>{BLOCK_INTERACTION_GLOBAL_STYLES}</style>
-      <section className="relative flex min-h-screen snap-start items-center justify-center" style={{ height: '100dvh' }}>
+      <section className="of-canvas relative flex snap-start items-center justify-center overflow-hidden">
         <Background cfg={cfg} />
         <div className="relative h-full w-full" style={{ pointerEvents: 'none' }}>
           {blocks.map((block) => {
