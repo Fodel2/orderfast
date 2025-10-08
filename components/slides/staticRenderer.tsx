@@ -16,7 +16,7 @@ import {
   resolveLineHeightValue,
   resolveQuoteConfig,
   resolveTextShadowStyle,
-  TEXT_BLOCK_SIZE_TO_FONT,
+  resolveTypographySpacing,
   type SlideBlock,
 } from '../SlidesManager';
 import { getFontStackForFamily, resolveBlockFontFamily } from '@/lib/slideFonts';
@@ -53,19 +53,13 @@ export function renderStaticBlock(block: SlideBlock): ReactNode {
     case 'text': {
       const Tag = block.kind === 'heading' ? 'h2' : block.kind === 'subheading' ? 'h3' : 'p';
       const align = (block.align ?? 'left') as 'left' | 'center' | 'right';
-      const mappedSize = block.size ? TEXT_BLOCK_SIZE_TO_FONT[block.size] : undefined;
-      const lineHeight = resolveLineHeightValue(block.lineHeight, block.lineHeightUnit);
+      const typography = resolveTypographySpacing(block);
       const textShadow = resolveTextShadowStyle(block);
       const letterSpacing = getLetterSpacing(block.letterSpacing);
       const style: CSSProperties = {
         color: getTextColor(block),
         textAlign: align,
-        fontSize:
-          typeof block.fontSize === 'number'
-            ? `${block.fontSize}px`
-            : mappedSize !== undefined
-              ? `${mappedSize}px`
-              : undefined,
+        fontSize: typography.fontSize ? `${typography.fontSize}px` : undefined,
         fontWeight:
           block.fontWeight ??
           (block.kind === 'heading'
@@ -73,10 +67,13 @@ export function renderStaticBlock(block: SlideBlock): ReactNode {
             : block.kind === 'subheading'
               ? tokens.fontWeight.semibold
               : tokens.fontWeight.regular),
-        lineHeight,
+        lineHeight: typography.lineHeight,
         letterSpacing,
         textShadow,
-        margin: 0,
+        marginTop: 0,
+        marginBottom: 0,
+        paddingTop: typography.paddingTop,
+        paddingBottom: typography.paddingBottom,
       };
       const fontFamily = getFontFamily(block);
       if (fontFamily) {

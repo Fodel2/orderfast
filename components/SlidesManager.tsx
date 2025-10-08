@@ -1308,6 +1308,51 @@ export const TEXT_BLOCK_SIZE_TO_FONT: Record<NonNullable<SlideBlock['size']>, nu
   xl: tokens.fontSize['4xl'],
 };
 
+const TYPOGRAPHY_VERTICAL_PADDING: Record<'heading' | 'subheading' | 'text', number> = {
+  heading: tokens.spacing.lg,
+  subheading: tokens.spacing.md,
+  text: tokens.spacing.sm,
+};
+
+export type TypographySpacing = {
+  fontSize?: number;
+  lineHeight: string | number;
+  paddingTop: number;
+  paddingBottom: number;
+};
+
+export function resolveTypographySpacing(block: SlideBlock): TypographySpacing {
+  const baseFontSize = (() => {
+    if (typeof block.fontSize === 'number' && Number.isFinite(block.fontSize)) {
+      return Math.max(block.fontSize, 1);
+    }
+    if (block.size && TEXT_BLOCK_SIZE_TO_FONT[block.size]) {
+      return TEXT_BLOCK_SIZE_TO_FONT[block.size];
+    }
+    if (block.kind === 'heading') {
+      return tokens.fontSize['4xl'];
+    }
+    if (block.kind === 'subheading') {
+      return TEXT_BLOCK_SIZE_TO_FONT.md;
+    }
+    if (block.kind === 'text') {
+      return tokens.fontSize.md;
+    }
+    return undefined;
+  })();
+
+  const lineHeight =
+    resolveLineHeightValue(block.lineHeight, block.lineHeightUnit) ?? tokens.lineHeight.normal;
+  const paddingScale = TYPOGRAPHY_VERTICAL_PADDING[block.kind as 'heading' | 'subheading' | 'text'];
+
+  return {
+    fontSize: baseFontSize,
+    lineHeight,
+    paddingTop: paddingScale ?? tokens.spacing.sm,
+    paddingBottom: paddingScale ?? tokens.spacing.sm,
+  };
+}
+
 export const resolveLineHeightValue = (
   value?: number,
   unit?: SlideBlock['lineHeightUnit'],
@@ -1602,12 +1647,14 @@ function getTextBlockMinSizePct(
     };
   }
 
-  const uniformPadding =
+  const backgroundPadding =
     typeof block.padding === 'number' && Number.isFinite(block.padding)
       ? Math.max(block.padding, 0)
       : 0;
-  const minWidthPx = Math.max(fontSize + uniformPadding * 2, 32);
-  const minHeightPx = Math.max(lineHeight + uniformPadding * 2, fontSize * 0.9 + uniformPadding * 2);
+  const typography = resolveTypographySpacing(block);
+  const verticalPadding = typography.paddingTop + typography.paddingBottom + backgroundPadding * 2;
+  const minWidthPx = Math.max(fontSize + backgroundPadding * 2, 32);
+  const minHeightPx = Math.max(lineHeight + verticalPadding, fontSize * 0.9 + verticalPadding);
   return {
     width: clamp((minWidthPx / deviceSize.width) * 100, 1, 100),
     height: clamp((minHeightPx / deviceSize.height) * 100, 1, 100),
@@ -2403,16 +2450,15 @@ export default function SlidesManager({
       case 'text': {
         const Tag = block.kind === 'heading' ? 'h2' : block.kind === 'subheading' ? 'h3' : 'p';
         const align = block.align ?? 'left';
-        const fallbackWeight = block.kind === 'heading' ? 700 : block.kind === 'subheading' ? 600 : 400;
+        const fallbackWeight =
+          block.kind === 'heading'
+            ? tokens.fontWeight.bold
+            : block.kind === 'subheading'
+              ? tokens.fontWeight.semibold
+              : tokens.fontWeight.regular;
         const fontFamilyKey = getBlockFontFamily(block);
         const resolvedFontFamily = getResolvedFontStack(fontFamilyKey);
-        const fontSizePx =
-          typeof block.fontSize === 'number'
-            ? block.fontSize
-            : block.size
-              ? TEXT_BLOCK_SIZE_TO_FONT[block.size]
-              : undefined;
-        const lineHeightValue = resolveLineHeightValue(block.lineHeight, block.lineHeightUnit);
+        const typography = resolveTypographySpacing(block);
         const letterSpacingValue =
           typeof block.letterSpacing === 'number' ? `${block.letterSpacing}px` : undefined;
         const textShadowValue = resolveTextShadowStyle(block);
@@ -2421,10 +2467,14 @@ export default function SlidesManager({
           color: textColor,
           textAlign: align,
           fontWeight: block.fontWeight ?? fallbackWeight,
-          fontSize: fontSizePx ? `${fontSizePx}px` : undefined,
-          lineHeight: lineHeightValue,
+          fontSize: typography.fontSize ? `${typography.fontSize}px` : undefined,
+          lineHeight: typography.lineHeight,
           letterSpacing: letterSpacingValue,
           textShadow: textShadowValue,
+          paddingTop: typography.paddingTop,
+          paddingBottom: typography.paddingBottom,
+          marginTop: 0,
+          marginBottom: 0,
         };
         if (resolvedFontFamily) {
           style.fontFamily = resolvedFontFamily;
