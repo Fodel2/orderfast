@@ -395,6 +395,12 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
   const blockLibraryHostRef = useRef<HTMLDivElement | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [isMobileView, setIsMobileView] = useState(() => {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+    return window.matchMedia('(max-width: 767px)').matches;
+  });
   const history = useRef<Block[][]>([]);
   const future = useRef<Block[][]>([]);
 
@@ -414,14 +420,6 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
       }
     })();
   }, [open, pageId, restaurantId]);
-
-  // lock body scroll while open
-  useEffect(() => {
-    if (!open) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prev; };
-  }, [open]);
 
   // undo stack helper
   const pushHistory = useCallback((next: Block[]) => {
@@ -520,6 +518,31 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
     if (typeof window !== 'undefined' && window.innerWidth >= 768) {
       setDrawerOpen(true);
     }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia('(max-width: 767px)');
+    const handleChange = (event: MediaQueryListEvent | MediaQueryList) => {
+      setIsMobileView(event.matches);
+    };
+
+    setIsMobileView(mediaQuery.matches);
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handleChange);
+      return () => {
+        mediaQuery.removeEventListener('change', handleChange);
+      };
+    }
+
+    mediaQuery.addListener(handleChange);
+    return () => {
+      mediaQuery.removeListener(handleChange);
+    };
   }, []);
 
   const selectedBlock = useMemo(() => blocks.find((b) => b.id === selection) ?? null, [blocks, selection]);
@@ -806,64 +829,66 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
               />
             </main>
           </div>
-          <div className="hidden md:flex" style={inspectorWrapperStyle}>
-            {inspectorVisible && (
-              <div className="flex h-full w-full flex-col">
-                <div
-                  style={{
-                    padding: tokens.spacing.lg,
-                    borderBottom: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: tokens.spacing.sm,
-                  }}
-                >
-                  <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    <span
-                      style={{
-                        fontSize: tokens.fontSize.sm,
-                        fontWeight: tokens.fontWeight.semibold,
-                        color: tokens.colors.textSecondary,
-                        textTransform: 'uppercase',
-                      }}
-                    >
-                      Inspector
-                    </span>
-                    <span style={{ fontSize: tokens.fontSize.xs, color: tokens.colors.textMuted }}>
-                      {selectedBlock ? `Editing ${selectedBlock.type.replace(/-/g, ' ')}` : 'Select a block to edit'}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setInspectorOpen(false)}
+          {!isMobileView && (
+            <div className="hidden md:flex" style={inspectorWrapperStyle}>
+              {inspectorVisible && (
+                <div className="flex h-full w-full flex-col">
+                  <div
                     style={{
-                      borderRadius: tokens.radius.sm,
-                      border: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
-                      background: tokens.colors.surface,
-                      color: tokens.colors.textSecondary,
-                      padding: `${tokens.spacing.xs}px ${tokens.spacing.sm}px`,
-                      cursor: 'pointer',
+                      padding: tokens.spacing.lg,
+                      borderBottom: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: tokens.spacing.sm,
                     }}
                   >
-                    Close
-                  </button>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span
+                        style={{
+                          fontSize: tokens.fontSize.sm,
+                          fontWeight: tokens.fontWeight.semibold,
+                          color: tokens.colors.textSecondary,
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        Inspector
+                      </span>
+                      <span style={{ fontSize: tokens.fontSize.xs, color: tokens.colors.textMuted }}>
+                        {selectedBlock ? `Editing ${selectedBlock.type.replace(/-/g, ' ')}` : 'Select a block to edit'}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setInspectorOpen(false)}
+                      style={{
+                        borderRadius: tokens.radius.sm,
+                        border: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
+                        background: tokens.colors.surface,
+                        color: tokens.colors.textSecondary,
+                        padding: `${tokens.spacing.xs}px ${tokens.spacing.sm}px`,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Close
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-4">
+                    {!selectedBlock ? (
+                      <div className="text-sm text-neutral-500">Select a block to edit its properties.</div>
+                    ) : (
+                      <Inspector
+                        key={selectedBlock.id}
+                        block={selectedBlock}
+                        onChange={(patch) => updateBlock(selectedBlock.id, patch)}
+                        restaurantId={restaurantId}
+                      />
+                    )}
+                  </div>
                 </div>
-                <div className="flex-1 overflow-y-auto p-4">
-                  {!selectedBlock ? (
-                    <div className="text-sm text-neutral-500">Select a block to edit its properties.</div>
-                  ) : (
-                    <Inspector
-                      key={selectedBlock.id}
-                      block={selectedBlock}
-                      onChange={(patch) => updateBlock(selectedBlock.id, patch)}
-                      restaurantId={restaurantId}
-                    />
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -876,16 +901,16 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
       />
 
       {/* Mobile inspector drawer */}
-      {selection && inspectorOpen && (
-        <div className="fixed bottom-0 left-0 right-0 max-h-[50%] bg-white border-t p-4 z-[62] overflow-y-auto md:hidden">
-          <div className="flex items-center justify-between mb-3">
+      {isMobileView && selection && inspectorOpen && selectedBlock && (
+        <div className="fixed bottom-0 left-0 right-0 z-[62] max-h-[50%] overflow-y-auto border-t bg-white p-4 md:hidden">
+          <div className="mb-3 flex items-center justify-between">
             <div className="font-semibold">Inspector</div>
-            <button onClick={() => setInspectorOpen(false)} className="px-2 py-1 rounded border">Close</button>
+            <button onClick={() => setInspectorOpen(false)} className="rounded border px-2 py-1">Close</button>
           </div>
           <Inspector
-            key={selection}
-            block={blocks.find(b => b.id===selection)!}
-            onChange={(patch) => updateBlock(selection, patch)}
+            key={selectedBlock.id}
+            block={selectedBlock}
+            onChange={(patch) => updateBlock(selectedBlock.id, patch)}
             restaurantId={restaurantId}
           />
         </div>
