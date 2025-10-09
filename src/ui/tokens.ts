@@ -12,6 +12,9 @@ export const tokens = {
     md: 8,
     lg: 16,
   },
+  fonts: {
+    sans: "var(--font-sans, 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif)",
+  },
   fontSize: {
     xs: 12,
     sm: 14,
@@ -49,6 +52,7 @@ export const tokens = {
     accent: "var(--accent, #0ea5e9)",
     accentStrong: "var(--accent-strong, #0284c7)",
     focusRing: "var(--focus-ring, var(--accent, #0ea5e9))",
+    canvas: "var(--canvas, #f1f5f9)",
     surface: "var(--surface, #ffffff)",
     surfaceSubtle: "var(--surface-subtle, #f8fafc)",
     surfaceHover: "var(--surface-hover, rgba(15, 23, 42, 0.04))",
@@ -97,6 +101,9 @@ export const tokens = {
     sm: "var(--shadow-sm, 0 1px 2px rgba(15, 23, 42, 0.08))",
     md: "var(--shadow-md, 0 4px 6px rgba(15, 23, 42, 0.12))",
     lg: "var(--shadow-lg, 0 10px 15px rgba(15, 23, 42, 0.15))",
+  },
+  easing: {
+    standard: "var(--motion-easing-standard, cubic-bezier(0.4, 0, 0.2, 1))",
   },
 } as const;
 

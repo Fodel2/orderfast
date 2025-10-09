@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import PageRenderer, { Block } from './PageRenderer';
+import type { Block } from './PageRenderer';
+import WebpageBuilder from './webpage/WebpageBuilder';
 import { supabase } from '@/lib/supabaseClient';
 
 type Props = {
@@ -24,11 +25,25 @@ const NEW_BLOCKS: Record<string, () => Block> = {
   'two-col': () => ({ id: crypto.randomUUID(), type: 'two-col', left: [{ id: crypto.randomUUID(), type: 'text', text: 'Left' }], right: [{ id: crypto.randomUUID(), type: 'text', text: 'Right' }], ratio: '1-1', gap: 16 }),
 };
 
+function cloneBlockWithIds(block: Block): Block {
+  const baseId = crypto.randomUUID();
+  switch (block.type) {
+    case 'two-col':
+      return {
+        ...block,
+        id: baseId,
+        left: block.left.map(cloneBlockWithIds),
+        right: block.right.map(cloneBlockWithIds),
+      };
+    default:
+      return { ...block, id: baseId };
+  }
+}
+
 export default function PageBuilderModal({ open, onClose, pageId, restaurantId }: Props) {
   const [blocks, setBlocks] = useState<Block[]>(DEFAULT_BLOCKS);
   const [selection, setSelection] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [device, setDevice] = useState<'mobile'|'tablet'|'desktop'>('mobile');
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const history = useRef<Block[][]>([]);
@@ -79,6 +94,17 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
     if (selection === id) setSelection(null);
   }
 
+  function duplicateBlock(id: string) {
+    const index = blocks.findIndex(b => b.id === id);
+    if (index < 0) return;
+    const clone = cloneBlockWithIds(blocks[index]);
+    const next = [...blocks];
+    next.splice(index + 1, 0, clone);
+    pushHistory(blocks);
+    setBlocks(next);
+    setSelection(clone.id);
+  }
+
   function moveBlock(id: string, direction: -1|1) {
     const idx = blocks.findIndex(b => b.id === id);
     const ni = idx + direction;
@@ -90,11 +116,24 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
     setBlocks(next);
   }
 
+  function reorderBlocks(next: Block[]) {
+    pushHistory(blocks);
+    setBlocks(next);
+  }
+
   function updateBlock(id: string, patch: Partial<any>) {
     const next = blocks.map(b => b.id === id ? { ...b, ...patch } as Block : b);
     pushHistory(blocks);
     setBlocks(next);
   }
+
+  const handleAddBlock = () => {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      setPaletteOpen(true);
+    } else {
+      addBlock('text');
+    }
+  };
 
   useEffect(() => {
     if (selection) setInspectorOpen(true);
@@ -133,8 +172,6 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
 
   if (!open) return null;
 
-  const canvasWidth = device === 'mobile' ? 390 : device === 'tablet' ? 820 : 1100;
-
   return (
     <div role="dialog" aria-modal="true" className="fixed inset-0 z-[60] flex">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
@@ -161,15 +198,6 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
                 + {k}
               </button>
             ))}
-            <div className="mt-6 text-sm font-semibold mb-2">Device</div>
-            <div className="flex gap-2">
-              {(['mobile','tablet','desktop'] as const).map(d => (
-                <button key={d} onClick={() => setDevice(d)}
-                  className={`px-2 py-1 rounded border ${device===d?'bg-emerald-50 border-emerald-600':''}`}>
-                  {d}
-                </button>
-              ))}
-            </div>
             <div className="mt-6 space-x-2">
               <button onClick={undo} className="px-2 py-1 rounded border">Undo</button>
               <button onClick={redo} className="px-2 py-1 rounded border">Redo</button>
@@ -177,25 +205,17 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
           </aside>
 
           {/* Canvas */}
-          <main className="flex-1 overflow-auto bg-neutral-50 flex justify-center p-6">
-            <div className="bg-white rounded-2xl shadow p-6" style={{ maxWidth: canvasWidth, width: '100%' }}>
-              {blocks.map((b) => (
-                <div key={b.id}
-                     className={`relative group rounded ${selection===b.id?'outline outline-2 outline-emerald-500':''}`}
-                     onClick={() => setSelection(b.id)}>
-                  {/* inline controls */}
-                  <div className="absolute -top-3 right-0 hidden group-hover:flex gap-1">
-                    <button className="px-2 py-0.5 rounded border bg-white" onClick={() => moveBlock(b.id, -1)}>↑</button>
-                    <button className="px-2 py-0.5 rounded border bg-white" onClick={() => moveBlock(b.id, 1)}>↓</button>
-                    <button className="px-2 py-0.5 rounded border bg-white text-red-600" onClick={() => removeBlock(b.id)}>✕</button>
-                  </div>
-                  <PageRenderer blocks={[b]} />
-                </div>
-              ))}
-              {blocks.length===0 && (
-                <div className="text-center text-neutral-500 py-12">Click a block on the left to start building.</div>
-              )}
-            </div>
+          <main className="flex-1 overflow-hidden">
+            <WebpageBuilder
+              blocks={blocks}
+              selectedBlockId={selection}
+              onSelectBlock={(id) => setSelection(id)}
+              onDeleteBlock={removeBlock}
+              onDuplicateBlock={duplicateBlock}
+              onMoveBlock={moveBlock}
+              onReorderBlocks={reorderBlocks}
+              onAddBlock={handleAddBlock}
+            />
           </main>
 
           {/* Inspector desktop */}
@@ -232,15 +252,6 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
               + {k}
             </button>
           ))}
-          <div className="mt-6 text-sm font-semibold mb-2">Device</div>
-          <div className="flex gap-2">
-            {(['mobile','tablet','desktop'] as const).map(d => (
-              <button key={d} onClick={() => setDevice(d)}
-                className={`px-2 py-1 rounded border ${device===d?'bg-emerald-50 border-emerald-600':''}`}>
-                {d}
-              </button>
-            ))}
-          </div>
           <div className="mt-6 space-x-2">
             <button onClick={undo} className="px-2 py-1 rounded border">Undo</button>
             <button onClick={redo} className="px-2 py-1 rounded border">Redo</button>
