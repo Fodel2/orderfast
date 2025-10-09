@@ -3,6 +3,7 @@ import { cleanup, render } from '@testing-library/react';
 import SlidesSection from '@/components/SlidesSection';
 import { renderStaticBlock } from '@/components/slides/staticRenderer';
 import {
+  DEVICE_DIMENSIONS,
   getBlockBackgroundPresentation,
   getBlockChromeStyle,
   getBlockInteractionPresentation,
@@ -13,6 +14,7 @@ import {
 } from '@/components/SlidesManager';
 import type { SlideRow } from '@/components/customer/home/SlidesContainer';
 import { tokens } from '@/src/ui/tokens';
+import { resolveBlockLayout } from '@/src/utils/resolveBlockLayout';
 
 afterEach(() => {
   cleanup();
@@ -79,15 +81,36 @@ const builderWrapper = (block: SlideBlock) => {
     wrapperClasses.push('flex', 'h-full', 'w-full');
   }
   const frame = pickFrame(block, 'desktop');
+  const canvasWidth =
+    typeof window !== 'undefined' && typeof window.innerWidth === 'number'
+      ? window.innerWidth
+      : DEVICE_DIMENSIONS.desktop.width;
+  const canvasHeight =
+    typeof window !== 'undefined' && typeof window.innerHeight === 'number'
+      ? window.innerHeight
+      : DEVICE_DIMENSIONS.desktop.height;
+  const layout = resolveBlockLayout(
+    {
+      xPct: frame.x,
+      yPct: frame.y,
+      wPct: frame.w,
+      hPct: frame.h,
+      rotationDeg: frame.r ?? 0,
+    },
+    'desktop',
+    0,
+    { width: canvasWidth, height: canvasHeight },
+  );
   const style = {
     position: 'absolute' as const,
-    left: `${frame.x}%`,
-    top: `${frame.y}%`,
-    width: `${frame.w}%`,
-    height: `${frame.h}%`,
-    transform: `rotate(${frame.r ?? 0}deg)`,
+    left: layout.left,
+    top: layout.top,
+    width: layout.width,
+    height: layout.height,
+    transform: `rotate(${layout.rotation}deg)`,
     transformOrigin: 'top left',
     pointerEvents: 'auto',
+    zIndex: layout.zIndex,
   };
   return (
     <div style={style} data-slide-block-id={block.id}>
@@ -192,6 +215,7 @@ const parityCases: Array<{ name: string; block: SlideBlock }> = [
 describe('Slides renderer parity', () => {
   beforeEach(() => {
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1280 });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 800 });
   });
 
   parityCases.forEach(({ name, block }) => {

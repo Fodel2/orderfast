@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import {
   BLOCK_INTERACTION_GLOBAL_STYLES,
+  DEVICE_DIMENSIONS,
   getBlockBackgroundPresentation,
   getBlockChromeStyle,
   getBlockInteractionPresentation,
@@ -20,6 +21,7 @@ import {
 import { tokens } from '../src/ui/tokens';
 import { renderStaticBlock } from './slides/staticRenderer';
 import { resolveTypographySpacing } from '@/src/utils/typography';
+import { resolveBlockLayout } from '@/src/utils/resolveBlockLayout';
 
 function useDeviceKind(): DeviceKind {
   const [device, setDevice] = useState<DeviceKind>('desktop');
@@ -131,6 +133,11 @@ function Background({ cfg }: { cfg: SlideCfg }) {
 
 export default function SlidesSection({ slide, cfg }: { slide: SlideRow; cfg: SlideCfg }) {
   const device = useDeviceKind();
+  const canvasRef = useRef<HTMLDivElement | null>(null);
+  const [canvasSize, setCanvasSize] = useState<{ width: number; height: number }>(() => ({
+    width: DEVICE_DIMENSIONS.desktop.width,
+    height: DEVICE_DIMENSIONS.desktop.height,
+  }));
   const fontsInUse = useMemo(() => {
     const set = new Set<string>();
     (cfg.blocks || []).forEach((block) => {
@@ -146,27 +153,85 @@ export default function SlidesSection({ slide, cfg }: { slide: SlideRow; cfg: Sl
 
   const blocks = useMemo(() => cfg.blocks || [], [cfg.blocks]);
 
+  useEffect(() => {
+    const node = canvasRef.current;
+    if (!node) {
+      if (typeof window !== 'undefined') {
+        setCanvasSize({ width: window.innerWidth, height: window.innerHeight });
+      }
+      return;
+    }
+
+    if (typeof window !== 'undefined' && typeof ResizeObserver === 'undefined') {
+      const updateFromWindow = () => {
+        setCanvasSize({ width: window.innerWidth, height: window.innerHeight });
+      };
+      updateFromWindow();
+      window.addEventListener('resize', updateFromWindow);
+      return () => {
+        window.removeEventListener('resize', updateFromWindow);
+      };
+    }
+
+    if (typeof ResizeObserver === 'undefined') {
+      return;
+    }
+
+    const measure = () => {
+      const rect = node.getBoundingClientRect();
+      setCanvasSize({ width: rect.width, height: rect.height });
+    };
+    measure();
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) {
+        const { width, height } = entry.contentRect;
+        setCanvasSize({ width, height });
+      }
+    });
+    observer.observe(node);
+    return () => {
+      observer.disconnect();
+    };
+  }, [device]);
+
+  const effectiveCanvasSize =
+    canvasSize.width > 0 && canvasSize.height > 0 ? canvasSize : DEVICE_DIMENSIONS.desktop;
+
   return (
     <>
       <style jsx global>{BLOCK_INTERACTION_GLOBAL_STYLES}</style>
       <section className="of-canvas relative flex snap-start items-center justify-center overflow-hidden">
         <Background cfg={cfg} />
-        <div className="relative h-full w-full" style={{ pointerEvents: 'none' }}>
-          {blocks.map((block) => {
+        <div ref={canvasRef} className="relative h-full w-full" style={{ pointerEvents: 'none' }}>
+          {blocks.map((block, index) => {
             const visibility = resolveBlockVisibility(block);
             if (!visibility[device]) {
               return null;
             }
             const frame = pickFrame(block, device);
+            const layout = resolveBlockLayout(
+              {
+                xPct: frame.x,
+                yPct: frame.y,
+                wPct: frame.w,
+                hPct: frame.h,
+                rotationDeg: frame.r ?? 0,
+              },
+              device,
+              index,
+              effectiveCanvasSize,
+            );
             const style: CSSProperties = {
               position: 'absolute',
-              left: `${frame.x}%`,
-              top: `${frame.y}%`,
-              width: `${frame.w}%`,
-              height: `${frame.h}%`,
-              transform: `rotate(${frame.r ?? 0}deg)`,
+              left: layout.left,
+              top: layout.top,
+              width: layout.width,
+              height: layout.height,
+              transform: `rotate(${layout.rotation}deg)`,
               transformOrigin: 'top left',
               pointerEvents: 'auto',
+              zIndex: layout.zIndex,
             };
             const interaction = getBlockInteractionPresentation(block);
             const backgroundPresentation = getBlockBackgroundPresentation(block.background);

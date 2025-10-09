@@ -42,6 +42,7 @@ import {
   resolveTypographySpacing,
   TEXT_BLOCK_SIZE_TO_FONT,
 } from '@/src/utils/typography';
+import { resolveBlockLayout } from '@/src/utils/resolveBlockLayout';
 
 const TEXTUAL_BLOCK_KIND_NAMES = new Set([
   'heading',
@@ -99,8 +100,8 @@ export const DEFAULT_BLOCK_VISIBILITY: BlockVisibilityConfig = {
 };
 
 export const DEVICE_DIMENSIONS: Record<DeviceKind, { width: number; height: number }> = {
-  mobile: { width: 390, height: 844 },
-  tablet: { width: 834, height: 1112 },
+  mobile: { width: 375, height: 667 },
+  tablet: { width: 768, height: 1024 },
   desktop: { width: 1280, height: 800 },
 };
 
@@ -2875,7 +2876,7 @@ export default function SlidesManager({
                   );
                 })}
               </div>
-              {cfg.blocks.map((block) => {
+              {cfg.blocks.map((block, index) => {
                 const visibility = resolveBlockVisibility(block);
                 if (!visibility[activeDevice]) {
                   return null;
@@ -2893,6 +2894,9 @@ export default function SlidesManager({
                     key={block.id}
                     id={block.id}
                     frame={frame}
+                    device={activeDevice}
+                    canvasSize={deviceSize}
+                    layerIndex={index}
                     containerRef={frameRef}
                     selected={selectedId === block.id}
                     editable={editable && editInPreview}
@@ -3334,6 +3338,9 @@ type InteractiveBoxProps = {
   id: string;
   frame: Frame;
   containerRef: React.RefObject<HTMLElement>;
+  device: DeviceKind;
+  canvasSize: { width: number; height: number };
+  layerIndex: number;
   selected: boolean;
   editable: boolean;
   inlineEditing?: boolean;
@@ -3389,6 +3396,9 @@ function InteractiveBox({
   id,
   frame,
   containerRef,
+  device,
+  canvasSize,
+  layerIndex,
   selected,
   editable,
   inlineEditing = false,
@@ -3417,6 +3427,33 @@ function InteractiveBox({
   const snapStateRef = useRef<AlignmentSnapResult | null>(null);
   const lastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
   const snappingRef = useRef(false);
+
+  const layout = useMemo(
+    () =>
+      resolveBlockLayout(
+        {
+          xPct: frame.x,
+          yPct: frame.y,
+          wPct: frame.w,
+          hPct: frame.h,
+          rotationDeg: frame.r ?? 0,
+        },
+        device,
+        layerIndex,
+        canvasSize,
+      ),
+    [
+      canvasSize.height,
+      canvasSize.width,
+      device,
+      frame.h,
+      frame.r,
+      frame.w,
+      frame.x,
+      frame.y,
+      layerIndex,
+    ],
+  );
 
   const updateGuides = useCallback(
     (guides: AlignmentGuide[]) => {
@@ -3812,22 +3849,17 @@ function InteractiveBox({
     }
   };
 
-  const rotation = frame.r ?? 0;
-  const transformParts = [`rotate(${rotation}deg)`];
-  if (dragging) {
-    transformParts.push('scale(1.02)');
-  }
-
   const style: CSSProperties = {
     position: 'absolute',
-    left: `${frame.x}%`,
-    top: `${frame.y}%`,
-    width: `${frame.w}%`,
-    height: `${frame.h}%`,
-    transform: transformParts.join(' '),
+    left: layout.left,
+    top: layout.top,
+    width: layout.width,
+    height: layout.height,
+    transform: `rotate(${layout.rotation}deg)`,
     transformOrigin: 'top left',
     borderRadius: tokens.radius.md,
     touchAction: 'none',
+    zIndex: layout.zIndex,
     cursor: inlineEditing
       ? 'text'
       : editable && !locked
