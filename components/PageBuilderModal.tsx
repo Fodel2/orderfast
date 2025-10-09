@@ -1,5 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Columns, Image as ImageIcon, LayoutDashboard, Minus, MoveVertical, Type } from 'lucide-react';
+import {
+  Columns,
+  Image as ImageIcon,
+  LayoutDashboard,
+  Minus,
+  MoveVertical,
+  Redo2,
+  Type,
+  Undo2,
+  X,
+} from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type {
   Block,
@@ -618,42 +628,60 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative z-[61] m-4 flex w-[calc(100%-2rem)] flex-1 flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
         {/* Mobile toolbar */}
-        <div className="flex items-center justify-between border-b p-2 md:hidden">
-          <button onClick={() => setBlockLibraryOpen(true)} className="rounded border px-2 py-1">Blocks</button>
-          <div className="space-x-2">
-            <button onClick={undo} className="rounded border px-2 py-1">Undo</button>
-            <button onClick={redo} className="rounded border px-2 py-1">Redo</button>
-          </div>
-          <div className="space-x-2">
-            <button onClick={save} disabled={saving} className="rounded bg-emerald-600 px-2 py-1 text-white disabled:opacity-60">{saving ? 'Saving…' : 'Save'}</button>
-            <button onClick={onClose} className="rounded border px-2 py-1">Close</button>
-          </div>
+        <div className="wb-toolbar flex items-center gap-2 border-b p-2 md:hidden">
+          <button
+            type="button"
+            onClick={() => setBlockLibraryOpen(true)}
+            className="blocks-btn text-sm font-medium"
+          >
+            Blocks
+          </button>
+          <button type="button" onClick={undo} aria-label="Undo" className="icon-btn">
+            <Undo2 className="h-4 w-4" aria-hidden="true" />
+          </button>
+          <button type="button" onClick={redo} aria-label="Redo" className="icon-btn">
+            <Redo2 className="h-4 w-4" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving}
+            className="save-btn ml-auto text-sm font-medium"
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+          <button type="button" onClick={onClose} aria-label="Close builder" className="icon-btn">
+            <X className="h-4 w-4" aria-hidden="true" />
+          </button>
         </div>
 
         {/* Desktop toolbar */}
-        <div className="hidden items-center justify-between border-b bg-white px-6 py-3 md:flex">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setDrawerOpen((prev) => !prev)}
-              className={`rounded border px-3 py-1 text-sm font-medium ${drawerOpen ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : ''}`}
-            >
-              Blocks
-            </button>
-            <button
-              type="button"
-              onClick={() => setInspectorOpen((prev) => !prev)}
-              className={`rounded border px-3 py-1 text-sm font-medium ${inspectorVisible ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : ''}`}
-            >
-              Inspector
-            </button>
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={undo} className="rounded border px-3 py-1 text-sm">Undo</button>
-            <button onClick={redo} className="rounded border px-3 py-1 text-sm">Redo</button>
-            <button onClick={save} disabled={saving} className="rounded bg-emerald-600 px-4 py-1 text-sm font-medium text-white disabled:opacity-60">{saving ? 'Saving…' : 'Save'}</button>
-            <button onClick={onClose} className="rounded border px-4 py-1 text-sm">Close</button>
-          </div>
+        <div className="wb-toolbar hidden items-center gap-2 border-b bg-white px-6 py-3 md:flex">
+          <button
+            type="button"
+            onClick={() => setDrawerOpen((prev) => !prev)}
+            className={`blocks-btn text-sm font-medium ${drawerOpen ? 'ring-1 ring-emerald-500 ring-offset-1 text-emerald-700' : ''}`}
+            aria-pressed={drawerOpen}
+          >
+            Blocks
+          </button>
+          <button type="button" onClick={undo} aria-label="Undo" className="icon-btn">
+            <Undo2 className="h-4 w-4" aria-hidden="true" />
+          </button>
+          <button type="button" onClick={redo} aria-label="Redo" className="icon-btn">
+            <Redo2 className="h-4 w-4" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving}
+            className="save-btn ml-auto text-sm font-medium"
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+          <button type="button" onClick={onClose} aria-label="Close builder" className="icon-btn">
+            <X className="h-4 w-4" aria-hidden="true" />
+          </button>
         </div>
 
         <div className="flex flex-1" style={{ background: tokens.colors.canvas }}>
@@ -862,6 +890,50 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
           />
         </div>
       )}
+      <style jsx global>{`
+        .wb-toolbar button {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 36px;
+          height: 36px;
+          border-radius: 8px;
+          background: var(--surface-1);
+          transition: background 0.2s ease;
+          border: none;
+          cursor: pointer;
+        }
+        .wb-toolbar button:hover {
+          background: var(--surface-hover);
+        }
+        .wb-toolbar button:focus-visible {
+          outline: 2px solid var(--brand-primary);
+          outline-offset: 2px;
+        }
+        .wb-toolbar .blocks-btn {
+          width: auto;
+          padding: 0 12px;
+          font-weight: 600;
+        }
+        .wb-toolbar .blocks-btn[aria-pressed='true'] {
+          background: var(--surface-hover);
+          color: var(--brand-primary);
+        }
+        .wb-toolbar .icon-btn {
+          padding: 0;
+        }
+        .wb-toolbar .save-btn {
+          width: auto;
+          padding: 0 14px;
+          background: var(--brand-primary);
+          color: white;
+          font-weight: 600;
+        }
+        .wb-toolbar .save-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+      `}</style>
     </div>
   );
 }
