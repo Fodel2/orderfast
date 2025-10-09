@@ -82,6 +82,7 @@ import {
 import FontSelect from "./ui/FontSelect";
 import { APP_FONTS, ensureFontLoaded } from "@/lib/fonts";
 import Button from "@/components/ui/Button";
+import SafeZoneOverlay from "./SafeZoneOverlay";
 import {
   InputCheckbox,
   InputColor,
@@ -2078,6 +2079,7 @@ export default function SlideModal({
   const [editInPreview, setEditInPreview] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [previewSize, setPreviewSize] = useState({ width: 0, height: 0 });
+  const [showSafeZone, setShowSafeZone] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [customPages, setCustomPages] = useState<LinkOption[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -4534,7 +4536,7 @@ export default function SlideModal({
                   className="flex flex-1 min-h-0 overflow-hidden"
                 >
                   <div
-                    className="flex h-full w-full min-h-0 items-start justify-center overflow-hidden"
+                    className="relative flex h-full w-full min-h-0 items-start justify-center overflow-hidden"
                     style={{
                       paddingTop: PREVIEW_PADDING_Y,
                       paddingBottom: PREVIEW_PADDING_Y,
@@ -4542,20 +4544,46 @@ export default function SlideModal({
                       paddingRight: PREVIEW_PADDING_X,
                     }}
                   >
+                    <button
+                      type="button"
+                      onClick={() => setShowSafeZone((prev) => !prev)}
+                      style={{
+                        position: "absolute",
+                        top: 8,
+                        left: 8,
+                        zIndex: 30,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        padding: "6px 10px",
+                        borderRadius: tokens.radius.sm,
+                        background: "rgba(15, 23, 42, 0.75)",
+                        color: "#ffffff",
+                        fontSize: "12px",
+                        fontWeight: tokens.fontWeight.medium,
+                        boxShadow: "0 6px 16px rgba(15, 23, 42, 0.15)",
+                        border: "none",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {showSafeZone ? "Hide Safe Zone" : "Show Safe Zone"}
+                    </button>
                     {hasPreviewBounds && (
-                      <SlidesManager
-                        initialCfg={cfg}
-                        onChange={handlePreviewChange}
-                        editable={true}
-                        selectedId={selectedId}
-                        onSelectBlock={handleSelectBlock}
-                        openInspector={openInspectorForSelection}
-                        onCanvasClick={handleCanvasClick}
-                        activeDevice={activeDevice}
-                        editInPreview={editInPreview}
-                        scale={previewScale}
-                        onManipulationChange={handleManipulationChange}
-                      />
+                      <>
+                        {showSafeZone ? <SafeZoneOverlay visible={showSafeZone} /> : null}
+                        <SlidesManager
+                          initialCfg={cfg}
+                          onChange={handlePreviewChange}
+                          editable={true}
+                          selectedId={selectedId}
+                          onSelectBlock={handleSelectBlock}
+                          openInspector={openInspectorForSelection}
+                          onCanvasClick={handleCanvasClick}
+                          activeDevice={activeDevice}
+                          editInPreview={editInPreview}
+                          scale={previewScale}
+                          onManipulationChange={handleManipulationChange}
+                        />
+                      </>
                     )}
                   </div>
                 </div>
