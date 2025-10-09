@@ -1,9 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import DraggableBlock from './DraggableBlock';
-import PageRenderer, { type Block } from '../PageRenderer';
-import { tokens } from '@/src/ui/tokens';
 
-type DeviceKind = 'mobile' | 'tablet' | 'desktop';
+import PageRenderer, { type Block, type DeviceKind } from '../PageRenderer';
+
+import DraggableBlock from './DraggableBlock';
+import { tokens } from '@/src/ui/tokens';
 
 type WebpageBuilderProps = {
   blocks: Block[];
@@ -84,6 +84,11 @@ export default function WebpageBuilder({
     minHeight: '100%',
   };
 
+  const headerBlockId = useMemo(
+    () => blocks.find((block) => block.type === 'header')?.id ?? null,
+    [blocks],
+  );
+
   const addButtonStyle: React.CSSProperties = {
     alignSelf: 'center',
     marginTop: blocks.length ? tokens.spacing.lg : 0,
@@ -157,22 +162,31 @@ export default function WebpageBuilder({
                     Click “Add block” or use the palette to start building your page.
                   </div>
                 )}
-                {blocks.map((block, index) => (
-                  <DraggableBlock
-                    key={block.id}
-                    id={block.id}
-                    onDelete={() => onDeleteBlock(block.id)}
-                    onDuplicate={() => onDuplicateBlock(block.id)}
-                    onMoveUp={() => onMoveBlock(block.id, -1)}
-                    onMoveDown={() => onMoveBlock(block.id, 1)}
-                    disableMoveUp={index === 0}
-                    disableMoveDown={index === blocks.length - 1}
-                    isSelected={selectedBlockId === block.id}
-                    onSelect={() => onSelectBlock(block.id)}
-                  >
-                    <PageRenderer blocks={[block]} />
-                  </DraggableBlock>
-                ))}
+                {blocks.map((block, index) => {
+                  const headerId = headerBlockId;
+                  const isHeader = block.type === 'header';
+                  const disableMoveUp =
+                    isHeader ||
+                    index === 0 ||
+                    (headerId && headerId !== block.id && index === 1);
+                  const disableMoveDown = isHeader || index === blocks.length - 1;
+                  return (
+                    <DraggableBlock
+                      key={block.id}
+                      id={block.id}
+                      onDelete={() => onDeleteBlock(block.id)}
+                      onDuplicate={() => onDuplicateBlock(block.id)}
+                      onMoveUp={() => onMoveBlock(block.id, -1)}
+                      onMoveDown={() => onMoveBlock(block.id, 1)}
+                      disableMoveUp={disableMoveUp}
+                      disableMoveDown={disableMoveDown}
+                      isSelected={selectedBlockId === block.id}
+                      onSelect={() => onSelectBlock(block.id)}
+                    >
+                      <PageRenderer blocks={[block]} device={device} />
+                    </DraggableBlock>
+                  );
+                })}
               </div>
               <div style={{ display: 'flex', justifyContent: 'center' }}>
                 <button type="button" onClick={onAddBlock} style={addButtonStyle}>

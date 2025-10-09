@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Block } from './PageRenderer';
 import WebpageBuilder from './webpage/WebpageBuilder';
+import HeaderInspector from './webpage/HeaderInspector';
 import { supabase } from '@/lib/supabaseClient';
 import { tokens } from '@/src/ui/tokens';
 
@@ -17,6 +18,33 @@ const DEFAULT_BLOCKS: Block[] = [
 ];
 
 const NEW_BLOCKS: Record<string, () => Block> = {
+  header: () =>
+    ({
+      id: crypto.randomUUID(),
+      type: 'header',
+      title: 'Introduce your restaurant',
+      subtitle:
+        'Share your story, highlight seasonal dishes, or guide guests to the experiences that matter most.',
+      tagline: 'A premium welcome',
+      backgroundImageUrl: null,
+      backgroundImageFit: 'cover',
+      backgroundImagePosition: 'center',
+      overlayEnabled: true,
+      overlayColor: '#0f172a',
+      overlayOpacity: 65,
+      fontFamily: 'default',
+      fontWeight: 700,
+      titleFontSize: 48,
+      titleLineHeight: 1.1,
+      titleLetterSpacing: -1,
+      titleColor: '#ffffff',
+      subtitleColor: 'rgba(255, 255, 255, 0.9)',
+      taglineColor: 'rgba(255, 255, 255, 0.75)',
+      align: 'center',
+      paddingTop: 160,
+      paddingBottom: 160,
+      fullWidth: true,
+    } satisfies Block),
   heading: () => ({ id: crypto.randomUUID(), type: 'heading', text: 'Heading', level: 2, align: 'left' }),
   text: () => ({ id: crypto.randomUUID(), type: 'text', text: 'Paragraph text', align: 'left' }),
   image: () => ({ id: crypto.randomUUID(), type: 'image', src: 'https://placehold.co/1200x600', alt: 'Image', width: 1200, radius: 'lg' }),
@@ -86,6 +114,24 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
   }, []);
 
   function addBlock(kind: keyof typeof NEW_BLOCKS) {
+    if (kind === 'header') {
+      const existingHeader = blocks.find((block) => block.type === 'header');
+      if (existingHeader) {
+        setSelection(existingHeader.id);
+        if (blocks[0]?.id !== existingHeader.id) {
+          const reordered = [existingHeader, ...blocks.filter((block) => block.id !== existingHeader.id)];
+          pushHistory(blocks);
+          setBlocks(reordered);
+        }
+        return;
+      }
+      const header = NEW_BLOCKS.header();
+      pushHistory(blocks);
+      setBlocks([header, ...blocks]);
+      setSelection(header.id);
+      return;
+    }
+
     const next = [...blocks, NEW_BLOCKS[kind]()];
     pushHistory(blocks);
     setBlocks(next);
@@ -111,11 +157,23 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
 
   function moveBlock(id: string, direction: -1|1) {
     const idx = blocks.findIndex(b => b.id === id);
+    if (idx < 0) return;
+    const targetBlock = blocks[idx];
+    if (targetBlock?.type === 'header') return;
+    const headerIndex = blocks.findIndex((block) => block.type === 'header');
     const ni = idx + direction;
-    if (idx < 0 || ni < 0 || ni >= blocks.length) return;
+    if (ni < 0 || ni >= blocks.length) return;
+    if (headerIndex >= 0 && headerIndex !== idx && ni <= headerIndex) {
+      return;
+    }
     const next = [...blocks];
     const [m] = next.splice(idx, 1);
     next.splice(ni, 0, m);
+    const updatedHeaderIndex = next.findIndex((block) => block.type === 'header');
+    if (updatedHeaderIndex > 0) {
+      const [header] = next.splice(updatedHeaderIndex, 1);
+      next.unshift(header);
+    }
     pushHistory(blocks);
     setBlocks(next);
   }
@@ -407,6 +465,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
                       key={selectedBlock.id}
                       block={selectedBlock}
                       onChange={(patch) => updateBlock(selectedBlock.id, patch)}
+                      restaurantId={restaurantId}
                     />
                   )}
                 </div>
@@ -453,6 +512,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
             key={selection}
             block={blocks.find(b => b.id===selection)!}
             onChange={(patch) => updateBlock(selection, patch)}
+            restaurantId={restaurantId}
           />
         </div>
       )}
@@ -469,8 +529,24 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function Inspector({ block, onChange }: { block: Block; onChange: (patch: Partial<any>) => void }) {
+function Inspector({
+  block,
+  onChange,
+  restaurantId,
+}: {
+  block: Block;
+  onChange: (patch: Partial<any>) => void;
+  restaurantId: string;
+}) {
   switch (block.type) {
+    case 'header':
+      return (
+        <HeaderInspector
+          block={block}
+          onChange={onChange}
+          restaurantId={restaurantId}
+        />
+      );
     case 'heading':
       return (
         <div>
