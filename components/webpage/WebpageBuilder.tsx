@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import PageRenderer, { type Block, type DeviceKind } from '../PageRenderer';
 
 import DraggableBlock from './DraggableBlock';
+import GuardRailsOverlay, { type GuardEdge } from './GuardRailsOverlay';
 import { tokens } from '@/src/ui/tokens';
 
 type WebpageBuilderProps = {
@@ -13,6 +14,7 @@ type WebpageBuilderProps = {
   onDuplicateBlock: (id: string) => void;
   onMoveBlock: (id: string, direction: -1 | 1) => void;
   onAddBlock: () => void;
+  inspectorVisible?: boolean;
 };
 
 export default function WebpageBuilder({
@@ -23,6 +25,7 @@ export default function WebpageBuilder({
   onDuplicateBlock,
   onMoveBlock,
   onAddBlock,
+  inspectorVisible = false,
 }: WebpageBuilderProps) {
   const [device, setDevice] = useState<DeviceKind>('desktop');
   const deviceWidths: Record<DeviceKind, number> = {
@@ -32,6 +35,131 @@ export default function WebpageBuilder({
   };
 
   const canvasWidth = deviceWidths[device];
+  const frameRef = useRef<HTMLDivElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+
+  type GuardAlerts = Record<GuardEdge, boolean>;
+  type GuardBounds = Record<GuardEdge, number>;
+
+  const [guardAlerts, setGuardAlerts] = useState<GuardAlerts>({
+    top: false,
+    bottom: false,
+    left: false,
+    right: false,
+  });
+  const [guardBounds, setGuardBounds] = useState<GuardBounds>({
+    top: 6,
+    bottom: 94,
+    left: 8,
+    right: 92,
+  });
+  const [guardInfoHover, setGuardInfoHover] = useState(false);
+
+  const updateGuardState = useCallback(() => {
+    const frame = frameRef.current;
+    const content = contentRef.current;
+    if (!frame || !content) return;
+
+    const frameRect = frame.getBoundingClientRect();
+    if (frameRect.width === 0 || frameRect.height === 0) {
+      return;
+    }
+
+    const maxHorizontalInset = tokens.spacing.xl * 2.5;
+    const maxVerticalInset = tokens.spacing.xl * 3;
+    const horizontalInset = Math.min(frameRect.width * 0.08, maxHorizontalInset);
+    const verticalInset = Math.min(frameRect.height * 0.08, maxVerticalInset);
+
+    const safeLeft = frameRect.left + horizontalInset;
+    const safeRight = frameRect.right - horizontalInset;
+    const safeTop = frameRect.top + verticalInset;
+    const safeBottom = frameRect.bottom - verticalInset;
+
+    const nextAlerts: GuardAlerts = { top: false, bottom: false, left: false, right: false };
+    const blockNodes = Array.from(
+      content.querySelectorAll<HTMLElement>('[data-block-id]'),
+    );
+
+    if (blockNodes.length > 0) {
+      const firstRect = blockNodes[0]!.getBoundingClientRect();
+      const lastRect = blockNodes[blockNodes.length - 1]!.getBoundingClientRect();
+      if (firstRect.top < safeTop - 1) nextAlerts.top = true;
+      if (lastRect.bottom > safeBottom + 1) nextAlerts.bottom = true;
+
+      blockNodes.forEach((node) => {
+        const rect = node.getBoundingClientRect();
+        if (rect.left < safeLeft - 1) nextAlerts.left = true;
+        if (rect.right > safeRight + 1) nextAlerts.right = true;
+      });
+    }
+
+    setGuardAlerts((prev) => {
+      if (
+        prev.top === nextAlerts.top &&
+        prev.bottom === nextAlerts.bottom &&
+        prev.left === nextAlerts.left &&
+        prev.right === nextAlerts.right
+      ) {
+        return prev;
+      }
+      return nextAlerts;
+    });
+
+    const topPercent = (verticalInset / frameRect.height) * 100;
+    const leftPercent = (horizontalInset / frameRect.width) * 100;
+    const computedBounds: GuardBounds = {
+      top: Number.isFinite(topPercent) ? Math.max(0, Math.min(50, topPercent)) : 6,
+      bottom: Number.isFinite(topPercent)
+        ? Math.max(50, Math.min(100, 100 - topPercent))
+        : 94,
+      left: Number.isFinite(leftPercent) ? Math.max(0, Math.min(50, leftPercent)) : 8,
+      right: Number.isFinite(leftPercent)
+        ? Math.max(50, Math.min(100, 100 - leftPercent))
+        : 92,
+    };
+
+    setGuardBounds((prev) => {
+      if (
+        prev.top === computedBounds.top &&
+        prev.bottom === computedBounds.bottom &&
+        prev.left === computedBounds.left &&
+        prev.right === computedBounds.right
+      ) {
+        return prev;
+      }
+      return computedBounds;
+    });
+  }, []);
+
+  useEffect(() => {
+    updateGuardState();
+  }, [blocks, device, inspectorVisible, updateGuardState]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const frame = frameRef.current;
+    const content = contentRef.current;
+    if (!frame || !content || typeof ResizeObserver === 'undefined') {
+      return;
+    }
+
+    const observer = new ResizeObserver(() => {
+      updateGuardState();
+    });
+    observer.observe(frame);
+    observer.observe(content);
+
+    const handleResize = () => updateGuardState();
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [updateGuardState]);
 
   const deviceToggleStyle = useMemo<React.CSSProperties>(
     () => ({
@@ -60,6 +188,7 @@ export default function WebpageBuilder({
   const scrollAreaStyle: React.CSSProperties = {
     flex: 1,
     overflowY: 'auto',
+    overflowX: 'hidden',
     background: tokens.colors.surfaceSubtle,
   };
 
@@ -72,8 +201,9 @@ export default function WebpageBuilder({
   };
 
   const frameStyle: React.CSSProperties = {
-    width: '100%',
-    maxWidth: canvasWidth,
+    width: `${canvasWidth}px`,
+    maxWidth: `${canvasWidth}px`,
+    flex: '0 0 auto',
     transition: `max-width 220ms ${tokens.easing.standard}`,
   };
 
@@ -101,6 +231,13 @@ export default function WebpageBuilder({
     cursor: 'pointer',
     transition: `all 150ms ${tokens.easing.standard}`,
   };
+
+  const guardEdges: GuardEdge[] = ['top', 'right', 'bottom', 'left'];
+  const hasGuardAlerts = guardEdges.some((edge) => guardAlerts[edge]);
+  const tooltipEdge: GuardEdge = hasGuardAlerts
+    ? guardEdges.find((edge) => guardAlerts[edge]) ?? 'top'
+    : 'top';
+  const tooltipVisible = hasGuardAlerts || guardInfoHover;
 
   return (
     <div style={rootStyle}>
@@ -142,7 +279,9 @@ export default function WebpageBuilder({
         <div style={viewportStyle}>
           <div style={frameStyle}>
             <div
+              ref={frameRef}
               style={{
+                position: 'relative',
                 background: tokens.colors.surface,
                 borderRadius: tokens.radius.lg,
                 padding: tokens.spacing.lg,
@@ -150,7 +289,18 @@ export default function WebpageBuilder({
                 transition: `box-shadow 200ms ${tokens.easing.standard}`,
               }}
             >
-              <div style={canvasStyle}>
+              <GuardRailsOverlay
+                bounds={guardBounds}
+                alerts={guardAlerts}
+                visible
+                tooltip={{
+                  visible: tooltipVisible,
+                  edge: tooltipEdge,
+                  message: 'Keeping within the guide lines ensures visibility on all devices.',
+                }}
+                onInfoHoverChange={setGuardInfoHover}
+              />
+              <div ref={contentRef} style={canvasStyle}>
                 {blocks.length === 0 && (
                   <div
                     style={{
@@ -159,7 +309,7 @@ export default function WebpageBuilder({
                       color: tokens.colors.textMuted,
                     }}
                   >
-                    Click “Add block” or use the palette to start building your page.
+                    Click “Add block” to open the block library and start building your page.
                   </div>
                 )}
                 {blocks.map((block, index) => {

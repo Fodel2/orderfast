@@ -151,6 +151,22 @@ const HeaderInspector: React.FC<HeaderInspectorProps> = ({ block, onChange, rest
           placeholder="https://example.com/header.jpg"
         />
         {block.backgroundImageUrl ? (
+          <div
+            style={{
+              marginTop: tokens.spacing.sm,
+              border: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
+              borderRadius: tokens.radius.md,
+              overflow: 'hidden',
+            }}
+          >
+            <img
+              src={block.backgroundImageUrl}
+              alt=""
+              style={{ display: 'block', width: '100%', height: 'auto' }}
+            />
+          </div>
+        ) : null}
+        {block.backgroundImageUrl ? (
           <button
             type="button"
             style={CLEAR_BUTTON_STYLE}
@@ -177,7 +193,7 @@ const HeaderInspector: React.FC<HeaderInspectorProps> = ({ block, onChange, rest
 
       <InspectorSection title="Overlay">
         <InputToggle
-          label="Enable overlay"
+          label="Overlay text"
           checked={block.overlayEnabled ?? false}
           onChange={(checked) => onChange({ overlayEnabled: checked })}
         />

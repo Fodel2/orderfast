@@ -185,7 +185,13 @@ const hexToRgba = (value: string, alpha: number) => {
 
 const DEFAULT_TITLE_FONT_SIZE = 48;
 const DEFAULT_TITLE_LINE_HEIGHT = 1.1;
-const DEFAULT_PADDING = 128;
+const DEFAULT_PADDING = tokens.spacing.xl * 4;
+const MIN_HEADER_PADDING = tokens.spacing.lg * 2;
+const MAX_HEADER_PADDING = tokens.spacing.xl * 10;
+const MIN_HEADER_HEIGHT = tokens.spacing.xl * 6;
+const HEADER_HORIZONTAL_PADDING_DESKTOP = Math.round(tokens.spacing.xl * 1.5);
+const HEADER_HORIZONTAL_PADDING_TABLET = Math.round(tokens.spacing.xl * 1.25);
+const HEADER_HORIZONTAL_PADDING_MOBILE = tokens.spacing.xl;
 
 export default function PageRenderer({ blocks, device }: PageRendererProps) {
   const currentDevice = useResponsiveDevice(device);
@@ -193,12 +199,18 @@ export default function PageRenderer({ blocks, device }: PageRendererProps) {
   const renderHeaderBlock = (block: HeaderBlock) => {
     const scale = scaleForDevice[currentDevice];
     const paddingMultiplier = paddingScale[currentDevice];
-    const paddingTop = Math.round(
-      clampNumber(block.paddingTop ?? DEFAULT_PADDING, 24, 320) * paddingMultiplier,
+    const rawPaddingTop = clampNumber(
+      block.paddingTop ?? DEFAULT_PADDING,
+      MIN_HEADER_PADDING,
+      MAX_HEADER_PADDING,
     );
-    const paddingBottom = Math.round(
-      clampNumber(block.paddingBottom ?? DEFAULT_PADDING, 24, 320) * paddingMultiplier,
+    const rawPaddingBottom = clampNumber(
+      block.paddingBottom ?? DEFAULT_PADDING,
+      MIN_HEADER_PADDING,
+      MAX_HEADER_PADDING,
     );
+    const paddingTop = Math.round(rawPaddingTop * paddingMultiplier);
+    const paddingBottom = Math.round(rawPaddingBottom * paddingMultiplier);
     const titleSize = Math.round(
       clampNumber(block.titleFontSize ?? DEFAULT_TITLE_FONT_SIZE, 24, 120) * scale,
     );
@@ -211,22 +223,85 @@ export default function PageRenderer({ blocks, device }: PageRendererProps) {
     const textAlign = align;
     const subtitle = block.subtitle?.trim();
     const tagline = block.tagline?.trim();
-    const subtitleSize = Math.round(titleSize * 0.45);
-    const taglineSize = Math.round(titleSize * 0.3);
+    const subtitleSize = Math.max(Math.round(titleSize * 0.45), tokens.fontSize.md);
+    const taglineSize = Math.max(Math.round(titleSize * 0.28), tokens.fontSize.sm);
     const titleColor = block.titleColor ?? '#ffffff';
     const subtitleColor = block.subtitleColor ?? 'rgba(255, 255, 255, 0.9)';
     const taglineColor = block.taglineColor ?? 'rgba(255, 255, 255, 0.75)';
     const overlayOpacity = clampNumber(block.overlayOpacity ?? 60, 0, 100) / 100;
     const overlayEnabled = block.overlayEnabled ?? false;
-    const overlayColor = overlayEnabled
-      ? hexToRgba(block.overlayColor ?? '#0f172a', overlayOpacity)
-      : 'transparent';
+    const hasBackgroundImage = Boolean(block.backgroundImageUrl);
+    const overlayBackground =
+      hasBackgroundImage && overlayEnabled
+        ? hexToRgba(block.overlayColor ?? '#0f172a', overlayOpacity)
+        : 'transparent';
     const backgroundSize = block.backgroundImageFit ?? 'cover';
     const backgroundPosition = `${block.backgroundImagePosition ?? 'center'} center`;
-    const horizontalPaddingBase = tokens.spacing.xl;
-    const horizontalPadding = Math.max(
-      tokens.spacing.md,
-      Math.round(horizontalPaddingBase * (paddingMultiplier > 1 ? 1 : paddingMultiplier + 0.2)),
+    const horizontalPadding =
+      currentDevice === 'desktop'
+        ? HEADER_HORIZONTAL_PADDING_DESKTOP
+        : currentDevice === 'tablet'
+        ? HEADER_HORIZONTAL_PADDING_TABLET
+        : HEADER_HORIZONTAL_PADDING_MOBILE;
+    const textGap = Math.max(tokens.spacing.sm, Math.round(tokens.spacing.md * scale));
+    const minHeight = Math.max(paddingTop + paddingBottom, MIN_HEADER_HEIGHT);
+
+    const textColumn = (
+      <div
+        style={{
+          width: '100%',
+          maxWidth: block.fullWidth ? '100%' : 960,
+          margin: block.fullWidth ? 0 : '0 auto',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems,
+          textAlign,
+          gap: textGap,
+        }}
+      >
+        {tagline ? (
+          <p
+            style={{
+              margin: 0,
+              fontSize: taglineSize,
+              letterSpacing: 2,
+              textTransform: 'uppercase',
+              color: taglineColor,
+              fontWeight: 600,
+              fontFamily,
+            }}
+          >
+            {tagline}
+          </p>
+        ) : null}
+        <h1
+          style={{
+            margin: 0,
+            fontSize: titleSize,
+            lineHeight,
+            letterSpacing,
+            fontWeight,
+            fontFamily,
+            color: titleColor,
+          }}
+        >
+          {block.title}
+        </h1>
+        {subtitle ? (
+          <p
+            style={{
+              margin: 0,
+              maxWidth: block.fullWidth ? '100%' : 720,
+              fontSize: subtitleSize,
+              lineHeight: 1.5,
+              color: subtitleColor,
+              fontFamily,
+            }}
+          >
+            {subtitle}
+          </p>
+        ) : null}
+      </div>
     );
 
     return (
@@ -236,8 +311,7 @@ export default function PageRenderer({ blocks, device }: PageRendererProps) {
           position: 'relative',
           borderRadius: tokens.radius.lg,
           overflow: 'hidden',
-          backgroundColor: tokens.colors.surfaceInverse,
-          color: tokens.colors.textOnDark,
+          background: hasBackgroundImage ? tokens.colors.surfaceInverse : tokens.colors.surface,
           boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.12)',
         }}
       >
@@ -245,28 +319,30 @@ export default function PageRenderer({ blocks, device }: PageRendererProps) {
           style={{
             position: 'relative',
             display: 'flex',
-            alignItems: 'stretch',
             justifyContent: 'center',
-            backgroundImage: block.backgroundImageUrl
-              ? `url(${block.backgroundImageUrl})`
-              : undefined,
-            backgroundSize,
-            backgroundPosition,
-            backgroundRepeat: 'no-repeat',
+            minHeight,
+            backgroundColor: hasBackgroundImage ? 'transparent' : tokens.colors.surfaceInverse,
           }}
         >
-          <div
-            aria-hidden
-            style={{
-              position: 'absolute',
-              inset: 0,
-              background: overlayColor,
-              pointerEvents: 'none',
-            }}
-          />
+          {hasBackgroundImage ? (
+            <img
+              src={block.backgroundImageUrl ?? ''}
+              alt=""
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                objectFit: backgroundSize,
+                objectPosition: backgroundPosition,
+                pointerEvents: 'none',
+              }}
+            />
+          ) : null}
           <div
             style={{
               position: 'relative',
+              inset: 'auto',
               width: '100%',
               paddingTop,
               paddingBottom,
@@ -275,63 +351,10 @@ export default function PageRenderer({ blocks, device }: PageRendererProps) {
               boxSizing: 'border-box',
               display: 'flex',
               justifyContent: 'center',
+              background: overlayBackground,
             }}
           >
-            <div
-              style={{
-                width: '100%',
-                maxWidth: block.fullWidth ? '100%' : 960,
-                margin: block.fullWidth ? 0 : '0 auto',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems,
-                textAlign,
-                gap: tokens.spacing.sm,
-              }}
-            >
-              {tagline ? (
-                <p
-                  style={{
-                    margin: 0,
-                    fontSize: taglineSize,
-                    letterSpacing: 2,
-                    textTransform: 'uppercase',
-                    color: taglineColor,
-                    fontWeight: 600,
-                    fontFamily,
-                  }}
-                >
-                  {tagline}
-                </p>
-              ) : null}
-              <h1
-                style={{
-                  margin: 0,
-                  fontSize: titleSize,
-                  lineHeight,
-                  letterSpacing,
-                  fontWeight,
-                  fontFamily,
-                  color: titleColor,
-                }}
-              >
-                {block.title}
-              </h1>
-              {subtitle ? (
-                <p
-                  style={{
-                    margin: 0,
-                    maxWidth: block.fullWidth ? '100%' : 720,
-                    fontSize: subtitleSize,
-                    lineHeight: 1.5,
-                    color: subtitleColor,
-                    fontFamily,
-                  }}
-                >
-                  {subtitle}
-                </p>
-              ) : null}
-            </div>
+            {textColumn}
           </div>
         </div>
       </section>

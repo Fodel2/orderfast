@@ -1,4 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Columns, Image as ImageIcon, LayoutDashboard, Minus, MoveVertical, Type } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import type {
   Block,
   HeaderBlock,
@@ -9,7 +12,9 @@ import type {
 } from './PageRenderer';
 import WebpageBuilder from './webpage/WebpageBuilder';
 import HeaderInspector from './webpage/HeaderInspector';
+import { STORAGE_BUCKET } from '@/lib/storage';
 import { supabase } from '@/lib/supabaseClient';
+import InputUpload from '@/src/components/inspector/controls/InputUpload';
 import { tokens } from '@/src/ui/tokens';
 
 type Props = {
@@ -18,6 +23,8 @@ type Props = {
   pageId: string;
   restaurantId: string;
 };
+
+const headerVerticalPadding = tokens.spacing.xl * 5;
 
 const createHeaderBlock = (): HeaderBlock => ({
   id: crypto.randomUUID(),
@@ -41,8 +48,8 @@ const createHeaderBlock = (): HeaderBlock => ({
   subtitleColor: 'rgba(255, 255, 255, 0.9)',
   taglineColor: 'rgba(255, 255, 255, 0.75)',
   align: 'center',
-  paddingTop: 160,
-  paddingBottom: 160,
+  paddingTop: headerVerticalPadding,
+  paddingBottom: headerVerticalPadding,
   fullWidth: true,
 });
 
@@ -95,7 +102,11 @@ const createDefaultBlocks = (): Block[] => [
   createTextBlock({ text: 'Start writing…' }),
 ];
 
-const NEW_BLOCKS: Record<string, () => Block> = {
+type BlockPaletteKind = 'header' | 'text' | 'image' | 'two-col' | 'divider' | 'spacer';
+type BlockCreatorKind = BlockPaletteKind | 'button';
+type BlockIconComponent = LucideIcon;
+
+const NEW_BLOCKS: Record<BlockCreatorKind, () => Block> = {
   header: () => createHeaderBlock(),
   text: () => createTextBlock(),
   image: () => createImageBlock(),
@@ -112,7 +123,60 @@ const NEW_BLOCKS: Record<string, () => Block> = {
   'two-col': () => createTwoColumnBlock(),
 };
 
-const BLOCK_KINDS = Object.keys(NEW_BLOCKS) as (keyof typeof NEW_BLOCKS)[];
+type BlockLibraryOption = {
+  kind: BlockPaletteKind;
+  title: string;
+  description: string;
+  icon: BlockIconComponent;
+};
+
+const BLOCK_LIBRARY: BlockLibraryOption[] = [
+  {
+    kind: 'header',
+    title: 'Header',
+    description: 'Hero section with background imagery, overlay, and typography controls.',
+    icon: LayoutDashboard,
+  },
+  {
+    kind: 'text',
+    title: 'Text',
+    description: 'Rich paragraph block for storytelling and descriptions.',
+    icon: Type,
+  },
+  {
+    kind: 'image',
+    title: 'Image',
+    description: 'Upload or link images with custom sizing and radius.',
+    icon: ImageIcon,
+  },
+  {
+    kind: 'two-col',
+    title: 'Columns',
+    description: 'Two-column layout ideal for text and imagery pairings.',
+    icon: Columns,
+  },
+  {
+    kind: 'divider',
+    title: 'Divider',
+    description: 'Subtle line to separate sections of content.',
+    icon: Minus,
+  },
+  {
+    kind: 'spacer',
+    title: 'Spacer',
+    description: 'Adjustable vertical spacing between blocks.',
+    icon: MoveVertical,
+  },
+];
+
+const getUploadErrorMessage = (error: unknown) => {
+  if (!error) return 'Unknown error';
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'object' && 'message' in (error as Record<string, unknown>)) {
+    return String((error as Record<string, unknown>).message);
+  }
+  return String(error);
+};
 
 const cloneText = (block: TextBlock | undefined) =>
   block
@@ -317,7 +381,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
   const [blocks, setBlocks] = useState<Block[]>(() => createDefaultBlocks());
   const [selection, setSelection] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [blockLibraryOpen, setBlockLibraryOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const history = useRef<Block[][]>([]);
@@ -355,7 +419,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
     future.current = [];
   }, []);
 
-  function addBlock(kind: keyof typeof NEW_BLOCKS) {
+  function addBlock(kind: BlockCreatorKind) {
     if (kind === 'header') {
       const existingHeader = blocks.find((block) => block.type === 'header');
       if (existingHeader) {
@@ -374,9 +438,11 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
       return;
     }
 
-    const next = [...blocks, NEW_BLOCKS[kind]()];
+    const created = NEW_BLOCKS[kind]();
+    const next = [...blocks, created];
     pushHistory(blocks);
     setBlocks(next);
+    setSelection(created.id);
   }
 
   function removeBlock(id: string) {
@@ -427,11 +493,12 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
   }
 
   const handleAddBlock = () => {
-    if (typeof window !== 'undefined' && window.innerWidth < 768) {
-      setPaletteOpen(true);
-    } else {
-      addBlock('text');
-    }
+    setBlockLibraryOpen(true);
+  };
+
+  const handleBlockSelect = (kind: BlockPaletteKind) => {
+    addBlock(kind);
+    setBlockLibraryOpen(false);
   };
 
   useEffect(() => {
@@ -540,7 +607,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
       <div className="relative z-[61] m-4 flex w-[calc(100%-2rem)] flex-1 flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
         {/* Mobile toolbar */}
         <div className="flex items-center justify-between border-b p-2 md:hidden">
-          <button onClick={() => setPaletteOpen(true)} className="rounded border px-2 py-1">Blocks</button>
+          <button onClick={() => setBlockLibraryOpen(true)} className="rounded border px-2 py-1">Blocks</button>
           <div className="space-x-2">
             <button onClick={undo} className="rounded border px-2 py-1">Undo</button>
             <button onClick={redo} className="rounded border px-2 py-1">Redo</button>
@@ -622,26 +689,64 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
                   gap: tokens.spacing.sm,
                 }}
               >
-                {BLOCK_KINDS.map((kind) => (
-                  <button
-                    key={kind}
-                    type="button"
-                    onClick={() => addBlock(kind)}
-                    style={{
-                      borderRadius: tokens.radius.md,
-                      border: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
-                      background: tokens.colors.surfaceSubtle,
-                      padding: `${tokens.spacing.sm}px ${tokens.spacing.md}px`,
-                      textAlign: 'left',
-                      textTransform: 'capitalize',
-                      fontSize: tokens.fontSize.sm,
-                      color: tokens.colors.textSecondary,
-                      transition: `border-color 160ms ${tokens.easing.standard}, background-color 160ms ${tokens.easing.standard}`,
-                    }}
-                  >
-                    + {kind.replace(/-/g, ' ')}
-                  </button>
-                ))}
+                {BLOCK_LIBRARY.map((option) => {
+                  const Icon = option.icon;
+                  return (
+                    <button
+                      key={option.kind}
+                      type="button"
+                      onClick={() => addBlock(option.kind)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: tokens.spacing.sm,
+                        borderRadius: tokens.radius.md,
+                        border: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
+                        background: tokens.colors.surfaceSubtle,
+                        padding: `${tokens.spacing.sm}px ${tokens.spacing.md}px`,
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                        transition: `border-color 160ms ${tokens.easing.standard}, background-color 160ms ${tokens.easing.standard}, transform 160ms ${tokens.easing.standard}`,
+                      }}
+                    >
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          width: tokens.spacing.lg,
+                          height: tokens.spacing.lg,
+                          borderRadius: tokens.radius.sm,
+                          background: 'rgba(14, 165, 233, 0.12)',
+                          color: tokens.colors.accent,
+                          flexShrink: 0,
+                        }}
+                      >
+                        <Icon size={18} strokeWidth={1.6} />
+                      </span>
+                      <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <span
+                          style={{
+                            fontSize: tokens.fontSize.sm,
+                            fontWeight: tokens.fontWeight.medium,
+                            color: tokens.colors.textSecondary,
+                          }}
+                        >
+                          {option.title}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: tokens.fontSize.xs,
+                            color: tokens.colors.textMuted,
+                            lineHeight: 1.4,
+                          }}
+                        >
+                          {option.description}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
             <main className="flex-1 overflow-hidden">
@@ -653,6 +758,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
                 onDuplicateBlock={duplicateBlock}
                 onMoveBlock={moveBlock}
                 onAddBlock={handleAddBlock}
+                inspectorVisible={inspectorVisible}
               />
             </main>
           </div>
@@ -717,31 +823,12 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
         </div>
       </div>
 
-      {/* Mobile palette overlay */}
-      {paletteOpen && (
-        <aside className="fixed inset-y-0 left-0 w-60 bg-white border-r p-3 space-y-3 z-[62] md:hidden">
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-sm font-semibold">Blocks</div>
-            <button onClick={() => setPaletteOpen(false)} className="px-2 py-1 rounded border">Close</button>
-          </div>
-          {BLOCK_KINDS.map((kind) => (
-            <button
-              key={kind}
-              onClick={() => {
-                addBlock(kind);
-                setPaletteOpen(false);
-              }}
-              className="w-full rounded border px-3 py-2 text-left capitalize"
-            >
-              + {kind.replace(/-/g, ' ')}
-            </button>
-          ))}
-          <div className="mt-6 space-x-2">
-            <button onClick={undo} className="px-2 py-1 rounded border">Undo</button>
-            <button onClick={redo} className="px-2 py-1 rounded border">Redo</button>
-          </div>
-        </aside>
-      )}
+      <BlockLibraryModal
+        open={blockLibraryOpen}
+        options={BLOCK_LIBRARY}
+        onSelect={handleBlockSelect}
+        onClose={() => setBlockLibraryOpen(false)}
+      />
 
       {/* Mobile inspector drawer */}
       {selection && inspectorOpen && (
@@ -759,6 +846,189 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
         </div>
       )}
     </div>
+  );
+}
+
+type BlockLibraryModalProps = {
+  open: boolean;
+  options: BlockLibraryOption[];
+  onSelect: (kind: BlockPaletteKind) => void;
+  onClose: () => void;
+};
+
+function BlockLibraryModal({ open, options, onSelect, onClose }: BlockLibraryModalProps) {
+  useEffect(() => {
+    if (!open || typeof window === 'undefined') return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open, onClose]);
+
+  if (!open || typeof document === 'undefined') {
+    return null;
+  }
+
+  const handleContainerClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    event.stopPropagation();
+  };
+
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Add a block"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 70,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: tokens.spacing.lg,
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'rgba(15, 23, 42, 0.45)',
+          backdropFilter: 'blur(2px)',
+        }}
+      />
+      <div
+        onClick={handleContainerClick}
+        style={{
+          position: 'relative',
+          width: '100%',
+          maxWidth: 520,
+          background: tokens.colors.surface,
+          borderRadius: tokens.radius.lg,
+          padding: tokens.spacing.xl,
+          boxShadow: tokens.shadow.lg,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: tokens.spacing.lg,
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: tokens.spacing.md,
+          }}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span
+              style={{
+                fontSize: tokens.fontSize.xl,
+                fontWeight: tokens.fontWeight.semibold,
+                color: tokens.colors.textPrimary,
+              }}
+            >
+              Add a block
+            </span>
+            <span
+              style={{
+                fontSize: tokens.fontSize.sm,
+                color: tokens.colors.textMuted,
+              }}
+            >
+              Choose a layout element to insert into the page.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              borderRadius: tokens.radius.sm,
+              border: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
+              background: tokens.colors.surface,
+              color: tokens.colors.textSecondary,
+              padding: `${tokens.spacing.xs}px ${tokens.spacing.sm}px`,
+              fontSize: tokens.fontSize.sm,
+              cursor: 'pointer',
+            }}
+          >
+            Close
+          </button>
+        </div>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+            gap: tokens.spacing.md,
+          }}
+        >
+          {options.map((option) => {
+            const Icon = option.icon;
+            return (
+              <button
+                key={option.kind}
+                type="button"
+                onClick={() => onSelect(option.kind)}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  gap: tokens.spacing.sm,
+                  borderRadius: tokens.radius.lg,
+                  border: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
+                  background: tokens.colors.surfaceSubtle,
+                  padding: tokens.spacing.lg,
+                  cursor: 'pointer',
+                  transition: `border-color 160ms ${tokens.easing.standard}, background-color 160ms ${tokens.easing.standard}, transform 160ms ${tokens.easing.standard}`,
+                }}
+              >
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: tokens.spacing.xl,
+                    height: tokens.spacing.xl,
+                    borderRadius: tokens.radius.md,
+                    background: 'rgba(14, 165, 233, 0.12)',
+                    color: tokens.colors.accent,
+                  }}
+                >
+                  <Icon size={20} strokeWidth={1.6} />
+                </span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span
+                    style={{
+                      fontSize: tokens.fontSize.md,
+                      fontWeight: tokens.fontWeight.semibold,
+                      color: tokens.colors.textSecondary,
+                    }}
+                  >
+                    {option.title}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: tokens.fontSize.sm,
+                      color: tokens.colors.textMuted,
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {option.description}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -831,7 +1101,7 @@ function Inspector({
     case 'divider':
       return <div className="text-sm text-neutral-500">No options.</div>;
     case 'two-col':
-      return <TwoColumnInspector block={block} onChange={onChange} />;
+      return <TwoColumnInspector block={block} onChange={onChange} restaurantId={restaurantId} />;
     default:
       return null;
   }
@@ -840,9 +1110,10 @@ function Inspector({
 type TwoColumnInspectorProps = {
   block: TwoColumnBlock;
   onChange: (patch: Partial<TwoColumnBlock>) => void;
+  restaurantId: string;
 };
 
-function TwoColumnInspector({ block, onChange }: TwoColumnInspectorProps) {
+function TwoColumnInspector({ block, onChange, restaurantId }: TwoColumnInspectorProps) {
   const updateColumn = (key: 'left' | 'right', updater: (column: TwoColumnColumn) => TwoColumnColumn) => {
     const nextColumn = updater(block[key]);
     onChange({ [key]: nextColumn });
@@ -862,31 +1133,76 @@ function TwoColumnInspector({ block, onChange }: TwoColumnInspectorProps) {
     });
   };
 
-  const handleAddImage = (key: 'left' | 'right') => {
-    updateColumn(key, (column) => ({
-      ...column,
-      image: column.image ?? createImageBlock({ src: 'https://placehold.co/800x600', width: 720 }),
-    }));
+  const [uploadingColumn, setUploadingColumn] = useState<null | 'left' | 'right'>(null);
+
+  const createColumnImagePath = (key: 'left' | 'right', fileName: string) => {
+    const ext = fileName.split('.').pop() || 'jpg';
+    return `webpage-columns/${restaurantId}/${key}-${crypto.randomUUID()}.${ext}`;
   };
 
-  const handleRemoveImage = (key: 'left' | 'right') => {
-    updateColumn(key, (column) => ({
-      ...column,
-      image: null,
-      wrapTextAroundImage: false,
-    }));
-  };
+  const handleRemoveImage = useCallback(
+    (key: 'left' | 'right') => {
+      updateColumn(key, (column) => ({
+        ...column,
+        image: null,
+        wrapTextAroundImage: false,
+      }));
+    },
+    [updateColumn],
+  );
 
-  const handleImageChange = (key: 'left' | 'right', patch: Partial<ImageBlock>) => {
-    updateColumn(key, (column) => {
-      const image = column.image ?? createImageBlock({ src: 'https://placehold.co/800x600', width: 720 });
-      return { ...column, image: { ...image, ...patch } };
-    });
-  };
+  const handleImageChange = useCallback(
+    (key: 'left' | 'right', patch: Partial<ImageBlock>) => {
+      updateColumn(key, (column) => {
+        let nextPatch = { ...patch };
+        if (typeof nextPatch.src === 'string') {
+          const normalized = nextPatch.src.trim();
+          if (!normalized.length) {
+            return { ...column, image: null, wrapTextAroundImage: false };
+          }
+          nextPatch = { ...nextPatch, src: normalized };
+        }
+
+        const baseImage =
+          column.image ??
+          createImageBlock({
+            src: typeof nextPatch.src === 'string' ? nextPatch.src : 'https://placehold.co/800x600',
+            width: 720,
+          });
+
+        return { ...column, image: { ...baseImage, ...nextPatch } };
+      });
+    },
+    [updateColumn],
+  );
+
+  const handleUpload = useCallback(
+    async (key: 'left' | 'right', file: File) => {
+      if (!restaurantId) return;
+      setUploadingColumn(key);
+      try {
+        const path = createColumnImagePath(key, file.name);
+        const { error } = await supabase.storage.from(STORAGE_BUCKET).upload(path, file, {
+          upsert: true,
+        });
+        if (error) throw error;
+        const { data } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path);
+        if (data?.publicUrl) {
+          handleImageChange(key, { src: data.publicUrl });
+        }
+      } catch (error) {
+        // eslint-disable-next-line no-alert
+        alert(`Failed to upload image: ${getUploadErrorMessage(error)}`);
+      } finally {
+        setUploadingColumn(null);
+      }
+    },
+    [handleImageChange, restaurantId],
+  );
 
   const handleWrapToggle = (key: 'left' | 'right', enabled: boolean) => {
     updateColumn(key, (column) => {
-      const image = column.image ?? (enabled ? createImageBlock({ src: 'https://placehold.co/800x600', width: 720 }) : null);
+      const image = column.image ?? null;
       const alignment = enabled
         ? column.imageAlignment === 'left' || column.imageAlignment === 'right'
           ? column.imageAlignment
@@ -894,8 +1210,7 @@ function TwoColumnInspector({ block, onChange }: TwoColumnInspectorProps) {
         : column.imageAlignment ?? 'top';
       return {
         ...column,
-        image,
-        wrapTextAroundImage: Boolean(image) && enabled,
+        wrapTextAroundImage: Boolean(image) && enabled && (alignment === 'left' || alignment === 'right'),
         imageAlignment: alignment,
         imageSpacing: column.imageSpacing ?? tokens.spacing.md,
       };
@@ -940,93 +1255,147 @@ function TwoColumnInspector({ block, onChange }: TwoColumnInspectorProps) {
         </Field>
         <Align value={textAlign} onChange={(align) => handleTextAlign(key, align)} />
         <div className="mt-4 space-y-3">
+          <InputUpload
+            label="Column image"
+            buttonLabel={image ? 'Replace image' : 'Upload image'}
+            accept="image/*"
+            uploading={uploadingColumn === key}
+            uploadingLabel="Uploading…"
+            onSelectFiles={(files) => {
+              const file = files?.item(0);
+              if (file) {
+                void handleUpload(key, file);
+              }
+            }}
+          />
           {image ? (
-            <>
-              <Field label="Image URL">
-                <input
-                  className="w-full rounded border px-2 py-1"
-                  value={image.src}
-                  onChange={(event) => handleImageChange(key, { src: event.target.value })}
-                />
-              </Field>
-              <Field label="Alt text">
-                <input
-                  className="w-full rounded border px-2 py-1"
-                  value={image.alt ?? ''}
-                  onChange={(event) => handleImageChange(key, { alt: event.target.value })}
-                />
-              </Field>
-              <Field label="Max width (px)">
-                <input
-                  type="number"
-                  className="w-full rounded border px-2 py-1"
-                  value={image.width ?? 720}
-                  onChange={(event) => {
-                    const value = Number(event.target.value);
-                    handleImageChange(key, { width: Number.isFinite(value) ? value : undefined });
-                  }}
-                />
-              </Field>
-              <Field label="Corner radius">
-                <select
-                  className="w-full rounded border px-2 py-1"
-                  value={image.radius ?? 'lg'}
-                  onChange={(event) => handleImageChange(key, { radius: event.target.value as ImageBlock['radius'] })}
-                >
-                  <option value="none">None</option>
-                  <option value="lg">Large</option>
-                  <option value="2xl">2XL</option>
-                </select>
-              </Field>
-              <Field label="Image position">
-                <select
-                  className="w-full rounded border px-2 py-1"
-                  value={column.imageAlignment ?? 'top'}
-                  onChange={(event) =>
-                    handleImageAlignment(key, event.target.value as TwoColumnColumn['imageAlignment'])
-                  }
-                >
-                  <option value="top">Top</option>
-                  <option value="bottom">Bottom</option>
-                  <option value="left">Left</option>
-                  <option value="right">Right</option>
-                </select>
-              </Field>
-              <label className="flex items-center gap-2 text-xs text-neutral-600">
-                <input
-                  type="checkbox"
-                  checked={Boolean(column.wrapTextAroundImage)}
-                  onChange={(event) => handleWrapToggle(key, event.target.checked)}
-                />
-                Wrap text around image
-              </label>
-              {column.wrapTextAroundImage ? (
-                <Field label="Wrap spacing (px)">
-                  <input
-                    type="number"
-                    className="w-full rounded border px-2 py-1"
-                    value={column.imageSpacing ?? tokens.spacing.md}
-                    onChange={(event) => handleImageSpacing(key, Number(event.target.value))}
-                  />
-                </Field>
-              ) : null}
-              <button
-                type="button"
-                className="text-xs font-medium text-red-600"
-                onClick={() => handleRemoveImage(key)}
-              >
-                Remove image
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              className="rounded border px-3 py-2 text-sm font-medium text-neutral-600"
-              onClick={() => handleAddImage(key)}
+            <div
+              style={{
+                border: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
+                borderRadius: tokens.radius.md,
+                padding: tokens.spacing.sm,
+                background: tokens.colors.surface,
+              }}
             >
-              + Add image
-            </button>
+              <img
+                src={image.src}
+                alt={image.alt ?? ''}
+                style={{
+                  width: '100%',
+                  height: 'auto',
+                  borderRadius: tokens.radius.sm,
+                  display: 'block',
+                }}
+              />
+              <div
+                style={{
+                  marginTop: tokens.spacing.xs,
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: tokens.spacing.sm,
+                  fontSize: tokens.fontSize.xs,
+                  color: tokens.colors.textMuted,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => handleRemoveImage(key)}
+                  style={{
+                    color: '#dc2626',
+                    fontWeight: 600,
+                  }}
+                >
+                  Remove image
+                </button>
+                <a
+                  href={image.src}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ color: tokens.colors.textSecondary, textDecoration: 'underline' }}
+                >
+                  Open original
+                </a>
+              </div>
+            </div>
+          ) : (
+            <div
+              style={{
+                fontSize: tokens.fontSize.xs,
+                color: tokens.colors.textMuted,
+              }}
+            >
+              Upload a photo or paste an image URL to feature it in this column.
+            </div>
           )}
+          <Field label="Image URL">
+            <input
+              className="w-full rounded border px-2 py-1"
+              value={image?.src ?? ''}
+              onChange={(event) => handleImageChange(key, { src: event.target.value })}
+            />
+          </Field>
+          <Field label="Alt text">
+            <input
+              className="w-full rounded border px-2 py-1"
+              value={image?.alt ?? ''}
+              onChange={(event) => handleImageChange(key, { alt: event.target.value })}
+            />
+          </Field>
+          <Field label="Max width (px)">
+            <input
+              type="number"
+              className="w-full rounded border px-2 py-1"
+              value={image?.width ?? 720}
+              onChange={(event) => {
+                const value = Number(event.target.value);
+                handleImageChange(key, { width: Number.isFinite(value) ? value : undefined });
+              }}
+            />
+          </Field>
+          <Field label="Corner radius">
+            <select
+              className="w-full rounded border px-2 py-1"
+              value={image?.radius ?? 'lg'}
+              onChange={(event) => handleImageChange(key, { radius: event.target.value as ImageBlock['radius'] })}
+            >
+              <option value="none">None</option>
+              <option value="lg">Large</option>
+              <option value="2xl">2XL</option>
+            </select>
+          </Field>
+          <Field label="Image position">
+            <select
+              className="w-full rounded border px-2 py-1"
+              value={column.imageAlignment ?? 'top'}
+              onChange={(event) =>
+                handleImageAlignment(key, event.target.value as TwoColumnColumn['imageAlignment'])
+              }
+            >
+              <option value="top">Top</option>
+              <option value="bottom">Bottom</option>
+              <option value="left">Left</option>
+              <option value="right">Right</option>
+            </select>
+          </Field>
+          <label className="flex items-center gap-2 text-xs text-neutral-600">
+            <input
+              type="checkbox"
+              checked={Boolean(column.wrapTextAroundImage)}
+              disabled={!image}
+              onChange={(event) => handleWrapToggle(key, event.target.checked)}
+            />
+            Wrap text around image
+          </label>
+          {column.wrapTextAroundImage ? (
+            <Field label="Wrap spacing (px)">
+              <input
+                type="number"
+                className="w-full rounded border px-2 py-1"
+                value={column.imageSpacing ?? tokens.spacing.md}
+                onChange={(event) => handleImageSpacing(key, Number(event.target.value))}
+              />
+            </Field>
+          ) : null}
         </div>
       </div>
     );
