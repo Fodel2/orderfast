@@ -1331,6 +1331,7 @@ type SlidesManagerProps = {
   editInPreview?: boolean;
   scale?: number;
   onManipulationChange?: (manipulating: boolean) => void;
+  safeZoneVisible?: boolean;
 };
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
@@ -2194,6 +2195,7 @@ export default function SlidesManager({
   editInPreview = true,
   scale = 1,
   onManipulationChange,
+  safeZoneVisible,
 }: SlidesManagerProps) {
   const frameRef = useRef<HTMLElement>(null);
   const cfg = useMemo(() => initialCfg, [initialCfg]);
@@ -2218,7 +2220,10 @@ export default function SlidesManager({
   );
   const [safeZoneTooltipEdge, setSafeZoneTooltipEdge] = useState<SafeZoneEdge | null>(null);
 
-  const shouldShowSafeZone = Boolean(editable && editInPreview && safeZoneEnabled);
+  const resolvedSafeZoneEnabled =
+    typeof safeZoneVisible === 'boolean' ? safeZoneVisible : safeZoneEnabled;
+
+  const shouldShowSafeZone = Boolean(editable && editInPreview && resolvedSafeZoneEnabled);
 
   const handleSafeZoneEvaluate = useCallback(
     (frame: Frame) => {
@@ -3035,18 +3040,20 @@ export default function SlidesManager({
         fontSize: `${tokens.fontSize.sm}px`,
         fontWeight: tokens.fontWeight.medium,
         color: tokens.colors.textSecondary,
-        background: safeZoneEnabled ? tokens.colors.surfaceSubtle : tokens.colors.surface,
+        background: resolvedSafeZoneEnabled
+          ? tokens.colors.surfaceSubtle
+          : tokens.colors.surface,
         border: `${tokens.border.thin}px solid ${
-          safeZoneEnabled ? tokens.colors.borderStrong : tokens.colors.borderLight
+          resolvedSafeZoneEnabled ? tokens.colors.borderStrong : tokens.colors.borderLight
         }`,
         borderRadius: tokens.radius.sm,
         padding: `${tokens.spacing.xs}px ${tokens.spacing.sm}px`,
         cursor: 'pointer',
-        boxShadow: safeZoneEnabled ? tokens.shadow.sm : tokens.shadow.none,
+        boxShadow: resolvedSafeZoneEnabled ? tokens.shadow.sm : tokens.shadow.none,
         transition:
           'background-color 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease',
       }) as CSSProperties,
-    [safeZoneEnabled],
+    [resolvedSafeZoneEnabled],
   );
 
   const safeZoneToggleComputedStyle = useMemo<CSSPropertiesWithVars>(
@@ -3059,13 +3066,13 @@ export default function SlidesManager({
     [editInPreview, safeZoneToggleButtonStyle],
   );
 
-  const safeZoneToggleLabel = safeZoneEnabled ? 'Hide Safe Zone' : 'Show Safe Zone';
+  const safeZoneToggleLabel = resolvedSafeZoneEnabled ? 'Hide Safe Zone' : 'Show Safe Zone';
 
   return (
     <>
       <style jsx global>{BLOCK_INTERACTION_GLOBAL_STYLES}</style>
       <div className="of-viewport">
-        {editable ? (
+        {editable && typeof safeZoneVisible !== 'boolean' ? (
           <div className="mb-3 flex w-full justify-end">
             <button
               type="button"
