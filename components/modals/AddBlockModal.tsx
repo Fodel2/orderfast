@@ -178,10 +178,10 @@ export default function AddBlockModal({
         style={{
           position: 'absolute',
           inset: 0,
-          background: tokens.colors.overlay.strong,
+          background: 'rgba(15, 23, 42, 0.4)',
           backdropFilter: 'blur(2px)',
-          opacity: visible ? 0.9 : 0,
-          transition: `opacity 180ms ${tokens.easing.standard}`,
+          opacity: visible ? 1 : 0,
+          transition: `opacity 200ms ${tokens.easing.standard}`,
         }}
       />
       <div
@@ -202,8 +202,8 @@ export default function AddBlockModal({
           gap: tokens.spacing.lg,
           overflowY: 'auto',
           opacity: visible ? 1 : 0,
-          transform: visible ? 'scale(1)' : 'scale(0.96)',
-          transition: `opacity 180ms ${tokens.easing.standard}, transform 180ms ${tokens.easing.standard}`,
+          transform: visible ? 'translateY(0) scale(1)' : 'translateY(8px) scale(0.96)',
+          transition: `opacity 200ms ${tokens.easing.standard}, transform 200ms ${tokens.easing.standard}`,
         }}
       >
         <div

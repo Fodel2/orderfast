@@ -162,6 +162,8 @@ const HeaderInspector: React.FC<HeaderInspectorProps> = ({ block, onChange, rest
             <img
               src={block.backgroundImageUrl}
               alt=""
+              loading="lazy"
+              decoding="async"
               style={{ display: 'block', width: '100%', height: 'auto' }}
             />
           </div>
@@ -215,6 +217,14 @@ const HeaderInspector: React.FC<HeaderInspectorProps> = ({ block, onChange, rest
             />
           </>
         ) : null}
+      </InspectorSection>
+
+      <InspectorSection title="Effects">
+        <InputToggle
+          label="Parallax scroll"
+          checked={block.parallaxEnabled ?? false}
+          onChange={(checked) => onChange({ parallaxEnabled: checked })}
+        />
       </InspectorSection>
 
       <InspectorSection title="Typography">

@@ -51,6 +51,7 @@ const createHeaderBlock = (): HeaderBlock => ({
   paddingTop: headerVerticalPadding,
   paddingBottom: headerVerticalPadding,
   fullWidth: true,
+  parallaxEnabled: false,
 });
 
 const createTextBlock = (overrides?: Partial<TextBlock>): TextBlock => ({
@@ -168,6 +169,107 @@ const BLOCK_LIBRARY: BlockLibraryOption[] = [
     icon: MoveVertical,
   },
 ];
+
+type DemoPage = {
+  id: string;
+  name: string;
+  description: string;
+  blocks: Block[];
+};
+
+const DEMO_PAGES: DemoPage[] = (() => {
+  const brunchHeader = {
+    ...createHeaderBlock(),
+    id: crypto.randomUUID(),
+    title: 'Brunch Club',
+    subtitle: 'Weekend brunch reservations with champagne towers, live jazz, and sunlit patios.',
+    tagline: 'Sunlit gatherings',
+    backgroundImageUrl:
+      'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=1400&q=80',
+    backgroundImagePosition: 'center' as const,
+    overlayOpacity: 55,
+    align: 'center' as const,
+    parallaxEnabled: true,
+  } satisfies HeaderBlock;
+
+  const brunchIntro = createTextBlock({
+    text: 'Sip seasonal cocktails, linger over chef-crafted plates, and make brunch the highlight of your weekend.',
+    align: 'center',
+  });
+
+  const brunchColumns = {
+    ...createTwoColumnBlock(),
+    id: crypto.randomUUID(),
+    ratio: '2-1' as const,
+    gap: tokens.spacing.lg * 1.25,
+    padding: tokens.spacing.xl,
+    left: {
+      ...createTwoColumnColumn(),
+      text: createTextBlock({
+        text: 'Our rotating menu celebrates peak-season produce, shared platters, and vibrant flavors inspired by coastal cafés.',
+        align: 'left',
+      }),
+      image: null,
+    },
+    right: {
+      ...createTwoColumnColumn(),
+      text: createTextBlock({
+        text: 'Pair your favorites with sparkling flights, artisan coffees, and curated playlists that set the tone for relaxed celebrations.',
+        align: 'left',
+      }),
+      image: createImageBlock({
+        src: 'https://images.unsplash.com/photo-1529042410759-befb1204b468?auto=format&fit=crop&w=1200&q=80',
+        alt: 'Brunch spread with pancakes and fruit',
+        width: 420,
+        radius: 'lg',
+      }),
+      imageAlignment: 'bottom',
+    },
+  } satisfies TwoColumnBlock;
+
+  const wrapHeader = {
+    ...createHeaderBlock(),
+    id: crypto.randomUUID(),
+    title: 'The Wrap Shack',
+    subtitle: 'Fast-casual wraps pressed to order with warm naan, crisp vegetables, and house-made sauces.',
+    tagline: 'Crafted daily',
+    backgroundImageUrl:
+      'https://images.unsplash.com/photo-1511690656952-34342bb7c2f2?auto=format&fit=crop&w=1400&q=80',
+    overlayColor: '#0f172a',
+    overlayOpacity: 82,
+    align: 'left' as const,
+    parallaxEnabled: false,
+  } satisfies HeaderBlock;
+
+  const wrapStory = createTextBlock({
+    text: 'Choose from bold global fillings, vegan specials, and toasted sides designed for the perfect handheld meal.',
+    align: 'center',
+  });
+
+  const wrapImage = createImageBlock({
+    src: 'https://images.unsplash.com/photo-1473093226795-af9932fe5856?auto=format&fit=crop&w=1400&q=80',
+    alt: 'Gourmet wrap served on a wooden board',
+    width: 880,
+    radius: '2xl',
+  });
+
+  const wrapDivider: Block = { id: crypto.randomUUID(), type: 'divider' };
+
+  return [
+    {
+      id: 'brunch-club',
+      name: 'Brunch Club',
+      description: 'Parallax hero with storytelling content and a column layout for featured highlights.',
+      blocks: [brunchHeader, brunchIntro, brunchColumns],
+    },
+    {
+      id: 'the-wrap-shack',
+      name: 'The Wrap Shack',
+      description: 'Bold overlay hero paired with a feature image and clean section divider for menu callouts.',
+      blocks: [wrapHeader, wrapStory, wrapImage, wrapDivider],
+    },
+  ];
+})();
 
 const getUploadErrorMessage = (error: unknown) => {
   if (!error) return 'Unknown error';
@@ -497,6 +599,44 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
     setBlockLibraryOpen(true);
   }, []);
 
+  const loadDemoPage = useCallback(
+    (demo: DemoPage) => {
+      const cloned = demo.blocks.map((block) => cloneBlockWithIds(block));
+      pushHistory(blocks);
+      setBlocks(cloned);
+      setSelection(cloned[0]?.id ?? null);
+      setDrawerOpen(false);
+      setBlockLibraryOpen(false);
+    },
+    [blocks, pushHistory],
+  );
+
+  const toolbarDesktopStyle = useMemo<React.CSSProperties>(
+    () => ({
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: `${tokens.spacing.md}px ${tokens.spacing.xl}px`,
+      borderBottom: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
+      background: tokens.colors.surface,
+      gap: tokens.spacing.lg,
+    }),
+    [],
+  );
+
+  const toolbarMobileStyle = useMemo<React.CSSProperties>(
+    () => ({
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: `${tokens.spacing.sm}px ${tokens.spacing.md}px`,
+      borderBottom: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
+      background: tokens.colors.surface,
+      gap: tokens.spacing.sm,
+    }),
+    [],
+  );
+
   const handleBlockSelect = (kind: BlockPaletteKind) => {
     addBlock(kind);
     setBlockLibraryOpen(false);
@@ -542,7 +682,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
       padding: tokens.spacing.lg,
       display: 'flex',
       flexDirection: 'column',
-      gap: tokens.spacing.md,
+      gap: tokens.spacing.lg,
       overflowY: 'auto',
       transform: drawerOpen ? 'translateX(0)' : 'translateX(-110%)',
       transition: `transform 220ms ${tokens.easing.standard}`,
@@ -603,45 +743,82 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
   if (!open) return null;
 
   return (
-    <div role="dialog" aria-modal="true" className="fixed inset-0 z-[60] flex">
+    <>
+      <div role="dialog" aria-modal="true" className="fixed inset-0 z-[60] flex">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative z-[61] m-4 flex w-[calc(100%-2rem)] flex-1 flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
         {/* Mobile toolbar */}
-        <div className="flex items-center justify-between border-b p-2 md:hidden">
-          <button onClick={() => setBlockLibraryOpen(true)} className="rounded border px-2 py-1">Blocks</button>
-          <div className="space-x-2">
-            <button onClick={undo} className="rounded border px-2 py-1">Undo</button>
-            <button onClick={redo} className="rounded border px-2 py-1">Redo</button>
+        <div className="md:hidden" style={toolbarMobileStyle}>
+          <button
+            type="button"
+            onClick={() => setBlockLibraryOpen(true)}
+            className="toolbar-button"
+          >
+            Blocks
+          </button>
+          <div style={{ display: 'flex', gap: tokens.spacing.sm }}>
+            <button type="button" onClick={undo} className="toolbar-button">
+              Undo
+            </button>
+            <button type="button" onClick={redo} className="toolbar-button">
+              Redo
+            </button>
           </div>
-          <div className="space-x-2">
-            <button onClick={save} disabled={saving} className="rounded bg-emerald-600 px-2 py-1 text-white disabled:opacity-60">{saving ? 'Saving…' : 'Save'}</button>
-            <button onClick={onClose} className="rounded border px-2 py-1">Close</button>
+          <div style={{ display: 'flex', gap: tokens.spacing.sm }}>
+            <button
+              type="button"
+              onClick={save}
+              disabled={saving}
+              className="toolbar-button primary"
+            >
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+            <button type="button" onClick={onClose} className="toolbar-button">
+              Close
+            </button>
           </div>
         </div>
 
         {/* Desktop toolbar */}
-        <div className="hidden items-center justify-between border-b bg-white px-6 py-3 md:flex">
-          <div className="flex items-center gap-3">
+        <div className="hidden md:flex" style={toolbarDesktopStyle}>
+          <div style={{ display: 'flex', gap: tokens.spacing.sm }}>
             <button
               type="button"
               onClick={() => setDrawerOpen((prev) => !prev)}
-              className={`rounded border px-3 py-1 text-sm font-medium ${drawerOpen ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : ''}`}
+              className="toolbar-button"
+              data-active={drawerOpen}
+              aria-pressed={drawerOpen}
             >
               Blocks
             </button>
             <button
               type="button"
               onClick={() => setInspectorOpen((prev) => !prev)}
-              className={`rounded border px-3 py-1 text-sm font-medium ${inspectorVisible ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : ''}`}
+              className="toolbar-button"
+              data-active={inspectorVisible}
+              aria-pressed={inspectorVisible}
             >
               Inspector
             </button>
           </div>
-          <div className="flex items-center gap-2">
-            <button onClick={undo} className="rounded border px-3 py-1 text-sm">Undo</button>
-            <button onClick={redo} className="rounded border px-3 py-1 text-sm">Redo</button>
-            <button onClick={save} disabled={saving} className="rounded bg-emerald-600 px-4 py-1 text-sm font-medium text-white disabled:opacity-60">{saving ? 'Saving…' : 'Save'}</button>
-            <button onClick={onClose} className="rounded border px-4 py-1 text-sm">Close</button>
+          <div style={{ display: 'flex', gap: tokens.spacing.sm }}>
+            <button type="button" onClick={undo} className="toolbar-button">
+              Undo
+            </button>
+            <button type="button" onClick={redo} className="toolbar-button">
+              Redo
+            </button>
+            <button
+              type="button"
+              onClick={save}
+              disabled={saving}
+              className="toolbar-button primary"
+            >
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+            <button type="button" onClick={onClose} className="toolbar-button">
+              Close
+            </button>
           </div>
         </div>
 
@@ -749,7 +926,62 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
                   );
                 })}
               </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacing.sm }}>
+                <span
+                  style={{
+                    fontSize: tokens.fontSize.sm,
+                    fontWeight: tokens.fontWeight.semibold,
+                    color: tokens.colors.textSecondary,
+                    textTransform: 'uppercase',
+                    letterSpacing: 1,
+                  }}
+                >
+                  QA demo pages
+                </span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacing.sm }}>
+                  {DEMO_PAGES.map((demo) => (
+                    <button
+                      key={demo.id}
+                      type="button"
+                      onClick={() => loadDemoPage(demo)}
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'flex-start',
+                        gap: 4,
+                        padding: `${tokens.spacing.sm}px ${tokens.spacing.md}px`,
+                        borderRadius: tokens.radius.md,
+                        border: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
+                        background: tokens.colors.surface,
+                        cursor: 'pointer',
+                        transition: `border-color 160ms ${tokens.easing.standard}, box-shadow 160ms ${tokens.easing.standard}, transform 160ms ${tokens.easing.standard}`,
+                        textAlign: 'left',
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: tokens.fontSize.sm,
+                          fontWeight: tokens.fontWeight.medium,
+                          color: tokens.colors.textSecondary,
+                        }}
+                      >
+                        {demo.name}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: tokens.fontSize.xs,
+                          color: tokens.colors.textMuted,
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        {demo.description}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
+          </div>
             <main
               ref={blockLibraryHostRef}
               className="flex-1 overflow-hidden"
@@ -828,6 +1060,55 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
         </div>
       </div>
 
+      <style jsx>{`
+        .toolbar-button {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: ${tokens.spacing.xs}px;
+          padding: ${tokens.spacing.xs}px ${tokens.spacing.md}px;
+          border-radius: ${tokens.radius.md}px;
+          border: ${tokens.border.thin}px solid ${tokens.colors.borderLight};
+          background: ${tokens.colors.surface};
+          color: ${tokens.colors.textSecondary};
+          font-size: ${tokens.fontSize.sm}px;
+          font-weight: ${tokens.fontWeight.medium};
+          cursor: pointer;
+          transition: background-color 160ms ${tokens.easing.standard}, border-color 160ms ${tokens.easing.standard}, box-shadow 160ms ${tokens.easing.standard}, color 160ms ${tokens.easing.standard};
+        }
+
+        .toolbar-button:hover {
+          background: ${tokens.colors.surfaceHover};
+          border-color: ${tokens.colors.borderStrong};
+          box-shadow: ${tokens.shadow.sm};
+        }
+
+        .toolbar-button:focus-visible {
+          outline: 2px solid ${tokens.colors.focusRing};
+          outline-offset: 2px;
+        }
+
+        .toolbar-button[disabled] {
+          opacity: 0.6;
+          cursor: not-allowed;
+          box-shadow: none;
+        }
+
+        .toolbar-button[data-active='true'],
+        .toolbar-button.primary {
+          background: ${tokens.colors.accent};
+          border-color: ${tokens.colors.accent};
+          color: ${tokens.colors.textOnDark};
+          box-shadow: 0 12px 24px rgba(14, 165, 233, 0.25);
+        }
+
+        .toolbar-button[data-active='true']:hover,
+        .toolbar-button.primary:hover {
+          background: ${tokens.colors.accentStrong};
+          border-color: ${tokens.colors.accentStrong};
+        }
+      `}</style>
+
       <AddBlockModal
         open={blockLibraryOpen}
         options={BLOCK_LIBRARY}
@@ -838,27 +1119,85 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
 
       {/* Mobile inspector drawer */}
       {selection && inspectorOpen && (
-        <div className="fixed bottom-0 left-0 right-0 max-h-[50%] bg-white border-t p-4 z-[62] overflow-y-auto md:hidden">
-          <div className="flex items-center justify-between mb-3">
-            <div className="font-semibold">Inspector</div>
-            <button onClick={() => setInspectorOpen(false)} className="px-2 py-1 rounded border">Close</button>
+        <div
+          className="md:hidden fixed inset-0 z-[62] flex flex-col bg-white"
+          style={{
+            padding: tokens.spacing.md,
+            gap: tokens.spacing.md,
+            height: '100vh',
+            boxSizing: 'border-box',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: tokens.spacing.sm,
+              paddingBottom: tokens.spacing.sm,
+              borderBottom: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
+            }}
+          >
+            <span
+              style={{
+                fontWeight: tokens.fontWeight.semibold,
+                color: tokens.colors.textSecondary,
+              }}
+            >
+              Inspector
+            </span>
+            <button
+              type="button"
+              onClick={() => setInspectorOpen(false)}
+              className="toolbar-button"
+              style={{ padding: `${tokens.spacing.xs}px ${tokens.spacing.sm}px` }}
+            >
+              Close
+            </button>
           </div>
-          <Inspector
-            key={selection}
-            block={blocks.find(b => b.id===selection)!}
-            onChange={(patch) => updateBlock(selection, patch)}
-            restaurantId={restaurantId}
-          />
+          <div
+            style={{
+              flex: 1,
+              overflowY: 'auto',
+              paddingTop: tokens.spacing.md,
+              scrollBehavior: 'smooth',
+              paddingBottom: tokens.spacing.md,
+            }}
+          >
+            <Inspector
+              key={selection}
+              block={blocks.find((b) => b.id === selection)!}
+              onChange={(patch) => updateBlock(selection, patch)}
+              restaurantId={restaurantId}
+            />
+          </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="block mb-3">
-      <div className="text-xs font-medium mb-1 text-neutral-600">{label}</div>
+    <label
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: tokens.spacing.xs,
+        marginBottom: tokens.spacing.md,
+      }}
+    >
+      <span
+        style={{
+          fontSize: tokens.fontSize.xs,
+          fontWeight: tokens.fontWeight.medium,
+          color: tokens.colors.textSecondary,
+          textTransform: 'uppercase',
+          letterSpacing: 0.4,
+        }}
+      >
+        {label}
+      </span>
       {children}
     </label>
   );
@@ -1103,6 +1442,8 @@ function TwoColumnInspector({ block, onChange, restaurantId }: TwoColumnInspecto
               <img
                 src={image.src}
                 alt={image.alt ?? ''}
+                loading="lazy"
+                decoding="async"
                 style={{
                   width: '100%',
                   height: 'auto',
@@ -1268,14 +1609,56 @@ function TwoColumnInspector({ block, onChange, restaurantId }: TwoColumnInspecto
   );
 }
 
-function Align({ value, onChange }: { value: 'left'|'center'|'right'; onChange: (v:any)=>void }) {
+function Align({ value, onChange }: { value: 'left' | 'center' | 'right'; onChange: (v: any) => void }) {
+  const alignments: ReadonlyArray<'left' | 'center' | 'right'> = ['left', 'center', 'right'];
   return (
     <Field label="Alignment">
-      <div className="flex gap-2">
-        {(['left','center','right'] as const).map(a => (
-          <button key={a} onClick={()=>onChange(a)} className={`px-2 py-1 rounded border ${value===a?'bg-emerald-50 border-emerald-600':''}`}>{a}</button>
-        ))}
+      <div
+        style={{
+          display: 'flex',
+          gap: tokens.spacing.sm,
+        }}
+      >
+        {alignments.map((alignment) => {
+          const isActive = value === alignment;
+          return (
+            <button
+              key={alignment}
+              type="button"
+              className="align-toggle"
+              data-active={isActive}
+              onClick={() => onChange(alignment)}
+              style={{
+                padding: `${tokens.spacing.xs}px ${tokens.spacing.sm}px`,
+                borderRadius: tokens.radius.sm,
+                border: `${tokens.border.thin}px solid ${
+                  isActive ? tokens.colors.accent : tokens.colors.borderLight
+                }`,
+                background: isActive ? 'rgba(14, 165, 233, 0.12)' : tokens.colors.surface,
+                color: isActive ? tokens.colors.accent : tokens.colors.textSecondary,
+                fontSize: tokens.fontSize.xs,
+                fontWeight: tokens.fontWeight.medium,
+                textTransform: 'capitalize',
+                transition: `background-color 160ms ${tokens.easing.standard}, border-color 160ms ${tokens.easing.standard}, color 160ms ${tokens.easing.standard}`,
+                cursor: 'pointer',
+              }}
+            >
+              {alignment}
+            </button>
+          );
+        })}
       </div>
+      <style jsx>{`
+        .align-toggle:not([data-active='true']):hover {
+          background: ${tokens.colors.surfaceHover};
+          border-color: ${tokens.colors.borderStrong};
+        }
+
+        .align-toggle:focus-visible {
+          outline: 2px solid ${tokens.colors.focusRing};
+          outline-offset: 2px;
+        }
+      `}</style>
     </Field>
   );
 }

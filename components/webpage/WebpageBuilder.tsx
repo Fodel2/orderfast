@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
 
 import PageRenderer, { type Block, type DeviceKind } from '../PageRenderer';
 
@@ -27,6 +28,18 @@ export default function WebpageBuilder({
   inspectorVisible = false,
 }: WebpageBuilderProps) {
   const [device, setDevice] = useState<DeviceKind>('desktop');
+  const [hoveredDevice, setHoveredDevice] = useState<DeviceKind | null>(null);
+  const scrollAreaRef = useRef<HTMLDivElement | null>(null);
+  const blockPreviewMap = useMemo(() => {
+    const entries = new Map<string, React.ReactNode>();
+    blocks.forEach((block) => {
+      entries.set(
+        block.id,
+        <PageRenderer blocks={[block]} device={device} />,
+      );
+    });
+    return entries;
+  }, [blocks, device]);
   const deviceWidths: Record<DeviceKind, number> = {
     mobile: 375,
     tablet: 768,
@@ -34,17 +47,37 @@ export default function WebpageBuilder({
   };
 
   const canvasWidth = deviceWidths[device];
+  const handleDeviceChange = useCallback(
+    (nextDevice: DeviceKind) => {
+      const node = scrollAreaRef.current;
+      const previousScrollTop = node?.scrollTop ?? 0;
+      setDevice(nextDevice);
+      if (!node) return;
+      if (typeof window === 'undefined') return;
+      window.requestAnimationFrame(() => {
+        node.scrollTop = previousScrollTop;
+      });
+    },
+    [],
+  );
   const deviceToggleStyle = useMemo<React.CSSProperties>(
     () => ({
       textTransform: 'capitalize',
       padding: `${tokens.spacing.xs}px ${tokens.spacing.md}px`,
-      borderRadius: tokens.radius.lg,
+      borderRadius: tokens.radius.md,
       borderWidth: tokens.border.thin,
       borderStyle: 'solid',
-      transition: `color 160ms ${tokens.easing.standard}, background-color 160ms ${tokens.easing.standard}, border-color 160ms ${tokens.easing.standard}`,
+      transition: `color 160ms ${tokens.easing.standard}, background-color 160ms ${tokens.easing.standard}, border-color 160ms ${tokens.easing.standard}, box-shadow 160ms ${tokens.easing.standard}`,
       fontSize: tokens.fontSize.sm,
       fontWeight: tokens.fontWeight.medium,
       cursor: 'pointer',
+      minWidth: 96,
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: tokens.spacing.xs,
+      minHeight: 40,
+      boxSizing: 'border-box',
     }),
     []
   );
@@ -58,17 +91,52 @@ export default function WebpageBuilder({
     fontSize: tokens.fontSize.md,
   };
 
+  const toolbarStyle: React.CSSProperties = {
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: `${tokens.spacing.md}px ${tokens.spacing.xl}px`,
+    borderBottom: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
+    background: tokens.colors.surface,
+    position: 'sticky',
+    top: 0,
+    zIndex: 1,
+  };
+
+  const toolbarContentStyle: React.CSSProperties = {
+    width: '100%',
+    maxWidth: 960,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  };
+
+  const deviceToggleGroupStyle: React.CSSProperties = {
+    display: 'inline-flex',
+    gap: tokens.spacing.sm,
+    alignItems: 'center',
+  };
+
   const scrollAreaStyle: React.CSSProperties = {
     flex: 1,
     overflowY: 'auto',
     overflowX: 'hidden',
     background: tokens.colors.surfaceSubtle,
+    display: 'flex',
+    justifyContent: 'center',
   };
 
   const viewportStyle: React.CSSProperties = {
     display: 'flex',
     justifyContent: 'center',
-    padding: tokens.spacing.xl,
+    alignItems: 'flex-start',
+    width: '100%',
+    maxWidth: 1440,
+    margin: '0 auto',
+    paddingTop: tokens.spacing.xl,
+    paddingBottom: tokens.spacing.xl,
+    paddingLeft: tokens.spacing.xl,
+    paddingRight: tokens.spacing.xl,
     boxSizing: 'border-box',
     transition: `padding 220ms ${tokens.easing.standard}`,
   };
@@ -77,15 +145,17 @@ export default function WebpageBuilder({
     width: `${canvasWidth}px`,
     maxWidth: `${canvasWidth}px`,
     flex: '0 0 auto',
+    marginLeft: 'auto',
+    marginRight: 'auto',
     transition: `max-width 220ms ${tokens.easing.standard}`,
   };
 
   const canvasStyle: React.CSSProperties = {
     display: 'flex',
     flexDirection: 'column',
-    gap: tokens.spacing.lg,
+    gap: tokens.spacing.xl,
     minHeight: '100%',
-    padding: tokens.spacing.lg,
+    padding: tokens.spacing.xl,
     boxSizing: 'border-box',
   };
 
@@ -96,7 +166,7 @@ export default function WebpageBuilder({
 
   const addButtonStyle: React.CSSProperties = {
     alignSelf: 'center',
-    marginTop: blocks.length ? tokens.spacing.lg : 0,
+    marginTop: blocks.length ? tokens.spacing.xl : 0,
     padding: `${tokens.spacing.sm}px ${tokens.spacing.lg}px`,
     borderRadius: tokens.radius.lg,
     border: `${tokens.border.thin}px dashed ${tokens.colors.accent}`,
@@ -109,43 +179,56 @@ export default function WebpageBuilder({
 
   return (
     <div style={rootStyle}>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'flex-start',
-          gap: tokens.spacing.sm,
-          padding: `${tokens.spacing.md}px ${tokens.spacing.xl}px`,
-          borderBottom: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
-          background: tokens.colors.surface,
-          position: 'sticky',
-          top: 0,
-          zIndex: 1,
-        }}
-      >
-        <div style={{ display: 'flex', gap: tokens.spacing.sm }}>
-          {(['mobile', 'tablet', 'desktop'] as DeviceKind[]).map((value) => {
-            const isActive = device === value;
-            return (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setDevice(value)}
-                style={{
-                  ...deviceToggleStyle,
-                  borderColor: isActive ? tokens.colors.accent : tokens.colors.borderLight,
-                  background: isActive ? tokens.colors.surfaceSubtle : tokens.colors.surface,
-                  color: isActive ? tokens.colors.accent : tokens.colors.textSecondary,
-                  boxShadow: isActive ? tokens.shadow.sm : 'none',
-                }}
-              >
-                {value}
-              </button>
-            );
-          })}
+      <div style={toolbarStyle}>
+        <div style={toolbarContentStyle}>
+          <div style={deviceToggleGroupStyle}>
+            {(['mobile', 'tablet', 'desktop'] as DeviceKind[]).map((value) => {
+              const isActive = device === value;
+              const isHovered = hoveredDevice === value;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => handleDeviceChange(value)}
+                  onMouseEnter={() => setHoveredDevice(value)}
+                  onMouseLeave={() => setHoveredDevice((current) => (current === value ? null : current))}
+                  onFocus={() => setHoveredDevice(value)}
+                  onBlur={() => setHoveredDevice((current) => (current === value ? null : current))}
+                  className="device-toggle"
+                  style={{
+                    ...deviceToggleStyle,
+                    borderColor: isActive
+                      ? tokens.colors.accent
+                      : isHovered
+                      ? tokens.colors.borderStrong
+                      : tokens.colors.borderLight,
+                    background: isActive
+                      ? tokens.colors.accent
+                      : isHovered
+                      ? tokens.colors.surfaceHover
+                      : tokens.colors.surface,
+                    color: isActive ? tokens.colors.textOnDark : tokens.colors.textSecondary,
+                    boxShadow: isActive
+                      ? '0 8px 20px rgba(14, 165, 233, 0.25)'
+                      : isHovered
+                      ? tokens.shadow.sm
+                      : 'none',
+                  }}
+                >
+                  {value}
+                </button>
+              );
+            })}
+          </div>
         </div>
+        <style jsx>{`
+          .device-toggle:focus-visible {
+            outline: 2px solid ${tokens.colors.focusRing};
+            outline-offset: 2px;
+          }
+        `}</style>
       </div>
-      <div style={scrollAreaStyle}>
+      <div style={scrollAreaStyle} ref={scrollAreaRef}>
         <div style={viewportStyle}>
           <div style={frameStyle}>
             <div
@@ -178,21 +261,29 @@ export default function WebpageBuilder({
                     index === 0 ||
                     (headerId && headerId !== block.id && index === 1);
                   const disableMoveDown = isHeader || index === blocks.length - 1;
+                  const preview =
+                    blockPreviewMap.get(block.id) ?? <PageRenderer blocks={[block]} device={device} />;
                   return (
-                    <DraggableBlock
+                    <motion.div
                       key={block.id}
-                      id={block.id}
-                      onDelete={() => onDeleteBlock(block.id)}
-                      onDuplicate={() => onDuplicateBlock(block.id)}
-                      onMoveUp={() => onMoveBlock(block.id, -1)}
-                      onMoveDown={() => onMoveBlock(block.id, 1)}
-                      disableMoveUp={disableMoveUp}
-                      disableMoveDown={disableMoveDown}
-                      isSelected={selectedBlockId === block.id}
-                      onSelect={() => onSelectBlock(block.id)}
+                      layout
+                      transition={{ duration: 0.2, ease: 'easeInOut' }}
+                      style={{ width: '100%' }}
                     >
-                      <PageRenderer blocks={[block]} device={device} />
-                    </DraggableBlock>
+                      <DraggableBlock
+                        id={block.id}
+                        onDelete={() => onDeleteBlock(block.id)}
+                        onDuplicate={() => onDuplicateBlock(block.id)}
+                        onMoveUp={() => onMoveBlock(block.id, -1)}
+                        onMoveDown={() => onMoveBlock(block.id, 1)}
+                        disableMoveUp={disableMoveUp}
+                        disableMoveDown={disableMoveDown}
+                        isSelected={selectedBlockId === block.id}
+                        onSelect={() => onSelectBlock(block.id)}
+                      >
+                        {preview}
+                      </DraggableBlock>
+                    </motion.div>
                   );
                 })}
               </div>

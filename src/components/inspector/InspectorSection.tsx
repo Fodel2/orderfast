@@ -7,8 +7,8 @@ const SECTION_PADDING = tokens.spacing.md;
 const SECTION_RADIUS = tokens.radius.md;
 const SECTION_BORDER_WIDTH = tokens.border.thin;
 const SECTION_SHADOW = tokens.shadow.sm;
-const CONTAINER_GAP = tokens.spacing.md;
-const CONTAINER_PADDING = tokens.spacing.md;
+const CONTAINER_GAP = tokens.spacing.lg;
+const CONTAINER_PADDING = tokens.spacing.lg;
 
 interface InspectorSectionProps {
   title: string;
@@ -37,6 +37,8 @@ export function InspectorContainer({
         ...style,
         display: "flex",
         flexDirection: "column",
+        minHeight: "100vh",
+        maxHeight: "100vh",
       }}
       {...rest}
     >
