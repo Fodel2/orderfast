@@ -14,10 +14,12 @@ type GuardRailsOverlayProps = {
     message: string;
   };
   onInfoHoverChange?: (hovered: boolean) => void;
+  gridSpacing?: number;
 };
 
 const overlayLineBase = tokens.colors.overlay.soft;
 const overlayAlertColor = 'rgba(220, 38, 38, 0.6)';
+const gridColor = `color-mix(in srgb, ${tokens.colors.accent} 20%, transparent)`;
 
 const tooltipOffset = tokens.spacing.md;
 
@@ -57,6 +59,7 @@ const GuardRailsOverlay: React.FC<GuardRailsOverlayProps> = ({
   visible,
   tooltip,
   onInfoHoverChange,
+  gridSpacing = tokens.spacing.lg,
 }) => {
   const edges: GuardEdge[] = ['top', 'right', 'bottom', 'left'];
   const tooltipVisible = tooltip?.visible ?? false;
@@ -75,6 +78,28 @@ const GuardRailsOverlay: React.FC<GuardRailsOverlayProps> = ({
         zIndex: 10,
       }}
     >
+      <div
+        style={{
+          position: 'absolute',
+          top: `${bounds.top}%`,
+          bottom: `${100 - bounds.bottom}%`,
+          left: `${bounds.left}%`,
+          right: `${100 - bounds.right}%`,
+          borderRadius: tokens.radius.md,
+          boxShadow: `inset 0 0 0 1px ${tokens.colors.overlay.soft}`,
+          backgroundImage:
+            gridSpacing > 0
+              ? `repeating-linear-gradient(
+                  to bottom,
+                  ${gridColor} 0,
+                  ${gridColor} 1px,
+                  transparent 1px,
+                  transparent ${gridSpacing}px
+                )`
+              : undefined,
+          pointerEvents: 'none',
+        }}
+      />
       {edges.map((edge) => {
         const color = alerts[edge] ? overlayAlertColor : overlayLineBase;
         if (edge === 'top' || edge === 'bottom') {
@@ -83,8 +108,8 @@ const GuardRailsOverlay: React.FC<GuardRailsOverlayProps> = ({
               key={edge}
               style={{
                 position: 'absolute',
-                left: 0,
-                right: 0,
+                left: `${bounds.left}%`,
+                right: `${100 - bounds.right}%`,
                 top: `${bounds[edge]}%`,
                 transform: 'translateY(-50%)',
                 borderTop: `${tokens.border.thin}px dashed ${color}`,
@@ -97,8 +122,8 @@ const GuardRailsOverlay: React.FC<GuardRailsOverlayProps> = ({
             key={edge}
             style={{
               position: 'absolute',
-              top: 0,
-              bottom: 0,
+              top: `${bounds.top}%`,
+              bottom: `${100 - bounds.bottom}%`,
               left: `${bounds[edge]}%`,
               transform: 'translateX(-50%)',
               borderLeft: `${tokens.border.thin}px dashed ${color}`,

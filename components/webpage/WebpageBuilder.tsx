@@ -40,6 +40,7 @@ export default function WebpageBuilder({
 
   type GuardAlerts = Record<GuardEdge, boolean>;
   type GuardBounds = Record<GuardEdge, number>;
+  type SafeZoneInsets = { top: number; bottom: number; left: number; right: number };
 
   const [guardAlerts, setGuardAlerts] = useState<GuardAlerts>({
     top: false,
@@ -54,6 +55,19 @@ export default function WebpageBuilder({
     right: 92,
   });
   const [guardInfoHover, setGuardInfoHover] = useState(false);
+  const [showGuidelines, setShowGuidelines] = useState(true);
+  const [safeZoneInsets, setSafeZoneInsets] = useState<SafeZoneInsets>({
+    top: tokens.spacing.lg,
+    bottom: tokens.spacing.lg,
+    left: tokens.spacing.lg,
+    right: tokens.spacing.lg,
+  });
+
+  useEffect(() => {
+    if (!showGuidelines) {
+      setGuardInfoHover(false);
+    }
+  }, [showGuidelines]);
 
   const updateGuardState = useCallback(() => {
     const frame = frameRef.current;
@@ -65,15 +79,21 @@ export default function WebpageBuilder({
       return;
     }
 
+    const computed = typeof window !== 'undefined' ? window.getComputedStyle(frame) : null;
+    const framePaddingLeft = computed ? parseFloat(computed.paddingLeft) || 0 : 0;
+    const framePaddingRight = computed ? parseFloat(computed.paddingRight) || 0 : 0;
+    const framePaddingTop = computed ? parseFloat(computed.paddingTop) || 0 : 0;
+    const framePaddingBottom = computed ? parseFloat(computed.paddingBottom) || 0 : 0;
+
     const maxHorizontalInset = tokens.spacing.xl * 2.5;
     const maxVerticalInset = tokens.spacing.xl * 3;
     const horizontalInset = Math.min(frameRect.width * 0.08, maxHorizontalInset);
     const verticalInset = Math.min(frameRect.height * 0.08, maxVerticalInset);
 
-    const safeLeft = frameRect.left + horizontalInset;
-    const safeRight = frameRect.right - horizontalInset;
-    const safeTop = frameRect.top + verticalInset;
-    const safeBottom = frameRect.bottom - verticalInset;
+    const safeLeft = frameRect.left + framePaddingLeft + horizontalInset;
+    const safeRight = frameRect.right - framePaddingRight - horizontalInset;
+    const safeTop = frameRect.top + framePaddingTop + verticalInset;
+    const safeBottom = frameRect.bottom - framePaddingBottom - verticalInset;
 
     const nextAlerts: GuardAlerts = { top: false, bottom: false, left: false, right: false };
     const blockNodes = Array.from(
@@ -105,16 +125,18 @@ export default function WebpageBuilder({
       return nextAlerts;
     });
 
-    const topPercent = (verticalInset / frameRect.height) * 100;
-    const leftPercent = (horizontalInset / frameRect.width) * 100;
+    const topPercent = ((framePaddingTop + verticalInset) / frameRect.height) * 100;
+    const bottomPercent = ((framePaddingBottom + verticalInset) / frameRect.height) * 100;
+    const leftPercent = ((framePaddingLeft + horizontalInset) / frameRect.width) * 100;
+    const rightPercent = ((framePaddingRight + horizontalInset) / frameRect.width) * 100;
     const computedBounds: GuardBounds = {
       top: Number.isFinite(topPercent) ? Math.max(0, Math.min(50, topPercent)) : 6,
-      bottom: Number.isFinite(topPercent)
-        ? Math.max(50, Math.min(100, 100 - topPercent))
+      bottom: Number.isFinite(bottomPercent)
+        ? Math.max(50, Math.min(100, 100 - bottomPercent))
         : 94,
       left: Number.isFinite(leftPercent) ? Math.max(0, Math.min(50, leftPercent)) : 8,
-      right: Number.isFinite(leftPercent)
-        ? Math.max(50, Math.min(100, 100 - leftPercent))
+      right: Number.isFinite(rightPercent)
+        ? Math.max(50, Math.min(100, 100 - rightPercent))
         : 92,
     };
 
@@ -128,6 +150,23 @@ export default function WebpageBuilder({
         return prev;
       }
       return computedBounds;
+    });
+
+    const nextInsets = {
+      top: verticalInset,
+      bottom: verticalInset,
+      left: horizontalInset,
+      right: horizontalInset,
+    };
+
+    setSafeZoneInsets((prev) => {
+      const withinThreshold =
+        Math.abs(prev.top - nextInsets.top) < 0.5 &&
+        Math.abs(prev.bottom - nextInsets.bottom) < 0.5 &&
+        Math.abs(prev.left - nextInsets.left) < 0.5 &&
+        Math.abs(prev.right - nextInsets.right) < 0.5;
+
+      return withinThreshold ? prev : nextInsets;
     });
   }, []);
 
@@ -207,12 +246,17 @@ export default function WebpageBuilder({
     transition: `max-width 220ms ${tokens.easing.standard}`,
   };
 
-  const canvasStyle: React.CSSProperties = {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: tokens.spacing.md,
-    minHeight: '100%',
-  };
+  const canvasStyle = useMemo<React.CSSProperties>(
+    () => ({
+      display: 'flex',
+      flexDirection: 'column',
+      gap: tokens.spacing.lg,
+      minHeight: '100%',
+      padding: `${safeZoneInsets.top}px ${safeZoneInsets.right}px ${safeZoneInsets.bottom}px ${safeZoneInsets.left}px`,
+      boxSizing: 'border-box',
+    }),
+    [safeZoneInsets],
+  );
 
   const headerBlockId = useMemo(
     () => blocks.find((block) => block.type === 'header')?.id ?? null,
@@ -237,7 +281,27 @@ export default function WebpageBuilder({
   const tooltipEdge: GuardEdge = hasGuardAlerts
     ? guardEdges.find((edge) => guardAlerts[edge]) ?? 'top'
     : 'top';
-  const tooltipVisible = hasGuardAlerts || guardInfoHover;
+  const tooltipVisible = showGuidelines && (hasGuardAlerts || guardInfoHover);
+
+  const safeZoneToggleLabel = showGuidelines ? 'Hide Safe Zone' : 'Show Safe Zone';
+
+  const safeZoneToggleStyle = useMemo<React.CSSProperties>(
+    () => ({
+      padding: `${tokens.spacing.xs}px ${tokens.spacing.sm}px`,
+      borderRadius: tokens.radius.md,
+      border: `${tokens.border.thin}px solid ${
+        showGuidelines ? tokens.colors.borderStrong : tokens.colors.borderLight
+      }`,
+      background: showGuidelines ? tokens.colors.surfaceSubtle : tokens.colors.surface,
+      color: tokens.colors.textSecondary,
+      fontSize: tokens.fontSize.sm,
+      fontWeight: tokens.fontWeight.medium,
+      cursor: 'pointer',
+      boxShadow: showGuidelines ? tokens.shadow.sm : tokens.shadow.none,
+      transition: `background-color 160ms ${tokens.easing.standard}, border-color 160ms ${tokens.easing.standard}, box-shadow 160ms ${tokens.easing.standard}`,
+    }),
+    [showGuidelines],
+  );
 
   return (
     <div style={rootStyle}>
@@ -245,7 +309,7 @@ export default function WebpageBuilder({
         style={{
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center',
+          justifyContent: 'space-between',
           gap: tokens.spacing.sm,
           padding: `${tokens.spacing.md}px ${tokens.spacing.xl}px`,
           borderBottom: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
@@ -255,25 +319,34 @@ export default function WebpageBuilder({
           zIndex: 1,
         }}
       >
-        {(['mobile', 'tablet', 'desktop'] as DeviceKind[]).map((value) => {
-          const isActive = device === value;
-          return (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setDevice(value)}
-              style={{
-                ...deviceToggleStyle,
-                borderColor: isActive ? tokens.colors.accent : tokens.colors.borderLight,
-                background: isActive ? tokens.colors.surfaceSubtle : tokens.colors.surface,
-                color: isActive ? tokens.colors.accent : tokens.colors.textSecondary,
-                boxShadow: isActive ? tokens.shadow.sm : 'none',
-              }}
-            >
-              {value}
-            </button>
-          );
-        })}
+        <div style={{ display: 'flex', gap: tokens.spacing.sm }}>
+          {(['mobile', 'tablet', 'desktop'] as DeviceKind[]).map((value) => {
+            const isActive = device === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setDevice(value)}
+                style={{
+                  ...deviceToggleStyle,
+                  borderColor: isActive ? tokens.colors.accent : tokens.colors.borderLight,
+                  background: isActive ? tokens.colors.surfaceSubtle : tokens.colors.surface,
+                  color: isActive ? tokens.colors.accent : tokens.colors.textSecondary,
+                  boxShadow: isActive ? tokens.shadow.sm : 'none',
+                }}
+              >
+                {value}
+              </button>
+            );
+          })}
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowGuidelines((prev) => !prev)}
+          style={safeZoneToggleStyle}
+        >
+          {safeZoneToggleLabel}
+        </button>
       </div>
       <div style={scrollAreaStyle}>
         <div style={viewportStyle}>
@@ -292,13 +365,18 @@ export default function WebpageBuilder({
               <GuardRailsOverlay
                 bounds={guardBounds}
                 alerts={guardAlerts}
-                visible
-                tooltip={{
-                  visible: tooltipVisible,
-                  edge: tooltipEdge,
-                  message: 'Keeping within the guide lines ensures visibility on all devices.',
-                }}
+                visible={showGuidelines}
+                tooltip={
+                  tooltipVisible
+                    ? {
+                        visible: tooltipVisible,
+                        edge: tooltipEdge,
+                        message: 'Keeping within the guide lines ensures visibility on all devices.',
+                      }
+                    : undefined
+                }
                 onInfoHoverChange={setGuardInfoHover}
+                gridSpacing={tokens.spacing.lg}
               />
               <div ref={contentRef} style={canvasStyle}>
                 {blocks.length === 0 && (
