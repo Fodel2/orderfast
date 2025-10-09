@@ -4536,7 +4536,7 @@ export default function SlideModal({
                   className="flex flex-1 min-h-0 overflow-hidden"
                 >
                   <div
-                    className="relative flex h-full w-full min-h-0 items-start justify-center overflow-hidden"
+                    className="relative flex flex-col items-center justify-center w-full h-full overflow-hidden"
                     style={{
                       paddingTop: PREVIEW_PADDING_Y,
                       paddingBottom: PREVIEW_PADDING_Y,
@@ -4547,29 +4547,13 @@ export default function SlideModal({
                     <button
                       type="button"
                       onClick={() => setShowSafeZone((prev) => !prev)}
-                      style={{
-                        position: "absolute",
-                        top: 8,
-                        left: 8,
-                        zIndex: 30,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        padding: "6px 10px",
-                        borderRadius: tokens.radius.sm,
-                        background: "rgba(15, 23, 42, 0.75)",
-                        color: "#ffffff",
-                        fontSize: "12px",
-                        fontWeight: tokens.fontWeight.medium,
-                        boxShadow: "0 6px 16px rgba(15, 23, 42, 0.15)",
-                        border: "none",
-                        cursor: "pointer",
-                      }}
+                      className="absolute top-2 left-2 z-50 bg-white/90 backdrop-blur-sm border border-gray-300 rounded-md px-3 py-1 text-sm font-medium text-gray-700 shadow-md hover:bg-white transition"
                     >
                       {showSafeZone ? "Hide Safe Zone" : "Show Safe Zone"}
                     </button>
                     {hasPreviewBounds && (
-                      <>
-                        {showSafeZone ? <SafeZoneOverlay visible={showSafeZone} /> : null}
+                      <div className="relative w-full h-full overflow-hidden">
+                        <SafeZoneOverlay visible={showSafeZone} />
                         <SlidesManager
                           initialCfg={cfg}
                           onChange={handlePreviewChange}
@@ -4583,7 +4567,7 @@ export default function SlideModal({
                           scale={previewScale}
                           onManipulationChange={handleManipulationChange}
                         />
-                      </>
+                      </div>
                     )}
                   </div>
                 </div>

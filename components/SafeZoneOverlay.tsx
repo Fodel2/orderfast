@@ -3,26 +3,11 @@ import React from "react";
 export default function SafeZoneOverlay({ visible }: { visible: boolean }) {
   return (
     <div
-      style={{
-        position: "absolute",
-        inset: 0,
-        pointerEvents: "none",
-        zIndex: 25,
-        opacity: visible ? 1 : 0,
-        transition: "opacity 0.25s ease",
-      }}
+      className={`absolute inset-0 z-40 pointer-events-none transition-opacity duration-300 ${
+        visible ? "opacity-100" : "opacity-0"
+      }`}
     >
-      <div
-        style={{
-          position: "absolute",
-          top: "5%",
-          bottom: "5%",
-          left: "5%",
-          right: "5%",
-          border: "1px dashed rgba(255,255,255,0.3)",
-          borderRadius: "4px",
-        }}
-      />
+      <div className="absolute top-[5%] left-[5%] right-[5%] bottom-[5%] border border-dashed border-white/40 rounded-lg" />
     </div>
   );
 }
