@@ -6,7 +6,6 @@ import {
   Minus,
   MoveVertical,
   Redo2,
-  SlidersHorizontal,
   Type,
   Undo2,
   X,
@@ -639,6 +638,27 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
       background: tokens.colors.surface,
       borderBottom: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
       boxShadow: '0 12px 24px rgba(15, 23, 42, 0.08)',
+      borderBottomLeftRadius: tokens.radius.lg,
+      borderBottomRightRadius: tokens.radius.lg,
+    }),
+    [],
+  );
+
+  const deviceToggleBarStyle = useMemo<React.CSSProperties>(
+    () => ({
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: tokens.spacing.sm,
+      rowGap: tokens.spacing.xs,
+      flexWrap: 'wrap',
+      padding: `${tokens.spacing.md}px ${tokens.spacing.xl}px`,
+      background: tokens.colors.surface,
+      borderBottom: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
+      borderRadius: tokens.radius.lg,
+      boxShadow: tokens.shadow.sm,
+      margin: `${tokens.spacing.md}px auto`,
+      maxWidth: '100%',
     }),
     [],
   );
@@ -670,7 +690,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
   };
 
   useEffect(() => {
-    if (selection) setInspectorOpen(true);
+    setInspectorOpen(Boolean(selection));
   }, [selection]);
 
   useEffect(() => {
@@ -810,6 +830,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
     setDrawerOpen(false);
     setInspectorOpen(false);
     setExitModalOpen(false);
+    setSelection(null);
     onClose();
   }, [onClose]);
 
@@ -849,17 +870,6 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
                 aria-pressed={drawerOpen || blockLibraryOpen}
               >
                 Blocks
-              </button>
-              <button
-                type="button"
-                onClick={() => setInspectorOpen((prev) => !prev)}
-                className="toolbar-button icon-button"
-                data-active={inspectorVisible}
-                aria-pressed={inspectorVisible}
-                title="Inspector"
-                aria-label="Toggle inspector"
-              >
-                <SlidersHorizontal size={18} strokeWidth={2} />
               </button>
             </div>
             <div className="builder-toolbar__center">
@@ -903,7 +913,14 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
                 <X size={18} strokeWidth={2} />
               </button>
             </div>
-            <div className="builder-toolbar__right">
+          </div>
+
+        <div
+          className="flex flex-1 overflow-hidden"
+          style={{ background: tokens.colors.canvas, minWidth: 0 }}
+        >
+          <div className="flex flex-1 flex-col overflow-hidden" style={{ minWidth: 0 }}>
+            <div className="device-toggle-bar" style={deviceToggleBarStyle}>
               {deviceOptions.map((value) => {
                 const isActive = device === value;
                 return (
@@ -921,15 +938,12 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
                 );
               })}
             </div>
-          </div>
-
-        <div className="flex flex-1 overflow-hidden" style={{ background: tokens.colors.canvas }}>
-          <div className="relative flex flex-1 overflow-hidden">
-            <div className="hidden md:block" style={drawerOverlayStyle} onClick={() => setDrawerOpen(false)} />
-            <div className="hidden md:flex" style={drawerStyle}>
-              <div
-                style={{
-                  display: 'flex',
+            <div className="relative flex flex-1 overflow-hidden" style={{ minWidth: 0 }}>
+              <div className="hidden md:block" style={drawerOverlayStyle} onClick={() => setDrawerOpen(false)} />
+              <div className="hidden md:flex" style={drawerStyle}>
+                <div
+                  style={{
+                    display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   gap: tokens.spacing.sm,
@@ -1083,23 +1097,26 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
               </div>
             </div>
           </div>
-            <main
-              ref={blockLibraryHostRef}
-              className="flex-1 overflow-hidden"
-              style={{ position: 'relative' }}
-            >
-              <WebpageBuilder
-                blocks={blocks}
-                selectedBlockId={selection}
-                onSelectBlock={(id) => setSelection(id)}
-                onDeleteBlock={removeBlock}
-                onDuplicateBlock={duplicateBlock}
-                onMoveBlock={moveBlock}
-                onAddBlock={handleAddBlock}
-                device={device}
-                inspectorVisible={inspectorVisible}
-              />
-            </main>
+              <main
+                ref={blockLibraryHostRef}
+                className="flex flex-1 flex-col overflow-hidden"
+                style={{ position: 'relative', minWidth: 0 }}
+              >
+                <div style={{ flex: 1, minHeight: 0 }}>
+                  <WebpageBuilder
+                    blocks={blocks}
+                    selectedBlockId={selection}
+                    onSelectBlock={(id) => setSelection(id)}
+                    onDeleteBlock={removeBlock}
+                    onDuplicateBlock={duplicateBlock}
+                    onMoveBlock={moveBlock}
+                    onAddBlock={handleAddBlock}
+                    device={device}
+                    inspectorVisible={inspectorVisible}
+                  />
+                </div>
+              </main>
+            </div>
           </div>
           <div className="hidden md:flex" style={inspectorWrapperStyle}>
             {inspectorVisible && (
@@ -1131,7 +1148,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
                   </div>
                   <button
                     type="button"
-                    onClick={() => setInspectorOpen(false)}
+                    onClick={() => setSelection(null)}
                     style={{
                       borderRadius: tokens.radius.sm,
                       border: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
@@ -1166,7 +1183,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
         .builder-toolbar {
           display: flex;
           align-items: center;
-          justify-content: space-between;
+          justify-content: flex-start;
           flex-wrap: wrap;
           gap: ${tokens.spacing.sm}px;
           row-gap: ${tokens.spacing.sm}px;
@@ -1174,16 +1191,11 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
           min-height: 56px;
         }
 
-        .builder-toolbar__left,
-        .builder-toolbar__right {
+        .builder-toolbar__left {
           display: flex;
           align-items: center;
           gap: ${tokens.spacing.sm}px;
-          flex: 1 1 auto;
-        }
-
-        .builder-toolbar__left {
-          justify-content: flex-start;
+          flex: 0 0 auto;
         }
 
         .builder-toolbar__center {
@@ -1192,10 +1204,8 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
           justify-content: center;
           gap: ${tokens.spacing.sm}px;
           flex: 0 0 auto;
-        }
-
-        .builder-toolbar__right {
-          justify-content: flex-end;
+          margin-left: auto;
+          margin-right: auto;
         }
 
         .toolbar-button {
@@ -1272,21 +1282,20 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
         @media (max-width: 768px) {
           .builder-toolbar {
             padding: ${tokens.spacing.sm}px ${tokens.spacing.md}px;
-          }
-
-          .builder-toolbar__left,
-          .builder-toolbar__center,
-          .builder-toolbar__right {
-            flex: 1 1 100%;
             justify-content: center;
           }
 
           .builder-toolbar__left {
+            width: 100%;
             justify-content: flex-start;
           }
 
-          .builder-toolbar__right {
+          .builder-toolbar__center {
+            width: 100%;
+            margin-left: 0;
+            margin-right: 0;
             justify-content: center;
+            flex-wrap: wrap;
           }
 
           .toolbar-button {
@@ -1414,7 +1423,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
             </span>
             <button
               type="button"
-              onClick={() => setInspectorOpen(false)}
+              onClick={() => setSelection(null)}
               className="toolbar-button"
               style={{ padding: `${tokens.spacing.xs}px ${tokens.spacing.sm}px` }}
             >
