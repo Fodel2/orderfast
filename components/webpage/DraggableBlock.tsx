@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ChevronDown, ChevronUp, Copy, GripVertical, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Copy, Trash2 } from 'lucide-react';
 import { tokens } from '@/src/ui/tokens';
 
 type DraggableBlockProps = {
@@ -30,20 +30,25 @@ export default function DraggableBlock({
   const [hovered, setHovered] = useState(false);
 
   const cardStyle = useMemo<React.CSSProperties>(
-    () => ({
-      transition: `box-shadow 180ms ${tokens.easing.standard}, border-color 180ms ${tokens.easing.standard}, transform 180ms ${tokens.easing.standard}`,
-      boxShadow: hovered || isSelected ? tokens.shadow.sm : tokens.shadow.none,
-      background: tokens.colors.surface,
-      borderRadius: tokens.radius.lg,
-      border: `${tokens.border.thin}px solid ${isSelected ? tokens.colors.accent : tokens.colors.borderLight}`,
-      position: 'relative',
-      padding: tokens.spacing.md,
-      display: 'flex',
-      flexDirection: 'column',
-      gap: tokens.spacing.sm,
-      transform: hovered ? 'translateY(-2px)' : 'translateY(0)',
-      outline: 'none',
-    }),
+    () => {
+      const baseShadow = 'inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 1px 2px rgba(15, 23, 42, 0.08)';
+      const hoverShadow = '0 12px 32px rgba(15, 23, 42, 0.12)';
+      const highlightRing = isSelected ? `0 0 0 2px ${tokens.colors.accent}` : '0 0 0 0 transparent';
+      return {
+        transition: `box-shadow 200ms ${tokens.easing.standard}, border-color 200ms ${tokens.easing.standard}, transform 200ms ${tokens.easing.standard}, background-color 200ms ${tokens.easing.standard}`,
+        boxShadow: `${baseShadow}${hovered && !isSelected ? `, ${hoverShadow}` : ''}${isSelected ? `, ${highlightRing}` : ''}`,
+        background: hovered || isSelected ? tokens.colors.surfaceHover : tokens.colors.surface,
+        borderRadius: tokens.radius.lg,
+        border: `${tokens.border.thin}px solid ${isSelected ? tokens.colors.accent : tokens.colors.borderLight}`,
+        position: 'relative',
+        padding: tokens.spacing.lg,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: tokens.spacing.md,
+        transform: hovered && !isSelected ? 'translateY(-2px)' : 'translateY(0)',
+        outline: 'none',
+      };
+    },
     [hovered, isSelected]
   );
 
@@ -54,6 +59,10 @@ export default function DraggableBlock({
       right: tokens.spacing.sm,
       display: 'flex',
       gap: tokens.spacing.xs,
+      padding: tokens.spacing.xs,
+      borderRadius: tokens.radius.md,
+      background: 'rgba(15, 23, 42, 0.04)',
+      backdropFilter: 'blur(6px)',
       opacity: hovered || isSelected ? 1 : 0,
       pointerEvents: hovered || isSelected ? 'auto' : 'none',
       transition: `opacity 150ms ${tokens.easing.standard}`,
@@ -113,32 +122,7 @@ export default function DraggableBlock({
       role="listitem"
       aria-pressed={isSelected}
     >
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: tokens.spacing.sm,
-        }}
-      >
-        <div
-          aria-hidden="true"
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: tokens.spacing.lg,
-            height: tokens.spacing.lg,
-            borderRadius: tokens.radius.sm,
-            border: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
-            background: tokens.colors.surfaceSubtle,
-            color: tokens.colors.textSecondary,
-          }}
-        >
-          <GripVertical size={16} strokeWidth={1.5} />
-        </div>
-        <div style={{ flex: 1 }}>{children}</div>
-      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacing.sm }}>{children}</div>
       <div style={actionBarStyle}>
         <button
           type="button"

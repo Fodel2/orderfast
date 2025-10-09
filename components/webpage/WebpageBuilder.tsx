@@ -1,9 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import DraggableBlock from './DraggableBlock';
-import PageRenderer, { type Block } from '../PageRenderer';
-import { tokens } from '@/src/ui/tokens';
 
-type DeviceKind = 'mobile' | 'tablet' | 'desktop';
+import PageRenderer, { type Block, type DeviceKind } from '../PageRenderer';
+
+import DraggableBlock from './DraggableBlock';
+import { tokens } from '@/src/ui/tokens';
 
 type WebpageBuilderProps = {
   blocks: Block[];
@@ -13,6 +13,7 @@ type WebpageBuilderProps = {
   onDuplicateBlock: (id: string) => void;
   onMoveBlock: (id: string, direction: -1 | 1) => void;
   onAddBlock: () => void;
+  inspectorVisible?: boolean;
 };
 
 export default function WebpageBuilder({
@@ -23,6 +24,7 @@ export default function WebpageBuilder({
   onDuplicateBlock,
   onMoveBlock,
   onAddBlock,
+  inspectorVisible = false,
 }: WebpageBuilderProps) {
   const [device, setDevice] = useState<DeviceKind>('desktop');
   const deviceWidths: Record<DeviceKind, number> = {
@@ -32,7 +34,6 @@ export default function WebpageBuilder({
   };
 
   const canvasWidth = deviceWidths[device];
-
   const deviceToggleStyle = useMemo<React.CSSProperties>(
     () => ({
       textTransform: 'capitalize',
@@ -60,6 +61,7 @@ export default function WebpageBuilder({
   const scrollAreaStyle: React.CSSProperties = {
     flex: 1,
     overflowY: 'auto',
+    overflowX: 'hidden',
     background: tokens.colors.surfaceSubtle,
   };
 
@@ -72,17 +74,25 @@ export default function WebpageBuilder({
   };
 
   const frameStyle: React.CSSProperties = {
-    width: '100%',
-    maxWidth: canvasWidth,
+    width: `${canvasWidth}px`,
+    maxWidth: `${canvasWidth}px`,
+    flex: '0 0 auto',
     transition: `max-width 220ms ${tokens.easing.standard}`,
   };
 
   const canvasStyle: React.CSSProperties = {
     display: 'flex',
     flexDirection: 'column',
-    gap: tokens.spacing.md,
+    gap: tokens.spacing.lg,
     minHeight: '100%',
+    padding: tokens.spacing.lg,
+    boxSizing: 'border-box',
   };
+
+  const headerBlockId = useMemo(
+    () => blocks.find((block) => block.type === 'header')?.id ?? null,
+    [blocks],
+  );
 
   const addButtonStyle: React.CSSProperties = {
     alignSelf: 'center',
@@ -103,7 +113,7 @@ export default function WebpageBuilder({
         style={{
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center',
+          justifyContent: 'flex-start',
           gap: tokens.spacing.sm,
           padding: `${tokens.spacing.md}px ${tokens.spacing.xl}px`,
           borderBottom: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
@@ -113,31 +123,34 @@ export default function WebpageBuilder({
           zIndex: 1,
         }}
       >
-        {(['mobile', 'tablet', 'desktop'] as DeviceKind[]).map((value) => {
-          const isActive = device === value;
-          return (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setDevice(value)}
-              style={{
-                ...deviceToggleStyle,
-                borderColor: isActive ? tokens.colors.accent : tokens.colors.borderLight,
-                background: isActive ? tokens.colors.surfaceSubtle : tokens.colors.surface,
-                color: isActive ? tokens.colors.accent : tokens.colors.textSecondary,
-                boxShadow: isActive ? tokens.shadow.sm : 'none',
-              }}
-            >
-              {value}
-            </button>
-          );
-        })}
+        <div style={{ display: 'flex', gap: tokens.spacing.sm }}>
+          {(['mobile', 'tablet', 'desktop'] as DeviceKind[]).map((value) => {
+            const isActive = device === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setDevice(value)}
+                style={{
+                  ...deviceToggleStyle,
+                  borderColor: isActive ? tokens.colors.accent : tokens.colors.borderLight,
+                  background: isActive ? tokens.colors.surfaceSubtle : tokens.colors.surface,
+                  color: isActive ? tokens.colors.accent : tokens.colors.textSecondary,
+                  boxShadow: isActive ? tokens.shadow.sm : 'none',
+                }}
+              >
+                {value}
+              </button>
+            );
+          })}
+        </div>
       </div>
       <div style={scrollAreaStyle}>
         <div style={viewportStyle}>
           <div style={frameStyle}>
             <div
               style={{
+                position: 'relative',
                 background: tokens.colors.surface,
                 borderRadius: tokens.radius.lg,
                 padding: tokens.spacing.lg,
@@ -154,28 +167,44 @@ export default function WebpageBuilder({
                       color: tokens.colors.textMuted,
                     }}
                   >
-                    Click “Add block” or use the palette to start building your page.
+                    Click “Add block” to open the block library and start building your page.
                   </div>
                 )}
-                {blocks.map((block, index) => (
-                  <DraggableBlock
-                    key={block.id}
-                    id={block.id}
-                    onDelete={() => onDeleteBlock(block.id)}
-                    onDuplicate={() => onDuplicateBlock(block.id)}
-                    onMoveUp={() => onMoveBlock(block.id, -1)}
-                    onMoveDown={() => onMoveBlock(block.id, 1)}
-                    disableMoveUp={index === 0}
-                    disableMoveDown={index === blocks.length - 1}
-                    isSelected={selectedBlockId === block.id}
-                    onSelect={() => onSelectBlock(block.id)}
-                  >
-                    <PageRenderer blocks={[block]} />
-                  </DraggableBlock>
-                ))}
+                {blocks.map((block, index) => {
+                  const headerId = headerBlockId;
+                  const isHeader = block.type === 'header';
+                  const disableMoveUp =
+                    isHeader ||
+                    index === 0 ||
+                    (headerId && headerId !== block.id && index === 1);
+                  const disableMoveDown = isHeader || index === blocks.length - 1;
+                  return (
+                    <DraggableBlock
+                      key={block.id}
+                      id={block.id}
+                      onDelete={() => onDeleteBlock(block.id)}
+                      onDuplicate={() => onDuplicateBlock(block.id)}
+                      onMoveUp={() => onMoveBlock(block.id, -1)}
+                      onMoveDown={() => onMoveBlock(block.id, 1)}
+                      disableMoveUp={disableMoveUp}
+                      disableMoveDown={disableMoveDown}
+                      isSelected={selectedBlockId === block.id}
+                      onSelect={() => onSelectBlock(block.id)}
+                    >
+                      <PageRenderer blocks={[block]} device={device} />
+                    </DraggableBlock>
+                  );
+                })}
               </div>
               <div style={{ display: 'flex', justifyContent: 'center' }}>
-                <button type="button" onClick={onAddBlock} style={addButtonStyle}>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    onAddBlock();
+                  }}
+                  style={addButtonStyle}
+                >
                   + Add block
                 </button>
               </div>
