@@ -1,6 +1,8 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import PageRenderer, { Block } from './PageRenderer';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { Block } from './PageRenderer';
+import WebpageBuilder from './webpage/WebpageBuilder';
 import { supabase } from '@/lib/supabaseClient';
+import { tokens } from '@/src/ui/tokens';
 
 type Props = {
   open: boolean;
@@ -24,13 +26,30 @@ const NEW_BLOCKS: Record<string, () => Block> = {
   'two-col': () => ({ id: crypto.randomUUID(), type: 'two-col', left: [{ id: crypto.randomUUID(), type: 'text', text: 'Left' }], right: [{ id: crypto.randomUUID(), type: 'text', text: 'Right' }], ratio: '1-1', gap: 16 }),
 };
 
+const BLOCK_KINDS = Object.keys(NEW_BLOCKS) as (keyof typeof NEW_BLOCKS)[];
+
+function cloneBlockWithIds(block: Block): Block {
+  const baseId = crypto.randomUUID();
+  switch (block.type) {
+    case 'two-col':
+      return {
+        ...block,
+        id: baseId,
+        left: block.left.map(cloneBlockWithIds),
+        right: block.right.map(cloneBlockWithIds),
+      };
+    default:
+      return { ...block, id: baseId };
+  }
+}
+
 export default function PageBuilderModal({ open, onClose, pageId, restaurantId }: Props) {
   const [blocks, setBlocks] = useState<Block[]>(DEFAULT_BLOCKS);
   const [selection, setSelection] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [device, setDevice] = useState<'mobile'|'tablet'|'desktop'>('mobile');
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const history = useRef<Block[][]>([]);
   const future = useRef<Block[][]>([]);
 
@@ -79,6 +98,17 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
     if (selection === id) setSelection(null);
   }
 
+  function duplicateBlock(id: string) {
+    const index = blocks.findIndex(b => b.id === id);
+    if (index < 0) return;
+    const clone = cloneBlockWithIds(blocks[index]);
+    const next = [...blocks];
+    next.splice(index + 1, 0, clone);
+    pushHistory(blocks);
+    setBlocks(next);
+    setSelection(clone.id);
+  }
+
   function moveBlock(id: string, direction: -1|1) {
     const idx = blocks.findIndex(b => b.id === id);
     const ni = idx + direction;
@@ -96,9 +126,80 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
     setBlocks(next);
   }
 
+  const handleAddBlock = () => {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      setPaletteOpen(true);
+    } else {
+      addBlock('text');
+    }
+  };
+
   useEffect(() => {
     if (selection) setInspectorOpen(true);
   }, [selection]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth >= 768) {
+      setDrawerOpen(true);
+    }
+  }, []);
+
+  const selectedBlock = useMemo(() => blocks.find((b) => b.id === selection) ?? null, [blocks, selection]);
+  const inspectorVisible = inspectorOpen;
+
+  const inspectorWrapperStyle = useMemo<React.CSSProperties>(
+    () => ({
+      width: inspectorVisible ? 320 : 0,
+      transition: `width 240ms ${tokens.easing.standard}`,
+      borderLeft: inspectorVisible ? `${tokens.border.thin}px solid ${tokens.colors.borderLight}` : 'none',
+      background: tokens.colors.surface,
+      boxShadow: inspectorVisible ? tokens.shadow.sm : 'none',
+      overflow: 'hidden',
+      display: 'flex',
+      flexDirection: 'column',
+    }),
+    [inspectorVisible]
+  );
+
+  const drawerStyle = useMemo<React.CSSProperties>(
+    () => ({
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      bottom: 0,
+      width: 288,
+      background: tokens.colors.surface,
+      borderRight: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
+      boxShadow: tokens.shadow.lg,
+      padding: tokens.spacing.lg,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: tokens.spacing.md,
+      overflowY: 'auto',
+      transform: drawerOpen ? 'translateX(0)' : 'translateX(-110%)',
+      transition: `transform 220ms ${tokens.easing.standard}`,
+      zIndex: 2,
+      borderTopRightRadius: tokens.radius.lg,
+      borderBottomRightRadius: tokens.radius.lg,
+    }),
+    [drawerOpen]
+  );
+
+  const drawerOverlayStyle = useMemo<React.CSSProperties>(
+    () => ({
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      background: 'rgba(15, 23, 42, 0.08)',
+      opacity: drawerOpen ? 1 : 0,
+      pointerEvents: drawerOpen ? 'auto' : 'none',
+      transition: `opacity 200ms ${tokens.easing.standard}`,
+      zIndex: 1,
+    }),
+    [drawerOpen]
+  );
 
   function undo() {
     const prev = history.current.pop();
@@ -133,90 +234,185 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
 
   if (!open) return null;
 
-  const canvasWidth = device === 'mobile' ? 390 : device === 'tablet' ? 820 : 1100;
-
   return (
     <div role="dialog" aria-modal="true" className="fixed inset-0 z-[60] flex">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative z-[61] m-4 flex w-[calc(100%-2rem)] flex-1 rounded-2xl bg-white shadow-2xl overflow-hidden flex-col md:flex-row">
+      <div className="relative z-[61] m-4 flex w-[calc(100%-2rem)] flex-1 flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
         {/* Mobile toolbar */}
-        <div className="md:hidden flex items-center justify-between border-b p-2">
-          <button onClick={() => setPaletteOpen(true)} className="px-2 py-1 rounded border">Blocks</button>
+        <div className="flex items-center justify-between border-b p-2 md:hidden">
+          <button onClick={() => setPaletteOpen(true)} className="rounded border px-2 py-1">Blocks</button>
           <div className="space-x-2">
-            <button onClick={undo} className="px-2 py-1 rounded border">Undo</button>
-            <button onClick={redo} className="px-2 py-1 rounded border">Redo</button>
+            <button onClick={undo} className="rounded border px-2 py-1">Undo</button>
+            <button onClick={redo} className="rounded border px-2 py-1">Redo</button>
           </div>
           <div className="space-x-2">
-            <button onClick={save} disabled={saving} className="px-2 py-1 rounded bg-emerald-600 text-white disabled:opacity-60">{saving?'Saving…':'Save'}</button>
-            <button onClick={onClose} className="px-2 py-1 rounded border">Close</button>
+            <button onClick={save} disabled={saving} className="rounded bg-emerald-600 px-2 py-1 text-white disabled:opacity-60">{saving ? 'Saving…' : 'Save'}</button>
+            <button onClick={onClose} className="rounded border px-2 py-1">Close</button>
           </div>
         </div>
 
-        <div className="flex flex-1 overflow-hidden">
-          {/* Left palette desktop */}
-          <aside className="w-60 border-r p-3 space-y-3 hidden md:block">
-            <div className="text-sm font-semibold mb-2">Blocks</div>
-            {(['heading','text','image','button','divider','spacer','two-col'] as const).map(k => (
-              <button key={k} onClick={() => addBlock(k)} className="w-full rounded border px-3 py-2 text-left">
-                + {k}
-              </button>
-            ))}
-            <div className="mt-6 text-sm font-semibold mb-2">Device</div>
-            <div className="flex gap-2">
-              {(['mobile','tablet','desktop'] as const).map(d => (
-                <button key={d} onClick={() => setDevice(d)}
-                  className={`px-2 py-1 rounded border ${device===d?'bg-emerald-50 border-emerald-600':''}`}>
-                  {d}
+        {/* Desktop toolbar */}
+        <div className="hidden items-center justify-between border-b bg-white px-6 py-3 md:flex">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setDrawerOpen((prev) => !prev)}
+              className={`rounded border px-3 py-1 text-sm font-medium ${drawerOpen ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : ''}`}
+            >
+              Blocks
+            </button>
+            <button
+              type="button"
+              onClick={() => setInspectorOpen((prev) => !prev)}
+              className={`rounded border px-3 py-1 text-sm font-medium ${inspectorVisible ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : ''}`}
+            >
+              Inspector
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={undo} className="rounded border px-3 py-1 text-sm">Undo</button>
+            <button onClick={redo} className="rounded border px-3 py-1 text-sm">Redo</button>
+            <button onClick={save} disabled={saving} className="rounded bg-emerald-600 px-4 py-1 text-sm font-medium text-white disabled:opacity-60">{saving ? 'Saving…' : 'Save'}</button>
+            <button onClick={onClose} className="rounded border px-4 py-1 text-sm">Close</button>
+          </div>
+        </div>
+
+        <div className="flex flex-1 overflow-hidden" style={{ background: tokens.colors.canvas }}>
+          <div className="relative flex flex-1 overflow-hidden">
+            <div className="hidden md:block" style={drawerOverlayStyle} onClick={() => setDrawerOpen(false)} />
+            <div className="hidden md:flex" style={drawerStyle}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: tokens.spacing.sm,
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: tokens.fontSize.sm,
+                    fontWeight: tokens.fontWeight.semibold,
+                    color: tokens.colors.textSecondary,
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  Blocks
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setDrawerOpen(false)}
+                  style={{
+                    borderRadius: tokens.radius.sm,
+                    border: `${tokens.border.thin}px solid transparent`,
+                    background: 'transparent',
+                    color: tokens.colors.textSecondary,
+                    cursor: 'pointer',
+                    padding: tokens.spacing.xs,
+                  }}
+                  aria-label="Close block drawer"
+                >
+                  ×
                 </button>
-              ))}
-            </div>
-            <div className="mt-6 space-x-2">
-              <button onClick={undo} className="px-2 py-1 rounded border">Undo</button>
-              <button onClick={redo} className="px-2 py-1 rounded border">Redo</button>
-            </div>
-          </aside>
-
-          {/* Canvas */}
-          <main className="flex-1 overflow-auto bg-neutral-50 flex justify-center p-6">
-            <div className="bg-white rounded-2xl shadow p-6" style={{ maxWidth: canvasWidth, width: '100%' }}>
-              {blocks.map((b) => (
-                <div key={b.id}
-                     className={`relative group rounded ${selection===b.id?'outline outline-2 outline-emerald-500':''}`}
-                     onClick={() => setSelection(b.id)}>
-                  {/* inline controls */}
-                  <div className="absolute -top-3 right-0 hidden group-hover:flex gap-1">
-                    <button className="px-2 py-0.5 rounded border bg-white" onClick={() => moveBlock(b.id, -1)}>↑</button>
-                    <button className="px-2 py-0.5 rounded border bg-white" onClick={() => moveBlock(b.id, 1)}>↓</button>
-                    <button className="px-2 py-0.5 rounded border bg-white text-red-600" onClick={() => removeBlock(b.id)}>✕</button>
-                  </div>
-                  <PageRenderer blocks={[b]} />
-                </div>
-              ))}
-              {blocks.length===0 && (
-                <div className="text-center text-neutral-500 py-12">Click a block on the left to start building.</div>
-              )}
-            </div>
-          </main>
-
-          {/* Inspector desktop */}
-          <aside className="w-72 border-l p-4 hidden md:block">
-            <div className="flex items-center justify-between mb-3">
-              <div className="font-semibold">Inspector</div>
-              <div className="space-x-2">
-                <button onClick={save} disabled={saving} className="px-3 py-1 rounded bg-emerald-600 text-white disabled:opacity-60">{saving?'Saving…':'Save'}</button>
-                <button onClick={onClose} className="px-3 py-1 rounded border">Close</button>
+              </div>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                  gap: tokens.spacing.sm,
+                }}
+              >
+                {BLOCK_KINDS.map((kind) => (
+                  <button
+                    key={kind}
+                    type="button"
+                    onClick={() => addBlock(kind)}
+                    style={{
+                      borderRadius: tokens.radius.md,
+                      border: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
+                      background: tokens.colors.surfaceSubtle,
+                      padding: `${tokens.spacing.sm}px ${tokens.spacing.md}px`,
+                      textAlign: 'left',
+                      textTransform: 'capitalize',
+                      fontSize: tokens.fontSize.sm,
+                      color: tokens.colors.textSecondary,
+                      transition: `border-color 160ms ${tokens.easing.standard}, background-color 160ms ${tokens.easing.standard}`,
+                    }}
+                  >
+                    + {kind.replace(/-/g, ' ')}
+                  </button>
+                ))}
               </div>
             </div>
-            {!selection ? (
-              <div className="text-sm text-neutral-500">Select a block to edit its properties.</div>
-            ) : (
-              <Inspector
-                key={selection}
-                block={blocks.find(b => b.id===selection)!}
-                onChange={(patch) => updateBlock(selection, patch)}
+            <main className="flex-1 overflow-hidden">
+              <WebpageBuilder
+                blocks={blocks}
+                selectedBlockId={selection}
+                onSelectBlock={(id) => setSelection(id)}
+                onDeleteBlock={removeBlock}
+                onDuplicateBlock={duplicateBlock}
+                onMoveBlock={moveBlock}
+                onAddBlock={handleAddBlock}
               />
+            </main>
+          </div>
+          <div className="hidden md:flex" style={inspectorWrapperStyle}>
+            {inspectorVisible && (
+              <div className="flex h-full w-full flex-col">
+                <div
+                  style={{
+                    padding: tokens.spacing.lg,
+                    borderBottom: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: tokens.spacing.sm,
+                  }}
+                >
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <span
+                      style={{
+                        fontSize: tokens.fontSize.sm,
+                        fontWeight: tokens.fontWeight.semibold,
+                        color: tokens.colors.textSecondary,
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      Inspector
+                    </span>
+                    <span style={{ fontSize: tokens.fontSize.xs, color: tokens.colors.textMuted }}>
+                      {selectedBlock ? `Editing ${selectedBlock.type.replace(/-/g, ' ')}` : 'Select a block to edit'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setInspectorOpen(false)}
+                    style={{
+                      borderRadius: tokens.radius.sm,
+                      border: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
+                      background: tokens.colors.surface,
+                      color: tokens.colors.textSecondary,
+                      padding: `${tokens.spacing.xs}px ${tokens.spacing.sm}px`,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Close
+                  </button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-4">
+                  {!selectedBlock ? (
+                    <div className="text-sm text-neutral-500">Select a block to edit its properties.</div>
+                  ) : (
+                    <Inspector
+                      key={selectedBlock.id}
+                      block={selectedBlock}
+                      onChange={(patch) => updateBlock(selectedBlock.id, patch)}
+                    />
+                  )}
+                </div>
+              </div>
             )}
-          </aside>
+          </div>
         </div>
       </div>
 
@@ -227,20 +423,18 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
             <div className="text-sm font-semibold">Blocks</div>
             <button onClick={() => setPaletteOpen(false)} className="px-2 py-1 rounded border">Close</button>
           </div>
-          {(['heading','text','image','button','divider','spacer','two-col'] as const).map(k => (
-            <button key={k} onClick={() => { addBlock(k); setPaletteOpen(false); }} className="w-full rounded border px-3 py-2 text-left">
-              + {k}
+          {BLOCK_KINDS.map((kind) => (
+            <button
+              key={kind}
+              onClick={() => {
+                addBlock(kind);
+                setPaletteOpen(false);
+              }}
+              className="w-full rounded border px-3 py-2 text-left capitalize"
+            >
+              + {kind.replace(/-/g, ' ')}
             </button>
           ))}
-          <div className="mt-6 text-sm font-semibold mb-2">Device</div>
-          <div className="flex gap-2">
-            {(['mobile','tablet','desktop'] as const).map(d => (
-              <button key={d} onClick={() => setDevice(d)}
-                className={`px-2 py-1 rounded border ${device===d?'bg-emerald-50 border-emerald-600':''}`}>
-                {d}
-              </button>
-            ))}
-          </div>
           <div className="mt-6 space-x-2">
             <button onClick={undo} className="px-2 py-1 rounded border">Undo</button>
             <button onClick={redo} className="px-2 py-1 rounded border">Redo</button>
