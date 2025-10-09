@@ -42,7 +42,7 @@ import {
   resolveTypographySpacing,
   TEXT_BLOCK_SIZE_TO_FONT,
 } from '@/src/utils/typography';
-import { resolveBlockLayout } from '@/src/utils/resolveBlockLayout';
+import { resolveBlockLayout } from '@/utils/resolveBlockLayout';
 
 const TEXTUAL_BLOCK_KIND_NAMES = new Set([
   'heading',
