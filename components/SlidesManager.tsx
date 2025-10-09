@@ -2875,7 +2875,7 @@ export default function SlidesManager({
                   );
                 })}
               </div>
-              {cfg.blocks.map((block) => {
+              {cfg.blocks.map((block, layerIndex) => {
                 const visibility = resolveBlockVisibility(block);
                 if (!visibility[activeDevice]) {
                   return null;
@@ -2888,6 +2888,7 @@ export default function SlidesManager({
                 const autoWidthEnabled = textual ? isAutoWidthEnabled(block) : false;
                 const autoHeightEnabled = textual ? isAutoHeightEnabled(block) : false;
                 const inlineEditing = inlineEditingId === block.id;
+                const zIndex = tokens.zIndexBase + layerIndex;
                 return (
                   <InteractiveBoxComponent
                     key={block.id}
@@ -2928,6 +2929,7 @@ export default function SlidesManager({
                     }
                     resolveDragSnap={resolveDragSnap}
                     onDragGuidesChange={handleGuidesChange}
+                    zIndex={zIndex}
                   >
                     <BlockChromeWithAutoSize
                       block={block}
@@ -3350,6 +3352,7 @@ type InteractiveBoxProps = {
   onResizeStart?: (details: { horizontal: boolean; vertical: boolean }) => void;
   resolveDragSnap?: (frame: Frame, meta: AlignmentSnapMeta) => AlignmentSnapResult | null;
   onDragGuidesChange?: (guides: AlignmentGuide[]) => void;
+  zIndex: number;
 };
 
 type PointerState = {
@@ -3405,6 +3408,7 @@ function InteractiveBox({
   onResizeStart,
   resolveDragSnap,
   onDragGuidesChange,
+  zIndex,
 }: InteractiveBoxProps) {
   const localRef = useRef<HTMLDivElement>(null);
   const pointerState = useRef<PointerState | null>(null);
@@ -3828,6 +3832,7 @@ function InteractiveBox({
     transformOrigin: 'top left',
     borderRadius: tokens.radius.md,
     touchAction: 'none',
+    zIndex,
     cursor: inlineEditing
       ? 'text'
       : editable && !locked

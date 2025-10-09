@@ -1,4 +1,5 @@
 export const tokens = {
+  zIndexBase: 10,
   spacing: {
     xs: 4,
     sm: 8,

@@ -144,7 +144,10 @@ export default function SlidesSection({ slide, cfg }: { slide: SlideRow; cfg: Sl
 
   useGoogleFontLoader(fontsInUse);
 
-  const blocks = useMemo(() => cfg.blocks || [], [cfg.blocks]);
+  const layerEntries = useMemo(
+    () => (cfg.blocks || []).map((block, index) => ({ block, index })),
+    [cfg.blocks],
+  );
 
   return (
     <>
@@ -152,7 +155,7 @@ export default function SlidesSection({ slide, cfg }: { slide: SlideRow; cfg: Sl
       <section className="of-canvas relative flex snap-start items-center justify-center overflow-hidden">
         <Background cfg={cfg} />
         <div className="relative h-full w-full" style={{ pointerEvents: 'none' }}>
-          {blocks.map((block) => {
+          {layerEntries.map(({ block, index: layerIndex }) => {
             const visibility = resolveBlockVisibility(block);
             if (!visibility[device]) {
               return null;
@@ -167,6 +170,7 @@ export default function SlidesSection({ slide, cfg }: { slide: SlideRow; cfg: Sl
               transform: `rotate(${frame.r ?? 0}deg)`,
               transformOrigin: 'top left',
               pointerEvents: 'auto',
+              zIndex: tokens.zIndexBase + layerIndex,
             };
             const interaction = getBlockInteractionPresentation(block);
             const backgroundPresentation = getBlockBackgroundPresentation(block.background);
