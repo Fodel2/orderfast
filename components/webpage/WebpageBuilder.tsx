@@ -5,6 +5,12 @@ import PageRenderer, { type Block, type DeviceKind } from '../PageRenderer';
 import DraggableBlock from './DraggableBlock';
 import { tokens } from '@/src/ui/tokens';
 
+const DEVICE_WIDTHS: Record<DeviceKind, number> = {
+  mobile: 420,
+  tablet: 768,
+  desktop: 1024,
+};
+
 type WebpageBuilderProps = {
   blocks: Block[];
   selectedBlockId: string | null;
@@ -27,13 +33,21 @@ export default function WebpageBuilder({
   inspectorVisible = false,
 }: WebpageBuilderProps) {
   const [device, setDevice] = useState<DeviceKind>('desktop');
-  const deviceWidths: Record<DeviceKind, number> = {
-    mobile: 375,
-    tablet: 768,
-    desktop: 1024,
-  };
+  type ShellStyle = React.CSSProperties & { '--wb-canvas-max'?: string };
 
-  const canvasWidth = deviceWidths[device];
+  const shellStyle = useMemo<ShellStyle>(
+    () => ({
+      display: 'flex',
+      flexDirection: 'column',
+      minHeight: '100%',
+      background: tokens.colors.canvas,
+      fontFamily: tokens.fonts.sans,
+      fontSize: tokens.fontSize.md,
+      color: tokens.colors.textPrimary,
+      ['--wb-canvas-max']: `${DEVICE_WIDTHS[device]}px`,
+    }),
+    [device],
+  );
   const deviceToggleStyle = useMemo<React.CSSProperties>(
     () => ({
       textTransform: 'capitalize',
@@ -49,35 +63,36 @@ export default function WebpageBuilder({
     []
   );
 
-  const rootStyle: React.CSSProperties = {
+  const contentStyle: React.CSSProperties = {
+    flex: 1,
+    paddingTop: 56,
     display: 'flex',
     flexDirection: 'column',
-    height: '100%',
-    background: tokens.colors.canvas,
-    fontFamily: tokens.fonts.sans,
-    fontSize: tokens.fontSize.md,
   };
 
   const scrollAreaStyle: React.CSSProperties = {
     flex: 1,
-    overflowY: 'auto',
-    overflowX: 'hidden',
+    display: 'flex',
+    justifyContent: 'center',
+    overflow: 'auto',
+    paddingTop: 0,
+    paddingBottom: 56,
+    paddingLeft: `calc(${tokens.spacing.lg}px + env(safe-area-inset-left))`,
+    paddingRight: `calc(${tokens.spacing.lg}px + env(safe-area-inset-right))`,
     background: tokens.colors.surfaceSubtle,
   };
 
-  const viewportStyle: React.CSSProperties = {
-    display: 'flex',
-    justifyContent: 'center',
-    padding: tokens.spacing.xl,
-    boxSizing: 'border-box',
-    transition: `padding 220ms ${tokens.easing.standard}`,
-  };
-
   const frameStyle: React.CSSProperties = {
-    width: `${canvasWidth}px`,
-    maxWidth: `${canvasWidth}px`,
-    flex: '0 0 auto',
-    transition: `max-width 220ms ${tokens.easing.standard}`,
+    width: '100%',
+    maxWidth: 'var(--wb-canvas-max, 420px)',
+    borderRadius: tokens.radius.lg,
+    boxShadow: tokens.shadow.lg,
+    background: tokens.colors.surface,
+    margin: '0 auto',
+    display: 'flex',
+    flexDirection: 'column',
+    position: 'relative',
+    zIndex: 30,
   };
 
   const canvasStyle: React.CSSProperties = {
@@ -95,8 +110,11 @@ export default function WebpageBuilder({
   );
 
   const addButtonStyle: React.CSSProperties = {
-    alignSelf: 'center',
-    marginTop: blocks.length ? tokens.spacing.lg : 0,
+    position: 'sticky',
+    bottom: tokens.spacing.md,
+    zIndex: 30,
+    margin: `${tokens.spacing.lg}px auto 0`,
+    display: 'block',
     padding: `${tokens.spacing.sm}px ${tokens.spacing.lg}px`,
     borderRadius: tokens.radius.lg,
     border: `${tokens.border.thin}px dashed ${tokens.colors.accent}`,
@@ -108,20 +126,23 @@ export default function WebpageBuilder({
   };
 
   return (
-    <div style={rootStyle}>
+    <div style={shellStyle}>
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'flex-start',
+          justifyContent: 'center',
           gap: tokens.spacing.sm,
-          padding: `${tokens.spacing.md}px ${tokens.spacing.xl}px`,
+          paddingLeft: `calc(${tokens.spacing.lg}px + env(safe-area-inset-left))`,
+          paddingRight: `calc(${tokens.spacing.lg}px + env(safe-area-inset-right))`,
+          height: 56,
           borderBottom: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
           background: tokens.colors.surface,
           position: 'sticky',
           top: 0,
-          zIndex: 1,
+          zIndex: 40,
         }}
+        className="wb-device-toggles"
       >
         <div style={{ display: 'flex', gap: tokens.spacing.sm }}>
           {(['mobile', 'tablet', 'desktop'] as DeviceKind[]).map((value) => {
@@ -145,70 +166,58 @@ export default function WebpageBuilder({
           })}
         </div>
       </div>
-      <div style={scrollAreaStyle}>
-        <div style={viewportStyle}>
-          <div style={frameStyle}>
-            <div
-              style={{
-                position: 'relative',
-                background: tokens.colors.surface,
-                borderRadius: tokens.radius.lg,
-                padding: tokens.spacing.lg,
-                boxShadow: tokens.shadow.sm,
-                transition: `box-shadow 200ms ${tokens.easing.standard}`,
-              }}
-            >
-              <div style={canvasStyle}>
-                {blocks.length === 0 && (
-                  <div
-                    style={{
-                      padding: tokens.spacing.lg,
-                      textAlign: 'center',
-                      color: tokens.colors.textMuted,
-                    }}
-                  >
-                    Click “Add block” to open the block library and start building your page.
-                  </div>
-                )}
-                {blocks.map((block, index) => {
-                  const headerId = headerBlockId;
-                  const isHeader = block.type === 'header';
-                  const disableMoveUp =
-                    isHeader ||
-                    index === 0 ||
-                    (headerId && headerId !== block.id && index === 1);
-                  const disableMoveDown = isHeader || index === blocks.length - 1;
-                  return (
-                    <DraggableBlock
-                      key={block.id}
-                      id={block.id}
-                      onDelete={() => onDeleteBlock(block.id)}
-                      onDuplicate={() => onDuplicateBlock(block.id)}
-                      onMoveUp={() => onMoveBlock(block.id, -1)}
-                      onMoveDown={() => onMoveBlock(block.id, 1)}
-                      disableMoveUp={disableMoveUp}
-                      disableMoveDown={disableMoveDown}
-                      isSelected={selectedBlockId === block.id}
-                      onSelect={() => onSelectBlock(block.id)}
-                    >
-                      <PageRenderer blocks={[block]} device={device} />
-                    </DraggableBlock>
-                  );
-                })}
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'center' }}>
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    onAddBlock();
+      <div style={contentStyle}>
+        <div style={scrollAreaStyle} className="wb-preview">
+          <div style={frameStyle} className="wb-canvas">
+            <div style={canvasStyle}>
+              {blocks.length === 0 && (
+                <div
+                  style={{
+                    padding: tokens.spacing.lg,
+                    textAlign: 'center',
+                    color: tokens.colors.textMuted,
                   }}
-                  style={addButtonStyle}
                 >
-                  + Add block
-                </button>
-              </div>
+                  Click “Add block” to open the block library and start building your page.
+                </div>
+              )}
+              {blocks.map((block, index) => {
+                const headerId = headerBlockId;
+                const isHeader = block.type === 'header';
+                const disableMoveUp =
+                  isHeader ||
+                  index === 0 ||
+                  (headerId && headerId !== block.id && index === 1);
+                const disableMoveDown = isHeader || index === blocks.length - 1;
+                return (
+                  <DraggableBlock
+                    key={block.id}
+                    id={block.id}
+                    onDelete={() => onDeleteBlock(block.id)}
+                    onDuplicate={() => onDuplicateBlock(block.id)}
+                    onMoveUp={() => onMoveBlock(block.id, -1)}
+                    onMoveDown={() => onMoveBlock(block.id, 1)}
+                    disableMoveUp={disableMoveUp}
+                    disableMoveDown={disableMoveDown}
+                    isSelected={selectedBlockId === block.id}
+                    onSelect={() => onSelectBlock(block.id)}
+                  >
+                    <PageRenderer blocks={[block]} device={device} />
+                  </DraggableBlock>
+                );
+              })}
             </div>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.preventDefault();
+                onAddBlock();
+              }}
+              style={addButtonStyle}
+              className="wb-add-cta"
+            >
+              + Add block
+            </button>
           </div>
         </div>
       </div>

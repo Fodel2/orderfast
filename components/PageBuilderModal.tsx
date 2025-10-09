@@ -529,13 +529,14 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
     [inspectorVisible]
   );
 
-  const drawerStyle = useMemo<React.CSSProperties>(
+  const drawerPanelStyle = useMemo<React.CSSProperties>(
     () => ({
-      position: 'absolute',
-      top: 0,
+      position: 'fixed',
       left: 0,
+      top: 56,
       bottom: 0,
-      width: 288,
+      width: 320,
+      zIndex: 60,
       background: tokens.colors.surface,
       borderRight: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
       boxShadow: tokens.shadow.lg,
@@ -544,30 +545,40 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
       flexDirection: 'column',
       gap: tokens.spacing.md,
       overflowY: 'auto',
-      transform: drawerOpen ? 'translateX(0)' : 'translateX(-110%)',
-      transition: `transform 220ms ${tokens.easing.standard}`,
-      zIndex: 2,
-      borderTopRightRadius: tokens.radius.lg,
-      borderBottomRightRadius: tokens.radius.lg,
+      transform: drawerOpen ? 'translateX(0)' : 'translateX(-100%)',
+      transition: `transform 200ms ${tokens.easing.standard}`,
     }),
     [drawerOpen]
   );
 
   const drawerOverlayStyle = useMemo<React.CSSProperties>(
     () => ({
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      background: 'rgba(15, 23, 42, 0.08)',
+      position: 'fixed',
+      inset: '56px 0 0 0',
+      background: 'rgba(0, 0, 0, 0.25)',
       opacity: drawerOpen ? 1 : 0,
       pointerEvents: drawerOpen ? 'auto' : 'none',
       transition: `opacity 200ms ${tokens.easing.standard}`,
-      zIndex: 1,
+      zIndex: 59,
     }),
     [drawerOpen]
   );
+
+  useEffect(() => {
+    if (!drawerOpen) {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setDrawerOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [drawerOpen]);
 
   function undo() {
     const prev = history.current.pop();
@@ -645,10 +656,10 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
           </div>
         </div>
 
-        <div className="flex flex-1 overflow-hidden" style={{ background: tokens.colors.canvas }}>
-          <div className="relative flex flex-1 overflow-hidden">
+        <div className="flex flex-1" style={{ background: tokens.colors.canvas }}>
+          <div className="relative flex flex-1">
             <div className="hidden md:block" style={drawerOverlayStyle} onClick={() => setDrawerOpen(false)} />
-            <div className="hidden md:flex" style={drawerStyle}>
+            <div className="hidden md:flex" style={drawerPanelStyle}>
               <div
                 style={{
                   display: 'flex',
@@ -752,8 +763,8 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
             </div>
             <main
               ref={blockLibraryHostRef}
-              className="flex-1 overflow-hidden"
-              style={{ position: 'relative' }}
+              className="flex-1"
+              style={{ position: 'relative', zIndex: 30 }}
             >
               <WebpageBuilder
                 blocks={blocks}
