@@ -1,5 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Columns, Image as ImageIcon, LayoutDashboard, Minus, MoveVertical, Type } from 'lucide-react';
+import {
+  Columns,
+  Image as ImageIcon,
+  LayoutDashboard,
+  Minus,
+  MoveVertical,
+  Redo2,
+  Type,
+  Undo2,
+  X,
+} from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type {
   Block,
@@ -529,13 +539,14 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
     [inspectorVisible]
   );
 
-  const drawerStyle = useMemo<React.CSSProperties>(
+  const drawerPanelStyle = useMemo<React.CSSProperties>(
     () => ({
-      position: 'absolute',
-      top: 0,
+      position: 'fixed',
       left: 0,
+      top: 44,
       bottom: 0,
-      width: 288,
+      width: 320,
+      zIndex: 60,
       background: tokens.colors.surface,
       borderRight: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
       boxShadow: tokens.shadow.lg,
@@ -544,30 +555,40 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
       flexDirection: 'column',
       gap: tokens.spacing.md,
       overflowY: 'auto',
-      transform: drawerOpen ? 'translateX(0)' : 'translateX(-110%)',
-      transition: `transform 220ms ${tokens.easing.standard}`,
-      zIndex: 2,
-      borderTopRightRadius: tokens.radius.lg,
-      borderBottomRightRadius: tokens.radius.lg,
+      transform: drawerOpen ? 'translateX(0)' : 'translateX(-100%)',
+      transition: `transform 200ms ${tokens.easing.standard}`,
     }),
     [drawerOpen]
   );
 
   const drawerOverlayStyle = useMemo<React.CSSProperties>(
     () => ({
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      background: 'rgba(15, 23, 42, 0.08)',
+      position: 'fixed',
+      inset: '44px 0 0 0',
+      background: 'rgba(0, 0, 0, 0.25)',
       opacity: drawerOpen ? 1 : 0,
       pointerEvents: drawerOpen ? 'auto' : 'none',
       transition: `opacity 200ms ${tokens.easing.standard}`,
-      zIndex: 1,
+      zIndex: 59,
     }),
     [drawerOpen]
   );
+
+  useEffect(() => {
+    if (!drawerOpen) {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setDrawerOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [drawerOpen]);
 
   function undo() {
     const prev = history.current.pop();
@@ -607,48 +628,66 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative z-[61] m-4 flex w-[calc(100%-2rem)] flex-1 flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
         {/* Mobile toolbar */}
-        <div className="flex items-center justify-between border-b p-2 md:hidden">
-          <button onClick={() => setBlockLibraryOpen(true)} className="rounded border px-2 py-1">Blocks</button>
-          <div className="space-x-2">
-            <button onClick={undo} className="rounded border px-2 py-1">Undo</button>
-            <button onClick={redo} className="rounded border px-2 py-1">Redo</button>
-          </div>
-          <div className="space-x-2">
-            <button onClick={save} disabled={saving} className="rounded bg-emerald-600 px-2 py-1 text-white disabled:opacity-60">{saving ? 'Saving…' : 'Save'}</button>
-            <button onClick={onClose} className="rounded border px-2 py-1">Close</button>
-          </div>
+        <div className="wb-toolbar flex items-center md:hidden">
+          <button
+            type="button"
+            onClick={() => setBlockLibraryOpen(true)}
+            className="blocks-btn text-sm font-medium"
+          >
+            Blocks
+          </button>
+          <button type="button" onClick={undo} aria-label="Undo" className="icon-btn">
+            <Undo2 className="h-4 w-4" aria-hidden="true" />
+          </button>
+          <button type="button" onClick={redo} aria-label="Redo" className="icon-btn">
+            <Redo2 className="h-4 w-4" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving}
+            className="save-btn ml-auto text-sm font-medium"
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+          <button type="button" onClick={onClose} aria-label="Close builder" className="icon-btn">
+            <X className="h-4 w-4" aria-hidden="true" />
+          </button>
         </div>
 
         {/* Desktop toolbar */}
-        <div className="hidden items-center justify-between border-b bg-white px-6 py-3 md:flex">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setDrawerOpen((prev) => !prev)}
-              className={`rounded border px-3 py-1 text-sm font-medium ${drawerOpen ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : ''}`}
-            >
-              Blocks
-            </button>
-            <button
-              type="button"
-              onClick={() => setInspectorOpen((prev) => !prev)}
-              className={`rounded border px-3 py-1 text-sm font-medium ${inspectorVisible ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : ''}`}
-            >
-              Inspector
-            </button>
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={undo} className="rounded border px-3 py-1 text-sm">Undo</button>
-            <button onClick={redo} className="rounded border px-3 py-1 text-sm">Redo</button>
-            <button onClick={save} disabled={saving} className="rounded bg-emerald-600 px-4 py-1 text-sm font-medium text-white disabled:opacity-60">{saving ? 'Saving…' : 'Save'}</button>
-            <button onClick={onClose} className="rounded border px-4 py-1 text-sm">Close</button>
-          </div>
+        <div className="wb-toolbar hidden items-center md:flex">
+          <button
+            type="button"
+            onClick={() => setDrawerOpen((prev) => !prev)}
+            className={`blocks-btn text-sm font-medium ${drawerOpen ? 'ring-1 ring-emerald-500 ring-offset-1 text-emerald-700' : ''}`}
+            aria-pressed={drawerOpen}
+          >
+            Blocks
+          </button>
+          <button type="button" onClick={undo} aria-label="Undo" className="icon-btn">
+            <Undo2 className="h-4 w-4" aria-hidden="true" />
+          </button>
+          <button type="button" onClick={redo} aria-label="Redo" className="icon-btn">
+            <Redo2 className="h-4 w-4" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving}
+            className="save-btn ml-auto text-sm font-medium"
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+          <button type="button" onClick={onClose} aria-label="Close builder" className="icon-btn">
+            <X className="h-4 w-4" aria-hidden="true" />
+          </button>
         </div>
 
-        <div className="flex flex-1 overflow-hidden" style={{ background: tokens.colors.canvas }}>
-          <div className="relative flex flex-1 overflow-hidden">
+        <div className="flex flex-1" style={{ background: tokens.colors.canvas }}>
+          <div className="relative flex flex-1">
             <div className="hidden md:block" style={drawerOverlayStyle} onClick={() => setDrawerOpen(false)} />
-            <div className="hidden md:flex" style={drawerStyle}>
+            <div className="hidden md:flex" style={drawerPanelStyle}>
               <div
                 style={{
                   display: 'flex',
@@ -752,8 +791,8 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
             </div>
             <main
               ref={blockLibraryHostRef}
-              className="flex-1 overflow-hidden"
-              style={{ position: 'relative' }}
+              className="flex-1"
+              style={{ position: 'relative', zIndex: 30 }}
             >
               <WebpageBuilder
                 blocks={blocks}
@@ -851,6 +890,72 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
           />
         </div>
       )}
+      <style jsx global>{`
+        .wb-toolbar {
+          gap: 8px;
+          height: 44px;
+          padding: 0 12px;
+          background: var(--surface-1);
+          border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+        }
+        .wb-toolbar button {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 32px;
+          height: 32px;
+          border-radius: 8px;
+          background: var(--surface-1);
+          transition: background 0.2s ease;
+          border: none;
+          cursor: pointer;
+        }
+        .wb-toolbar button:hover {
+          background: var(--surface-hover);
+        }
+        .wb-toolbar button:focus-visible {
+          outline: 2px solid var(--brand-primary);
+          outline-offset: 2px;
+        }
+        .wb-toolbar .blocks-btn {
+          width: auto;
+          padding: 0 12px;
+          font-weight: 600;
+          height: 32px;
+        }
+        .wb-toolbar .blocks-btn[aria-pressed='true'] {
+          background: var(--surface-hover);
+          color: var(--brand-primary);
+        }
+        .wb-toolbar .icon-btn {
+          padding: 0;
+        }
+        .wb-toolbar .save-btn {
+          width: auto;
+          padding: 0 10px;
+          height: 32px;
+          font-size: 13px;
+          background: var(--brand-primary);
+          color: white;
+          font-weight: 600;
+        }
+        .wb-toolbar .save-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+        .wb-device-toggle {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          margin: 6px 0 8px;
+        }
+        .wb-device-toggle button {
+          height: 28px;
+          padding: 0 10px;
+          font-size: 12px;
+        }
+      `}</style>
     </div>
   );
 }

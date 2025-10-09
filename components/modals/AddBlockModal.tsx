@@ -152,58 +152,45 @@ export default function AddBlockModal({
     event.stopPropagation();
   };
 
-  const overlayPadding = isNarrow ? tokens.spacing.md : tokens.spacing.lg;
-  const modalPadding = isNarrow ? tokens.spacing.md : tokens.spacing.xl;
-  const modalWidth = isNarrow ? '90%' : '100%';
-  const modalMaxHeight = `calc(100% - ${overlayPadding * 2}px)`;
-
   return createPortal(
     <div
       role="dialog"
       aria-modal="true"
       aria-label="Add a block"
       style={{
-        position: container === document.body ? 'fixed' : 'absolute',
+        position: 'fixed',
         inset: 0,
         zIndex: 70,
         display: 'flex',
-        alignItems: 'center',
         justifyContent: 'center',
-        padding: overlayPadding,
+        overflowY: 'auto',
+        padding: tokens.spacing.lg,
+        background: 'rgba(0, 0, 0, 0.35)',
+        backdropFilter: 'blur(2px)',
+        opacity: visible ? 1 : 0,
+        transition: `opacity 200ms ${tokens.easing.standard}`,
         pointerEvents: open ? 'auto' : 'none',
       }}
       onClick={onClose}
     >
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background: tokens.colors.overlay.strong,
-          backdropFilter: 'blur(2px)',
-          opacity: visible ? 0.9 : 0,
-          transition: `opacity 180ms ${tokens.easing.standard}`,
-        }}
-      />
       <div
         ref={modalRef}
         tabIndex={-1}
         onClick={handleContainerClick}
         style={{
           position: 'relative',
-          width: modalWidth,
-          maxWidth: 600,
-          maxHeight: modalMaxHeight,
+          width: 'min(720px, calc(100% - 32px))',
           background: tokens.colors.surface,
-          borderRadius: tokens.radius.lg,
-          padding: modalPadding,
+          borderRadius: 16,
+          margin: `${isNarrow ? tokens.spacing.xl : 64}px auto`,
+          padding: isNarrow ? tokens.spacing.md : tokens.spacing.xl,
           boxShadow: tokens.shadow.lg,
           display: 'flex',
           flexDirection: 'column',
           gap: tokens.spacing.lg,
-          overflowY: 'auto',
           opacity: visible ? 1 : 0,
-          transform: visible ? 'scale(1)' : 'scale(0.96)',
-          transition: `opacity 180ms ${tokens.easing.standard}, transform 180ms ${tokens.easing.standard}`,
+          transform: visible ? 'translateY(0)' : 'translateY(12px)',
+          transition: `opacity 200ms ${tokens.easing.standard}, transform 200ms ${tokens.easing.standard}`,
         }}
       >
         <div
