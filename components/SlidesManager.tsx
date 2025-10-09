@@ -24,6 +24,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { ArrowsUpDownIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
+import { AnimatePresence, motion } from 'framer-motion';
 import { Star } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { supabase } from '@/utils/supabaseClient';
@@ -42,6 +43,7 @@ import {
   resolveTypographySpacing,
   TEXT_BLOCK_SIZE_TO_FONT,
 } from '@/src/utils/typography';
+import { resolveBlockLayout } from '@/utils/resolveBlockLayout';
 
 const TEXTUAL_BLOCK_KIND_NAMES = new Set([
   'heading',
@@ -99,8 +101,8 @@ export const DEFAULT_BLOCK_VISIBILITY: BlockVisibilityConfig = {
 };
 
 export const DEVICE_DIMENSIONS: Record<DeviceKind, { width: number; height: number }> = {
-  mobile: { width: 390, height: 844 },
-  tablet: { width: 834, height: 1112 },
+  mobile: { width: 375, height: 667 },
+  tablet: { width: 768, height: 1024 },
   desktop: { width: 1280, height: 800 },
 };
 
@@ -156,6 +158,40 @@ type AlignmentSnapResult = {
 };
 
 const TEXT_SIZING_DEVICE_ORDER: DeviceKind[] = ['mobile', 'tablet', 'desktop'];
+
+type SafeZoneBounds = { top: number; bottom: number; left: number; right: number };
+type SafeZoneEdge = keyof SafeZoneBounds;
+type SafeZoneAlertState = Record<SafeZoneEdge, boolean>;
+type CSSPropertiesWithVars = CSSProperties & Record<string, string | number>;
+
+const SAFE_ZONE_BOUNDS: SafeZoneBounds = { top: 6, bottom: 92, left: 8, right: 92 };
+const SAFE_ZONE_EDGES: SafeZoneEdge[] = ['top', 'bottom', 'left', 'right'];
+const SAFE_ZONE_TOOLTIP_MESSAGE =
+  'Keeping within the guide lines ensures visibility on all devices.';
+
+const createSafeZoneAlertState = (
+  overrides: Partial<SafeZoneAlertState> = {},
+): SafeZoneAlertState => ({
+  top: false,
+  bottom: false,
+  left: false,
+  right: false,
+  ...overrides,
+});
+
+const safeZoneStatesEqual = (a: SafeZoneAlertState, b: SafeZoneAlertState) =>
+  SAFE_ZONE_EDGES.every((edge) => a[edge] === b[edge]);
+
+const isSafeZoneClear = (state: SafeZoneAlertState) =>
+  SAFE_ZONE_EDGES.every((edge) => !state[edge]);
+
+const resolveSafeZoneViolations = (frame: Frame): SafeZoneAlertState =>
+  createSafeZoneAlertState({
+    top: frame.y < SAFE_ZONE_BOUNDS.top,
+    bottom: frame.y + frame.h > SAFE_ZONE_BOUNDS.bottom,
+    left: frame.x < SAFE_ZONE_BOUNDS.left,
+    right: frame.x + frame.w > SAFE_ZONE_BOUNDS.right,
+  });
 
 type TextSizingDimensions = { width?: number; height?: number };
 
@@ -1295,6 +1331,7 @@ type SlidesManagerProps = {
   editInPreview?: boolean;
   scale?: number;
   onManipulationChange?: (manipulating: boolean) => void;
+  safeZoneVisible?: boolean;
 };
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
@@ -1994,6 +2031,158 @@ function ensureFrame(block: SlideBlock, device: DeviceKind): Frame {
   return existing ? pickForDevice(existing) : pickForDevice(fallback);
 }
 
+type SafeZoneOverlayProps = {
+  bounds: SafeZoneBounds;
+  alerts: SafeZoneAlertState;
+  tooltipEdge: SafeZoneEdge | null;
+  message: string;
+  show: boolean;
+};
+
+const SAFE_ZONE_OVERLAY_Z_INDEX = 1600;
+
+const SafeZoneOverlay = React.memo(function SafeZoneOverlay({
+  bounds,
+  alerts,
+  tooltipEdge,
+  message,
+  show,
+}: SafeZoneOverlayProps) {
+  const baseLineColor = tokens.colors.overlay.soft;
+  const alertColor = 'rgba(255, 0, 0, 0.5)';
+  const tooltipActive = Boolean(show && tooltipEdge && alerts[tooltipEdge]);
+  const tooltipOffset = tokens.spacing.md;
+
+  const tooltipPositionStyle = useMemo<CSSProperties>(() => {
+    if (!tooltipActive || !tooltipEdge) {
+      return {};
+    }
+    switch (tooltipEdge) {
+      case 'top':
+        return {
+          top: `calc(${bounds.top}% + ${tooltipOffset}px)`,
+          left: '50%',
+          transform: 'translate(-50%, 0)',
+        };
+      case 'bottom':
+        return {
+          top: `calc(${bounds.bottom}% - ${tooltipOffset}px)`,
+          left: '50%',
+          transform: 'translate(-50%, -100%)',
+        };
+      case 'left':
+        return {
+          left: `calc(${bounds.left}% + ${tooltipOffset}px)`,
+          top: '50%',
+          transform: 'translate(0, -50%)',
+        };
+      case 'right':
+        return {
+          left: `calc(${bounds.right}% - ${tooltipOffset}px)`,
+          top: '50%',
+          transform: 'translate(-100%, -50%)',
+        };
+      default:
+        return {};
+    }
+  }, [
+    bounds.bottom,
+    bounds.left,
+    bounds.right,
+    bounds.top,
+    tooltipActive,
+    tooltipEdge,
+    tooltipOffset,
+  ]);
+
+  const lines = useMemo(
+    () =>
+      [
+        { edge: 'top' as const, orientation: 'horizontal' as const, position: bounds.top },
+        { edge: 'bottom' as const, orientation: 'horizontal' as const, position: bounds.bottom },
+        { edge: 'left' as const, orientation: 'vertical' as const, position: bounds.left },
+        { edge: 'right' as const, orientation: 'vertical' as const, position: bounds.right },
+      ],
+    [bounds.bottom, bounds.left, bounds.right, bounds.top],
+  );
+
+  return (
+    <div
+      aria-hidden={true}
+      className="pointer-events-none absolute inset-0"
+      style={{
+        zIndex: SAFE_ZONE_OVERLAY_Z_INDEX,
+        opacity: show ? 1 : 0,
+        transition: 'opacity 150ms ease-in-out',
+      }}
+    >
+      {lines.map((line) => {
+        const color = alerts[line.edge] ? alertColor : baseLineColor;
+        if (line.orientation === 'horizontal') {
+          return (
+            <div
+              key={line.edge}
+              aria-hidden
+              style={{
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                top: `${line.position}%`,
+                transform: 'translateY(-50%)',
+                borderTop: `${tokens.border.thin}px dashed ${color}`,
+              }}
+            />
+          );
+        }
+        return (
+          <div
+            key={line.edge}
+            aria-hidden
+            style={{
+              position: 'absolute',
+              top: 0,
+              bottom: 0,
+              left: `${line.position}%`,
+              transform: 'translateX(-50%)',
+              borderLeft: `${tokens.border.thin}px dashed ${color}`,
+            }}
+          />
+        );
+      })}
+      <AnimatePresence>
+        {tooltipActive ? (
+          <motion.div
+            key={`safe-zone-tooltip-${tooltipEdge}`}
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+            className="pointer-events-none"
+            style={{
+              position: 'absolute',
+              ...tooltipPositionStyle,
+              background: tokens.colors.surface,
+              color: tokens.colors.textPrimary,
+              borderRadius: tokens.radius.sm,
+              border: `${tokens.border.thin}px solid ${tokens.colors.borderStrong}`,
+              padding: `${tokens.spacing.xs}px ${tokens.spacing.sm}px`,
+              boxShadow: tokens.shadow.sm,
+              fontSize: `${tokens.fontSize.sm}px`,
+              fontWeight: tokens.fontWeight.medium,
+              lineHeight: tokens.lineHeight.normal,
+              maxWidth: '240px',
+              textAlign: 'center',
+              whiteSpace: 'normal',
+            }}
+          >
+            {message}
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
+  );
+});
+
 export default function SlidesManager({
   initialCfg,
   onChange,
@@ -2006,6 +2195,7 @@ export default function SlidesManager({
   editInPreview = true,
   scale = 1,
   onManipulationChange,
+  safeZoneVisible,
 }: SlidesManagerProps) {
   const frameRef = useRef<HTMLElement>(null);
   const cfg = useMemo(() => initialCfg, [initialCfg]);
@@ -2024,6 +2214,40 @@ export default function SlidesManager({
 
   const [activeGuides, setActiveGuides] = useState<AlignmentGuide[]>([]);
   const [inlineEditingId, setInlineEditingId] = useState<string | null>(null);
+  const [safeZoneEnabled, setSafeZoneEnabled] = useState(true);
+  const [safeZoneAlerts, setSafeZoneAlerts] = useState<SafeZoneAlertState>(() =>
+    createSafeZoneAlertState(),
+  );
+  const [safeZoneTooltipEdge, setSafeZoneTooltipEdge] = useState<SafeZoneEdge | null>(null);
+
+  const resolvedSafeZoneEnabled =
+    typeof safeZoneVisible === 'boolean' ? safeZoneVisible : safeZoneEnabled;
+
+  const shouldShowSafeZone = Boolean(editable && editInPreview && resolvedSafeZoneEnabled);
+
+  const handleSafeZoneEvaluate = useCallback(
+    (frame: Frame) => {
+      if (!shouldShowSafeZone) {
+        return;
+      }
+      const next = resolveSafeZoneViolations(frame);
+      setSafeZoneAlerts((prev) => (safeZoneStatesEqual(prev, next) ? prev : next));
+      const nextEdge = SAFE_ZONE_EDGES.find((edge) => next[edge]) ?? null;
+      setSafeZoneTooltipEdge((prev) => (prev === nextEdge ? prev : nextEdge));
+    },
+    [shouldShowSafeZone],
+  );
+
+  const resetSafeZoneAlerts = useCallback(() => {
+    setSafeZoneAlerts((prev) => (isSafeZoneClear(prev) ? prev : createSafeZoneAlertState()));
+    setSafeZoneTooltipEdge((prev) => (prev === null ? prev : null));
+  }, []);
+
+  useEffect(() => {
+    if (!shouldShowSafeZone) {
+      resetSafeZoneAlerts();
+    }
+  }, [resetSafeZoneAlerts, shouldShowSafeZone]);
 
   const visibleBlockFrames = useMemo(
     () =>
@@ -2256,6 +2480,11 @@ export default function SlidesManager({
         h: clamp(typeof frame.h === 'number' ? frame.h : 0, 0, 100),
         r: typeof frame.r === 'number' && Number.isFinite(frame.r) ? frame.r : 0,
       };
+      if (options?.commit === false) {
+        handleSafeZoneEvaluate(sanitized);
+      } else {
+        resetSafeZoneAlerts();
+      }
       const next: SlideCfg = {
         ...cfg,
         blocks: cfg.blocks.map((b) =>
@@ -2275,7 +2504,7 @@ export default function SlidesManager({
       };
       onChange(next, options);
     },
-    [activeDevice, cfg, onChange],
+    [activeDevice, cfg, handleSafeZoneEvaluate, onChange, resetSafeZoneAlerts],
   );
 
   const setBlockAutoSizingFlag = useCallback(
@@ -2802,10 +3031,60 @@ export default function SlidesManager({
     [deviceSize.height, deviceSize.width],
   );
 
+  const safeZoneToggleButtonStyle = useMemo(
+    () =>
+      ({
+        display: 'inline-flex',
+        alignItems: 'center',
+        columnGap: tokens.spacing.xs,
+        fontSize: `${tokens.fontSize.sm}px`,
+        fontWeight: tokens.fontWeight.medium,
+        color: tokens.colors.textSecondary,
+        background: resolvedSafeZoneEnabled
+          ? tokens.colors.surfaceSubtle
+          : tokens.colors.surface,
+        border: `${tokens.border.thin}px solid ${
+          resolvedSafeZoneEnabled ? tokens.colors.borderStrong : tokens.colors.borderLight
+        }`,
+        borderRadius: tokens.radius.sm,
+        padding: `${tokens.spacing.xs}px ${tokens.spacing.sm}px`,
+        cursor: 'pointer',
+        boxShadow: resolvedSafeZoneEnabled ? tokens.shadow.sm : tokens.shadow.none,
+        transition:
+          'background-color 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease',
+      }) as CSSProperties,
+    [resolvedSafeZoneEnabled],
+  );
+
+  const safeZoneToggleComputedStyle = useMemo<CSSPropertiesWithVars>(
+    () => ({
+      ...safeZoneToggleButtonStyle,
+      opacity: editInPreview ? 1 : 0.6,
+      cursor: editInPreview ? 'pointer' : 'not-allowed',
+      '--safe-zone-focus': tokens.colors.focusRing,
+    }),
+    [editInPreview, safeZoneToggleButtonStyle],
+  );
+
+  const safeZoneToggleLabel = resolvedSafeZoneEnabled ? 'Hide Safe Zone' : 'Show Safe Zone';
+
   return (
     <>
       <style jsx global>{BLOCK_INTERACTION_GLOBAL_STYLES}</style>
       <div className="of-viewport">
+        {editable && typeof safeZoneVisible !== 'boolean' ? (
+          <div className="mb-3 flex w-full justify-end">
+            <button
+              type="button"
+              disabled={!editInPreview}
+              onClick={() => setSafeZoneEnabled((prev) => !prev)}
+              className="transition-opacity duration-150 hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--safe-zone-focus)]"
+              style={safeZoneToggleComputedStyle}
+            >
+              {safeZoneToggleLabel}
+            </button>
+          </div>
+        ) : null}
         <div
           className="of-viewportScale relative"
           style={{
@@ -2829,6 +3108,13 @@ export default function SlidesManager({
               }}
             >
               <SlideBackground cfg={cfg} />
+              <SafeZoneOverlay
+                bounds={SAFE_ZONE_BOUNDS}
+                alerts={safeZoneAlerts}
+                tooltipEdge={safeZoneTooltipEdge}
+                message={SAFE_ZONE_TOOLTIP_MESSAGE}
+                show={shouldShowSafeZone}
+              />
               <div
                 className="absolute inset-0"
                 style={{ pointerEvents: editable && editInPreview ? 'auto' : 'none' }}
@@ -2875,7 +3161,7 @@ export default function SlidesManager({
                   );
                 })}
               </div>
-              {cfg.blocks.map((block) => {
+              {cfg.blocks.map((block, index) => {
                 const visibility = resolveBlockVisibility(block);
                 if (!visibility[activeDevice]) {
                   return null;
@@ -2893,6 +3179,9 @@ export default function SlidesManager({
                     key={block.id}
                     id={block.id}
                     frame={frame}
+                    device={activeDevice}
+                    canvasSize={deviceSize}
+                    layerIndex={index}
                     containerRef={frameRef}
                     selected={selectedId === block.id}
                     editable={editable && editInPreview}
@@ -2928,6 +3217,7 @@ export default function SlidesManager({
                     }
                     resolveDragSnap={resolveDragSnap}
                     onDragGuidesChange={handleGuidesChange}
+                    onSafeZoneReset={resetSafeZoneAlerts}
                   >
                     <BlockChromeWithAutoSize
                       block={block}
@@ -3334,6 +3624,9 @@ type InteractiveBoxProps = {
   id: string;
   frame: Frame;
   containerRef: React.RefObject<HTMLElement>;
+  device: DeviceKind;
+  canvasSize: { width: number; height: number };
+  layerIndex: number;
   selected: boolean;
   editable: boolean;
   inlineEditing?: boolean;
@@ -3350,6 +3643,7 @@ type InteractiveBoxProps = {
   onResizeStart?: (details: { horizontal: boolean; vertical: boolean }) => void;
   resolveDragSnap?: (frame: Frame, meta: AlignmentSnapMeta) => AlignmentSnapResult | null;
   onDragGuidesChange?: (guides: AlignmentGuide[]) => void;
+  onSafeZoneReset?: () => void;
 };
 
 type PointerState = {
@@ -3389,6 +3683,9 @@ function InteractiveBox({
   id,
   frame,
   containerRef,
+  device,
+  canvasSize,
+  layerIndex,
   selected,
   editable,
   inlineEditing = false,
@@ -3405,6 +3702,7 @@ function InteractiveBox({
   onResizeStart,
   resolveDragSnap,
   onDragGuidesChange,
+  onSafeZoneReset,
 }: InteractiveBoxProps) {
   const localRef = useRef<HTMLDivElement>(null);
   const pointerState = useRef<PointerState | null>(null);
@@ -3417,6 +3715,33 @@ function InteractiveBox({
   const snapStateRef = useRef<AlignmentSnapResult | null>(null);
   const lastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
   const snappingRef = useRef(false);
+
+  const layout = useMemo(
+    () =>
+      resolveBlockLayout(
+        {
+          xPct: frame.x,
+          yPct: frame.y,
+          wPct: frame.w,
+          hPct: frame.h,
+          rotationDeg: frame.r ?? 0,
+        },
+        device,
+        layerIndex,
+        canvasSize,
+      ),
+    [
+      canvasSize.height,
+      canvasSize.width,
+      device,
+      frame.h,
+      frame.r,
+      frame.w,
+      frame.x,
+      frame.y,
+      layerIndex,
+    ],
+  );
 
   const updateGuides = useCallback(
     (guides: AlignmentGuide[]) => {
@@ -3529,10 +3854,12 @@ function InteractiveBox({
     onSelect();
     if (inlineEditing) {
       updateGuides([]);
+      onSafeZoneReset?.();
       return;
     }
     if (locked) {
       updateGuides([]);
+      onSafeZoneReset?.();
       return;
     }
     if (type === 'move') {
@@ -3788,6 +4115,7 @@ function InteractiveBox({
     setDragging(false);
     updateGuides([]);
     snapStateRef.current = null;
+    onSafeZoneReset?.();
   };
 
   const handlePointerCancel = (e: React.PointerEvent) => {
@@ -3807,27 +4135,23 @@ function InteractiveBox({
     setDragging(false);
     updateGuides([]);
     snapStateRef.current = null;
+    onSafeZoneReset?.();
     if (e.pointerType === 'touch') {
       lastTapRef.current = null;
     }
   };
 
-  const rotation = frame.r ?? 0;
-  const transformParts = [`rotate(${rotation}deg)`];
-  if (dragging) {
-    transformParts.push('scale(1.02)');
-  }
-
   const style: CSSProperties = {
     position: 'absolute',
-    left: `${frame.x}%`,
-    top: `${frame.y}%`,
-    width: `${frame.w}%`,
-    height: `${frame.h}%`,
-    transform: transformParts.join(' '),
+    left: layout.left,
+    top: layout.top,
+    width: layout.width,
+    height: layout.height,
+    transform: `rotate(${layout.rotation}deg)`,
     transformOrigin: 'top left',
     borderRadius: tokens.radius.md,
     touchAction: 'none',
+    zIndex: layout.zIndex,
     cursor: inlineEditing
       ? 'text'
       : editable && !locked

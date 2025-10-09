@@ -82,6 +82,7 @@ import {
 import FontSelect from "./ui/FontSelect";
 import { APP_FONTS, ensureFontLoaded } from "@/lib/fonts";
 import Button from "@/components/ui/Button";
+import SafeZoneOverlay from "./SafeZoneOverlay";
 import {
   InputCheckbox,
   InputColor,
@@ -91,7 +92,9 @@ import {
   InputText,
   InputToggle,
 } from "./ui";
-import InspectorSection from "../src/components/inspector/InspectorSection";
+import InspectorSection, {
+  InspectorContainer,
+} from "../src/components/inspector/InspectorSection";
 import ControlRow from "../src/components/inspector/ControlRow";
 import InspectorInputColor from "../src/components/inspector/controls/InputColor";
 import InspectorInputSelect, {
@@ -603,7 +606,6 @@ const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 2;
 
 const INSPECTOR_CONTENT_CLASS = [
-  "space-y-4 px-4 pb-4 pt-3",
   "[&_label:not(.flex)]:flex",
   "[&_label:not(.flex)]:flex-col",
   "[&_label:not(.flex)]:gap-1",
@@ -2078,6 +2080,7 @@ export default function SlideModal({
   const [editInPreview, setEditInPreview] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [previewSize, setPreviewSize] = useState({ width: 0, height: 0 });
+  const [showSafeZone, setShowSafeZone] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [customPages, setCustomPages] = useState<LinkOption[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -4531,10 +4534,17 @@ export default function SlideModal({
                 </div>
                 <div
                   ref={previewContainerRef}
-                  className="flex flex-1 min-h-0 overflow-hidden"
+                  className="relative flex flex-1 min-h-0 overflow-hidden"
                 >
+                  <button
+                    type="button"
+                    onClick={() => setShowSafeZone((prev) => !prev)}
+                    className="absolute top-2 left-2 z-[999] bg-white/90 backdrop-blur-sm border border-gray-300 rounded-md px-3 py-1 text-sm font-medium text-gray-700 shadow-md hover:bg-white transition"
+                  >
+                    {showSafeZone ? "Hide Safe Zone" : "Show Safe Zone"}
+                  </button>
                   <div
-                    className="flex h-full w-full min-h-0 items-start justify-center overflow-hidden"
+                    className="relative flex w-full flex-col items-center justify-center overflow-hidden"
                     style={{
                       paddingTop: PREVIEW_PADDING_Y,
                       paddingBottom: PREVIEW_PADDING_Y,
@@ -4542,21 +4552,25 @@ export default function SlideModal({
                       paddingRight: PREVIEW_PADDING_X,
                     }}
                   >
-                    {hasPreviewBounds && (
-                      <SlidesManager
-                        initialCfg={cfg}
-                        onChange={handlePreviewChange}
-                        editable={true}
-                        selectedId={selectedId}
-                        onSelectBlock={handleSelectBlock}
-                        openInspector={openInspectorForSelection}
-                        onCanvasClick={handleCanvasClick}
-                        activeDevice={activeDevice}
-                        editInPreview={editInPreview}
-                        scale={previewScale}
-                        onManipulationChange={handleManipulationChange}
-                      />
-                    )}
+                    <div className="relative w-full h-full overflow-hidden">
+                      <SafeZoneOverlay visible={showSafeZone} />
+                      {hasPreviewBounds && (
+                        <SlidesManager
+                          initialCfg={cfg}
+                          onChange={handlePreviewChange}
+                          editable={true}
+                          selectedId={selectedId}
+                          onSelectBlock={handleSelectBlock}
+                          openInspector={openInspectorForSelection}
+                          onCanvasClick={handleCanvasClick}
+                          activeDevice={activeDevice}
+                          editInPreview={editInPreview}
+                          scale={previewScale}
+                          onManipulationChange={handleManipulationChange}
+                          safeZoneVisible={showSafeZone}
+                        />
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -4568,9 +4582,9 @@ export default function SlideModal({
                     minWidth: INSPECTOR_MIN_WIDTH,
                   }}
                 >
-                  <div className="flex-1 overflow-y-auto">
+                  <div className="flex-1 min-h-0 flex flex-col">
                     <div
-                      className="sticky top-0 z-10 border-b bg-white"
+                      className="border-b bg-white"
                       style={{
                         paddingLeft: tokens.spacing.md,
                         paddingRight: tokens.spacing.md,
@@ -4641,8 +4655,9 @@ export default function SlideModal({
                         </div>
                       </div>
                     </div>
-                    <div
+                    <InspectorContainer
                       className={INSPECTOR_CONTENT_CLASS}
+                      style={{ flex: 1, minHeight: 0 }}
                       onPointerDownCapture={handleInspectorPointerDown}
                     >
                       <section>
@@ -6908,9 +6923,9 @@ export default function SlideModal({
 
                         </div>
                     </section>
+                    </InspectorContainer>
                   </div>
-                </div>
-              </aside>
+                </aside>
               )}
             </div>
           </div>
