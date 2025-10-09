@@ -382,6 +382,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
   const [selection, setSelection] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [blockLibraryOpen, setBlockLibraryOpen] = useState(false);
+  const blockLibraryHostRef = useRef<HTMLDivElement | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const history = useRef<Block[][]>([]);
@@ -749,7 +750,11 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
                 })}
               </div>
             </div>
-            <main className="flex-1 overflow-hidden">
+            <main
+              ref={blockLibraryHostRef}
+              className="flex-1 overflow-hidden"
+              style={{ position: 'relative' }}
+            >
               <WebpageBuilder
                 blocks={blocks}
                 selectedBlockId={selection}
@@ -828,6 +833,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
         options={BLOCK_LIBRARY}
         onSelect={handleBlockSelect}
         onClose={() => setBlockLibraryOpen(false)}
+        containerRef={blockLibraryHostRef}
       />
 
       {/* Mobile inspector drawer */}
@@ -854,24 +860,127 @@ type BlockLibraryModalProps = {
   options: BlockLibraryOption[];
   onSelect: (kind: BlockPaletteKind) => void;
   onClose: () => void;
+  containerRef: React.RefObject<HTMLElement | null>;
 };
 
-function BlockLibraryModal({ open, options, onSelect, onClose }: BlockLibraryModalProps) {
+const FOCUSABLE_SELECTOR =
+  'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+
+function BlockLibraryModal({ open, options, onSelect, onClose, containerRef }: BlockLibraryModalProps) {
+  const [shouldRender, setShouldRender] = useState(open);
+  const [visible, setVisible] = useState(open);
+  const [isNarrow, setIsNarrow] = useState(false);
+  const modalRef = useRef<HTMLDivElement | null>(null);
+
   useEffect(() => {
-    if (!open || typeof window === 'undefined') return;
+    if (typeof window === 'undefined') {
+      setIsNarrow(false);
+      return;
+    }
+    const query = window.matchMedia('(max-width: 768px)');
+    const updateMatch = () => setIsNarrow(query.matches);
+    updateMatch();
+    const listener = (event: MediaQueryListEvent) => setIsNarrow(event.matches);
+    if (typeof query.addEventListener === 'function') {
+      query.addEventListener('change', listener);
+      return () => {
+        query.removeEventListener('change', listener);
+      };
+    }
+    // Safari fallback
+    const legacyListener = (event: MediaQueryListEvent) => setIsNarrow(event.matches);
+    query.addListener(legacyListener);
+    return () => {
+      query.removeListener(legacyListener);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (open) {
+      setShouldRender(true);
+      return;
+    }
+    if (typeof window === 'undefined') {
+      setShouldRender(false);
+      return;
+    }
+    const timeout = window.setTimeout(() => setShouldRender(false), 200);
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      setVisible(false);
+      return;
+    }
+    if (typeof window === 'undefined') {
+      setVisible(true);
+      return;
+    }
+    const raf = window.requestAnimationFrame(() => setVisible(true));
+    return () => {
+      window.cancelAnimationFrame(raf);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || typeof document === 'undefined') {
+      return;
+    }
+    const previousActive = document.activeElement as HTMLElement | null;
+    const node = modalRef.current;
+    const focusable = node?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
+    if (focusable && focusable.length > 0) {
+      focusable[0].focus();
+    } else {
+      node?.focus();
+    }
+
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
         onClose();
+        return;
+      }
+      if (event.key === 'Tab' && node) {
+        const focusableElements = node.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
+        if (focusableElements.length === 0) {
+          event.preventDefault();
+          return;
+        }
+        const first = focusableElements[0];
+        const last = focusableElements[focusableElements.length - 1];
+        const activeElement = document.activeElement as HTMLElement | null;
+        if (event.shiftKey) {
+          if (activeElement === first || !node.contains(activeElement)) {
+            event.preventDefault();
+            last.focus();
+          }
+        } else if (activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
+
+    document.addEventListener('keydown', handleKeyDown);
+
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keydown', handleKeyDown);
+      if (previousActive && typeof previousActive.focus === 'function') {
+        previousActive.focus();
+      }
     };
   }, [open, onClose]);
 
-  if (!open || typeof document === 'undefined') {
+  if (!shouldRender || typeof document === 'undefined') {
+    return null;
+  }
+
+  const container = containerRef?.current ?? document.body;
+  if (!container) {
     return null;
   }
 
@@ -879,19 +988,25 @@ function BlockLibraryModal({ open, options, onSelect, onClose }: BlockLibraryMod
     event.stopPropagation();
   };
 
+  const overlayPadding = isNarrow ? tokens.spacing.md : tokens.spacing.lg;
+  const modalPadding = isNarrow ? tokens.spacing.md : tokens.spacing.xl;
+  const modalWidth = isNarrow ? '90%' : '100%';
+  const modalMaxHeight = `calc(100% - ${overlayPadding * 2}px)`;
+
   return createPortal(
     <div
       role="dialog"
       aria-modal="true"
       aria-label="Add a block"
       style={{
-        position: 'fixed',
+        position: container === document.body ? 'fixed' : 'absolute',
         inset: 0,
         zIndex: 70,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: tokens.spacing.lg,
+        padding: overlayPadding,
+        pointerEvents: open ? 'auto' : 'none',
       }}
       onClick={onClose}
     >
@@ -899,23 +1014,32 @@ function BlockLibraryModal({ open, options, onSelect, onClose }: BlockLibraryMod
         style={{
           position: 'absolute',
           inset: 0,
-          background: 'rgba(15, 23, 42, 0.45)',
+          background: tokens.colors.overlay.strong,
           backdropFilter: 'blur(2px)',
+          opacity: visible ? 0.9 : 0,
+          transition: `opacity 180ms ${tokens.easing.standard}`,
         }}
       />
       <div
+        ref={modalRef}
+        tabIndex={-1}
         onClick={handleContainerClick}
         style={{
           position: 'relative',
-          width: '100%',
-          maxWidth: 520,
+          width: modalWidth,
+          maxWidth: 600,
+          maxHeight: modalMaxHeight,
           background: tokens.colors.surface,
           borderRadius: tokens.radius.lg,
-          padding: tokens.spacing.xl,
+          padding: modalPadding,
           boxShadow: tokens.shadow.lg,
           display: 'flex',
           flexDirection: 'column',
           gap: tokens.spacing.lg,
+          overflowY: 'auto',
+          opacity: visible ? 1 : 0,
+          transform: visible ? 'scale(1)' : 'scale(0.96)',
+          transition: `opacity 180ms ${tokens.easing.standard}, transform 180ms ${tokens.easing.standard}`,
         }}
       >
         <div
@@ -964,7 +1088,7 @@ function BlockLibraryModal({ open, options, onSelect, onClose }: BlockLibraryMod
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+            gridTemplateColumns: isNarrow ? '1fr' : 'repeat(2, minmax(0, 1fr))',
             gap: tokens.spacing.md,
           }}
         >
