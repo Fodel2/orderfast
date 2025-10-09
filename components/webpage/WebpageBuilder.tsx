@@ -51,13 +51,14 @@ export default function WebpageBuilder({
   const deviceToggleStyle = useMemo<React.CSSProperties>(
     () => ({
       textTransform: 'capitalize',
-      padding: `${tokens.spacing.xs}px ${tokens.spacing.md}px`,
+      padding: '0 10px',
       borderRadius: tokens.radius.lg,
       borderWidth: tokens.border.thin,
       borderStyle: 'solid',
       transition: `color 160ms ${tokens.easing.standard}, background-color 160ms ${tokens.easing.standard}, border-color 160ms ${tokens.easing.standard}`,
-      fontSize: tokens.fontSize.sm,
+      fontSize: 12,
       fontWeight: tokens.fontWeight.medium,
+      height: 28,
       cursor: 'pointer',
     }),
     []
@@ -65,7 +66,7 @@ export default function WebpageBuilder({
 
   const contentStyle: React.CSSProperties = {
     flex: 1,
-    paddingTop: 56,
+    paddingTop: 0,
     display: 'flex',
     flexDirection: 'column',
   };
@@ -132,39 +133,38 @@ export default function WebpageBuilder({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: tokens.spacing.sm,
+          gap: 6,
           paddingLeft: `calc(${tokens.spacing.lg}px + env(safe-area-inset-left))`,
           paddingRight: `calc(${tokens.spacing.lg}px + env(safe-area-inset-right))`,
-          height: 56,
+          height: 44,
           borderBottom: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
           background: tokens.colors.surface,
           position: 'sticky',
           top: 0,
           zIndex: 40,
+          margin: '6px 0 8px',
         }}
-        className="wb-device-toggles"
+        className="wb-device-toggle"
       >
-        <div style={{ display: 'flex', gap: tokens.spacing.sm }}>
-          {(['mobile', 'tablet', 'desktop'] as DeviceKind[]).map((value) => {
-            const isActive = device === value;
-            return (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setDevice(value)}
-                style={{
-                  ...deviceToggleStyle,
-                  borderColor: isActive ? tokens.colors.accent : tokens.colors.borderLight,
-                  background: isActive ? tokens.colors.surfaceSubtle : tokens.colors.surface,
-                  color: isActive ? tokens.colors.accent : tokens.colors.textSecondary,
-                  boxShadow: isActive ? tokens.shadow.sm : 'none',
-                }}
-              >
-                {value}
-              </button>
-            );
-          })}
-        </div>
+        {(['mobile', 'tablet', 'desktop'] as DeviceKind[]).map((value) => {
+          const isActive = device === value;
+          return (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setDevice(value)}
+              style={{
+                ...deviceToggleStyle,
+                borderColor: isActive ? tokens.colors.accent : tokens.colors.borderLight,
+                background: isActive ? tokens.colors.surfaceSubtle : tokens.colors.surface,
+                color: isActive ? tokens.colors.accent : tokens.colors.textSecondary,
+                boxShadow: isActive ? tokens.shadow.sm : 'none',
+              }}
+            >
+              {value}
+            </button>
+          );
+        })}
       </div>
       <div style={contentStyle}>
         <div style={scrollAreaStyle} className="wb-preview">

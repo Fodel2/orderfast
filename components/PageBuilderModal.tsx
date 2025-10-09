@@ -543,7 +543,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
     () => ({
       position: 'fixed',
       left: 0,
-      top: 56,
+      top: 44,
       bottom: 0,
       width: 320,
       zIndex: 60,
@@ -564,7 +564,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
   const drawerOverlayStyle = useMemo<React.CSSProperties>(
     () => ({
       position: 'fixed',
-      inset: '56px 0 0 0',
+      inset: '44px 0 0 0',
       background: 'rgba(0, 0, 0, 0.25)',
       opacity: drawerOpen ? 1 : 0,
       pointerEvents: drawerOpen ? 'auto' : 'none',
@@ -628,7 +628,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative z-[61] m-4 flex w-[calc(100%-2rem)] flex-1 flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
         {/* Mobile toolbar */}
-        <div className="wb-toolbar flex items-center gap-2 border-b p-2 md:hidden">
+        <div className="wb-toolbar flex items-center md:hidden">
           <button
             type="button"
             onClick={() => setBlockLibraryOpen(true)}
@@ -656,7 +656,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
         </div>
 
         {/* Desktop toolbar */}
-        <div className="wb-toolbar hidden items-center gap-2 border-b bg-white px-6 py-3 md:flex">
+        <div className="wb-toolbar hidden items-center md:flex">
           <button
             type="button"
             onClick={() => setDrawerOpen((prev) => !prev)}
@@ -891,12 +891,21 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
         </div>
       )}
       <style jsx global>{`
+        .wb-toolbar {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          height: 44px;
+          padding: 0 12px;
+          background: var(--surface-1);
+          border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+        }
         .wb-toolbar button {
           display: flex;
           align-items: center;
           justify-content: center;
-          width: 36px;
-          height: 36px;
+          width: 32px;
+          height: 32px;
           border-radius: 8px;
           background: var(--surface-1);
           transition: background 0.2s ease;
@@ -914,6 +923,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
           width: auto;
           padding: 0 12px;
           font-weight: 600;
+          height: 32px;
         }
         .wb-toolbar .blocks-btn[aria-pressed='true'] {
           background: var(--surface-hover);
@@ -924,7 +934,9 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
         }
         .wb-toolbar .save-btn {
           width: auto;
-          padding: 0 14px;
+          padding: 0 10px;
+          height: 32px;
+          font-size: 13px;
           background: var(--brand-primary);
           color: white;
           font-weight: 600;
@@ -932,6 +944,18 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
         .wb-toolbar .save-btn:disabled {
           opacity: 0.6;
           cursor: not-allowed;
+        }
+        .wb-device-toggle {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          margin: 6px 0 8px;
+        }
+        .wb-device-toggle button {
+          height: 28px;
+          padding: 0 10px;
+          font-size: 12px;
         }
       `}</style>
     </div>
