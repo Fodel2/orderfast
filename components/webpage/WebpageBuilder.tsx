@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
 
 import PageRenderer, { type Block, type DeviceKind } from '../PageRenderer';
@@ -14,6 +14,7 @@ type WebpageBuilderProps = {
   onDuplicateBlock: (id: string) => void;
   onMoveBlock: (id: string, direction: -1 | 1) => void;
   onAddBlock: () => void;
+  device: DeviceKind;
   inspectorVisible?: boolean;
 };
 
@@ -25,10 +26,9 @@ export default function WebpageBuilder({
   onDuplicateBlock,
   onMoveBlock,
   onAddBlock,
+  device,
   inspectorVisible = false,
 }: WebpageBuilderProps) {
-  const [device, setDevice] = useState<DeviceKind>('desktop');
-  const [hoveredDevice, setHoveredDevice] = useState<DeviceKind | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
   const blockPreviewMap = useMemo(() => {
     const entries = new Map<string, React.ReactNode>();
@@ -47,40 +47,21 @@ export default function WebpageBuilder({
   };
 
   const canvasWidth = deviceWidths[device];
-  const handleDeviceChange = useCallback(
-    (nextDevice: DeviceKind) => {
-      const node = scrollAreaRef.current;
-      const previousScrollTop = node?.scrollTop ?? 0;
-      setDevice(nextDevice);
-      if (!node) return;
-      if (typeof window === 'undefined') return;
-      window.requestAnimationFrame(() => {
-        node.scrollTop = previousScrollTop;
-      });
-    },
-    [],
-  );
-  const deviceToggleStyle = useMemo<React.CSSProperties>(
-    () => ({
-      textTransform: 'capitalize',
-      padding: `${tokens.spacing.xs}px ${tokens.spacing.md}px`,
-      borderRadius: tokens.radius.md,
-      borderWidth: tokens.border.thin,
-      borderStyle: 'solid',
-      transition: `color 160ms ${tokens.easing.standard}, background-color 160ms ${tokens.easing.standard}, border-color 160ms ${tokens.easing.standard}, box-shadow 160ms ${tokens.easing.standard}`,
-      fontSize: tokens.fontSize.sm,
-      fontWeight: tokens.fontWeight.medium,
-      cursor: 'pointer',
-      minWidth: 96,
-      display: 'inline-flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: tokens.spacing.xs,
-      minHeight: 40,
-      boxSizing: 'border-box',
-    }),
-    []
-  );
+  const previousDeviceRef = useRef<DeviceKind>(device);
+  useEffect(() => {
+    if (previousDeviceRef.current === device) return;
+    const node = scrollAreaRef.current;
+    const previousScrollTop = node?.scrollTop ?? 0;
+    previousDeviceRef.current = device;
+    if (!node) return;
+    if (typeof window === 'undefined') {
+      node.scrollTop = previousScrollTop;
+      return;
+    }
+    window.requestAnimationFrame(() => {
+      node.scrollTop = previousScrollTop;
+    });
+  }, [device]);
 
   const rootStyle: React.CSSProperties = {
     display: 'flex',
@@ -91,32 +72,6 @@ export default function WebpageBuilder({
     fontSize: tokens.fontSize.md,
   };
 
-  const toolbarStyle: React.CSSProperties = {
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: `${tokens.spacing.md}px ${tokens.spacing.xl}px`,
-    borderBottom: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
-    background: tokens.colors.surface,
-    position: 'sticky',
-    top: 0,
-    zIndex: 1,
-  };
-
-  const toolbarContentStyle: React.CSSProperties = {
-    width: '100%',
-    maxWidth: 960,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  };
-
-  const deviceToggleGroupStyle: React.CSSProperties = {
-    display: 'inline-flex',
-    gap: tokens.spacing.sm,
-    alignItems: 'center',
-  };
-
   const scrollAreaStyle: React.CSSProperties = {
     flex: 1,
     overflowY: 'auto',
@@ -124,19 +79,18 @@ export default function WebpageBuilder({
     background: tokens.colors.surfaceSubtle,
     display: 'flex',
     justifyContent: 'center',
+    alignItems: 'stretch',
   };
 
   const viewportStyle: React.CSSProperties = {
     display: 'flex',
     justifyContent: 'center',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     width: '100%',
     maxWidth: 1440,
     margin: '0 auto',
-    paddingTop: tokens.spacing.xl,
-    paddingBottom: tokens.spacing.xl,
-    paddingLeft: tokens.spacing.xl,
-    paddingRight: tokens.spacing.xl,
+    padding: `${tokens.spacing.xl}px ${tokens.spacing.xl}px`,
+    minHeight: '100%',
     boxSizing: 'border-box',
     transition: `padding 220ms ${tokens.easing.standard}`,
   };
@@ -147,6 +101,9 @@ export default function WebpageBuilder({
     flex: '0 0 auto',
     marginLeft: 'auto',
     marginRight: 'auto',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'stretch',
     transition: `max-width 220ms ${tokens.easing.standard}`,
   };
 
@@ -179,55 +136,6 @@ export default function WebpageBuilder({
 
   return (
     <div style={rootStyle}>
-      <div style={toolbarStyle}>
-        <div style={toolbarContentStyle}>
-          <div style={deviceToggleGroupStyle}>
-            {(['mobile', 'tablet', 'desktop'] as DeviceKind[]).map((value) => {
-              const isActive = device === value;
-              const isHovered = hoveredDevice === value;
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => handleDeviceChange(value)}
-                  onMouseEnter={() => setHoveredDevice(value)}
-                  onMouseLeave={() => setHoveredDevice((current) => (current === value ? null : current))}
-                  onFocus={() => setHoveredDevice(value)}
-                  onBlur={() => setHoveredDevice((current) => (current === value ? null : current))}
-                  className="device-toggle"
-                  style={{
-                    ...deviceToggleStyle,
-                    borderColor: isActive
-                      ? tokens.colors.accent
-                      : isHovered
-                      ? tokens.colors.borderStrong
-                      : tokens.colors.borderLight,
-                    background: isActive
-                      ? tokens.colors.accent
-                      : isHovered
-                      ? tokens.colors.surfaceHover
-                      : tokens.colors.surface,
-                    color: isActive ? tokens.colors.textOnDark : tokens.colors.textSecondary,
-                    boxShadow: isActive
-                      ? '0 8px 20px rgba(14, 165, 233, 0.25)'
-                      : isHovered
-                      ? tokens.shadow.sm
-                      : 'none',
-                  }}
-                >
-                  {value}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-        <style jsx>{`
-          .device-toggle:focus-visible {
-            outline: 2px solid ${tokens.colors.focusRing};
-            outline-offset: 2px;
-          }
-        `}</style>
-      </div>
       <div style={scrollAreaStyle} ref={scrollAreaRef}>
         <div style={viewportStyle}>
           <div style={frameStyle}>

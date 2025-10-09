@@ -1,8 +1,20 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Columns, Image as ImageIcon, LayoutDashboard, Minus, MoveVertical, Type } from 'lucide-react';
+import {
+  Columns,
+  Image as ImageIcon,
+  LayoutDashboard,
+  Minus,
+  MoveVertical,
+  Redo2,
+  SlidersHorizontal,
+  Type,
+  Undo2,
+  X,
+} from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type {
   Block,
+  DeviceKind,
   HeaderBlock,
   ImageBlock,
   TextBlock,
@@ -487,8 +499,12 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
   const blockLibraryHostRef = useRef<HTMLDivElement | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [device, setDevice] = useState<DeviceKind>('desktop');
   const history = useRef<Block[][]>([]);
   const future = useRef<Block[][]>([]);
+  const lastSavedStateRef = useRef<string>('');
+  const [isDirty, setIsDirty] = useState(false);
+  const [exitModalOpen, setExitModalOpen] = useState(false);
 
   // Load page JSON
   useEffect(() => {
@@ -502,7 +518,11 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
         .single();
       if (!error) {
         const parsed = normalizeBlocks(data?.content_json ?? []);
+        lastSavedStateRef.current = JSON.stringify(parsed);
+        history.current = [];
+        future.current = [];
         setBlocks(parsed);
+        setIsDirty(false);
       }
     })();
   }, [open, pageId, restaurantId]);
@@ -611,31 +631,38 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
     [blocks, pushHistory],
   );
 
-  const toolbarDesktopStyle = useMemo<React.CSSProperties>(
+  const toolbarStyle = useMemo<React.CSSProperties>(
     () => ({
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      padding: `${tokens.spacing.md}px ${tokens.spacing.xl}px`,
-      borderBottom: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
+      position: 'sticky',
+      top: 0,
+      zIndex: 5,
       background: tokens.colors.surface,
-      gap: tokens.spacing.lg,
+      borderBottom: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
+      boxShadow: '0 12px 24px rgba(15, 23, 42, 0.08)',
     }),
     [],
   );
 
-  const toolbarMobileStyle = useMemo<React.CSSProperties>(
-    () => ({
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      padding: `${tokens.spacing.sm}px ${tokens.spacing.md}px`,
-      borderBottom: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
-      background: tokens.colors.surface,
-      gap: tokens.spacing.sm,
-    }),
-    [],
-  );
+  const deviceOptions: DeviceKind[] = ['mobile', 'tablet', 'desktop'];
+  const deviceLabels: Record<DeviceKind, string> = {
+    mobile: 'Mobile',
+    tablet: 'Tablet',
+    desktop: 'Desktop',
+  };
+
+  const handleDeviceChange = useCallback((next: DeviceKind) => {
+    setDevice((current) => (current === next ? current : next));
+  }, []);
+
+  const handleBlocksClick = useCallback(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      setBlockLibraryOpen(true);
+      setDrawerOpen(false);
+      return;
+    }
+    setDrawerOpen((prev) => !prev);
+    setBlockLibraryOpen(false);
+  }, []);
 
   const handleBlockSelect = (kind: BlockPaletteKind) => {
     addBlock(kind);
@@ -652,8 +679,42 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
     }
   }, []);
 
+  useEffect(() => {
+    if (!open) {
+      setExitModalOpen(false);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    const serialized = JSON.stringify(blocks);
+    if (!lastSavedStateRef.current) {
+      lastSavedStateRef.current = serialized;
+      if (isDirty) setIsDirty(false);
+      return;
+    }
+    const dirty = serialized !== lastSavedStateRef.current;
+    if (dirty !== isDirty) {
+      setIsDirty(dirty);
+    }
+  }, [blocks, isDirty]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!isDirty) return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [isDirty]);
+
   const selectedBlock = useMemo(() => blocks.find((b) => b.id === selection) ?? null, [blocks, selection]);
   const inspectorVisible = inspectorOpen;
+  const undoDisabled = history.current.length === 0;
+  const redoDisabled = future.current.length === 0;
 
   const inspectorWrapperStyle = useMemo<React.CSSProperties>(
     () => ({
@@ -722,7 +783,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
     setBlocks(nxt);
   }
 
-  async function save() {
+  const save = useCallback(async () => {
     setSaving(true);
     try {
       const { error } = await supabase
@@ -731,96 +792,136 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
         .eq('id', pageId)
         .eq('restaurant_id', restaurantId);
       if (error) throw error;
+      lastSavedStateRef.current = JSON.stringify(blocks);
+      setIsDirty(false);
       alert('Saved');
-    } catch (e:any) {
+      return true;
+    } catch (e: any) {
       console.error(e);
       alert(e?.message ?? 'Failed to save');
+      return false;
     } finally {
       setSaving(false);
     }
-  }
+  }, [blocks, pageId, restaurantId]);
+
+  const finalizeClose = useCallback(() => {
+    setBlockLibraryOpen(false);
+    setDrawerOpen(false);
+    setInspectorOpen(false);
+    setExitModalOpen(false);
+    onClose();
+  }, [onClose]);
+
+  const handleRequestClose = useCallback(() => {
+    if (isDirty) {
+      setExitModalOpen(true);
+      return;
+    }
+    finalizeClose();
+  }, [finalizeClose, isDirty]);
+
+  const handleSaveAndExit = useCallback(async () => {
+    const success = await save();
+    if (success) {
+      finalizeClose();
+    }
+  }, [finalizeClose, save]);
+
+  const handleExitWithoutSaving = useCallback(() => {
+    finalizeClose();
+  }, [finalizeClose]);
 
   if (!open) return null;
 
   return (
     <>
       <div role="dialog" aria-modal="true" className="fixed inset-0 z-[60] flex">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative z-[61] m-4 flex w-[calc(100%-2rem)] flex-1 flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-        {/* Mobile toolbar */}
-        <div className="md:hidden" style={toolbarMobileStyle}>
-          <button
-            type="button"
-            onClick={() => setBlockLibraryOpen(true)}
-            className="toolbar-button"
-          >
-            Blocks
-          </button>
-          <div style={{ display: 'flex', gap: tokens.spacing.sm }}>
-            <button type="button" onClick={undo} className="toolbar-button">
-              Undo
-            </button>
-            <button type="button" onClick={redo} className="toolbar-button">
-              Redo
-            </button>
+        <div className="absolute inset-0 bg-black/50" onClick={handleRequestClose} />
+        <div className="relative z-[61] m-4 flex w-[calc(100%-2rem)] flex-1 flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+          <div className="builder-toolbar" style={toolbarStyle}>
+            <div className="builder-toolbar__left">
+              <button
+                type="button"
+                onClick={handleBlocksClick}
+                className="toolbar-button"
+                data-active={drawerOpen || blockLibraryOpen}
+                aria-pressed={drawerOpen || blockLibraryOpen}
+              >
+                Blocks
+              </button>
+              <button
+                type="button"
+                onClick={() => setInspectorOpen((prev) => !prev)}
+                className="toolbar-button icon-button"
+                data-active={inspectorVisible}
+                aria-pressed={inspectorVisible}
+                title="Inspector"
+                aria-label="Toggle inspector"
+              >
+                <SlidersHorizontal size={18} strokeWidth={2} />
+              </button>
+            </div>
+            <div className="builder-toolbar__center">
+              <button
+                type="button"
+                onClick={undo}
+                className="toolbar-button icon-button"
+                disabled={undoDisabled}
+                title="Undo"
+                aria-label="Undo"
+              >
+                <Undo2 size={18} strokeWidth={2} />
+              </button>
+              <button
+                type="button"
+                onClick={redo}
+                className="toolbar-button icon-button"
+                disabled={redoDisabled}
+                title="Redo"
+                aria-label="Redo"
+              >
+                <Redo2 size={18} strokeWidth={2} />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  void save();
+                }}
+                disabled={saving}
+                className="toolbar-button primary"
+              >
+                {saving ? 'Saving…' : 'Save'}
+              </button>
+              <button
+                type="button"
+                onClick={handleRequestClose}
+                className="toolbar-button icon-button"
+                title="Close"
+                aria-label="Close"
+              >
+                <X size={18} strokeWidth={2} />
+              </button>
+            </div>
+            <div className="builder-toolbar__right">
+              {deviceOptions.map((value) => {
+                const isActive = device === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => handleDeviceChange(value)}
+                    className="toolbar-button device-button"
+                    data-active={isActive}
+                    aria-pressed={isActive}
+                    title={`${deviceLabels[value]} preview`}
+                  >
+                    {deviceLabels[value]}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          <div style={{ display: 'flex', gap: tokens.spacing.sm }}>
-            <button
-              type="button"
-              onClick={save}
-              disabled={saving}
-              className="toolbar-button primary"
-            >
-              {saving ? 'Saving…' : 'Save'}
-            </button>
-            <button type="button" onClick={onClose} className="toolbar-button">
-              Close
-            </button>
-          </div>
-        </div>
-
-        {/* Desktop toolbar */}
-        <div className="hidden md:flex" style={toolbarDesktopStyle}>
-          <div style={{ display: 'flex', gap: tokens.spacing.sm }}>
-            <button
-              type="button"
-              onClick={() => setDrawerOpen((prev) => !prev)}
-              className="toolbar-button"
-              data-active={drawerOpen}
-              aria-pressed={drawerOpen}
-            >
-              Blocks
-            </button>
-            <button
-              type="button"
-              onClick={() => setInspectorOpen((prev) => !prev)}
-              className="toolbar-button"
-              data-active={inspectorVisible}
-              aria-pressed={inspectorVisible}
-            >
-              Inspector
-            </button>
-          </div>
-          <div style={{ display: 'flex', gap: tokens.spacing.sm }}>
-            <button type="button" onClick={undo} className="toolbar-button">
-              Undo
-            </button>
-            <button type="button" onClick={redo} className="toolbar-button">
-              Redo
-            </button>
-            <button
-              type="button"
-              onClick={save}
-              disabled={saving}
-              className="toolbar-button primary"
-            >
-              {saving ? 'Saving…' : 'Save'}
-            </button>
-            <button type="button" onClick={onClose} className="toolbar-button">
-              Close
-            </button>
-          </div>
-        </div>
 
         <div className="flex flex-1 overflow-hidden" style={{ background: tokens.colors.canvas }}>
           <div className="relative flex flex-1 overflow-hidden">
@@ -995,6 +1096,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
                 onDuplicateBlock={duplicateBlock}
                 onMoveBlock={moveBlock}
                 onAddBlock={handleAddBlock}
+                device={device}
                 inspectorVisible={inspectorVisible}
               />
             </main>
@@ -1061,6 +1163,41 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
       </div>
 
       <style jsx>{`
+        .builder-toolbar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          flex-wrap: wrap;
+          gap: ${tokens.spacing.sm}px;
+          row-gap: ${tokens.spacing.sm}px;
+          padding: ${tokens.spacing.md}px ${tokens.spacing.xl}px;
+          min-height: 56px;
+        }
+
+        .builder-toolbar__left,
+        .builder-toolbar__right {
+          display: flex;
+          align-items: center;
+          gap: ${tokens.spacing.sm}px;
+          flex: 1 1 auto;
+        }
+
+        .builder-toolbar__left {
+          justify-content: flex-start;
+        }
+
+        .builder-toolbar__center {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: ${tokens.spacing.sm}px;
+          flex: 0 0 auto;
+        }
+
+        .builder-toolbar__right {
+          justify-content: flex-end;
+        }
+
         .toolbar-button {
           display: inline-flex;
           align-items: center;
@@ -1073,8 +1210,20 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
           color: ${tokens.colors.textSecondary};
           font-size: ${tokens.fontSize.sm}px;
           font-weight: ${tokens.fontWeight.medium};
+          min-height: 44px;
           cursor: pointer;
           transition: background-color 160ms ${tokens.easing.standard}, border-color 160ms ${tokens.easing.standard}, box-shadow 160ms ${tokens.easing.standard}, color 160ms ${tokens.easing.standard};
+        }
+
+        .toolbar-button.icon-button {
+          width: 44px;
+          min-width: 44px;
+          padding: ${tokens.spacing.xs}px;
+        }
+
+        .toolbar-button.device-button {
+          text-transform: capitalize;
+          min-width: 88px;
         }
 
         .toolbar-button:hover {
@@ -1107,6 +1256,48 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
           background: ${tokens.colors.accentStrong};
           border-color: ${tokens.colors.accentStrong};
         }
+
+        .toolbar-button.destructive {
+          color: var(--danger, #ef4444);
+          border-color: rgba(239, 68, 68, 0.35);
+        }
+
+        .toolbar-button.destructive:hover {
+          background: rgba(239, 68, 68, 0.08);
+          border-color: rgba(239, 68, 68, 0.45);
+          color: var(--danger, #ef4444);
+          box-shadow: none;
+        }
+
+        @media (max-width: 768px) {
+          .builder-toolbar {
+            padding: ${tokens.spacing.sm}px ${tokens.spacing.md}px;
+          }
+
+          .builder-toolbar__left,
+          .builder-toolbar__center,
+          .builder-toolbar__right {
+            flex: 1 1 100%;
+            justify-content: center;
+          }
+
+          .builder-toolbar__left {
+            justify-content: flex-start;
+          }
+
+          .builder-toolbar__right {
+            justify-content: center;
+          }
+
+          .toolbar-button {
+            min-height: 40px;
+          }
+
+          .toolbar-button.icon-button {
+            width: 40px;
+            min-width: 40px;
+          }
+        }
       `}</style>
 
       <AddBlockModal
@@ -1116,6 +1307,81 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
         onClose={() => setBlockLibraryOpen(false)}
         containerRef={blockLibraryHostRef}
       />
+
+      {exitModalOpen && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center"
+          style={{
+            background: 'rgba(15, 23, 42, 0.4)',
+            padding: tokens.spacing.lg,
+          }}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: 420,
+              borderRadius: tokens.radius.lg,
+              background: tokens.colors.surface,
+              boxShadow: tokens.shadow.lg,
+              padding: tokens.spacing.xl,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: tokens.spacing.lg,
+            }}
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacing.sm }}>
+              <h2
+                style={{
+                  fontSize: tokens.fontSize.xl,
+                  fontWeight: tokens.fontWeight.semibold,
+                  color: tokens.colors.textPrimary,
+                  margin: 0,
+                }}
+              >
+                Unsaved Changes
+              </h2>
+              <p
+                style={{
+                  margin: 0,
+                  color: tokens.colors.textSecondary,
+                  fontSize: tokens.fontSize.sm,
+                  lineHeight: tokens.lineHeight.relaxed,
+                }}
+              >
+                You have unsaved changes. Are you sure you want to exit?
+              </p>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacing.sm }}>
+              <button
+                type="button"
+                className="toolbar-button primary"
+                onClick={() => {
+                  void handleSaveAndExit();
+                }}
+                disabled={saving}
+              >
+                {saving ? 'Saving…' : 'Save & Exit'}
+              </button>
+              <button
+                type="button"
+                className="toolbar-button destructive"
+                onClick={handleExitWithoutSaving}
+                disabled={saving}
+              >
+                Exit Without Saving
+              </button>
+              <button
+                type="button"
+                className="toolbar-button"
+                onClick={() => setExitModalOpen(false)}
+                disabled={saving}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Mobile inspector drawer */}
       {selection && inspectorOpen && (
