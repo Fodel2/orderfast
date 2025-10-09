@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { Columns, Image as ImageIcon, LayoutDashboard, Minus, MoveVertical, Type } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type {
@@ -12,6 +11,7 @@ import type {
 } from './PageRenderer';
 import WebpageBuilder from './webpage/WebpageBuilder';
 import HeaderInspector from './webpage/HeaderInspector';
+import AddBlockModal from './modals/AddBlockModal';
 import { STORAGE_BUCKET } from '@/lib/storage';
 import { supabase } from '@/lib/supabaseClient';
 import InputUpload from '@/src/components/inspector/controls/InputUpload';
@@ -493,9 +493,9 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
     setBlocks(next);
   }
 
-  const handleAddBlock = () => {
+  const handleAddBlock = useCallback(() => {
     setBlockLibraryOpen(true);
-  };
+  }, []);
 
   const handleBlockSelect = (kind: BlockPaletteKind) => {
     addBlock(kind);
@@ -828,7 +828,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
         </div>
       </div>
 
-      <BlockLibraryModal
+      <AddBlockModal
         open={blockLibraryOpen}
         options={BLOCK_LIBRARY}
         onSelect={handleBlockSelect}
@@ -852,307 +852,6 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
         </div>
       )}
     </div>
-  );
-}
-
-type BlockLibraryModalProps = {
-  open: boolean;
-  options: BlockLibraryOption[];
-  onSelect: (kind: BlockPaletteKind) => void;
-  onClose: () => void;
-  containerRef: React.RefObject<HTMLElement | null>;
-};
-
-const FOCUSABLE_SELECTOR =
-  'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
-
-function BlockLibraryModal({ open, options, onSelect, onClose, containerRef }: BlockLibraryModalProps) {
-  const [shouldRender, setShouldRender] = useState(open);
-  const [visible, setVisible] = useState(open);
-  const [isNarrow, setIsNarrow] = useState(false);
-  const modalRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      setIsNarrow(false);
-      return;
-    }
-    const query = window.matchMedia('(max-width: 768px)');
-    const updateMatch = () => setIsNarrow(query.matches);
-    updateMatch();
-    const listener = (event: MediaQueryListEvent) => setIsNarrow(event.matches);
-    if (typeof query.addEventListener === 'function') {
-      query.addEventListener('change', listener);
-      return () => {
-        query.removeEventListener('change', listener);
-      };
-    }
-    // Safari fallback
-    const legacyListener = (event: MediaQueryListEvent) => setIsNarrow(event.matches);
-    query.addListener(legacyListener);
-    return () => {
-      query.removeListener(legacyListener);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (open) {
-      setShouldRender(true);
-      return;
-    }
-    if (typeof window === 'undefined') {
-      setShouldRender(false);
-      return;
-    }
-    const timeout = window.setTimeout(() => setShouldRender(false), 200);
-    return () => {
-      window.clearTimeout(timeout);
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) {
-      setVisible(false);
-      return;
-    }
-    if (typeof window === 'undefined') {
-      setVisible(true);
-      return;
-    }
-    const raf = window.requestAnimationFrame(() => setVisible(true));
-    return () => {
-      window.cancelAnimationFrame(raf);
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open || typeof document === 'undefined') {
-      return;
-    }
-    const previousActive = document.activeElement as HTMLElement | null;
-    const node = modalRef.current;
-    const focusable = node?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
-    if (focusable && focusable.length > 0) {
-      focusable[0].focus();
-    } else {
-      node?.focus();
-    }
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        onClose();
-        return;
-      }
-      if (event.key === 'Tab' && node) {
-        const focusableElements = node.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
-        if (focusableElements.length === 0) {
-          event.preventDefault();
-          return;
-        }
-        const first = focusableElements[0];
-        const last = focusableElements[focusableElements.length - 1];
-        const activeElement = document.activeElement as HTMLElement | null;
-        if (event.shiftKey) {
-          if (activeElement === first || !node.contains(activeElement)) {
-            event.preventDefault();
-            last.focus();
-          }
-        } else if (activeElement === last) {
-          event.preventDefault();
-          first.focus();
-        }
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-      if (previousActive && typeof previousActive.focus === 'function') {
-        previousActive.focus();
-      }
-    };
-  }, [open, onClose]);
-
-  if (!shouldRender || typeof document === 'undefined') {
-    return null;
-  }
-
-  const container = containerRef?.current ?? document.body;
-  if (!container) {
-    return null;
-  }
-
-  const handleContainerClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    event.stopPropagation();
-  };
-
-  const overlayPadding = isNarrow ? tokens.spacing.md : tokens.spacing.lg;
-  const modalPadding = isNarrow ? tokens.spacing.md : tokens.spacing.xl;
-  const modalWidth = isNarrow ? '90%' : '100%';
-  const modalMaxHeight = `calc(100% - ${overlayPadding * 2}px)`;
-
-  return createPortal(
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Add a block"
-      style={{
-        position: container === document.body ? 'fixed' : 'absolute',
-        inset: 0,
-        zIndex: 70,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: overlayPadding,
-        pointerEvents: open ? 'auto' : 'none',
-      }}
-      onClick={onClose}
-    >
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background: tokens.colors.overlay.strong,
-          backdropFilter: 'blur(2px)',
-          opacity: visible ? 0.9 : 0,
-          transition: `opacity 180ms ${tokens.easing.standard}`,
-        }}
-      />
-      <div
-        ref={modalRef}
-        tabIndex={-1}
-        onClick={handleContainerClick}
-        style={{
-          position: 'relative',
-          width: modalWidth,
-          maxWidth: 600,
-          maxHeight: modalMaxHeight,
-          background: tokens.colors.surface,
-          borderRadius: tokens.radius.lg,
-          padding: modalPadding,
-          boxShadow: tokens.shadow.lg,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: tokens.spacing.lg,
-          overflowY: 'auto',
-          opacity: visible ? 1 : 0,
-          transform: visible ? 'scale(1)' : 'scale(0.96)',
-          transition: `opacity 180ms ${tokens.easing.standard}, transform 180ms ${tokens.easing.standard}`,
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: tokens.spacing.md,
-          }}
-        >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span
-              style={{
-                fontSize: tokens.fontSize.xl,
-                fontWeight: tokens.fontWeight.semibold,
-                color: tokens.colors.textPrimary,
-              }}
-            >
-              Add a block
-            </span>
-            <span
-              style={{
-                fontSize: tokens.fontSize.sm,
-                color: tokens.colors.textMuted,
-              }}
-            >
-              Choose a layout element to insert into the page.
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              borderRadius: tokens.radius.sm,
-              border: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
-              background: tokens.colors.surface,
-              color: tokens.colors.textSecondary,
-              padding: `${tokens.spacing.xs}px ${tokens.spacing.sm}px`,
-              fontSize: tokens.fontSize.sm,
-              cursor: 'pointer',
-            }}
-          >
-            Close
-          </button>
-        </div>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: isNarrow ? '1fr' : 'repeat(2, minmax(0, 1fr))',
-            gap: tokens.spacing.md,
-          }}
-        >
-          {options.map((option) => {
-            const Icon = option.icon;
-            return (
-              <button
-                key={option.kind}
-                type="button"
-                onClick={() => onSelect(option.kind)}
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'flex-start',
-                  gap: tokens.spacing.sm,
-                  borderRadius: tokens.radius.lg,
-                  border: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
-                  background: tokens.colors.surfaceSubtle,
-                  padding: tokens.spacing.lg,
-                  cursor: 'pointer',
-                  transition: `border-color 160ms ${tokens.easing.standard}, background-color 160ms ${tokens.easing.standard}, transform 160ms ${tokens.easing.standard}`,
-                }}
-              >
-                <span
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: tokens.spacing.xl,
-                    height: tokens.spacing.xl,
-                    borderRadius: tokens.radius.md,
-                    background: 'rgba(14, 165, 233, 0.12)',
-                    color: tokens.colors.accent,
-                  }}
-                >
-                  <Icon size={20} strokeWidth={1.6} />
-                </span>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <span
-                    style={{
-                      fontSize: tokens.fontSize.md,
-                      fontWeight: tokens.fontWeight.semibold,
-                      color: tokens.colors.textSecondary,
-                    }}
-                  >
-                    {option.title}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: tokens.fontSize.sm,
-                      color: tokens.colors.textMuted,
-                      lineHeight: 1.5,
-                    }}
-                  >
-                    {option.description}
-                  </span>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    </div>,
-    document.body,
   );
 }
 

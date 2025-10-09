@@ -339,7 +339,14 @@ export default function WebpageBuilder({
                 })}
               </div>
               <div style={{ display: 'flex', justifyContent: 'center' }}>
-                <button type="button" onClick={onAddBlock} style={addButtonStyle}>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    onAddBlock();
+                  }}
+                  style={addButtonStyle}
+                >
                   + Add block
                 </button>
               </div>
