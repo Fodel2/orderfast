@@ -1,19 +1,4 @@
 import React, { useMemo, useState } from 'react';
-import {
-  DndContext,
-  PointerSensor,
-  KeyboardSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from '@dnd-kit/core';
-import {
-  SortableContext,
-  arrayMove,
-  verticalListSortingStrategy,
-  sortableKeyboardCoordinates,
-} from '@dnd-kit/sortable';
 import DraggableBlock from './DraggableBlock';
 import PageRenderer, { type Block } from '../PageRenderer';
 import { tokens } from '@/src/ui/tokens';
@@ -27,7 +12,6 @@ type WebpageBuilderProps = {
   onDeleteBlock: (id: string) => void;
   onDuplicateBlock: (id: string) => void;
   onMoveBlock: (id: string, direction: -1 | 1) => void;
-  onReorderBlocks: (next: Block[]) => void;
   onAddBlock: () => void;
 };
 
@@ -38,28 +22,31 @@ export default function WebpageBuilder({
   onDeleteBlock,
   onDuplicateBlock,
   onMoveBlock,
-  onReorderBlocks,
   onAddBlock,
 }: WebpageBuilderProps) {
   const [device, setDevice] = useState<DeviceKind>('desktop');
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  );
-
-  const blockIds = useMemo(() => blocks.map((block) => block.id), [blocks]);
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = blockIds.indexOf(active.id as string);
-    const newIndex = blockIds.indexOf(over.id as string);
-    if (oldIndex === -1 || newIndex === -1) return;
-    const next = arrayMove(blocks, oldIndex, newIndex);
-    onReorderBlocks(next);
+  const deviceWidths: Record<DeviceKind, number> = {
+    mobile: 375,
+    tablet: 768,
+    desktop: 1024,
   };
 
-  const canvasWidth = device === 'mobile' ? 390 : device === 'tablet' ? 820 : 1100;
+  const canvasWidth = deviceWidths[device];
+
+  const deviceToggleStyle = useMemo<React.CSSProperties>(
+    () => ({
+      textTransform: 'capitalize',
+      padding: `${tokens.spacing.xs}px ${tokens.spacing.md}px`,
+      borderRadius: tokens.radius.lg,
+      borderWidth: tokens.border.thin,
+      borderStyle: 'solid',
+      transition: `color 160ms ${tokens.easing.standard}, background-color 160ms ${tokens.easing.standard}, border-color 160ms ${tokens.easing.standard}`,
+      fontSize: tokens.fontSize.sm,
+      fontWeight: tokens.fontWeight.medium,
+      cursor: 'pointer',
+    }),
+    []
+  );
 
   const rootStyle: React.CSSProperties = {
     display: 'flex',
@@ -73,14 +60,21 @@ export default function WebpageBuilder({
   const scrollAreaStyle: React.CSSProperties = {
     flex: 1,
     overflowY: 'auto',
+    background: tokens.colors.surfaceSubtle,
   };
 
   const viewportStyle: React.CSSProperties = {
-    maxWidth: canvasWidth,
-    width: '100%',
-    margin: '0 auto',
+    display: 'flex',
+    justifyContent: 'center',
     padding: tokens.spacing.xl,
     boxSizing: 'border-box',
+    transition: `padding 220ms ${tokens.easing.standard}`,
+  };
+
+  const frameStyle: React.CSSProperties = {
+    width: '100%',
+    maxWidth: canvasWidth,
+    transition: `max-width 220ms ${tokens.easing.standard}`,
   };
 
   const canvasStyle: React.CSSProperties = {
@@ -127,16 +121,11 @@ export default function WebpageBuilder({
               type="button"
               onClick={() => setDevice(value)}
               style={{
-                textTransform: 'capitalize',
-                padding: `${tokens.spacing.xs}px ${tokens.spacing.md}px`,
-                borderRadius: tokens.radius.lg,
-                border: `${tokens.border.thin}px solid ${
-                  isActive ? tokens.colors.accent : tokens.colors.borderLight
-                }`,
+                ...deviceToggleStyle,
+                borderColor: isActive ? tokens.colors.accent : tokens.colors.borderLight,
                 background: isActive ? tokens.colors.surfaceSubtle : tokens.colors.surface,
                 color: isActive ? tokens.colors.accent : tokens.colors.textSecondary,
-                cursor: 'pointer',
-                transition: `all 150ms ${tokens.easing.standard}`,
+                boxShadow: isActive ? tokens.shadow.sm : 'none',
               }}
             >
               {value}
@@ -146,55 +135,50 @@ export default function WebpageBuilder({
       </div>
       <div style={scrollAreaStyle}>
         <div style={viewportStyle}>
-          <div
-            style={{
-              background: tokens.colors.surface,
-              borderRadius: tokens.radius.lg,
-              padding: tokens.spacing.lg,
-              boxShadow: tokens.shadow.sm,
-            }}
-          >
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
+          <div style={frameStyle}>
+            <div
+              style={{
+                background: tokens.colors.surface,
+                borderRadius: tokens.radius.lg,
+                padding: tokens.spacing.lg,
+                boxShadow: tokens.shadow.sm,
+                transition: `box-shadow 200ms ${tokens.easing.standard}`,
+              }}
             >
-              <SortableContext items={blockIds} strategy={verticalListSortingStrategy}>
-                <div style={canvasStyle}>
-                  {blocks.length === 0 && (
-                    <div
-                      style={{
-                        padding: tokens.spacing.lg,
-                        textAlign: 'center',
-                        color: tokens.colors.textMuted,
-                      }}
-                    >
-                      Click “Add block” or use the palette to start building your page.
-                    </div>
-                  )}
-                  {blocks.map((block, index) => (
-                    <DraggableBlock
-                      key={block.id}
-                      id={block.id}
-                      onDelete={() => onDeleteBlock(block.id)}
-                      onDuplicate={() => onDuplicateBlock(block.id)}
-                      onMoveUp={() => onMoveBlock(block.id, -1)}
-                      onMoveDown={() => onMoveBlock(block.id, 1)}
-                      disableMoveUp={index === 0}
-                      disableMoveDown={index === blocks.length - 1}
-                      isSelected={selectedBlockId === block.id}
-                      onSelect={() => onSelectBlock(block.id)}
-                    >
-                      <PageRenderer blocks={[block]} />
-                    </DraggableBlock>
-                  ))}
-                </div>
-              </SortableContext>
-            </DndContext>
-            <div style={{ display: 'flex', justifyContent: 'center' }}>
-              <button type="button" onClick={onAddBlock} style={addButtonStyle}>
-                + Add block
-              </button>
+              <div style={canvasStyle}>
+                {blocks.length === 0 && (
+                  <div
+                    style={{
+                      padding: tokens.spacing.lg,
+                      textAlign: 'center',
+                      color: tokens.colors.textMuted,
+                    }}
+                  >
+                    Click “Add block” or use the palette to start building your page.
+                  </div>
+                )}
+                {blocks.map((block, index) => (
+                  <DraggableBlock
+                    key={block.id}
+                    id={block.id}
+                    onDelete={() => onDeleteBlock(block.id)}
+                    onDuplicate={() => onDuplicateBlock(block.id)}
+                    onMoveUp={() => onMoveBlock(block.id, -1)}
+                    onMoveDown={() => onMoveBlock(block.id, 1)}
+                    disableMoveUp={index === 0}
+                    disableMoveDown={index === blocks.length - 1}
+                    isSelected={selectedBlockId === block.id}
+                    onSelect={() => onSelectBlock(block.id)}
+                  >
+                    <PageRenderer blocks={[block]} />
+                  </DraggableBlock>
+                ))}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'center' }}>
+                <button type="button" onClick={onAddBlock} style={addButtonStyle}>
+                  + Add block
+                </button>
+              </div>
             </div>
           </div>
         </div>
