@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { HTMLAttributes, ReactNode } from "react";
 
 import { tokens } from "../../ui/tokens";
 
@@ -7,11 +7,52 @@ const SECTION_PADDING = tokens.spacing.md;
 const SECTION_RADIUS = tokens.radius.md;
 const SECTION_BORDER_WIDTH = tokens.border.thin;
 const SECTION_SHADOW = tokens.shadow.sm;
+const CONTAINER_GAP = tokens.spacing.md;
+const CONTAINER_PADDING = tokens.spacing.md;
 
 interface InspectorSectionProps {
   title: string;
   description?: string;
   children: ReactNode;
+}
+
+interface InspectorContainerProps extends HTMLAttributes<HTMLDivElement> {
+  children: ReactNode;
+}
+
+export function InspectorContainer({
+  children,
+  className,
+  style,
+  ...rest
+}: InspectorContainerProps) {
+  const mergedClassName = ["inspector-container", className]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    <div
+      className={mergedClassName}
+      style={{
+        ...style,
+        display: "flex",
+        flexDirection: "column",
+      }}
+      {...rest}
+    >
+      {children}
+
+      <style jsx>{`
+        .inspector-container {
+          gap: ${CONTAINER_GAP}px;
+          padding: ${CONTAINER_PADDING}px;
+          overflow-y: auto;
+          overscroll-behavior: contain;
+          scroll-behavior: smooth;
+        }
+      `}</style>
+    </div>
+  );
 }
 
 export function InspectorSection({ title, description, children }: InspectorSectionProps) {

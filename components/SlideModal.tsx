@@ -92,7 +92,9 @@ import {
   InputText,
   InputToggle,
 } from "./ui";
-import InspectorSection from "../src/components/inspector/InspectorSection";
+import InspectorSection, {
+  InspectorContainer,
+} from "../src/components/inspector/InspectorSection";
 import ControlRow from "../src/components/inspector/ControlRow";
 import InspectorInputColor from "../src/components/inspector/controls/InputColor";
 import InspectorInputSelect, {
@@ -604,7 +606,6 @@ const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 2;
 
 const INSPECTOR_CONTENT_CLASS = [
-  "space-y-4 px-4 pb-4 pt-3",
   "[&_label:not(.flex)]:flex",
   "[&_label:not(.flex)]:flex-col",
   "[&_label:not(.flex)]:gap-1",
@@ -4581,9 +4582,9 @@ export default function SlideModal({
                     minWidth: INSPECTOR_MIN_WIDTH,
                   }}
                 >
-                  <div className="flex-1 overflow-y-auto">
+                  <div className="flex-1 min-h-0 flex flex-col">
                     <div
-                      className="sticky top-0 z-10 border-b bg-white"
+                      className="border-b bg-white"
                       style={{
                         paddingLeft: tokens.spacing.md,
                         paddingRight: tokens.spacing.md,
@@ -4654,8 +4655,9 @@ export default function SlideModal({
                         </div>
                       </div>
                     </div>
-                    <div
+                    <InspectorContainer
                       className={INSPECTOR_CONTENT_CLASS}
+                      style={{ flex: 1, minHeight: 0 }}
                       onPointerDownCapture={handleInspectorPointerDown}
                     >
                       <section>
@@ -6921,9 +6923,9 @@ export default function SlideModal({
 
                         </div>
                     </section>
+                    </InspectorContainer>
                   </div>
-                </div>
-              </aside>
+                </aside>
               )}
             </div>
           </div>
