@@ -892,8 +892,6 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
       )}
       <style jsx global>{`
         .wb-toolbar {
-          display: flex;
-          align-items: center;
           gap: 8px;
           height: 44px;
           padding: 0 12px;
