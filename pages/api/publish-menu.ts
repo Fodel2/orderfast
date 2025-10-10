@@ -1,3 +1,4 @@
+import type { PostgrestFilterBuilder } from '@supabase/postgrest-js';
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { supaServer } from '@/lib/supaServer';
 
@@ -18,6 +19,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const supabase = supaServer();
+
+  const archivedSupport: Record<'menu_items' | 'menu_categories', boolean> = {
+    menu_items: true,
+    menu_categories: true,
+  };
+
+  async function withArchivedFilter(
+    table: 'menu_items' | 'menu_categories',
+    build: (useArchivedFilter: boolean) => PostgrestFilterBuilder<any, any, any>,
+  ) {
+    const useArchived = archivedSupport[table];
+    const query = build(useArchived);
+    const { data, error } = await query;
+    if (error && error.code === '42703' && /archived_at/i.test(error.message || '')) {
+      archivedSupport[table] = false;
+      return await build(false);
+    }
+    return { data, error };
+  }
 
   try {
     const { restaurantId } = req.body as { restaurantId?: string };
@@ -43,11 +63,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // 2) Try HARD-DELETE current live data (links -> items -> categories)
     try {
-      const { data: liveItems, error: liveErr } = await supabase
-        .from('menu_items')
-        .select('id')
-        .eq('restaurant_id', restaurantId)
-        .is('archived_at', null);
+      const { data: liveItems, error: liveErr } = await withArchivedFilter(
+        'menu_items',
+        (useArchived) => {
+          const query = supabase
+            .from('menu_items')
+            .select('id')
+            .eq('restaurant_id', restaurantId);
+          return useArchived ? query.is('archived_at', null) : query;
+        },
+      );
       if (liveErr) throw liveErr;
       const liveItemIds = (liveItems ?? []).map((r: any) => r.id);
 
@@ -61,21 +86,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         deletedLinks = delLinks?.length ?? 0;
       }
 
-      const { data: delItems, error: delItemsErr } = await supabase
-        .from('menu_items')
-        .delete()
-        .eq('restaurant_id', restaurantId)
-        .is('archived_at', null)
-        .select('id');
+      const { data: delItems, error: delItemsErr } = await withArchivedFilter(
+        'menu_items',
+        (useArchived) => {
+          const query = supabase
+            .from('menu_items')
+            .delete()
+            .eq('restaurant_id', restaurantId)
+            .select('id');
+          return useArchived ? query.is('archived_at', null) : query;
+        },
+      );
       if (delItemsErr) throw delItemsErr;
       deletedItems = delItems?.length ?? 0;
 
-      const { data: delCats, error: delCatsErr } = await supabase
-        .from('menu_categories')
-        .delete()
-        .eq('restaurant_id', restaurantId)
-        .is('archived_at', null)
-        .select('id');
+      const { data: delCats, error: delCatsErr } = await withArchivedFilter(
+        'menu_categories',
+        (useArchived) => {
+          const query = supabase
+            .from('menu_categories')
+            .delete()
+            .eq('restaurant_id', restaurantId)
+            .select('id');
+          return useArchived ? query.is('archived_at', null) : query;
+        },
+      );
       if (delCatsErr) throw delCatsErr;
       deletedCats = delCats?.length ?? 0;
 
@@ -83,12 +118,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // FK violation (due to order_items) → ARCHIVE instead (so customer never sees old rows)
       console.error('[publish:hardDeleteFallback]', hardDeleteErr);
 
-      const { data: archItems, error: archItemsErr } = await supabase
-        .from('menu_items')
-        .update({ archived_at: new Date().toISOString() })
-        .eq('restaurant_id', restaurantId)
-        .is('archived_at', null)
-        .select('id');
+      let archItemsErr;
+      let archItems;
+      if (archivedSupport.menu_items) {
+        ({ data: archItems, error: archItemsErr } = await withArchivedFilter(
+          'menu_items',
+          (useArchived) => {
+            const query = supabase
+              .from('menu_items')
+              .update({ archived_at: new Date().toISOString() })
+              .eq('restaurant_id', restaurantId)
+              .select('id');
+            return useArchived ? query.is('archived_at', null) : query;
+          },
+        ));
+        if (archItemsErr && archItemsErr.code === '42703' && /archived_at/i.test(archItemsErr.message || '')) {
+          archivedSupport.menu_items = false;
+        }
+      }
+
+      if ((!archItems || archItemsErr) && archivedSupport.menu_items === false) {
+        const { data, error } = await supabase
+          .from('menu_items')
+          .update({ status: 'archived' })
+          .eq('restaurant_id', restaurantId)
+          .select('id');
+        archItems = data;
+        archItemsErr = error;
+      }
       if (archItemsErr) {
         console.error('[publish:archiveItems]', archItemsErr);
         return res.status(500).json({ where: 'archive_items', error: archItemsErr.message, code: archItemsErr.code, details: archItemsErr.details });
@@ -109,12 +166,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         archivedLinks = delLinks?.length ?? 0;
       }
 
-      const { data: archCats, error: archCatsErr } = await supabase
-        .from('menu_categories')
-        .update({ archived_at: new Date().toISOString() })
-        .eq('restaurant_id', restaurantId)
-        .is('archived_at', null)
-        .select('id');
+      let archCatsErr;
+      let archCats;
+      if (archivedSupport.menu_categories) {
+        ({ data: archCats, error: archCatsErr } = await withArchivedFilter(
+          'menu_categories',
+          (useArchived) => {
+            const query = supabase
+              .from('menu_categories')
+              .update({ archived_at: new Date().toISOString() })
+              .eq('restaurant_id', restaurantId)
+              .select('id');
+            return useArchived ? query.is('archived_at', null) : query;
+          },
+        ));
+        if (archCatsErr && archCatsErr.code === '42703' && /archived_at/i.test(archCatsErr.message || '')) {
+          archivedSupport.menu_categories = false;
+        }
+      }
+
+      if ((!archCats || archCatsErr) && archivedSupport.menu_categories === false) {
+        const { data, error } = await supabase
+          .from('menu_categories')
+          .update({ status: 'archived' })
+          .eq('restaurant_id', restaurantId)
+          .select('id');
+        archCats = data;
+        archCatsErr = error;
+      }
       if (archCatsErr) {
         console.error('[publish:archiveCats]', archCatsErr);
         return res.status(500).json({ where: 'archive_categories', error: archCatsErr.message, code: archCatsErr.code, details: archCatsErr.details });
@@ -133,7 +212,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           description: c.description ?? null,
           sort_order: c.sort_order ?? idx,
           image_url: c.image_url ?? null,
-          archived_at: null,
         })
         .select('id')
         .single();
@@ -161,16 +239,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           description: it.description ?? null,
           price: it.price ?? null,
           image_url: it.image_url ?? null,
-          is_vegetarian: it.is_vegetarian ?? false,
-          is_vegan: it.is_vegan ?? false,
-          is_18_plus: it.is_18_plus ?? false,
-          available: it.available ?? true,
-          out_of_stock_until: null,
           sort_order: it.sort_order ?? idx,
-          out_of_stock: false,
-          stock_status: it.stock_status ?? 'in_stock',
-          stock_return_date: null,
-          archived_at: null,
         })
         .select('id')
         .single();
