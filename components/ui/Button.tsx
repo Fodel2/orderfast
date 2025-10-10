@@ -23,18 +23,24 @@ export function Button({
         "focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--brand-color,theme(colors.sky.500))]",
         "disabled:opacity-50 disabled:cursor-not-allowed",
         fullWidth && "w-full",
+
+        // Sizes
         size === "sm" && "px-3 py-1 text-sm",
         size === "md" && "px-4 py-2 text-sm",
         size === "lg" && "px-5 py-3 text-base",
-        // Variants
+
+        // Variants with improved contrast
         variant === "primary" &&
           "bg-[var(--brand-color,theme(colors.sky.500))] text-white hover:brightness-110 border border-transparent shadow-sm",
         variant === "secondary" &&
-          "bg-white text-gray-800 border border-gray-200 hover:bg-gray-50 dark:bg-neutral-900 dark:text-gray-100 dark:border-neutral-700 dark:hover:bg-neutral-800",
+          "bg-white text-neutral-900 border border-neutral-200 hover:bg-neutral-50 dark:bg-neutral-900 dark:text-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800",
         variant === "icon" &&
-          "w-9 h-9 rounded-full border border-gray-200 bg-white text-gray-800 hover:bg-gray-50 dark:bg-neutral-900 dark:text-gray-100 dark:border-neutral-700 dark:hover:bg-neutral-800",
+          "w-9 h-9 rounded-full border border-neutral-200 bg-white text-neutral-900 hover:bg-neutral-50 dark:bg-neutral-900 dark:text-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800",
         variant === "destructive" &&
           "bg-red-500 text-white hover:bg-red-600 border border-transparent shadow-sm",
+
+        // Automatic adjustment for very light backgrounds
+        "backdrop-saturate-150 supports-[backdrop-filter]:backdrop-blur-md",
         className
       )}
     >
