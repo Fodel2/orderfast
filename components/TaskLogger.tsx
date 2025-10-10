@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useState,
   type ReactNode,
@@ -6,11 +7,14 @@ import {
   type InputHTMLAttributes,
   type SelectHTMLAttributes,
 } from "react";
+import { supabase } from "@/utils/supabaseClient";
+import { useRestaurant } from "@/lib/restaurant-context";
+
+const cardBaseClasses =
+  "bg-white/95 dark:bg-slate-800/90 border border-gray-200 dark:border-slate-700 rounded-2xl shadow-lg backdrop-blur";
 
 const Card = ({ children, className = "" }: { children: ReactNode; className?: string }) => (
-  <div
-    className={`bg-white/95 dark:bg-slate-800/90 border border-gray-200 dark:border-slate-700 rounded-2xl shadow-lg backdrop-blur ${className}`}
-  >
+  <div className={`${cardBaseClasses} ${className}`}>
     {children}
   </div>
 );
@@ -120,100 +124,260 @@ const Badge = ({ children, variant = "default" }: BadgeProps) => {
 };
 
 interface Task {
-  id: number;
+  id: string;
   title: string;
   urgency: "normal" | "urgent";
   status: "waiting" | "in-process" | "complete";
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
 }
 
+type NewTask = Pick<Task, "title" | "urgency" | "status">;
+
+const toTimestamp = (value: string | null | undefined) =>
+  value ? new Date(value).getTime() : 0;
+
 export default function TaskLogger() {
+  const [restaurantId, setRestaurantId] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [archived, setArchived] = useState<Task[]>([]);
-  const [newTask, setNewTask] = useState<Omit<Task, "id">>({
+  const [newTask, setNewTask] = useState<NewTask>({
     title: "",
     urgency: "normal",
     status: "waiting",
   });
+  const [initializing, setInitializing] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [savingTaskId, setSavingTaskId] = useState<string | null>(null);
+  const { restaurantId: contextRestaurantId } = useRestaurant();
 
-  const sortTaskList = (list: Task[]) => {
+  const sortActiveTasks = useCallback((list: Task[]) => {
     const priority: Record<Task["status"], number> = {
       "in-process": 0,
       waiting: 1,
       complete: 2,
     };
 
-    return [...list].sort((a, b) => {
-      const statusDiff = priority[a.status] - priority[b.status];
-      if (statusDiff !== 0) {
-        return statusDiff;
-      }
+    return [...list]
+      .filter((task) => !task.archived_at)
+      .sort((a, b) => {
+        const statusDiff = priority[a.status] - priority[b.status];
+        if (statusDiff !== 0) {
+          return statusDiff;
+        }
 
-      return b.id - a.id;
-    });
-  };
+        const updatedDiff = toTimestamp(b.updated_at) - toTimestamp(a.updated_at);
+        if (updatedDiff !== 0) {
+          return updatedDiff;
+        }
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const storedActive = window.localStorage.getItem("task-logger-active");
-    const storedArchive = window.localStorage.getItem("task-logger-archive");
-
-    if (storedActive) {
-      try {
-        const parsed: Task[] = JSON.parse(storedActive);
-        setTasks(sortTaskList(parsed));
-      } catch (error) {
-        console.error("Failed to parse stored tasks", error);
-      }
-    }
-
-    if (storedArchive) {
-      try {
-        const parsed: Task[] = JSON.parse(storedArchive);
-        setArchived(parsed);
-      } catch (error) {
-        console.error("Failed to parse stored archived tasks", error);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        return toTimestamp(b.created_at) - toTimestamp(a.created_at);
+      });
   }, []);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem("task-logger-active", JSON.stringify(tasks));
-  }, [tasks]);
+  const sortArchivedTasks = useCallback(
+    (list: Task[]) =>
+      [...list]
+        .filter((task) => task.archived_at)
+        .sort(
+          (a, b) =>
+            (toTimestamp(b.archived_at) || toTimestamp(b.updated_at)) -
+            (toTimestamp(a.archived_at) || toTimestamp(a.updated_at))
+        ),
+    []
+  );
+
+  const applyTask = useCallback(
+    (task: Task) => {
+      if (task.archived_at) {
+        setTasks((previous) => previous.filter((existing) => existing.id !== task.id));
+        setArchived((previous) =>
+          sortArchivedTasks([task, ...previous.filter((existing) => existing.id !== task.id)])
+        );
+        return;
+      }
+
+      setArchived((previous) => previous.filter((existing) => existing.id !== task.id));
+      setTasks((previous) =>
+        sortActiveTasks([task, ...previous.filter((existing) => existing.id !== task.id)])
+      );
+    },
+    [sortActiveTasks, sortArchivedTasks]
+  );
+
+  const refreshTasks = useCallback(
+    async (rid: string) => {
+      setRefreshing(true);
+      setError(null);
+      try {
+        const response = await fetch(
+          `/api/dashboard/tasks?restaurantId=${encodeURIComponent(rid)}`
+        );
+        if (!response.ok) {
+          const message = await response.text();
+          throw new Error(message || "Failed to load tasks");
+        }
+        const payload = (await response.json()) as { active: Task[]; archived: Task[] };
+        setTasks(sortActiveTasks(payload.active ?? []));
+        setArchived(sortArchivedTasks(payload.archived ?? []));
+      } catch (caught) {
+        console.error("Failed to load dashboard tasks", caught);
+        setError("Unable to load tasks. Please try again.");
+      } finally {
+        setRefreshing(false);
+      }
+    },
+    [sortActiveTasks, sortArchivedTasks]
+  );
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem("task-logger-archive", JSON.stringify(archived));
-  }, [archived]);
+    let cancelled = false;
 
-  const addTask = () => {
-    if (!newTask.title.trim()) return;
-    setTasks((previous) => sortTaskList([...previous, { ...newTask, id: Date.now() }]));
-    setNewTask({ title: "", urgency: "normal", status: "waiting" });
+    const bootstrap = async () => {
+      setInitializing(true);
+      setError(null);
+      try {
+        let resolvedRestaurantId = contextRestaurantId ?? null;
+
+        if (!resolvedRestaurantId) {
+          const {
+            data: { session },
+          } = await supabase.auth.getSession();
+
+          if (!session) {
+            if (!cancelled) {
+              setRestaurantId(null);
+              setTasks([]);
+              setArchived([]);
+              setError("Please sign in to manage tasks.");
+            }
+            return;
+          }
+
+          const { data: membership, error: membershipError } = await supabase
+            .from("restaurant_users")
+            .select("restaurant_id")
+            .eq("user_id", session.user.id)
+            .maybeSingle();
+
+          if (membershipError) {
+            throw membershipError;
+          }
+
+          resolvedRestaurantId = membership?.restaurant_id ?? null;
+        }
+
+        if (!resolvedRestaurantId) {
+          if (!cancelled) {
+            setRestaurantId(null);
+            setTasks([]);
+            setArchived([]);
+            setError("No restaurant assigned yet. Ask an admin to invite you.");
+          }
+          return;
+        }
+
+        if (cancelled) return;
+
+        setRestaurantId(resolvedRestaurantId);
+        await refreshTasks(resolvedRestaurantId);
+      } catch (caught) {
+        console.error("Failed to initialise dashboard tasks", caught);
+        if (!cancelled) {
+          setError("Unable to load tasks right now.");
+        }
+      } finally {
+        if (!cancelled) {
+          setInitializing(false);
+        }
+      }
+    };
+
+    void bootstrap();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [contextRestaurantId, refreshTasks]);
+
+  const addTask = async () => {
+    if (!restaurantId || !newTask.title.trim()) return;
+    setIsCreating(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/dashboard/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          restaurantId,
+          title: newTask.title.trim(),
+          urgency: newTask.urgency,
+          status: newTask.status,
+        }),
+      });
+
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Failed to create task");
+      }
+
+      const payload = (await response.json()) as { task: Task };
+      applyTask(payload.task);
+      setNewTask({ title: "", urgency: "normal", status: "waiting" });
+    } catch (caught) {
+      console.error("Failed to create dashboard task", caught);
+      setError("Could not save the task. Please try again.");
+    } finally {
+      setIsCreating(false);
+    }
   };
 
-  const updateTask = (id: number, updates: Partial<Task>) => {
-    setTasks((previous) =>
-      sortTaskList(previous.map((task) => (task.id === id ? { ...task, ...updates } : task)))
-    );
+  const updateTask = async (
+    id: string,
+    updates: Partial<Pick<Task, "title" | "status" | "urgency">>,
+    archive = false
+  ) => {
+    if (!restaurantId) return;
+    setSavingTaskId(id);
+    setError(null);
+    try {
+      const response = await fetch("/api/dashboard/tasks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ restaurantId, id, updates, archive }),
+      });
+
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Failed to update task");
+      }
+
+      const payload = (await response.json()) as { task: Task };
+      applyTask(payload.task);
+    } catch (caught) {
+      console.error("Failed to update dashboard task", caught);
+      setError("Could not update the task. Please try again.");
+    } finally {
+      setSavingTaskId(null);
+    }
   };
 
-  const completeTask = (id: number) => {
-    const done = tasks.find((task) => task.id === id);
-    if (!done) return;
-
-    setArchived((previous) => [{ ...done, status: "complete" }, ...previous]);
-    setTasks((previous) => previous.filter((task) => task.id !== id));
+  const completeTask = (id: string) => {
+    void updateTask(id, { status: "complete" }, true);
   };
+
+  const canManage = Boolean(restaurantId) && !initializing;
+  const disableNewTask = !canManage || isCreating;
 
   return (
     <Card className="p-0 space-y-4">
       <CardHeader>
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">Task Logger</h2>
-          <Badge variant="outline">Local Draft</Badge>
+          <Badge variant="secondary">Auto-sync</Badge>
         </div>
       </CardHeader>
 
@@ -224,6 +388,7 @@ export default function TaskLogger() {
           value={newTask.title}
           onChange={(event) => setNewTask({ ...newTask, title: event.target.value })}
           className="flex-1"
+          disabled={disableNewTask}
         />
         <Select
           value={newTask.urgency}
@@ -233,49 +398,77 @@ export default function TaskLogger() {
             { value: "urgent", label: "Urgent" },
           ]}
           className="w-28"
+          disabled={disableNewTask}
         />
 
-        <Button onClick={addTask}>Add</Button>
+        <Button
+          onClick={addTask}
+          disabled={disableNewTask || !newTask.title.trim()}
+        >
+          {isCreating ? "Saving..." : "Add"}
+        </Button>
       </CardContent>
 
       <CardContent className="pt-0 -mt-4 text-xs text-muted-foreground">
-        Tasks are stored locally in your browser so you can iterate quickly before logging official work.
+        {restaurantId
+          ? "Tasks sync automatically for everyone on this restaurant."
+          : "Assign a restaurant to start logging work."}
       </CardContent>
+
+      {error && (
+        <CardContent className="pt-0 -mt-2 text-sm text-red-500">{error}</CardContent>
+      )}
 
       {/* Task List */}
       <CardContent className="space-y-3">
-        {tasks.length === 0 && (
+        {initializing && tasks.length === 0 ? (
+          <p className="text-muted-foreground text-sm text-center">Loading tasks…</p>
+        ) : tasks.length === 0 ? (
           <p className="text-muted-foreground text-sm text-center">No active tasks</p>
-        )}
-
-        {tasks.map((task) => (
-          <div
-            key={task.id}
-            className="flex items-center justify-between border border-gray-200 dark:border-slate-700 bg-gray-50/80 dark:bg-slate-900/60 p-3 rounded-xl shadow-sm"
-          >
-            <div className="flex flex-col">
-              <span className="font-medium">{task.title}</span>
-              <div className="flex gap-2 mt-1 items-center">
-                <Badge variant={task.urgency === "urgent" ? "destructive" : "secondary"}>{task.urgency}</Badge>
-                <Select
-                  value={task.status}
-                  onChange={(value) => updateTask(task.id, { status: value as Task["status"] })}
-                  options={[
-                    { value: "waiting", label: "Waiting" },
-                    { value: "in-process", label: "In Process" },
-                    { value: "complete", label: "Complete" },
-                  ]}
-                  className="w-36 text-xs"
-                />
+        ) : (
+          tasks.map((task) => (
+            <div
+              key={task.id}
+              className="flex items-center justify-between border border-gray-200 dark:border-slate-700 bg-gray-50/80 dark:bg-slate-900/60 p-3 rounded-xl shadow-sm"
+            >
+              <div className="flex flex-col">
+                <span className="font-medium">{task.title}</span>
+                <div className="flex gap-2 mt-1 items-center">
+                  <Badge variant={task.urgency === "urgent" ? "destructive" : "secondary"}>
+                    {task.urgency}
+                  </Badge>
+                  <Select
+                    value={task.status}
+                    onChange={(value) =>
+                      updateTask(task.id, { status: value as Task["status"] }, value === "complete")
+                    }
+                    options={[
+                      { value: "waiting", label: "Waiting" },
+                      { value: "in-process", label: "In Process" },
+                      { value: "complete", label: "Complete" },
+                    ]}
+                    className="w-36 text-xs"
+                    disabled={savingTaskId === task.id || !canManage}
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => completeTask(task.id)}
+                  disabled={savingTaskId === task.id || !canManage}
+                >
+                  ✓
+                </Button>
               </div>
             </div>
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={() => completeTask(task.id)}>
-                ✓
-              </Button>
-            </div>
-          </div>
-        ))}
+          ))
+        )}
+
+        {refreshing && !initializing && (
+          <p className="text-muted-foreground text-xs text-center">Syncing latest updates…</p>
+        )}
       </CardContent>
 
       {/* Archive */}
