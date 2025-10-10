@@ -257,17 +257,32 @@ export default function TaskLogger() {
             return;
           }
 
-          const { data: membership, error: membershipError } = await supabase
+          const { data: membershipRows, error: membershipError } = await supabase
             .from("restaurant_users")
             .select("restaurant_id")
             .eq("user_id", session.user.id)
-            .maybeSingle();
+            .limit(1);
 
           if (membershipError) {
             throw membershipError;
           }
 
-          resolvedRestaurantId = membership?.restaurant_id ?? null;
+          resolvedRestaurantId =
+            (membershipRows as { restaurant_id: string }[] | null)?.[0]?.restaurant_id ?? null;
+
+          if (!resolvedRestaurantId) {
+            const { data: ownedRows, error: ownedError } = await supabase
+              .from("restaurants")
+              .select("id")
+              .eq("owner_id", session.user.id)
+              .limit(1);
+
+            if (ownedError) {
+              throw ownedError;
+            }
+
+            resolvedRestaurantId = (ownedRows as { id: string }[] | null)?.[0]?.id ?? null;
+          }
         }
 
         if (!resolvedRestaurantId) {
