@@ -3,11 +3,17 @@ import { supaServer } from '@/lib/supaServer';
 
 const isProd = process.env.NODE_ENV === 'production';
 
+function coerceId(input: unknown): string | undefined {
+  if (typeof input === 'string' && input) return input;
+  if (typeof input === 'number' && !Number.isNaN(input)) return String(input);
+  return undefined;
+}
+
 function resolveRestaurantId(req: NextApiRequest): string | undefined {
   const q =
-    (typeof req.query.restaurant_id === 'string' && req.query.restaurant_id) ||
-    (typeof req.query.rid === 'string' && req.query.rid) ||
-    (typeof (req.body as any)?.restaurantId === 'string' && (req.body as any).restaurantId) ||
+    coerceId(req.query.restaurant_id) ||
+    coerceId(req.query.rid) ||
+    coerceId((req.body as any)?.restaurantId) ||
     undefined;
   if (q) return q;
   if (!isProd) return process.env.NEXT_PUBLIC_DEMO_RESTAURANT_ID;
@@ -35,49 +41,58 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     if (req.method === 'GET') {
+      const table = 'menu_builder_drafts';
+      const line = 'pages/api/menu-builder.ts:60';
       const { data, error } = await supabase
-        .from('menu_drafts')
-        .select('draft, version, updated_at')
+        .from(table)
+        .select('payload, updated_at')
         .eq('restaurant_id', restaurantId)
         .maybeSingle();
 
       if (error) {
-        console.error('[draft:load]', { path, restaurantId, error });
+        console.error('[draft:load]', { path, restaurantId, table, line, error });
         return res
           .status(500)
-          .json({ message: error.message });
+          .json({ message: error.message, table, line });
       }
 
       if (!data) {
+        const initLine = 'pages/api/menu-builder.ts:72';
         const { data: inserted, error: insertErr } = await supabase
-          .from('menu_drafts')
-          .insert({ restaurant_id: restaurantId, draft: {} })
-          .select('draft, version, updated_at')
+          .from(table)
+          .insert({ restaurant_id: restaurantId, payload: {} })
+          .select('payload, updated_at')
           .single();
         if (insertErr) {
-          console.error('[draft:init]', { path, restaurantId, error: insertErr });
-          return res.status(500).json({ message: insertErr.message });
+          console.error('[draft:init]', { path, restaurantId, table, line: initLine, error: insertErr });
+          return res.status(500).json({ message: insertErr.message, table, line: initLine });
         }
-        return res.status(200).json(inserted);
+        return res.status(200).json({ draft: inserted.payload, payload: inserted.payload, updated_at: inserted.updated_at });
       }
-      return res.status(200).json(data);
+      return res
+        .status(200)
+        .json({ draft: data.payload, payload: data.payload, updated_at: data.updated_at });
     }
 
     if (req.method === 'PUT') {
       const draft = (req.body as { draft?: DraftPayload }).draft;
       if (!draft) return res.status(400).json({ message: 'draft is required' });
 
+      const table = 'menu_builder_drafts';
+      const line = 'pages/api/menu-builder.ts:94';
       const { data, error } = await supabase
-        .from('menu_drafts')
-        .upsert({ restaurant_id: restaurantId, draft }, { onConflict: 'restaurant_id' })
-        .select('draft, version, updated_at')
+        .from(table)
+        .upsert({ restaurant_id: restaurantId, payload: draft }, { onConflict: 'restaurant_id' })
+        .select('payload, updated_at')
         .single();
 
       if (error) {
-        console.error('[draft:save]', { path, restaurantId, error });
-        return res.status(500).json({ message: error.message });
+        console.error('[draft:save]', { path, restaurantId, table, line, error });
+        return res.status(500).json({ message: error.message, table, line });
       }
-      return res.status(200).json(data);
+      return res
+        .status(200)
+        .json({ draft: data.payload, payload: data.payload, updated_at: data.updated_at });
     }
 
     res.setHeader('Allow', ['GET', 'PUT']);
