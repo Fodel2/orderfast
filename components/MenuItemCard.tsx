@@ -111,13 +111,19 @@ export default function MenuItemCard({
     setLoading(true);
     try {
       const data = await getAddonsForItem(item.id);
-      setGroups(data);
+      const sanitized = Array.isArray(data) ? data : [];
+      setGroups(sanitized);
       if (process.env.NODE_ENV === 'development') {
-        console.debug('[addons]', {
+        console.debug('[customer:item-modal] fetched add-on groups', {
           itemId: item.id,
-          groupsCount: data?.length,
-          groups: data,
+          groupsCount: sanitized.length,
         });
+        if (!Array.isArray(data)) {
+          console.warn('[customer:item-modal] unexpected add-on payload', {
+            itemId: item.id,
+            receivedType: typeof data,
+          });
+        }
       }
     } catch (err) {
       console.error('Failed to load addons', err);
@@ -134,6 +140,15 @@ export default function MenuItemCard({
 
   const increment = () => setQty((q) => q + 1);
   const decrement = () => setQty((q) => (q > 1 ? q - 1 : 1));
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      console.debug('[customer:item-modal] rendering with add-on groups', {
+        itemId: item.id,
+        groupsCount: groups.length,
+      });
+    }
+  }, [groups, item.id]);
 
   const handleFinalAdd = () => {
     const errors = validateAddonSelections(groups, selections);

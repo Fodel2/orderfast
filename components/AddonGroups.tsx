@@ -122,6 +122,18 @@ export default function AddonGroups({
     typeof brand?.brand === 'string' && brand.brand ? brand.brand : '#EB2BB9';
 
   useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      console.debug('[customer:addons] AddonGroups received groups', {
+        groupsCount: addons.length,
+        optionCounts: addons.map((group) => ({
+          groupId: group.group_id ?? group.id,
+          options: Array.isArray(group.addon_options) ? group.addon_options.length : 0,
+        })),
+      });
+    }
+  }, [addons]);
+
+  useEffect(() => {
     if (onChange) {
       onChange(selectedQuantities);
     }
@@ -203,6 +215,16 @@ export default function AddonGroups({
           group?.max_group_select ?? (group as any)?.maxGroupSelect ?? Infinity;
         const max_option_quantity =
           group?.max_option_quantity ?? (group as any)?.maxOptionQuantity ?? Infinity;
+        const options = Array.isArray(group.addon_options)
+          ? group.addon_options
+          : [];
+
+        if (process.env.NODE_ENV === 'development') {
+          console.debug('[customer:addons] rendering group', {
+            groupId: gid,
+            optionCount: options.length,
+          });
+        }
 
         return (
           <div
@@ -231,7 +253,7 @@ export default function AddonGroups({
               </div>
 
               <ScrollRow>
-                {group.addon_options.map((option) => {
+                {options.map((option) => {
                   const gid = group.group_id ?? group.id;
                   const quantity = selectedQuantities[gid]?.[option.id] || 0;
 

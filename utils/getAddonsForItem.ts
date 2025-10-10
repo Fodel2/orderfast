@@ -7,7 +7,7 @@ import type { AddonGroup } from './types';
 export async function getAddonsForItem(
   itemId: number | string
 ): Promise<AddonGroup[]> {
-  const { data, error } = await supabase
+  const query = supabase
     .from('item_addon_links')
     .select(
       `addon_groups!inner(
@@ -17,7 +17,12 @@ export async function getAddonsForItem(
         )
       )`
     )
-    .eq('item_id', itemId);
+    .eq('item_id', itemId)
+    .filter('archived_at', 'is', null)
+    .filter('addon_groups.archived_at', 'is', null)
+    .filter('addon_groups.addon_options.archived_at', 'is', null);
+
+  const { data, error } = await query;
 
   if (error) throw error;
 
@@ -40,7 +45,6 @@ export async function getAddonsForItem(
     }
     const group = map.get(gid)!;
     (g.addon_options || []).forEach((opt: any) => {
-      if (opt?.available === false) return;
       group.addon_options.push({
         id: String(opt.id),
         group_id: opt.group_id ? String(opt.group_id) : gid,
@@ -56,7 +60,15 @@ export async function getAddonsForItem(
   });
 
   if (process.env.NODE_ENV === 'development') {
-    console.debug('[customer:addons]', { itemId, groups: map.size });
+    console.debug('[customer:addons]', {
+      itemId,
+      rawRows: data?.length ?? 0,
+      groups: map.size,
+      options: Array.from(map.values()).reduce(
+        (sum, group) => sum + (group.addon_options?.length ?? 0),
+        0,
+      ),
+    });
   }
 
   return Array.from(map.values());
