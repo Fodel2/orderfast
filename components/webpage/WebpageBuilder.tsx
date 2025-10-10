@@ -101,15 +101,6 @@ export default function WebpageBuilder({
     background: tokens.colors.surfaceSubtle,
   };
 
-  const previewWrapperStyle = useMemo<React.CSSProperties>(
-    () => ({
-      maxWidth: viewport.isDesktop ? '1000px' : viewport.isTablet ? '768px' : '100%',
-      margin: '0 auto',
-      width: '100%',
-    }),
-    [viewport.isDesktop, viewport.isTablet],
-  );
-
   const frameStyle: React.CSSProperties = {
     width: '100%',
     maxWidth: '100%',
@@ -200,8 +191,23 @@ export default function WebpageBuilder({
           style={scrollAreaStyle}
           className="wb-preview overflow-auto"
         >
-          <div className="wb-preview-wrapper" style={previewWrapperStyle}>
-            <div style={frameStyle} className="wb-canvas">
+          <div
+            className="wb-preview-wrapper"
+            style={{
+              width: '100%',
+              maxWidth: viewport.isDesktop ? '1000px' : '100%',
+              margin: '0 auto',
+              overflowX: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                ...frameStyle,
+                transform: viewport.isMobile ? 'scale(1)' : 'none',
+                transformOrigin: 'top center',
+              }}
+              className="wb-canvas"
+            >
               <div style={canvasStyle}>
                 {blocks.length === 0 && (
                   <div
