@@ -17,10 +17,9 @@ export async function getAddonsForItem(
         )
       )`
     )
-    .eq('item_id', itemId)
-    .filter('archived_at', 'is', null)
-    .filter('addon_groups.archived_at', 'is', null)
-    .filter('addon_groups.addon_options.archived_at', 'is', null);
+    .eq('item_id', itemId);
+
+  const requestUrl = (query as unknown as { url?: URL }).url?.toString();
 
   const { data, error } = await query;
 
@@ -68,6 +67,7 @@ export async function getAddonsForItem(
         (sum, group) => sum + (group.addon_options?.length ?? 0),
         0,
       ),
+      requestUrl,
     });
   }
 
