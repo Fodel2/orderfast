@@ -84,8 +84,8 @@ export default function WebpageBuilder({
     background: tokens.colors.surfaceSubtle,
   };
 
-  const frameStyle = useMemo<React.CSSProperties>(
-    () => ({
+  const frameStyle = useMemo<React.CSSProperties>(() => {
+    const style: React.CSSProperties = {
       width: DEVICE_PREVIEW_WIDTHS[device],
       minWidth: DEVICE_PREVIEW_WIDTHS[device],
       borderRadius: tokens.radius.lg,
@@ -97,20 +97,36 @@ export default function WebpageBuilder({
       flexShrink: 0,
       position: 'relative',
       zIndex: 30,
-    }),
-    [device],
-  );
+    };
 
-  const previewStyle = useMemo<React.CSSProperties>(
-    () => ({
+    if (device === 'desktop') {
+      delete style.margin;
+    }
+
+    return style;
+  }, [device]);
+
+  const previewStyle = useMemo<React.CSSProperties>(() => {
+    const baseStyle: React.CSSProperties = {
       display: 'flex',
       justifyContent: 'center',
       width: DEVICE_PREVIEW_WIDTHS[device],
       minWidth: DEVICE_PREVIEW_WIDTHS[device],
+    };
+
+    if (device !== 'desktop') {
+      baseStyle.transform = `scale(${zoomLevel})`;
+      baseStyle.transformOrigin = 'top center';
+    }
+
+    return baseStyle;
+  }, [device, zoomLevel]);
+
+  const desktopScalerStyle = useMemo<React.CSSProperties>(
+    () => ({
       transform: `scale(${zoomLevel})`,
-      transformOrigin: 'top center',
     }),
-    [device, zoomLevel],
+    [zoomLevel],
   );
 
   const canvasStyle: React.CSSProperties = {
@@ -162,6 +178,73 @@ export default function WebpageBuilder({
 
   const zoomOutDisabled = zoomLevel <= 0.5;
   const zoomInDisabled = zoomLevel >= 1.25;
+
+  const previewContent = (
+    <div className="wb-preview" style={previewStyle}>
+      <div className="wb-canvas" style={frameStyle}>
+        <div style={canvasStyle}>
+          {blocks.length === 0 && (
+            <div
+              style={{
+                padding: tokens.spacing.lg,
+                textAlign: 'center',
+                color: tokens.colors.textMuted,
+              }}
+            >
+              Click “Add block” to open the block library and start building your page.
+            </div>
+          )}
+          {blocks.map((block, index) => {
+            const headerId = headerBlockId;
+            const isHeader = block.type === 'header';
+            const disableMoveUp =
+              isHeader ||
+              index === 0 ||
+              (headerId && headerId !== block.id && index === 1);
+            const disableMoveDown = isHeader || index === blocks.length - 1;
+            return (
+              <DraggableBlock
+                key={block.id}
+                id={block.id}
+                onDelete={() => onDeleteBlock(block.id)}
+                onDuplicate={() => onDuplicateBlock(block.id)}
+                onMoveUp={() => onMoveBlock(block.id, -1)}
+                onMoveDown={() => onMoveBlock(block.id, 1)}
+                disableMoveUp={disableMoveUp}
+                disableMoveDown={disableMoveDown}
+                isSelected={selectedBlockId === block.id}
+                onSelect={() => onSelectBlock(block.id)}
+              >
+                <PageRenderer blocks={[block]} device={device} />
+              </DraggableBlock>
+            );
+          })}
+        </div>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.preventDefault();
+            onAddBlock();
+          }}
+          style={addButtonStyle}
+          className="wb-add-cta"
+        >
+          + Add block
+        </button>
+      </div>
+    </div>
+  );
+
+  const previewNode =
+    device === 'desktop' ? (
+      <div className="wb-viewport wb-viewport--desktop">
+        <div className="wb-canvas-scaler" style={desktopScalerStyle}>
+          {previewContent}
+        </div>
+      </div>
+    ) : (
+      previewContent
+    );
 
   return (
     <div style={shellStyle}>
@@ -309,60 +392,8 @@ export default function WebpageBuilder({
               margin: 0,
             }}
           >
-            <div className="wb-preview" style={previewStyle}>
-                <div className="wb-canvas" style={frameStyle}>
-                  <div style={canvasStyle}>
-                    {blocks.length === 0 && (
-                      <div
-                        style={{
-                          padding: tokens.spacing.lg,
-                          textAlign: 'center',
-                          color: tokens.colors.textMuted,
-                        }}
-                      >
-                        Click “Add block” to open the block library and start building your page.
-                      </div>
-                    )}
-                    {blocks.map((block, index) => {
-                      const headerId = headerBlockId;
-                      const isHeader = block.type === 'header';
-                      const disableMoveUp =
-                        isHeader ||
-                        index === 0 ||
-                        (headerId && headerId !== block.id && index === 1);
-                      const disableMoveDown = isHeader || index === blocks.length - 1;
-                      return (
-                        <DraggableBlock
-                          key={block.id}
-                          id={block.id}
-                          onDelete={() => onDeleteBlock(block.id)}
-                          onDuplicate={() => onDuplicateBlock(block.id)}
-                          onMoveUp={() => onMoveBlock(block.id, -1)}
-                          onMoveDown={() => onMoveBlock(block.id, 1)}
-                          disableMoveUp={disableMoveUp}
-                          disableMoveDown={disableMoveDown}
-                          isSelected={selectedBlockId === block.id}
-                          onSelect={() => onSelectBlock(block.id)}
-                        >
-                          <PageRenderer blocks={[block]} device={device} />
-                        </DraggableBlock>
-                      );
-                    })}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      onAddBlock();
-                    }}
-                    style={addButtonStyle}
-                    className="wb-add-cta"
-                  >
-                    + Add block
-                  </button>
-                </div>
-              </div>
-            </div>
+            {previewNode}
+          </div>
         </div>
       </div>
     </div>
