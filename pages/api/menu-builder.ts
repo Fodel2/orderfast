@@ -3,6 +3,34 @@ import { supaServer } from '@/lib/supaServer';
 
 const isProd = process.env.NODE_ENV === 'production';
 
+type SupabaseAction = 'select' | 'insert' | 'upsert';
+
+function logSupabaseCall(
+  action: SupabaseAction,
+  table: string,
+  fields?: string,
+  payload?: unknown
+) {
+  let payloadLength: number | undefined;
+  if (payload !== undefined) {
+    try {
+      payloadLength = JSON.stringify(payload).length;
+    } catch (error) {
+      console.warn('[menu-builder:supabase:payload-stringify-error]', {
+        action,
+        table,
+        error,
+      });
+    }
+  }
+  console.debug('[menu-builder:supabase]', {
+    action,
+    table,
+    fields,
+    payloadLength,
+  });
+}
+
 function coerceId(input: unknown): string | undefined {
   if (typeof input === 'string' && input) return input;
   if (typeof input === 'number' && !Number.isNaN(input)) return String(input);
@@ -30,6 +58,35 @@ type DraftPayload = {
   links?: Array<{ item_id: string; group_id: string }>; // IMPORTANT: group_id (schema uses group_id)
 };
 
+function ensureDraftPayload(input: unknown): DraftPayload {
+  let parsed: unknown = input;
+  if (typeof input === 'string') {
+    try {
+      parsed = JSON.parse(input);
+    } catch (error) {
+      throw Object.assign(new Error('draft must be valid JSON'), {
+        statusCode: 400,
+      });
+    }
+  }
+
+  if (!parsed || typeof parsed !== 'object') {
+    throw Object.assign(new Error('draft must be a JSON object'), {
+      statusCode: 400,
+    });
+  }
+
+  try {
+    JSON.stringify(parsed);
+  } catch (error) {
+    throw Object.assign(new Error('draft contains non-serializable values'), {
+      statusCode: 400,
+    });
+  }
+
+  return parsed as DraftPayload;
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const supabase = supaServer;
   const restaurantId = resolveRestaurantId(req);
@@ -55,6 +112,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       let addonLinks: Array<{ id: string; item_id: string; group_id: string }> | undefined;
 
       try {
+        logSupabaseCall('select', table, 'draft, updated_at');
         const response = await supabase
           .from(table)
           .select('draft, updated_at')
@@ -69,6 +127,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       if (withAddons) {
         try {
+          logSupabaseCall(
+            'select',
+            'addon_groups',
+            'id,name,multiple_choice,required,max_group_select,max_option_quantity,addon_options(id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at)'
+          );
           const response = await supabase
             .from('addon_groups')
             .select(
@@ -104,6 +167,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
 
         try {
+          logSupabaseCall('select', 'item_addon_links', 'id,item_id,group_id,menu_items!inner(id,restaurant_id)');
           const response = await supabase
             .from('item_addon_links')
             .select('id,item_id,group_id,menu_items!inner(id,restaurant_id)')
@@ -122,10 +186,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       if (!data) {
         let inserted: { draft: DraftPayload; updated_at: string };
+        const emptyDraft: DraftPayload = { categories: [], items: [], links: [] };
+        const insertPayload = { restaurant_id: restaurantId, draft: emptyDraft };
         try {
+          logSupabaseCall('insert', table, 'draft, updated_at', insertPayload);
           const response = await supabase
             .from(table)
-            .insert({ restaurant_id: restaurantId, draft: {} })
+            .insert(insertPayload)
             .select('draft, updated_at')
             .single()
             .throwOnError();
@@ -152,15 +219,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     if (req.method === 'PUT') {
-      const draft = (req.body as { draft?: DraftPayload }).draft;
-      if (!draft) return res.status(400).json({ message: 'draft is required' });
+      const incomingDraft = (req.body as { draft?: unknown }).draft;
+      if (!incomingDraft) return res.status(400).json({ message: 'draft is required' });
+
+      let draft: DraftPayload;
+      try {
+        draft = ensureDraftPayload(incomingDraft);
+      } catch (error: any) {
+        const statusCode = typeof error?.statusCode === 'number' ? error.statusCode : 400;
+        return res.status(statusCode).json({ message: error?.message || 'invalid_draft' });
+      }
 
       const table = 'menu_drafts';
       let data: { draft: DraftPayload; updated_at: string };
+      const upsertPayload = { restaurant_id: restaurantId, draft };
       try {
+        logSupabaseCall('upsert', table, 'draft, updated_at', upsertPayload);
         const response = await supabase
           .from(table)
-          .upsert({ restaurant_id: restaurantId, draft }, { onConflict: 'restaurant_id' })
+          .upsert(upsertPayload, { onConflict: 'restaurant_id' })
           .select('draft, updated_at')
           .single()
           .throwOnError();
