@@ -225,15 +225,19 @@ export default function WebpageBuilder({
   );
 
   return (
-    <div className="builder-wrapper fixed inset-0 z-50 flex flex-col" style={shellStyle}>
+    <div
+      className="builder-wrapper fixed inset-0 z-50 flex flex-col bg-background"
+      style={shellStyle}
+    >
       <div
-        className="builder-header"
+        className="builder-toolbar sticky top-0 z-50 flex items-center justify-between px-4 py-2 border-b bg-white"
         style={{
           position: 'sticky',
           top: 0,
-          zIndex: 40,
+          zIndex: 60,
           borderBottom: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
           background: tokens.colors.surface,
+          minHeight: 52,
         }}
       >
         <div className="device-controls" aria-label="Preview device selector">

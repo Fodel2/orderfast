@@ -96,13 +96,12 @@
 }
 
 .builder-toolbar {
-  flex-shrink:0;
-  padding:0.5rem 1rem;
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  background:var(--wb-toolbar-bg, #fff);
-  border-bottom:1px solid rgba(0,0,0,0.05);
+  position:sticky;
+  top:0;
+  background:#fff;
+  border-bottom:1px solid #e5e7eb;
+  z-index:60;
+  height:52px;
 }
 
 .builder-canvas-wrapper {
