@@ -141,12 +141,10 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
           .select(
             `item_id, addon_groups!inner(
               id,name,multiple_choice,required,max_group_select,max_option_quantity,
-              addon_options!inner(id,name,price,is_vegetarian,is_vegan,is_18_plus,image_url)
+              addon_options!inner(id,name,price,image_url)
             )`
           )
-          .in('item_id', liveItemIds)
-          .is('addon_groups.archived_at', null)
-          .is('addon_groups.addon_options.archived_at', null);
+          .in('item_id', liveItemIds);
         if (addonErr) console.error('Failed to fetch addons', addonErr);
         addonRows = addData || [];
       }
