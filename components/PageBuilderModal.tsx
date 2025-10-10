@@ -890,28 +890,6 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
           padding: 0 10px;
           font-size: 12px;
         }
-        .wb-viewport {
-          display: flex;
-          justify-content: center;
-          width: 100%;
-        }
-        .wb-viewport--desktop {
-          overflow-x: hidden;
-        }
-        .wb-viewport--desktop .wb-canvas-scaler {
-          transform-origin: top center !important;
-          margin: 0 auto;
-          display: inline-block;
-          max-width: var(--wb-desktop-max, 1280px);
-          width: 100%;
-        }
-        .wb-viewport--desktop .wb-preview,
-        .wb-viewport--desktop .wb-canvas {
-          margin-left: auto !important;
-          margin-right: auto !important;
-          left: auto;
-          right: auto;
-        }
       `}</style>
     </div>
   );

@@ -14,3 +14,35 @@
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
 }
+
+.wb-desktop-wrapper{
+  display:flex;
+  justify-content:center;
+  align-items:flex-start;
+  width:100%;
+  overflow-x:hidden;
+  position:relative;
+}
+
+.wb-desktop-wrapper .builder-preview{
+  max-width:var(--wb-desktop-max, 1280px);
+  margin:0 auto;
+  width:100%;
+  transform-origin:top center !important;
+  position:relative !important;
+  left:auto !important;
+  right:auto !important;
+}
+
+.wb-desktop-wrapper .wb-canvas{
+  margin-left:auto !important;
+  margin-right:auto !important;
+  left:auto !important;
+  right:auto !important;
+}
+
+@media (min-width: 1024px){
+  .wb-desktop-wrapper{
+    justify-content:center !important;
+  }
+}

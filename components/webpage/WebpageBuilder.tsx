@@ -107,27 +107,16 @@ export default function WebpageBuilder({
   }, [device]);
 
   const previewStyle = useMemo<React.CSSProperties>(() => {
-    const baseStyle: React.CSSProperties = {
+    const width = DEVICE_PREVIEW_WIDTHS[device];
+    return {
       display: 'flex',
       justifyContent: 'center',
-      width: DEVICE_PREVIEW_WIDTHS[device],
-      minWidth: DEVICE_PREVIEW_WIDTHS[device],
-    };
-
-    if (device !== 'desktop') {
-      baseStyle.transform = `scale(${zoomLevel})`;
-      baseStyle.transformOrigin = 'top center';
-    }
-
-    return baseStyle;
-  }, [device, zoomLevel]);
-
-  const desktopScalerStyle = useMemo<React.CSSProperties>(
-    () => ({
+      width,
+      minWidth: width,
       transform: `scale(${zoomLevel})`,
-    }),
-    [zoomLevel],
-  );
+      transformOrigin: 'top center',
+    } satisfies React.CSSProperties;
+  }, [device, zoomLevel]);
 
   const canvasStyle: React.CSSProperties = {
     display: 'flex',
@@ -180,7 +169,7 @@ export default function WebpageBuilder({
   const zoomInDisabled = zoomLevel >= 1.25;
 
   const previewContent = (
-    <div className="wb-preview" style={previewStyle}>
+    <div className="builder-preview wb-preview" style={previewStyle}>
       <div className="wb-canvas" style={frameStyle}>
         <div style={canvasStyle}>
           {blocks.length === 0 && (
@@ -234,17 +223,6 @@ export default function WebpageBuilder({
       </div>
     </div>
   );
-
-  const previewNode =
-    device === 'desktop' ? (
-      <div className="wb-viewport wb-viewport--desktop">
-        <div className="wb-canvas-scaler" style={desktopScalerStyle}>
-          {previewContent}
-        </div>
-      </div>
-    ) : (
-      previewContent
-    );
 
   return (
     <div style={shellStyle}>
@@ -392,7 +370,11 @@ export default function WebpageBuilder({
               margin: 0,
             }}
           >
-            {previewNode}
+            {device === 'desktop' ? (
+              <div className="wb-desktop-wrapper">{previewContent}</div>
+            ) : (
+              previewContent
+            )}
           </div>
         </div>
       </div>
