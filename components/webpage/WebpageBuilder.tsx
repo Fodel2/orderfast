@@ -170,7 +170,12 @@ export default function WebpageBuilder({
         })}
       </div>
       <div style={contentStyle}>
-        <div id="wb-canvas" style={scrollAreaStyle} className="wb-preview overflow-auto">
+        <div
+          id="wb-canvas"
+          data-preview-scroller
+          style={scrollAreaStyle}
+          className="wb-preview overflow-auto"
+        >
           <div style={frameStyle} className="wb-canvas">
             <div style={canvasStyle}>
               {blocks.length === 0 && (

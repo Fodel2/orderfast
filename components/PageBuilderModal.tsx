@@ -29,6 +29,7 @@ import { supabase } from '@/lib/supabaseClient';
 import InputUpload from '@/src/components/inspector/controls/InputUpload';
 import { useIsMobile } from '@/src/hooks/useIsMobile';
 import { tokens } from '@/src/ui/tokens';
+import '@/src/styles/webpage-builder.css';
 
 type Props = {
   open: boolean;

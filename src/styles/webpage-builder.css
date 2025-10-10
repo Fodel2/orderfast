@@ -7,8 +7,10 @@
 }
 
 /* Smooth, reliable scroll for the preview area */
-#wb-canvas{
-  overflow:auto !important;
+[data-preview-scroller]{
+  overflow-y:auto !important;
+  overflow-x:hidden;
+  min-height:0;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
 }
