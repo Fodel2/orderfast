@@ -1,15 +1,109 @@
-import { useState } from "react";
-import { Card, CardHeader, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
+import { useState, type ReactNode, type ButtonHTMLAttributes, type InputHTMLAttributes, type SelectHTMLAttributes } from "react";
+
+const Card = ({ children, className = "" }: { children: ReactNode; className?: string }) => (
+  <div className={`bg-white dark:bg-gray-900 border rounded-xl shadow-sm ${className}`}>{children}</div>
+);
+
+const CardHeader = ({ children }: { children: ReactNode }) => (
+  <div className="border-b p-3 font-semibold">{children}</div>
+);
+
+const CardContent = ({ children, className = "" }: { children: ReactNode; className?: string }) => (
+  <div className={`p-3 ${className}`}>{children}</div>
+);
+
+type ButtonVariant = "default" | "outline" | "destructive";
+type ButtonSize = "sm" | "md" | "lg";
+
+interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  className?: string;
+}
+
+const Button = ({
+  children,
+  onClick,
+  variant = "default",
+  size = "md",
+  className = "",
+  type = "button",
+  ...props
+}: ButtonProps) => {
+  const base = "rounded-lg font-medium transition active:scale-95 focus:outline-none focus:ring-2 focus:ring-primary/50";
+  const variants: Record<ButtonVariant, string> = {
+    default: "bg-primary text-white hover:bg-primary/90",
+    outline: "border border-gray-300 hover:bg-gray-50 text-gray-700",
+    destructive: "bg-red-500 text-white hover:bg-red-600",
+  };
+  const sizes: Record<ButtonSize, string> = {
+    sm: "px-2 py-1 text-sm",
+    md: "px-3 py-2 text-sm",
+    lg: "px-4 py-2 text-base",
+  };
+
+  return (
+    <button onClick={onClick} className={`${base} ${variants[variant]} ${sizes[size]} ${className}`} type={type} {...props}>
+      {children}
+    </button>
+  );
+};
+
+interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
+  className?: string;
+}
+
+const Input = ({ className = "", ...props }: InputProps) => (
+  <input
+    {...props}
+    className={`border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary ${className}`}
+  />
+);
+
+interface SelectOption {
+  value: string;
+  label: string;
+}
+
+interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, "onChange"> {
+  value: string;
+  onChange: (value: string) => void;
+  options: SelectOption[];
+  className?: string;
+}
+
+const Select = ({ value, onChange, options, className = "", ...props }: SelectProps) => (
+  <select
+    value={value}
+    onChange={(event) => onChange(event.target.value)}
+    className={`border rounded-lg px-2 py-1 text-sm bg-white dark:bg-gray-900 ${className}`}
+    {...props}
+  >
+    {options.map((option) => (
+      <option key={option.value} value={option.value}>
+        {option.label}
+      </option>
+    ))}
+  </select>
+);
+
+interface BadgeProps {
+  children: ReactNode;
+  variant?: "default" | "destructive" | "outline" | "secondary";
+}
+
+const Badge = ({ children, variant = "default" }: BadgeProps) => {
+  const colors =
+    variant === "destructive"
+      ? "bg-red-100 text-red-600"
+      : variant === "outline"
+      ? "border border-gray-300 text-gray-600"
+      : variant === "secondary"
+      ? "bg-gray-200 text-gray-700"
+      : "bg-gray-100 text-gray-700";
+
+  return <span className={`text-xs font-medium px-2 py-1 rounded ${colors}`}>{children}</span>;
+};
 
 interface Task {
   id: number;
@@ -46,7 +140,7 @@ export default function TaskLogger() {
   };
 
   return (
-    <Card className="p-4 space-y-4 shadow-sm rounded-2xl">
+    <Card className="p-4 space-y-4">
       <CardHeader>
         <h2 className="text-lg font-semibold">Task Logger</h2>
       </CardHeader>
@@ -61,16 +155,13 @@ export default function TaskLogger() {
         />
         <Select
           value={newTask.urgency}
-          onValueChange={(value) => setNewTask({ ...newTask, urgency: value as Task["urgency"] })}
-        >
-          <SelectTrigger className="w-28">
-            <SelectValue placeholder="Urgency" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="normal">Normal</SelectItem>
-            <SelectItem value="urgent">Urgent</SelectItem>
-          </SelectContent>
-        </Select>
+          onChange={(value) => setNewTask({ ...newTask, urgency: value as Task["urgency"] })}
+          options={[
+            { value: "normal", label: "Normal" },
+            { value: "urgent", label: "Urgent" },
+          ]}
+          className="w-28"
+        />
 
         <Button onClick={addTask}>Add</Button>
       </CardContent>
@@ -85,23 +176,18 @@ export default function TaskLogger() {
           <div key={task.id} className="flex items-center justify-between border p-3 rounded-lg">
             <div className="flex flex-col">
               <span className="font-medium">{task.title}</span>
-              <div className="flex gap-2 mt-1">
-                <Badge variant={task.urgency === "urgent" ? "destructive" : "secondary"}>
-                  {task.urgency}
-                </Badge>
+              <div className="flex gap-2 mt-1 items-center">
+                <Badge variant={task.urgency === "urgent" ? "destructive" : "secondary"}>{task.urgency}</Badge>
                 <Select
                   value={task.status}
-                  onValueChange={(value) => updateTask(task.id, { status: value as Task["status"] })}
-                >
-                  <SelectTrigger className="w-28 h-7 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="waiting">Waiting</SelectItem>
-                    <SelectItem value="in-process">In Process</SelectItem>
-                    <SelectItem value="complete">Complete</SelectItem>
-                  </SelectContent>
-                </Select>
+                  onChange={(value) => updateTask(task.id, { status: value as Task["status"] })}
+                  options={[
+                    { value: "waiting", label: "Waiting" },
+                    { value: "in-process", label: "In Process" },
+                    { value: "complete", label: "Complete" },
+                  ]}
+                  className="w-32 text-xs py-1"
+                />
               </div>
             </div>
             <div className="flex gap-2">
