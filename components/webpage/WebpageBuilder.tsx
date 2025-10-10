@@ -52,8 +52,8 @@ export default function WebpageBuilder({
     saveDisabled: false,
     saveLabel: 'Save',
   });
-  const pillButtonClasses =
-    'inline-flex items-center justify-center rounded-full px-3 py-1.5 text-sm font-medium transition-colors cursor-pointer';
+  const previewControlButtonClasses =
+    'flex-shrink-0 inline-flex items-center justify-center px-3 py-1.5 rounded-full text-sm font-medium transition-colors bg-neutral-100 text-neutral-700 hover:bg-neutral-200 disabled:opacity-60 disabled:cursor-not-allowed data-[active=true]:bg-primary data-[active=true]:text-white';
   const shellStyle = useMemo<React.CSSProperties>(
     () => ({
       background: tokens.colors.canvas,
@@ -444,7 +444,10 @@ export default function WebpageBuilder({
               {saveLabel}
             </button>
           </div>
-          <div className="wb-center" aria-label="Preview device selector">
+          <div
+            className="wb-center flex justify-center items-center space-x-2 mt-2"
+            aria-label="Preview device selector"
+          >
             {(['mobile', 'tablet', 'desktop'] as DeviceKind[]).map((value) => {
               const isActive = device === value;
               return (
@@ -452,11 +455,8 @@ export default function WebpageBuilder({
                   key={value}
                   type="button"
                   onClick={() => setDevice(value)}
-                  className={`${pillButtonClasses} capitalize ${
-                    isActive
-                      ? 'bg-primary text-white shadow-sm'
-                      : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-                  }`}
+                  data-active={isActive}
+                  className={`${previewControlButtonClasses} capitalize`}
                 >
                   {value}
                 </button>
@@ -469,25 +469,25 @@ export default function WebpageBuilder({
               onClick={handleZoomOut}
               aria-label="Zoom out"
               disabled={zoomOutDisabled}
-              className={`${pillButtonClasses} ${
-                zoomOutDisabled
-                  ? 'bg-neutral-100 text-neutral-400 cursor-not-allowed opacity-60'
-                  : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-              }`}
+              className={previewControlButtonClasses}
             >
               <ZoomOut size={16} />
             </button>
-            <span className="wb-zoom-readout">{zoom}%</span>
+            <button
+              type="button"
+              onClick={() => setZoom(100)}
+              aria-label="Reset zoom"
+              data-active={zoom === 100}
+              className={previewControlButtonClasses}
+            >
+              {zoom}%
+            </button>
             <button
               type="button"
               onClick={handleZoomIn}
               aria-label="Zoom in"
               disabled={zoomInDisabled}
-              className={`${pillButtonClasses} ${
-                zoomInDisabled
-                  ? 'bg-neutral-100 text-neutral-400 cursor-not-allowed opacity-60'
-                  : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-              }`}
+              className={previewControlButtonClasses}
             >
               <ZoomIn size={16} />
             </button>
