@@ -69,8 +69,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           const query = supabase
             .from('menu_items')
             .select('id')
-            .eq('restaurant_id', restaurantId);
-          return useArchived ? query.is('archived_at', null) : query;
+            .eq('restaurant_id', restaurantId) as PostgrestFilterBuilder<any, any, any>;
+          return useArchived ? query.filter('archived_at', 'is', null) : query;
         },
       );
       if (liveErr) throw liveErr;
@@ -93,8 +93,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             .from('menu_items')
             .delete()
             .eq('restaurant_id', restaurantId)
-            .select('id');
-          return useArchived ? query.is('archived_at', null) : query;
+            .select('id') as PostgrestFilterBuilder<any, any, any>;
+          return useArchived ? query.filter('archived_at', 'is', null) : query;
         },
       );
       if (delItemsErr) throw delItemsErr;
@@ -107,8 +107,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             .from('menu_categories')
             .delete()
             .eq('restaurant_id', restaurantId)
-            .select('id');
-          return useArchived ? query.is('archived_at', null) : query;
+            .select('id') as PostgrestFilterBuilder<any, any, any>;
+          return useArchived ? query.filter('archived_at', 'is', null) : query;
         },
       );
       if (delCatsErr) throw delCatsErr;
@@ -128,8 +128,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               .from('menu_items')
               .update({ archived_at: new Date().toISOString() })
               .eq('restaurant_id', restaurantId)
-              .select('id');
-            return useArchived ? query.is('archived_at', null) : query;
+              .select('id') as PostgrestFilterBuilder<any, any, any>;
+            return useArchived ? query.filter('archived_at', 'is', null) : query;
           },
         ));
         if (archItemsErr && archItemsErr.code === '42703' && /archived_at/i.test(archItemsErr.message || '')) {
@@ -176,8 +176,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               .from('menu_categories')
               .update({ archived_at: new Date().toISOString() })
               .eq('restaurant_id', restaurantId)
-              .select('id');
-            return useArchived ? query.is('archived_at', null) : query;
+              .select('id') as PostgrestFilterBuilder<any, any, any>;
+            return useArchived ? query.filter('archived_at', 'is', null) : query;
           },
         ));
         if (archCatsErr && archCatsErr.code === '42703' && /archived_at/i.test(archCatsErr.message || '')) {
