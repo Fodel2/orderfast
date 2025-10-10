@@ -14,7 +14,7 @@ describe('menu builder API', () => {
   }
 
   test('upsert draft then publish', async () => {
-    const supa = supaServer();
+    const supa = supaServer;
     const { data: restaurant } = await supa
       .from('restaurants')
       .insert({ name: 'Test R' })

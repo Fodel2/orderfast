@@ -122,6 +122,18 @@ export default function AddonGroups({
     typeof brand?.brand === 'string' && brand.brand ? brand.brand : '#EB2BB9';
 
   useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      console.debug('[customer:addons] AddonGroups received groups', {
+        groupsCount: addons.length,
+        optionCounts: addons.map((group) => ({
+          groupId: group.group_id ?? group.id,
+          options: Array.isArray(group.addon_options) ? group.addon_options.length : 0,
+        })),
+      });
+    }
+  }, [addons]);
+
+  useEffect(() => {
     if (onChange) {
       onChange(selectedQuantities);
     }
@@ -203,6 +215,16 @@ export default function AddonGroups({
           group?.max_group_select ?? (group as any)?.maxGroupSelect ?? Infinity;
         const max_option_quantity =
           group?.max_option_quantity ?? (group as any)?.maxOptionQuantity ?? Infinity;
+        const options = Array.isArray(group.addon_options)
+          ? group.addon_options
+          : [];
+
+        if (process.env.NODE_ENV === 'development') {
+          console.debug('[customer:addons] rendering group', {
+            groupId: gid,
+            optionCount: options.length,
+          });
+        }
 
         return (
           <div
@@ -231,7 +253,7 @@ export default function AddonGroups({
               </div>
 
               <ScrollRow>
-                {group.addon_options.map((option) => {
+                {options.map((option) => {
                   const gid = group.group_id ?? group.id;
                   const quantity = selectedQuantities[gid]?.[option.id] || 0;
 
@@ -254,7 +276,18 @@ export default function AddonGroups({
                   );
                   const groupCapHit = totalGroupQty >= groupMax;
 
+                  const formatDate = (value?: string | null) => {
+                    if (!value) return undefined;
+                    const d = new Date(value);
+                    return Number.isNaN(d.getTime()) ? undefined : d.toLocaleDateString();
+                  };
+
+                  const isOutOfStock =
+                    option.available === false ||
+                    option.stock_status === 'out' ||
+                    option.stock_status === 'out_of_stock';
                   const handleTileClick = () => {
+                    if (isOutOfStock) return;
                     if (maxQty === 0 || groupMax === 0) return;
                     if (quantity >= maxQty) return;
                     if (multipleChoice && groupCapHit) return;
@@ -279,6 +312,23 @@ export default function AddonGroups({
                         }
                       : {};
 
+                  const disabled =
+                    isOutOfStock ||
+                    (multipleChoice && groupCapHit && quantity === 0) ||
+                    maxQty === 0 ||
+                    groupMax === 0;
+
+                  const outOfStockLabel = (() => {
+                    if (!isOutOfStock) return undefined;
+                    if (option.stock_status === 'out_of_stock') return 'Out of stock';
+                    if (option.stock_status === 'out') return 'Out of stock';
+                    const nextStockDate =
+                      formatDate(option.out_of_stock_until) ||
+                      formatDate(option.stock_return_date);
+                    if (nextStockDate) return `Back ${nextStockDate}`;
+                    return 'Unavailable';
+                  })();
+
                   return (
                     <div
                       key={option.id}
@@ -286,28 +336,23 @@ export default function AddonGroups({
                       data-selected={quantity > 0}
                       tabIndex={0}
                       className={`relative min-w-[152px] md:min-w-[168px] px-4 py-3 rounded-xl border bg-slate-50 border-slate-200 hover:bg-slate-100 flex-shrink-0 snap-start transition cursor-pointer text-center text-slate-900 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 data-[selected=true]:scale-[1.01] ${
-                        multipleChoice &&
-                        ((groupCapHit && quantity === 0) || maxQty === 0)
-                          ? 'pointer-events-none opacity-50'
-                          : ''
+                        disabled ? 'pointer-events-none opacity-50' : ''
                       }`}
                       style={{
                         ...selectedStyle,
                         ['--tw-ring-color' as any]: accent,
                       } as CSSProperties}
                     >
-                      {option.image_url && (
-                        <img
-                          src={option.image_url}
-                          alt={option.name}
-                          className="w-full h-20 object-cover rounded mb-2"
-                        />
-                      )}
-
                       <div className="font-medium">{option.name}</div>
                       {option.price && option.price > 0 && (
                         <div className="text-sm text-gray-500">
                           +£{(option.price / 100).toFixed(2)}
+                        </div>
+                      )}
+
+                      {outOfStockLabel && (
+                        <div className="mt-2 text-xs font-medium text-rose-600">
+                          {outOfStockLabel}
                         </div>
                       )}
 
@@ -348,6 +393,7 @@ export default function AddonGroups({
                               );
                             }}
                             disabled={
+                              disabled ||
                               quantity >= maxQty ||
                               groupCapHit ||
                               maxQty === 0 ||

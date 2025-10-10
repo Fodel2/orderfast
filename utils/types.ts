@@ -1,15 +1,18 @@
 export interface AddonOption {
   id: string;
+  group_id?: string;
   name: string;
   price: number | null;
-  image_url?: string | null;
-  is_vegetarian?: boolean | null;
-  is_vegan?: boolean | null;
-  is_18_plus?: boolean | null;
+  available?: boolean | null;
+  out_of_stock_until?: string | null;
+  stock_status?: string | null;
+  stock_return_date?: string | null;
+  stock_last_updated_at?: string | null;
 }
 
 export interface AddonGroup {
   id: string;
+  restaurant_id?: string;
   /**
    * Some queries may return `group_id` instead of `id` for the group
    * identifier (e.g. from `view_addons_for_item`). Include it here so

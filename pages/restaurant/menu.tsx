@@ -140,13 +140,11 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
           .from('item_addon_links')
           .select(
             `item_id, addon_groups!inner(
-              id,name,multiple_choice,required,max_group_select,max_option_quantity,
-              addon_options!inner(id,name,price,is_vegetarian,is_vegan,is_18_plus,image_url)
+              id,restaurant_id,name,multiple_choice,required,max_group_select,max_option_quantity,
+              addon_options!inner(id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at)
             )`
           )
-          .in('item_id', liveItemIds)
-          .is('addon_groups.archived_at', null)
-          .is('addon_groups.addon_options.archived_at', null);
+          .in('item_id', liveItemIds);
         if (addonErr) console.error('Failed to fetch addons', addonErr);
         addonRows = addData || [];
       }
@@ -154,7 +152,15 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
       const addonMap: Record<number, any[]> = {};
       addonRows.forEach((row) => {
         const arr = addonMap[row.item_id] || [];
-        if (row.addon_groups) arr.push(row.addon_groups);
+        if (row.addon_groups) {
+          const group = {
+            ...row.addon_groups,
+            addon_options: (row.addon_groups.addon_options || []).filter(
+              (opt: any) => opt?.available !== false
+            ),
+          };
+          arr.push(group);
+        }
         addonMap[row.item_id] = arr;
       });
       const itemsWithAddons = (itemData || []).map((it: any) => ({
@@ -418,7 +424,7 @@ export const getServerSideProps: GetServerSideProps = async ctx => {
     null;
   let initialBrand = null;
   if (id) {
-    const { data } = await supaServer()
+    const { data } = await supaServer
       .from('restaurants')
       .select('id,website_title,name,logo_url,logo_shape,brand_primary_color,brand_secondary_color')
       .eq('id', id)

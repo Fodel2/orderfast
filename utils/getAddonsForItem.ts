@@ -7,17 +7,22 @@ import type { AddonGroup } from './types';
 export async function getAddonsForItem(
   itemId: number | string
 ): Promise<AddonGroup[]> {
-  const { data, error } = await supabase
+  const query = supabase
     .from('item_addon_links')
     .select(
       `addon_groups!inner(
-        id,name,required,multiple_choice,max_group_select,max_option_quantity,
-        addon_options!inner(id,name,price,is_vegetarian,is_vegan,is_18_plus,image_url)
+        id,restaurant_id,name,required,multiple_choice,max_group_select,max_option_quantity,
+        addon_options!inner(
+          id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at
+        )
       )`
     )
     .eq('item_id', itemId)
-    .is('addon_groups.archived_at', null)
-    .is('addon_groups.addon_options.archived_at', null);
+    .filter('archived_at', 'is', null)
+    .filter('addon_groups.archived_at', 'is', null)
+    .filter('addon_groups.addon_options.archived_at', 'is', null);
+
+  const { data, error } = await query;
 
   if (error) throw error;
 
@@ -42,18 +47,28 @@ export async function getAddonsForItem(
     (g.addon_options || []).forEach((opt: any) => {
       group.addon_options.push({
         id: String(opt.id),
+        group_id: opt.group_id ? String(opt.group_id) : gid,
         name: opt.name,
         price: opt.price,
-        image_url: opt.image_url,
-        is_vegetarian: opt.is_vegetarian,
-        is_vegan: opt.is_vegan,
-        is_18_plus: opt.is_18_plus,
+        available: opt.available,
+        out_of_stock_until: opt.out_of_stock_until,
+        stock_status: opt.stock_status,
+        stock_return_date: opt.stock_return_date,
+        stock_last_updated_at: opt.stock_last_updated_at,
       });
     });
   });
 
   if (process.env.NODE_ENV === 'development') {
-    console.debug('[customer:addons]', { itemId, groups: map.size });
+    console.debug('[customer:addons]', {
+      itemId,
+      rawRows: data?.length ?? 0,
+      groups: map.size,
+      options: Array.from(map.values()).reduce(
+        (sum, group) => sum + (group.addon_options?.length ?? 0),
+        0,
+      ),
+    });
   }
 
   return Array.from(map.values());

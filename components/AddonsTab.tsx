@@ -36,14 +36,16 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number }) {
   const load = async () => {
     const { data: grp } = await supabase
       .from('addon_groups')
-      .select('*')
+      .select('id,restaurant_id,name,multiple_choice,required,max_group_select,max_option_quantity')
       .eq('restaurant_id', restaurantId)
       .order('id');
     setGroups(grp || []);
     if (grp && grp.length) {
       const { data: opts } = await supabase
         .from('addon_options')
-        .select('*')
+        .select(
+          'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at'
+        )
         .in('group_id', grp.map((g) => g.id));
       const map: Record<number, any[]> = {};
       const priceMap: Record<number, string> = {};
@@ -165,7 +167,16 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number }) {
       const groupOpts = options[g.id] || [];
       if (groupOpts.length) {
         await supabase.from('addon_options').insert(
-          groupOpts.map((o) => ({ name: o.name, price: o.price, available: o.available, group_id: newGroup.id }))
+          groupOpts.map((o) => ({
+            name: o.name,
+            price: o.price,
+            available: o.available,
+            group_id: newGroup.id,
+            out_of_stock_until: o.out_of_stock_until,
+            stock_status: o.stock_status,
+            stock_return_date: o.stock_return_date,
+            stock_last_updated_at: o.stock_last_updated_at,
+          }))
         );
       }
       load();
