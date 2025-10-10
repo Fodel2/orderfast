@@ -46,6 +46,7 @@ export default function WebpageBuilder({
       flexDirection: 'column',
       height: '100%',
       minHeight: 0,
+      overflow: 'hidden',
     }),
     [],
   );
@@ -137,6 +138,14 @@ export default function WebpageBuilder({
     setZoom(100);
   }, [device]);
 
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow || 'auto';
+    };
+  }, []);
+
   const adjustZoom = (delta: number) => {
     setZoom((previous) => {
       const next = Math.round(previous + delta);
@@ -216,7 +225,7 @@ export default function WebpageBuilder({
   );
 
   return (
-    <div className="builder-modal" style={shellStyle}>
+    <div className="builder-wrapper fixed inset-0 z-50 flex flex-col" style={shellStyle}>
       <div
         className="builder-header"
         style={{
@@ -248,7 +257,18 @@ export default function WebpageBuilder({
             );
           })}
         </div>
-        <div className="zoom-controls">
+        <div
+          className="zoom-controls"
+          style={{
+            position: 'absolute',
+            top: tokens.spacing.sm,
+            right: tokens.spacing.lg,
+            display: 'flex',
+            alignItems: 'center',
+            gap: tokens.spacing.xs,
+            zIndex: 60,
+          }}
+        >
           <button
             type="button"
             onClick={handleZoomOut}
@@ -271,17 +291,21 @@ export default function WebpageBuilder({
         </div>
       </div>
       <div
-        className="builder-scroll"
+        className="builder-scroll flex-1 overflow-y-auto overflow-x-hidden"
         style={{
-          flex: 1,
-          overflowY: 'auto',
-          overflowX: 'hidden',
           background: tokens.colors.canvas,
           minHeight: 0,
         }}
       >
-        <div className="builder-preview">
-          <div className="preview-shell" style={{ width: '100%' }}>
+        <div className="builder-preview flex justify-center py-10">
+          <div
+            className="preview-shell"
+            style={{
+              width: '100%',
+              display: 'flex',
+              justifyContent: 'center',
+            }}
+          >
             <div className="preview-scale" style={previewScaleStyle}>
               {previewContent}
             </div>
