@@ -2,11 +2,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Redo2, Undo2, X, ZoomIn, ZoomOut } from 'lucide-react';
 
+import { Button } from '@/components/ui/Button';
+import { tokens } from '@/src/ui/tokens';
 import PageRenderer, { type Block, type DeviceKind } from '../PageRenderer';
 
 import DraggableBlock from './DraggableBlock';
-import { AdminButton } from '../ui/AdminButton';
-import { tokens } from '@/src/ui/tokens';
 
 const DEVICE_PREVIEW_WIDTHS: Record<DeviceKind, number> = {
   mobile: 390,
@@ -53,8 +53,6 @@ export default function WebpageBuilder({
     saveDisabled: false,
     saveLabel: 'Save',
   });
-  const previewControlButtonClasses =
-    'flex-shrink-0 inline-flex items-center justify-center px-3 py-1.5 rounded-full text-sm font-medium select-none border border-neutral-300 bg-neutral-50 text-neutral-800 shadow-sm transition-colors transition-shadow duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 hover:bg-neutral-100 hover:shadow-md disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-400 disabled:border-neutral-200 disabled:shadow-none data-[active=true]:bg-primary data-[active=true]:text-white data-[active=true]:border-primary data-[active=true]:shadow-md data-[active=true]:hover:bg-primary/90';
   const shellStyle = useMemo<React.CSSProperties>(
     () => ({
       background: tokens.colors.canvas,
@@ -352,38 +350,37 @@ export default function WebpageBuilder({
       >
         <div className="wb-toolbar-inner">
           <div className="wb-left flex items-center gap-2">
-            <AdminButton
+            <Button
               type="button"
               onClick={handleBlocksToggle}
               aria-pressed={blocksPressed}
               disabled={!toolbarReady}
-              variant="primary"
-              active={blocksPressed}
+              variant={blocksPressed ? 'primary' : 'secondary'}
               className="blocks-btn"
             >
               Blocks
-            </AdminButton>
-            <AdminButton
+            </Button>
+            <Button
               type="button"
               onClick={handleUndoProxy}
               aria-label="Undo"
               disabled={undoDisabled}
-              variant="outline"
-              className="undo-btn !px-3"
+              variant="icon"
+              className="undo-btn"
             >
               <Undo2 size={16} />
-            </AdminButton>
-            <AdminButton
+            </Button>
+            <Button
               type="button"
               onClick={handleRedoProxy}
               aria-label="Redo"
               disabled={redoDisabled}
-              variant="outline"
-              className="redo-btn !px-3"
+              variant="icon"
+              className="redo-btn"
             >
               <Redo2 size={16} />
-            </AdminButton>
-            <AdminButton
+            </Button>
+            <Button
               type="button"
               onClick={handleSaveProxy}
               disabled={saveDisabled}
@@ -391,66 +388,69 @@ export default function WebpageBuilder({
               className="save-btn"
             >
               {saveLabel}
-            </AdminButton>
+            </Button>
           </div>
           <div className="wb-center flex items-center justify-center mt-2" aria-label="Preview device selector">
             <div className="flex items-center gap-2 bg-neutral-50/80 px-2 py-1 rounded-full shadow-sm border border-neutral-200">
               {(['mobile', 'tablet', 'desktop'] as DeviceKind[]).map((value) => {
                 const isActive = device === value;
                 return (
-                  <button
+                  <Button
                     key={value}
                     type="button"
                     onClick={() => setDevice(value)}
                     data-active={isActive}
-                    className={`${previewControlButtonClasses} capitalize`}
+                    variant={isActive ? 'primary' : 'secondary'}
+                    size="sm"
+                    className="capitalize"
                   >
                     {value}
-                  </button>
+                  </Button>
                 );
               })}
             </div>
           </div>
           <div className="wb-right flex items-center gap-2">
             <div className="flex items-center gap-2 bg-neutral-50/80 px-2 py-1 rounded-full shadow-sm border border-neutral-200">
-              <button
+              <Button
                 type="button"
                 onClick={handleZoomOut}
                 aria-label="Zoom out"
                 disabled={zoomOutDisabled}
-                className={previewControlButtonClasses}
+                variant="icon"
               >
                 <ZoomOut size={16} />
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 onClick={() => setZoom(100)}
                 aria-label="Reset zoom"
                 data-active={zoom === 100}
-                className={previewControlButtonClasses}
+                variant={zoom === 100 ? 'primary' : 'secondary'}
+                size="sm"
               >
                 {zoom}%
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 onClick={handleZoomIn}
                 aria-label="Zoom in"
                 disabled={zoomInDisabled}
-                className={previewControlButtonClasses}
+                variant="icon"
               >
                 <ZoomIn size={16} />
-              </button>
+              </Button>
             </div>
-            <AdminButton
+            <Button
               type="button"
               onClick={handleCloseProxy}
               aria-label="Close builder"
               disabled={!toolbarReady}
-              variant="outline"
-              className="close-btn !px-3"
+              variant="icon"
+              className="close-btn"
             >
               <X size={16} />
-            </AdminButton>
+            </Button>
           </div>
         </div>
       </div>
