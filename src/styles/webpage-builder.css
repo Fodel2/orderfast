@@ -178,19 +178,20 @@
   position: sticky;
   top: 0;
   z-index: 60;
-  background: #fff;
+  background: rgba(255, 255, 255, 0.95);
   border-bottom: 1px solid #e5e7eb;
-  backdrop-filter: saturate(1.2) blur(4px);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.05);
+  backdrop-filter: saturate(1.1) blur(8px);
 }
 
-.wb-toolbar.flex {
+.wb-toolbar.flex:not(.wb-toolbar-proxy) {
   display: none;
 }
 
 .wb-toolbar-inner {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 8px 12px;
+  width: 100%;
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;

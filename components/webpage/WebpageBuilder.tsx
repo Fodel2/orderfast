@@ -178,7 +178,7 @@ export default function WebpageBuilder({
 
     const assignTargets = () => {
       if (disposed) return;
-      const container = document.querySelector<HTMLElement>('.wb-toolbar.flex');
+      const container = document.querySelector<HTMLElement>('.wb-toolbar.flex:not(.wb-toolbar-proxy)');
       if (!container) {
         rafId = window.requestAnimationFrame(assignTargets);
         return;
@@ -346,7 +346,7 @@ export default function WebpageBuilder({
       className="builder-wrapper fixed inset-0 z-50 flex flex-col bg-background"
       style={shellStyle}
     >
-      <div className="wb-toolbar bg-neutral-50/90 backdrop-blur-sm border-b border-neutral-200 sticky top-0 z-50">
+      <div className="wb-toolbar wb-toolbar-proxy sticky top-0 z-50 flex items-center justify-between px-4 py-2 bg-white/95 backdrop-blur-sm border-b border-neutral-200 shadow-sm">
         <div className="wb-toolbar-inner">
           <div className="wb-left flex items-center gap-2">
             <AdminButton
@@ -390,53 +390,54 @@ export default function WebpageBuilder({
               {saveLabel}
             </AdminButton>
           </div>
-          <div
-            className="wb-center flex justify-center items-center space-x-2 mt-2"
-            aria-label="Preview device selector"
-          >
-            {(['mobile', 'tablet', 'desktop'] as DeviceKind[]).map((value) => {
-              const isActive = device === value;
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setDevice(value)}
-                  data-active={isActive}
-                  className={`${previewControlButtonClasses} capitalize`}
-                >
-                  {value}
-                </button>
-              );
-            })}
+          <div className="wb-center flex items-center justify-center mt-2" aria-label="Preview device selector">
+            <div className="flex items-center gap-2 bg-neutral-50/80 px-2 py-1 rounded-full shadow-sm border border-neutral-200">
+              {(['mobile', 'tablet', 'desktop'] as DeviceKind[]).map((value) => {
+                const isActive = device === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setDevice(value)}
+                    data-active={isActive}
+                    className={`${previewControlButtonClasses} capitalize`}
+                  >
+                    {value}
+                  </button>
+                );
+              })}
+            </div>
           </div>
           <div className="wb-right flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleZoomOut}
-              aria-label="Zoom out"
-              disabled={zoomOutDisabled}
-              className={previewControlButtonClasses}
-            >
-              <ZoomOut size={16} />
-            </button>
-            <button
-              type="button"
-              onClick={() => setZoom(100)}
-              aria-label="Reset zoom"
-              data-active={zoom === 100}
-              className={previewControlButtonClasses}
-            >
-              {zoom}%
-            </button>
-            <button
-              type="button"
-              onClick={handleZoomIn}
-              aria-label="Zoom in"
-              disabled={zoomInDisabled}
-              className={previewControlButtonClasses}
-            >
-              <ZoomIn size={16} />
-            </button>
+            <div className="flex items-center gap-2 bg-neutral-50/80 px-2 py-1 rounded-full shadow-sm border border-neutral-200">
+              <button
+                type="button"
+                onClick={handleZoomOut}
+                aria-label="Zoom out"
+                disabled={zoomOutDisabled}
+                className={previewControlButtonClasses}
+              >
+                <ZoomOut size={16} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setZoom(100)}
+                aria-label="Reset zoom"
+                data-active={zoom === 100}
+                className={previewControlButtonClasses}
+              >
+                {zoom}%
+              </button>
+              <button
+                type="button"
+                onClick={handleZoomIn}
+                aria-label="Zoom in"
+                disabled={zoomInDisabled}
+                className={previewControlButtonClasses}
+              >
+                <ZoomIn size={16} />
+              </button>
+            </div>
             <AdminButton
               type="button"
               onClick={handleCloseProxy}
