@@ -54,7 +54,7 @@ export default function WebpageBuilder({
     saveLabel: 'Save',
   });
   const previewControlButtonClasses =
-    'flex-shrink-0 inline-flex items-center justify-center px-3 py-1.5 rounded-full text-sm font-medium select-none border border-neutral-300 bg-white text-neutral-700 shadow-sm transition-colors transition-shadow duration-150 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 hover:bg-neutral-50 hover:shadow-md disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-400 disabled:border-neutral-200 disabled:shadow-none data-[active=true]:bg-primary data-[active=true]:text-white data-[active=true]:border-primary data-[active=true]:shadow-md data-[active=true]:hover:bg-primary/90';
+    'flex-shrink-0 inline-flex items-center justify-center px-3 py-1.5 rounded-full text-sm font-medium select-none border border-neutral-300 bg-neutral-50 text-neutral-800 shadow-sm transition-colors transition-shadow duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 hover:bg-neutral-100 hover:shadow-md disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-400 disabled:border-neutral-200 disabled:shadow-none data-[active=true]:bg-primary data-[active=true]:text-white data-[active=true]:border-primary data-[active=true]:shadow-md data-[active=true]:hover:bg-primary/90';
   const shellStyle = useMemo<React.CSSProperties>(
     () => ({
       background: tokens.colors.canvas,
@@ -346,7 +346,10 @@ export default function WebpageBuilder({
       className="builder-wrapper fixed inset-0 z-50 flex flex-col bg-background"
       style={shellStyle}
     >
-      <div className="wb-toolbar wb-toolbar-proxy sticky top-0 z-50 flex items-center justify-between px-4 py-2 bg-white/95 backdrop-blur-sm border-b border-neutral-200 shadow-sm">
+      <div
+        className="wb-toolbar wb-toolbar-proxy sticky top-0 z-50 flex items-center justify-between px-4 py-2 bg-white backdrop-blur-md border-b border-neutral-200 shadow-sm"
+        style={{ zIndex: 9999 }}
+      >
         <div className="wb-toolbar-inner">
           <div className="wb-left flex items-center gap-2">
             <AdminButton
