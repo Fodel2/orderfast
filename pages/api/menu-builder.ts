@@ -43,6 +43,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (req.method === 'GET') {
       const table = 'menu_drafts';
       let data: { draft: DraftPayload; updated_at: string } | null = null;
+      const withAddonsParam = req.query.withAddons;
+      const withAddons = Array.isArray(withAddonsParam)
+        ? withAddonsParam.some((value) =>
+            value === '' || value === '1' || value?.toLowerCase?.() === 'true'
+          )
+        : typeof withAddonsParam === 'string'
+        ? withAddonsParam === '' || withAddonsParam === '1' || withAddonsParam.toLowerCase() === 'true'
+        : false;
+      let addonGroups: any[] | undefined;
+      let addonLinks: Array<{ id: string; item_id: string; group_id: string }> | undefined;
+
       try {
         const response = await supabase
           .from(table)
@@ -54,6 +65,59 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       } catch (error: any) {
         console.error('Supabase error:', error?.message, error?.details, error?.hint);
         return res.status(500).json({ error: error?.message, details: error?.details, hint: error?.hint });
+      }
+
+      if (withAddons) {
+        try {
+          const response = await supabase
+            .from('addon_groups')
+            .select(
+              `id,name,multiple_choice,required,max_group_select,max_option_quantity,
+              addon_options(id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at)`
+            )
+            .eq('restaurant_id', restaurantId)
+            .throwOnError();
+          addonGroups = (response.data as any[])?.map((group) => ({
+            id: group.id,
+            name: group.name,
+            multiple_choice: group.multiple_choice,
+            required: group.required,
+            max_group_select: group.max_group_select,
+            max_option_quantity: group.max_option_quantity,
+            addon_options: Array.isArray(group.addon_options)
+              ? group.addon_options.map((option: any) => ({
+                  id: option.id,
+                  group_id: option.group_id,
+                  name: option.name,
+                  price: option.price,
+                  available: option.available,
+                  out_of_stock_until: option.out_of_stock_until,
+                  stock_status: option.stock_status,
+                  stock_return_date: option.stock_return_date,
+                  stock_last_updated_at: option.stock_last_updated_at,
+                }))
+              : [],
+          }));
+        } catch (error: any) {
+          console.error('Supabase error:', error?.message, error?.details, error?.hint);
+          return res.status(500).json({ error: error?.message, details: error?.details, hint: error?.hint });
+        }
+
+        try {
+          const response = await supabase
+            .from('item_addon_links')
+            .select('id,item_id,group_id,menu_items!inner(id,restaurant_id)')
+            .eq('menu_items.restaurant_id', restaurantId)
+            .throwOnError();
+          addonLinks = ((response.data as any[]) || []).map((link) => ({
+            id: String(link.id),
+            item_id: String(link.item_id),
+            group_id: String(link.group_id),
+          }));
+        } catch (error: any) {
+          console.error('Supabase error:', error?.message, error?.details, error?.hint);
+          return res.status(500).json({ error: error?.message, details: error?.details, hint: error?.hint });
+        }
       }
 
       if (!data) {
@@ -70,13 +134,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           console.error('Supabase error:', error?.message, error?.details, error?.hint);
           return res.status(500).json({ error: error?.message, details: error?.details, hint: error?.hint });
         }
-        return res
-          .status(200)
-          .json({ draft: inserted.draft, payload: inserted.draft, updated_at: inserted.updated_at });
+        return res.status(200).json({
+          draft: inserted.draft,
+          payload: inserted.draft,
+          updated_at: inserted.updated_at,
+          addonGroups: addonGroups ?? [],
+          addonLinks: addonLinks ?? [],
+        });
       }
-      return res
-        .status(200)
-        .json({ draft: data.draft, payload: data.draft, updated_at: data.updated_at });
+      return res.status(200).json({
+        draft: data.draft,
+        payload: data.draft,
+        updated_at: data.updated_at,
+        addonGroups: addonGroups ?? [],
+        addonLinks: addonLinks ?? [],
+      });
     }
 
     if (req.method === 'PUT') {
