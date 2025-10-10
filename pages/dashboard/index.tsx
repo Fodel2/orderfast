@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../../utils/supabaseClient';
 import DashboardLayout from '../../components/DashboardLayout';
+import TaskLogger from '@/components/TaskLogger';
 
 export default function Dashboard() {
   const [userEmail, setUserEmail] = useState('');
@@ -33,7 +34,10 @@ export default function Dashboard() {
     <DashboardLayout>
       <div className="p-8">
         <h1 className="text-3xl font-bold mb-4">Restaurant Dashboard</h1>
-        <p className="mb-6">
+        <div className="mt-6">
+          <TaskLogger />
+        </div>
+        <p className="mb-6 mt-6">
           Welcome, <strong>{userEmail}</strong>
         </p>
         <button
