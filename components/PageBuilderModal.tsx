@@ -63,6 +63,7 @@ const createHeaderBlock = (): HeaderBlock => ({
   paddingTop: headerVerticalPadding,
   paddingBottom: headerVerticalPadding,
   fullWidth: true,
+  headerHeight: 80,
 });
 
 const createTextBlock = (overrides?: Partial<TextBlock>): TextBlock => ({

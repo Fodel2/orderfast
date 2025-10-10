@@ -77,6 +77,7 @@ export type HeaderBlock = {
   paddingTop?: number;
   paddingBottom?: number;
   fullWidth?: boolean;
+  headerHeight?: number;
 };
 
 export type Block =
@@ -245,6 +246,8 @@ export default function PageRenderer({ blocks, device }: PageRendererProps) {
         : HEADER_HORIZONTAL_PADDING_MOBILE;
     const textGap = Math.max(tokens.spacing.sm, Math.round(tokens.spacing.md * scale));
     const minHeight = Math.max(paddingTop + paddingBottom, MIN_HEADER_HEIGHT);
+    const headerHeight = clampNumber(block.headerHeight ?? 80, 40, 100);
+    const headerHeightValue = `${headerHeight}vh`;
 
     const textColumn = (
       <div
@@ -321,6 +324,7 @@ export default function PageRenderer({ blocks, device }: PageRendererProps) {
             display: 'flex',
             justifyContent: 'center',
             minHeight,
+            height: headerHeightValue,
             backgroundColor: hasBackgroundImage ? 'transparent' : tokens.colors.surfaceInverse,
           }}
         >
