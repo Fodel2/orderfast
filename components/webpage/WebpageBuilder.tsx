@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
+import { ZoomIn, ZoomOut } from 'lucide-react';
+
 import PageRenderer, { type Block, type DeviceKind } from '../PageRenderer';
 
 import DraggableBlock from './DraggableBlock';
@@ -33,6 +35,7 @@ export default function WebpageBuilder({
     isTablet: false,
     isDesktop: true,
   });
+  const [zoomLevel, setZoomLevel] = useState(1);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -91,7 +94,7 @@ export default function WebpageBuilder({
     display: 'flex',
     justifyContent: 'center',
     overflowY: 'auto',
-    overflowX: 'hidden',
+    overflowX: zoomLevel > 1 ? 'auto' : 'hidden',
     height: 'auto',
     maxHeight: 'calc(100vh - 140px)',
     paddingTop: 0,
@@ -107,9 +110,10 @@ export default function WebpageBuilder({
     borderRadius: tokens.radius.lg,
     boxShadow: tokens.shadow.lg,
     background: tokens.colors.surface,
-    margin: '0 auto',
+    margin: 0,
     display: 'flex',
     flexDirection: 'column',
+    flexShrink: 0,
     position: 'relative',
     zIndex: 30,
   };
@@ -144,13 +148,33 @@ export default function WebpageBuilder({
     transition: `all 150ms ${tokens.easing.standard}`,
   };
 
+  const adjustZoom = (delta: number) => {
+    setZoomLevel((previous) => {
+      const next = Math.round((previous + delta) * 100) / 100;
+      if (next < 0.75) return 0.75;
+      if (next > 1.25) return 1.25;
+      return next;
+    });
+  };
+
+  const handleZoomOut = () => {
+    adjustZoom(-0.1);
+  };
+
+  const handleZoomIn = () => {
+    adjustZoom(0.1);
+  };
+
+  const zoomOutDisabled = zoomLevel <= 0.75;
+  const zoomInDisabled = zoomLevel >= 1.25;
+
   return (
     <div style={shellStyle}>
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center',
+          justifyContent: 'space-between',
           gap: 6,
           paddingLeft: `calc(${tokens.spacing.lg}px + env(safe-area-inset-left))`,
           paddingRight: `calc(${tokens.spacing.lg}px + env(safe-area-inset-right))`,
@@ -164,25 +188,101 @@ export default function WebpageBuilder({
         }}
         className="wb-device-toggle"
       >
-        {(['mobile', 'tablet', 'desktop'] as DeviceKind[]).map((value) => {
-          const isActive = device === value;
-          return (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setDevice(value)}
-              style={{
-                ...deviceToggleStyle,
-                borderColor: isActive ? tokens.colors.accent : tokens.colors.borderLight,
-                background: isActive ? tokens.colors.surfaceSubtle : tokens.colors.surface,
-                color: isActive ? tokens.colors.accent : tokens.colors.textSecondary,
-                boxShadow: isActive ? tokens.shadow.sm : 'none',
-              }}
-            >
-              {value}
-            </button>
-          );
-        })}
+        <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-start' }} />
+        <div
+          className="device-controls"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+          }}
+        >
+          {(['mobile', 'tablet', 'desktop'] as DeviceKind[]).map((value) => {
+            const isActive = device === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setDevice(value)}
+                style={{
+                  ...deviceToggleStyle,
+                  borderColor: isActive ? tokens.colors.accent : tokens.colors.borderLight,
+                  background: isActive ? tokens.colors.surfaceSubtle : tokens.colors.surface,
+                  color: isActive ? tokens.colors.accent : tokens.colors.textSecondary,
+                  boxShadow: isActive ? tokens.shadow.sm : 'none',
+                }}
+              >
+                {value}
+              </button>
+            );
+          })}
+        </div>
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            gap: 6,
+          }}
+        >
+          <button
+            type="button"
+            onClick={handleZoomOut}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 28,
+              height: 28,
+              borderRadius: tokens.radius.lg,
+              border: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
+              background: tokens.colors.surface,
+              color: tokens.colors.textSecondary,
+              cursor: zoomOutDisabled ? 'not-allowed' : 'pointer',
+              opacity: zoomOutDisabled ? 0.5 : 1,
+              transition: `color 160ms ${tokens.easing.standard}, background-color 160ms ${tokens.easing.standard}, border-color 160ms ${tokens.easing.standard}`,
+            }}
+            aria-label="Zoom out"
+            disabled={zoomOutDisabled}
+          >
+            <ZoomOut size={16} />
+          </button>
+          <span
+            style={{
+              fontSize: 12,
+              color: tokens.colors.textSecondary,
+              minWidth: 44,
+              textAlign: 'center',
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            {Math.round(zoomLevel * 100)}%
+          </span>
+          <button
+            type="button"
+            onClick={handleZoomIn}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 28,
+              height: 28,
+              borderRadius: tokens.radius.lg,
+              border: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
+              background: tokens.colors.surface,
+              color: tokens.colors.textSecondary,
+              cursor: zoomInDisabled ? 'not-allowed' : 'pointer',
+              opacity: zoomInDisabled ? 0.5 : 1,
+              transition: `color 160ms ${tokens.easing.standard}, background-color 160ms ${tokens.easing.standard}, border-color 160ms ${tokens.easing.standard}`,
+            }}
+            aria-label="Zoom in"
+            disabled={zoomInDisabled}
+          >
+            <ZoomIn size={16} />
+          </button>
+        </div>
       </div>
       <div style={contentStyle}>
         <div
@@ -197,13 +297,16 @@ export default function WebpageBuilder({
               width: '100%',
               maxWidth: viewport.isDesktop ? '1000px' : '100%',
               margin: '0 auto',
-              overflowX: 'hidden',
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'flex-start',
+              overflowX: zoomLevel > 1 ? 'auto' : 'hidden',
             }}
           >
             <div
               style={{
                 ...frameStyle,
-                transform: viewport.isMobile ? 'scale(1)' : 'none',
+                transform: `scale(${zoomLevel})`,
                 transformOrigin: 'top center',
               }}
               className="wb-canvas"

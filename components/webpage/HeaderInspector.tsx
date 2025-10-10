@@ -280,6 +280,15 @@ const HeaderInspector: React.FC<HeaderInspectorProps> = ({ block, onChange, rest
 
       <InspectorSection title="Layout">
         <InputSlider
+          label="Header height (vh)"
+          value={block.headerHeight ?? 80}
+          fallbackValue={80}
+          min={40}
+          max={100}
+          step={1}
+          onChange={(value) => onChange({ headerHeight: value ?? 80 })}
+        />
+        <InputSlider
           label="Padding top (px)"
           value={block.paddingTop ?? 160}
           fallbackValue={160}
