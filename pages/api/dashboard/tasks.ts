@@ -22,7 +22,12 @@ type SuccessResponse =
   | { active: DashboardTask[]; archived: DashboardTask[] }
   | { task: DashboardTask };
 
-async function ensureMembership(req: NextApiRequest, res: NextApiResponse, restaurantId: string) {
+async function ensureMembership(
+  req: NextApiRequest,
+  res: NextApiResponse,
+  restaurantId: string,
+  serviceSupabase = supaServer()
+) {
   const userSupabase = createServerSupabaseClient({ req, res });
   const {
     data: { session },
@@ -32,7 +37,7 @@ async function ensureMembership(req: NextApiRequest, res: NextApiResponse, resta
     return { error: 'Unauthenticated', status: 401 } as const;
   }
 
-  const { data: membership, error: membershipError } = await userSupabase
+  const { data: membership, error: membershipError } = await serviceSupabase
     .from('restaurant_users')
     .select('restaurant_id')
     .eq('restaurant_id', restaurantId)
@@ -45,11 +50,15 @@ async function ensureMembership(req: NextApiRequest, res: NextApiResponse, resta
 
   if (!membership) {
     // Check owner fallback
-    const { data: restaurant } = await userSupabase
+    const { data: restaurant, error: restaurantError } = await serviceSupabase
       .from('restaurants')
       .select('id, owner_id')
       .eq('id', restaurantId)
       .maybeSingle();
+
+    if (restaurantError) {
+      return { error: restaurantError.message, status: 500 } as const;
+    }
 
     if (!restaurant || restaurant.owner_id !== session.user.id) {
       return { error: 'Forbidden', status: 403 } as const;
@@ -119,12 +128,11 @@ export default async function handler(
     return res.status(400).json({ error: 'restaurantId is required' });
   }
 
-  const membership = await ensureMembership(req, res, restaurantId);
+  const serviceSupabase = supaServer();
+  const membership = await ensureMembership(req, res, restaurantId, serviceSupabase);
   if ('error' in membership) {
     return res.status(membership.status).json({ error: membership.error });
   }
-
-  const serviceSupabase = supaServer();
 
   if (req.method === 'GET') {
     const { data, error } = await serviceSupabase
