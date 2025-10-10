@@ -21,6 +21,8 @@ import type {
 } from './PageRenderer';
 import WebpageBuilder from './webpage/WebpageBuilder';
 import HeaderInspector from './webpage/HeaderInspector';
+import MobileInspector from './inspector/MobileInspector';
+import SideInspector from './inspector/SideInspector';
 import AddBlockModal from './modals/AddBlockModal';
 import { STORAGE_BUCKET } from '@/lib/storage';
 import { supabase } from '@/lib/supabaseClient';
@@ -395,6 +397,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
   const blockLibraryHostRef = useRef<HTMLDivElement | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const isMobile = typeof window !== 'undefined' && window.innerWidth <= 900;
   const history = useRef<Block[][]>([]);
   const future = useRef<Block[][]>([]);
 
@@ -414,14 +417,6 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
       }
     })();
   }, [open, pageId, restaurantId]);
-
-  // lock body scroll while open
-  useEffect(() => {
-    if (!open) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prev; };
-  }, [open]);
 
   // undo stack helper
   const pushHistory = useCallback((next: Block[]) => {
@@ -524,19 +519,52 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
 
   const selectedBlock = useMemo(() => blocks.find((b) => b.id === selection) ?? null, [blocks, selection]);
   const inspectorVisible = inspectorOpen;
-
-  const inspectorWrapperStyle = useMemo<React.CSSProperties>(
-    () => ({
-      width: inspectorVisible ? 320 : 0,
-      transition: `width 240ms ${tokens.easing.standard}`,
-      borderLeft: inspectorVisible ? `${tokens.border.thin}px solid ${tokens.colors.borderLight}` : 'none',
-      background: tokens.colors.surface,
-      boxShadow: inspectorVisible ? tokens.shadow.sm : 'none',
-      overflow: 'hidden',
-      display: 'flex',
-      flexDirection: 'column',
-    }),
-    [inspectorVisible]
+  const inspectorSubtitle = useMemo(
+    () =>
+      selectedBlock
+        ? `Editing ${selectedBlock.type.replace(/-/g, ' ')}`
+        : 'Select a block to edit',
+    [selectedBlock],
+  );
+  const inspectorContent = useMemo(
+    () =>
+      selectedBlock ? (
+        <Inspector
+          key={selectedBlock.id}
+          block={selectedBlock}
+          onChange={(patch) => updateBlock(selectedBlock.id, patch)}
+          restaurantId={restaurantId}
+        />
+      ) : null,
+    [selectedBlock, restaurantId, updateBlock],
+  );
+  const inspectorEmptyState = useMemo(
+    () => (
+      <div className="text-sm text-neutral-500">Select a block to edit its properties.</div>
+    ),
+    [],
+  );
+  const mobileInspectorOpen = Boolean(isMobile && inspectorOpen && selectedBlock);
+  const inspector = isMobile ? (
+    <MobileInspector
+      key="mobile"
+      className="wb-inspector wb-inspector--bottom md:hidden"
+      open={mobileInspectorOpen}
+      subtitle={inspectorSubtitle}
+      onClose={() => setInspectorOpen(false)}
+      renderContent={() => inspectorContent}
+    />
+  ) : (
+    <SideInspector
+      key="desktop"
+      className="hidden md:flex wb-inspector wb-inspector--side"
+      open={inspectorVisible}
+      selectedBlock={selectedBlock}
+      subtitle={inspectorSubtitle}
+      onClose={() => setInspectorOpen(false)}
+      renderContent={() => inspectorContent}
+      emptyState={inspectorEmptyState}
+    />
   );
 
   const drawerPanelStyle = useMemo<React.CSSProperties>(
@@ -627,41 +655,18 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
     <div role="dialog" aria-modal="true" className="fixed inset-0 z-[60] flex">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative z-[61] m-4 flex w-[calc(100%-2rem)] flex-1 flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-        {/* Mobile toolbar */}
-        <div className="wb-toolbar flex items-center md:hidden">
+        <div className="wb-toolbar flex items-center">
           <button
             type="button"
-            onClick={() => setBlockLibraryOpen(true)}
-            className="blocks-btn text-sm font-medium"
-          >
-            Blocks
-          </button>
-          <button type="button" onClick={undo} aria-label="Undo" className="icon-btn">
-            <Undo2 className="h-4 w-4" aria-hidden="true" />
-          </button>
-          <button type="button" onClick={redo} aria-label="Redo" className="icon-btn">
-            <Redo2 className="h-4 w-4" aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            onClick={save}
-            disabled={saving}
-            className="save-btn ml-auto text-sm font-medium"
-          >
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-          <button type="button" onClick={onClose} aria-label="Close builder" className="icon-btn">
-            <X className="h-4 w-4" aria-hidden="true" />
-          </button>
-        </div>
-
-        {/* Desktop toolbar */}
-        <div className="wb-toolbar hidden items-center md:flex">
-          <button
-            type="button"
-            onClick={() => setDrawerOpen((prev) => !prev)}
-            className={`blocks-btn text-sm font-medium ${drawerOpen ? 'ring-1 ring-emerald-500 ring-offset-1 text-emerald-700' : ''}`}
-            aria-pressed={drawerOpen}
+            onClick={() => {
+              if (isMobile) {
+                setBlockLibraryOpen(true);
+              } else {
+                setDrawerOpen((prev) => !prev);
+              }
+            }}
+            className={`blocks-btn text-sm font-medium ${!isMobile && drawerOpen ? 'ring-1 ring-emerald-500 ring-offset-1 text-emerald-700' : ''}`}
+            aria-pressed={isMobile ? blockLibraryOpen : drawerOpen}
           >
             Blocks
           </button>
@@ -806,64 +811,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
               />
             </main>
           </div>
-          <div className="hidden md:flex" style={inspectorWrapperStyle}>
-            {inspectorVisible && (
-              <div className="flex h-full w-full flex-col">
-                <div
-                  style={{
-                    padding: tokens.spacing.lg,
-                    borderBottom: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: tokens.spacing.sm,
-                  }}
-                >
-                  <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    <span
-                      style={{
-                        fontSize: tokens.fontSize.sm,
-                        fontWeight: tokens.fontWeight.semibold,
-                        color: tokens.colors.textSecondary,
-                        textTransform: 'uppercase',
-                      }}
-                    >
-                      Inspector
-                    </span>
-                    <span style={{ fontSize: tokens.fontSize.xs, color: tokens.colors.textMuted }}>
-                      {selectedBlock ? `Editing ${selectedBlock.type.replace(/-/g, ' ')}` : 'Select a block to edit'}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setInspectorOpen(false)}
-                    style={{
-                      borderRadius: tokens.radius.sm,
-                      border: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
-                      background: tokens.colors.surface,
-                      color: tokens.colors.textSecondary,
-                      padding: `${tokens.spacing.xs}px ${tokens.spacing.sm}px`,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Close
-                  </button>
-                </div>
-                <div className="flex-1 overflow-y-auto p-4">
-                  {!selectedBlock ? (
-                    <div className="text-sm text-neutral-500">Select a block to edit its properties.</div>
-                  ) : (
-                    <Inspector
-                      key={selectedBlock.id}
-                      block={selectedBlock}
-                      onChange={(patch) => updateBlock(selectedBlock.id, patch)}
-                      restaurantId={restaurantId}
-                    />
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
+          {!isMobile ? inspector : null}
         </div>
       </div>
 
@@ -875,21 +823,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
         containerRef={blockLibraryHostRef}
       />
 
-      {/* Mobile inspector drawer */}
-      {selection && inspectorOpen && (
-        <div className="fixed bottom-0 left-0 right-0 max-h-[50%] bg-white border-t p-4 z-[62] overflow-y-auto md:hidden">
-          <div className="flex items-center justify-between mb-3">
-            <div className="font-semibold">Inspector</div>
-            <button onClick={() => setInspectorOpen(false)} className="px-2 py-1 rounded border">Close</button>
-          </div>
-          <Inspector
-            key={selection}
-            block={blocks.find(b => b.id===selection)!}
-            onChange={(patch) => updateBlock(selection, patch)}
-            restaurantId={restaurantId}
-          />
-        </div>
-      )}
+      {isMobile ? inspector : null}
       <style jsx global>{`
         .wb-toolbar {
           gap: 8px;

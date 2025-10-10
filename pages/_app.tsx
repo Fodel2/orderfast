@@ -1,6 +1,7 @@
 import '../styles/globals.css';
 import '@/styles/brand.css';
 import '@/styles/orders.css'; // global animations for order sheet & progress
+import '@/src/styles/webpage-builder.css';
 import type { AppProps } from 'next/app';
 import { useRouter } from 'next/router';
 import { BrandProvider } from '@/components/branding/BrandProvider';
