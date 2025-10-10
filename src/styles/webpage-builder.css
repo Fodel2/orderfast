@@ -1,0 +1,16 @@
+/* Hide the wrong inspector for the current viewport */
+@media (max-width: 900px){
+  [data-inspector="side"]{ display:none !important; }
+}
+@media (min-width: 901px){
+  [data-inspector="drawer"]{ display:none !important; }
+}
+
+/* Smooth, reliable scroll for the preview area */
+[data-preview-scroller]{
+  overflow-y:auto !important;
+  overflow-x:hidden;
+  min-height:0;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
