@@ -110,7 +110,8 @@ export default function WebpageBuilder({
     const width = DEVICE_PREVIEW_WIDTHS[device];
     return {
       display: 'flex',
-      justifyContent: 'center',
+      flexDirection: 'column',
+      alignItems: 'center',
       width,
       minWidth: width,
       transform: `scale(${zoomLevel})`,
@@ -133,9 +134,6 @@ export default function WebpageBuilder({
   );
 
   const addButtonStyle: React.CSSProperties = {
-    position: 'sticky',
-    bottom: tokens.spacing.md,
-    zIndex: 30,
     margin: `${tokens.spacing.lg}px auto 0`,
     display: 'block',
     padding: `${tokens.spacing.sm}px ${tokens.spacing.lg}px`,
@@ -168,58 +166,70 @@ export default function WebpageBuilder({
   const zoomOutDisabled = zoomLevel <= 0.5;
   const zoomInDisabled = zoomLevel >= 1.25;
 
+  const previewWrapperClassName = `wb-preview-shell${
+    device === 'desktop' ? ' wb-desktop' : ''
+  }`;
+
   const previewContent = (
-    <div className="builder-preview wb-preview" style={previewStyle}>
-      <div className="wb-canvas" style={frameStyle}>
-        <div style={canvasStyle}>
-          {blocks.length === 0 && (
-            <div
-              style={{
-                padding: tokens.spacing.lg,
-                textAlign: 'center',
-                color: tokens.colors.textMuted,
-              }}
-            >
-              Click “Add block” to open the block library and start building your page.
-            </div>
-          )}
-          {blocks.map((block, index) => {
-            const headerId = headerBlockId;
-            const isHeader = block.type === 'header';
-            const disableMoveUp =
-              isHeader ||
-              index === 0 ||
-              (headerId && headerId !== block.id && index === 1);
-            const disableMoveDown = isHeader || index === blocks.length - 1;
-            return (
-              <DraggableBlock
-                key={block.id}
-                id={block.id}
-                onDelete={() => onDeleteBlock(block.id)}
-                onDuplicate={() => onDuplicateBlock(block.id)}
-                onMoveUp={() => onMoveBlock(block.id, -1)}
-                onMoveDown={() => onMoveBlock(block.id, 1)}
-                disableMoveUp={disableMoveUp}
-                disableMoveDown={disableMoveDown}
-                isSelected={selectedBlockId === block.id}
-                onSelect={() => onSelectBlock(block.id)}
+    <div className={previewWrapperClassName} data-device={device}>
+      <div
+        className="builder-preview wb-preview"
+        data-device={device}
+        style={previewStyle}
+      >
+        <div className="wb-canvas" style={frameStyle}>
+          <div style={canvasStyle}>
+            {blocks.length === 0 && (
+              <div
+                style={{
+                  padding: tokens.spacing.lg,
+                  textAlign: 'center',
+                  color: tokens.colors.textMuted,
+                }}
               >
-                <PageRenderer blocks={[block]} device={device} />
-              </DraggableBlock>
-            );
-          })}
+                Click “Add block” to open the block library and start building your page.
+              </div>
+            )}
+            {blocks.map((block, index) => {
+              const headerId = headerBlockId;
+              const isHeader = block.type === 'header';
+              const disableMoveUp =
+                isHeader ||
+                index === 0 ||
+                (headerId && headerId !== block.id && index === 1);
+              const disableMoveDown = isHeader || index === blocks.length - 1;
+              return (
+                <DraggableBlock
+                  key={block.id}
+                  id={block.id}
+                  onDelete={() => onDeleteBlock(block.id)}
+                  onDuplicate={() => onDuplicateBlock(block.id)}
+                  onMoveUp={() => onMoveBlock(block.id, -1)}
+                  onMoveDown={() => onMoveBlock(block.id, 1)}
+                  disableMoveUp={disableMoveUp}
+                  disableMoveDown={disableMoveDown}
+                  isSelected={selectedBlockId === block.id}
+                  onSelect={() => onSelectBlock(block.id)}
+                >
+                  <PageRenderer blocks={[block]} device={device} />
+                </DraggableBlock>
+              );
+            })}
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={(event) => {
-            event.preventDefault();
-            onAddBlock();
-          }}
-          style={addButtonStyle}
-          className="wb-add-cta"
-        >
-          + Add block
-        </button>
+        <div className="add-block-row" data-add-block-row>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.preventDefault();
+              onAddBlock();
+            }}
+            style={addButtonStyle}
+            className="wb-add-cta"
+          >
+            + Add block
+          </button>
+        </div>
       </div>
     </div>
   );

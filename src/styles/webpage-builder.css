@@ -46,3 +46,41 @@
     justify-content:center !important;
   }
 }
+
+/* --- Center Desktop Preview and Unify Add Block --- */
+[data-device="desktop"] .builder-preview,
+.is-desktop .builder-preview,
+.wb-desktop .builder-preview {
+  margin-left:auto !important;
+  margin-right:auto !important;
+  max-width:var(--wb-desktop-max, 1280px);
+  width:100%;
+  position:relative !important;
+  left:auto !important;
+  right:auto !important;
+  transform-origin:top center !important;
+}
+
+.builder-preview,
+.builder-preview .preview-scroll,
+.wb-preview-scroll {
+  overflow-y:auto;
+  overflow-x:hidden;
+}
+
+.builder-preview { padding-bottom: 96px; }
+
+.builder-preview .add-block-row,
+.builder-preview [data-add-block-row] {
+  position:sticky;
+  bottom:16px;
+  display:flex;
+  justify-content:center;
+  z-index:30;
+  pointer-events:none;
+}
+
+.builder-preview .add-block-row > *,
+.builder-preview [data-add-block-row] > * {
+  pointer-events:auto;
+}
