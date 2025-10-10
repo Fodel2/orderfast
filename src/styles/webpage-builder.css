@@ -173,3 +173,53 @@
   align-items:center;
   gap:8px;
 }
+
+.wb-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  background: #fff;
+  border-bottom: 1px solid #e5e7eb;
+  backdrop-filter: saturate(1.2) blur(4px);
+}
+
+.wb-toolbar.flex {
+  display: none;
+}
+
+.wb-toolbar-inner {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 8px 12px;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 8px;
+}
+
+.wb-left,
+.wb-center,
+.wb-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wb-left {
+  justify-content: flex-start;
+}
+
+.wb-center {
+  justify-content: center;
+}
+
+.wb-right {
+  justify-content: flex-end;
+}
+
+.wb-zoom-readout {
+  width: 48px;
+  text-align: center;
+  font-size: 12px;
+  color: #4b5563;
+}

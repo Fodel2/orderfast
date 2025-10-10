@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { ZoomIn, ZoomOut } from 'lucide-react';
+import { Redo2, Undo2, X, ZoomIn, ZoomOut } from 'lucide-react';
 
 import PageRenderer, { type Block, type DeviceKind } from '../PageRenderer';
 
@@ -36,6 +36,22 @@ export default function WebpageBuilder({
 }: WebpageBuilderProps) {
   const [device, setDevice] = useState<DeviceKind>('desktop');
   const [zoom, setZoom] = useState(100);
+  const toolbarTargetsRef = useRef<{
+    blocks: HTMLButtonElement | null;
+    undo: HTMLButtonElement | null;
+    redo: HTMLButtonElement | null;
+    save: HTMLButtonElement | null;
+    close: HTMLButtonElement | null;
+  }>({ blocks: null, undo: null, redo: null, save: null, close: null });
+  const proxyObserverRef = useRef<MutationObserver | null>(null);
+  const [toolbarReady, setToolbarReady] = useState(false);
+  const [proxyToolbarState, setProxyToolbarState] = useState({
+    blocksActive: false,
+    undoDisabled: true,
+    redoDisabled: true,
+    saveDisabled: false,
+    saveLabel: 'Save',
+  });
   const shellStyle = useMemo<React.CSSProperties>(
     () => ({
       background: tokens.colors.canvas,
@@ -64,6 +80,43 @@ export default function WebpageBuilder({
       cursor: 'pointer',
     }),
     []
+  );
+
+  const toolbarButtonBase = useMemo<React.CSSProperties>(
+    () => ({
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      height: 32,
+      borderRadius: tokens.radius.lg,
+      border: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
+      background: tokens.colors.surface,
+      color: tokens.colors.textSecondary,
+      transition: `color 160ms ${tokens.easing.standard}, background-color 160ms ${tokens.easing.standard}, border-color 160ms ${tokens.easing.standard}`,
+      cursor: 'pointer',
+      fontFamily: tokens.fonts.sans,
+    }),
+    [],
+  );
+
+  const iconButtonStyle = useMemo<React.CSSProperties>(
+    () => ({
+      ...toolbarButtonBase,
+      width: 32,
+      padding: 0,
+    }),
+    [toolbarButtonBase],
+  );
+
+  const textButtonStyle = useMemo<React.CSSProperties>(
+    () => ({
+      ...toolbarButtonBase,
+      padding: `0 ${tokens.spacing.sm}px`,
+      fontSize: tokens.fontSize.sm,
+      fontWeight: tokens.fontWeight.medium,
+      gap: tokens.spacing.xs,
+    }),
+    [toolbarButtonBase],
   );
 
   const frameStyle = useMemo<React.CSSProperties>(
@@ -137,6 +190,85 @@ export default function WebpageBuilder({
   useEffect(() => {
     setZoom(100);
   }, [device]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    let disposed = false;
+    let rafId = 0;
+
+    const updateFromDom = () => {
+      if (disposed) return;
+      const { blocks, undo, redo, save } = toolbarTargetsRef.current;
+      setProxyToolbarState((previous) => ({
+        ...previous,
+        blocksActive: blocks?.getAttribute('aria-pressed') === 'true',
+        undoDisabled: !!undo?.disabled,
+        redoDisabled: !!redo?.disabled,
+        saveDisabled: !!save?.disabled,
+        saveLabel: save?.textContent?.trim() || 'Save',
+      }));
+    };
+
+    const attachObservers = () => {
+      proxyObserverRef.current?.disconnect();
+
+      const observer = new MutationObserver(updateFromDom);
+      const { blocks, undo, redo, save } = toolbarTargetsRef.current;
+      [blocks, undo, redo, save].forEach((element) => {
+        if (!element) return;
+        observer.observe(element, {
+          attributes: true,
+          childList: true,
+          subtree: true,
+        });
+      });
+      proxyObserverRef.current = observer;
+    };
+
+    const assignTargets = () => {
+      if (disposed) return;
+      const container = document.querySelector<HTMLElement>('.wb-toolbar.flex');
+      if (!container) {
+        rafId = window.requestAnimationFrame(assignTargets);
+        return;
+      }
+
+      const blocks = container.querySelector<HTMLButtonElement>('.blocks-btn');
+      const undo = container.querySelector<HTMLButtonElement>('button[aria-label="Undo"]');
+      const redo = container.querySelector<HTMLButtonElement>('button[aria-label="Redo"]');
+      const save = container.querySelector<HTMLButtonElement>('.save-btn');
+      const close = container.querySelector<HTMLButtonElement>('button[aria-label="Close builder"]');
+
+      if (!blocks || !undo || !redo || !save || !close) {
+        rafId = window.requestAnimationFrame(assignTargets);
+        return;
+      }
+
+      toolbarTargetsRef.current = { blocks, undo, redo, save, close };
+      setToolbarReady(true);
+      updateFromDom();
+      attachObservers();
+    };
+
+    assignTargets();
+
+    return () => {
+      disposed = true;
+      if (rafId) {
+        window.cancelAnimationFrame(rafId);
+      }
+      proxyObserverRef.current?.disconnect();
+      proxyObserverRef.current = null;
+      toolbarTargetsRef.current = {
+        blocks: null,
+        undo: null,
+        redo: null,
+        save: null,
+        close: null,
+      };
+    };
+  }, []);
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -224,74 +356,171 @@ export default function WebpageBuilder({
     </div>
   );
 
+  const blocksPressed = toolbarReady && proxyToolbarState.blocksActive;
+  const undoDisabled = !toolbarReady || proxyToolbarState.undoDisabled;
+  const redoDisabled = !toolbarReady || proxyToolbarState.redoDisabled;
+  const saveDisabled = !toolbarReady || proxyToolbarState.saveDisabled;
+  const saveLabel = proxyToolbarState.saveLabel;
+
+  const handleProxyClick = useCallback((key: keyof typeof toolbarTargetsRef.current) => {
+    const target = toolbarTargetsRef.current[key];
+    if (!target || (key === 'save' && target.disabled)) return;
+    target.click();
+  }, []);
+
+  const handleBlocksToggle = useCallback(() => {
+    handleProxyClick('blocks');
+  }, [handleProxyClick]);
+
+  const handleUndoProxy = useCallback(() => {
+    if (undoDisabled) return;
+    handleProxyClick('undo');
+  }, [handleProxyClick, undoDisabled]);
+
+  const handleRedoProxy = useCallback(() => {
+    if (redoDisabled) return;
+    handleProxyClick('redo');
+  }, [handleProxyClick, redoDisabled]);
+
+  const handleSaveProxy = useCallback(() => {
+    if (saveDisabled) return;
+    handleProxyClick('save');
+  }, [handleProxyClick, saveDisabled]);
+
+  const handleCloseProxy = useCallback(() => {
+    handleProxyClick('close');
+  }, [handleProxyClick]);
+
   return (
     <div
       className="builder-wrapper fixed inset-0 z-50 flex flex-col bg-background"
       style={shellStyle}
     >
-      <div
-        className="builder-toolbar sticky top-0 z-50 flex items-center justify-between px-4 py-2 border-b bg-white"
-        style={{
-          position: 'sticky',
-          top: 0,
-          zIndex: 60,
-          borderBottom: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
-          background: tokens.colors.surface,
-          minHeight: 52,
-        }}
-      >
-        <div className="device-controls" aria-label="Preview device selector">
-          {(['mobile', 'tablet', 'desktop'] as DeviceKind[]).map((value) => {
-            const isActive = device === value;
-            return (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setDevice(value)}
-                style={{
-                  ...deviceToggleStyle,
-                  borderColor: isActive ? tokens.colors.accent : tokens.colors.borderLight,
-                  background: isActive ? tokens.colors.surfaceSubtle : tokens.colors.surface,
-                  color: isActive ? tokens.colors.accent : tokens.colors.textSecondary,
-                  boxShadow: isActive ? tokens.shadow.sm : 'none',
-                }}
-              >
-                {value}
-              </button>
-            );
-          })}
-        </div>
-        <div
-          className="zoom-controls"
-          style={{
-            position: 'absolute',
-            top: tokens.spacing.sm,
-            right: tokens.spacing.lg,
-            display: 'flex',
-            alignItems: 'center',
-            gap: tokens.spacing.xs,
-            zIndex: 60,
-          }}
-        >
-          <button
-            type="button"
-            onClick={handleZoomOut}
-            className="zoom-btn"
-            aria-label="Zoom out"
-            disabled={zoomOutDisabled}
-          >
-            <ZoomOut size={16} />
-          </button>
-          <span className="zoom-readout">{zoom}%</span>
-          <button
-            type="button"
-            onClick={handleZoomIn}
-            className="zoom-btn"
-            aria-label="Zoom in"
-            disabled={zoomInDisabled}
-          >
-            <ZoomIn size={16} />
-          </button>
+      <div className="wb-toolbar">
+        <div className="wb-toolbar-inner">
+          <div className="wb-left">
+            <button
+              type="button"
+              onClick={handleBlocksToggle}
+              aria-pressed={blocksPressed}
+              disabled={!toolbarReady}
+              style={{
+                ...textButtonStyle,
+                borderColor: blocksPressed ? tokens.colors.accent : tokens.colors.borderLight,
+                background: blocksPressed ? tokens.colors.surfaceSubtle : tokens.colors.surface,
+                color: blocksPressed ? tokens.colors.accent : tokens.colors.textSecondary,
+                boxShadow: blocksPressed ? tokens.shadow.sm : 'none',
+                cursor: toolbarReady ? 'pointer' : 'not-allowed',
+                opacity: toolbarReady ? 1 : 0.6,
+              }}
+            >
+              Blocks
+            </button>
+            <button
+              type="button"
+              onClick={handleUndoProxy}
+              aria-label="Undo"
+              disabled={undoDisabled}
+              style={{
+                ...iconButtonStyle,
+                opacity: undoDisabled ? 0.5 : 1,
+                cursor: undoDisabled ? 'not-allowed' : 'pointer',
+              }}
+            >
+              <Undo2 size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={handleRedoProxy}
+              aria-label="Redo"
+              disabled={redoDisabled}
+              style={{
+                ...iconButtonStyle,
+                opacity: redoDisabled ? 0.5 : 1,
+                cursor: redoDisabled ? 'not-allowed' : 'pointer',
+              }}
+            >
+              <Redo2 size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveProxy}
+              disabled={saveDisabled}
+              style={{
+                ...textButtonStyle,
+                background: saveDisabled ? tokens.colors.surface : tokens.colors.accent,
+                color: saveDisabled ? tokens.colors.textSecondary : tokens.colors.textOnDark,
+                borderColor: saveDisabled ? tokens.colors.borderLight : tokens.colors.accent,
+                cursor: saveDisabled ? 'not-allowed' : 'pointer',
+                opacity: saveDisabled ? 0.7 : 1,
+              }}
+            >
+              {saveLabel}
+            </button>
+          </div>
+          <div className="wb-center" aria-label="Preview device selector">
+            {(['mobile', 'tablet', 'desktop'] as DeviceKind[]).map((value) => {
+              const isActive = device === value;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setDevice(value)}
+                  style={{
+                    ...deviceToggleStyle,
+                    borderColor: isActive ? tokens.colors.accent : tokens.colors.borderLight,
+                    background: isActive ? tokens.colors.surfaceSubtle : tokens.colors.surface,
+                    color: isActive ? tokens.colors.accent : tokens.colors.textSecondary,
+                    boxShadow: isActive ? tokens.shadow.sm : 'none',
+                  }}
+                >
+                  {value}
+                </button>
+              );
+            })}
+          </div>
+          <div className="wb-right">
+            <button
+              type="button"
+              onClick={handleZoomOut}
+              aria-label="Zoom out"
+              disabled={zoomOutDisabled}
+              style={{
+                ...iconButtonStyle,
+                opacity: zoomOutDisabled ? 0.5 : 1,
+                cursor: zoomOutDisabled ? 'not-allowed' : 'pointer',
+              }}
+            >
+              <ZoomOut size={16} />
+            </button>
+            <span className="wb-zoom-readout">{zoom}%</span>
+            <button
+              type="button"
+              onClick={handleZoomIn}
+              aria-label="Zoom in"
+              disabled={zoomInDisabled}
+              style={{
+                ...iconButtonStyle,
+                opacity: zoomInDisabled ? 0.5 : 1,
+                cursor: zoomInDisabled ? 'not-allowed' : 'pointer',
+              }}
+            >
+              <ZoomIn size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={handleCloseProxy}
+              aria-label="Close builder"
+              disabled={!toolbarReady}
+              style={{
+                ...iconButtonStyle,
+                opacity: toolbarReady ? 1 : 0.6,
+                cursor: toolbarReady ? 'pointer' : 'not-allowed',
+              }}
+            >
+              <X size={16} />
+            </button>
+          </div>
         </div>
       </div>
       <div
