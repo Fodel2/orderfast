@@ -1,55 +1,66 @@
 import React from "react";
 import clsx from "clsx";
-import { useParentBackground } from "./useParentBackground";
 
-interface AdminButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+export interface AdminButtonProps
+  extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: "primary" | "secondary" | "outline";
   active?: boolean;
+}
+
+function getBrightness(color: string) {
+  const rgb = color.match(/\d+/g)?.map(Number);
+  if (!rgb) return 255;
+  return (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000;
+}
+
+function useAdaptiveTheme() {
+  const [isDark, setIsDark] = React.useState(false);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const bg = window.getComputedStyle(document.body).backgroundColor;
+    setIsDark(getBrightness(bg) < 128);
+  }, []);
+
+  return isDark;
 }
 
 export function AdminButton({
   variant = "secondary",
   active,
-  className,
+  className = "",
+  children,
   ...props
 }: AdminButtonProps) {
-  const isDark = useParentBackground();
+  const isDark = useAdaptiveTheme();
 
   const baseClasses =
-    "inline-flex items-center justify-center px-4 py-1.5 rounded-full text-sm font-medium select-none transition-colors transition-shadow duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-400 disabled:border-neutral-200 disabled:shadow-none";
+    "inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2";
+
+  const themeClasses = isDark
+    ? "bg-neutral-800 text-white border border-neutral-600 hover:bg-neutral-700 focus:ring-white"
+    : "bg-white text-neutral-900 border border-neutral-300 hover:bg-neutral-100 focus:ring-neutral-500";
 
   const primaryClasses =
-    "border border-primary bg-primary text-white shadow-md hover:bg-primary/90 hover:shadow-lg focus:ring-primary/40";
+    "bg-primary text-white border border-primary hover:bg-primary/90 focus:ring-primary";
 
-  const secondaryLightClasses =
-    "border border-neutral-300 bg-white text-neutral-900 shadow-sm hover:bg-neutral-100 hover:shadow-md focus:ring-neutral-500";
-
-  const secondaryDarkClasses =
-    "border border-neutral-600 bg-neutral-800 text-white shadow-sm hover:bg-neutral-700 hover:shadow-md focus:ring-white";
-
-  const outlineLightClasses =
-    "border border-neutral-300 text-neutral-700 bg-white shadow-sm hover:bg-neutral-50 hover:shadow-md focus:ring-neutral-500";
-
-  const outlineDarkClasses =
-    "border border-white/60 text-white bg-transparent shadow-sm hover:bg-white/10 hover:shadow-md focus:ring-white";
+  const outlineClasses = isDark
+    ? "bg-transparent text-white border border-white/60 hover:bg-white/10 focus:ring-white"
+    : "bg-transparent text-neutral-900 border border-neutral-300 hover:bg-neutral-50 focus:ring-neutral-500";
 
   const variantClasses =
     variant === "primary" || active
       ? primaryClasses
       : variant === "outline"
-      ? isDark
-        ? outlineDarkClasses
-        : outlineLightClasses
-      : isDark
-      ? secondaryDarkClasses
-      : secondaryLightClasses;
+      ? outlineClasses
+      : themeClasses;
 
   return (
-    <button
-      {...props}
-      className={clsx(baseClasses, variantClasses, className)}
-    />
+    <button className={clsx(baseClasses, variantClasses, className)} {...props}>
+      {children}
+    </button>
   );
 }
 
-export type { AdminButtonProps };
+export default AdminButton;
