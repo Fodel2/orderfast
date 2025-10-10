@@ -98,7 +98,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     res.setHeader('Allow', ['GET', 'PUT']);
     return res.status(405).end('Method Not Allowed');
   } catch (e: any) {
-    console.error('[draft:unhandled]', { path, restaurantId, error: e });
+    console.error('[draft:unhandled]', {
+      path,
+      restaurantId,
+      error: e,
+      message: e?.message,
+      code: e?.code,
+      details: e?.details,
+      hint: e?.hint,
+      stack: e?.stack,
+    });
     return res.status(500).json({ message: e?.message || 'server_error' });
   }
 }

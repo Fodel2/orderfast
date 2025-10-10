@@ -19,6 +19,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const supabase = supaServer;
+  let restaurantId: string | undefined;
 
   const archivedSupport: Record<'menu_items' | 'menu_categories', boolean> = {
     menu_items: true,
@@ -40,7 +41,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const { restaurantId } = req.body as { restaurantId?: string };
+    ({ restaurantId } = req.body as { restaurantId?: string });
     if (!restaurantId) return res.status(400).json({ error: 'restaurantId is required' });
 
     // 1) Load draft
@@ -116,7 +117,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     } catch (hardDeleteErr: any) {
       // FK violation (due to order_items) → ARCHIVE instead (so customer never sees old rows)
-      console.error('[publish:hardDeleteFallback]', hardDeleteErr);
+      console.error('[publish:hardDeleteFallback]', {
+        restaurantId,
+        error: hardDeleteErr,
+        message: hardDeleteErr?.message,
+        code: hardDeleteErr?.code,
+        details: hardDeleteErr?.details,
+        hint: hardDeleteErr?.hint,
+        stack: hardDeleteErr?.stack,
+      });
 
       let archItemsErr;
       let archItems;
@@ -274,7 +283,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
 
   } catch (e: any) {
-    console.error('[publish:unhandled]', e);
+    console.error('[publish:unhandled]', {
+      restaurantId,
+      error: e,
+      message: e?.message,
+      code: e?.code,
+      details: e?.details,
+      hint: e?.hint,
+      stack: e?.stack,
+    });
     return res.status(500).json({ where: 'unhandled', error: e?.message || 'server_error' });
   }
 }
