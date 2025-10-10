@@ -419,6 +419,16 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
     })();
   }, [open, pageId, restaurantId]);
 
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow || '';
+    };
+  }, [open]);
+
   // undo stack helper
   const pushHistory = useCallback((next: Block[]) => {
     history.current.push(next);
@@ -878,17 +888,105 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
           opacity: 0.6;
           cursor: not-allowed;
         }
-        .wb-device-toggle {
+        .builder-header {
+          position: relative;
           display: flex;
+          flex-wrap: wrap;
           align-items: center;
           justify-content: center;
-          gap: 6px;
-          margin: 6px 0 8px;
+          gap: 8px;
+          padding: 12px clamp(16px, 4vw, 32px);
+          min-height: 64px;
         }
-        .wb-device-toggle button {
-          height: 28px;
-          padding: 0 10px;
+        .builder-header .device-controls {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+        }
+        .builder-header .zoom-controls {
+          position: absolute;
+          top: 12px;
+          right: clamp(16px, 4vw, 32px);
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+        }
+        .builder-header .zoom-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 32px;
+          height: 32px;
+          border-radius: 9999px;
+          border: 1px solid rgba(15, 23, 42, 0.12);
+          background: var(--surface-1);
+          color: rgba(15, 23, 42, 0.75);
+          cursor: pointer;
+          transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+        }
+        .builder-header .zoom-btn:hover:not(:disabled) {
+          background: var(--surface-hover);
+        }
+        .builder-header .zoom-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+        .builder-header .zoom-readout {
+          min-width: 44px;
+          text-align: center;
           font-size: 12px;
+          font-variant-numeric: tabular-nums;
+          color: rgba(15, 23, 42, 0.7);
+        }
+        .builder-scroll {
+          background: var(--surface-muted, #f1f5f9);
+        }
+        .builder-preview {
+          display: flex;
+          justify-content: center;
+          align-items: flex-start;
+          min-height: calc(100vh - 120px);
+          padding: 40px clamp(16px, 5vw, 64px);
+        }
+        .preview-shell {
+          width: 100%;
+        }
+        .preview-scale {
+          display: flex;
+          justify-content: center;
+        }
+        .preview-inner {
+          width: 100%;
+          max-width: 1280px;
+        }
+        .preview-inner[data-device='tablet'] {
+          max-width: 768px;
+        }
+        .preview-inner[data-device='mobile'] {
+          max-width: 420px;
+        }
+        @media (max-width: 1024px) {
+          .builder-header {
+            min-height: 60px;
+            padding: 12px clamp(12px, 5vw, 24px);
+          }
+          .builder-preview {
+            padding: 32px clamp(12px, 5vw, 40px);
+          }
+        }
+        @media (max-width: 768px) {
+          .builder-header {
+            min-height: 56px;
+          }
+          .builder-header .zoom-controls {
+            top: 10px;
+            right: clamp(12px, 6vw, 20px);
+          }
+          .builder-preview {
+            padding: 24px clamp(12px, 6vw, 24px);
+            min-height: calc(100vh - 120px);
+          }
         }
       `}</style>
     </div>
