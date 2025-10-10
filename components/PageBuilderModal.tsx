@@ -27,7 +27,6 @@ import AddBlockModal from './modals/AddBlockModal';
 import { STORAGE_BUCKET } from '@/lib/storage';
 import { supabase } from '@/lib/supabaseClient';
 import InputUpload from '@/src/components/inspector/controls/InputUpload';
-import { useIsMobile } from '@/src/hooks/useIsMobile';
 import { tokens } from '@/src/ui/tokens';
 
 type Props = {
@@ -398,7 +397,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
   const blockLibraryHostRef = useRef<HTMLDivElement | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const isMobileView = useIsMobile(900);
+  const isMobile = typeof window !== 'undefined' && window.innerWidth <= 900;
   const history = useRef<Block[][]>([]);
   const future = useRef<Block[][]>([]);
 
@@ -545,7 +544,28 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
     ),
     [],
   );
-  const mobileInspectorOpen = Boolean(isMobileView && inspectorOpen && selectedBlock);
+  const mobileInspectorOpen = Boolean(isMobile && inspectorOpen && selectedBlock);
+  const inspector = isMobile ? (
+    <MobileInspector
+      key="mobile"
+      className="wb-inspector wb-inspector--bottom md:hidden"
+      open={mobileInspectorOpen}
+      subtitle={inspectorSubtitle}
+      onClose={() => setInspectorOpen(false)}
+      renderContent={() => inspectorContent}
+    />
+  ) : (
+    <SideInspector
+      key="desktop"
+      className="hidden md:flex wb-inspector wb-inspector--side"
+      open={inspectorVisible}
+      selectedBlock={selectedBlock}
+      subtitle={inspectorSubtitle}
+      onClose={() => setInspectorOpen(false)}
+      renderContent={() => inspectorContent}
+      emptyState={inspectorEmptyState}
+    />
+  );
 
   const drawerPanelStyle = useMemo<React.CSSProperties>(
     () => ({
@@ -635,41 +655,18 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
     <div role="dialog" aria-modal="true" className="fixed inset-0 z-[60] flex">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative z-[61] m-4 flex w-[calc(100%-2rem)] flex-1 flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-        {/* Mobile toolbar */}
-        <div className="wb-toolbar flex items-center md:hidden">
+        <div className="wb-toolbar flex items-center">
           <button
             type="button"
-            onClick={() => setBlockLibraryOpen(true)}
-            className="blocks-btn text-sm font-medium"
-          >
-            Blocks
-          </button>
-          <button type="button" onClick={undo} aria-label="Undo" className="icon-btn">
-            <Undo2 className="h-4 w-4" aria-hidden="true" />
-          </button>
-          <button type="button" onClick={redo} aria-label="Redo" className="icon-btn">
-            <Redo2 className="h-4 w-4" aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            onClick={save}
-            disabled={saving}
-            className="save-btn ml-auto text-sm font-medium"
-          >
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-          <button type="button" onClick={onClose} aria-label="Close builder" className="icon-btn">
-            <X className="h-4 w-4" aria-hidden="true" />
-          </button>
-        </div>
-
-        {/* Desktop toolbar */}
-        <div className="wb-toolbar hidden items-center md:flex">
-          <button
-            type="button"
-            onClick={() => setDrawerOpen((prev) => !prev)}
-            className={`blocks-btn text-sm font-medium ${drawerOpen ? 'ring-1 ring-emerald-500 ring-offset-1 text-emerald-700' : ''}`}
-            aria-pressed={drawerOpen}
+            onClick={() => {
+              if (isMobile) {
+                setBlockLibraryOpen(true);
+              } else {
+                setDrawerOpen((prev) => !prev);
+              }
+            }}
+            className={`blocks-btn text-sm font-medium ${!isMobile && drawerOpen ? 'ring-1 ring-emerald-500 ring-offset-1 text-emerald-700' : ''}`}
+            aria-pressed={isMobile ? blockLibraryOpen : drawerOpen}
           >
             Blocks
           </button>
@@ -814,17 +811,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
               />
             </main>
           </div>
-          {!isMobileView && (
-            <SideInspector
-              className="hidden md:flex wb-inspector wb-inspector--side"
-              open={inspectorVisible}
-              selectedBlock={selectedBlock}
-              subtitle={inspectorSubtitle}
-              onClose={() => setInspectorOpen(false)}
-              renderContent={() => inspectorContent}
-              emptyState={inspectorEmptyState}
-            />
-          )}
+          {!isMobile ? inspector : null}
         </div>
       </div>
 
@@ -836,15 +823,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
         containerRef={blockLibraryHostRef}
       />
 
-      {isMobileView && (
-        <MobileInspector
-          className="wb-inspector wb-inspector--bottom md:hidden"
-          open={mobileInspectorOpen}
-          subtitle={inspectorSubtitle}
-          onClose={() => setInspectorOpen(false)}
-          renderContent={() => inspectorContent}
-        />
-      )}
+      {isMobile ? inspector : null}
       <style jsx global>{`
         .wb-toolbar {
           gap: 8px;
