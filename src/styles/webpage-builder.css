@@ -84,3 +84,57 @@
 .builder-preview [data-add-block-row] > * {
   pointer-events:auto;
 }
+
+/* --- CORE LAYOUT STABILIZATION --- */
+.builder-modal {
+  display:flex;
+  flex-direction:column;
+  height:100%;
+  width:100%;
+  overflow:hidden;
+  background:var(--wb-bg, #fff);
+}
+
+.builder-toolbar {
+  flex-shrink:0;
+  padding:0.5rem 1rem;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  background:var(--wb-toolbar-bg, #fff);
+  border-bottom:1px solid rgba(0,0,0,0.05);
+}
+
+.builder-canvas-wrapper {
+  flex:1;
+  overflow-y:auto;
+  overflow-x:hidden;
+  display:flex;
+  justify-content:center;
+  align-items:flex-start;
+  background:var(--wb-bg, #f9fafb);
+}
+
+.builder-canvas {
+  position:relative;
+  max-width:1280px;
+  width:100%;
+  min-height:100%;
+  margin:0 auto;
+  background:var(--wb-preview-bg, #fff);
+  box-shadow:0 0 0 1px rgba(0,0,0,0.04);
+  transform-origin:top center;
+}
+
+.builder-canvas .add-block-row {
+  position:sticky;
+  bottom:16px;
+  display:flex;
+  justify-content:center;
+  z-index:30;
+  pointer-events:none;
+}
+
+.builder-canvas .add-block-row > * {
+  pointer-events:auto;
+}

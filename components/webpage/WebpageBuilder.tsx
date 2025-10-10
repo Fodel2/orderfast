@@ -38,9 +38,6 @@ export default function WebpageBuilder({
   const [zoomLevel, setZoomLevel] = useState(1);
   const shellStyle = useMemo<React.CSSProperties>(
     () => ({
-      display: 'flex',
-      flexDirection: 'column',
-      minHeight: '100%',
       background: tokens.colors.canvas,
       fontFamily: tokens.fonts.sans,
       fontSize: tokens.fontSize.md,
@@ -64,30 +61,12 @@ export default function WebpageBuilder({
     []
   );
 
-  const contentStyle: React.CSSProperties = {
-    flex: 1,
-    paddingTop: 0,
-    display: 'flex',
-    flexDirection: 'column',
-  };
-
-  const scrollAreaStyle: React.CSSProperties = {
-    flex: 1,
-    display: 'flex',
-    justifyContent: 'center',
-    height: 'auto',
-    maxHeight: 'calc(100vh - 140px)',
-    paddingTop: 0,
-    paddingBottom: 56,
-    paddingLeft: `calc(${tokens.spacing.lg}px + env(safe-area-inset-left))`,
-    paddingRight: `calc(${tokens.spacing.lg}px + env(safe-area-inset-right))`,
-    background: tokens.colors.surfaceSubtle,
-  };
-
   const frameStyle = useMemo<React.CSSProperties>(() => {
     const style: React.CSSProperties = {
-      width: DEVICE_PREVIEW_WIDTHS[device],
-      minWidth: DEVICE_PREVIEW_WIDTHS[device],
+      width:
+        device === 'desktop' ? '100%' : DEVICE_PREVIEW_WIDTHS[device],
+      minWidth:
+        device === 'desktop' ? 0 : DEVICE_PREVIEW_WIDTHS[device],
       borderRadius: tokens.radius.lg,
       boxShadow: tokens.shadow.lg,
       background: tokens.colors.surface,
@@ -99,10 +78,6 @@ export default function WebpageBuilder({
       zIndex: 30,
     };
 
-    if (device === 'desktop') {
-      delete style.margin;
-    }
-
     return style;
   }, [device]);
 
@@ -112,8 +87,9 @@ export default function WebpageBuilder({
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
-      width,
-      minWidth: width,
+      width: device === 'desktop' ? '100%' : width,
+      minWidth: device === 'desktop' ? 0 : width,
+      maxWidth: device === 'desktop' ? width : undefined,
       transform: `scale(${zoomLevel})`,
       transformOrigin: 'top center',
     } satisfies React.CSSProperties;
@@ -166,12 +142,8 @@ export default function WebpageBuilder({
   const zoomOutDisabled = zoomLevel <= 0.5;
   const zoomInDisabled = zoomLevel >= 1.25;
 
-  const previewWrapperClassName = `wb-preview-shell${
-    device === 'desktop' ? ' wb-desktop' : ''
-  }`;
-
   const previewContent = (
-    <div className={previewWrapperClassName} data-device={device}>
+    <div className="wb-preview-shell" data-device={device}>
       <div
         className="builder-preview wb-preview"
         data-device={device}
@@ -235,7 +207,7 @@ export default function WebpageBuilder({
   );
 
   return (
-    <div style={shellStyle}>
+    <div className="builder-modal" style={shellStyle}>
       <div
         style={{
           display: 'flex',
@@ -256,7 +228,7 @@ export default function WebpageBuilder({
           paddingTop: tokens.spacing.xs,
           paddingBottom: tokens.spacing.xs,
         }}
-        className="wb-device-toggle"
+        className="wb-device-toggle builder-toolbar"
       >
         <div
           style={{
@@ -362,8 +334,8 @@ export default function WebpageBuilder({
           </button>
         </div>
       </div>
-      <div style={contentStyle}>
-        <div style={scrollAreaStyle}>
+      <div className="builder-canvas-wrapper">
+        <div className="builder-canvas">
           <div
             id="wb-canvas"
             data-preview-scroller
@@ -380,11 +352,7 @@ export default function WebpageBuilder({
               margin: 0,
             }}
           >
-            {device === 'desktop' ? (
-              <div className="wb-desktop-wrapper">{previewContent}</div>
-            ) : (
-              previewContent
-            )}
+            {previewContent}
           </div>
         </div>
       </div>
