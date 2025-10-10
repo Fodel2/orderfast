@@ -2,6 +2,17 @@ import type { PostgrestFilterBuilder } from '@supabase/postgrest-js';
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { supaServer } from '@/lib/supaServer';
 
+function logSupabaseError(scope: string, error: any, extra?: Record<string, any>) {
+  console.error(scope, {
+    ...extra,
+    message: error?.message,
+    code: error?.code,
+    details: error?.details,
+    hint: error?.hint,
+    error,
+  });
+}
+
 type DraftPayload = {
   categories: Array<{ id?: string; tempId?: string; name: string; description?: string|null; sort_order?: number; image_url?: string|null }>;
   items: Array<{
@@ -46,15 +57,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // 1) Load draft
     const { data: draftRow, error: loadErr } = await supabase
-      .from('menu_builder_drafts')
-      .select('payload')
+      .from('menu_drafts')
+      .select('draft')
       .eq('restaurant_id', restaurantId)
       .maybeSingle();
     if (loadErr) {
-      console.error('[publish:loadDraft]', loadErr);
+      logSupabaseError('[publish:loadDraft]', loadErr, { restaurantId });
       return res.status(500).json({ where: 'load_draft', error: loadErr.message, code: loadErr.code, details: loadErr.details });
     }
-    const draft = draftRow?.payload as DraftPayload | undefined;
+    const draft = draftRow?.draft as DraftPayload | undefined;
     if (!draft) return res.status(400).json({ error: 'No draft to publish' });
 
     // Counters
@@ -156,7 +167,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         archItemsErr = error;
       }
       if (archItemsErr) {
-        console.error('[publish:archiveItems]', archItemsErr);
+        logSupabaseError('[publish:archiveItems]', archItemsErr, { restaurantId });
         return res.status(500).json({ where: 'archive_items', error: archItemsErr.message, code: archItemsErr.code, details: archItemsErr.details });
       }
       const archivedItemIds = archItems?.map((r: any) => r.id) ?? [];
@@ -169,7 +180,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           .in('item_id', archivedItemIds)
           .select('id');
         if (delLinksErr) {
-          console.error('[publish:deleteLinksForArchived]', delLinksErr);
+          logSupabaseError('[publish:deleteLinksForArchived]', delLinksErr, { restaurantId });
           return res.status(500).json({ where: 'delete_archived_links', error: delLinksErr.message, code: delLinksErr.code, details: delLinksErr.details });
         }
         archivedLinks = delLinks?.length ?? 0;
@@ -204,7 +215,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         archCatsErr = error;
       }
       if (archCatsErr) {
-        console.error('[publish:archiveCats]', archCatsErr);
+        logSupabaseError('[publish:archiveCats]', archCatsErr, { restaurantId });
         return res.status(500).json({ where: 'archive_categories', error: archCatsErr.message, code: archCatsErr.code, details: archCatsErr.details });
       }
       archivedCats = archCats?.length ?? 0;
@@ -226,7 +237,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         .single();
 
       if (error || !inserted) {
-        console.error('[publish:insertCategory]', error);
+        logSupabaseError('[publish:insertCategory]', error, { restaurantId, payload: c });
         return res.status(500).json({ where: 'insert_category', error: error?.message || 'Insert category failed', code: error?.code, details: error?.details });
       }
       const key = (c.tempId ?? c.id) as string | undefined;
@@ -254,7 +265,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         .single();
 
       if (error || !inserted) {
-        console.error('[publish:insertItem]', error);
+        logSupabaseError('[publish:insertItem]', error, { restaurantId, payload: it });
         return res.status(500).json({ where: 'insert_item', error: error?.message || 'Insert item failed', code: error?.code, details: error?.details });
       }
       const key = (it.tempId ?? it.id) as string | undefined;
@@ -270,7 +281,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         .from('item_addon_links')
         .insert({ item_id: newItemId, group_id: l.group_id });
       if (error) {
-        console.error('[publish:insertLink]', error);
+        logSupabaseError('[publish:insertLink]', error, { restaurantId, payload: l });
         return res.status(500).json({ where: 'insert_link', error: error.message, code: error.code, details: error.details });
       }
       insertedLinks++;

@@ -41,58 +41,87 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     if (req.method === 'GET') {
-      const table = 'menu_builder_drafts';
+      const table = 'menu_drafts';
       const line = 'pages/api/menu-builder.ts:60';
       const { data, error } = await supabase
         .from(table)
-        .select('payload, updated_at')
+        .select('draft, updated_at')
         .eq('restaurant_id', restaurantId)
         .maybeSingle();
 
       if (error) {
-        console.error('[draft:load]', { path, restaurantId, table, line, error });
+        console.error('[draft:load]', {
+          path,
+          restaurantId,
+          table,
+          line,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          error,
+        });
         return res
           .status(500)
           .json({ message: error.message, table, line });
       }
 
       if (!data) {
-        const initLine = 'pages/api/menu-builder.ts:72';
+        const initLine = 'pages/api/menu-builder.ts:75';
         const { data: inserted, error: insertErr } = await supabase
           .from(table)
-          .insert({ restaurant_id: restaurantId, payload: {} })
-          .select('payload, updated_at')
+          .insert({ restaurant_id: restaurantId, draft: {} })
+          .select('draft, updated_at')
           .single();
         if (insertErr) {
-          console.error('[draft:init]', { path, restaurantId, table, line: initLine, error: insertErr });
+          console.error('[draft:init]', {
+            path,
+            restaurantId,
+            table,
+            line: initLine,
+            message: insertErr.message,
+            details: insertErr.details,
+            hint: insertErr.hint,
+            error: insertErr,
+          });
           return res.status(500).json({ message: insertErr.message, table, line: initLine });
         }
-        return res.status(200).json({ draft: inserted.payload, payload: inserted.payload, updated_at: inserted.updated_at });
+        return res
+          .status(200)
+          .json({ draft: inserted.draft, payload: inserted.draft, updated_at: inserted.updated_at });
       }
       return res
         .status(200)
-        .json({ draft: data.payload, payload: data.payload, updated_at: data.updated_at });
+        .json({ draft: data.draft, payload: data.draft, updated_at: data.updated_at });
     }
 
     if (req.method === 'PUT') {
       const draft = (req.body as { draft?: DraftPayload }).draft;
       if (!draft) return res.status(400).json({ message: 'draft is required' });
 
-      const table = 'menu_builder_drafts';
-      const line = 'pages/api/menu-builder.ts:94';
+      const table = 'menu_drafts';
+      const line = 'pages/api/menu-builder.ts:103';
       const { data, error } = await supabase
         .from(table)
-        .upsert({ restaurant_id: restaurantId, payload: draft }, { onConflict: 'restaurant_id' })
-        .select('payload, updated_at')
+        .upsert({ restaurant_id: restaurantId, draft }, { onConflict: 'restaurant_id' })
+        .select('draft, updated_at')
         .single();
 
       if (error) {
-        console.error('[draft:save]', { path, restaurantId, table, line, error });
+        console.error('[draft:save]', {
+          path,
+          restaurantId,
+          table,
+          line,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          error,
+        });
         return res.status(500).json({ message: error.message, table, line });
       }
       return res
         .status(200)
-        .json({ draft: data.payload, payload: data.payload, updated_at: data.updated_at });
+        .json({ draft: data.draft, payload: data.draft, updated_at: data.updated_at });
     }
 
     res.setHeader('Allow', ['GET', 'PUT']);
