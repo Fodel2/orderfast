@@ -18,7 +18,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).end('Method Not Allowed');
   }
 
-  const supabase = supaServer();
+  const supabase = supaServer;
 
   const archivedSupport: Record<'menu_items' | 'menu_categories', boolean> = {
     menu_items: true,

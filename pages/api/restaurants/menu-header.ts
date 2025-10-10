@@ -23,7 +23,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const restaurantId = resolveRestaurantId(req);
   if (!restaurantId) return res.status(400).json({ message: 'restaurant_id is required' });
 
-  const supabase = supaServer();
+  const supabase = supaServer;
   const { imageUrl, focalX, focalY } = req.body || {};
 
   const update = imageUrl

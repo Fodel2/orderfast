@@ -12,7 +12,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ message: 'restaurantId is required' });
   }
 
-  const supabase = supaServer();
+  const supabase = supaServer;
 
   try {
     if (Array.isArray(categories) && categories.length) {

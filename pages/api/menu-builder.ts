@@ -31,7 +31,7 @@ type DraftPayload = {
 };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const supabase = supaServer();
+  const supabase = supaServer;
   const restaurantId = resolveRestaurantId(req);
   const path = req.url || '/api/menu-builder';
 
