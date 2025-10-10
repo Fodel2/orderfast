@@ -22,7 +22,7 @@ import type {
 import WebpageBuilder from './webpage/WebpageBuilder';
 import HeaderInspector from './webpage/HeaderInspector';
 import MobileInspector from './inspector/MobileInspector';
-import SideInspector, { InspectorViewportStyles } from './inspector/SideInspector';
+import SideInspector from './inspector/SideInspector';
 import AddBlockModal from './modals/AddBlockModal';
 import { STORAGE_BUCKET } from '@/lib/storage';
 import { supabase } from '@/lib/supabaseClient';
@@ -634,7 +634,6 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
   return (
     <div role="dialog" aria-modal="true" className="fixed inset-0 z-[60] flex">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <InspectorViewportStyles />
       <div className="relative z-[61] m-4 flex w-[calc(100%-2rem)] flex-1 flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
         {/* Mobile toolbar */}
         <div className="wb-toolbar flex items-center md:hidden">

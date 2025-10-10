@@ -95,7 +95,7 @@ const SideInspector: React.FC<SideInspectorProps> = ({
   const containerClassName = ['flex', className].filter(Boolean).join(' ');
 
   return (
-    <div className={containerClassName} style={containerStyle}>
+    <div data-inspector="side" className={containerClassName} style={containerStyle}>
       {open && (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
           <div style={headerStyle}>
@@ -115,22 +115,5 @@ const SideInspector: React.FC<SideInspectorProps> = ({
     </div>
   );
 };
-
-export function InspectorViewportStyles() {
-  return (
-    <style jsx global>{`
-      @media (max-width: 900px) {
-        .wb-inspector--side {
-          display: none !important;
-        }
-      }
-      @media (min-width: 901px) {
-        .wb-inspector--bottom {
-          display: none !important;
-        }
-      }
-    `}</style>
-  );
-}
 
 export default SideInspector;

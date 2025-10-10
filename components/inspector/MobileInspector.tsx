@@ -95,7 +95,7 @@ const MobileInspector: React.FC<MobileInspectorProps> = ({
   const containerClassName = [className].filter(Boolean).join(' ');
 
   return (
-    <div className={containerClassName} style={containerStyle}>
+    <div data-inspector="drawer" className={containerClassName} style={containerStyle}>
       <div style={headerStyle}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <span style={titleStyle}>{title}</span>
