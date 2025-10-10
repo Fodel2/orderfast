@@ -16,3 +16,5 @@ export { InputSlider } from "./InputSlider";
 export type { InputSliderProps } from "./InputSlider";
 export { InputColor } from "./InputColor";
 export type { InputColorProps } from "./InputColor";
+export { AdminButton } from "./AdminButton";
+export type { AdminButtonProps } from "./AdminButton";
