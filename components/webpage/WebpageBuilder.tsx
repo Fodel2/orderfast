@@ -52,6 +52,8 @@ export default function WebpageBuilder({
     saveDisabled: false,
     saveLabel: 'Save',
   });
+  const pillButtonClasses =
+    'inline-flex items-center justify-center rounded-full px-3 py-1.5 text-sm font-medium transition-colors cursor-pointer';
   const shellStyle = useMemo<React.CSSProperties>(
     () => ({
       background: tokens.colors.canvas,
@@ -66,22 +68,6 @@ export default function WebpageBuilder({
     }),
     [],
   );
-  const deviceToggleStyle = useMemo<React.CSSProperties>(
-    () => ({
-      textTransform: 'capitalize',
-      padding: '0 10px',
-      borderRadius: tokens.radius.lg,
-      borderWidth: tokens.border.thin,
-      borderStyle: 'solid',
-      transition: `color 160ms ${tokens.easing.standard}, background-color 160ms ${tokens.easing.standard}, border-color 160ms ${tokens.easing.standard}`,
-      fontSize: 12,
-      fontWeight: tokens.fontWeight.medium,
-      height: 28,
-      cursor: 'pointer',
-    }),
-    []
-  );
-
   const toolbarButtonBase = useMemo<React.CSSProperties>(
     () => ({
       display: 'inline-flex',
@@ -466,13 +452,11 @@ export default function WebpageBuilder({
                   key={value}
                   type="button"
                   onClick={() => setDevice(value)}
-                  style={{
-                    ...deviceToggleStyle,
-                    borderColor: isActive ? tokens.colors.accent : tokens.colors.borderLight,
-                    background: isActive ? tokens.colors.surfaceSubtle : tokens.colors.surface,
-                    color: isActive ? tokens.colors.accent : tokens.colors.textSecondary,
-                    boxShadow: isActive ? tokens.shadow.sm : 'none',
-                  }}
+                  className={`${pillButtonClasses} capitalize ${
+                    isActive
+                      ? 'bg-primary text-white shadow-sm'
+                      : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+                  }`}
                 >
                   {value}
                 </button>
@@ -485,11 +469,11 @@ export default function WebpageBuilder({
               onClick={handleZoomOut}
               aria-label="Zoom out"
               disabled={zoomOutDisabled}
-              style={{
-                ...iconButtonStyle,
-                opacity: zoomOutDisabled ? 0.5 : 1,
-                cursor: zoomOutDisabled ? 'not-allowed' : 'pointer',
-              }}
+              className={`${pillButtonClasses} ${
+                zoomOutDisabled
+                  ? 'bg-neutral-100 text-neutral-400 cursor-not-allowed opacity-60'
+                  : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+              }`}
             >
               <ZoomOut size={16} />
             </button>
@@ -499,11 +483,11 @@ export default function WebpageBuilder({
               onClick={handleZoomIn}
               aria-label="Zoom in"
               disabled={zoomInDisabled}
-              style={{
-                ...iconButtonStyle,
-                opacity: zoomInDisabled ? 0.5 : 1,
-                cursor: zoomInDisabled ? 'not-allowed' : 'pointer',
-              }}
+              className={`${pillButtonClasses} ${
+                zoomInDisabled
+                  ? 'bg-neutral-100 text-neutral-400 cursor-not-allowed opacity-60'
+                  : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+              }`}
             >
               <ZoomIn size={16} />
             </button>
