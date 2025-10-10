@@ -5,6 +5,7 @@ import { Redo2, Undo2, X, ZoomIn, ZoomOut } from 'lucide-react';
 import PageRenderer, { type Block, type DeviceKind } from '../PageRenderer';
 
 import DraggableBlock from './DraggableBlock';
+import { AdminButton } from '../ui/AdminButton';
 import { tokens } from '@/src/ui/tokens';
 
 const DEVICE_PREVIEW_WIDTHS: Record<DeviceKind, number> = {
@@ -52,8 +53,8 @@ export default function WebpageBuilder({
     saveDisabled: false,
     saveLabel: 'Save',
   });
-  const pillButtonClasses =
-    'inline-flex items-center justify-center rounded-full px-3 py-1.5 text-sm font-medium transition-colors cursor-pointer';
+  const previewControlButtonClasses =
+    'flex-shrink-0 inline-flex items-center justify-center px-3 py-1.5 rounded-full text-sm font-medium select-none border border-neutral-300 bg-neutral-50 text-neutral-800 shadow-sm transition-colors transition-shadow duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2 hover:bg-neutral-100 hover:shadow-md disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-400 disabled:border-neutral-200 disabled:shadow-none data-[active=true]:bg-primary data-[active=true]:text-white data-[active=true]:border-primary data-[active=true]:shadow-md data-[active=true]:hover:bg-primary/90';
   const shellStyle = useMemo<React.CSSProperties>(
     () => ({
       background: tokens.colors.canvas,
@@ -68,43 +69,6 @@ export default function WebpageBuilder({
     }),
     [],
   );
-  const toolbarButtonBase = useMemo<React.CSSProperties>(
-    () => ({
-      display: 'inline-flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      height: 32,
-      borderRadius: tokens.radius.lg,
-      border: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
-      background: tokens.colors.surface,
-      color: tokens.colors.textSecondary,
-      transition: `color 160ms ${tokens.easing.standard}, background-color 160ms ${tokens.easing.standard}, border-color 160ms ${tokens.easing.standard}`,
-      cursor: 'pointer',
-      fontFamily: tokens.fonts.sans,
-    }),
-    [],
-  );
-
-  const iconButtonStyle = useMemo<React.CSSProperties>(
-    () => ({
-      ...toolbarButtonBase,
-      width: 32,
-      padding: 0,
-    }),
-    [toolbarButtonBase],
-  );
-
-  const textButtonStyle = useMemo<React.CSSProperties>(
-    () => ({
-      ...toolbarButtonBase,
-      padding: `0 ${tokens.spacing.sm}px`,
-      fontSize: tokens.fontSize.sm,
-      fontWeight: tokens.fontWeight.medium,
-      gap: tokens.spacing.xs,
-    }),
-    [toolbarButtonBase],
-  );
-
   const frameStyle = useMemo<React.CSSProperties>(
     () => ({
       width: '100%',
@@ -214,7 +178,7 @@ export default function WebpageBuilder({
 
     const assignTargets = () => {
       if (disposed) return;
-      const container = document.querySelector<HTMLElement>('.wb-toolbar.flex');
+      const container = document.querySelector<HTMLElement>('.wb-toolbar.flex:not(.wb-toolbar-proxy)');
       if (!container) {
         rafId = window.requestAnimationFrame(assignTargets);
         return;
@@ -382,128 +346,111 @@ export default function WebpageBuilder({
       className="builder-wrapper fixed inset-0 z-50 flex flex-col bg-background"
       style={shellStyle}
     >
-      <div className="wb-toolbar">
+      <div
+        className="wb-toolbar wb-toolbar-proxy sticky top-0 z-50 flex items-center justify-between px-4 py-2 bg-white backdrop-blur-md border-b border-neutral-200 shadow-sm"
+        style={{ zIndex: 9999 }}
+      >
         <div className="wb-toolbar-inner">
-          <div className="wb-left">
-            <button
+          <div className="wb-left flex items-center gap-2">
+            <AdminButton
               type="button"
               onClick={handleBlocksToggle}
               aria-pressed={blocksPressed}
               disabled={!toolbarReady}
-              style={{
-                ...textButtonStyle,
-                borderColor: blocksPressed ? tokens.colors.accent : tokens.colors.borderLight,
-                background: blocksPressed ? tokens.colors.surfaceSubtle : tokens.colors.surface,
-                color: blocksPressed ? tokens.colors.accent : tokens.colors.textSecondary,
-                boxShadow: blocksPressed ? tokens.shadow.sm : 'none',
-                cursor: toolbarReady ? 'pointer' : 'not-allowed',
-                opacity: toolbarReady ? 1 : 0.6,
-              }}
+              variant="primary"
+              active={blocksPressed}
+              className="blocks-btn"
             >
               Blocks
-            </button>
-            <button
+            </AdminButton>
+            <AdminButton
               type="button"
               onClick={handleUndoProxy}
               aria-label="Undo"
               disabled={undoDisabled}
-              style={{
-                ...iconButtonStyle,
-                opacity: undoDisabled ? 0.5 : 1,
-                cursor: undoDisabled ? 'not-allowed' : 'pointer',
-              }}
+              variant="outline"
+              className="undo-btn !px-3"
             >
               <Undo2 size={16} />
-            </button>
-            <button
+            </AdminButton>
+            <AdminButton
               type="button"
               onClick={handleRedoProxy}
               aria-label="Redo"
               disabled={redoDisabled}
-              style={{
-                ...iconButtonStyle,
-                opacity: redoDisabled ? 0.5 : 1,
-                cursor: redoDisabled ? 'not-allowed' : 'pointer',
-              }}
+              variant="outline"
+              className="redo-btn !px-3"
             >
               <Redo2 size={16} />
-            </button>
-            <button
+            </AdminButton>
+            <AdminButton
               type="button"
               onClick={handleSaveProxy}
               disabled={saveDisabled}
-              style={{
-                ...textButtonStyle,
-                background: saveDisabled ? tokens.colors.surface : tokens.colors.accent,
-                color: saveDisabled ? tokens.colors.textSecondary : tokens.colors.textOnDark,
-                borderColor: saveDisabled ? tokens.colors.borderLight : tokens.colors.accent,
-                cursor: saveDisabled ? 'not-allowed' : 'pointer',
-                opacity: saveDisabled ? 0.7 : 1,
-              }}
+              variant="primary"
+              className="save-btn"
             >
               {saveLabel}
-            </button>
+            </AdminButton>
           </div>
-          <div className="wb-center" aria-label="Preview device selector">
-            {(['mobile', 'tablet', 'desktop'] as DeviceKind[]).map((value) => {
-              const isActive = device === value;
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setDevice(value)}
-                  className={`${pillButtonClasses} capitalize ${
-                    isActive
-                      ? 'bg-primary text-white shadow-sm'
-                      : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-                  }`}
-                >
-                  {value}
-                </button>
-              );
-            })}
+          <div className="wb-center flex items-center justify-center mt-2" aria-label="Preview device selector">
+            <div className="flex items-center gap-2 bg-neutral-50/80 px-2 py-1 rounded-full shadow-sm border border-neutral-200">
+              {(['mobile', 'tablet', 'desktop'] as DeviceKind[]).map((value) => {
+                const isActive = device === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setDevice(value)}
+                    data-active={isActive}
+                    className={`${previewControlButtonClasses} capitalize`}
+                  >
+                    {value}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          <div className="wb-right">
-            <button
-              type="button"
-              onClick={handleZoomOut}
-              aria-label="Zoom out"
-              disabled={zoomOutDisabled}
-              className={`${pillButtonClasses} ${
-                zoomOutDisabled
-                  ? 'bg-neutral-100 text-neutral-400 cursor-not-allowed opacity-60'
-                  : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-              }`}
-            >
-              <ZoomOut size={16} />
-            </button>
-            <span className="wb-zoom-readout">{zoom}%</span>
-            <button
-              type="button"
-              onClick={handleZoomIn}
-              aria-label="Zoom in"
-              disabled={zoomInDisabled}
-              className={`${pillButtonClasses} ${
-                zoomInDisabled
-                  ? 'bg-neutral-100 text-neutral-400 cursor-not-allowed opacity-60'
-                  : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-              }`}
-            >
-              <ZoomIn size={16} />
-            </button>
-            <button
+          <div className="wb-right flex items-center gap-2">
+            <div className="flex items-center gap-2 bg-neutral-50/80 px-2 py-1 rounded-full shadow-sm border border-neutral-200">
+              <button
+                type="button"
+                onClick={handleZoomOut}
+                aria-label="Zoom out"
+                disabled={zoomOutDisabled}
+                className={previewControlButtonClasses}
+              >
+                <ZoomOut size={16} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setZoom(100)}
+                aria-label="Reset zoom"
+                data-active={zoom === 100}
+                className={previewControlButtonClasses}
+              >
+                {zoom}%
+              </button>
+              <button
+                type="button"
+                onClick={handleZoomIn}
+                aria-label="Zoom in"
+                disabled={zoomInDisabled}
+                className={previewControlButtonClasses}
+              >
+                <ZoomIn size={16} />
+              </button>
+            </div>
+            <AdminButton
               type="button"
               onClick={handleCloseProxy}
               aria-label="Close builder"
               disabled={!toolbarReady}
-              style={{
-                ...iconButtonStyle,
-                opacity: toolbarReady ? 1 : 0.6,
-                cursor: toolbarReady ? 'pointer' : 'not-allowed',
-              }}
+              variant="outline"
+              className="close-btn !px-3"
             >
               <X size={16} />
-            </button>
+            </AdminButton>
           </div>
         </div>
       </div>
