@@ -376,7 +376,7 @@ export default function WebpageBuilder({
                   type="button"
                   onClick={() => setDevice(value)}
                   data-active={isActive}
-                  className={`toolbar-pill device-btn capitalize${isActive ? ' active' : ''}`}
+                  className={`device-btn capitalize${isActive ? ' active' : ''}`}
                 >
                   {value}
                 </button>
@@ -515,7 +515,7 @@ export default function WebpageBuilder({
           }
 
           .toolbar-btn,
-          .toolbar-pill,
+          .device-btn,
           .toolbar-icon {
             border-radius: 9999px;
             border: 1px solid rgba(148, 163, 184, 0.4);
@@ -539,12 +539,21 @@ export default function WebpageBuilder({
             gap: 6px;
           }
 
-          .toolbar-pill {
+          .device-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: #f8f9fb;
+            color: #111;
+            border: 1px solid #ddd;
+            border-radius: 9999px;
             padding: 6px 20px;
             font-size: 14px;
             font-weight: 500;
-            line-height: 1.2;
             white-space: nowrap;
+            min-width: 70px;
+            height: auto;
+            line-height: 1.2;
           }
 
           .toolbar-icon {
@@ -558,7 +567,7 @@ export default function WebpageBuilder({
           }
 
           .toolbar-btn:hover,
-          .toolbar-pill:hover,
+          .device-btn:hover,
           .toolbar-icon:hover {
             background: var(--brand-highlight, rgba(224, 242, 254, 0.55));
             border-color: var(--brand-color, rgba(14, 165, 233, 0.8));
@@ -566,9 +575,9 @@ export default function WebpageBuilder({
           }
 
           .toolbar-btn.active,
-          .toolbar-pill.active,
+          .device-btn.active,
           .toolbar-btn[data-active='true'],
-          .toolbar-pill[data-active='true'] {
+          .device-btn[data-active='true'] {
             background: var(--brand-color, #0ea5e9);
             border-color: var(--brand-color, #0ea5e9);
             color: #fff;
@@ -577,7 +586,7 @@ export default function WebpageBuilder({
           }
 
           .toolbar-btn:disabled,
-          .toolbar-pill:disabled,
+          .device-btn:disabled,
           .toolbar-icon:disabled {
             cursor: not-allowed;
             opacity: 0.55;
@@ -631,8 +640,9 @@ export default function WebpageBuilder({
               padding: 6px 12px;
             }
 
-            .toolbar-pill {
+            .device-btn {
               padding: 6px 16px;
+              min-width: 64px;
             }
 
             .toolbar-icon {
