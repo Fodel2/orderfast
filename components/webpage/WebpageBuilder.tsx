@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { Redo2, Undo2, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { Redo, Undo, X, ZoomIn, ZoomOut } from 'lucide-react';
 
 import { tokens } from '@/src/ui/tokens';
 import PageRenderer, { type Block, type DeviceKind } from '../PageRenderer';
@@ -376,7 +376,7 @@ export default function WebpageBuilder({
                   type="button"
                   onClick={() => setDevice(value)}
                   data-active={isActive}
-                  className={`toolbar-btn device-btn capitalize${isActive ? ' active' : ''}`}
+                  className={`toolbar-pill device-btn capitalize${isActive ? ' active' : ''}`}
                 >
                   {value}
                 </button>
@@ -391,7 +391,7 @@ export default function WebpageBuilder({
               disabled={undoDisabled}
               className="toolbar-icon undo-btn"
             >
-              <Undo2 size={16} />
+              <Undo size={16} />
             </button>
             <button
               type="button"
@@ -400,7 +400,7 @@ export default function WebpageBuilder({
               disabled={redoDisabled}
               className="toolbar-icon redo-btn"
             >
-              <Redo2 size={16} />
+              <Redo size={16} />
             </button>
             <div className="toolbar-zoom">
               <button
@@ -497,7 +497,7 @@ export default function WebpageBuilder({
           .toolbar-right {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 10px;
             flex-wrap: wrap;
           }
 
@@ -515,6 +515,7 @@ export default function WebpageBuilder({
           }
 
           .toolbar-btn,
+          .toolbar-pill,
           .toolbar-icon {
             border-radius: 9999px;
             border: 1px solid rgba(148, 163, 184, 0.4);
@@ -538,6 +539,14 @@ export default function WebpageBuilder({
             gap: 6px;
           }
 
+          .toolbar-pill {
+            padding: 6px 20px;
+            font-size: 14px;
+            font-weight: 500;
+            line-height: 1.2;
+            white-space: nowrap;
+          }
+
           .toolbar-icon {
             width: 34px;
             height: 34px;
@@ -549,6 +558,7 @@ export default function WebpageBuilder({
           }
 
           .toolbar-btn:hover,
+          .toolbar-pill:hover,
           .toolbar-icon:hover {
             background: var(--brand-highlight, rgba(224, 242, 254, 0.55));
             border-color: var(--brand-color, rgba(14, 165, 233, 0.8));
@@ -556,7 +566,9 @@ export default function WebpageBuilder({
           }
 
           .toolbar-btn.active,
-          .toolbar-btn[data-active='true'] {
+          .toolbar-pill.active,
+          .toolbar-btn[data-active='true'],
+          .toolbar-pill[data-active='true'] {
             background: var(--brand-color, #0ea5e9);
             border-color: var(--brand-color, #0ea5e9);
             color: #fff;
@@ -565,6 +577,7 @@ export default function WebpageBuilder({
           }
 
           .toolbar-btn:disabled,
+          .toolbar-pill:disabled,
           .toolbar-icon:disabled {
             cursor: not-allowed;
             opacity: 0.55;
@@ -616,6 +629,10 @@ export default function WebpageBuilder({
           @media (max-width: 768px) {
             .toolbar-btn {
               padding: 6px 12px;
+            }
+
+            .toolbar-pill {
+              padding: 6px 16px;
             }
 
             .toolbar-icon {
