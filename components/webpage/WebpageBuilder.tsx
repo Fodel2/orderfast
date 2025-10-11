@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Redo2, Undo2, X, ZoomIn, ZoomOut } from 'lucide-react';
 
-import { Button } from '@/components/ui/Button';
 import { tokens } from '@/src/ui/tokens';
 import PageRenderer, { type Block, type DeviceKind } from '../PageRenderer';
 
@@ -349,108 +348,103 @@ export default function WebpageBuilder({
         style={{ zIndex: 9999 }}
       >
         <div className="wb-toolbar-inner">
-          <div className="wb-left flex items-center gap-2">
-            <Button
+          <div className="wb-left website-toolbar flex items-center gap-2">
+            <button
               type="button"
               onClick={handleBlocksToggle}
               aria-pressed={blocksPressed}
               disabled={!toolbarReady}
-              variant={blocksPressed ? 'primary' : 'secondary'}
-              className="blocks-btn"
+              className={`blocks-btn${blocksPressed ? ' active' : ''}`}
             >
               Blocks
-            </Button>
-            <Button
+            </button>
+            <button
               type="button"
               onClick={handleUndoProxy}
               aria-label="Undo"
               disabled={undoDisabled}
-              variant="icon"
               className="undo-btn"
             >
               <Undo2 size={16} />
-            </Button>
-            <Button
+            </button>
+            <button
               type="button"
               onClick={handleRedoProxy}
               aria-label="Redo"
               disabled={redoDisabled}
-              variant="icon"
               className="redo-btn"
             >
               <Redo2 size={16} />
-            </Button>
-            <Button
+            </button>
+            <button
               type="button"
               onClick={handleSaveProxy}
               disabled={saveDisabled}
-              variant="primary"
               className="save-btn"
             >
               {saveLabel}
-            </Button>
+            </button>
           </div>
-          <div className="wb-center flex items-center justify-center mt-2" aria-label="Preview device selector">
+          <div
+            className="wb-center website-toolbar flex items-center justify-center mt-2"
+            aria-label="Preview device selector"
+          >
             <div className="flex items-center gap-2 bg-neutral-50/80 px-2 py-1 rounded-full shadow-sm border border-neutral-200">
               {(['mobile', 'tablet', 'desktop'] as DeviceKind[]).map((value) => {
                 const isActive = device === value;
                 return (
-                  <Button
+                  <button
                     key={value}
                     type="button"
                     onClick={() => setDevice(value)}
                     data-active={isActive}
-                    variant={isActive ? 'primary' : 'secondary'}
-                    size="sm"
-                    className="capitalize"
+                    className={`capitalize device-btn${isActive ? ' active' : ''}`}
                   >
                     {value}
-                  </Button>
+                  </button>
                 );
               })}
             </div>
           </div>
-          <div className="wb-right flex items-center gap-2">
+          <div className="wb-right website-toolbar flex items-center gap-2">
             <div className="flex items-center gap-2 bg-neutral-50/80 px-2 py-1 rounded-full shadow-sm border border-neutral-200">
-              <Button
+              <button
                 type="button"
                 onClick={handleZoomOut}
                 aria-label="Zoom out"
                 disabled={zoomOutDisabled}
-                variant="icon"
+                className="zoom-out-btn"
               >
                 <ZoomOut size={16} />
-              </Button>
-              <Button
+              </button>
+              <button
                 type="button"
                 onClick={() => setZoom(100)}
                 aria-label="Reset zoom"
                 data-active={zoom === 100}
-                variant={zoom === 100 ? 'primary' : 'secondary'}
-                size="sm"
+                className={`zoom-reset-btn${zoom === 100 ? ' active' : ''}`}
               >
                 {zoom}%
-              </Button>
-              <Button
+              </button>
+              <button
                 type="button"
                 onClick={handleZoomIn}
                 aria-label="Zoom in"
                 disabled={zoomInDisabled}
-                variant="icon"
+                className="zoom-in-btn"
               >
                 <ZoomIn size={16} />
-              </Button>
+              </button>
             </div>
-            <Button
+            <button
               type="button"
               onClick={handleCloseProxy}
               aria-label="Close builder"
               disabled={!toolbarReady}
-              variant="icon"
               className="close-btn"
             >
               <X size={16} />
-            </Button>
+            </button>
           </div>
         </div>
       </div>
@@ -476,6 +470,50 @@ export default function WebpageBuilder({
           </div>
         </div>
       </div>
+        <style jsx>{`
+          .website-toolbar button {
+            background: #fff !important;
+            color: #111 !important;
+            border: 1px solid #ccc !important;
+            border-radius: 8px;
+            padding: 6px 14px;
+            font-weight: 600;
+            cursor: pointer;
+            position: relative;
+            z-index: 5;
+            mix-blend-mode: normal !important;
+            opacity: 1 !important;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+          }
+
+          .website-toolbar button:disabled {
+            cursor: not-allowed;
+            opacity: 0.6 !important;
+          }
+
+          .website-toolbar button.active,
+          .website-toolbar button[data-active='true'] {
+            background: #111 !important;
+            color: #fff !important;
+          }
+
+          .website-toolbar {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            z-index: 10;
+            background: transparent;
+          }
+
+          .website-toolbar * {
+            transform: none !important;
+          }
+        `}</style>
     </div>
   );
 }
