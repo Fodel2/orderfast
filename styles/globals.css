@@ -27,6 +27,7 @@ body {
 }
 
 :root {
+  --brand-color: #0ea5e9;
   --of-canvas-w: 100vw;
   --of-canvas-h: 100svh;
   --of-safe-top: env(safe-area-inset-top, 0px);
