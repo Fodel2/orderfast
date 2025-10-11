@@ -344,26 +344,52 @@ export default function WebpageBuilder({
       style={shellStyle}
     >
       <div
-        className="wb-toolbar wb-toolbar-proxy sticky top-0 z-50 flex items-center justify-between px-4 py-2 bg-white backdrop-blur-md border-b border-neutral-200 shadow-sm"
+        className="wb-toolbar wb-toolbar-proxy"
         style={{ zIndex: 9999 }}
       >
-        <div className="wb-toolbar-inner">
-          <div className="wb-left website-toolbar flex items-center gap-2">
+        <div className="website-toolbar">
+          <div className="toolbar-left">
             <button
               type="button"
               onClick={handleBlocksToggle}
               aria-pressed={blocksPressed}
               disabled={!toolbarReady}
-              className={`blocks-btn${blocksPressed ? ' active' : ''}`}
+              className={`toolbar-btn blocks-btn${blocksPressed ? ' active' : ''}`}
             >
               Blocks
             </button>
             <button
               type="button"
+              onClick={handleSaveProxy}
+              disabled={saveDisabled}
+              className="toolbar-btn save-btn"
+            >
+              {saveLabel}
+            </button>
+          </div>
+          <div className="toolbar-center" aria-label="Preview device selector">
+            {(['mobile', 'tablet', 'desktop'] as DeviceKind[]).map((value) => {
+              const isActive = device === value;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setDevice(value)}
+                  data-active={isActive}
+                  className={`toolbar-btn device-btn capitalize${isActive ? ' active' : ''}`}
+                >
+                  {value}
+                </button>
+              );
+            })}
+          </div>
+          <div className="toolbar-right">
+            <button
+              type="button"
               onClick={handleUndoProxy}
               aria-label="Undo"
               disabled={undoDisabled}
-              className="undo-btn"
+              className="toolbar-icon undo-btn"
             >
               <Undo2 size={16} />
             </button>
@@ -372,48 +398,17 @@ export default function WebpageBuilder({
               onClick={handleRedoProxy}
               aria-label="Redo"
               disabled={redoDisabled}
-              className="redo-btn"
+              className="toolbar-icon redo-btn"
             >
               <Redo2 size={16} />
             </button>
-            <button
-              type="button"
-              onClick={handleSaveProxy}
-              disabled={saveDisabled}
-              className="save-btn"
-            >
-              {saveLabel}
-            </button>
-          </div>
-          <div
-            className="wb-center website-toolbar flex items-center justify-center mt-2"
-            aria-label="Preview device selector"
-          >
-            <div className="flex items-center gap-2 bg-neutral-50/80 px-2 py-1 rounded-full shadow-sm border border-neutral-200">
-              {(['mobile', 'tablet', 'desktop'] as DeviceKind[]).map((value) => {
-                const isActive = device === value;
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setDevice(value)}
-                    data-active={isActive}
-                    className={`capitalize device-btn${isActive ? ' active' : ''}`}
-                  >
-                    {value}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <div className="wb-right website-toolbar flex items-center gap-2">
-            <div className="flex items-center gap-2 bg-neutral-50/80 px-2 py-1 rounded-full shadow-sm border border-neutral-200">
+            <div className="toolbar-zoom">
               <button
                 type="button"
                 onClick={handleZoomOut}
                 aria-label="Zoom out"
                 disabled={zoomOutDisabled}
-                className="zoom-out-btn"
+                className="toolbar-icon zoom-out-btn"
               >
                 <ZoomOut size={16} />
               </button>
@@ -422,7 +417,7 @@ export default function WebpageBuilder({
                 onClick={() => setZoom(100)}
                 aria-label="Reset zoom"
                 data-active={zoom === 100}
-                className={`zoom-reset-btn${zoom === 100 ? ' active' : ''}`}
+                className={`toolbar-btn toolbar-zoom-level zoom-reset-btn${zoom === 100 ? ' active' : ''}`}
               >
                 {zoom}%
               </button>
@@ -431,7 +426,7 @@ export default function WebpageBuilder({
                 onClick={handleZoomIn}
                 aria-label="Zoom in"
                 disabled={zoomInDisabled}
-                className="zoom-in-btn"
+                className="toolbar-icon zoom-in-btn"
               >
                 <ZoomIn size={16} />
               </button>
@@ -441,7 +436,7 @@ export default function WebpageBuilder({
               onClick={handleCloseProxy}
               aria-label="Close builder"
               disabled={!toolbarReady}
-              className="close-btn"
+              className="toolbar-icon close-btn close"
             >
               <X size={16} />
             </button>
@@ -471,47 +466,162 @@ export default function WebpageBuilder({
         </div>
       </div>
         <style jsx>{`
-          .website-toolbar button {
-            background: #fff !important;
-            color: #111 !important;
-            border: 1px solid #ccc !important;
-            border-radius: 8px;
-            padding: 6px 14px;
-            font-weight: 600;
+          .wb-toolbar-proxy {
+            position: sticky;
+            top: 0;
+            width: 100%;
+            padding: 12px 24px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(8px);
+            box-shadow: 0 6px 20px rgba(15, 23, 42, 0.08);
+            border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+
+          .website-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            width: 100%;
+            max-width: 1200px;
+            position: relative;
+            z-index: 10;
+            flex-wrap: wrap;
+          }
+
+          .toolbar-left,
+          .toolbar-center,
+          .toolbar-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+          }
+
+          .toolbar-center {
+            flex: 1 1 auto;
+            justify-content: center;
+          }
+
+          .toolbar-right {
+            justify-content: flex-end;
+          }
+
+          .toolbar-center button {
+            white-space: nowrap;
+          }
+
+          .toolbar-btn,
+          .toolbar-icon {
+            border-radius: 9999px;
+            border: 1px solid rgba(148, 163, 184, 0.4);
+            background: rgba(248, 249, 251, 0.95);
+            color: rgba(15, 23, 42, 0.9);
+            font-weight: 500;
+            font-size: 14px;
+            transition: all 0.18s ease;
             cursor: pointer;
             position: relative;
             z-index: 5;
-            mix-blend-mode: normal !important;
-            opacity: 1 !important;
+            mix-blend-mode: normal;
+          }
+
+          .toolbar-btn {
+            padding: 6px 16px;
+            line-height: 1.2;
             display: inline-flex;
             align-items: center;
             justify-content: center;
             gap: 6px;
           }
 
-          .website-toolbar button:disabled {
-            cursor: not-allowed;
-            opacity: 0.6 !important;
-          }
-
-          .website-toolbar button.active,
-          .website-toolbar button[data-active='true'] {
-            background: #111 !important;
-            color: #fff !important;
-          }
-
-          .website-toolbar {
-            display: flex;
-            gap: 8px;
-            justify-content: center;
+          .toolbar-icon {
+            width: 34px;
+            height: 34px;
+            display: inline-flex;
             align-items: center;
-            position: relative;
-            z-index: 10;
-            background: transparent;
+            justify-content: center;
+            padding: 6px;
+            background: rgba(248, 249, 251, 0.92);
           }
 
-          .website-toolbar * {
-            transform: none !important;
+          .toolbar-btn:hover,
+          .toolbar-icon:hover {
+            background: var(--brand-highlight, rgba(224, 242, 254, 0.55));
+            border-color: var(--brand-color, rgba(14, 165, 233, 0.8));
+            color: var(--brand-color, #0ea5e9);
+          }
+
+          .toolbar-btn.active,
+          .toolbar-btn[data-active='true'] {
+            background: var(--brand-color, #0ea5e9);
+            border-color: var(--brand-color, #0ea5e9);
+            color: #fff;
+            font-weight: 600;
+            box-shadow: 0 8px 20px rgba(14, 165, 233, 0.25);
+          }
+
+          .toolbar-btn:disabled,
+          .toolbar-icon:disabled {
+            cursor: not-allowed;
+            opacity: 0.55;
+            box-shadow: none;
+          }
+
+          .toolbar-icon.close {
+            background: rgba(254, 242, 242, 0.95);
+            border-color: rgba(248, 113, 113, 0.7);
+            color: rgba(185, 28, 28, 0.9);
+          }
+
+          .toolbar-icon.close:hover {
+            background: rgba(248, 113, 113, 1);
+            border-color: rgba(220, 38, 38, 1);
+            color: #fff;
+          }
+
+          .toolbar-zoom {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 4px 8px;
+            border-radius: 9999px;
+            background: rgba(248, 249, 251, 0.7);
+            border: 1px solid rgba(148, 163, 184, 0.3);
+          }
+
+          .toolbar-zoom-level {
+            min-width: 64px;
+          }
+
+          @media (max-width: 1024px) {
+            .website-toolbar {
+              justify-content: center;
+            }
+
+            .toolbar-left,
+            .toolbar-right {
+              flex: 1 1 100%;
+              justify-content: center;
+            }
+
+            .toolbar-right {
+              order: 3;
+            }
+          }
+
+          @media (max-width: 768px) {
+            .toolbar-btn {
+              padding: 6px 12px;
+            }
+
+            .toolbar-icon {
+              width: 32px;
+              height: 32px;
+            }
           }
         `}</style>
     </div>
