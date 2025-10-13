@@ -402,6 +402,11 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
   const history = useRef<Block[][]>([]);
   const future = useRef<Block[][]>([]);
 
+  const selectBlock = useCallback((id: string | null) => {
+    setSelection(id);
+    setInspectorOpen(Boolean(id));
+  }, []);
+
   // Load page JSON
   useEffect(() => {
     if (!open || !pageId) return;
@@ -440,7 +445,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
     if (kind === 'header') {
       const existingHeader = blocks.find((block) => block.type === 'header');
       if (existingHeader) {
-        setSelection(existingHeader.id);
+        selectBlock(existingHeader.id);
         if (blocks[0]?.id !== existingHeader.id) {
           const reordered = [existingHeader, ...blocks.filter((block) => block.id !== existingHeader.id)];
           pushHistory(blocks);
@@ -451,7 +456,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
       const header = NEW_BLOCKS.header();
       pushHistory(blocks);
       setBlocks([header, ...blocks]);
-      setSelection(header.id);
+      selectBlock(header.id);
       return;
     }
 
@@ -459,14 +464,14 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
     const next = [...blocks, created];
     pushHistory(blocks);
     setBlocks(next);
-    setSelection(created.id);
+    selectBlock(created.id);
   }
 
   function removeBlock(id: string) {
     const next = blocks.filter(b => b.id !== id);
     pushHistory(blocks);
     setBlocks(next);
-    if (selection === id) setSelection(null);
+    if (selection === id) selectBlock(null);
   }
 
   function duplicateBlock(id: string) {
@@ -477,7 +482,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
     next.splice(index + 1, 0, clone);
     pushHistory(blocks);
     setBlocks(next);
-    setSelection(clone.id);
+    selectBlock(clone.id);
   }
 
   function moveBlock(id: string, direction: -1|1) {
@@ -517,10 +522,6 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
     addBlock(kind);
     setBlockLibraryOpen(false);
   };
-
-  useEffect(() => {
-    if (selection) setInspectorOpen(true);
-  }, [selection]);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && window.innerWidth >= 768) {
@@ -813,7 +814,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
               <WebpageBuilder
                 blocks={blocks}
                 selectedBlockId={selection}
-                onSelectBlock={(id) => setSelection(id)}
+                onSelectBlock={(id) => selectBlock(id)}
                 onDeleteBlock={removeBlock}
                 onDuplicateBlock={duplicateBlock}
                 onMoveBlock={moveBlock}
