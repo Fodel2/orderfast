@@ -231,7 +231,7 @@ export function InspectorGroup({
 
         .inspector-group__toggle:hover {
           background: ${tokens.colors.surfaceMuted};
-          border-color: ${tokens.colors.border};
+          border-color: ${tokens.colors.borderStrong};
         }
 
         .inspector-group__content {

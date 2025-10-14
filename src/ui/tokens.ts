@@ -55,6 +55,7 @@ export const tokens = {
     canvas: "var(--canvas, #f1f5f9)",
     surface: "var(--surface, #ffffff)",
     surfaceSubtle: "var(--surface-subtle, #f8fafc)",
+    surfaceMuted: "var(--surface-muted, #f8fafc)",
     surfaceHover: "var(--surface-hover, rgba(15, 23, 42, 0.04))",
     surfaceActive: "var(--surface-active, rgba(15, 23, 42, 0.08))",
     surfaceInverse: "var(--surface-inverse, #0f172a)",
