@@ -10,30 +10,28 @@ export async function getAddonsForItem(
   const query = supabase
     .from('item_addon_links')
     .select(
-      `id,
-       addon_groups (
-         id,
-         restaurant_id,
-         name,
-         required,
-         multiple_choice,
-         max_group_select,
-         max_option_quantity,
-         addon_options (
-           id,
-           group_id,
-           name,
-           price,
-           available,
-           out_of_stock_until,
-           stock_status,
-           stock_return_date,
-           stock_last_updated_at
-         )
-       )`
+      `
+      id,
+      addon_groups (
+        id,
+        name,
+        multiple_choice,
+        required,
+        max_group_select,
+        max_option_quantity,
+        addon_options (
+          id,
+          name,
+          price,
+          available,
+          stock_status,
+          stock_return_date,
+          stock_last_updated_at
+        )
+      )
+    `
     )
-    .eq('item_id', itemId)
-    .is('addon_groups.archived_at', null);
+    .eq('item_id', itemId);
 
   const requestUrl = (query as unknown as { url?: URL }).url?.toString();
 
@@ -80,7 +78,6 @@ export async function getAddonsForItem(
       : [];
 
     options.forEach((opt) => {
-      if (opt?.archived_at) return;
       const optionId = String(opt.id);
       if (optionIds.has(optionId)) return;
       optionIds.add(optionId);
