@@ -793,11 +793,28 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
     setBlocks(next);
   }
 
-  function updateBlock(id: string, patch: Partial<any>) {
-    const next = blocks.map(b => b.id === id ? { ...b, ...patch } as Block : b);
-    pushHistory(blocks);
-    setBlocks(next);
-  }
+  const updateBlock = useCallback(
+    (id: string, patch: Partial<any>) => {
+      setBlocks((current) => {
+        let didUpdate = false;
+        const next = current.map((block) => {
+          if (block.id !== id) {
+            return block;
+          }
+          didUpdate = true;
+          return { ...block, ...patch } as Block;
+        });
+
+        if (!didUpdate) {
+          return current;
+        }
+
+        pushHistory(current);
+        return next;
+      });
+    },
+    [pushHistory],
+  );
 
   const handleAddBlock = useCallback(() => {
     setBlockLibraryOpen(true);

@@ -79,6 +79,31 @@ const gradientDefaults = {
   end: '#1e293b',
 };
 
+const extractHexFallback = (token: string, fallback: string): string => {
+  const match = token.match(/#([0-9a-fA-F]{3,8})/);
+  if (!match) {
+    return fallback;
+  }
+  const [raw] = match;
+  if (!raw) {
+    return fallback;
+  }
+  const hex = raw.replace('#', '');
+  if (hex.length === 3) {
+    return `#${hex
+      .split('')
+      .map((value) => value + value)
+      .join('')}`;
+  }
+  if (hex.length === 8) {
+    return `#${hex.slice(0, 6)}`;
+  }
+  if (hex.length === 6) {
+    return `#${hex}`;
+  }
+  return fallback;
+};
+
 const mergeNested = <T extends Record<string, unknown>>(
   current: T | undefined,
   patch: Partial<T>,
@@ -222,6 +247,7 @@ const TextInspector: React.FC<TextInspectorProps> = ({ block, onChange, restaura
   const hasBackgroundImage = backgroundMode === 'image' && Boolean(background.imageUrl);
   const overlayActive = backgroundMode === 'gradient' || hasBackgroundImage;
   const overlayColorValue = overlay.color ?? '#0f172a';
+  const backgroundColorValue = background.color ?? extractHexFallback(tokens.colors.surface, '#ffffff');
 
   const updateTypography = (patch: Partial<NonNullable<TextBlock['typography']>>) => {
     const next = mergeNested(block.typography, patch);
@@ -453,7 +479,7 @@ const TextInspector: React.FC<TextInspectorProps> = ({ block, onChange, restaura
           {backgroundMode === 'color' ? (
             <InputColor
               label="Background color"
-              value={background.color ?? tokens.colors.surface}
+              value={backgroundColorValue}
               onChange={(value) => updateBackground({ color: value })}
             />
           ) : null}
