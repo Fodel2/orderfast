@@ -221,6 +221,7 @@ const TextInspector: React.FC<TextInspectorProps> = ({ block, onChange, restaura
   const gradientSettings = background.gradient ?? gradientDefaults;
   const hasBackgroundImage = backgroundMode === 'image' && Boolean(background.imageUrl);
   const overlayActive = backgroundMode === 'gradient' || hasBackgroundImage;
+  const overlayColorValue = overlay.color ?? '#0f172a';
 
   const updateTypography = (patch: Partial<NonNullable<TextBlock['typography']>>) => {
     const next = mergeNested(block.typography, patch);
@@ -598,7 +599,7 @@ const TextInspector: React.FC<TextInspectorProps> = ({ block, onChange, restaura
           <InspectorSection title="Overlay">
             <InputColor
               label="Overlay color"
-              value={overlay.color ?? tokens.colors.overlay.strong}
+              value={overlayColorValue}
               onChange={(value) => updateOverlay({ color: value })}
             />
             <InputSlider
