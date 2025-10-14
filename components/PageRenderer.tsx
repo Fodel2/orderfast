@@ -62,9 +62,19 @@ export type HeaderBlock = {
   backgroundImageUrl?: string | null;
   backgroundImageFit?: 'cover' | 'contain';
   backgroundImagePosition?: 'left' | 'center' | 'right';
+  backgroundMode?: 'image' | 'color' | 'gradient';
+  backgroundColor?: string;
+  backgroundGradient?: {
+    angle?: number;
+    start?: string;
+    end?: string;
+  } | null;
   overlayEnabled?: boolean;
   overlayColor?: string;
   overlayOpacity?: number;
+  overlayBrightness?: number;
+  overlayContrast?: number;
+  overlaySaturation?: number;
   fontFamily?: string;
   fontWeight?: number;
   titleFontSize?: number;
@@ -76,6 +86,8 @@ export type HeaderBlock = {
   align?: 'left' | 'center' | 'right';
   paddingTop?: number;
   paddingBottom?: number;
+  marginTop?: number;
+  marginBottom?: number;
   fullWidth?: boolean;
   headerHeight?: number;
 };
@@ -232,12 +244,28 @@ export default function PageRenderer({ blocks, device }: PageRendererProps) {
     const overlayOpacity = clampNumber(block.overlayOpacity ?? 60, 0, 100) / 100;
     const overlayEnabled = block.overlayEnabled ?? false;
     const hasBackgroundImage = Boolean(block.backgroundImageUrl);
-    const overlayBackground =
-      hasBackgroundImage && overlayEnabled
+    const backgroundMode = block.backgroundMode ?? (hasBackgroundImage ? 'image' : 'color');
+    const showBackgroundImage = backgroundMode === 'image' && hasBackgroundImage;
+    const backgroundColor = block.backgroundColor ?? tokens.colors.surfaceInverse;
+    const gradientAngle = block.backgroundGradient?.angle ?? 180;
+    const gradientStart = block.backgroundGradient?.start ?? backgroundColor;
+    const gradientEnd = block.backgroundGradient?.end ?? tokens.colors.surface;
+    const resolvedBackgroundFill =
+      backgroundMode === 'gradient'
+        ? `linear-gradient(${gradientAngle}deg, ${gradientStart}, ${gradientEnd})`
+        : backgroundMode === 'color'
+        ? backgroundColor
+        : tokens.colors.surfaceInverse;
+    const overlayLayerBackground =
+      showBackgroundImage && overlayEnabled
         ? hexToRgba(block.overlayColor ?? '#0f172a', overlayOpacity)
         : 'transparent';
     const backgroundSize = block.backgroundImageFit ?? 'cover';
     const backgroundPosition = `${block.backgroundImagePosition ?? 'center'} center`;
+    const overlayBrightness = clampNumber(block.overlayBrightness ?? 100, 0, 200) / 100;
+    const overlayContrast = clampNumber(block.overlayContrast ?? 100, 0, 200) / 100;
+    const overlaySaturation = clampNumber(block.overlaySaturation ?? 100, 0, 200) / 100;
+    const imageFilter = `brightness(${overlayBrightness}) contrast(${overlayContrast}) saturate(${overlaySaturation})`;
     const horizontalPadding =
       currentDevice === 'desktop'
         ? HEADER_HORIZONTAL_PADDING_DESKTOP
@@ -314,8 +342,10 @@ export default function PageRenderer({ blocks, device }: PageRendererProps) {
           position: 'relative',
           borderRadius: tokens.radius.lg,
           overflow: 'hidden',
-          background: hasBackgroundImage ? tokens.colors.surfaceInverse : tokens.colors.surface,
+          background: showBackgroundImage ? tokens.colors.surfaceInverse : resolvedBackgroundFill,
           boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.12)',
+          marginTop: block.marginTop ?? 0,
+          marginBottom: block.marginBottom ?? 0,
         }}
       >
         <div
@@ -325,10 +355,10 @@ export default function PageRenderer({ blocks, device }: PageRendererProps) {
             justifyContent: 'center',
             minHeight,
             height: headerHeightValue,
-            backgroundColor: hasBackgroundImage ? 'transparent' : tokens.colors.surfaceInverse,
+            background: showBackgroundImage ? 'transparent' : resolvedBackgroundFill,
           }}
         >
-          {hasBackgroundImage ? (
+          {showBackgroundImage ? (
             <img
               src={block.backgroundImageUrl ?? ''}
               alt=""
@@ -340,6 +370,7 @@ export default function PageRenderer({ blocks, device }: PageRendererProps) {
                 objectFit: backgroundSize,
                 objectPosition: backgroundPosition,
                 pointerEvents: 'none',
+                filter: imageFilter,
               }}
             />
           ) : null}
@@ -355,7 +386,7 @@ export default function PageRenderer({ blocks, device }: PageRendererProps) {
               boxSizing: 'border-box',
               display: 'flex',
               justifyContent: 'center',
-              background: overlayBackground,
+              background: overlayLayerBackground,
             }}
           >
             {textColumn}
