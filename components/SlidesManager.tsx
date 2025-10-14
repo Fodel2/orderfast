@@ -3186,9 +3186,13 @@ export default function SlidesManager({
                     selected={selectedId === block.id}
                     editable={editable && editInPreview}
                     inlineEditing={inlineEditing}
-                    onSelect={() => emitSelectBlock(block.id)}
+                    onSelect={() => {
+                      emitSelectBlock(block.id, { openInspector: true });
+                      openInspector?.();
+                    }}
                     onTap={() => {
-                      emitSelectBlock(block.id);
+                      emitSelectBlock(block.id, { openInspector: true });
+                      openInspector?.();
                     }}
                     onDoubleActivate={(details) => {
                       emitSelectBlock(block.id, { openInspector: true });
