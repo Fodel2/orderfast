@@ -5,11 +5,79 @@ import { tokens } from '@/src/ui/tokens';
 
 export type DeviceKind = 'mobile' | 'tablet' | 'desktop';
 
+export type TextTypographySettings = {
+  fontFamily?: string;
+  fontWeight?: number;
+  fontSize?: number;
+  lineHeight?: number;
+  letterSpacing?: number;
+  color?: string;
+  opacity?: number;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  uppercase?: boolean;
+};
+
+export type TextBackgroundSettings = {
+  mode?: 'none' | 'color' | 'gradient' | 'image';
+  color?: string;
+  gradient?: {
+    angle?: number;
+    start?: string;
+    end?: string;
+  } | null;
+  imageUrl?: string | null;
+  imageFit?: 'cover' | 'contain';
+  imagePosition?: 'left' | 'center' | 'right';
+  focalX?: number;
+  focalY?: number;
+  imageOpacity?: number;
+  blur?: number;
+};
+
+export type TextSpacingSettings = {
+  marginTop?: number;
+  marginRight?: number;
+  marginBottom?: number;
+  marginLeft?: number;
+  paddingTop?: number;
+  paddingRight?: number;
+  paddingBottom?: number;
+  paddingLeft?: number;
+};
+
+export type TextOverlaySettings = {
+  color?: string;
+  opacity?: number;
+};
+
+export type TextAnimationType =
+  | 'none'
+  | 'fade-in'
+  | 'slide-in-left'
+  | 'slide-in-right'
+  | 'slide-in-up'
+  | 'slide-in-down'
+  | 'zoom-in';
+
+export type TextAnimationSettings = {
+  enabled?: boolean;
+  type?: TextAnimationType;
+  duration?: number;
+  delay?: number;
+};
+
 export type TextBlock = {
   id: string;
   type: 'text';
   text: string;
   align?: 'left' | 'center' | 'right';
+  typography?: TextTypographySettings;
+  background?: TextBackgroundSettings;
+  spacing?: TextSpacingSettings;
+  overlay?: TextOverlaySettings;
+  animation?: TextAnimationSettings;
 };
 
 export type ImageBlock = {
@@ -161,6 +229,81 @@ const alignToFlex: Record<'left' | 'center' | 'right', 'flex-start' | 'center' |
   center: 'center',
   right: 'flex-end',
 };
+
+const TEXT_ANIMATION_DEFINITIONS: Record<Exclude<TextAnimationType, 'none'>, { name: string; timingFunction: string }> = {
+  'fade-in': { name: 'of-fade-in', timingFunction: 'ease-out' },
+  'slide-in-left': { name: 'of-slide-in-left', timingFunction: 'ease-out' },
+  'slide-in-right': { name: 'of-slide-in-right', timingFunction: 'ease-out' },
+  'slide-in-up': { name: 'of-slide-in-up', timingFunction: 'ease-out' },
+  'slide-in-down': { name: 'of-slide-in-down', timingFunction: 'ease-out' },
+  'zoom-in': { name: 'of-zoom-in', timingFunction: 'ease-out' },
+};
+
+const TEXT_ANIMATION_GLOBAL_STYLES = `
+@keyframes of-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes of-slide-in-left {
+  from {
+    opacity: 0;
+    transform: translate3d(-32px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes of-slide-in-right {
+  from {
+    opacity: 0;
+    transform: translate3d(32px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes of-slide-in-up {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 32px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes of-slide-in-down {
+  from {
+    opacity: 0;
+    transform: translate3d(0, -32px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes of-zoom-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+`;
 
 const hexToRgba = (value: string, alpha: number) => {
   const normalized = (value ?? '').trim();
@@ -402,20 +545,158 @@ export default function PageRenderer({ blocks, device }: PageRendererProps) {
     return tokens.radius.none;
   };
 
-  const renderTextBlock = (block: TextBlock) => (
-    <p
-      key={block.id}
-      style={{
-        margin: `0 0 ${tokens.spacing.md}px`,
-        fontSize: tokens.fontSize.md,
-        lineHeight: tokens.lineHeight.normal,
-        color: tokens.colors.textSecondary,
-        textAlign: block.align ?? 'left',
-      }}
-    >
-      {block.text}
-    </p>
-  );
+  const renderTextBlock = (block: TextBlock) => {
+    const typography = block.typography ?? {};
+    const spacing = block.spacing ?? {};
+    const background = block.background ?? {};
+    const overlay = block.overlay ?? {};
+    const animation = block.animation ?? {};
+    const align = block.align ?? 'left';
+
+    const fontFamily = getFontStackFromId(typography.fontFamily) ?? tokens.fonts.sans;
+    const baseFontWeight =
+      typeof typography.fontWeight === 'number' && Number.isFinite(typography.fontWeight)
+        ? typography.fontWeight
+        : tokens.fontWeight.regular;
+    const fontWeight = typography.bold ? Math.max(baseFontWeight, tokens.fontWeight.semibold) : baseFontWeight;
+    const fontSize =
+      typeof typography.fontSize === 'number' && Number.isFinite(typography.fontSize)
+        ? typography.fontSize
+        : tokens.fontSize.md;
+    const lineHeight =
+      typeof typography.lineHeight === 'number' && Number.isFinite(typography.lineHeight)
+        ? typography.lineHeight
+        : tokens.lineHeight.normal;
+    const letterSpacing =
+      typeof typography.letterSpacing === 'number' && Number.isFinite(typography.letterSpacing)
+        ? typography.letterSpacing
+        : 0;
+    const textColor = typography.color ?? tokens.colors.textSecondary;
+    const textOpacity = clampNumber(typography.opacity ?? 100, 0, 100) / 100;
+    const resolvedTextColor = hexToRgba(textColor, textOpacity);
+
+    const marginTop = spacing.marginTop ?? 0;
+    const marginRight = spacing.marginRight ?? 0;
+    const marginBottom = spacing.marginBottom ?? tokens.spacing.md;
+    const marginLeft = spacing.marginLeft ?? 0;
+    const paddingTop = spacing.paddingTop ?? 0;
+    const paddingRight = spacing.paddingRight ?? 0;
+    const paddingBottom = spacing.paddingBottom ?? 0;
+    const paddingLeft = spacing.paddingLeft ?? 0;
+
+    const backgroundMode = background.mode ?? 'none';
+    const gradientSettings = background.gradient ?? {
+      angle: 180,
+      start: tokens.colors.surfaceInverse,
+      end: tokens.colors.surface,
+    };
+    const hasBackgroundImage = backgroundMode === 'image' && Boolean(background.imageUrl);
+    const shouldShowOverlay =
+      (backgroundMode === 'gradient' || backgroundMode === 'image') &&
+      (overlay.opacity !== undefined || overlay.color !== undefined);
+    const overlayOpacity = clampNumber(overlay.opacity ?? 0, 0, 100) / 100;
+    const overlayColor = overlay.color ?? tokens.colors.overlay.strong;
+
+    const imageOpacity = clampNumber(background.imageOpacity ?? 100, 0, 100) / 100;
+    const imageBlur = clampNumber(background.blur ?? 0, 0, 100);
+    const focalX = clampNumber(background.focalX ?? 50, 0, 100);
+    const focalY = clampNumber(background.focalY ?? 50, 0, 100);
+    const imagePosition = `${background.imagePosition ?? 'center'} center`;
+    const focalPosition = `${focalX}% ${focalY}%`;
+    const resolvedObjectPosition =
+      background.focalX !== undefined || background.focalY !== undefined ? focalPosition : imagePosition;
+
+    const containerStyle: React.CSSProperties = {
+      marginTop,
+      marginRight,
+      marginBottom,
+      marginLeft,
+    };
+
+    const wrapperStyle: React.CSSProperties = {
+      position: 'relative',
+      display: 'block',
+      paddingTop,
+      paddingRight,
+      paddingBottom,
+      paddingLeft,
+      boxSizing: 'border-box',
+      textAlign: align,
+      borderRadius: backgroundMode !== 'none' || hasBackgroundImage ? tokens.radius.md : undefined,
+      overflow: hasBackgroundImage ? 'hidden' : undefined,
+      background:
+        backgroundMode === 'color'
+          ? background.color ?? tokens.colors.surface
+          : backgroundMode === 'gradient'
+          ? `linear-gradient(${gradientSettings.angle ?? 180}deg, ${
+              gradientSettings.start ?? tokens.colors.surfaceInverse
+            }, ${gradientSettings.end ?? tokens.colors.surface})`
+          : undefined,
+    };
+
+    const animationEnabled = animation.enabled ?? false;
+    const animationType = animation.type ?? 'none';
+    if (animationEnabled && animationType !== 'none') {
+      const definition = TEXT_ANIMATION_DEFINITIONS[animationType as Exclude<TextAnimationType, 'none'>];
+      if (definition) {
+        wrapperStyle.animationName = definition.name;
+        wrapperStyle.animationDuration = `${clampNumber(animation.duration ?? 300, 0, 10000)}ms`;
+        wrapperStyle.animationDelay = `${clampNumber(animation.delay ?? 0, 0, 10000)}ms`;
+        wrapperStyle.animationTimingFunction = definition.timingFunction;
+        wrapperStyle.animationFillMode = 'both';
+      }
+    }
+
+    const textStyle: React.CSSProperties = {
+      margin: 0,
+      color: resolvedTextColor,
+      fontSize,
+      lineHeight,
+      letterSpacing,
+      fontWeight,
+      fontFamily,
+      fontStyle: typography.italic ? 'italic' : 'normal',
+      textDecoration: typography.underline ? 'underline' : 'none',
+      textTransform: typography.uppercase ? 'uppercase' : 'none',
+    };
+
+    return (
+      <div key={block.id} style={containerStyle}>
+        <div style={wrapperStyle}>
+          {hasBackgroundImage ? (
+            <img
+              src={background.imageUrl ?? ''}
+              alt=""
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                objectFit: background.imageFit ?? 'cover',
+                objectPosition: resolvedObjectPosition,
+                opacity: imageOpacity,
+                filter: imageBlur > 0 ? `blur(${imageBlur}px)` : undefined,
+                pointerEvents: 'none',
+              }}
+            />
+          ) : null}
+          {shouldShowOverlay && overlayOpacity > 0
+            ? (
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    background: hexToRgba(overlayColor, overlayOpacity),
+                    pointerEvents: 'none',
+                  }}
+                />
+              )
+            : null}
+          <p style={textStyle}>{block.text}</p>
+        </div>
+      </div>
+    );
+  };
 
   const renderImageBlock = (block: ImageBlock) => {
     const style: React.CSSProperties = {
@@ -647,5 +928,10 @@ export default function PageRenderer({ blocks, device }: PageRendererProps) {
     }
   }
 
-  return <div>{blocks.map(renderBlock)}</div>;
+  return (
+    <>
+      <div>{blocks.map(renderBlock)}</div>
+      <style jsx global>{TEXT_ANIMATION_GLOBAL_STYLES}</style>
+    </>
+  );
 }

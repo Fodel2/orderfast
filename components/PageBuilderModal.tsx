@@ -15,12 +15,14 @@ import type {
   Block,
   HeaderBlock,
   ImageBlock,
+  TextAnimationType,
   TextBlock,
   TwoColumnBlock,
   TwoColumnColumn,
 } from './PageRenderer';
 import WebpageBuilder from './webpage/WebpageBuilder';
 import HeaderInspector from './webpage/HeaderInspector';
+import TextInspector from './webpage/TextInspector';
 import InspectorPanel from './inspector/InspectorPanel';
 import AddBlockModal from './modals/AddBlockModal';
 import { STORAGE_BUCKET } from '@/lib/storage';
@@ -206,6 +208,262 @@ const cloneImage = (block: ImageBlock | null | undefined) =>
       } satisfies ImageBlock)
     : null;
 
+const ensureNumber = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+
+const ensureString = (value: unknown): string | undefined =>
+  typeof value === 'string' ? value : undefined;
+
+const ensureBoolean = (value: unknown): boolean | undefined =>
+  typeof value === 'boolean' ? value : undefined;
+
+const clampWithin = (value: number, min: number, max: number): number => {
+  if (Number.isNaN(value)) return min;
+  if (value < min) return min;
+  if (value > max) return max;
+  return value;
+};
+
+const TEXT_BACKGROUND_MODES = new Set(['none', 'color', 'gradient', 'image']);
+
+const TEXT_ANIMATION_TYPES: TextAnimationType[] = [
+  'none',
+  'fade-in',
+  'slide-in-left',
+  'slide-in-right',
+  'slide-in-up',
+  'slide-in-down',
+  'zoom-in',
+];
+
+const sanitizeTextTypography = (value: any): TextBlock['typography'] | undefined => {
+  if (!value || typeof value !== 'object') return undefined;
+  const typography: NonNullable<TextBlock['typography']> = {};
+
+  const fontFamily = ensureString(value.fontFamily);
+  if (fontFamily) {
+    typography.fontFamily = fontFamily;
+  }
+
+  const fontWeight = ensureNumber(value.fontWeight);
+  if (fontWeight !== undefined) {
+    typography.fontWeight = fontWeight;
+  }
+
+  const fontSize = ensureNumber(value.fontSize);
+  if (fontSize !== undefined) {
+    typography.fontSize = fontSize;
+  }
+
+  const lineHeight = ensureNumber(value.lineHeight);
+  if (lineHeight !== undefined) {
+    typography.lineHeight = lineHeight;
+  }
+
+  const letterSpacing = ensureNumber(value.letterSpacing);
+  if (letterSpacing !== undefined) {
+    typography.letterSpacing = letterSpacing;
+  }
+
+  const color = ensureString(value.color);
+  if (color && color.trim().length > 0) {
+    typography.color = color;
+  }
+
+  const opacity = ensureNumber(value.opacity);
+  if (opacity !== undefined) {
+    typography.opacity = opacity;
+  }
+
+  const bold = ensureBoolean(value.bold);
+  if (bold !== undefined) {
+    typography.bold = bold;
+  }
+
+  const italic = ensureBoolean(value.italic);
+  if (italic !== undefined) {
+    typography.italic = italic;
+  }
+
+  const underline = ensureBoolean(value.underline);
+  if (underline !== undefined) {
+    typography.underline = underline;
+  }
+
+  const uppercase = ensureBoolean(value.uppercase);
+  if (uppercase !== undefined) {
+    typography.uppercase = uppercase;
+  }
+
+  return Object.keys(typography).length > 0 ? typography : undefined;
+};
+
+const sanitizeTextBackground = (value: any): TextBlock['background'] | undefined => {
+  if (!value || typeof value !== 'object') return undefined;
+  const background: NonNullable<TextBlock['background']> = {};
+
+  const modeCandidate = ensureString(value.mode);
+  if (modeCandidate && TEXT_BACKGROUND_MODES.has(modeCandidate)) {
+    background.mode = modeCandidate as NonNullable<TextBlock['background']>['mode'];
+  }
+
+  const color = ensureString(value.color);
+  if (color && color.trim().length > 0) {
+    background.color = color;
+  }
+
+  if (value.gradient && typeof value.gradient === 'object') {
+    const gradient: NonNullable<NonNullable<TextBlock['background']>['gradient']> = {};
+    const start = ensureString(value.gradient.start);
+    if (start && start.trim().length > 0) {
+      gradient.start = start;
+    }
+    const end = ensureString(value.gradient.end);
+    if (end && end.trim().length > 0) {
+      gradient.end = end;
+    }
+    const angle = ensureNumber(value.gradient.angle);
+    if (angle !== undefined) {
+      gradient.angle = angle;
+    }
+    if (Object.keys(gradient).length > 0) {
+      background.gradient = gradient;
+    }
+  }
+
+  if (value.imageUrl === null) {
+    background.imageUrl = null;
+  } else {
+    const imageUrl = ensureString(value.imageUrl);
+    if (imageUrl) {
+      background.imageUrl = imageUrl;
+    }
+  }
+
+  const imageFitCandidate = ensureString(value.imageFit);
+  if (imageFitCandidate === 'cover' || imageFitCandidate === 'contain') {
+    background.imageFit = imageFitCandidate;
+  }
+
+  const imagePositionCandidate = ensureString(value.imagePosition);
+  if (imagePositionCandidate && ['left', 'center', 'right'].includes(imagePositionCandidate)) {
+    background.imagePosition = imagePositionCandidate as 'left' | 'center' | 'right';
+  }
+
+  const focalX = ensureNumber(value.focalX);
+  if (focalX !== undefined) {
+    background.focalX = clampWithin(focalX, 0, 100);
+  }
+
+  const focalY = ensureNumber(value.focalY);
+  if (focalY !== undefined) {
+    background.focalY = clampWithin(focalY, 0, 100);
+  }
+
+  const imageOpacity = ensureNumber(value.imageOpacity);
+  if (imageOpacity !== undefined) {
+    background.imageOpacity = imageOpacity;
+  }
+
+  const blur = ensureNumber(value.blur);
+  if (blur !== undefined) {
+    background.blur = blur;
+  }
+
+  return Object.keys(background).length > 0 ? background : undefined;
+};
+
+const sanitizeTextSpacing = (value: any): TextBlock['spacing'] | undefined => {
+  if (!value || typeof value !== 'object') return undefined;
+  const spacing: NonNullable<TextBlock['spacing']> = {};
+
+  const marginTop = ensureNumber(value.marginTop);
+  if (marginTop !== undefined) {
+    spacing.marginTop = marginTop;
+  }
+
+  const marginRight = ensureNumber(value.marginRight);
+  if (marginRight !== undefined) {
+    spacing.marginRight = marginRight;
+  }
+
+  const marginBottom = ensureNumber(value.marginBottom);
+  if (marginBottom !== undefined) {
+    spacing.marginBottom = marginBottom;
+  }
+
+  const marginLeft = ensureNumber(value.marginLeft);
+  if (marginLeft !== undefined) {
+    spacing.marginLeft = marginLeft;
+  }
+
+  const paddingTop = ensureNumber(value.paddingTop);
+  if (paddingTop !== undefined) {
+    spacing.paddingTop = paddingTop;
+  }
+
+  const paddingRight = ensureNumber(value.paddingRight);
+  if (paddingRight !== undefined) {
+    spacing.paddingRight = paddingRight;
+  }
+
+  const paddingBottom = ensureNumber(value.paddingBottom);
+  if (paddingBottom !== undefined) {
+    spacing.paddingBottom = paddingBottom;
+  }
+
+  const paddingLeft = ensureNumber(value.paddingLeft);
+  if (paddingLeft !== undefined) {
+    spacing.paddingLeft = paddingLeft;
+  }
+
+  return Object.keys(spacing).length > 0 ? spacing : undefined;
+};
+
+const sanitizeTextOverlay = (value: any): TextBlock['overlay'] | undefined => {
+  if (!value || typeof value !== 'object') return undefined;
+  const overlay: NonNullable<TextBlock['overlay']> = {};
+
+  const color = ensureString(value.color);
+  if (color && color.trim().length > 0) {
+    overlay.color = color;
+  }
+
+  const opacity = ensureNumber(value.opacity);
+  if (opacity !== undefined) {
+    overlay.opacity = opacity;
+  }
+
+  return Object.keys(overlay).length > 0 ? overlay : undefined;
+};
+
+const sanitizeTextAnimation = (value: any): TextBlock['animation'] | undefined => {
+  if (!value || typeof value !== 'object') return undefined;
+  const animation: NonNullable<TextBlock['animation']> = {};
+
+  const enabled = ensureBoolean(value.enabled);
+  if (enabled !== undefined) {
+    animation.enabled = enabled;
+  }
+
+  const typeCandidate = ensureString(value.type);
+  if (typeCandidate && TEXT_ANIMATION_TYPES.includes(typeCandidate as TextAnimationType)) {
+    animation.type = typeCandidate as TextAnimationType;
+  }
+
+  const duration = ensureNumber(value.duration);
+  if (duration !== undefined) {
+    animation.duration = duration;
+  }
+
+  const delay = ensureNumber(value.delay);
+  if (delay !== undefined) {
+    animation.delay = delay;
+  }
+
+  return Object.keys(animation).length > 0 ? animation : undefined;
+};
+
 function cloneBlockWithIds(block: Block): Block {
   const baseId = crypto.randomUUID();
   switch (block.type) {
@@ -240,12 +498,40 @@ function cloneBlockWithIds(block: Block): Block {
 const normalizeTextBlockValue = (value: any, fallbackText: string): TextBlock => {
   if (value && typeof value === 'object' && value.type === 'text') {
     const align = value.align === 'center' || value.align === 'right' ? value.align : 'left';
-    return {
+    const typography = sanitizeTextTypography(value.typography);
+    const background = sanitizeTextBackground(value.background);
+    const spacing = sanitizeTextSpacing(value.spacing);
+    const overlay = sanitizeTextOverlay(value.overlay);
+    const animation = sanitizeTextAnimation(value.animation);
+
+    const block: TextBlock = {
       id: typeof value.id === 'string' ? value.id : crypto.randomUUID(),
       type: 'text',
       text: typeof value.text === 'string' ? value.text : fallbackText,
       align,
     };
+
+    if (typography) {
+      block.typography = typography;
+    }
+
+    if (background) {
+      block.background = background;
+    }
+
+    if (spacing) {
+      block.spacing = spacing;
+    }
+
+    if (overlay) {
+      block.overlay = overlay;
+    }
+
+    if (animation) {
+      block.animation = animation;
+    }
+
+    return block;
   }
   return createTextBlock({ text: fallbackText });
 };
@@ -1012,10 +1298,11 @@ function Inspector({
       );
     case 'text':
       return (
-        <div>
-          <Field label="Text"><textarea rows={6} className="w-full rounded border px-2 py-1" value={block.text} onChange={e=>onChange({ text: e.target.value })} /></Field>
-          <Align value={block.align ?? 'left'} onChange={(align)=>onChange({ align })} />
-        </div>
+        <TextInspector
+          block={block}
+          onChange={onChange}
+          restaurantId={restaurantId}
+        />
       );
     case 'image':
       return (
