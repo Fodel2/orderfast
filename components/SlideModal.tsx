@@ -108,6 +108,7 @@ import InspectorInputUpload from "../src/components/inspector/controls/InputUplo
 import { inspectorColors, inspectorLayout } from "../src/components/inspector/layout";
 import { tokens } from "../src/ui/tokens";
 import { resolveTypographySpacing } from "@/src/utils/typography";
+import InspectorPanel from "./inspector/InspectorPanel";
 import { supabase } from "@/utils/supabaseClient";
 import { STORAGE_BUCKET } from "@/lib/storage";
 import { SlideRow } from "@/components/customer/home/SlidesContainer";
@@ -599,8 +600,6 @@ const BLOCK_KIND_LABELS: Record<SlideBlock["kind"], string> = {
 
 const PREVIEW_PADDING_X = tokens.spacing.md;
 const PREVIEW_PADDING_Y = tokens.spacing.md;
-const INSPECTOR_MIN_WIDTH = tokens.spacing.xl * 8;
-const INSPECTOR_MAX_WIDTH = tokens.spacing.xl * 14;
 const ZOOM_STEP = 0.1;
 const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 2;
@@ -4469,7 +4468,7 @@ export default function SlideModal({
                 </div>
               </aside>
             )}
-            <div className="flex flex-1 overflow-hidden bg-neutral-50">
+            <div className="relative flex flex-1 overflow-hidden bg-neutral-50">
               <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
                 <div style={previewToolbarStyle}>
                   <span className="text-xs font-semibold uppercase tracking-wide text-neutral-600">
@@ -4574,14 +4573,13 @@ export default function SlideModal({
                   </div>
                 </div>
               </div>
-              {inspectorOpen && selectedBlock && (
-                <aside
-                  className="flex h-full flex-col border-l bg-white"
-                  style={{
-                    flexBasis: `min(50%, ${INSPECTOR_MAX_WIDTH}px)`,
-                    minWidth: INSPECTOR_MIN_WIDTH,
-                  }}
-                >
+              <InspectorPanel
+                open={Boolean(inspectorOpen && selectedBlock)}
+                bodyStyle={{ padding: 0 }}
+                contentStyle={{ height: '100%' }}
+              >
+                {inspectorOpen && selectedBlock ? (
+                
                   <div className="flex-1 min-h-0 flex flex-col">
                     <div
                       className="border-b bg-white"
@@ -6925,8 +6923,8 @@ export default function SlideModal({
                     </section>
                     </InspectorContainer>
                   </div>
-                </aside>
-              )}
+                ) : null}
+              </InspectorPanel>
             </div>
           </div>
         </div>

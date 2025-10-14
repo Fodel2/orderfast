@@ -21,8 +21,7 @@ import type {
 } from './PageRenderer';
 import WebpageBuilder from './webpage/WebpageBuilder';
 import HeaderInspector from './webpage/HeaderInspector';
-import MobileInspector from './inspector/MobileInspector';
-import SideInspector from './inspector/SideInspector';
+import InspectorPanel from './inspector/InspectorPanel';
 import AddBlockModal from './modals/AddBlockModal';
 import { STORAGE_BUCKET } from '@/lib/storage';
 import { supabase } from '@/lib/supabaseClient';
@@ -556,28 +555,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
     ),
     [],
   );
-  const mobileInspectorOpen = Boolean(isMobile && inspectorOpen && selectedBlock);
-  const inspector = isMobile ? (
-    <MobileInspector
-      key="mobile"
-      className="wb-inspector wb-inspector--bottom md:hidden"
-      open={mobileInspectorOpen}
-      subtitle={inspectorSubtitle}
-      onClose={() => setInspectorOpen(false)}
-      renderContent={() => inspectorContent}
-    />
-  ) : (
-    <SideInspector
-      key="desktop"
-      className="hidden md:flex wb-inspector wb-inspector--side"
-      open={inspectorVisible}
-      selectedBlock={selectedBlock}
-      subtitle={inspectorSubtitle}
-      onClose={() => setInspectorOpen(false)}
-      renderContent={() => inspectorContent}
-      emptyState={inspectorEmptyState}
-    />
-  );
+  const inspectorShouldOpen = Boolean(inspectorVisible && selectedBlock);
 
   const drawerPanelStyle = useMemo<React.CSSProperties>(
     () => ({
@@ -809,7 +787,12 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
             <main
               ref={blockLibraryHostRef}
               className="flex-1"
-              style={{ position: 'relative', zIndex: 30 }}
+              style={{
+                position: 'relative',
+                zIndex: 30,
+                paddingRight: !isMobile && inspectorShouldOpen ? 380 : undefined,
+                transition: 'padding 200ms ease',
+              }}
             >
               <WebpageBuilder
                 blocks={blocks}
@@ -822,8 +805,15 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
                 inspectorVisible={inspectorVisible}
               />
             </main>
+            <InspectorPanel
+              open={inspectorShouldOpen}
+              title="Inspector"
+              subtitle={inspectorSubtitle}
+              onClose={() => setInspectorOpen(false)}
+            >
+              {selectedBlock ? inspectorContent : inspectorEmptyState}
+            </InspectorPanel>
           </div>
-          {!isMobile ? inspector : null}
         </div>
       </div>
 
@@ -835,7 +825,6 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
         containerRef={blockLibraryHostRef}
       />
 
-      {isMobile ? inspector : null}
       <style jsx global>{`
         .wb-toolbar {
           gap: 8px;
