@@ -21,8 +21,7 @@ import type {
 } from './PageRenderer';
 import WebpageBuilder from './webpage/WebpageBuilder';
 import HeaderInspector from './webpage/HeaderInspector';
-import MobileInspector from './inspector/MobileInspector';
-import SideInspector from './inspector/SideInspector';
+import InspectorPanel from './inspector/InspectorPanel';
 import AddBlockModal from './modals/AddBlockModal';
 import { STORAGE_BUCKET } from '@/lib/storage';
 import { supabase } from '@/lib/supabaseClient';
@@ -402,6 +401,11 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
   const history = useRef<Block[][]>([]);
   const future = useRef<Block[][]>([]);
 
+  const selectBlock = useCallback((id: string | null) => {
+    setSelection(id);
+    setInspectorOpen(Boolean(id));
+  }, []);
+
   // Load page JSON
   useEffect(() => {
     if (!open || !pageId) return;
@@ -440,7 +444,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
     if (kind === 'header') {
       const existingHeader = blocks.find((block) => block.type === 'header');
       if (existingHeader) {
-        setSelection(existingHeader.id);
+        selectBlock(existingHeader.id);
         if (blocks[0]?.id !== existingHeader.id) {
           const reordered = [existingHeader, ...blocks.filter((block) => block.id !== existingHeader.id)];
           pushHistory(blocks);
@@ -451,7 +455,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
       const header = NEW_BLOCKS.header();
       pushHistory(blocks);
       setBlocks([header, ...blocks]);
-      setSelection(header.id);
+      selectBlock(header.id);
       return;
     }
 
@@ -459,14 +463,14 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
     const next = [...blocks, created];
     pushHistory(blocks);
     setBlocks(next);
-    setSelection(created.id);
+    selectBlock(created.id);
   }
 
   function removeBlock(id: string) {
     const next = blocks.filter(b => b.id !== id);
     pushHistory(blocks);
     setBlocks(next);
-    if (selection === id) setSelection(null);
+    if (selection === id) selectBlock(null);
   }
 
   function duplicateBlock(id: string) {
@@ -477,7 +481,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
     next.splice(index + 1, 0, clone);
     pushHistory(blocks);
     setBlocks(next);
-    setSelection(clone.id);
+    selectBlock(clone.id);
   }
 
   function moveBlock(id: string, direction: -1|1) {
@@ -519,10 +523,6 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
   };
 
   useEffect(() => {
-    if (selection) setInspectorOpen(true);
-  }, [selection]);
-
-  useEffect(() => {
     if (typeof window !== 'undefined' && window.innerWidth >= 768) {
       setDrawerOpen(true);
     }
@@ -555,28 +555,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
     ),
     [],
   );
-  const mobileInspectorOpen = Boolean(isMobile && inspectorOpen && selectedBlock);
-  const inspector = isMobile ? (
-    <MobileInspector
-      key="mobile"
-      className="wb-inspector wb-inspector--bottom md:hidden"
-      open={mobileInspectorOpen}
-      subtitle={inspectorSubtitle}
-      onClose={() => setInspectorOpen(false)}
-      renderContent={() => inspectorContent}
-    />
-  ) : (
-    <SideInspector
-      key="desktop"
-      className="hidden md:flex wb-inspector wb-inspector--side"
-      open={inspectorVisible}
-      selectedBlock={selectedBlock}
-      subtitle={inspectorSubtitle}
-      onClose={() => setInspectorOpen(false)}
-      renderContent={() => inspectorContent}
-      emptyState={inspectorEmptyState}
-    />
-  );
+  const inspectorShouldOpen = Boolean(inspectorVisible && selectedBlock);
 
   const drawerPanelStyle = useMemo<React.CSSProperties>(
     () => ({
@@ -808,12 +787,17 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
             <main
               ref={blockLibraryHostRef}
               className="flex-1"
-              style={{ position: 'relative', zIndex: 30 }}
+              style={{
+                position: 'relative',
+                zIndex: 30,
+                paddingRight: !isMobile && inspectorShouldOpen ? 380 : undefined,
+                transition: 'padding 200ms ease',
+              }}
             >
               <WebpageBuilder
                 blocks={blocks}
                 selectedBlockId={selection}
-                onSelectBlock={(id) => setSelection(id)}
+                onSelectBlock={(id) => selectBlock(id)}
                 onDeleteBlock={removeBlock}
                 onDuplicateBlock={duplicateBlock}
                 onMoveBlock={moveBlock}
@@ -821,8 +805,15 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
                 inspectorVisible={inspectorVisible}
               />
             </main>
+            <InspectorPanel
+              open={inspectorShouldOpen}
+              title="Inspector"
+              subtitle={inspectorSubtitle}
+              onClose={() => setInspectorOpen(false)}
+            >
+              {selectedBlock ? inspectorContent : inspectorEmptyState}
+            </InspectorPanel>
           </div>
-          {!isMobile ? inspector : null}
         </div>
       </div>
 
@@ -834,7 +825,6 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
         containerRef={blockLibraryHostRef}
       />
 
-      {isMobile ? inspector : null}
       <style jsx global>{`
         .wb-toolbar {
           gap: 8px;
