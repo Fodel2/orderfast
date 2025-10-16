@@ -1,4 +1,5 @@
-import { ChangeEvent, useMemo, useRef } from "react";
+import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { inspectorColors, inspectorLayout } from "../layout";
 import { tokens } from "../../../ui/tokens";
@@ -16,6 +17,29 @@ const {
 
 const CHECKERBOARD_BACKGROUND =
   "linear-gradient(45deg, #f3f4f6 25%, transparent 25%), linear-gradient(-45deg, #f3f4f6 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #f3f4f6 75%), linear-gradient(-45deg, transparent 75%, #f3f4f6 75%)";
+
+const PRESET_SWATCHES = [
+  "#ffffff",
+  "#f8fafc",
+  "#f1f5f9",
+  "#e2e8f0",
+  "#cbd5f5",
+  "#94a3b8",
+  "#0f172a",
+  "#1e293b",
+  "#334155",
+  "#2563eb",
+  "#1d4ed8",
+  "#0ea5e9",
+  "#22c55e",
+  "#16a34a",
+  "#f97316",
+  "#ea580c",
+  "#facc15",
+  "#f59e0b",
+  "#ef4444",
+  "#dc2626",
+];
 
 function normalizeHex(value: string): string {
   if (typeof value !== "string") {
@@ -63,6 +87,7 @@ export interface InputColorProps {
   disabled?: boolean;
   placeholder?: string;
   onChange: (value: string) => void;
+  onColorInputChange?: (value: string) => void;
 }
 
 export function InputColor({
@@ -72,20 +97,46 @@ export function InputColor({
   disabled = false,
   placeholder = "#000000",
   onChange,
+  onColorInputChange,
 }: InputColorProps) {
   const inputId = id ?? `color-${label.replace(/\s+/g, "-").toLowerCase()}`;
-  const colorInputRef = useRef<HTMLInputElement | null>(null);
+  const swatchRef = useRef<HTMLButtonElement | null>(null);
+  const [isPopoverOpen, setIsPopoverOpen] = useState(false);
+  const [draftValue, setDraftValue] = useState(value);
 
-  const normalizedHex = useMemo(() => normalizeHex(value), [value]);
-  const preview = value?.trim().length ? value : normalizedHex;
+  const normalizedHex = useMemo(() => normalizeHex(draftValue), [draftValue]);
+  const preview = draftValue?.trim().length ? draftValue : normalizedHex;
 
-  const handleColorChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onChange(event.target.value);
-  };
+  useEffect(() => {
+    setDraftValue(value);
+  }, [value]);
 
   const handleTextChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onChange(event.target.value);
+    const next = event.target.value;
+    setDraftValue(next);
+    onChange(next);
   };
+
+  const handleSelect = useCallback(
+    (next: string) => {
+      setDraftValue(next);
+      if (onColorInputChange) {
+        onColorInputChange(next);
+      } else {
+        onChange(next);
+      }
+    },
+    [onChange, onColorInputChange],
+  );
+
+  const togglePopover = useCallback(() => {
+    if (disabled) return;
+    setIsPopoverOpen((current) => !current);
+  }, [disabled]);
+
+  const closePopover = useCallback(() => {
+    setIsPopoverOpen(false);
+  }, []);
 
   return (
     <div className="inspector-row">
@@ -96,7 +147,8 @@ export function InputColor({
         <button
           type="button"
           className="color-swatch"
-          onClick={() => colorInputRef.current?.click()}
+          ref={swatchRef}
+          onClick={togglePopover}
           disabled={disabled}
           aria-label={`Choose ${label}`}
         >
@@ -104,24 +156,25 @@ export function InputColor({
           <span aria-hidden className="swatch-fill" style={{ background: preview }} />
         </button>
         <input
-          ref={colorInputRef}
           id={inputId}
-          type="color"
-          className="sr-only"
-          value={normalizedHex}
-          onChange={handleColorChange}
-          disabled={disabled}
-        />
-        <input
           aria-label={`${label} value`}
           type="text"
-          value={value}
+          value={draftValue}
           onChange={handleTextChange}
           disabled={disabled}
           placeholder={placeholder}
           className="color-text-input"
         />
       </div>
+
+      <ColorPickerPopover
+        anchorRef={swatchRef}
+        open={isPopoverOpen}
+        value={normalizedHex}
+        displayValue={draftValue}
+        onClose={closePopover}
+        onSelect={handleSelect}
+      />
 
       <style jsx>{`
         .inspector-row {
@@ -217,3 +270,210 @@ export function InputColor({
 }
 
 export default InputColor;
+
+type ColorPickerPopoverProps = {
+  anchorRef: React.RefObject<HTMLElement>;
+  open: boolean;
+  value: string;
+  displayValue: string;
+  onSelect: (value: string) => void;
+  onClose: () => void;
+};
+
+function ColorPickerPopover({
+  anchorRef,
+  open,
+  value,
+  displayValue,
+  onSelect,
+  onClose,
+}: ColorPickerPopoverProps) {
+  const portalRef = useRef<HTMLDivElement | null>(null);
+  const [mounted, setMounted] = useState(false);
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return undefined;
+    }
+    const portalNode = document.createElement("div");
+    portalNode.className = "color-picker-portal";
+    document.body.appendChild(portalNode);
+    portalRef.current = portalNode;
+    setMounted(true);
+    return () => {
+      if (portalRef.current && portalRef.current.parentNode) {
+        portalRef.current.parentNode.removeChild(portalRef.current);
+      }
+      portalRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const updatePosition = () => {
+      const anchor = anchorRef.current;
+      if (!anchor) return;
+      const rect = anchor.getBoundingClientRect();
+      const width = 264;
+      const height = 248;
+      const margin = 12;
+      const preferredTop = rect.bottom + margin;
+      let top = preferredTop;
+      if (preferredTop + height > window.innerHeight - margin) {
+        top = Math.max(margin, rect.top - height - margin);
+      }
+      const centerLeft = rect.left + rect.width / 2 - width / 2;
+      const left = Math.min(
+        window.innerWidth - width - margin,
+        Math.max(margin, centerLeft),
+      );
+      setPosition({ top, left });
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [anchorRef, open]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open, onClose]);
+
+  if (!open || !mounted || !portalRef.current) {
+    return null;
+  }
+
+  return createPortal(
+    <>
+      <div className="color-picker-overlay" onClick={onClose} />
+      <div className="color-picker-popover" style={{ top: position.top, left: position.left }}>
+        <div className="color-picker-header">
+          <span
+            className="color-picker-preview"
+            style={{ backgroundColor: displayValue ?? value }}
+          />
+          <span className="color-picker-value">{displayValue ?? value}</span>
+        </div>
+        <input
+          aria-label="Color spectrum"
+          className="color-picker-spectrum"
+          type="color"
+          value={value}
+          onChange={(event) => onSelect(event.target.value)}
+        />
+        <div className="color-picker-swatches">
+          {PRESET_SWATCHES.map((swatch) => (
+            <button
+              key={swatch}
+              type="button"
+              className="color-picker-swatch"
+              style={{ background: swatch }}
+              onClick={() => onSelect(swatch)}
+              aria-label={`Use ${swatch}`}
+            />
+          ))}
+        </div>
+      </div>
+
+      <style jsx global>{`
+        .color-picker-overlay {
+          position: fixed;
+          inset: 0;
+          background: transparent;
+          z-index: 9998;
+        }
+
+        .color-picker-popover {
+          position: fixed;
+          z-index: 9999;
+          width: 264px;
+          padding: 16px;
+          border-radius: 16px;
+          background: #ffffff;
+          border: 1px solid rgba(15, 23, 42, 0.08);
+          box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          pointer-events: auto;
+        }
+
+        .color-picker-header {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .color-picker-preview {
+          width: 40px;
+          height: 40px;
+          border-radius: 10px;
+          border: 1px solid rgba(15, 23, 42, 0.12);
+          box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+          background-image: ${CHECKERBOARD_BACKGROUND};
+        }
+
+        .color-picker-value {
+          font-family: "JetBrains Mono", "Fira Code", monospace;
+          font-size: 0.75rem;
+          color: ${inspectorColors.text};
+        }
+
+        .color-picker-spectrum {
+          width: 100%;
+          height: 160px;
+          border-radius: 12px;
+          border: none;
+          padding: 0;
+          background: transparent;
+        }
+
+        .color-picker-spectrum::-webkit-color-swatch-wrapper {
+          padding: 0;
+        }
+
+        .color-picker-spectrum::-webkit-color-swatch {
+          border-radius: 12px;
+          border: none;
+        }
+
+        .color-picker-swatches {
+          display: grid;
+          grid-template-columns: repeat(5, minmax(0, 1fr));
+          gap: 8px;
+        }
+
+        .color-picker-swatch {
+          width: 100%;
+          aspect-ratio: 1 / 1;
+          border-radius: 8px;
+          border: 1px solid rgba(15, 23, 42, 0.12);
+          box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+          cursor: pointer;
+        }
+
+        .color-picker-swatch:focus-visible {
+          outline: 2px solid ${tokens.colors.accent};
+          outline-offset: 2px;
+        }
+      `}</style>
+    </>,
+    portalRef.current,
+  );
+}

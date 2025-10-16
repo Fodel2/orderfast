@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import FontSelect from '@/components/ui/FontSelect';
 import { STORAGE_BUCKET } from '@/lib/storage';
@@ -248,7 +248,12 @@ const TextInspector: React.FC<TextInspectorProps> = ({ block, onChange, restaura
   const hasBackgroundImage = backgroundType === 'image' && Boolean(background.imageUrl);
   const overlayActive = backgroundType === 'gradient' || hasBackgroundImage;
   const overlayColorValue = overlay.color ?? '#0f172a';
-  const backgroundColorValue = background.color ?? extractHexFallback(tokens.colors.surface, '#ffffff');
+  const fallbackBackgroundColor = useMemo(
+    () => extractHexFallback(tokens.colors.surface, '#ffffff'),
+    [],
+  );
+  const initialBackgroundColor = background.color ?? fallbackBackgroundColor;
+  const [backgroundColorDraft, setBackgroundColorDraft] = useState(initialBackgroundColor);
 
   const updateTypography = (patch: Partial<NonNullable<TextBlock['typography']>>) => {
     const next = mergeNested(block.typography, patch);
@@ -269,6 +274,23 @@ const TextInspector: React.FC<TextInspectorProps> = ({ block, onChange, restaura
     const next = mergeNested(block.overlay, patch);
     onChange({ overlay: next });
   };
+
+  useEffect(() => {
+    setBackgroundColorDraft(initialBackgroundColor);
+  }, [initialBackgroundColor]);
+
+  const handleBackgroundColorChange = useCallback(
+    (value: string) => {
+      const next = value?.trim().length ? value : fallbackBackgroundColor;
+      setBackgroundColorDraft(next);
+      updateBackground({
+        type: 'color',
+        mode: 'color',
+        color: next,
+      });
+    },
+    [fallbackBackgroundColor, updateBackground],
+  );
 
   const updateAnimation = (patch: Partial<NonNullable<TextBlock['animation']>>) => {
     const next = mergeNested(block.animation, patch);
@@ -485,15 +507,8 @@ const TextInspector: React.FC<TextInspectorProps> = ({ block, onChange, restaura
           {backgroundType === 'color' ? (
             <InputColor
               label="Background color"
-              value={backgroundColorValue}
-              onChange={(value) => {
-                updateBackground({
-                  type: 'color',
-                  mode: 'color',
-                  color: value,
-                });
-                triggerAutoSave();
-              }}
+              value={backgroundColorDraft}
+              onChange={handleBackgroundColorChange}
             />
           ) : null}
           {backgroundType === 'gradient' ? (
