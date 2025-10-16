@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import FontSelect from '@/components/ui/FontSelect';
 import { STORAGE_BUCKET } from '@/lib/storage';
@@ -230,24 +230,30 @@ type TextInspectorProps = {
   block: TextBlock;
   onChange: (patch: Partial<TextBlock>) => void;
   restaurantId: string;
+  triggerAutoSave: () => void;
 };
 
-const TextInspector: React.FC<TextInspectorProps> = ({ block, onChange, restaurantId }) => {
+const TextInspector: React.FC<TextInspectorProps> = ({ block, onChange, restaurantId, triggerAutoSave }) => {
   const [uploading, setUploading] = useState(false);
 
   const typography = block.typography ?? {};
-  const background = block.background ?? { mode: 'none' };
+  const background = block.background ?? { mode: 'none', type: 'none' };
   const spacing = block.spacing ?? {};
   const overlay = block.overlay ?? {};
   const animation = block.animation ?? {};
 
   const fontValue = useMemo(() => normalizeFontFamily(typography.fontFamily) ?? 'default', [typography.fontFamily]);
-  const backgroundMode = background.mode ?? 'none';
+  const backgroundType = background.type ?? background.mode ?? 'none';
   const gradientSettings = background.gradient ?? gradientDefaults;
-  const hasBackgroundImage = backgroundMode === 'image' && Boolean(background.imageUrl);
-  const overlayActive = backgroundMode === 'gradient' || hasBackgroundImage;
+  const hasBackgroundImage = backgroundType === 'image' && Boolean(background.imageUrl);
+  const overlayActive = backgroundType === 'gradient' || hasBackgroundImage;
   const overlayColorValue = overlay.color ?? '#0f172a';
-  const backgroundColorValue = background.color ?? extractHexFallback(tokens.colors.surface, '#ffffff');
+  const fallbackBackgroundColor = useMemo(
+    () => extractHexFallback(tokens.colors.surface, '#ffffff'),
+    [],
+  );
+  const initialBackgroundColor = background.color ?? fallbackBackgroundColor;
+  const [backgroundColorDraft, setBackgroundColorDraft] = useState(initialBackgroundColor);
 
   const updateTypography = (patch: Partial<NonNullable<TextBlock['typography']>>) => {
     const next = mergeNested(block.typography, patch);
@@ -269,15 +275,32 @@ const TextInspector: React.FC<TextInspectorProps> = ({ block, onChange, restaura
     onChange({ overlay: next });
   };
 
+  useEffect(() => {
+    setBackgroundColorDraft(initialBackgroundColor);
+  }, [initialBackgroundColor]);
+
+  const handleBackgroundColorChange = useCallback(
+    (value: string) => {
+      const next = value?.trim().length ? value : fallbackBackgroundColor;
+      setBackgroundColorDraft(next);
+      updateBackground({
+        type: 'color',
+        mode: 'color',
+        color: next,
+      });
+    },
+    [fallbackBackgroundColor, updateBackground],
+  );
+
   const updateAnimation = (patch: Partial<NonNullable<TextBlock['animation']>>) => {
     const next = mergeNested(block.animation, patch);
     onChange({ animation: next });
   };
 
   const handleBackgroundModeChange = (mode: NonNullable<TextBlock['background']>['mode']) => {
-    let next = mergeNested(block.background, { mode });
+    let next = mergeNested(block.background, { type: mode, mode });
     if (!next) {
-      next = { mode } as NonNullable<TextBlock['background']>;
+      next = { type: mode, mode } as NonNullable<TextBlock['background']>;
     }
     if (mode !== 'gradient') {
       next = mergeNested(next, { gradient: undefined });
@@ -298,6 +321,7 @@ const TextInspector: React.FC<TextInspectorProps> = ({ block, onChange, restaura
       onChange({ overlay: undefined });
     }
     onChange({ background: next });
+    triggerAutoSave();
   };
 
   const handleSpacingChange = (key: keyof NonNullable<TextBlock['spacing']>, value: number | undefined) => {
@@ -317,10 +341,12 @@ const TextInspector: React.FC<TextInspectorProps> = ({ block, onChange, restaura
         const { data } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path);
         if (data?.publicUrl) {
           const next = mergeNested(block.background, {
+            type: 'image',
             mode: 'image',
             imageUrl: data.publicUrl,
           });
-          onChange({ background: next ?? { mode: 'image', imageUrl: data.publicUrl } });
+          onChange({ background: next ?? { type: 'image', mode: 'image', imageUrl: data.publicUrl } });
+          triggerAutoSave();
         }
       } catch (error) {
         // eslint-disable-next-line no-alert
@@ -329,7 +355,7 @@ const TextInspector: React.FC<TextInspectorProps> = ({ block, onChange, restaura
         setUploading(false);
       }
     },
-    [block.background, onChange, restaurantId],
+    [block.background, onChange, restaurantId, triggerAutoSave],
   );
 
   const handleAnimationToggle = (enabled: boolean) => {
@@ -351,9 +377,11 @@ const TextInspector: React.FC<TextInspectorProps> = ({ block, onChange, restaura
   const handleRemoveBackgroundImage = () => {
     const next = mergeNested(block.background, {
       imageUrl: undefined,
-      mode: backgroundMode === 'image' ? 'none' : backgroundMode,
+      type: backgroundType === 'image' ? 'none' : backgroundType,
+      mode: backgroundType === 'image' ? 'none' : backgroundType,
     });
     onChange({ background: next, overlay: undefined });
+    triggerAutoSave();
   };
 
   const textOpacity = typography.opacity ?? 100;
@@ -472,18 +500,18 @@ const TextInspector: React.FC<TextInspectorProps> = ({ block, onChange, restaura
         <InspectorSection title="Background">
           <InputSelect
             label="Mode"
-            value={backgroundMode}
+            value={backgroundType}
             onChange={(value) => handleBackgroundModeChange(value as NonNullable<TextBlock['background']>['mode'])}
             options={BACKGROUND_MODE_OPTIONS}
           />
-          {backgroundMode === 'color' ? (
+          {backgroundType === 'color' ? (
             <InputColor
               label="Background color"
-              value={backgroundColorValue}
-              onChange={(value) => updateBackground({ color: value })}
+              value={backgroundColorDraft}
+              onChange={handleBackgroundColorChange}
             />
           ) : null}
-          {backgroundMode === 'gradient' ? (
+          {backgroundType === 'gradient' ? (
             <>
               <InputColor
                 label="Gradient start"
@@ -527,7 +555,7 @@ const TextInspector: React.FC<TextInspectorProps> = ({ block, onChange, restaura
               />
             </>
           ) : null}
-          {backgroundMode === 'image' ? (
+          {backgroundType === 'image' ? (
             <>
               <InputUpload
                 label="Background image"

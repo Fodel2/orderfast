@@ -25,6 +25,7 @@ import HeaderInspector from './webpage/HeaderInspector';
 import TextInspector from './webpage/TextInspector';
 import InspectorPanel from './inspector/InspectorPanel';
 import AddBlockModal from './modals/AddBlockModal';
+import { useAutoSave } from '@/hooks/useAutoSave';
 import { STORAGE_BUCKET } from '@/lib/storage';
 import { supabase } from '@/lib/supabaseClient';
 import InputUpload from '@/src/components/inspector/controls/InputUpload';
@@ -302,9 +303,22 @@ const sanitizeTextBackground = (value: any): TextBlock['background'] | undefined
   if (!value || typeof value !== 'object') return undefined;
   const background: NonNullable<TextBlock['background']> = {};
 
+  const typeCandidate = ensureString(value.type);
+  if (typeCandidate && TEXT_BACKGROUND_MODES.has(typeCandidate)) {
+    background.type = typeCandidate as NonNullable<TextBlock['background']>['mode'];
+  }
+
   const modeCandidate = ensureString(value.mode);
   if (modeCandidate && TEXT_BACKGROUND_MODES.has(modeCandidate)) {
     background.mode = modeCandidate as NonNullable<TextBlock['background']>['mode'];
+  }
+
+  if (!background.type && background.mode) {
+    background.type = background.mode;
+  }
+
+  if (!background.mode && background.type) {
+    background.mode = background.type;
   }
 
   const color = ensureString(value.color);
@@ -686,6 +700,33 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
   const isMobile = typeof window !== 'undefined' && window.innerWidth <= 900;
   const history = useRef<Block[][]>([]);
   const future = useRef<Block[][]>([]);
+  const latestBlocksRef = useRef<Block[]>(blocks);
+
+  useEffect(() => {
+    latestBlocksRef.current = blocks;
+  }, [blocks]);
+
+  const persistBuilderState = useCallback(async () => {
+    if (!open || !pageId || !restaurantId) {
+      return;
+    }
+
+    const payload = latestBlocksRef.current;
+
+    const { error } = await supabase
+      .from('custom_pages')
+      .update({ content_json: payload })
+      .eq('id', pageId)
+      .eq('restaurant_id', restaurantId);
+
+    if (error) {
+      throw error;
+    }
+  }, [open, pageId, restaurantId]);
+
+  const { triggerAutoSave } = useAutoSave({
+    save: persistBuilderState,
+  });
 
   const selectBlock = useCallback((id: string | null) => {
     setSelection(id);
@@ -810,10 +851,11 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
         }
 
         pushHistory(current);
+        triggerAutoSave();
         return next;
       });
     },
-    [pushHistory],
+    [pushHistory, triggerAutoSave],
   );
 
   const handleAddBlock = useCallback(() => {
@@ -848,9 +890,10 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
           block={selectedBlock}
           onChange={(patch) => updateBlock(selectedBlock.id, patch)}
           restaurantId={restaurantId}
+          triggerAutoSave={triggerAutoSave}
         />
       ) : null,
-    [selectedBlock, restaurantId, updateBlock],
+    [selectedBlock, restaurantId, triggerAutoSave, updateBlock],
   );
   const inspectorEmptyState = useMemo(
     () => (
@@ -927,12 +970,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
   async function save() {
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from('custom_pages')
-        .update({ content_json: blocks })
-        .eq('id', pageId)
-        .eq('restaurant_id', restaurantId);
-      if (error) throw error;
+      await persistBuilderState();
       alert('Saved');
     } catch (e:any) {
       console.error(e);
@@ -1299,10 +1337,12 @@ function Inspector({
   block,
   onChange,
   restaurantId,
+  triggerAutoSave,
 }: {
   block: Block;
   onChange: (patch: Partial<any>) => void;
   restaurantId: string;
+  triggerAutoSave: () => void;
 }) {
   switch (block.type) {
     case 'header':
@@ -1319,6 +1359,7 @@ function Inspector({
           block={block}
           onChange={onChange}
           restaurantId={restaurantId}
+          triggerAutoSave={triggerAutoSave}
         />
       );
     case 'image':
