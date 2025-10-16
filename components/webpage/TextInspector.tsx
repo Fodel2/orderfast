@@ -19,12 +19,17 @@ import InputUpload from '@/src/components/inspector/controls/InputUpload';
 import { tokens } from '@/src/ui/tokens';
 
 import type { TextAnimationType, TextBlock } from '../PageRenderer';
-
-const ALIGN_OPTIONS = [
-  { label: 'Left', value: 'left' as const },
-  { label: 'Center', value: 'center' as const },
-  { label: 'Right', value: 'right' as const },
-];
+import {
+  ANIMATION_OPTIONS,
+  BACKGROUND_MODE_OPTIONS,
+  CLEAR_BUTTON_STYLE,
+  IMAGE_FIT_OPTIONS,
+  IMAGE_POSITION_OPTIONS,
+  extractHexFallback,
+  gradientDefaults,
+  mergeNested,
+} from './inspector/shared';
+import AlignmentControl from './inspector/AlignmentControl';
 
 const FONT_WEIGHT_OPTIONS = [
   { label: 'Regular (400)', value: '400' },
@@ -33,91 +38,6 @@ const FONT_WEIGHT_OPTIONS = [
   { label: 'Bold (700)', value: '700' },
   { label: 'Extra Bold (800)', value: '800' },
 ];
-
-const BACKGROUND_MODE_OPTIONS = [
-  { label: 'None', value: 'none' },
-  { label: 'Solid color', value: 'color' },
-  { label: 'Gradient', value: 'gradient' },
-  { label: 'Image', value: 'image' },
-];
-
-const IMAGE_FIT_OPTIONS = [
-  { label: 'Cover', value: 'cover' },
-  { label: 'Contain', value: 'contain' },
-];
-
-const IMAGE_POSITION_OPTIONS = [
-  { label: 'Left', value: 'left' },
-  { label: 'Center', value: 'center' },
-  { label: 'Right', value: 'right' },
-];
-
-const ANIMATION_OPTIONS: { label: string; value: TextAnimationType }[] = [
-  { label: 'Fade in', value: 'fade-in' },
-  { label: 'Slide in (left)', value: 'slide-in-left' },
-  { label: 'Slide in (right)', value: 'slide-in-right' },
-  { label: 'Slide in (up)', value: 'slide-in-up' },
-  { label: 'Slide in (down)', value: 'slide-in-down' },
-  { label: 'Zoom in', value: 'zoom-in' },
-];
-
-const CLEAR_BUTTON_STYLE: React.CSSProperties = {
-  alignSelf: 'flex-start',
-  borderRadius: tokens.radius.sm,
-  border: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
-  background: tokens.colors.surface,
-  color: tokens.colors.textSecondary,
-  padding: `${tokens.spacing.xs}px ${tokens.spacing.sm}px`,
-  fontSize: '0.75rem',
-  fontWeight: 500,
-  cursor: 'pointer',
-};
-
-const gradientDefaults = {
-  angle: 180,
-  start: '#0f172a',
-  end: '#1e293b',
-};
-
-const extractHexFallback = (token: string, fallback: string): string => {
-  const match = token.match(/#([0-9a-fA-F]{3,8})/);
-  if (!match) {
-    return fallback;
-  }
-  const [raw] = match;
-  if (!raw) {
-    return fallback;
-  }
-  const hex = raw.replace('#', '');
-  if (hex.length === 3) {
-    return `#${hex
-      .split('')
-      .map((value) => value + value)
-      .join('')}`;
-  }
-  if (hex.length === 8) {
-    return `#${hex.slice(0, 6)}`;
-  }
-  if (hex.length === 6) {
-    return `#${hex}`;
-  }
-  return fallback;
-};
-
-const mergeNested = <T extends Record<string, unknown>>(
-  current: T | undefined,
-  patch: Partial<T>,
-): T | undefined => {
-  const next: Record<string, unknown> = { ...(current ?? {}) };
-  Object.entries(patch).forEach(([key, value]) => {
-    if (value === undefined) {
-      delete next[key];
-    } else {
-      next[key] = value as unknown;
-    }
-  });
-  return Object.keys(next).length > 0 ? (next as T) : undefined;
-};
 
 const createStoragePath = (restaurantId: string, fileName: string) => {
   const ext = fileName.split('.').pop() || 'jpg';
@@ -132,58 +52,6 @@ const getErrorMessage = (error: unknown) => {
   }
   return String(error);
 };
-
-const AlignmentControl: React.FC<{
-  value: 'left' | 'center' | 'right';
-  onChange: (value: 'left' | 'center' | 'right') => void;
-}> = ({ value, onChange }) => (
-  <ControlRow label="Alignment">
-    <div className="alignment-toggle">
-      {ALIGN_OPTIONS.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          className={`alignment-button${value === option.value ? ' is-active' : ''}`}
-          onClick={() => onChange(option.value)}
-          aria-pressed={value === option.value}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
-
-    <style jsx>{`
-      .alignment-toggle {
-        display: inline-flex;
-        gap: ${tokens.spacing.xs}px;
-      }
-
-      .alignment-button {
-        padding: ${tokens.spacing.xs}px ${tokens.spacing.sm}px;
-        border-radius: ${tokens.radius.sm}px;
-        border: ${tokens.border.thin}px solid ${tokens.colors.borderLight};
-        background: ${tokens.colors.surface};
-        color: ${tokens.colors.textSecondary};
-        font-size: 0.75rem;
-        font-weight: 500;
-        text-transform: capitalize;
-        cursor: pointer;
-        transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
-      }
-
-      .alignment-button:hover {
-        background: ${tokens.colors.surfaceMuted};
-        border-color: ${tokens.colors.borderStrong};
-      }
-
-      .alignment-button.is-active {
-        background: ${tokens.colors.accent};
-        border-color: ${tokens.colors.accent};
-        color: ${tokens.colors.textOnDark};
-      }
-    `}</style>
-  </ControlRow>
-);
 
 const QuickStyleToggle: React.FC<{
   label: string;

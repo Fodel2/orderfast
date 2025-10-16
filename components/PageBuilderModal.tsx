@@ -23,12 +23,16 @@ import type {
 import WebpageBuilder from './webpage/WebpageBuilder';
 import HeaderInspector from './webpage/HeaderInspector';
 import TextInspector from './webpage/TextInspector';
+import ImageInspector from './webpage/ImageInspector';
+import ButtonInspector from './webpage/ButtonInspector';
+import SpacerInspector from './webpage/SpacerInspector';
+import DividerInspector from './webpage/DividerInspector';
+import TwoColumnInspector from './webpage/TwoColumnInspector';
 import InspectorPanel from './inspector/InspectorPanel';
 import AddBlockModal from './modals/AddBlockModal';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import { STORAGE_BUCKET } from '@/lib/storage';
 import { supabase } from '@/lib/supabaseClient';
-import InputUpload from '@/src/components/inspector/controls/InputUpload';
 import { tokens } from '@/src/ui/tokens';
 
 type Props = {
@@ -183,15 +187,6 @@ const BLOCK_LIBRARY: BlockLibraryOption[] = [
     icon: MoveVertical,
   },
 ];
-
-const getUploadErrorMessage = (error: unknown) => {
-  if (!error) return 'Unknown error';
-  if (error instanceof Error) return error.message;
-  if (typeof error === 'object' && 'message' in (error as Record<string, unknown>)) {
-    return String((error as Record<string, unknown>).message);
-  }
-  return String(error);
-};
 
 const cloneText = (block: TextBlock | undefined) =>
   block
@@ -1324,15 +1319,6 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block mb-3">
-      <div className="text-xs font-medium mb-1 text-neutral-600">{label}</div>
-      {children}
-    </label>
-  );
-}
-
 function Inspector({
   block,
   onChange,
@@ -1364,38 +1350,19 @@ function Inspector({
       );
     case 'image':
       return (
-        <div>
-          <Field label="Image URL"><input className="w-full rounded border px-2 py-1" value={block.src} onChange={e=>onChange({ src: e.target.value })} /></Field>
-          <Field label="Alt text"><input className="w-full rounded border px-2 py-1" value={block.alt ?? ''} onChange={e=>onChange({ alt: e.target.value })} /></Field>
-          <Field label="Max width (px)"><input type="number" className="w-full rounded border px-2 py-1" value={block.width ?? 1200} onChange={e=>onChange({ width: Number(e.target.value) })} /></Field>
-          <Field label="Corner radius">
-            <select className="w-full rounded border px-2 py-1" value={block.radius ?? 'lg'} onChange={e=>onChange({ radius: e.target.value })}>
-              <option value="none">None</option><option value="lg">Large</option><option value="2xl">2XL</option>
-            </select>
-          </Field>
-        </div>
+        <ImageInspector
+          block={block}
+          onChange={onChange}
+          restaurantId={restaurantId}
+          triggerAutoSave={triggerAutoSave}
+        />
       );
     case 'button':
-      return (
-        <div>
-          <Field label="Label"><input className="w-full rounded border px-2 py-1" value={block.label} onChange={e=>onChange({ label: e.target.value })} /></Field>
-          <Field label="Link (href)"><input className="w-full rounded border px-2 py-1" value={block.href ?? ''} onChange={e=>onChange({ href: e.target.value })} /></Field>
-          <Field label="Style">
-            <select className="w-full rounded border px-2 py-1" value={block.style ?? 'primary'} onChange={e=>onChange({ style: e.target.value })}>
-              <option value="primary">Primary</option><option value="outline">Outline</option>
-            </select>
-          </Field>
-          <Align value={block.align ?? 'left'} onChange={(align)=>onChange({ align })} />
-        </div>
-      );
+      return <ButtonInspector block={block} onChange={onChange} />;
     case 'spacer':
-      return (
-        <div>
-          <Field label="Height (px)"><input type="number" className="w-full rounded border px-2 py-1" value={block.height ?? 24} onChange={e=>onChange({ height: Number(e.target.value) })} /></Field>
-        </div>
-      );
+      return <SpacerInspector block={block} onChange={onChange} />;
     case 'divider':
-      return <div className="text-sm text-neutral-500">No options.</div>;
+      return <DividerInspector block={block} onChange={onChange} />;
     case 'two-col':
       return <TwoColumnInspector block={block} onChange={onChange} restaurantId={restaurantId} />;
     default:
@@ -1403,353 +1370,5 @@ function Inspector({
   }
 }
 
-type TwoColumnInspectorProps = {
-  block: TwoColumnBlock;
-  onChange: (patch: Partial<TwoColumnBlock>) => void;
-  restaurantId: string;
-};
 
-function TwoColumnInspector({ block, onChange, restaurantId }: TwoColumnInspectorProps) {
-  const updateColumn = (key: 'left' | 'right', updater: (column: TwoColumnColumn) => TwoColumnColumn) => {
-    const nextColumn = updater(block[key]);
-    onChange({ [key]: nextColumn });
-  };
-
-  const handleTextChange = (key: 'left' | 'right', text: string) => {
-    updateColumn(key, (column) => {
-      const current = column.text ?? createTextBlock({ text: '' });
-      return { ...column, text: { ...current, text } };
-    });
-  };
-
-  const handleTextAlign = (key: 'left' | 'right', align: 'left' | 'center' | 'right') => {
-    updateColumn(key, (column) => {
-      const current = column.text ?? createTextBlock({ text: '' });
-      return { ...column, text: { ...current, align } };
-    });
-  };
-
-  const [uploadingColumn, setUploadingColumn] = useState<null | 'left' | 'right'>(null);
-
-  const createColumnImagePath = (key: 'left' | 'right', fileName: string) => {
-    const ext = fileName.split('.').pop() || 'jpg';
-    return `webpage-columns/${restaurantId}/${key}-${crypto.randomUUID()}.${ext}`;
-  };
-
-  const handleRemoveImage = useCallback(
-    (key: 'left' | 'right') => {
-      updateColumn(key, (column) => ({
-        ...column,
-        image: null,
-        wrapTextAroundImage: false,
-      }));
-    },
-    [updateColumn],
-  );
-
-  const handleImageChange = useCallback(
-    (key: 'left' | 'right', patch: Partial<ImageBlock>) => {
-      updateColumn(key, (column) => {
-        let nextPatch = { ...patch };
-        if (typeof nextPatch.src === 'string') {
-          const normalized = nextPatch.src.trim();
-          if (!normalized.length) {
-            return { ...column, image: null, wrapTextAroundImage: false };
-          }
-          nextPatch = { ...nextPatch, src: normalized };
-        }
-
-        const baseImage =
-          column.image ??
-          createImageBlock({
-            src: typeof nextPatch.src === 'string' ? nextPatch.src : 'https://placehold.co/800x600',
-            width: 720,
-          });
-
-        return { ...column, image: { ...baseImage, ...nextPatch } };
-      });
-    },
-    [updateColumn],
-  );
-
-  const handleUpload = useCallback(
-    async (key: 'left' | 'right', file: File) => {
-      if (!restaurantId) return;
-      setUploadingColumn(key);
-      try {
-        const path = createColumnImagePath(key, file.name);
-        const { error } = await supabase.storage.from(STORAGE_BUCKET).upload(path, file, {
-          upsert: true,
-        });
-        if (error) throw error;
-        const { data } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path);
-        if (data?.publicUrl) {
-          handleImageChange(key, { src: data.publicUrl });
-        }
-      } catch (error) {
-        // eslint-disable-next-line no-alert
-        alert(`Failed to upload image: ${getUploadErrorMessage(error)}`);
-      } finally {
-        setUploadingColumn(null);
-      }
-    },
-    [handleImageChange, restaurantId],
-  );
-
-  const handleWrapToggle = (key: 'left' | 'right', enabled: boolean) => {
-    updateColumn(key, (column) => {
-      const image = column.image ?? null;
-      const alignment = enabled
-        ? column.imageAlignment === 'left' || column.imageAlignment === 'right'
-          ? column.imageAlignment
-          : 'left'
-        : column.imageAlignment ?? 'top';
-      return {
-        ...column,
-        wrapTextAroundImage: Boolean(image) && enabled && (alignment === 'left' || alignment === 'right'),
-        imageAlignment: alignment,
-        imageSpacing: column.imageSpacing ?? tokens.spacing.md,
-      };
-    });
-  };
-
-  const handleImageAlignment = (
-    key: 'left' | 'right',
-    alignment: TwoColumnColumn['imageAlignment'],
-  ) => {
-    updateColumn(key, (column) => ({
-      ...column,
-      imageAlignment: alignment,
-      wrapTextAroundImage:
-        column.wrapTextAroundImage && (alignment === 'left' || alignment === 'right') && Boolean(column.image),
-    }));
-  };
-
-  const handleImageSpacing = (key: 'left' | 'right', value: number) => {
-    updateColumn(key, (column) => ({
-      ...column,
-      imageSpacing: Number.isFinite(value) ? Math.max(0, value) : column.imageSpacing ?? tokens.spacing.md,
-    }));
-  };
-
-  const renderColumnInspector = (key: 'left' | 'right', label: string) => {
-    const column = block[key];
-    const textValue = column.text?.text ?? '';
-    const textAlign = column.text?.align ?? 'left';
-    const image = column.image;
-
-    return (
-      <div className="mt-6 border-t pt-4">
-        <div className="mb-3 text-xs font-semibold uppercase text-neutral-600">{label}</div>
-        <Field label="Text">
-          <textarea
-            rows={4}
-            className="w-full rounded border px-2 py-1"
-            value={textValue}
-            onChange={(event) => handleTextChange(key, event.target.value)}
-          />
-        </Field>
-        <Align value={textAlign} onChange={(align) => handleTextAlign(key, align)} />
-        <div className="mt-4 space-y-3">
-          <InputUpload
-            label="Column image"
-            buttonLabel={image ? 'Replace image' : 'Upload image'}
-            accept="image/*"
-            uploading={uploadingColumn === key}
-            uploadingLabel="Uploading…"
-            onSelectFiles={(files) => {
-              const file = files?.item(0);
-              if (file) {
-                void handleUpload(key, file);
-              }
-            }}
-          />
-          {image ? (
-            <div
-              style={{
-                border: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
-                borderRadius: tokens.radius.md,
-                padding: tokens.spacing.sm,
-                background: tokens.colors.surface,
-              }}
-            >
-              <img
-                src={image.src}
-                alt={image.alt ?? ''}
-                style={{
-                  width: '100%',
-                  height: 'auto',
-                  borderRadius: tokens.radius.sm,
-                  display: 'block',
-                }}
-              />
-              <div
-                style={{
-                  marginTop: tokens.spacing.xs,
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  gap: tokens.spacing.sm,
-                  fontSize: tokens.fontSize.xs,
-                  color: tokens.colors.textMuted,
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => handleRemoveImage(key)}
-                  style={{
-                    color: '#dc2626',
-                    fontWeight: 600,
-                  }}
-                >
-                  Remove image
-                </button>
-                <a
-                  href={image.src}
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{ color: tokens.colors.textSecondary, textDecoration: 'underline' }}
-                >
-                  Open original
-                </a>
-              </div>
-            </div>
-          ) : (
-            <div
-              style={{
-                fontSize: tokens.fontSize.xs,
-                color: tokens.colors.textMuted,
-              }}
-            >
-              Upload a photo or paste an image URL to feature it in this column.
-            </div>
-          )}
-          <Field label="Image URL">
-            <input
-              className="w-full rounded border px-2 py-1"
-              value={image?.src ?? ''}
-              onChange={(event) => handleImageChange(key, { src: event.target.value })}
-            />
-          </Field>
-          <Field label="Alt text">
-            <input
-              className="w-full rounded border px-2 py-1"
-              value={image?.alt ?? ''}
-              onChange={(event) => handleImageChange(key, { alt: event.target.value })}
-            />
-          </Field>
-          <Field label="Max width (px)">
-            <input
-              type="number"
-              className="w-full rounded border px-2 py-1"
-              value={image?.width ?? 720}
-              onChange={(event) => {
-                const value = Number(event.target.value);
-                handleImageChange(key, { width: Number.isFinite(value) ? value : undefined });
-              }}
-            />
-          </Field>
-          <Field label="Corner radius">
-            <select
-              className="w-full rounded border px-2 py-1"
-              value={image?.radius ?? 'lg'}
-              onChange={(event) => handleImageChange(key, { radius: event.target.value as ImageBlock['radius'] })}
-            >
-              <option value="none">None</option>
-              <option value="lg">Large</option>
-              <option value="2xl">2XL</option>
-            </select>
-          </Field>
-          <Field label="Image position">
-            <select
-              className="w-full rounded border px-2 py-1"
-              value={column.imageAlignment ?? 'top'}
-              onChange={(event) =>
-                handleImageAlignment(key, event.target.value as TwoColumnColumn['imageAlignment'])
-              }
-            >
-              <option value="top">Top</option>
-              <option value="bottom">Bottom</option>
-              <option value="left">Left</option>
-              <option value="right">Right</option>
-            </select>
-          </Field>
-          <label className="flex items-center gap-2 text-xs text-neutral-600">
-            <input
-              type="checkbox"
-              checked={Boolean(column.wrapTextAroundImage)}
-              disabled={!image}
-              onChange={(event) => handleWrapToggle(key, event.target.checked)}
-            />
-            Wrap text around image
-          </label>
-          {column.wrapTextAroundImage ? (
-            <Field label="Wrap spacing (px)">
-              <input
-                type="number"
-                className="w-full rounded border px-2 py-1"
-                value={column.imageSpacing ?? tokens.spacing.md}
-                onChange={(event) => handleImageSpacing(key, Number(event.target.value))}
-              />
-            </Field>
-          ) : null}
-        </div>
-      </div>
-    );
-  };
-
-  return (
-    <div>
-      <Field label="Column ratio">
-        <select
-          className="w-full rounded border px-2 py-1"
-          value={block.ratio ?? '1-1'}
-          onChange={(event) => onChange({ ratio: event.target.value as TwoColumnBlock['ratio'] })}
-        >
-          <option value="1-1">50 / 50</option>
-          <option value="1-2">33 / 67</option>
-          <option value="2-1">67 / 33</option>
-        </select>
-      </Field>
-      <Field label="Column gap (px)">
-        <input
-          type="number"
-          className="w-full rounded border px-2 py-1"
-          value={block.gap ?? tokens.spacing.lg}
-          onChange={(event) => {
-            const value = Number(event.target.value);
-            onChange({ gap: Number.isFinite(value) ? value : block.gap ?? tokens.spacing.lg });
-          }}
-        />
-      </Field>
-      <Field label="Padding (px)">
-        <input
-          type="number"
-          className="w-full rounded border px-2 py-1"
-          value={block.padding ?? tokens.spacing.lg}
-          onChange={(event) => {
-            const value = Number(event.target.value);
-            onChange({ padding: Number.isFinite(value) ? value : block.padding ?? tokens.spacing.lg });
-          }}
-        />
-      </Field>
-      {renderColumnInspector('left', 'Left column')}
-      {renderColumnInspector('right', 'Right column')}
-      <div className="mt-4 text-xs text-neutral-500">
-        Tip: enable wrapping to let paragraphs flow naturally around imagery for editorial-style layouts.
-      </div>
-    </div>
-  );
-}
-
-function Align({ value, onChange }: { value: 'left'|'center'|'right'; onChange: (v:any)=>void }) {
-  return (
-    <Field label="Alignment">
-      <div className="flex gap-2">
-        {(['left','center','right'] as const).map(a => (
-          <button key={a} onClick={()=>onChange(a)} className={`px-2 py-1 rounded border ${value===a?'bg-emerald-50 border-emerald-600':''}`}>{a}</button>
-        ))}
-      </div>
-    </Field>
-  );
-}
 

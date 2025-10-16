@@ -19,7 +19,7 @@ export type TextTypographySettings = {
   uppercase?: boolean;
 };
 
-export type TextBackgroundSettings = {
+export type BackgroundSettings = {
   type?: 'none' | 'color' | 'gradient' | 'image';
   mode?: 'none' | 'color' | 'gradient' | 'image';
   color?: string;
@@ -37,7 +37,9 @@ export type TextBackgroundSettings = {
   blur?: number;
 };
 
-export type TextSpacingSettings = {
+export type TextBackgroundSettings = BackgroundSettings;
+
+export type SpacingSettings = {
   marginTop?: number;
   marginRight?: number;
   marginBottom?: number;
@@ -48,10 +50,14 @@ export type TextSpacingSettings = {
   paddingLeft?: number;
 };
 
-export type TextOverlaySettings = {
+export type TextSpacingSettings = SpacingSettings;
+
+export type OverlaySettings = {
   color?: string;
   opacity?: number;
 };
+
+export type TextOverlaySettings = OverlaySettings;
 
 export type TextAnimationType =
   | 'none'
@@ -62,12 +68,14 @@ export type TextAnimationType =
   | 'slide-in-down'
   | 'zoom-in';
 
-export type TextAnimationSettings = {
+export type AnimationSettings = {
   enabled?: boolean;
   type?: TextAnimationType;
   duration?: number;
   delay?: number;
 };
+
+export type TextAnimationSettings = AnimationSettings;
 
 export type TextBlock = {
   id: string;
@@ -75,10 +83,10 @@ export type TextBlock = {
   text: string;
   align?: 'left' | 'center' | 'right';
   typography?: TextTypographySettings;
-  background?: TextBackgroundSettings;
-  spacing?: TextSpacingSettings;
-  overlay?: TextOverlaySettings;
-  animation?: TextAnimationSettings;
+  background?: BackgroundSettings;
+  spacing?: SpacingSettings;
+  overlay?: OverlaySettings;
+  animation?: AnimationSettings;
 };
 
 export type ImageBlock = {
@@ -87,7 +95,15 @@ export type ImageBlock = {
   src: string;
   alt?: string;
   width?: number;
-  radius?: 'none' | 'lg' | '2xl';
+  radius?: 'none' | 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'full';
+  fit?: 'cover' | 'contain';
+  aspectRatio?: number;
+  focalX?: number;
+  focalY?: number;
+  spacing?: SpacingSettings;
+  background?: BackgroundSettings;
+  overlay?: OverlaySettings;
+  animation?: AnimationSettings;
 };
 
 export type ButtonBlock = {
@@ -98,11 +114,33 @@ export type ButtonBlock = {
   target?: '_self' | '_blank';
   style?: 'primary' | 'outline';
   align?: 'left' | 'center' | 'right';
+  typography?: TextTypographySettings;
+  textColor?: string;
+  backgroundColor?: string;
+  borderColor?: string;
+  spacing?: SpacingSettings;
+  radius?: number;
+  shadow?: 'none' | 'sm' | 'md' | 'lg';
+  animation?: AnimationSettings;
 };
 
-export type DividerBlock = { id: string; type: 'divider' };
+export type DividerBlock = {
+  id: string;
+  type: 'divider';
+  thickness?: number;
+  color?: string;
+  spacing?: SpacingSettings;
+  animation?: AnimationSettings;
+};
 
-export type SpacerBlock = { id: string; type: 'spacer'; height?: number };
+export type SpacerBlock = {
+  id: string;
+  type: 'spacer';
+  height?: number;
+  spacing?: SpacingSettings;
+  background?: BackgroundSettings;
+  animation?: AnimationSettings;
+};
 
 export type TwoColumnColumn = {
   text?: TextBlock;
@@ -120,6 +158,10 @@ export type TwoColumnBlock = {
   ratio?: '1-1' | '1-2' | '2-1';
   gap?: number;
   padding?: number;
+  spacing?: SpacingSettings;
+  background?: BackgroundSettings;
+  overlay?: OverlaySettings;
+  animation?: AnimationSettings;
 };
 
 export type HeaderBlock = {
@@ -541,9 +583,23 @@ export default function PageRenderer({ blocks, device }: PageRendererProps) {
   };
 
   const resolveImageRadius = (radius?: ImageBlock['radius']) => {
-    if (radius === '2xl') return 24;
-    if (radius === 'lg') return tokens.radius.lg;
-    return tokens.radius.none;
+    switch (radius) {
+      case 'sm':
+        return tokens.radius.sm;
+      case 'md':
+        return tokens.radius.md;
+      case 'lg':
+        return tokens.radius.lg;
+      case 'xl':
+        return 24;
+      case '2xl':
+        return 32;
+      case 'full':
+        return 9999;
+      case 'none':
+      default:
+        return tokens.radius.none;
+    }
   };
 
   const renderTextBlock = (block: TextBlock) => {
@@ -700,49 +756,241 @@ export default function PageRenderer({ blocks, device }: PageRendererProps) {
   };
 
   const renderImageBlock = (block: ImageBlock) => {
-    const style: React.CSSProperties = {
+    const spacing = block.spacing ?? {};
+    const background = block.background ?? {};
+    const overlay = block.overlay ?? {};
+    const animation = block.animation ?? {};
+
+    const marginTop = spacing.marginTop ?? 0;
+    const marginRight = spacing.marginRight ?? 0;
+    const marginBottom = spacing.marginBottom ?? tokens.spacing.md;
+    const marginLeft = spacing.marginLeft ?? 0;
+    const paddingTop = spacing.paddingTop ?? 0;
+    const paddingRight = spacing.paddingRight ?? 0;
+    const paddingBottom = spacing.paddingBottom ?? 0;
+    const paddingLeft = spacing.paddingLeft ?? 0;
+
+    const containerStyle: React.CSSProperties = {
+      marginTop,
+      marginRight,
+      marginBottom,
+      marginLeft,
+    };
+
+    const backgroundMode = background.mode ?? 'none';
+    const gradientSettings = background.gradient ?? {
+      angle: 180,
+      start: tokens.colors.surfaceInverse,
+      end: tokens.colors.surface,
+    };
+    const hasBackgroundImage = backgroundMode === 'image' && Boolean(background.imageUrl);
+    const shouldShowOverlay =
+      (backgroundMode === 'gradient' || backgroundMode === 'image') &&
+      (overlay.opacity !== undefined || overlay.color !== undefined);
+    const overlayOpacity = clampNumber(overlay.opacity ?? 0, 0, 100) / 100;
+    const overlayColor = overlay.color ?? tokens.colors.overlay.strong;
+
+    const wrapperStyle: React.CSSProperties = {
+      position: 'relative',
+      display: 'block',
+      paddingTop,
+      paddingRight,
+      paddingBottom,
+      paddingLeft,
+      boxSizing: 'border-box',
+      borderRadius: backgroundMode !== 'none' || hasBackgroundImage ? tokens.radius.md : undefined,
+      overflow: hasBackgroundImage ? 'hidden' : undefined,
+      background:
+        backgroundMode === 'color'
+          ? background.color ?? tokens.colors.surface
+          : backgroundMode === 'gradient'
+          ? `linear-gradient(${gradientSettings.angle ?? 180}deg, ${
+              gradientSettings.start ?? tokens.colors.surfaceInverse
+            }, ${gradientSettings.end ?? tokens.colors.surface})`
+          : undefined,
+    };
+
+    const animationEnabled = animation.enabled ?? false;
+    const animationType = animation.type ?? 'none';
+    if (animationEnabled && animationType !== 'none') {
+      const definition = TEXT_ANIMATION_DEFINITIONS[animationType as Exclude<TextAnimationType, 'none'>];
+      if (definition) {
+        wrapperStyle.animationName = definition.name;
+        wrapperStyle.animationDuration = `${clampNumber(animation.duration ?? 300, 0, 10000)}ms`;
+        wrapperStyle.animationDelay = `${clampNumber(animation.delay ?? 0, 0, 10000)}ms`;
+        wrapperStyle.animationTimingFunction = definition.timingFunction;
+        wrapperStyle.animationFillMode = 'both';
+      }
+    }
+
+    const imageOpacity = clampNumber(background.imageOpacity ?? 100, 0, 100) / 100;
+    const imageBlur = clampNumber(background.blur ?? 0, 0, 100);
+    const focalX = clampNumber(background.focalX ?? 50, 0, 100);
+    const focalY = clampNumber(background.focalY ?? 50, 0, 100);
+    const backgroundPosition = `${background.imagePosition ?? 'center'} center`;
+    const focalPosition = `${focalX}% ${focalY}%`;
+    const resolvedBackgroundPosition =
+      background.focalX !== undefined || background.focalY !== undefined ? focalPosition : backgroundPosition;
+
+    const imageStyle: React.CSSProperties = {
       display: 'block',
       width: '100%',
       height: 'auto',
       borderRadius: resolveImageRadius(block.radius),
-      marginBottom: tokens.spacing.md,
+      boxSizing: 'border-box',
+      objectFit: block.fit ?? 'cover',
     };
 
     if (typeof block.width === 'number') {
-      style.maxWidth = block.width;
+      imageStyle.maxWidth = block.width;
     }
 
-    return <img key={block.id} src={block.src} alt={block.alt ?? ''} style={style} />;
+    if (typeof block.aspectRatio === 'number' && Number.isFinite(block.aspectRatio)) {
+      imageStyle.aspectRatio = block.aspectRatio;
+    }
+
+    if (block.focalX !== undefined || block.focalY !== undefined) {
+      const focalImageX = clampNumber(block.focalX ?? 50, 0, 100);
+      const focalImageY = clampNumber(block.focalY ?? 50, 0, 100);
+      imageStyle.objectPosition = `${focalImageX}% ${focalImageY}%`;
+    }
+
+    return (
+      <div key={block.id} style={containerStyle}>
+        <div style={wrapperStyle}>
+          {hasBackgroundImage ? (
+            <img
+              src={background.imageUrl ?? ''}
+              alt=""
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                objectFit: background.imageFit ?? 'cover',
+                objectPosition: resolvedBackgroundPosition,
+                opacity: imageOpacity,
+                filter: imageBlur > 0 ? `blur(${imageBlur}px)` : undefined,
+                pointerEvents: 'none',
+              }}
+            />
+          ) : null}
+          {shouldShowOverlay && overlayOpacity > 0 ? (
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                background: hexToRgba(overlayColor, overlayOpacity),
+                pointerEvents: 'none',
+              }}
+            />
+          ) : null}
+          <img src={block.src} alt={block.alt ?? ''} style={imageStyle} />
+        </div>
+      </div>
+    );
   };
 
   const renderButtonBlock = (block: ButtonBlock) => {
+    const typography = block.typography ?? {};
+    const spacing = block.spacing ?? {};
+    const animation = block.animation ?? {};
     const align = block.align ?? 'left';
     const justifyContent = align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start';
     const isOutline = block.style === 'outline';
 
+    const fontFamily = getFontStackFromId(typography.fontFamily) ?? tokens.fonts.sans;
+    const baseFontWeight =
+      typeof typography.fontWeight === 'number' && Number.isFinite(typography.fontWeight)
+        ? typography.fontWeight
+        : tokens.fontWeight.medium;
+    const fontWeight = typography.bold ? Math.max(baseFontWeight, tokens.fontWeight.semibold) : baseFontWeight;
+    const fontSize =
+      typeof typography.fontSize === 'number' && Number.isFinite(typography.fontSize)
+        ? typography.fontSize
+        : tokens.fontSize.md;
+    const lineHeight =
+      typeof typography.lineHeight === 'number' && Number.isFinite(typography.lineHeight)
+        ? typography.lineHeight
+        : tokens.lineHeight.normal;
+    const letterSpacing =
+      typeof typography.letterSpacing === 'number' && Number.isFinite(typography.letterSpacing)
+        ? typography.letterSpacing
+        : 0;
+
+    const marginTop = spacing.marginTop ?? 0;
+    const marginRight = spacing.marginRight ?? 0;
+    const marginBottom = spacing.marginBottom ?? tokens.spacing.md;
+    const marginLeft = spacing.marginLeft ?? 0;
+    const paddingTop = spacing.paddingTop ?? tokens.spacing.sm;
+    const paddingRight = spacing.paddingRight ?? tokens.spacing.lg;
+    const paddingBottom = spacing.paddingBottom ?? tokens.spacing.sm;
+    const paddingLeft = spacing.paddingLeft ?? tokens.spacing.lg;
+
+    const containerStyle: React.CSSProperties = {
+      display: 'flex',
+      justifyContent,
+      marginTop,
+      marginRight,
+      marginBottom,
+      marginLeft,
+    };
+
+    const resolvedBackground = block.backgroundColor ?? (isOutline ? 'transparent' : '#059669');
+    const resolvedBorderColor = block.borderColor ?? '#059669';
+    const resolvedTextColor = block.textColor ?? (isOutline ? '#047857' : '#ffffff');
+    const resolvedRadius = typeof block.radius === 'number' ? block.radius : tokens.radius.lg;
+    const resolvedShadow = tokens.shadow[block.shadow ?? 'none'];
+
+    const buttonStyle: React.CSSProperties = {
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingTop,
+      paddingRight,
+      paddingBottom,
+      paddingLeft,
+      borderRadius: resolvedRadius,
+      border: isOutline
+        ? `${tokens.border.thin}px solid ${resolvedBorderColor}`
+        : block.borderColor
+        ? `${tokens.border.thin}px solid ${block.borderColor}`
+        : 'none',
+      background: resolvedBackground,
+      color: resolvedTextColor,
+      fontFamily,
+      fontWeight,
+      fontSize,
+      lineHeight,
+      letterSpacing,
+      fontStyle: typography.italic ? 'italic' : 'normal',
+      textDecoration: typography.underline ? 'underline' : 'none',
+      textTransform: typography.uppercase ? 'uppercase' : 'none',
+      boxShadow: resolvedShadow,
+      transition: `all 150ms ${tokens.easing.standard}`,
+      cursor: 'pointer',
+    };
+
+    const animationEnabled = animation.enabled ?? false;
+    const animationType = animation.type ?? 'none';
+    if (animationEnabled && animationType !== 'none') {
+      const definition = TEXT_ANIMATION_DEFINITIONS[animationType as Exclude<TextAnimationType, 'none'>];
+      if (definition) {
+        buttonStyle.animationName = definition.name;
+        buttonStyle.animationDuration = `${clampNumber(animation.duration ?? 300, 0, 10000)}ms`;
+        buttonStyle.animationDelay = `${clampNumber(animation.delay ?? 0, 0, 10000)}ms`;
+        buttonStyle.animationTimingFunction = definition.timingFunction;
+        buttonStyle.animationFillMode = 'both';
+      }
+    }
+
     return (
-      <div
-        key={block.id}
-        style={{
-          display: 'flex',
-          justifyContent,
-          marginBottom: tokens.spacing.md,
-        }}
-      >
+      <div key={block.id} style={containerStyle}>
         <a
           href={block.href ?? '#'}
           target={block.target ?? '_self'}
           rel={block.target === '_blank' ? 'noreferrer' : undefined}
-          style={{
-            padding: `${tokens.spacing.sm}px ${tokens.spacing.lg}px`,
-            borderRadius: tokens.radius.lg,
-            border: isOutline ? `${tokens.border.thin}px solid #059669` : 'none',
-            background: isOutline ? 'transparent' : '#059669',
-            color: isOutline ? '#047857' : '#ffffff',
-            fontWeight: tokens.fontWeight.medium,
-            textDecoration: 'none',
-            transition: 'opacity 150ms ease',
-          }}
+          style={buttonStyle}
         >
           {block.label}
         </a>
@@ -750,20 +998,155 @@ export default function PageRenderer({ blocks, device }: PageRendererProps) {
     );
   };
 
-  const renderDividerBlock = (block: DividerBlock) => (
-    <hr
-      key={block.id}
-      style={{
-        margin: `${tokens.spacing.lg}px 0`,
-        border: 'none',
-        borderBottom: `${tokens.border.thin}px solid ${tokens.colors.borderLight}`,
-      }}
-    />
-  );
+  const renderDividerBlock = (block: DividerBlock) => {
+    const spacing = block.spacing ?? {};
+    const animation = block.animation ?? {};
+    const thickness = clampNumber(block.thickness ?? tokens.border.thin, 1, 12);
+    const color = block.color ?? tokens.colors.borderLight;
 
-  const renderSpacerBlock = (block: SpacerBlock) => (
-    <div key={block.id} style={{ height: block.height ?? tokens.spacing.lg }} />
-  );
+    const marginTop = spacing.marginTop ?? tokens.spacing.lg;
+    const marginRight = spacing.marginRight ?? 0;
+    const marginBottom = spacing.marginBottom ?? tokens.spacing.lg;
+    const marginLeft = spacing.marginLeft ?? 0;
+    const paddingTop = spacing.paddingTop ?? 0;
+    const paddingRight = spacing.paddingRight ?? 0;
+    const paddingBottom = spacing.paddingBottom ?? 0;
+    const paddingLeft = spacing.paddingLeft ?? 0;
+
+    const containerStyle: React.CSSProperties = {
+      marginTop,
+      marginRight,
+      marginBottom,
+      marginLeft,
+      paddingTop,
+      paddingRight,
+      paddingBottom,
+      paddingLeft,
+    };
+
+    const dividerStyle: React.CSSProperties = {
+      width: '100%',
+      height: 0,
+      border: 'none',
+      borderBottom: `${thickness}px solid ${color}`,
+    };
+
+    const animationEnabled = animation.enabled ?? false;
+    const animationType = animation.type ?? 'none';
+    if (animationEnabled && animationType !== 'none') {
+      const definition = TEXT_ANIMATION_DEFINITIONS[animationType as Exclude<TextAnimationType, 'none'>];
+      if (definition) {
+        dividerStyle.animationName = definition.name;
+        dividerStyle.animationDuration = `${clampNumber(animation.duration ?? 300, 0, 10000)}ms`;
+        dividerStyle.animationDelay = `${clampNumber(animation.delay ?? 0, 0, 10000)}ms`;
+        dividerStyle.animationTimingFunction = definition.timingFunction;
+        dividerStyle.animationFillMode = 'both';
+      }
+    }
+
+    return (
+      <div key={block.id} style={containerStyle}>
+        <hr style={dividerStyle} />
+      </div>
+    );
+  };
+
+  const renderSpacerBlock = (block: SpacerBlock) => {
+    const spacing = block.spacing ?? {};
+    const background = block.background ?? {};
+    const animation = block.animation ?? {};
+    const height = block.height ?? tokens.spacing.lg;
+
+    const marginTop = spacing.marginTop ?? 0;
+    const marginRight = spacing.marginRight ?? 0;
+    const marginBottom = spacing.marginBottom ?? height;
+    const marginLeft = spacing.marginLeft ?? 0;
+    const paddingTop = spacing.paddingTop ?? 0;
+    const paddingRight = spacing.paddingRight ?? 0;
+    const paddingBottom = spacing.paddingBottom ?? 0;
+    const paddingLeft = spacing.paddingLeft ?? 0;
+
+    const containerStyle: React.CSSProperties = {
+      marginTop,
+      marginRight,
+      marginBottom,
+      marginLeft,
+      paddingTop,
+      paddingRight,
+      paddingBottom,
+      paddingLeft,
+    };
+
+    const backgroundMode = background.mode ?? (background.color ? 'color' : 'none');
+    const gradientSettings = background.gradient ?? {
+      angle: 180,
+      start: tokens.colors.surfaceInverse,
+      end: tokens.colors.surface,
+    };
+    const hasBackgroundImage = backgroundMode === 'image' && Boolean(background.imageUrl);
+
+    const spacerStyle: React.CSSProperties = {
+      height,
+      width: '100%',
+      position: 'relative',
+      borderRadius: backgroundMode !== 'none' || hasBackgroundImage ? tokens.radius.md : undefined,
+      overflow: hasBackgroundImage ? 'hidden' : undefined,
+      background:
+        backgroundMode === 'color'
+          ? background.color ?? tokens.colors.surfaceMuted
+          : backgroundMode === 'gradient'
+          ? `linear-gradient(${gradientSettings.angle ?? 180}deg, ${
+              gradientSettings.start ?? tokens.colors.surfaceInverse
+            }, ${gradientSettings.end ?? tokens.colors.surface})`
+          : undefined,
+    };
+
+    const animationEnabled = animation.enabled ?? false;
+    const animationType = animation.type ?? 'none';
+    if (animationEnabled && animationType !== 'none') {
+      const definition = TEXT_ANIMATION_DEFINITIONS[animationType as Exclude<TextAnimationType, 'none'>];
+      if (definition) {
+        spacerStyle.animationName = definition.name;
+        spacerStyle.animationDuration = `${clampNumber(animation.duration ?? 300, 0, 10000)}ms`;
+        spacerStyle.animationDelay = `${clampNumber(animation.delay ?? 0, 0, 10000)}ms`;
+        spacerStyle.animationTimingFunction = definition.timingFunction;
+        spacerStyle.animationFillMode = 'both';
+      }
+    }
+
+    const imageOpacity = clampNumber(background.imageOpacity ?? 100, 0, 100) / 100;
+    const imageBlur = clampNumber(background.blur ?? 0, 0, 100);
+    const focalX = clampNumber(background.focalX ?? 50, 0, 100);
+    const focalY = clampNumber(background.focalY ?? 50, 0, 100);
+    const backgroundPosition = `${background.imagePosition ?? 'center'} center`;
+    const focalPosition = `${focalX}% ${focalY}%`;
+    const resolvedBackgroundPosition =
+      background.focalX !== undefined || background.focalY !== undefined ? focalPosition : backgroundPosition;
+
+    return (
+      <div key={block.id} style={containerStyle}>
+        <div style={spacerStyle}>
+          {hasBackgroundImage ? (
+            <img
+              src={background.imageUrl ?? ''}
+              alt=""
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                objectFit: background.imageFit ?? 'cover',
+                objectPosition: resolvedBackgroundPosition,
+                opacity: imageOpacity,
+                filter: imageBlur > 0 ? `blur(${imageBlur}px)` : undefined,
+                pointerEvents: 'none',
+              }}
+            />
+          ) : null}
+        </div>
+      </div>
+    );
+  };
 
   const renderTwoColumnColumn = (column: TwoColumnColumn, columnKey: string, scale: number) => {
     const text = column.text ?? null;
@@ -783,12 +1166,23 @@ export default function PageRenderer({ blocks, device }: PageRendererProps) {
         height: 'auto',
         borderRadius: resolveImageRadius(image.radius),
         boxSizing: 'border-box',
+        objectFit: image.fit ?? 'cover',
       };
 
       if (typeof image.width === 'number') {
         style.maxWidth = image.width;
       } else {
         style.maxWidth = '100%';
+      }
+
+      if (typeof image.aspectRatio === 'number' && Number.isFinite(image.aspectRatio)) {
+        style.aspectRatio = image.aspectRatio;
+      }
+
+      if (image.focalX !== undefined || image.focalY !== undefined) {
+        const focalX = clampNumber(image.focalX ?? 50, 0, 100);
+        const focalY = clampNumber(image.focalY ?? 50, 0, 100);
+        style.objectPosition = `${focalX}% ${focalY}%`;
       }
 
       if (wrapEnabled) {
@@ -875,29 +1269,133 @@ export default function PageRenderer({ blocks, device }: PageRendererProps) {
       ratio === '1-2' ? ['1fr', '2fr'] : ratio === '2-1' ? ['2fr', '1fr'] : ['1fr', '1fr'];
     const scale = scaleForDevice[currentDevice];
     const paddingMultiplier = paddingScale[currentDevice];
+    const spacing = block.spacing ?? {};
+    const background = block.background ?? {};
+    const overlay = block.overlay ?? {};
+    const animation = block.animation ?? {};
+
+    const marginTop = spacing.marginTop ?? tokens.spacing.md;
+    const marginRight = spacing.marginRight ?? 0;
+    const marginBottom = spacing.marginBottom ?? tokens.spacing.md;
+    const marginLeft = spacing.marginLeft ?? 0;
+
+    const uniformPadding = Math.round(clampNumber(block.padding ?? tokens.spacing.lg, 0, 192) * paddingMultiplier);
+    const paddingTop = spacing.paddingTop ?? uniformPadding;
+    const paddingRight = spacing.paddingRight ?? uniformPadding;
+    const paddingBottom = spacing.paddingBottom ?? uniformPadding;
+    const paddingLeft = spacing.paddingLeft ?? uniformPadding;
+
     const gap = Math.round(clampNumber(block.gap ?? tokens.spacing.lg, 0, 96) * scale);
-    const padding = Math.round(clampNumber(block.padding ?? tokens.spacing.lg, 0, 192) * paddingMultiplier);
     const stacked = currentDevice === 'mobile';
 
+    const backgroundMode = background.mode ?? (background.color ? 'color' : 'none');
+    const gradientSettings = background.gradient ?? {
+      angle: 180,
+      start: tokens.colors.surfaceInverse,
+      end: tokens.colors.surface,
+    };
+    const hasBackgroundImage = backgroundMode === 'image' && Boolean(background.imageUrl);
+    const shouldShowOverlay =
+      (backgroundMode === 'gradient' || backgroundMode === 'image') &&
+      (overlay.opacity !== undefined || overlay.color !== undefined);
+    const overlayOpacity = clampNumber(overlay.opacity ?? 0, 0, 100) / 100;
+    const overlayColor = overlay.color ?? tokens.colors.overlay.strong;
+
+    const containerHasBackground = backgroundMode !== 'none' || hasBackgroundImage || shouldShowOverlay;
+    const containerStyle: React.CSSProperties = {
+      position: 'relative',
+      marginTop,
+      marginRight,
+      marginBottom,
+      marginLeft,
+      borderRadius: containerHasBackground ? tokens.radius.lg : undefined,
+      overflow: containerHasBackground ? 'hidden' : undefined,
+    };
+
+    const contentStyle: React.CSSProperties = {
+      position: 'relative',
+      paddingTop,
+      paddingRight,
+      paddingBottom,
+      paddingLeft,
+      boxSizing: 'border-box',
+    };
+
+    const backgroundLayerStyle: React.CSSProperties = {
+      position: 'absolute',
+      inset: 0,
+      background:
+        backgroundMode === 'color'
+          ? background.color ?? tokens.colors.surface
+          : backgroundMode === 'gradient'
+          ? `linear-gradient(${gradientSettings.angle ?? 180}deg, ${
+              gradientSettings.start ?? tokens.colors.surfaceInverse
+            }, ${gradientSettings.end ?? tokens.colors.surface})`
+          : undefined,
+      pointerEvents: 'none',
+    };
+
+    const animationEnabled = animation.enabled ?? false;
+    const animationType = animation.type ?? 'none';
+    if (animationEnabled && animationType !== 'none') {
+      const definition = TEXT_ANIMATION_DEFINITIONS[animationType as Exclude<TextAnimationType, 'none'>];
+      if (definition) {
+        contentStyle.animationName = definition.name;
+        contentStyle.animationDuration = `${clampNumber(animation.duration ?? 300, 0, 10000)}ms`;
+        contentStyle.animationDelay = `${clampNumber(animation.delay ?? 0, 0, 10000)}ms`;
+        contentStyle.animationTimingFunction = definition.timingFunction;
+        contentStyle.animationFillMode = 'both';
+      }
+    }
+
+    const imageOpacity = clampNumber(background.imageOpacity ?? 100, 0, 100) / 100;
+    const imageBlur = clampNumber(background.blur ?? 0, 0, 100);
+    const focalX = clampNumber(background.focalX ?? 50, 0, 100);
+    const focalY = clampNumber(background.focalY ?? 50, 0, 100);
+    const backgroundPosition = `${background.imagePosition ?? 'center'} center`;
+    const focalPosition = `${focalX}% ${focalY}%`;
+    const resolvedBackgroundPosition =
+      background.focalX !== undefined || background.focalY !== undefined ? focalPosition : backgroundPosition;
+
     return (
-      <section
-        key={block.id}
-        style={{
-          margin: `${tokens.spacing.md}px 0`,
-        }}
-      >
-        <div
-          style={{
-            padding,
-            boxSizing: 'border-box',
-          }}
-        >
+      <section key={block.id} style={containerStyle}>
+        {backgroundMode !== 'none' ? <div style={backgroundLayerStyle} /> : null}
+        {hasBackgroundImage ? (
+          <img
+            src={background.imageUrl ?? ''}
+            alt=""
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              objectFit: background.imageFit ?? 'cover',
+              objectPosition: resolvedBackgroundPosition,
+              opacity: imageOpacity,
+              filter: imageBlur > 0 ? `blur(${imageBlur}px)` : undefined,
+              pointerEvents: 'none',
+            }}
+          />
+        ) : null}
+        {shouldShowOverlay && overlayOpacity > 0 ? (
           <div
             style={{
+              position: 'absolute',
+              inset: 0,
+              background: hexToRgba(overlayColor, overlayOpacity),
+              pointerEvents: 'none',
+            }}
+          />
+        ) : null}
+        <div style={contentStyle}>
+          <div
+            style={{
+              position: 'relative',
               display: 'grid',
               gap,
               gridTemplateColumns: stacked ? '1fr' : `${leftFraction} ${rightFraction}`,
               alignItems: 'start',
+              zIndex: 1,
             }}
           >
             {renderTwoColumnColumn(block.left, `${block.id}-left`, scale)}
