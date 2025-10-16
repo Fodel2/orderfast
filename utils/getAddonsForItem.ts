@@ -10,12 +10,26 @@ export async function getAddonsForItem(
   const query = supabase
     .from('item_addon_links')
     .select(
-      `addon_groups!inner(
-        id,restaurant_id,name,required,multiple_choice,max_group_select,max_option_quantity,
-        addon_options!inner(
-          id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at
+      `
+      id,
+      addon_groups (
+        id,
+        name,
+        multiple_choice,
+        required,
+        max_group_select,
+        max_option_quantity,
+        addon_options (
+          id,
+          name,
+          price,
+          available,
+          stock_status,
+          stock_return_date,
+          stock_last_updated_at
         )
-      )`
+      )
+    `
     )
     .eq('item_id', itemId);
 
@@ -23,32 +37,56 @@ export async function getAddonsForItem(
 
   const { data, error } = await query;
 
-  if (error) throw error;
-
-  const map = new Map<string, AddonGroup>();
-  (data || []).forEach((row: any) => {
-    const g = row.addon_groups;
-    if (!g) return;
-    const gid = String(g.id);
-    if (!map.has(gid)) {
-      map.set(gid, {
-        id: gid,
-        group_id: gid,
-        name: g.name,
-        required: g.required,
-        multiple_choice: g.multiple_choice,
-        max_group_select: g.max_group_select,
-        max_option_quantity: g.max_option_quantity,
-        addon_options: [],
+  if (error) {
+    if (process.env.NODE_ENV === 'development') {
+      console.error('[customer:addons] failed to fetch add-ons', {
+        itemId,
+        requestUrl,
+        error,
       });
     }
-    const group = map.get(gid)!;
-    (g.addon_options || []).forEach((opt: any) => {
-      group.addon_options.push({
-        id: String(opt.id),
+    throw error;
+  }
+
+  const addonGroups = new Map<string, AddonGroup>();
+  const optionIdsByGroup = new Map<string, Set<string>>();
+
+  (data ?? []).forEach((row: any) => {
+    const group = row?.addon_groups;
+    if (!group) return;
+
+    const gid = String(group.id);
+    if (!addonGroups.has(gid)) {
+      addonGroups.set(gid, {
+        id: gid,
+        group_id: gid,
+        restaurant_id: group.restaurant_id ? String(group.restaurant_id) : undefined,
+        name: group.name,
+        required: group.required,
+        multiple_choice: group.multiple_choice,
+        max_group_select: group.max_group_select,
+        max_option_quantity: group.max_option_quantity,
+        addon_options: [],
+      });
+      optionIdsByGroup.set(gid, new Set());
+    }
+
+    const targetGroup = addonGroups.get(gid)!;
+    const optionIds = optionIdsByGroup.get(gid)!;
+    const options: any[] = Array.isArray(group.addon_options)
+      ? group.addon_options
+      : [];
+
+    options.forEach((opt) => {
+      const optionId = String(opt.id);
+      if (optionIds.has(optionId)) return;
+      optionIds.add(optionId);
+
+      targetGroup.addon_options.push({
+        id: optionId,
         group_id: opt.group_id ? String(opt.group_id) : gid,
         name: opt.name,
-        price: opt.price,
+        price: typeof opt.price === 'number' ? opt.price : opt.price == null ? null : Number(opt.price),
         available: opt.available,
         out_of_stock_until: opt.out_of_stock_until,
         stock_status: opt.stock_status,
@@ -58,19 +96,21 @@ export async function getAddonsForItem(
     });
   });
 
+  const result = Array.from(addonGroups.values());
+
   if (process.env.NODE_ENV === 'development') {
-    console.debug('[customer:addons]', {
+    console.debug('[customer:addons] fetched add-ons for item', {
       itemId,
-      rawRows: data?.length ?? 0,
-      groups: map.size,
-      options: Array.from(map.values()).reduce(
+      requestUrl,
+      rows: data?.length ?? 0,
+      addonGroups: result.length,
+      addonOptions: result.reduce(
         (sum, group) => sum + (group.addon_options?.length ?? 0),
         0,
       ),
-      requestUrl,
     });
   }
 
-  return Array.from(map.values());
+  return result;
 }
 

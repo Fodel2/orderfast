@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
+import type { CSSProperties } from "react";
 import type { AddonGroup } from "../utils/types";
 import { useBrand } from "@/components/branding/BrandProvider";
-import type { ReactNode, CSSProperties } from "react";
 
 export function validateAddonSelections(
   addons: AddonGroup[],
@@ -30,15 +30,23 @@ export function validateAddonSelections(
       group?.max_option_quantity ?? (group as any)?.maxOptionQuantity;
 
     const effectiveGroupMax =
-      rawGroupSelect != null ? rawGroupSelect : multipleChoice ? null : 1;
+      rawGroupSelect != null ? Number(rawGroupSelect) : multipleChoice ? null : 1;
 
     const distinctSelected = quantities.filter((q) => q > 0).length;
 
-    if (effectiveGroupMax != null && distinctSelected > effectiveGroupMax) {
+    if (
+      effectiveGroupMax != null &&
+      Number.isFinite(effectiveGroupMax) &&
+      distinctSelected > effectiveGroupMax
+    ) {
       messages.push(`Select up to ${effectiveGroupMax}`);
     }
 
-    if (rawOptionQty != null && quantities.some((q) => q > rawOptionQty)) {
+    if (
+      rawOptionQty != null &&
+      Number.isFinite(Number(rawOptionQty)) &&
+      quantities.some((q) => q > Number(rawOptionQty))
+    ) {
       messages.push(`Max ${rawOptionQty} per option`);
     }
 
@@ -49,58 +57,13 @@ export function validateAddonSelections(
   return errors;
 }
 
-function ScrollRow({ children }: { children: ReactNode }) {
-  const rowRef = useRef<HTMLDivElement>(null);
-  const [canLeft, setCanLeft] = useState(false);
-  const [canRight, setCanRight] = useState(false);
-
-  useEffect(() => {
-    const el = rowRef.current;
-    if (!el) return;
-    const update = () => {
-      setCanLeft(el.scrollLeft > 2);
-      setCanRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
-    };
-    update();
-    el.addEventListener('scroll', update, { passive: true });
-    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null;
-    ro?.observe(el);
-    return () => {
-      el.removeEventListener('scroll', update);
-      ro?.disconnect();
-    };
-  }, []);
-
-  return (
-    <div className="relative">
-      {canLeft && (
-        <div
-          className="pointer-events-none absolute left-0 top-0 h-full w-6 md:w-8 z-[1]"
-          style={{
-            background:
-              'linear-gradient(to right, rgba(255,255,255,1), rgba(255,255,255,0))',
-          }}
-        />
-      )}
-      {canRight && (
-        <div
-          className="pointer-events-none absolute right-0 top-0 h-full w-6 md:w-8 z-[1]"
-          style={{
-            background:
-              'linear-gradient(to left, rgba(255,255,255,1), rgba(255,255,255,0))',
-          }}
-        />
-      )}
-      <div
-        ref={rowRef}
-        className="addon-scroll overflow-x-auto scroll-smooth snap-x snap-mandatory flex gap-3 px-2 pr-4 md:pr-6 pb-1"
-        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-      >
-        {children}
-      </div>
-      <style>{`.addon-scroll::-webkit-scrollbar{display:none;}`}</style>
-    </div>
-  );
+function toNumber(value: unknown): number | null {
+  if (value == null) return null;
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 export default function AddonGroups({
@@ -116,19 +79,17 @@ export default function AddonGroups({
     Record<string, Record<string, number>>
   >(initialSelections || {});
 
-  const errors = validateAddonSelections(addons, selectedQuantities);
   const brand = useBrand?.();
   const accent =
-    typeof brand?.brand === 'string' && brand.brand ? brand.brand : '#EB2BB9';
+    typeof brand?.brand === "string" && brand.brand ? brand.brand : "#EB2BB9";
+
+  const errors = validateAddonSelections(addons, selectedQuantities);
 
   useEffect(() => {
-    if (process.env.NODE_ENV === 'development') {
-      console.debug('[customer:addons] AddonGroups received groups', {
-        groupsCount: addons.length,
-        optionCounts: addons.map((group) => ({
-          groupId: group.group_id ?? group.id,
-          options: Array.isArray(group.addon_options) ? group.addon_options.length : 0,
-        })),
+    if (process.env.NODE_ENV === "development") {
+      console.log("[customer:addons] addonGroups length", addons.length);
+      addons.forEach((group) => {
+        console.log("[customer:addons] group", group?.name ?? "(unnamed)");
       });
     }
   }, [addons]);
@@ -155,8 +116,6 @@ export default function AddonGroups({
       const distinctCount = quantities.filter((q) => q > 0).length;
       const totalCount = quantities.reduce((sum, q) => sum + q, 0);
 
-
-      // Block all interaction when either limit is zero
       if (maxQty === 0 || groupMax === 0) {
         return prev;
       }
@@ -172,14 +131,11 @@ export default function AddonGroups({
         return prev;
       }
 
-      // Prevent selection when the group cap would be exceeded
       if (delta > 0) {
-        // Block adding a new option when at the cap
         if (distinctCount >= groupMax && current === 0) {
           return prev;
         }
 
-        // Block any increase that would push total quantity past the cap
         if (totalCount >= groupMax) {
           return prev;
         }
@@ -203,221 +159,225 @@ export default function AddonGroups({
   };
 
   return (
-    <div className="space-y-6">
-      {addons.map((group) => {
-
-        const gid = group.group_id ?? group.id;
+    <div className="space-y-4">
+      {addons?.map((group) => {
+        const groupId = group.group_id ?? group.id;
         const multipleChoice =
           typeof group.multiple_choice === "string"
             ? group.multiple_choice === "true"
             : !!group.multiple_choice;
-        const max_group_select =
-          group?.max_group_select ?? (group as any)?.maxGroupSelect ?? Infinity;
-        const max_option_quantity =
-          group?.max_option_quantity ?? (group as any)?.maxOptionQuantity ?? Infinity;
+
+        const rawGroupSelect =
+          toNumber(group?.max_group_select ?? (group as any)?.maxGroupSelect) ??
+          Infinity;
+        const rawOptionQuantity =
+          toNumber(group?.max_option_quantity ?? (group as any)?.maxOptionQuantity) ??
+          Infinity;
+
+        const groupMax = multipleChoice
+          ? rawGroupSelect > 0
+            ? rawGroupSelect
+            : Infinity
+          : 1;
+        const optionMax = multipleChoice
+          ? rawOptionQuantity > 0
+            ? rawOptionQuantity
+            : 0
+          : 1;
+
         const options = Array.isArray(group.addon_options)
           ? group.addon_options
           : [];
 
-        if (process.env.NODE_ENV === 'development') {
-          console.debug('[customer:addons] rendering group', {
-            groupId: gid,
+        if (process.env.NODE_ENV === "development") {
+          console.debug("[customer:addons] rendering group", {
+            groupId,
             optionCount: options.length,
           });
         }
 
+        const groupSelections = selectedQuantities[groupId] || {};
+        const totalGroupQty = Object.values(groupSelections).reduce(
+          (sum, q) => sum + q,
+          0,
+        );
+        const distinctSelected = Object.values(groupSelections).filter(
+          (q) => q > 0,
+        ).length;
+
         return (
-          <div
-            key={gid}
-            className="bg-white border rounded-2xl p-4 shadow-sm"
-          >
-              <div className="flex justify-between items-center mb-2">
-                <h3 className="text-lg font-semibold">
-                  {group.name}
-                  {group.required && (
-                    <span
-                      className="text-sm ml-2"
-                      style={{ color: accent, opacity: 0.9 }}
-                    >
-                      (Required)
-                    </span>
-                  )}
-                </h3>
-                <p className="text-sm text-gray-500">
-                  {multipleChoice
-                    ? max_group_select !== Infinity
-                      ? `Pick up to ${max_group_select}`
-                      : "Multiple Choice"
-                    : "Pick one"}
-                </p>
-              </div>
+          <div key={groupId} className="space-y-2 rounded-2xl border p-4">
+            <div className="flex items-center justify-between gap-4">
+              <h3 className="text-lg font-semibold">
+                {group.name}
+                {group.required ? (
+                  <span className="ml-2 text-sm" style={{ color: accent }}>
+                    (Required)
+                  </span>
+                ) : null}
+              </h3>
+              <span className="text-sm text-gray-500">
+                {multipleChoice
+                  ? Number.isFinite(groupMax)
+                    ? `Pick up to ${groupMax}`
+                    : "Choose any"
+                  : "Pick one"}
+              </span>
+            </div>
 
-              <ScrollRow>
-                {options.map((option) => {
-                  const gid = group.group_id ?? group.id;
-                  const quantity = selectedQuantities[gid]?.[option.id] || 0;
+            <div className="flex flex-wrap gap-3">
+              {options.map((option) => {
+                const quantity = groupSelections[option.id] || 0;
+                const isSelected = quantity > 0;
 
-                  const maxQty = multipleChoice
-                    ? max_option_quantity > 0
-                      ? max_option_quantity
-                      : 0
-                    : 1;
+                const isOutOfStock =
+                  option.available === false ||
+                  option.stock_status === "out" ||
+                  option.stock_status === "out_of_stock";
 
-                  const groupMax = multipleChoice
-                    ? max_group_select > 0
-                      ? max_group_select
-                      : Infinity
-                    : 1;
+                const disabled =
+                  isOutOfStock || optionMax === 0 || groupMax === 0;
 
-                  const groupSelections = selectedQuantities[gid] || {};
-                  const totalGroupQty = Object.values(groupSelections).reduce(
-                    (sum, q) => sum + q,
-                    0,
+                const groupCapHit =
+                  multipleChoice && Number.isFinite(groupMax)
+                    ? totalGroupQty >= groupMax && quantity === 0
+                    : false;
+
+                const distinctCapHit =
+                  multipleChoice && Number.isFinite(groupMax)
+                    ? distinctSelected >= groupMax && quantity === 0
+                    : false;
+
+                const canIncrease = !(
+                  disabled ||
+                  (multipleChoice && optionMax !== Infinity && quantity >= optionMax) ||
+                  groupCapHit ||
+                  distinctCapHit
+                );
+
+                const handleSelect = () => {
+                  if (!canIncrease) return;
+                  updateQuantity(
+                    groupId,
+                    option.id,
+                    1,
+                    optionMax,
+                    groupMax,
+                    multipleChoice,
                   );
-                  const groupCapHit = totalGroupQty >= groupMax;
+                };
 
-                  const formatDate = (value?: string | null) => {
-                    if (!value) return undefined;
-                    const d = new Date(value);
-                    return Number.isNaN(d.getTime()) ? undefined : d.toLocaleDateString();
-                  };
+                const handleDecrease = () => {
+                  if (disabled || quantity <= 0) return;
+                  updateQuantity(
+                    groupId,
+                    option.id,
+                    -1,
+                    optionMax,
+                    groupMax,
+                    multipleChoice,
+                  );
+                };
 
-                  const isOutOfStock =
-                    option.available === false ||
-                    option.stock_status === 'out' ||
-                    option.stock_status === 'out_of_stock';
-                  const handleTileClick = () => {
-                    if (isOutOfStock) return;
-                    if (maxQty === 0 || groupMax === 0) return;
-                    if (quantity >= maxQty) return;
-                    if (multipleChoice && groupCapHit) return;
-                    updateQuantity(
-                      gid,
-                      option.id,
-                      1,
-                      maxQty,
-                      groupMax,
-                      multipleChoice,
-                    );
-                  };
+                const selectedStyle: CSSProperties = isSelected
+                  ? {
+                      backgroundColor: accent ? `${accent}14` : undefined,
+                      borderColor: accent ? `${accent}40` : undefined,
+                    }
+                  : {};
 
-                  const selectedStyle: CSSProperties =
-                    quantity > 0
-                      ? {
-                          backgroundColor: accent ? `${accent}14` : undefined,
-                          boxShadow: accent
-                            ? `inset 0 0 0 2px ${accent}`
-                            : undefined,
-                          borderColor: 'transparent',
-                        }
-                      : {};
+                const formatDate = (value?: string | null) => {
+                  if (!value) return undefined;
+                  const d = new Date(value);
+                  return Number.isNaN(d.getTime()) ? undefined : d.toLocaleDateString();
+                };
 
-                  const disabled =
-                    isOutOfStock ||
-                    (multipleChoice && groupCapHit && quantity === 0) ||
-                    maxQty === 0 ||
-                    groupMax === 0;
+                const outOfStockLabel = (() => {
+                  if (!isOutOfStock) return undefined;
+                  if (option.stock_status === "out_of_stock") return "Out of stock";
+                  if (option.stock_status === "out") return "Out of stock";
+                  const nextStockDate =
+                    formatDate(option.out_of_stock_until) ||
+                    formatDate(option.stock_return_date);
+                  if (nextStockDate) return `Back ${nextStockDate}`;
+                  return "Unavailable";
+                })();
 
-                  const outOfStockLabel = (() => {
-                    if (!isOutOfStock) return undefined;
-                    if (option.stock_status === 'out_of_stock') return 'Out of stock';
-                    if (option.stock_status === 'out') return 'Out of stock';
-                    const nextStockDate =
-                      formatDate(option.out_of_stock_until) ||
-                      formatDate(option.stock_return_date);
-                    if (nextStockDate) return `Back ${nextStockDate}`;
-                    return 'Unavailable';
-                  })();
+                const priceLabel =
+                  typeof option.price === "number" && option.price > 0
+                    ? `+£${(option.price / 100).toFixed(2)}`
+                    : null;
 
-                  return (
-                    <div
-                      key={option.id}
-                      onClick={handleTileClick}
-                      data-selected={quantity > 0}
-                      tabIndex={0}
-                      className={`relative min-w-[152px] md:min-w-[168px] px-4 py-3 rounded-xl border bg-slate-50 border-slate-200 hover:bg-slate-100 flex-shrink-0 snap-start transition cursor-pointer text-center text-slate-900 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 data-[selected=true]:scale-[1.01] ${
-                        disabled ? 'pointer-events-none opacity-50' : ''
+                return (
+                  <div key={option.id} className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleSelect}
+                      disabled={disabled || !canIncrease}
+                      className={`rounded-lg border px-4 py-2 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+                        disabled ? "opacity-50 cursor-not-allowed" : "hover:bg-gray-50"
                       }`}
                       style={{
                         ...selectedStyle,
-                        ['--tw-ring-color' as any]: accent,
-                      } as CSSProperties}
+                        ["--tw-ring-color" as any]: accent,
+                      }}
                     >
-                      <div className="font-medium">{option.name}</div>
-                      {option.price && option.price > 0 && (
-                        <div className="text-sm text-gray-500">
-                          +£{(option.price / 100).toFixed(2)}
-                        </div>
-                      )}
-
-                      {outOfStockLabel && (
-                        <div className="mt-2 text-xs font-medium text-rose-600">
-                          {outOfStockLabel}
-                        </div>
-                      )}
-
-                      {quantity > 0 && multipleChoice && (
-                        <div className="mt-3 flex justify-center items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={(e: React.MouseEvent) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              updateQuantity(
-                                gid,
-                                option.id,
-                                -1,
-                                maxQty,
-                                groupMax,
-                                multipleChoice,
-                              );
-                            }}
-                            className="w-8 h-8 rounded-full border border-gray-300 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-                            style={{ ['--tw-ring-color' as any]: accent } as CSSProperties}
-                          >
-                            –
-                          </button>
-                          <span className="w-6 text-center">{quantity}</span>
-                          <button
-                            type="button"
-                            onClick={(e: React.MouseEvent) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              updateQuantity(
-                                gid,
-                                option.id,
-                                1,
-                                maxQty,
-                                groupMax,
-                                multipleChoice,
-                              );
-                            }}
-                            disabled={
-                              disabled ||
-                              quantity >= maxQty ||
-                              groupCapHit ||
-                              maxQty === 0 ||
-                              groupMax === 0
-                            }
-                            className="w-8 h-8 rounded-full border border-gray-300 hover:bg-gray-100 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-                            style={{ ['--tw-ring-color' as any]: accent } as CSSProperties}
-                          >
-                            +
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </ScrollRow>
-              {errors[group.group_id ?? group.id] && (
-                <p className="text-red-600 text-sm mt-2">
-                  {errors[group.group_id ?? group.id]}
-                </p>
-              )}
+                      <span className="block text-left">
+                        <span>{option.name}</span>
+                        {priceLabel ? (
+                          <span className="ml-2 text-xs text-gray-500">{priceLabel}</span>
+                        ) : null}
+                      </span>
+                    </button>
+                    {multipleChoice ? (
+                      <div className="flex items-center gap-1 text-sm">
+                        <button
+                          type="button"
+                          onClick={handleDecrease}
+                          disabled={disabled || quantity <= 0}
+                          className="h-8 w-8 rounded-full border focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                          style={{
+                            ["--tw-ring-color" as any]: accent,
+                          }}
+                          aria-label={`Decrease ${option.name}`}
+                        >
+                          –
+                        </button>
+                        <span className="w-5 text-center">{quantity}</span>
+                        <button
+                          type="button"
+                          onClick={handleSelect}
+                          disabled={disabled || !canIncrease}
+                          className="h-8 w-8 rounded-full border focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                          style={{
+                            ["--tw-ring-color" as any]: accent,
+                          }}
+                          aria-label={`Increase ${option.name}`}
+                        >
+                          +
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-sm text-gray-600">
+                        {isSelected ? "Selected" : ""}
+                      </span>
+                    )}
+                    {outOfStockLabel ? (
+                      <span className="text-xs font-medium text-rose-600">
+                        {outOfStockLabel}
+                      </span>
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
-          );
-        })}
-      </div>
+
+            {errors[groupId] && (
+              <p className="text-sm text-red-600">{errors[groupId]}</p>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }

@@ -43,7 +43,7 @@ export default function MenuItemCard({
 }) {
   const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [groups, setGroups] = useState<AddonGroup[]>([]);
+  const [addonGroups, setAddonGroups] = useState<AddonGroup[]>([]);
   const [qty, setQty] = useState(1);
   const [notes, setNotes] = useState('');
   const [selections, setSelections] = useState<
@@ -112,7 +112,7 @@ export default function MenuItemCard({
     try {
       const data = await getAddonsForItem(item.id);
       const sanitized = Array.isArray(data) ? data : [];
-      setGroups(sanitized);
+      setAddonGroups(sanitized);
       if (process.env.NODE_ENV === 'development') {
         console.debug('[customer:item-modal] fetched add-on groups', {
           itemId: item.id,
@@ -127,7 +127,7 @@ export default function MenuItemCard({
       }
     } catch (err) {
       console.error('Failed to load addons', err);
-      setGroups([]);
+      setAddonGroups([]);
     } finally {
       setLoading(false);
     }
@@ -145,19 +145,19 @@ export default function MenuItemCard({
     if (process.env.NODE_ENV === 'development') {
       console.debug('[customer:item-modal] rendering with add-on groups', {
         itemId: item.id,
-        groupsCount: groups.length,
+        groupsCount: addonGroups.length,
       });
     }
-  }, [groups, item.id]);
+  }, [addonGroups, item.id]);
 
   const handleFinalAdd = () => {
-    const errors = validateAddonSelections(groups, selections);
+    const errors = validateAddonSelections(addonGroups, selections);
     if (Object.keys(errors).length) {
       alert('Please complete required add-ons');
       return;
     }
 
-    const addons = groups.flatMap((g) => {
+    const addons = addonGroups.flatMap((g) => {
       const gid = g.group_id ?? g.id;
       const opts = selections[gid] || {};
       return g.addon_options
@@ -279,8 +279,8 @@ export default function MenuItemCard({
         <div className="flex-1 overflow-y-auto px-4 md:px-6 py-3 space-y-4">
           {loading ? (
             <p className="text-center text-gray-500">Loading...</p>
-          ) : groups.length > 0 ? (
-            <AddonGroups addons={groups} onChange={setSelections} />
+          ) : addonGroups.length > 0 ? (
+            <AddonGroups addons={addonGroups} onChange={setSelections} />
           ) : null}
           <textarea
             className="w-full border rounded p-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
