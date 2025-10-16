@@ -20,6 +20,7 @@ export type TextTypographySettings = {
 };
 
 export type TextBackgroundSettings = {
+  type?: 'none' | 'color' | 'gradient' | 'image';
   mode?: 'none' | 'color' | 'gradient' | 'image';
   color?: string;
   gradient?: {
