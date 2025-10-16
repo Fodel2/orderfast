@@ -290,7 +290,7 @@ function ColorPickerPopover({
 }: ColorPickerPopoverProps) {
   const portalRef = useRef<HTMLDivElement | null>(null);
   const [mounted, setMounted] = useState(false);
-  const [position, setPosition] = useState({ top: 0, left: 0 });
+  const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -310,7 +310,10 @@ function ColorPickerPopover({
   }, []);
 
   useEffect(() => {
-    if (!open) return undefined;
+    if (!open) {
+      setPosition(null);
+      return undefined;
+    }
 
     const updatePosition = () => {
       const anchor = anchorRef.current;
@@ -355,14 +358,18 @@ function ColorPickerPopover({
     };
   }, [open, onClose]);
 
-  if (!open || !mounted || !portalRef.current) {
+  if (!open || !mounted || !portalRef.current || !position) {
     return null;
   }
 
   return createPortal(
     <>
       <div className="color-picker-overlay" onClick={onClose} />
-      <div className="color-picker-popover" style={{ top: position.top, left: position.left }}>
+      <div
+        className="color-picker-popover"
+        data-state={open ? "open" : "closed"}
+        style={{ top: position.top, left: position.left }}
+      >
         <div className="color-picker-header">
           <span
             className="color-picker-preview"
@@ -412,6 +419,16 @@ function ColorPickerPopover({
           flex-direction: column;
           gap: 16px;
           pointer-events: auto;
+          opacity: 0;
+          transform: scale(0.98);
+          transform-origin: top center;
+          transition: opacity 0.15s ease-out, transform 0.15s ease-out;
+          will-change: opacity, transform;
+        }
+
+        .color-picker-popover[data-state='open'] {
+          opacity: 1;
+          transform: scale(1);
         }
 
         .color-picker-header {
