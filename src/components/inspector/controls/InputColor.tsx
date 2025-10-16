@@ -1,4 +1,12 @@
-import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ChangeEvent,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 
 import { inspectorColors, inspectorLayout } from "../layout";
@@ -40,6 +48,11 @@ const PRESET_SWATCHES = [
   "#ef4444",
   "#dc2626",
 ];
+
+const POPOVER_WIDTH = 264;
+const POPOVER_ESTIMATED_HEIGHT = 320;
+const POPOVER_MARGIN = 12;
+const POPOVER_MAX_HEIGHT_RATIO = 0.7;
 
 function normalizeHex(value: string): string {
   if (typeof value !== "string") {
@@ -289,8 +302,35 @@ function ColorPickerPopover({
   onClose,
 }: ColorPickerPopoverProps) {
   const portalRef = useRef<HTMLDivElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
   const [mounted, setMounted] = useState(false);
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
+
+  const updatePosition = useCallback(() => {
+    if (!open) return;
+
+    const anchor = anchorRef.current;
+    if (!anchor) return;
+
+    const rect = anchor.getBoundingClientRect();
+    const measuredHeight = popoverRef.current?.offsetHeight ?? 0;
+    const availableHeight = window.innerHeight * POPOVER_MAX_HEIGHT_RATIO;
+    const height = measuredHeight
+      ? Math.min(measuredHeight, availableHeight)
+      : Math.min(POPOVER_ESTIMATED_HEIGHT, availableHeight);
+    const margin = POPOVER_MARGIN;
+    const preferredTop = rect.bottom + margin;
+    let top = preferredTop;
+    if (preferredTop + height > window.innerHeight - margin) {
+      top = Math.max(margin, rect.top - height - margin);
+    }
+
+    const width = POPOVER_WIDTH;
+    const centerLeft = rect.left + rect.width / 2 - width / 2;
+    const clampedLeft = Math.max(margin, Math.min(centerLeft, window.innerWidth - width - margin));
+
+    setPosition({ top, left: clampedLeft });
+  }, [anchorRef, open]);
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -315,26 +355,6 @@ function ColorPickerPopover({
       return undefined;
     }
 
-    const updatePosition = () => {
-      const anchor = anchorRef.current;
-      if (!anchor) return;
-      const rect = anchor.getBoundingClientRect();
-      const width = 264;
-      const height = 248;
-      const margin = 12;
-      const preferredTop = rect.bottom + margin;
-      let top = preferredTop;
-      if (preferredTop + height > window.innerHeight - margin) {
-        top = Math.max(margin, rect.top - height - margin);
-      }
-      const centerLeft = rect.left + rect.width / 2 - width / 2;
-      const left = Math.min(
-        window.innerWidth - width - margin,
-        Math.max(margin, centerLeft),
-      );
-      setPosition({ top, left });
-    };
-
     updatePosition();
     window.addEventListener("resize", updatePosition);
     window.addEventListener("scroll", updatePosition, true);
@@ -342,7 +362,20 @@ function ColorPickerPopover({
       window.removeEventListener("resize", updatePosition);
       window.removeEventListener("scroll", updatePosition, true);
     };
-  }, [anchorRef, open]);
+  }, [open, updatePosition]);
+
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+    if (!popoverRef.current) return undefined;
+
+    const frame = requestAnimationFrame(() => {
+      updatePosition();
+    });
+
+    return () => {
+      cancelAnimationFrame(frame);
+    };
+  }, [displayValue, open, updatePosition, value]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -368,6 +401,7 @@ function ColorPickerPopover({
       <div
         className="color-picker-popover"
         data-state={open ? "open" : "closed"}
+        ref={popoverRef}
         style={{ top: position.top, left: position.left }}
       >
         <div className="color-picker-header">
@@ -407,14 +441,16 @@ function ColorPickerPopover({
         }
 
         .color-picker-popover {
-          position: fixed;
+          position: fixed !important;
+          top: auto;
+          left: auto;
           z-index: 9999;
-          width: 264px;
+          width: ${POPOVER_WIDTH}px;
           padding: 16px;
-          border-radius: 16px;
+          border-radius: 8px;
           background: #ffffff;
           border: 1px solid rgba(15, 23, 42, 0.08);
-          box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
           display: flex;
           flex-direction: column;
           gap: 16px;
@@ -424,6 +460,9 @@ function ColorPickerPopover({
           transform-origin: top center;
           transition: opacity 0.15s ease-out, transform 0.15s ease-out;
           will-change: opacity, transform;
+          max-height: 70vh;
+          overflow-y: auto;
+          overscroll-behavior: contain;
         }
 
         .color-picker-popover[data-state='open'] {
