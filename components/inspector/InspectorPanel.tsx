@@ -39,22 +39,36 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
 
   return (
     <aside className={panelClassName} aria-hidden={!open} role="complementary">
-      <div className={clsx(styles.content, contentClassName)} style={contentStyle}>
+      <div
+        className={clsx(styles.content, 'inspector-panel__content', contentClassName)}
+        style={contentStyle}
+      >
         {header ??
           (title ? (
-            <div className={styles.header}>
-              <div className={styles.titles}>
-                <span className={styles.title}>{title}</span>
-                {subtitle ? <span className={styles.subtitle}>{subtitle}</span> : null}
+            <div className={clsx(styles.header, 'inspector-panel__header')}>
+              <div className={clsx(styles.titles, 'inspector-panel__titles')}>
+                <span className={clsx(styles.title, 'inspector-panel__title')}>{title}</span>
+                {subtitle ? (
+                  <span className={clsx(styles.subtitle, 'inspector-panel__subtitle')}>
+                    {subtitle}
+                  </span>
+                ) : null}
               </div>
               {onClose ? (
-                <button type="button" className={styles.closeButton} onClick={onClose}>
+                <button
+                  type="button"
+                  className={clsx(styles.closeButton, 'inspector-panel__close')}
+                  onClick={onClose}
+                >
                   Close
                 </button>
               ) : null}
             </div>
           ) : null)}
-        <div className={clsx(styles.body, bodyClassName)} style={bodyStyle}>
+        <div
+          className={clsx(styles.body, 'inspector-panel__body', bodyClassName)}
+          style={bodyStyle}
+        >
           {children}
         </div>
       </div>

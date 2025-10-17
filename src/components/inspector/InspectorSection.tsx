@@ -66,9 +66,20 @@ export function InspectorContainer({
         .inspector-container {
           gap: ${CONTAINER_GAP}px;
           padding: ${CONTAINER_PADDING}px;
+          padding-bottom: calc(${CONTAINER_PADDING}px + env(safe-area-inset-bottom));
           overflow-y: auto;
           overscroll-behavior: contain;
           scroll-behavior: smooth;
+          height: 100%;
+          max-height: 100%;
+        }
+
+        @media (max-width: 768px) {
+          .inspector-container {
+            padding: ${tokens.spacing.sm}px ${tokens.spacing.sm}px
+              calc(${tokens.spacing.md}px + env(safe-area-inset-bottom));
+            gap: ${tokens.spacing.sm}px;
+          }
         }
       `}</style>
     </div>
@@ -171,14 +182,18 @@ export function InspectorGroup({
         .inspector-group {
           display: flex;
           flex-direction: column;
-          gap: ${CONTAINER_GAP}px;
-          padding: ${CONTAINER_PADDING}px 0;
-          border-bottom: ${tokens.border.thin}px solid ${tokens.colors.borderLight};
+          gap: ${tokens.spacing.sm}px;
+          padding: ${tokens.spacing.md}px;
+          border-radius: ${tokens.radius.md}px;
+          background: ${tokens.colors.surface};
+          border: ${tokens.border.thin}px solid ${tokens.colors.borderLight};
+          box-shadow: ${tokens.shadow.sm};
+          transition: box-shadow 0.2s ease, border-color 0.2s ease,
+            background-color 0.2s ease;
         }
 
-        .inspector-group:last-of-type {
-          border-bottom: none;
-          padding-bottom: 0;
+        .inspector-group[data-collapsible="true"] {
+          gap: ${tokens.spacing.md}px;
         }
 
         .inspector-group__header {
@@ -195,15 +210,17 @@ export function InspectorGroup({
 
         .inspector-group__title {
           margin: 0;
-          font-size: 0.875rem;
+          font-size: 0.85rem;
           font-weight: 600;
           color: ${tokens.colors.textPrimary};
+          letter-spacing: 0.01em;
         }
 
         .inspector-group__description {
           margin: 0;
           font-size: 0.75rem;
           color: ${tokens.colors.textMuted};
+          line-height: 1.45;
         }
 
         .inspector-group__actions {
@@ -220,24 +237,28 @@ export function InspectorGroup({
           padding: ${tokens.spacing.xs}px ${tokens.spacing.sm}px;
           border-radius: ${tokens.radius.sm}px;
           border: ${tokens.border.thin}px solid ${tokens.colors.borderLight};
-          background: ${tokens.colors.surface};
+          background: ${tokens.colors.surfaceMuted};
           color: ${tokens.colors.textSecondary};
           font-size: 0.75rem;
           font-weight: 600;
           cursor: pointer;
           transition: background-color 0.2s ease, border-color 0.2s ease,
-            color 0.2s ease;
+            color 0.2s ease, box-shadow 0.2s ease;
         }
 
-        .inspector-group__toggle:hover {
-          background: ${tokens.colors.surfaceMuted};
+        .inspector-group__toggle:hover,
+        .inspector-group__toggle:focus-visible {
+          background: ${tokens.colors.surfaceSubtle};
           border-color: ${tokens.colors.borderStrong};
+          color: ${tokens.colors.textPrimary};
+          outline: none;
+          box-shadow: 0 0 0 2px ${tokens.colors.overlay.soft};
         }
 
         .inspector-group__content {
           display: flex;
           flex-direction: column;
-          gap: ${CONTAINER_GAP}px;
+          gap: ${tokens.spacing.md}px;
         }
 
         @media (min-width: 768px) {
@@ -245,6 +266,13 @@ export function InspectorGroup({
             flex-direction: row;
             align-items: center;
             justify-content: space-between;
+          }
+        }
+
+        @media (max-width: 768px) {
+          .inspector-group {
+            padding: ${tokens.spacing.sm}px ${tokens.spacing.md}px;
+            border-radius: ${tokens.radius.md}px;
           }
         }
       `}</style>
