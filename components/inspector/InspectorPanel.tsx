@@ -2,6 +2,7 @@ import React from 'react';
 import clsx from 'clsx';
 
 import styles from './InspectorPanel.module.css';
+import { useIsMobile } from '@/src/hooks/useIsMobile';
 
 type InspectorPanelProps = {
   open: boolean;
@@ -30,15 +31,26 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
   contentStyle,
   children,
 }) => {
+  const isMobile = useIsMobile(768);
   const panelClassName = clsx(
     styles.panel,
-    open && styles.open,
+    open ? styles.open : styles.closed,
     className,
     'inspector-panel',
   );
 
   return (
     <aside className={panelClassName} aria-hidden={!open} role="complementary">
+      {isMobile && onClose ? (
+        <button
+          type="button"
+          className={clsx(styles.mobileCloseButton, 'inspector-close')}
+          onClick={onClose}
+          aria-label="Close inspector"
+        >
+          ✕
+        </button>
+      ) : null}
       <div
         className={clsx(styles.content, 'inspector-panel__content', contentClassName)}
         style={contentStyle}

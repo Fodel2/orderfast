@@ -4,6 +4,7 @@ import { Redo, Undo, X, ZoomIn, ZoomOut } from 'lucide-react';
 
 import { tokens } from '@/src/ui/tokens';
 import PageRenderer, { type Block, type DeviceKind } from '../PageRenderer';
+import { useIsMobile } from '@/src/hooks/useIsMobile';
 
 import DraggableBlock from './DraggableBlock';
 
@@ -11,6 +12,12 @@ const DEVICE_PREVIEW_WIDTHS: Record<DeviceKind, number> = {
   mobile: 390,
   tablet: 768,
   desktop: 1280,
+};
+
+const DEVICE_PREVIEW_HEIGHTS: Record<DeviceKind, number> = {
+  mobile: 844,
+  tablet: 1024,
+  desktop: 800,
 };
 
 type WebpageBuilderProps = {
@@ -36,6 +43,7 @@ export default function WebpageBuilder({
 }: WebpageBuilderProps) {
   const [device, setDevice] = useState<DeviceKind>('desktop');
   const [zoom, setZoom] = useState(100);
+  const isMobileViewport = useIsMobile(768);
   const toolbarTargetsRef = useRef<{
     blocks: HTMLButtonElement | null;
     undo: HTMLButtonElement | null;
@@ -52,6 +60,8 @@ export default function WebpageBuilder({
     saveDisabled: false,
     saveLabel: 'Save',
   });
+  const deviceWidth = DEVICE_PREVIEW_WIDTHS[device] ?? DEVICE_PREVIEW_WIDTHS.desktop;
+  const deviceHeight = DEVICE_PREVIEW_HEIGHTS[device] ?? DEVICE_PREVIEW_HEIGHTS.desktop;
   const shellStyle = useMemo<React.CSSProperties>(
     () => ({
       background: tokens.colors.canvas,
@@ -82,30 +92,92 @@ export default function WebpageBuilder({
     [],
   );
 
+  const frameResponsiveStyle = useMemo<React.CSSProperties>(() => {
+    if (!isMobileViewport) {
+      return frameStyle;
+    }
+
+    return {
+      ...frameStyle,
+      width: `${deviceWidth}px`,
+      minWidth: `${deviceWidth}px`,
+      minHeight: `${deviceHeight}px`,
+    };
+  }, [deviceHeight, deviceWidth, frameStyle, isMobileViewport]);
+
   const previewScaleStyle = useMemo<React.CSSProperties>(
+    () => {
+      const base: React.CSSProperties = {
+        width: '100%',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'flex-start',
+        transform: `scale(${zoom / 100})`,
+        transformOrigin: 'top center',
+        transition: 'transform 0.25s ease',
+      };
+
+      if (!isMobileViewport) {
+        return base;
+      }
+
+      return {
+        ...base,
+        minWidth: `${deviceWidth}px`,
+        minHeight: `${deviceHeight}px`,
+      };
+    },
+    [deviceHeight, deviceWidth, isMobileViewport, zoom],
+  );
+
+  const previewInnerStyle = useMemo<React.CSSProperties>(
+    () => {
+      const widthPx = `${deviceWidth}px`;
+      const base: React.CSSProperties = {
+        width: '100%',
+        maxWidth: widthPx,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'stretch',
+        gap: tokens.spacing.lg,
+        margin: '0 auto',
+      };
+
+      if (!isMobileViewport) {
+        return base;
+      }
+
+      return {
+        ...base,
+        width: widthPx,
+        maxWidth: widthPx,
+        minWidth: widthPx,
+        minHeight: `${deviceHeight}px`,
+      };
+    },
+    [deviceHeight, deviceWidth, isMobileViewport],
+  );
+
+  const previewShellStyle = useMemo<React.CSSProperties>(
     () => ({
       width: '100%',
       display: 'flex',
       justifyContent: 'center',
       alignItems: 'flex-start',
-      transform: `scale(${zoom / 100})`,
-      transformOrigin: 'top center',
-      transition: 'transform 0.25s ease',
+      overflowX: isMobileViewport ? 'auto' : 'hidden',
+      overflowY: isMobileViewport ? 'auto' : 'visible',
     }),
-    [zoom],
+    [isMobileViewport],
   );
 
-  const previewInnerStyle = useMemo<React.CSSProperties>(
+  const builderScrollStyle = useMemo<React.CSSProperties>(
     () => ({
-      width: '100%',
-      maxWidth: device === 'desktop' ? 1280 : DEVICE_PREVIEW_WIDTHS[device],
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'stretch',
-      gap: tokens.spacing.lg,
-      margin: '0 auto',
+      background: tokens.colors.canvas,
+      minHeight: 0,
+      overflowX: isMobileViewport ? 'auto' : 'hidden',
     }),
-    [device]);
+    [isMobileViewport],
+  );
 
   const canvasStyle: React.CSSProperties = {
     display: 'flex',
@@ -247,7 +319,7 @@ export default function WebpageBuilder({
 
   const previewContent = (
     <div className="preview-inner" data-device={device} style={previewInnerStyle}>
-      <div className="wb-canvas" style={frameStyle}>
+      <div className="wb-canvas" style={frameResponsiveStyle}>
         <div style={canvasStyle}>
           {blocks.length === 0 && (
             <div
@@ -368,20 +440,22 @@ export default function WebpageBuilder({
             </button>
           </div>
           <div className="toolbar-center" aria-label="Preview device selector">
-            {(['mobile', 'tablet', 'desktop'] as DeviceKind[]).map((value) => {
-              const isActive = device === value;
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setDevice(value)}
-                  data-active={isActive}
-                  className={`device-btn capitalize${isActive ? ' active' : ''}`}
-                >
-                  {value}
-                </button>
-              );
-            })}
+            <div className="toolbar-container">
+              {(['mobile', 'tablet', 'desktop'] as DeviceKind[]).map((value) => {
+                const isActive = device === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setDevice(value)}
+                    data-active={isActive}
+                    className={`device-btn capitalize${isActive ? ' active' : ''}`}
+                  >
+                    {value}
+                  </button>
+                );
+              })}
+            </div>
           </div>
           <div className="toolbar-right">
             <button
@@ -445,19 +519,12 @@ export default function WebpageBuilder({
       </div>
       <div
         className="builder-scroll flex-1 overflow-y-auto overflow-x-hidden"
-        style={{
-          background: tokens.colors.canvas,
-          minHeight: 0,
-        }}
+        style={builderScrollStyle}
       >
         <div className="builder-preview flex justify-center py-10">
           <div
             className="preview-shell"
-            style={{
-              width: '100%',
-              display: 'flex',
-              justifyContent: 'center',
-            }}
+            style={previewShellStyle}
           >
             <div className="preview-scale" style={previewScaleStyle}>
               {previewContent}
@@ -504,6 +571,26 @@ export default function WebpageBuilder({
           .toolbar-center {
             flex: 1 1 auto;
             justify-content: center;
+            overflow: visible;
+          }
+
+          .toolbar-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            width: 100%;
+            max-width: 100%;
+            overflow-x: auto;
+            padding: 4px 12px;
+            flex-wrap: nowrap;
+            white-space: nowrap;
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+          }
+
+          .toolbar-container::-webkit-scrollbar {
+            display: none;
           }
 
           .toolbar-right {

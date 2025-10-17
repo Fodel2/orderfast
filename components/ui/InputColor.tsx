@@ -111,8 +111,24 @@ export const InputColor = React.forwardRef<HTMLInputElement, InputColorProps>(
       () => normalizeColorValue(readableColor || value || ""),
       [readableColor, value],
     );
-    const displayPreview = previewValue ?? value ?? readableColor ?? normalizedHex;
-    const displayValue = readableColor || value || "";
+    const displayValue = useMemo(() => {
+      if (readableColor) {
+        return readableColor;
+      }
+
+      if (typeof value !== "string") {
+        return "";
+      }
+
+      const trimmed = value.trim();
+      if (!trimmed || trimmed.startsWith("var(")) {
+        return "";
+      }
+
+      return formatColorOutput(trimmed);
+    }, [readableColor, value]);
+    const previewFallback = readableColor || value || normalizedHex;
+    const displayPreview = previewValue ?? previewFallback;
 
     const input = (
       <div className={mergeClassNames("flex items-center gap-3", containerClassName)}>

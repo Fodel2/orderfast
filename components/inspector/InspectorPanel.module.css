@@ -1,14 +1,14 @@
 .panel {
-  position: absolute;
-  left: 0;
+  position: fixed;
+  top: 0;
   right: 0;
-  bottom: 0;
+  left: 0;
   width: 100%;
-  height: 55vh;
+  height: 100vh;
   max-height: 100vh;
-  transform: translateY(100%);
+  transform: translateX(100%);
   transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
-  z-index: 70;
+  z-index: 1000;
   pointer-events: none;
   display: flex;
   flex-direction: column;
@@ -17,14 +17,18 @@
 
 .panel.inspector-panel {
   background: var(--surface, #ffffff);
-  border-radius: 16px 16px 0 0;
+  border-radius: 0;
   border: 1px solid rgba(15, 23, 42, 0.08);
-  box-shadow: 0 -16px 40px rgba(15, 23, 42, 0.12);
+  box-shadow: 0 2px 24px rgba(15, 23, 42, 0.18);
 }
 
 .open {
-  transform: translateY(0);
+  transform: translateX(0);
   pointer-events: auto;
+}
+
+.closed {
+  pointer-events: none;
 }
 
 .content {
@@ -91,6 +95,36 @@
   box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.1);
 }
 
+.mobileCloseButton {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: rgba(15, 23, 42, 0.05);
+  color: rgba(15, 23, 42, 0.75);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease,
+    box-shadow 0.2s ease;
+  z-index: 2;
+}
+
+.mobileCloseButton:hover,
+.mobileCloseButton:focus-visible {
+  border-color: rgba(14, 165, 233, 0.32);
+  background: rgba(14, 165, 233, 0.16);
+  color: rgba(14, 165, 233, 1);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.12);
+}
+
 .body {
   flex: 1;
   overflow-y: auto;
@@ -117,6 +151,7 @@
 
 @media (min-width: 768px) {
   .panel {
+    position: absolute;
     top: 0;
     bottom: 0;
     left: auto;
@@ -140,13 +175,10 @@
 }
 
 @media (max-width: 768px) {
-  .panel {
-    height: 100vh;
-  }
-
   .panel.inspector-panel {
-    border-radius: 16px 16px 0 0;
-    box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.16);
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
   }
 
   .header {
@@ -155,5 +187,13 @@
 
   .body {
     padding: 1rem 1.25rem calc(1.25rem + env(safe-area-inset-bottom));
+  }
+
+  .closeButton {
+    display: none;
+  }
+
+  .mobileCloseButton {
+    display: inline-flex;
   }
 }
