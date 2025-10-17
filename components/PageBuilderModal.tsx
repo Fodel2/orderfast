@@ -34,6 +34,7 @@ import { useAutoSave } from '@/hooks/useAutoSave';
 import { STORAGE_BUCKET } from '@/lib/storage';
 import { supabase } from '@/lib/supabaseClient';
 import { tokens } from '@/src/ui/tokens';
+import { useIsMobile } from '@/src/hooks/useIsMobile';
 
 type Props = {
   open: boolean;
@@ -693,6 +694,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const isMobile = typeof window !== 'undefined' && window.innerWidth <= 900;
+  const isMobileViewport = useIsMobile(768);
   const history = useRef<Block[][]>([]);
   const future = useRef<Block[][]>([]);
   const latestBlocksRef = useRef<Block[]>(blocks);
@@ -1141,6 +1143,13 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
                 inspectorVisible={inspectorVisible}
               />
             </main>
+            {isMobileViewport && inspectorShouldOpen ? (
+              <div
+                className="inspector-overlay"
+                onClick={() => setInspectorOpen(false)}
+                aria-hidden="true"
+              />
+            ) : null}
             <InspectorPanel
               open={inspectorShouldOpen}
               title="Inspector"
@@ -1312,6 +1321,12 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
           .builder-preview {
             padding: 24px clamp(12px, 6vw, 24px);
             min-height: calc(100vh - 120px);
+          }
+          .inspector-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.2);
+            z-index: 1100;
           }
         }
       `}</style>

@@ -417,7 +417,7 @@ export default function WebpageBuilder({
     >
       <div
         className="wb-toolbar wb-toolbar-proxy"
-        style={{ zIndex: 9999 }}
+        style={{ zIndex: isMobileViewport ? 1000 : 9999 }}
       >
         <div className="website-toolbar">
           <div className="toolbar-left">
@@ -457,7 +457,7 @@ export default function WebpageBuilder({
               })}
             </div>
           </div>
-          <div className="toolbar-right">
+          <div className="toolbar-right preview-fab">
             <button
               type="button"
               onClick={handleUndoProxy}
@@ -723,6 +723,36 @@ export default function WebpageBuilder({
           }
 
           @media (max-width: 768px) {
+            .wb-toolbar-proxy {
+              padding: 12px 16px;
+            }
+
+            .toolbar-container {
+              position: sticky;
+              top: calc(env(safe-area-inset-top, 0px));
+              z-index: 1000;
+              background: #fff;
+              padding: calc(env(safe-area-inset-top, 0px) + 8px) 12px 8px;
+              display: flex;
+              gap: 8px;
+              overflow-x: auto;
+              -webkit-overflow-scrolling: touch;
+              border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+            }
+
+            .preview-fab {
+              position: relative;
+              z-index: 900;
+            }
+
+            .builder-scroll {
+              padding-top: calc(env(safe-area-inset-top, 0px) + 48px);
+            }
+
+            .builder-preview {
+              margin-top: 8px;
+            }
+
             .toolbar-btn {
               padding: 6px 12px;
             }
