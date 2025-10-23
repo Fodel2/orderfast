@@ -582,7 +582,7 @@ export default function WebpageBuilder({
             width: 100%;
             max-width: 100%;
             overflow-x: auto;
-            padding: 4px 12px;
+            padding: calc(env(safe-area-inset-top, 0px) + 12px) 12px 8px;
             flex-wrap: nowrap;
             white-space: nowrap;
             -ms-overflow-style: none;
@@ -732,7 +732,6 @@ export default function WebpageBuilder({
               top: calc(env(safe-area-inset-top, 0px));
               z-index: 1000;
               background: #fff;
-              padding: calc(env(safe-area-inset-top, 0px) + 8px) 12px 8px;
               display: flex;
               gap: 8px;
               overflow-x: auto;
