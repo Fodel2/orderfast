@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Redo, Undo, X, ZoomIn, ZoomOut } from 'lucide-react';
 
+import { Toolbar } from '@/components/websitebuilder/Toolbar';
 import { tokens } from '@/src/ui/tokens';
 import PageRenderer, { type Block, type DeviceKind } from '../PageRenderer';
 import { useIsMobile } from '@/src/hooks/useIsMobile';
@@ -415,108 +416,99 @@ export default function WebpageBuilder({
       className="builder-wrapper fixed inset-0 z-50 flex flex-col bg-background"
       style={shellStyle}
     >
-      <div
-        className="wb-toolbar wb-toolbar-proxy"
+      <Toolbar
+        proxy
+        className="flex items-center"
         style={{ zIndex: isMobileViewport ? 1000 : 9999 }}
       >
-        <div className="website-toolbar">
-          <div className="toolbar-left">
-            <button
-              type="button"
-              onClick={handleBlocksToggle}
-              aria-pressed={blocksPressed}
-              disabled={!toolbarReady}
-              className={`toolbar-btn blocks-btn${blocksPressed ? ' active' : ''}`}
+        <Toolbar.Left>
+          <Toolbar.Button
+            onClick={handleBlocksToggle}
+            aria-pressed={blocksPressed}
+            disabled={!toolbarReady}
+            active={blocksPressed}
+            className="blocks-btn"
+          >
+            Blocks
+          </Toolbar.Button>
+          <Toolbar.Button
+            onClick={handleSaveProxy}
+            disabled={saveDisabled}
+            className="save-btn"
+          >
+            {saveLabel}
+          </Toolbar.Button>
+        </Toolbar.Left>
+        <Toolbar.Center aria-label="Preview device selector">
+          <Toolbar.Container>
+            {(['mobile', 'tablet', 'desktop'] as DeviceKind[]).map((value) => {
+              const isActive = device === value;
+              return (
+                <Toolbar.DeviceButton
+                  key={value}
+                  onClick={() => setDevice(value)}
+                  active={isActive}
+                  className="capitalize"
+                >
+                  {value}
+                </Toolbar.DeviceButton>
+              );
+            })}
+          </Toolbar.Container>
+        </Toolbar.Center>
+        <Toolbar.Right className="preview-fab">
+          <Toolbar.IconButton
+            onClick={handleUndoProxy}
+            aria-label="Undo"
+            disabled={undoDisabled}
+            className="undo-btn"
+          >
+            <Undo size={16} />
+          </Toolbar.IconButton>
+          <Toolbar.IconButton
+            onClick={handleRedoProxy}
+            aria-label="Redo"
+            disabled={redoDisabled}
+            className="redo-btn"
+          >
+            <Redo size={16} />
+          </Toolbar.IconButton>
+          <Toolbar.ZoomGroup>
+            <Toolbar.IconButton
+              onClick={handleZoomOut}
+              aria-label="Zoom out"
+              disabled={zoomOutDisabled}
+              className="zoom-out-btn"
             >
-              Blocks
-            </button>
-            <button
-              type="button"
-              onClick={handleSaveProxy}
-              disabled={saveDisabled}
-              className="toolbar-btn save-btn"
+              <ZoomOut size={16} />
+            </Toolbar.IconButton>
+            <Toolbar.Button
+              onClick={() => setZoom(100)}
+              aria-label="Reset zoom"
+              active={zoom === 100}
+              className="toolbar-zoom-level zoom-reset-btn"
             >
-              {saveLabel}
-            </button>
-          </div>
-          <div className="toolbar-center" aria-label="Preview device selector">
-            <div className="toolbar-container">
-              {(['mobile', 'tablet', 'desktop'] as DeviceKind[]).map((value) => {
-                const isActive = device === value;
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setDevice(value)}
-                    data-active={isActive}
-                    className={`device-btn capitalize${isActive ? ' active' : ''}`}
-                  >
-                    {value}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <div className="toolbar-right preview-fab">
-            <button
-              type="button"
-              onClick={handleUndoProxy}
-              aria-label="Undo"
-              disabled={undoDisabled}
-              className="toolbar-icon undo-btn"
+              {zoom}%
+            </Toolbar.Button>
+            <Toolbar.IconButton
+              onClick={handleZoomIn}
+              aria-label="Zoom in"
+              disabled={zoomInDisabled}
+              className="zoom-in-btn"
             >
-              <Undo size={16} />
-            </button>
-            <button
-              type="button"
-              onClick={handleRedoProxy}
-              aria-label="Redo"
-              disabled={redoDisabled}
-              className="toolbar-icon redo-btn"
-            >
-              <Redo size={16} />
-            </button>
-            <div className="toolbar-zoom">
-              <button
-                type="button"
-                onClick={handleZoomOut}
-                aria-label="Zoom out"
-                disabled={zoomOutDisabled}
-                className="toolbar-icon zoom-out-btn"
-              >
-                <ZoomOut size={16} />
-              </button>
-              <button
-                type="button"
-                onClick={() => setZoom(100)}
-                aria-label="Reset zoom"
-                data-active={zoom === 100}
-                className={`toolbar-btn toolbar-zoom-level zoom-reset-btn${zoom === 100 ? ' active' : ''}`}
-              >
-                {zoom}%
-              </button>
-              <button
-                type="button"
-                onClick={handleZoomIn}
-                aria-label="Zoom in"
-                disabled={zoomInDisabled}
-                className="toolbar-icon zoom-in-btn"
-              >
-                <ZoomIn size={16} />
-              </button>
-            </div>
-            <button
-              type="button"
-              onClick={handleCloseProxy}
-              aria-label="Close builder"
-              disabled={!toolbarReady}
-              className="toolbar-icon close-btn close"
-            >
-              <X size={16} />
-            </button>
-          </div>
-        </div>
-      </div>
+              <ZoomIn size={16} />
+            </Toolbar.IconButton>
+          </Toolbar.ZoomGroup>
+          <Toolbar.IconButton
+            onClick={handleCloseProxy}
+            aria-label="Close builder"
+            disabled={!toolbarReady}
+            className="close-btn close"
+          >
+            <X size={16} />
+          </Toolbar.IconButton>
+        </Toolbar.Right>
+      </Toolbar>
       <div
         className="builder-scroll flex-1 overflow-y-auto overflow-x-hidden"
         style={builderScrollStyle}

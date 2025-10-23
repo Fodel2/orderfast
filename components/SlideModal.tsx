@@ -81,7 +81,7 @@ import {
 } from "@/lib/slideFonts";
 import FontSelect from "./ui/FontSelect";
 import { APP_FONTS, ensureFontLoaded } from "@/lib/fonts";
-import Button from "@/components/ui/Button";
+import { Toolbar } from "@/components/websitebuilder/Toolbar";
 import SafeZoneOverlay from "./SafeZoneOverlay";
 import {
   InputCheckbox,
@@ -119,9 +119,11 @@ import {
   GripVertical,
   Star,
   Trash2,
+  Undo,
+  Redo,
+  X,
   ZoomIn,
   ZoomOut,
-  RotateCcw,
 } from "lucide-react";
 
 type LinkOption = InputSelectOption;
@@ -3572,94 +3574,114 @@ export default function SlideModal({
   const canZoomIn = zoom < ZOOM_MAX - 1e-3;
   const canZoomOut = zoom > ZOOM_MIN + 1e-3;
   const canResetZoom = Math.abs(zoom - 1) > 1e-3;
-  const previewToolbarStyle: React.CSSProperties = {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: `${tokens.spacing.sm}px ${tokens.spacing.md}px`,
-    borderBottom: `${tokens.border.thin}px solid ${inspectorColors.border}`,
-    background: "#ffffff",
-    gap: tokens.spacing.md,
-  };
-  const zoomControlsStyle: React.CSSProperties = {
-    display: "flex",
-    alignItems: "center",
-    gap: tokens.spacing.xs,
-  };
-  const zoomButtonBaseStyle: React.CSSProperties = {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: tokens.control.height,
-    height: tokens.control.height,
-    borderRadius: tokens.radius.sm,
-    border: `${tokens.border.thin}px solid ${inspectorColors.border}`,
-    background: "#ffffff",
-    transition: "background-color 120ms ease, color 120ms ease, opacity 120ms ease",
-  };
-  const zoomResetButtonBaseStyle: React.CSSProperties = {
-    ...zoomButtonBaseStyle,
-    width: "auto",
-    paddingLeft: tokens.spacing.sm,
-    paddingRight: tokens.spacing.sm,
-  };
-
   return (
     <div className="fixed inset-0 z-[80] flex">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
       <div className="relative z-[81] m-4 flex w-[calc(100%-2rem)] max-w-[calc(100%-2rem)] flex-1 overflow-hidden rounded-2xl bg-white shadow-2xl">
-        <div className="flex min-h-[80vh] w-full flex-col">
-          <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
+        <div
+          className="builder-wrapper flex min-h-[80vh] w-full flex-col bg-white"
+          style={{ height: "100%" }}
+        >
+          <Toolbar className="flex items-center" proxy>
+            <Toolbar.Left>
+              <Toolbar.Button
                 onClick={() => setDrawerOpen((v) => !v)}
-                className={`rounded border border-neutral-200 px-3 py-1 text-sm ${drawerOpen ? "border-emerald-500 bg-emerald-50" : ""}`}
                 aria-pressed={drawerOpen}
+                active={drawerOpen}
+                className="blocks-btn"
               >
                 Blocks
-              </button>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={undo}
-                  disabled={!canUndo}
-                  className="rounded border px-3 py-1 text-sm disabled:opacity-50"
-                  title="Undo (Ctrl+Z / ⌘Z)"
-                >
-                  Undo
-                </button>
-                <button
-                  type="button"
-                  onClick={redo}
-                  disabled={!canRedo}
-                  className="rounded border px-3 py-1 text-sm disabled:opacity-50"
-                  title="Redo (Ctrl+Shift+Z / ⌘+Shift+Z)"
-                >
-                  Redo
-                </button>
-              </div>
-              <label className="flex items-center gap-2 text-sm">
-                <InputCheckbox
-                  
-                  checked={editInPreview}
-                  onChange={(e) => setEditInPreview(e.target.checked)}
-                />
-                Edit in preview
-              </label>
-              <Button onClick={handleSave} disabled={saving}>
-                {saving ? "Saving…" : "Save"}
-              </Button>
-              <button
-                onClick={onClose}
-                className="rounded border px-3 py-1 text-sm"
+              </Toolbar.Button>
+            </Toolbar.Left>
+            <Toolbar.Center aria-label="Preview device selector">
+              <Toolbar.Container>
+                {(["mobile", "tablet", "desktop"] as DeviceKind[]).map((device) => (
+                  <Toolbar.DeviceButton
+                    key={device}
+                    onClick={() => setActiveDevice(device)}
+                    active={activeDevice === device}
+                    className="capitalize"
+                  >
+                    {device}
+                  </Toolbar.DeviceButton>
+                ))}
+              </Toolbar.Container>
+            </Toolbar.Center>
+            <Toolbar.Right className="preview-fab">
+              <Toolbar.Button
+                onClick={() => setShowSafeZone((prev) => !prev)}
+                aria-pressed={showSafeZone}
+                active={showSafeZone}
               >
-                Close
-              </button>
-            </div>
-          </header>
+                Safe zone
+              </Toolbar.Button>
+              <Toolbar.Button
+                onClick={() => setEditInPreview((prev) => !prev)}
+                aria-pressed={editInPreview}
+                active={editInPreview}
+              >
+                Edit in preview
+              </Toolbar.Button>
+              <Toolbar.IconButton
+                onClick={undo}
+                aria-label="Undo"
+                disabled={!canUndo}
+                className="undo-btn"
+                title="Undo (Ctrl+Z / ⌘Z)"
+              >
+                <Undo size={16} />
+              </Toolbar.IconButton>
+              <Toolbar.IconButton
+                onClick={redo}
+                aria-label="Redo"
+                disabled={!canRedo}
+                className="redo-btn"
+                title="Redo (Ctrl+Shift+Z / ⌘+Shift+Z)"
+              >
+                <Redo size={16} />
+              </Toolbar.IconButton>
+              <Toolbar.ZoomGroup>
+                <Toolbar.IconButton
+                  onClick={handleZoomOut}
+                  aria-label="Zoom out"
+                  disabled={!canZoomOut}
+                  className="zoom-out-btn"
+                >
+                  <ZoomOut size={16} />
+                </Toolbar.IconButton>
+                <Toolbar.Button
+                  onClick={handleZoomReset}
+                  aria-label="Reset zoom"
+                  active={!canResetZoom}
+                  className="toolbar-zoom-level zoom-reset-btn"
+                >
+                  {zoomPercent}%
+                </Toolbar.Button>
+                <Toolbar.IconButton
+                  onClick={handleZoomIn}
+                  aria-label="Zoom in"
+                  disabled={!canZoomIn}
+                  className="zoom-in-btn"
+                >
+                  <ZoomIn size={16} />
+                </Toolbar.IconButton>
+              </Toolbar.ZoomGroup>
+              <Toolbar.Button
+                onClick={handleSave}
+                disabled={saving}
+                className="save-btn"
+              >
+                {saving ? "Saving…" : "Save"}
+              </Toolbar.Button>
+              <Toolbar.IconButton
+                onClick={onClose}
+                aria-label="Close builder"
+                className="close-btn close"
+              >
+                <X size={16} />
+              </Toolbar.IconButton>
+            </Toolbar.Right>
+          </Toolbar>
           <div className="flex flex-1 overflow-hidden">
             {drawerOpen && (
               <aside className="w-72 shrink-0 border-r bg-white">
@@ -4470,78 +4492,10 @@ export default function SlideModal({
             )}
             <div className="relative flex flex-1 overflow-hidden bg-neutral-50">
               <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-                <div style={previewToolbarStyle}>
-                  <span className="text-xs font-semibold uppercase tracking-wide text-neutral-600">
-                    Preview
-                  </span>
-                  <div style={zoomControlsStyle}>
-                    <button
-                      type="button"
-                      onClick={handleZoomOut}
-                      disabled={!canZoomOut}
-                      style={{
-                        ...zoomButtonBaseStyle,
-                        color: canZoomOut
-                          ? inspectorColors.text
-                          : inspectorColors.labelMuted,
-                        cursor: canZoomOut ? "pointer" : "not-allowed",
-                        opacity: canZoomOut ? 1 : 0.6,
-                      }}
-                      aria-label="Zoom out"
-                    >
-                      <ZoomOut size={tokens.spacing.md} strokeWidth={1.5} />
-                    </button>
-                    <span className="text-sm font-medium text-neutral-700">
-                      {zoomPercent}%
-                    </span>
-                    <button
-                      type="button"
-                      onClick={handleZoomIn}
-                      disabled={!canZoomIn}
-                      style={{
-                        ...zoomButtonBaseStyle,
-                        color: canZoomIn
-                          ? inspectorColors.text
-                          : inspectorColors.labelMuted,
-                        cursor: canZoomIn ? "pointer" : "not-allowed",
-                        opacity: canZoomIn ? 1 : 0.6,
-                      }}
-                      aria-label="Zoom in"
-                    >
-                      <ZoomIn size={tokens.spacing.md} strokeWidth={1.5} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleZoomReset}
-                      disabled={!canResetZoom}
-                      style={{
-                        ...zoomResetButtonBaseStyle,
-                        color: canResetZoom
-                          ? inspectorColors.text
-                          : inspectorColors.labelMuted,
-                        cursor: canResetZoom ? "pointer" : "not-allowed",
-                        opacity: canResetZoom ? 1 : 0.6,
-                        gap: tokens.spacing.xs,
-                      }}
-                    >
-                      <RotateCcw size={tokens.spacing.md} strokeWidth={1.5} />
-                      <span className="text-xs font-medium text-neutral-700">
-                        Reset
-                      </span>
-                    </button>
-                  </div>
-                </div>
                 <div
                   ref={previewContainerRef}
                   className="relative flex flex-1 min-h-0 overflow-hidden"
                 >
-                  <button
-                    type="button"
-                    onClick={() => setShowSafeZone((prev) => !prev)}
-                    className="absolute top-2 left-2 z-[999] bg-white/90 backdrop-blur-sm border border-gray-300 rounded-md px-3 py-1 text-sm font-medium text-gray-700 shadow-md hover:bg-white transition"
-                  >
-                    {showSafeZone ? "Hide Safe Zone" : "Show Safe Zone"}
-                  </button>
                   <div
                     className="relative flex w-full flex-col items-center justify-center overflow-hidden"
                     style={{
