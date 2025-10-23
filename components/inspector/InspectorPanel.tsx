@@ -37,6 +37,7 @@ const InspectorPanel: React.FC<InspectorPanelProps> = ({
     open ? styles.open : styles.closed,
     className,
     'inspector-panel',
+    'inspector-modal',
   );
 
   return (
