@@ -219,7 +219,17 @@ export default function AddItemModal({
       finalImageUrl =
         supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path).data.publicUrl;
     }
-    const itemData = {
+    const ensureExternalKey = () => {
+      if (item?.external_key) return item.external_key;
+      if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+      }
+      return `${Date.now()}-${Math.random()}`;
+    };
+
+    const externalKey = onSaveData ? ensureExternalKey() : item?.external_key;
+
+    const itemData: Record<string, any> = {
       restaurant_id: restaurantId,
       name,
       description,
@@ -230,6 +240,10 @@ export default function AddItemModal({
       image_url: finalImageUrl,
       category_id: categoryId,
     };
+
+    if (externalKey) {
+      itemData.external_key = externalKey;
+    }
 
     if (onSaveData) {
       await onSaveData(itemData, selectedCategories, selectedAddons);

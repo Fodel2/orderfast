@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { supaServer } from '@/lib/supaServer';
 import {
@@ -57,7 +58,9 @@ type DraftPayload = {
   items: Array<{
     id?: string; tempId?: string; name: string; description?: string|null; price?: number|null;
     image_url?: string|null; is_vegetarian?: boolean; is_vegan?: boolean; is_18_plus?: boolean;
-    stock_status?: string|null; available?: boolean; category_id?: string; sort_order?: number
+    stock_status?: string|null; available?: boolean; category_id?: string; sort_order?: number;
+    external_key?: string;
+    addons?: string[];
   }>;
   links?: Array<{ item_id: string; group_id: string }>; // IMPORTANT: group_id (schema uses group_id)
 };
@@ -232,7 +235,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       const table = 'menu_drafts';
       let data: { draft: DraftPayload; updated_at: string };
-      const upsertPayload = { restaurant_id: restaurantId, draft };
+
+      const itemsWithKeys = (draft.items || []).map((item) => {
+        if (item.external_key) return item;
+        return { ...item, external_key: randomUUID() };
+      });
+      const updatedDraft: DraftPayload = { ...draft, items: itemsWithKeys };
+
+      const upsertPayload = { restaurant_id: restaurantId, draft: updatedDraft };
       try {
         logSupabaseCall('upsert', table, 'draft, updated_at', upsertPayload);
         const response = await supabase
@@ -245,6 +255,46 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       } catch (error: any) {
         console.error('Supabase error:', error?.message, error?.details, error?.hint);
         return res.status(500).json({ error: error?.message, details: error?.details, hint: error?.hint });
+      }
+
+      const safeItems = Array.isArray(updatedDraft.items) ? updatedDraft.items : [];
+      const linkRows: Array<{ restaurant_id: string; item_external_key: string; group_id_draft: string }> = [];
+      const seen = new Set<string>();
+      for (const item of safeItems) {
+        const itemKey = typeof item.external_key === 'string' && item.external_key ? item.external_key : undefined;
+        if (!itemKey) continue;
+        const addonIds = Array.isArray(item.addons) ? item.addons : [];
+        for (const addonId of addonIds) {
+          if (!addonId) continue;
+          const strAddonId = String(addonId);
+          const dedupeKey = `${itemKey}:${strAddonId}`;
+          if (seen.has(dedupeKey)) continue;
+          seen.add(dedupeKey);
+          linkRows.push({
+            restaurant_id: restaurantId,
+            item_external_key: itemKey,
+            group_id_draft: strAddonId,
+          });
+        }
+      }
+
+      try {
+        await supabase
+          .from('item_addon_links_drafts')
+          .delete()
+          .eq('restaurant_id', restaurantId);
+
+        if (linkRows.length > 0) {
+          await supabase.from('item_addon_links_drafts').insert(linkRows);
+        }
+      } catch (error: any) {
+        console.error('[menu-builder:save-draft-links]', error);
+        return res.status(500).json({
+          message: 'failed_to_save_addon_links',
+          error: error?.message,
+          details: error?.details,
+          hint: error?.hint,
+        });
       }
       return res
         .status(200)
