@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { motion } from "framer-motion";
 import { Search, ChevronUp } from "lucide-react";
 import { supabase } from '@/lib/supabaseClient';
+import { ITEM_ADDON_LINK_WITH_GROUPS_SELECT } from '@/lib/queries/addons';
 import MenuItemCard from "../../components/MenuItemCard";
 import { useCart } from "../../context/CartContext";
 import CustomerLayout from "../../components/CustomerLayout";
@@ -138,12 +139,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
 
         const { data: addData, error: addonErr } = await supabase
           .from('item_addon_links')
-          .select(
-            `item_id, addon_groups!inner(
-              id,restaurant_id,name,multiple_choice,required,max_group_select,max_option_quantity,
-              addon_options!inner(id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at)
-            )`
-          )
+          .select(ITEM_ADDON_LINK_WITH_GROUPS_SELECT)
           .in('item_id', liveItemIds);
         if (addonErr) console.error('Failed to fetch addons', addonErr);
         addonRows = addData || [];

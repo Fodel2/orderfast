@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabaseClient';
+import { ITEM_ADDON_LINK_WITH_GROUPS_SELECT } from '../lib/queries/addons';
 import type { AddonGroup } from './types';
 
 /**
@@ -9,14 +10,7 @@ export async function getAddonsForItem(
 ): Promise<AddonGroup[]> {
   const query = supabase
     .from('item_addon_links')
-    .select(
-      `addon_groups!inner(
-        id,restaurant_id,name,required,multiple_choice,max_group_select,max_option_quantity,
-        addon_options!inner(
-          id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at
-        )
-      )`
-    )
+    .select(ITEM_ADDON_LINK_WITH_GROUPS_SELECT)
     .eq('item_id', itemId);
 
   const requestUrl = (query as unknown as { url?: URL }).url?.toString();

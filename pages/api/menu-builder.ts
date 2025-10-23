@@ -1,5 +1,9 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { supaServer } from '@/lib/supaServer';
+import {
+  ADDON_GROUP_WITH_OPTIONS_FIELDS,
+  ITEM_ADDON_LINK_WITH_GROUPS_AND_ITEMS_SELECT,
+} from '@/lib/queries/addons';
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -127,17 +131,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       if (withAddons) {
         try {
-          logSupabaseCall(
-            'select',
-            'addon_groups',
-            'id,name,multiple_choice,required,max_group_select,max_option_quantity,addon_options(id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at)'
-          );
+          logSupabaseCall('select', 'addon_groups', ADDON_GROUP_WITH_OPTIONS_FIELDS);
           const response = await supabase
             .from('addon_groups')
-            .select(
-              `id,name,multiple_choice,required,max_group_select,max_option_quantity,
-              addon_options(id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at)`
-            )
+            .select(ADDON_GROUP_WITH_OPTIONS_FIELDS)
             .eq('restaurant_id', restaurantId)
             .throwOnError();
           addonGroups = (response.data as any[])?.map((group) => ({
@@ -167,17 +164,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
 
         try {
-          logSupabaseCall('select', 'item_addon_links', 'id,item_id,group_id,menu_items!inner(id,restaurant_id)');
+          logSupabaseCall('select', 'item_addon_links', ITEM_ADDON_LINK_WITH_GROUPS_AND_ITEMS_SELECT);
           const response = await supabase
             .from('item_addon_links')
-            .select('id,item_id,group_id,menu_items!inner(id,restaurant_id)')
+            .select(ITEM_ADDON_LINK_WITH_GROUPS_AND_ITEMS_SELECT)
             .eq('menu_items.restaurant_id', restaurantId)
             .throwOnError();
-          addonLinks = ((response.data as any[]) || []).map((link) => ({
-            id: String(link.id),
-            item_id: String(link.item_id),
-            group_id: String(link.group_id),
-          }));
+          addonLinks = ((response.data as any[]) || []).map((link) => {
+            const groupId = link.group_id ?? link.addon_groups?.id;
+            return {
+              id: String(link.id),
+              item_id: String(link.item_id),
+              group_id: groupId !== undefined && groupId !== null ? String(groupId) : '',
+            };
+          });
         } catch (error: any) {
           console.error('Supabase error:', error?.message, error?.details, error?.hint);
           return res.status(500).json({ error: error?.message, details: error?.details, hint: error?.hint });
