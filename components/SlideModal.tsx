@@ -94,21 +94,21 @@ import {
 } from "./ui";
 import InspectorSection, {
   InspectorContainer,
-} from "../src/components/inspector/InspectorSection";
-import ControlRow from "../src/components/inspector/ControlRow";
-import InspectorInputColor from "../src/components/inspector/controls/InputColor";
+} from "@/src/components/inspector/InspectorSection";
+import ControlRow from "@/src/components/inspector/ControlRow";
+import InspectorInputColor from "@/src/components/inspector/controls/InputColor";
 import InspectorInputSelect, {
   type InputSelectOption,
-} from "../src/components/inspector/controls/InputSelect";
-import InspectorInputSlider from "../src/components/inspector/controls/InputSlider";
-import InspectorInputText from "../src/components/inspector/controls/InputText";
-import InspectorInputTextArea from "../src/components/inspector/controls/InputTextArea";
-import InspectorInputToggle from "../src/components/inspector/controls/InputToggle";
-import InspectorInputUpload from "../src/components/inspector/controls/InputUpload";
-import { inspectorColors, inspectorLayout } from "../src/components/inspector/layout";
-import { tokens } from "../src/ui/tokens";
+} from "@/src/components/inspector/controls/InputSelect";
+import InspectorInputSlider from "@/src/components/inspector/controls/InputSlider";
+import InspectorInputText from "@/src/components/inspector/controls/InputText";
+import InspectorInputTextArea from "@/src/components/inspector/controls/InputTextArea";
+import InspectorInputToggle from "@/src/components/inspector/controls/InputToggle";
+import InspectorInputUpload from "@/src/components/inspector/controls/InputUpload";
+import { inspectorColors, inspectorLayout } from "@/src/components/inspector/layout";
+import { tokens } from "@/src/ui/tokens";
 import { resolveTypographySpacing } from "@/src/utils/typography";
-import InspectorPanel from "./inspector/InspectorPanel";
+import InspectorPanel from "@/components/inspector/InspectorPanel";
 import { supabase } from "@/utils/supabaseClient";
 import { STORAGE_BUCKET } from "@/lib/storage";
 import { SlideRow } from "@/components/customer/home/SlidesContainer";
@@ -3574,1045 +3574,57 @@ export default function SlideModal({
   const canZoomIn = zoom < ZOOM_MAX - 1e-3;
   const canZoomOut = zoom > ZOOM_MIN + 1e-3;
   const canResetZoom = Math.abs(zoom - 1) > 1e-3;
-  return (
-    <div className="fixed inset-0 z-[80] flex">
-      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-      <div className="relative z-[81] m-4 flex w-[calc(100%-2rem)] max-w-[calc(100%-2rem)] flex-1 overflow-hidden rounded-2xl bg-white shadow-2xl">
-        <div
-          className="builder-wrapper flex min-h-[80vh] w-full flex-col bg-white"
-          style={{ height: "100%" }}
-        >
-          <Toolbar className="flex items-center" proxy>
-            <Toolbar.Left>
-              <Toolbar.Button
-                onClick={() => setDrawerOpen((v) => !v)}
-                aria-pressed={drawerOpen}
-                active={drawerOpen}
-                className="blocks-btn"
-              >
-                Blocks
-              </Toolbar.Button>
-            </Toolbar.Left>
-            <Toolbar.Center aria-label="Preview device selector">
-              <Toolbar.Container>
-                {(["mobile", "tablet", "desktop"] as DeviceKind[]).map((device) => (
-                  <Toolbar.DeviceButton
-                    key={device}
-                    onClick={() => setActiveDevice(device)}
-                    active={activeDevice === device}
-                    className="capitalize"
-                  >
-                    {device}
-                  </Toolbar.DeviceButton>
-                ))}
-              </Toolbar.Container>
-            </Toolbar.Center>
-            <Toolbar.Right className="preview-fab">
-              <Toolbar.Button
-                onClick={() => setShowSafeZone((prev) => !prev)}
-                aria-pressed={showSafeZone}
-                active={showSafeZone}
-              >
-                Safe zone
-              </Toolbar.Button>
-              <Toolbar.Button
-                onClick={() => setEditInPreview((prev) => !prev)}
-                aria-pressed={editInPreview}
-                active={editInPreview}
-              >
-                Edit in preview
-              </Toolbar.Button>
-              <Toolbar.IconButton
-                onClick={undo}
-                aria-label="Undo"
-                disabled={!canUndo}
-                className="undo-btn"
-                title="Undo (Ctrl+Z / ⌘Z)"
-              >
-                <Undo size={16} />
-              </Toolbar.IconButton>
-              <Toolbar.IconButton
-                onClick={redo}
-                aria-label="Redo"
-                disabled={!canRedo}
-                className="redo-btn"
-                title="Redo (Ctrl+Shift+Z / ⌘+Shift+Z)"
-              >
-                <Redo size={16} />
-              </Toolbar.IconButton>
-              <Toolbar.ZoomGroup>
-                <Toolbar.IconButton
-                  onClick={handleZoomOut}
-                  aria-label="Zoom out"
-                  disabled={!canZoomOut}
-                  className="zoom-out-btn"
-                >
-                  <ZoomOut size={16} />
-                </Toolbar.IconButton>
-                <Toolbar.Button
-                  onClick={handleZoomReset}
-                  aria-label="Reset zoom"
-                  active={!canResetZoom}
-                  className="toolbar-zoom-level zoom-reset-btn"
-                >
-                  {zoomPercent}%
-                </Toolbar.Button>
-                <Toolbar.IconButton
-                  onClick={handleZoomIn}
-                  aria-label="Zoom in"
-                  disabled={!canZoomIn}
-                  className="zoom-in-btn"
-                >
-                  <ZoomIn size={16} />
-                </Toolbar.IconButton>
-              </Toolbar.ZoomGroup>
-              <Toolbar.Button
-                onClick={handleSave}
-                disabled={saving}
-                className="save-btn"
-              >
-                {saving ? "Saving…" : "Save"}
-              </Toolbar.Button>
-              <Toolbar.IconButton
-                onClick={onClose}
-                aria-label="Close builder"
-                className="close-btn close"
-              >
-                <X size={16} />
-              </Toolbar.IconButton>
-            </Toolbar.Right>
-          </Toolbar>
-          <div className="flex flex-1 overflow-hidden">
-            {drawerOpen && (
-              <aside className="w-72 shrink-0 border-r bg-white">
-                <div className="h-full space-y-6 overflow-y-auto p-4">
-                  <section>
-                    <h3 className="mb-2 text-sm font-semibold text-neutral-600">
-                      Device
-                    </h3>
-                    <div className="flex flex-wrap gap-2">
-                      {(["mobile", "tablet", "desktop"] as DeviceKind[]).map(
-                        (device) => (
-                          <button
-                            key={device}
-                            type="button"
-                            onClick={() => setActiveDevice(device)}
-                            className={`rounded border px-2 py-1 text-xs capitalize ${
-                              activeDevice === device
-                                ? "border-emerald-500 bg-emerald-50"
-                                : "border-neutral-200"
-                            }`}
-                          >
-                            {device}
-                          </button>
-                        ),
-                      )}
-                    </div>
-                  </section>
-                  <section>
-                    <h3 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
-                      Blocks
-                    </h3>
-                    <div className="mt-2 grid grid-cols-2 gap-2">
-                      {(
-                        [
-                          "heading",
-                          "subheading",
-                          "text",
-                          "button",
-                          "image",
-                          "quote",
-                          "gallery",
-                        ] as SlideBlock["kind"][]
-                      ).map((kind) => (
-                        <button
-                          key={kind}
-                          type="button"
-                          onClick={() => addBlock(kind)}
-                          className="rounded border px-2 py-1 text-left text-xs capitalize hover:border-emerald-500"
-                        >
-                          + {kind}
-                        </button>
-                      ))}
-                    </div>
-                  </section>
-                  <section>
-                    <h3 className="mb-2 text-sm font-semibold text-neutral-600">
-                      Layers
-                    </h3>
-                    <div className="space-y-1">
-                      {layerEntries
-                        .slice()
-                        .reverse()
-                        .map(({ block, index }) => {
-                          const isSelected = block.id === selectedId;
-                          const isBottom = index === 0;
-                          const isTop = index === layerEntries.length - 1;
-                          const displayIndex = layerEntries.length - index;
-                          return (
-                            <div
-                              key={block.id}
-                              className={`flex h-10 items-center gap-2 rounded border px-2 text-xs transition ${
-                              isSelected
-                                ? "border-emerald-500 bg-emerald-50"
-                                : "border-neutral-200"
-                            }`}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => handleLayerSelect(block.id)}
-                              className="flex h-full flex-1 items-center gap-2 overflow-hidden text-left"
-                            >
-                              <span className="flex items-center gap-1 truncate capitalize">
-                                {block.locked && (
-                                  <LockClosedIcon className="h-3.5 w-3.5 flex-none text-neutral-500" />
-                                )}
-                                <span className="truncate">{block.kind}</span>
-                              </span>
-                              <span className="ml-auto text-[11px] text-neutral-500">
-                                #{displayIndex}
-                              </span>
-                            </button>
-                            <div className="flex items-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() => moveBlock(block.id, 1)}
-                                disabled={isTop}
-                                aria-label="Bring block forward"
-                                title="Bring block forward"
-                                className="flex h-7 w-7 items-center justify-center rounded border border-transparent text-neutral-500 transition hover:border-neutral-300 hover:text-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
-                              >
-                                <ChevronUp className="h-3.5 w-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => moveBlock(block.id, -1)}
-                                disabled={isBottom}
-                                aria-label="Send block backward"
-                                title="Send block backward"
-                                className="flex h-7 w-7 items-center justify-center rounded border border-transparent text-neutral-500 transition hover:border-neutral-300 hover:text-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
-                              >
-                                <ChevronDown className="h-3.5 w-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => removeBlock(block.id)}
-                                aria-label="Delete block"
-                                title="Delete block"
-                                className="flex h-7 w-7 items-center justify-center rounded border border-transparent text-neutral-500 transition hover:border-red-200 hover:text-red-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
-                          </div>
-                        );
-                        })}
-                    </div>
-                  </section>
-                  <section>
-                    <h3 className="mb-2 text-sm font-semibold text-neutral-600">
-                      Background
-                    </h3>
-                    <div className="space-y-3 text-sm">
-                      <InputSelect
-                        label="Type"
-                        value={backgroundType}
-                        onChange={(e) =>
-                          handleBackgroundTypeChange(
-                            e.target.value as SlideBackground["type"],
-                          )
-                        }
-                        labelClassName="block text-xs font-medium text-neutral-500"
-                        options={[
-                          { value: "none", label: "None" },
-                          { value: "color", label: "Color" },
-                          { value: "image", label: "Image" },
-                          { value: "video", label: "Video" },
-                        ]}
-                      />
-                      {backgroundType === "color" && (
-                        <div className="space-y-2">
-                          <label className="block text-xs font-medium text-neutral-500">
-                            Color
-                            <InspectorColorInput
-                              value={colorBackground?.color || "#111111"}
-                              onChange={(nextColor) =>
-                                updateBackground((prev) => {
-                                  const next: SlideBackground =
-                                    prev?.type === "color"
-                                      ? { ...prev }
-                                      : { type: "color", color: "#111111", opacity: 1 };
-                                  next.color = nextColor;
-                                  return next;
-                                })
-                              }
-                            />
-                          </label>
-                          <InspectorSliderControl
-                            label="Opacity"
-                            value={
-                              colorBackground?.opacity !== undefined
-                                ? colorBackground.opacity * 100
-                                : undefined
-                            }
-                            fallbackValue={((colorBackground?.opacity ?? 1) * 100) || 0}
-                            min={0}
-                            max={100}
-                            step={1}
-                            onChange={(next) =>
-                              updateBackground((prev) => {
-                                const nextBackground: SlideBackground =
-                                  prev?.type === "color"
-                                    ? { ...prev }
-                                    : {
-                                        type: "color",
-                                        color: "#111111",
-                                        opacity: 1,
-                                      };
-                                const percent =
-                                  next === undefined
-                                    ? (nextBackground.opacity ?? 1) * 100
-                                    : next;
-                                const clampedPercent = Math.min(
-                                  100,
-                                  Math.max(0, percent ?? 0),
-                                );
-                                nextBackground.opacity = clamp01(
-                                  clampedPercent / 100,
-                                );
-                                return nextBackground;
-                              })
-                            }
-                          />
-                        </div>
-                      )}
-                      {backgroundType === "image" && (
-                        <div className="space-y-3">
-                          <label className="block text-xs font-medium text-neutral-500">
-                            Image URL
-                            <InputText
-                              type="text"
-                              value={imageBackground?.url || ""}
-                              onChange={(e) =>
-                                updateBackground((prev) => {
-                                  const next: SlideBackground =
-                                    prev?.type === "image"
-                                      ? { ...prev }
-                                      : {
-                                          type: "image",
-                                          url: "",
-                                          fit: "cover",
-                                          focal: { x: 0.5, y: 0.5 },
-                                          blur: 0,
-                                        };
-                                  next.url = e.target.value;
-                                  return next;
-                                })
-                              }
-                              className={INSPECTOR_INPUT_CLASS}
-                              placeholder="https://"
-                            />
-                          </label>
-                          <div className="flex items-center gap-2">
-                            <input
-                              ref={imageInputRef}
-                              type="file"
-                              accept="image/*"
-                              className="hidden"
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) {
-                                  handleUpload(file, (url) =>
-                                    updateBackground((prev) => {
-                                      const next: SlideBackground =
-                                        prev?.type === "image"
-                                          ? { ...prev }
-                                          : {
-                                              type: "image",
-                                              url: "",
-                                              fit: "cover",
-                                              focal: { x: 0.5, y: 0.5 },
-                                              blur: 0,
-                                            };
-                                      next.url = url;
-                                      return next;
-                                    }),
-                                  );
-                                  e.target.value = "";
-                                }
-                              }}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => imageInputRef.current?.click()}
-                              className="rounded border px-3 py-1 text-xs"
-                            >
-                              Upload
-                            </button>
-                            {uploading && (
-                              <span className="text-xs text-neutral-500">
-                                Uploading…
-                              </span>
-                            )}
-                          </div>
-                          <InputSelect
-                            label="Fit"
-                            value={imageBackground?.fit || "cover"}
-                            onChange={(e) =>
-                              updateBackground((prev) => {
-                                if (prev?.type !== "image")
-                                  return {
-                                    type: "image",
-                                    url: "",
-                                    fit: e.target.value as "cover" | "contain",
-                                    focal: { x: 0.5, y: 0.5 },
-                                    blur: 0,
-                                  };
-                                return { ...prev, fit: e.target.value as "cover" | "contain" };
-                              })
-                            }
-                            labelClassName="block text-xs font-medium text-neutral-500"
-                            options={[
-                              { value: "cover", label: "Cover" },
-                              { value: "contain", label: "Contain" },
-                            ]}
-                          />
-                          <div className="grid grid-cols-2 gap-2 text-xs">
-                            <InputSlider
-                              label="Focal X"
-                              labelClassName="text-neutral-500"
-                              min={0}
-                              max={1}
-                              step={0.01}
-                              value={imageBackground?.focal?.x}
-                              fallbackValue={0.5}
-                              onValueChange={(next) =>
-                                updateBackground((prev) => {
-                                  if (prev?.type !== "image") return prev;
-                                  const resolved =
-                                    typeof next === "number" && Number.isFinite(next)
-                                      ? clamp01(next)
-                                      : 0.5;
-                                  const nextFocal = {
-                                    ...(prev.focal || { x: 0.5, y: 0.5 }),
-                                    x: resolved,
-                                  };
-                                  return { ...prev, focal: nextFocal };
-                                })
-                              }
-                              containerClassName="mt-1 flex items-center gap-2"
-                              sliderClassName="flex-1"
-                              numberInputClassName="w-24 shrink-0 border border-neutral-300 px-2 py-1 text-right text-xs text-neutral-900"
-                              numberInputProps={{ inputMode: "decimal" }}
-                            />
-                            <InputSlider
-                              label="Focal Y"
-                              labelClassName="text-neutral-500"
-                              min={0}
-                              max={1}
-                              step={0.01}
-                              value={imageBackground?.focal?.y}
-                              fallbackValue={0.5}
-                              onValueChange={(next) =>
-                                updateBackground((prev) => {
-                                  if (prev?.type !== "image") return prev;
-                                  const resolved =
-                                    typeof next === "number" && Number.isFinite(next)
-                                      ? clamp01(next)
-                                      : 0.5;
-                                  const nextFocal = {
-                                    ...(prev.focal || { x: 0.5, y: 0.5 }),
-                                    y: resolved,
-                                  };
-                                  return { ...prev, focal: nextFocal };
-                                })
-                              }
-                              containerClassName="mt-1 flex items-center gap-2"
-                              sliderClassName="flex-1"
-                              numberInputClassName="w-24 shrink-0 border border-neutral-300 px-2 py-1 text-right text-xs text-neutral-900"
-                              numberInputProps={{ inputMode: "decimal" }}
-                            />
-                          </div>
-                          <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
-                            <InputCheckbox
-                              
-                              checked={Boolean(imageBackground?.overlay)}
-                              onChange={(e) =>
-                                updateBackground((prev) => {
-                                  if (prev?.type !== "image") return prev;
-                                  if (!e.target.checked) {
-                                    return { ...prev, overlay: undefined };
-                                  }
-                                  return {
-                                    ...prev,
-                                    overlay: {
-                                      color: prev.overlay?.color || "#000000",
-                                      opacity: prev.overlay?.opacity ?? 0.25,
-                                    },
-                                  };
-                                })
-                              }
-                            />
-                            Overlay
-                          </label>
-                          {imageBackground?.overlay && (
-                            <div className="space-y-2">
-                              <InspectorColorInput
-                                value={imageBackground.overlay.color || "#000000"}
-                                onChange={(nextColor) =>
-                                  updateBackground((prev) => {
-                                    if (prev?.type !== "image") return prev;
-                                    return {
-                                      ...prev,
-                                      overlay: {
-                                        color: nextColor,
-                                        opacity: prev.overlay?.opacity ?? 0.25,
-                                      },
-                                    };
-                                  })
-                                }
-                              />
-                              <InspectorSliderControl
-                                label="Opacity"
-                                value={
-                                  imageBackground.overlay.opacity !== undefined
-                                    ? imageBackground.overlay.opacity * 100
-                                    : undefined
-                                }
-                                fallbackValue={
-                                  (imageBackground.overlay.opacity ?? 0.25) * 100
-                                }
-                                min={0}
-                                max={100}
-                                step={1}
-                                onChange={(next) =>
-                                  updateBackground((prev) => {
-                                    if (prev?.type !== "image") return prev;
-                                    const percent =
-                                      next === undefined
-                                        ? (prev.overlay?.opacity ?? 0.25) * 100
-                                        : next;
-                                    const clampedPercent = Math.min(
-                                      100,
-                                      Math.max(0, percent ?? 0),
-                                    );
-                                    return {
-                                      ...prev,
-                                      overlay: {
-                                        color: prev.overlay?.color || "#000000",
-                                        opacity: clamp01(clampedPercent / 100),
-                                      },
-                                    };
-                                  })
-                                }
-                              />
-                            </div>
-                          )}
-                          <InspectorSliderControl
-                            label="Blur"
-                            value={imageBackground?.blur}
-                            fallbackValue={0}
-                            min={0}
-                            max={20}
-                            step={1}
-                            onChange={(next) =>
-                              updateBackground((prev) => {
-                                if (prev?.type !== "image") return prev;
-                                const resolved =
-                                  next === undefined
-                                    ? prev.blur ?? 0
-                                    : next;
-                                return {
-                                  ...prev,
-                                  blur: clampRange(resolved, 0, 20),
-                                };
-                              })
-                            }
-                          />
-                        </div>
-                      )}
-                      {backgroundType === "video" && (
-                        <div className="space-y-3">
-                          <label className="block text-xs font-medium text-neutral-500">
-                            Video URL
-                            <InputText
-                              type="text"
-                              value={videoBackground?.url || ""}
-                              onChange={(e) =>
-                                updateBackground((prev) => {
-                                  const next: SlideBackground =
-                                    prev?.type === "video"
-                                      ? { ...prev }
-                                      : {
-                                          type: "video",
-                                          url: "",
-                                          fit: "cover",
-                                          focal: { x: 0.5, y: 0.5 },
-                                          blur: 0,
-                                          loop: true,
-                                          mute: true,
-                                          autoplay: true,
-                                        };
-                                  next.url = e.target.value;
-                                  return next;
-                                })
-                              }
-                              className={INSPECTOR_INPUT_CLASS}
-                              placeholder="https://"
-                            />
-                          </label>
-                          <div className="flex items-center gap-2">
-                            <input
-                              ref={imageInputRef}
-                              type="file"
-                              accept="video/*"
-                              className="hidden"
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) {
-                                  handleUpload(file, (url) =>
-                                    updateBackground((prev) => {
-                                      const next: SlideBackground =
-                                        prev?.type === "video"
-                                          ? { ...prev }
-                                          : {
-                                              type: "video",
-                                              url: "",
-                                              fit: "cover",
-                                              focal: { x: 0.5, y: 0.5 },
-                                              blur: 0,
-                                              loop: true,
-                                              mute: true,
-                                              autoplay: true,
-                                            };
-                                      next.url = url;
-                                      return next;
-                                    }),
-                                  );
-                                  e.target.value = "";
-                                }
-                              }}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => imageInputRef.current?.click()}
-                              className="rounded border px-3 py-1 text-xs"
-                            >
-                              Upload
-                            </button>
-                            {uploading && (
-                              <span className="text-xs text-neutral-500">
-                                Uploading…
-                              </span>
-                            )}
-                          </div>
-                          <label className="block text-xs font-medium text-neutral-500">
-                            Poster URL
-                            <InputText
-                              type="text"
-                              value={videoBackground?.poster || ""}
-                              onChange={(e) =>
-                                updateBackground((prev) => {
-                                  if (prev?.type !== "video")
-                                    return {
-                                      type: "video",
-                                      url: "",
-                                      fit: "cover",
-                                      focal: { x: 0.5, y: 0.5 },
-                                      blur: 0,
-                                      loop: true,
-                                      mute: true,
-                                      autoplay: true,
-                                      poster: e.target.value,
-                                    };
-                                  return { ...prev, poster: e.target.value };
-                                })
-                              }
-                              className={INSPECTOR_INPUT_CLASS}
-                              placeholder="https://"
-                            />
-                          </label>
-                          <div className="flex items-center gap-2">
-                            <input
-                              ref={videoPosterInputRef}
-                              type="file"
-                              accept="image/*"
-                              className="hidden"
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) {
-                                  handleUpload(file, (url) =>
-                                    updateBackground((prev) => {
-                                      if (prev?.type !== "video") return prev;
-                                      return { ...prev, poster: url };
-                                    }),
-                                  );
-                                  e.target.value = "";
-                                }
-                              }}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => videoPosterInputRef.current?.click()}
-                              className="rounded border px-3 py-1 text-xs"
-                            >
-                              Upload poster
-                            </button>
-                          </div>
-                          <InputSelect
-                            label="Fit"
-                            value={videoBackground?.fit || "cover"}
-                            onChange={(e) =>
-                              updateBackground((prev) => {
-                                if (prev?.type !== "video")
-                                  return {
-                                    type: "video",
-                                    url: prev?.url,
-                                    fit: e.target.value as "cover" | "contain",
-                                    focal: { x: 0.5, y: 0.5 },
-                                    blur: 0,
-                                    loop: true,
-                                    mute: true,
-                                    autoplay: true,
-                                    poster: prev?.poster,
-                                  };
-                                return { ...prev, fit: e.target.value as "cover" | "contain" };
-                              })
-                            }
-                            labelClassName="block text-xs font-medium text-neutral-500"
-                            options={[
-                              { value: "cover", label: "Cover" },
-                              { value: "contain", label: "Contain" },
-                            ]}
-                          />
-                          <div className="grid grid-cols-2 gap-2 text-xs">
-                            <InputSlider
-                              label="Focal X"
-                              labelClassName="text-neutral-500"
-                              min={0}
-                              max={1}
-                              step={0.01}
-                              value={videoBackground?.focal?.x}
-                              fallbackValue={0.5}
-                              onValueChange={(next) =>
-                                updateBackground((prev) => {
-                                  if (prev?.type !== "video") return prev;
-                                  const resolved =
-                                    typeof next === "number" && Number.isFinite(next)
-                                      ? clamp01(next)
-                                      : 0.5;
-                                  const nextFocal = {
-                                    ...(prev.focal || { x: 0.5, y: 0.5 }),
-                                    x: resolved,
-                                  };
-                                  return { ...prev, focal: nextFocal };
-                                })
-                              }
-                              containerClassName="mt-1 flex items-center gap-2"
-                              sliderClassName="flex-1"
-                              numberInputClassName="w-24 shrink-0 border border-neutral-300 px-2 py-1 text-right text-xs text-neutral-900"
-                              numberInputProps={{ inputMode: "decimal" }}
-                            />
-                            <InputSlider
-                              label="Focal Y"
-                              labelClassName="text-neutral-500"
-                              min={0}
-                              max={1}
-                              step={0.01}
-                              value={videoBackground?.focal?.y}
-                              fallbackValue={0.5}
-                              onValueChange={(next) =>
-                                updateBackground((prev) => {
-                                  if (prev?.type !== "video") return prev;
-                                  const resolved =
-                                    typeof next === "number" && Number.isFinite(next)
-                                      ? clamp01(next)
-                                      : 0.5;
-                                  const nextFocal = {
-                                    ...(prev.focal || { x: 0.5, y: 0.5 }),
-                                    y: resolved,
-                                  };
-                                  return { ...prev, focal: nextFocal };
-                                })
-                              }
-                              containerClassName="mt-1 flex items-center gap-2"
-                              sliderClassName="flex-1"
-                              numberInputClassName="w-24 shrink-0 border border-neutral-300 px-2 py-1 text-right text-xs text-neutral-900"
-                              numberInputProps={{ inputMode: "decimal" }}
-                            />
-                          </div>
-                          <div className="flex flex-wrap gap-3 text-xs font-medium text-neutral-500">
-                            <label className="flex items-center gap-2">
-                              <InputCheckbox
-                                
-                                checked={videoBackground?.loop ?? true}
-                                onChange={(e) =>
-                                  updateBackground((prev) => {
-                                    if (prev?.type !== "video") return prev;
-                                    return { ...prev, loop: e.target.checked };
-                                  })
-                                }
-                              />
-                              Loop
-                            </label>
-                            <label className="flex items-center gap-2">
-                              <InputCheckbox
-                                
-                                checked={videoBackground?.mute ?? true}
-                                onChange={(e) =>
-                                  updateBackground((prev) => {
-                                    if (prev?.type !== "video") return prev;
-                                    return { ...prev, mute: e.target.checked };
-                                  })
-                                }
-                              />
-                              Mute
-                            </label>
-                            <label className="flex items-center gap-2">
-                              <InputCheckbox
-                                
-                                checked={videoBackground?.autoplay ?? true}
-                                onChange={(e) =>
-                                  updateBackground((prev) => {
-                                    if (prev?.type !== "video") return prev;
-                                    return { ...prev, autoplay: e.target.checked };
-                                  })
-                                }
-                              />
-                              Autoplay
-                            </label>
-                          </div>
-                          <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
-                            <InputCheckbox
-                              
-                              checked={Boolean(videoBackground?.overlay)}
-                              onChange={(e) =>
-                                updateBackground((prev) => {
-                                  if (prev?.type !== "video") return prev;
-                                  if (!e.target.checked) {
-                                    return { ...prev, overlay: undefined };
-                                  }
-                                  return {
-                                    ...prev,
-                                    overlay: {
-                                      color: prev.overlay?.color || "#000000",
-                                      opacity: prev.overlay?.opacity ?? 0.25,
-                                    },
-                                  };
-                                })
-                              }
-                            />
-                            Overlay
-                          </label>
-                          {videoBackground?.overlay && (
-                            <div className="space-y-2">
-                              <InspectorColorInput
-                                value={videoBackground.overlay.color || "#000000"}
-                                onChange={(nextColor) =>
-                                  updateBackground((prev) => {
-                                    if (prev?.type !== "video") return prev;
-                                    return {
-                                      ...prev,
-                                      overlay: {
-                                        color: nextColor,
-                                        opacity: prev.overlay?.opacity ?? 0.25,
-                                      },
-                                    };
-                                  })
-                                }
-                              />
-                              <InspectorSliderControl
-                                label="Opacity"
-                                value={
-                                  videoBackground.overlay.opacity !== undefined
-                                    ? videoBackground.overlay.opacity * 100
-                                    : undefined
-                                }
-                                fallbackValue={
-                                  (videoBackground.overlay.opacity ?? 0.25) * 100
-                                }
-                                min={0}
-                                max={100}
-                                step={1}
-                                onChange={(next) =>
-                                  updateBackground((prev) => {
-                                    if (prev?.type !== "video") return prev;
-                                    const percent =
-                                      next === undefined
-                                        ? (prev.overlay?.opacity ?? 0.25) * 100
-                                        : next;
-                                    const clampedPercent = Math.min(
-                                      100,
-                                      Math.max(0, percent ?? 0),
-                                    );
-                                    return {
-                                      ...prev,
-                                      overlay: {
-                                        color: prev.overlay?.color || "#000000",
-                                        opacity: clamp01(clampedPercent / 100),
-                                      },
-                                    };
-                                  })
-                                }
-                              />
-                            </div>
-                          )}
-                          <InspectorSliderControl
-                            label="Blur"
-                            value={videoBackground?.blur}
-                            fallbackValue={0}
-                            min={0}
-                            max={20}
-                            step={1}
-                            onChange={(next) =>
-                              updateBackground((prev) => {
-                                if (prev?.type !== "video") return prev;
-                                const resolved =
-                                  next === undefined
-                                    ? prev.blur ?? 0
-                                    : next;
-                                return {
-                                  ...prev,
-                                  blur: clampRange(resolved, 0, 20),
-                                };
-                              })
-                            }
-                          />
-                        </div>
-                      )}
-                      {backgroundType === "none" && (
-                        <p className="text-xs text-neutral-500">
-                          No background will be displayed for this slide.
-                        </p>
-                      )}
-                    </div>
-                  </section>
-                </div>
-              </aside>
-            )}
-            <div className="relative flex flex-1 overflow-hidden bg-neutral-50">
-              <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-                <div
-                  ref={previewContainerRef}
-                  className="relative flex flex-1 min-h-0 overflow-hidden"
-                >
-                  <div
-                    className="relative flex w-full flex-col items-center justify-center overflow-hidden"
-                    style={{
-                      paddingTop: PREVIEW_PADDING_Y,
-                      paddingBottom: PREVIEW_PADDING_Y,
-                      paddingLeft: PREVIEW_PADDING_X,
-                      paddingRight: PREVIEW_PADDING_X,
-                    }}
-                  >
-                    <div className="relative w-full h-full overflow-hidden">
-                      <SafeZoneOverlay visible={showSafeZone} />
-                      {hasPreviewBounds && (
-                        <SlidesManager
-                          initialCfg={cfg}
-                          onChange={handlePreviewChange}
-                          editable={true}
-                          selectedId={selectedId}
-                          onSelectBlock={handleSelectBlock}
-                          openInspector={openInspectorForSelection}
-                          onCanvasClick={handleCanvasClick}
-                          activeDevice={activeDevice}
-                          editInPreview={editInPreview}
-                          scale={previewScale}
-                          onManipulationChange={handleManipulationChange}
-                          safeZoneVisible={showSafeZone}
-                        />
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <InspectorPanel
-                open={Boolean(inspectorOpen && selectedBlock)}
-                bodyStyle={{ padding: 0 }}
-                contentStyle={{ height: '100%' }}
-              >
-                {inspectorOpen && selectedBlock ? (
-                
-                  <div className="flex-1 min-h-0 flex flex-col">
-                    <div
-                      className="border-b bg-white"
-                      style={{
-                        paddingLeft: tokens.spacing.md,
-                        paddingRight: tokens.spacing.md,
-                        paddingTop: tokens.spacing.sm,
-                        paddingBottom: tokens.spacing.sm,
-                      }}
-                    >
-                      <div
-                        className="flex flex-wrap items-center justify-between"
-                        style={{ gap: tokens.spacing.sm }}
-                      >
-                        <span className="text-xs font-semibold uppercase tracking-wide text-neutral-600">
-                          Inspector
-                        </span>
-                        <span className="text-xs text-neutral-500">
-                          Selected: {selectionLabel}
-                        </span>
-                      </div>
-                      <div
-                        className="mt-2 flex flex-wrap items-center justify-between"
-                        style={{ gap: tokens.spacing.sm }}
-                      >
-                        <div
-                          className="min-w-0 flex flex-wrap items-center"
-                          style={{ gap: tokens.spacing.xs }}
-                        >
-                          <span className="text-sm font-semibold text-neutral-900">
-                            {selectionLabel}
-                          </span>
-                          {selectedBlock.locked && (
-                            <span className="rounded bg-neutral-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-neutral-600">
-                              Locked
-                            </span>
-                          )}
-                        </div>
-                        <div
-                          className="flex flex-wrap items-center"
-                          style={{ gap: tokens.spacing.xs }}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => handleDuplicateBlock(selectedBlock.id)}
-                            className="rounded border px-2.5 py-1 text-xs font-medium"
-                          >
-                            Duplicate
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => removeBlock(selectedBlock.id)}
-                            className="rounded border px-2.5 py-1 text-xs font-medium text-red-600"
-                          >
-                            Delete
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => toggleBlockLock(selectedBlock.id)}
-                            className="rounded border px-2.5 py-1 text-xs font-medium"
-                          >
-                            {selectedBlock.locked ? "Unlock" : "Lock"}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleInspectorDone}
-                            className="rounded border px-2.5 py-1 text-xs font-medium"
-                          >
-                            Done
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                    <InspectorContainer
-                      className={INSPECTOR_CONTENT_CLASS}
-                      style={{ flex: 1, minHeight: 0 }}
-                      onPointerDownCapture={handleInspectorPointerDown}
-                    >
-                      <section>
+  const inspectorContent = inspectorOpen && selectedBlock ? (
+    <InspectorContainer
+      className={INSPECTOR_CONTENT_CLASS}
+      style={{ flex: 1, minHeight: 0 }}
+      onPointerDownCapture={handleInspectorPointerDown}
+    >
+      <InspectorSection title="Selection">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className="text-sm font-semibold text-neutral-900">
+              {selectionLabel}
+            </span>
+            {selectedBlock.locked ? (
+              <span className="rounded bg-neutral-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-neutral-600">
+                Locked
+              </span>
+            ) : null}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => handleDuplicateBlock(selectedBlock.id)}
+              className="rounded border px-2.5 py-1 text-xs font-medium"
+            >
+              Duplicate
+            </button>
+            <button
+              type="button"
+              onClick={() => removeBlock(selectedBlock.id)}
+              className="rounded border px-2.5 py-1 text-xs font-medium text-red-600"
+            >
+              Delete
+            </button>
+            <button
+              type="button"
+              onClick={() => toggleBlockLock(selectedBlock.id)}
+              className="rounded border px-2.5 py-1 text-xs font-medium"
+            >
+              {selectedBlock.locked ? "Unlock" : "Lock"}
+            </button>
+            <button
+              type="button"
+              onClick={handleInspectorDone}
+              className="rounded border px-2.5 py-1 text-xs font-medium"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+        </InspectorSection>
+        <section>
                         <div className="mt-2 space-y-3 text-sm">
                           {(selectedBlock.kind === "heading" ||
                             selectedBlock.kind === "text") &&
@@ -6874,10 +5886,972 @@ export default function SlideModal({
                           </InspectorSection>
 
                         </div>
-                    </section>
-                    </InspectorContainer>
+      </section>
+    </InspectorContainer>
+  ) : null;
+
+  return (
+    <div className="fixed inset-0 z-[80] flex">
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="relative z-[81] m-4 flex w-[calc(100%-2rem)] max-w-[calc(100%-2rem)] flex-1 overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <div
+          className="builder-wrapper flex min-h-[80vh] w-full flex-col bg-white"
+          style={{ height: "100%" }}
+        >
+          <Toolbar className="flex items-center" proxy>
+            <Toolbar.Left>
+              <Toolbar.Button
+                onClick={() => setDrawerOpen((v) => !v)}
+                aria-pressed={drawerOpen}
+                active={drawerOpen}
+                className="blocks-btn"
+              >
+                Blocks
+              </Toolbar.Button>
+            </Toolbar.Left>
+            <Toolbar.Center aria-label="Preview device selector">
+              <Toolbar.Container>
+                {(["mobile", "tablet", "desktop"] as DeviceKind[]).map((device) => (
+                  <Toolbar.DeviceButton
+                    key={device}
+                    onClick={() => setActiveDevice(device)}
+                    active={activeDevice === device}
+                    className="capitalize"
+                  >
+                    {device}
+                  </Toolbar.DeviceButton>
+                ))}
+              </Toolbar.Container>
+            </Toolbar.Center>
+            <Toolbar.Right className="preview-fab">
+              <Toolbar.IconButton
+                onClick={undo}
+                aria-label="Undo"
+                disabled={!canUndo}
+                className="undo-btn"
+                title="Undo (Ctrl+Z / ⌘Z)"
+              >
+                <Undo size={16} />
+              </Toolbar.IconButton>
+              <Toolbar.IconButton
+                onClick={redo}
+                aria-label="Redo"
+                disabled={!canRedo}
+                className="redo-btn"
+                title="Redo (Ctrl+Shift+Z / ⌘+Shift+Z)"
+              >
+                <Redo size={16} />
+              </Toolbar.IconButton>
+              <Toolbar.ZoomGroup>
+                <Toolbar.IconButton
+                  onClick={handleZoomOut}
+                  aria-label="Zoom out"
+                  disabled={!canZoomOut}
+                  className="zoom-out-btn"
+                >
+                  <ZoomOut size={16} />
+                </Toolbar.IconButton>
+                <Toolbar.Button
+                  onClick={handleZoomReset}
+                  aria-label="Reset zoom"
+                  active={!canResetZoom}
+                  className="toolbar-zoom-level zoom-reset-btn"
+                >
+                  {zoomPercent}%
+                </Toolbar.Button>
+                <Toolbar.IconButton
+                  onClick={handleZoomIn}
+                  aria-label="Zoom in"
+                  disabled={!canZoomIn}
+                  className="zoom-in-btn"
+                >
+                  <ZoomIn size={16} />
+                </Toolbar.IconButton>
+              </Toolbar.ZoomGroup>
+              <Toolbar.Button
+                onClick={handleSave}
+                disabled={saving}
+                className="save-btn"
+              >
+                {saving ? "Saving…" : "Save"}
+              </Toolbar.Button>
+              <Toolbar.IconButton
+                onClick={onClose}
+                aria-label="Close builder"
+                className="close-btn close"
+              >
+                <X size={16} />
+              </Toolbar.IconButton>
+              <Toolbar.Button
+                onClick={() => setShowSafeZone((prev) => !prev)}
+                aria-pressed={showSafeZone}
+                active={showSafeZone}
+              >
+                Safe zone
+              </Toolbar.Button>
+              <Toolbar.Button
+                onClick={() => setEditInPreview((prev) => !prev)}
+                aria-pressed={editInPreview}
+                active={editInPreview}
+              >
+                Edit in preview
+              </Toolbar.Button>
+            </Toolbar.Right>
+          </Toolbar>
+          <div className="flex flex-1 overflow-hidden">
+            {drawerOpen && (
+              <aside className="w-72 shrink-0 border-r bg-white">
+                <div className="h-full space-y-6 overflow-y-auto p-4">
+                  <section>
+                    <h3 className="mb-2 text-sm font-semibold text-neutral-600">
+                      Device
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {(["mobile", "tablet", "desktop"] as DeviceKind[]).map(
+                        (device) => (
+                          <button
+                            key={device}
+                            type="button"
+                            onClick={() => setActiveDevice(device)}
+                            className={`rounded border px-2 py-1 text-xs capitalize ${
+                              activeDevice === device
+                                ? "border-emerald-500 bg-emerald-50"
+                                : "border-neutral-200"
+                            }`}
+                          >
+                            {device}
+                          </button>
+                        ),
+                      )}
+                    </div>
+                  </section>
+                  <section>
+                    <h3 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+                      Blocks
+                    </h3>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      {(
+                        [
+                          "heading",
+                          "subheading",
+                          "text",
+                          "button",
+                          "image",
+                          "quote",
+                          "gallery",
+                        ] as SlideBlock["kind"][]
+                      ).map((kind) => (
+                        <button
+                          key={kind}
+                          type="button"
+                          onClick={() => addBlock(kind)}
+                          className="rounded border px-2 py-1 text-left text-xs capitalize hover:border-emerald-500"
+                        >
+                          + {kind}
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                  <section>
+                    <h3 className="mb-2 text-sm font-semibold text-neutral-600">
+                      Layers
+                    </h3>
+                    <div className="space-y-1">
+                      {layerEntries
+                        .slice()
+                        .reverse()
+                        .map(({ block, index }) => {
+                          const isSelected = block.id === selectedId;
+                          const isBottom = index === 0;
+                          const isTop = index === layerEntries.length - 1;
+                          const displayIndex = layerEntries.length - index;
+                          return (
+                            <div
+                              key={block.id}
+                              className={`flex h-10 items-center gap-2 rounded border px-2 text-xs transition ${
+                              isSelected
+                                ? "border-emerald-500 bg-emerald-50"
+                                : "border-neutral-200"
+                            }`}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => handleLayerSelect(block.id)}
+                              className="flex h-full flex-1 items-center gap-2 overflow-hidden text-left"
+                            >
+                              <span className="flex items-center gap-1 truncate capitalize">
+                                {block.locked && (
+                                  <LockClosedIcon className="h-3.5 w-3.5 flex-none text-neutral-500" />
+                                )}
+                                <span className="truncate">{block.kind}</span>
+                              </span>
+                              <span className="ml-auto text-[11px] text-neutral-500">
+                                #{displayIndex}
+                              </span>
+                            </button>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => moveBlock(block.id, 1)}
+                                disabled={isTop}
+                                aria-label="Bring block forward"
+                                title="Bring block forward"
+                                className="flex h-7 w-7 items-center justify-center rounded border border-transparent text-neutral-500 transition hover:border-neutral-300 hover:text-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                <ChevronUp className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => moveBlock(block.id, -1)}
+                                disabled={isBottom}
+                                aria-label="Send block backward"
+                                title="Send block backward"
+                                className="flex h-7 w-7 items-center justify-center rounded border border-transparent text-neutral-500 transition hover:border-neutral-300 hover:text-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                <ChevronDown className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => removeBlock(block.id)}
+                                aria-label="Delete block"
+                                title="Delete block"
+                                className="flex h-7 w-7 items-center justify-center rounded border border-transparent text-neutral-500 transition hover:border-red-200 hover:text-red-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                        })}
+                    </div>
+                  </section>
+                  <section>
+                    <h3 className="mb-2 text-sm font-semibold text-neutral-600">
+                      Background
+                    </h3>
+                    <div className="space-y-3 text-sm">
+                      <InputSelect
+                        label="Type"
+                        value={backgroundType}
+                        onChange={(e) =>
+                          handleBackgroundTypeChange(
+                            e.target.value as SlideBackground["type"],
+                          )
+                        }
+                        labelClassName="block text-xs font-medium text-neutral-500"
+                        options={[
+                          { value: "none", label: "None" },
+                          { value: "color", label: "Color" },
+                          { value: "image", label: "Image" },
+                          { value: "video", label: "Video" },
+                        ]}
+                      />
+                      {backgroundType === "color" && (
+                        <div className="space-y-2">
+                          <label className="block text-xs font-medium text-neutral-500">
+                            Color
+                            <InspectorColorInput
+                              value={colorBackground?.color || "#111111"}
+                              onChange={(nextColor) =>
+                                updateBackground((prev) => {
+                                  const next: SlideBackground =
+                                    prev?.type === "color"
+                                      ? { ...prev }
+                                      : { type: "color", color: "#111111", opacity: 1 };
+                                  next.color = nextColor;
+                                  return next;
+                                })
+                              }
+                            />
+                          </label>
+                          <InspectorSliderControl
+                            label="Opacity"
+                            value={
+                              colorBackground?.opacity !== undefined
+                                ? colorBackground.opacity * 100
+                                : undefined
+                            }
+                            fallbackValue={((colorBackground?.opacity ?? 1) * 100) || 0}
+                            min={0}
+                            max={100}
+                            step={1}
+                            onChange={(next) =>
+                              updateBackground((prev) => {
+                                const nextBackground: SlideBackground =
+                                  prev?.type === "color"
+                                    ? { ...prev }
+                                    : {
+                                        type: "color",
+                                        color: "#111111",
+                                        opacity: 1,
+                                      };
+                                const percent =
+                                  next === undefined
+                                    ? (nextBackground.opacity ?? 1) * 100
+                                    : next;
+                                const clampedPercent = Math.min(
+                                  100,
+                                  Math.max(0, percent ?? 0),
+                                );
+                                nextBackground.opacity = clamp01(
+                                  clampedPercent / 100,
+                                );
+                                return nextBackground;
+                              })
+                            }
+                          />
+                        </div>
+                      )}
+                      {backgroundType === "image" && (
+                        <div className="space-y-3">
+                          <label className="block text-xs font-medium text-neutral-500">
+                            Image URL
+                            <InputText
+                              type="text"
+                              value={imageBackground?.url || ""}
+                              onChange={(e) =>
+                                updateBackground((prev) => {
+                                  const next: SlideBackground =
+                                    prev?.type === "image"
+                                      ? { ...prev }
+                                      : {
+                                          type: "image",
+                                          url: "",
+                                          fit: "cover",
+                                          focal: { x: 0.5, y: 0.5 },
+                                          blur: 0,
+                                        };
+                                  next.url = e.target.value;
+                                  return next;
+                                })
+                              }
+                              className={INSPECTOR_INPUT_CLASS}
+                              placeholder="https://"
+                            />
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              ref={imageInputRef}
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  handleUpload(file, (url) =>
+                                    updateBackground((prev) => {
+                                      const next: SlideBackground =
+                                        prev?.type === "image"
+                                          ? { ...prev }
+                                          : {
+                                              type: "image",
+                                              url: "",
+                                              fit: "cover",
+                                              focal: { x: 0.5, y: 0.5 },
+                                              blur: 0,
+                                            };
+                                      next.url = url;
+                                      return next;
+                                    }),
+                                  );
+                                  e.target.value = "";
+                                }
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => imageInputRef.current?.click()}
+                              className="rounded border px-3 py-1 text-xs"
+                            >
+                              Upload
+                            </button>
+                            {uploading && (
+                              <span className="text-xs text-neutral-500">
+                                Uploading…
+                              </span>
+                            )}
+                          </div>
+                          <InputSelect
+                            label="Fit"
+                            value={imageBackground?.fit || "cover"}
+                            onChange={(e) =>
+                              updateBackground((prev) => {
+                                if (prev?.type !== "image")
+                                  return {
+                                    type: "image",
+                                    url: "",
+                                    fit: e.target.value as "cover" | "contain",
+                                    focal: { x: 0.5, y: 0.5 },
+                                    blur: 0,
+                                  };
+                                return { ...prev, fit: e.target.value as "cover" | "contain" };
+                              })
+                            }
+                            labelClassName="block text-xs font-medium text-neutral-500"
+                            options={[
+                              { value: "cover", label: "Cover" },
+                              { value: "contain", label: "Contain" },
+                            ]}
+                          />
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <InputSlider
+                              label="Focal X"
+                              labelClassName="text-neutral-500"
+                              min={0}
+                              max={1}
+                              step={0.01}
+                              value={imageBackground?.focal?.x}
+                              fallbackValue={0.5}
+                              onValueChange={(next) =>
+                                updateBackground((prev) => {
+                                  if (prev?.type !== "image") return prev;
+                                  const resolved =
+                                    typeof next === "number" && Number.isFinite(next)
+                                      ? clamp01(next)
+                                      : 0.5;
+                                  const nextFocal = {
+                                    ...(prev.focal || { x: 0.5, y: 0.5 }),
+                                    x: resolved,
+                                  };
+                                  return { ...prev, focal: nextFocal };
+                                })
+                              }
+                              containerClassName="mt-1 flex items-center gap-2"
+                              sliderClassName="flex-1"
+                              numberInputClassName="w-24 shrink-0 border border-neutral-300 px-2 py-1 text-right text-xs text-neutral-900"
+                              numberInputProps={{ inputMode: "decimal" }}
+                            />
+                            <InputSlider
+                              label="Focal Y"
+                              labelClassName="text-neutral-500"
+                              min={0}
+                              max={1}
+                              step={0.01}
+                              value={imageBackground?.focal?.y}
+                              fallbackValue={0.5}
+                              onValueChange={(next) =>
+                                updateBackground((prev) => {
+                                  if (prev?.type !== "image") return prev;
+                                  const resolved =
+                                    typeof next === "number" && Number.isFinite(next)
+                                      ? clamp01(next)
+                                      : 0.5;
+                                  const nextFocal = {
+                                    ...(prev.focal || { x: 0.5, y: 0.5 }),
+                                    y: resolved,
+                                  };
+                                  return { ...prev, focal: nextFocal };
+                                })
+                              }
+                              containerClassName="mt-1 flex items-center gap-2"
+                              sliderClassName="flex-1"
+                              numberInputClassName="w-24 shrink-0 border border-neutral-300 px-2 py-1 text-right text-xs text-neutral-900"
+                              numberInputProps={{ inputMode: "decimal" }}
+                            />
+                          </div>
+                          <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
+                            <InputCheckbox
+                              
+                              checked={Boolean(imageBackground?.overlay)}
+                              onChange={(e) =>
+                                updateBackground((prev) => {
+                                  if (prev?.type !== "image") return prev;
+                                  if (!e.target.checked) {
+                                    return { ...prev, overlay: undefined };
+                                  }
+                                  return {
+                                    ...prev,
+                                    overlay: {
+                                      color: prev.overlay?.color || "#000000",
+                                      opacity: prev.overlay?.opacity ?? 0.25,
+                                    },
+                                  };
+                                })
+                              }
+                            />
+                            Overlay
+                          </label>
+                          {imageBackground?.overlay && (
+                            <div className="space-y-2">
+                              <InspectorColorInput
+                                value={imageBackground.overlay.color || "#000000"}
+                                onChange={(nextColor) =>
+                                  updateBackground((prev) => {
+                                    if (prev?.type !== "image") return prev;
+                                    return {
+                                      ...prev,
+                                      overlay: {
+                                        color: nextColor,
+                                        opacity: prev.overlay?.opacity ?? 0.25,
+                                      },
+                                    };
+                                  })
+                                }
+                              />
+                              <InspectorSliderControl
+                                label="Opacity"
+                                value={
+                                  imageBackground.overlay.opacity !== undefined
+                                    ? imageBackground.overlay.opacity * 100
+                                    : undefined
+                                }
+                                fallbackValue={
+                                  (imageBackground.overlay.opacity ?? 0.25) * 100
+                                }
+                                min={0}
+                                max={100}
+                                step={1}
+                                onChange={(next) =>
+                                  updateBackground((prev) => {
+                                    if (prev?.type !== "image") return prev;
+                                    const percent =
+                                      next === undefined
+                                        ? (prev.overlay?.opacity ?? 0.25) * 100
+                                        : next;
+                                    const clampedPercent = Math.min(
+                                      100,
+                                      Math.max(0, percent ?? 0),
+                                    );
+                                    return {
+                                      ...prev,
+                                      overlay: {
+                                        color: prev.overlay?.color || "#000000",
+                                        opacity: clamp01(clampedPercent / 100),
+                                      },
+                                    };
+                                  })
+                                }
+                              />
+                            </div>
+                          )}
+                          <InspectorSliderControl
+                            label="Blur"
+                            value={imageBackground?.blur}
+                            fallbackValue={0}
+                            min={0}
+                            max={20}
+                            step={1}
+                            onChange={(next) =>
+                              updateBackground((prev) => {
+                                if (prev?.type !== "image") return prev;
+                                const resolved =
+                                  next === undefined
+                                    ? prev.blur ?? 0
+                                    : next;
+                                return {
+                                  ...prev,
+                                  blur: clampRange(resolved, 0, 20),
+                                };
+                              })
+                            }
+                          />
+                        </div>
+                      )}
+                      {backgroundType === "video" && (
+                        <div className="space-y-3">
+                          <label className="block text-xs font-medium text-neutral-500">
+                            Video URL
+                            <InputText
+                              type="text"
+                              value={videoBackground?.url || ""}
+                              onChange={(e) =>
+                                updateBackground((prev) => {
+                                  const next: SlideBackground =
+                                    prev?.type === "video"
+                                      ? { ...prev }
+                                      : {
+                                          type: "video",
+                                          url: "",
+                                          fit: "cover",
+                                          focal: { x: 0.5, y: 0.5 },
+                                          blur: 0,
+                                          loop: true,
+                                          mute: true,
+                                          autoplay: true,
+                                        };
+                                  next.url = e.target.value;
+                                  return next;
+                                })
+                              }
+                              className={INSPECTOR_INPUT_CLASS}
+                              placeholder="https://"
+                            />
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              ref={imageInputRef}
+                              type="file"
+                              accept="video/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  handleUpload(file, (url) =>
+                                    updateBackground((prev) => {
+                                      const next: SlideBackground =
+                                        prev?.type === "video"
+                                          ? { ...prev }
+                                          : {
+                                              type: "video",
+                                              url: "",
+                                              fit: "cover",
+                                              focal: { x: 0.5, y: 0.5 },
+                                              blur: 0,
+                                              loop: true,
+                                              mute: true,
+                                              autoplay: true,
+                                            };
+                                      next.url = url;
+                                      return next;
+                                    }),
+                                  );
+                                  e.target.value = "";
+                                }
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => imageInputRef.current?.click()}
+                              className="rounded border px-3 py-1 text-xs"
+                            >
+                              Upload
+                            </button>
+                            {uploading && (
+                              <span className="text-xs text-neutral-500">
+                                Uploading…
+                              </span>
+                            )}
+                          </div>
+                          <label className="block text-xs font-medium text-neutral-500">
+                            Poster URL
+                            <InputText
+                              type="text"
+                              value={videoBackground?.poster || ""}
+                              onChange={(e) =>
+                                updateBackground((prev) => {
+                                  if (prev?.type !== "video")
+                                    return {
+                                      type: "video",
+                                      url: "",
+                                      fit: "cover",
+                                      focal: { x: 0.5, y: 0.5 },
+                                      blur: 0,
+                                      loop: true,
+                                      mute: true,
+                                      autoplay: true,
+                                      poster: e.target.value,
+                                    };
+                                  return { ...prev, poster: e.target.value };
+                                })
+                              }
+                              className={INSPECTOR_INPUT_CLASS}
+                              placeholder="https://"
+                            />
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              ref={videoPosterInputRef}
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  handleUpload(file, (url) =>
+                                    updateBackground((prev) => {
+                                      if (prev?.type !== "video") return prev;
+                                      return { ...prev, poster: url };
+                                    }),
+                                  );
+                                  e.target.value = "";
+                                }
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => videoPosterInputRef.current?.click()}
+                              className="rounded border px-3 py-1 text-xs"
+                            >
+                              Upload poster
+                            </button>
+                          </div>
+                          <InputSelect
+                            label="Fit"
+                            value={videoBackground?.fit || "cover"}
+                            onChange={(e) =>
+                              updateBackground((prev) => {
+                                if (prev?.type !== "video")
+                                  return {
+                                    type: "video",
+                                    url: prev?.url,
+                                    fit: e.target.value as "cover" | "contain",
+                                    focal: { x: 0.5, y: 0.5 },
+                                    blur: 0,
+                                    loop: true,
+                                    mute: true,
+                                    autoplay: true,
+                                    poster: prev?.poster,
+                                  };
+                                return { ...prev, fit: e.target.value as "cover" | "contain" };
+                              })
+                            }
+                            labelClassName="block text-xs font-medium text-neutral-500"
+                            options={[
+                              { value: "cover", label: "Cover" },
+                              { value: "contain", label: "Contain" },
+                            ]}
+                          />
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <InputSlider
+                              label="Focal X"
+                              labelClassName="text-neutral-500"
+                              min={0}
+                              max={1}
+                              step={0.01}
+                              value={videoBackground?.focal?.x}
+                              fallbackValue={0.5}
+                              onValueChange={(next) =>
+                                updateBackground((prev) => {
+                                  if (prev?.type !== "video") return prev;
+                                  const resolved =
+                                    typeof next === "number" && Number.isFinite(next)
+                                      ? clamp01(next)
+                                      : 0.5;
+                                  const nextFocal = {
+                                    ...(prev.focal || { x: 0.5, y: 0.5 }),
+                                    x: resolved,
+                                  };
+                                  return { ...prev, focal: nextFocal };
+                                })
+                              }
+                              containerClassName="mt-1 flex items-center gap-2"
+                              sliderClassName="flex-1"
+                              numberInputClassName="w-24 shrink-0 border border-neutral-300 px-2 py-1 text-right text-xs text-neutral-900"
+                              numberInputProps={{ inputMode: "decimal" }}
+                            />
+                            <InputSlider
+                              label="Focal Y"
+                              labelClassName="text-neutral-500"
+                              min={0}
+                              max={1}
+                              step={0.01}
+                              value={videoBackground?.focal?.y}
+                              fallbackValue={0.5}
+                              onValueChange={(next) =>
+                                updateBackground((prev) => {
+                                  if (prev?.type !== "video") return prev;
+                                  const resolved =
+                                    typeof next === "number" && Number.isFinite(next)
+                                      ? clamp01(next)
+                                      : 0.5;
+                                  const nextFocal = {
+                                    ...(prev.focal || { x: 0.5, y: 0.5 }),
+                                    y: resolved,
+                                  };
+                                  return { ...prev, focal: nextFocal };
+                                })
+                              }
+                              containerClassName="mt-1 flex items-center gap-2"
+                              sliderClassName="flex-1"
+                              numberInputClassName="w-24 shrink-0 border border-neutral-300 px-2 py-1 text-right text-xs text-neutral-900"
+                              numberInputProps={{ inputMode: "decimal" }}
+                            />
+                          </div>
+                          <div className="flex flex-wrap gap-3 text-xs font-medium text-neutral-500">
+                            <label className="flex items-center gap-2">
+                              <InputCheckbox
+                                
+                                checked={videoBackground?.loop ?? true}
+                                onChange={(e) =>
+                                  updateBackground((prev) => {
+                                    if (prev?.type !== "video") return prev;
+                                    return { ...prev, loop: e.target.checked };
+                                  })
+                                }
+                              />
+                              Loop
+                            </label>
+                            <label className="flex items-center gap-2">
+                              <InputCheckbox
+                                
+                                checked={videoBackground?.mute ?? true}
+                                onChange={(e) =>
+                                  updateBackground((prev) => {
+                                    if (prev?.type !== "video") return prev;
+                                    return { ...prev, mute: e.target.checked };
+                                  })
+                                }
+                              />
+                              Mute
+                            </label>
+                            <label className="flex items-center gap-2">
+                              <InputCheckbox
+                                
+                                checked={videoBackground?.autoplay ?? true}
+                                onChange={(e) =>
+                                  updateBackground((prev) => {
+                                    if (prev?.type !== "video") return prev;
+                                    return { ...prev, autoplay: e.target.checked };
+                                  })
+                                }
+                              />
+                              Autoplay
+                            </label>
+                          </div>
+                          <label className="flex items-center gap-2 text-xs font-medium text-neutral-500">
+                            <InputCheckbox
+                              
+                              checked={Boolean(videoBackground?.overlay)}
+                              onChange={(e) =>
+                                updateBackground((prev) => {
+                                  if (prev?.type !== "video") return prev;
+                                  if (!e.target.checked) {
+                                    return { ...prev, overlay: undefined };
+                                  }
+                                  return {
+                                    ...prev,
+                                    overlay: {
+                                      color: prev.overlay?.color || "#000000",
+                                      opacity: prev.overlay?.opacity ?? 0.25,
+                                    },
+                                  };
+                                })
+                              }
+                            />
+                            Overlay
+                          </label>
+                          {videoBackground?.overlay && (
+                            <div className="space-y-2">
+                              <InspectorColorInput
+                                value={videoBackground.overlay.color || "#000000"}
+                                onChange={(nextColor) =>
+                                  updateBackground((prev) => {
+                                    if (prev?.type !== "video") return prev;
+                                    return {
+                                      ...prev,
+                                      overlay: {
+                                        color: nextColor,
+                                        opacity: prev.overlay?.opacity ?? 0.25,
+                                      },
+                                    };
+                                  })
+                                }
+                              />
+                              <InspectorSliderControl
+                                label="Opacity"
+                                value={
+                                  videoBackground.overlay.opacity !== undefined
+                                    ? videoBackground.overlay.opacity * 100
+                                    : undefined
+                                }
+                                fallbackValue={
+                                  (videoBackground.overlay.opacity ?? 0.25) * 100
+                                }
+                                min={0}
+                                max={100}
+                                step={1}
+                                onChange={(next) =>
+                                  updateBackground((prev) => {
+                                    if (prev?.type !== "video") return prev;
+                                    const percent =
+                                      next === undefined
+                                        ? (prev.overlay?.opacity ?? 0.25) * 100
+                                        : next;
+                                    const clampedPercent = Math.min(
+                                      100,
+                                      Math.max(0, percent ?? 0),
+                                    );
+                                    return {
+                                      ...prev,
+                                      overlay: {
+                                        color: prev.overlay?.color || "#000000",
+                                        opacity: clamp01(clampedPercent / 100),
+                                      },
+                                    };
+                                  })
+                                }
+                              />
+                            </div>
+                          )}
+                          <InspectorSliderControl
+                            label="Blur"
+                            value={videoBackground?.blur}
+                            fallbackValue={0}
+                            min={0}
+                            max={20}
+                            step={1}
+                            onChange={(next) =>
+                              updateBackground((prev) => {
+                                if (prev?.type !== "video") return prev;
+                                const resolved =
+                                  next === undefined
+                                    ? prev.blur ?? 0
+                                    : next;
+                                return {
+                                  ...prev,
+                                  blur: clampRange(resolved, 0, 20),
+                                };
+                              })
+                            }
+                          />
+                        </div>
+                      )}
+                      {backgroundType === "none" && (
+                        <p className="text-xs text-neutral-500">
+                          No background will be displayed for this slide.
+                        </p>
+                      )}
+                    </div>
+                  </section>
+                </div>
+              </aside>
+            )}
+            <div className="relative flex flex-1 overflow-hidden bg-neutral-50">
+              <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+                <div
+                  ref={previewContainerRef}
+                  className="relative flex flex-1 min-h-0 overflow-hidden"
+                >
+                  <div
+                    className="relative flex w-full flex-col items-center justify-center overflow-hidden"
+                    style={{
+                      paddingTop: PREVIEW_PADDING_Y,
+                      paddingBottom: PREVIEW_PADDING_Y,
+                      paddingLeft: PREVIEW_PADDING_X,
+                      paddingRight: PREVIEW_PADDING_X,
+                    }}
+                  >
+                    <div className="relative w-full h-full overflow-hidden">
+                      <SafeZoneOverlay visible={showSafeZone} />
+                      {hasPreviewBounds && (
+                        <SlidesManager
+                          initialCfg={cfg}
+                          onChange={handlePreviewChange}
+                          editable={true}
+                          selectedId={selectedId}
+                          onSelectBlock={handleSelectBlock}
+                          openInspector={openInspectorForSelection}
+                          onCanvasClick={handleCanvasClick}
+                          activeDevice={activeDevice}
+                          editInPreview={editInPreview}
+                          scale={previewScale}
+                          onManipulationChange={handleManipulationChange}
+                          safeZoneVisible={showSafeZone}
+                        />
+                      )}
+                    </div>
                   </div>
-                ) : null}
+                </div>
+              </div>
+              <InspectorPanel
+                open={Boolean(inspectorOpen && selectedBlock)}
+                title="Inspector"
+                subtitle={
+                  selectedBlock ? `Editing ${selectionLabel}` : undefined
+                }
+                onClose={handleInspectorDone}
+              >
+                {inspectorContent}
               </InspectorPanel>
             </div>
           </div>
