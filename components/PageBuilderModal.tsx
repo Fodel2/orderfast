@@ -34,6 +34,7 @@ import { useAutoSave } from '@/hooks/useAutoSave';
 import { STORAGE_BUCKET } from '@/lib/storage';
 import { supabase } from '@/lib/supabaseClient';
 import { tokens } from '@/src/ui/tokens';
+import { useIsMobile } from '@/src/hooks/useIsMobile';
 
 type Props = {
   open: boolean;
@@ -691,8 +692,9 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
   const [blockLibraryOpen, setBlockLibraryOpen] = useState(false);
   const blockLibraryHostRef = useRef<HTMLDivElement | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(false);
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [blocksVisible, setBlocksVisible] = useState(false);
   const isMobile = typeof window !== 'undefined' && window.innerWidth <= 900;
+  const isMobileViewport = useIsMobile(768);
   const history = useRef<Block[][]>([]);
   const future = useRef<Block[][]>([]);
   const latestBlocksRef = useRef<Block[]>(blocks);
@@ -753,6 +755,12 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
     return () => {
       document.body.style.overflow = previousOverflow || '';
     };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      setBlocksVisible(false);
+    }
   }, [open]);
 
   // undo stack helper
@@ -854,19 +862,17 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
   );
 
   const handleAddBlock = useCallback(() => {
-    setBlockLibraryOpen(true);
-  }, []);
+    if (isMobile) {
+      setBlockLibraryOpen(true);
+      return;
+    }
+    setBlocksVisible(true);
+  }, [isMobile]);
 
   const handleBlockSelect = (kind: BlockPaletteKind) => {
     addBlock(kind);
     setBlockLibraryOpen(false);
   };
-
-  useEffect(() => {
-    if (typeof window !== 'undefined' && window.innerWidth >= 768) {
-      setDrawerOpen(true);
-    }
-  }, []);
 
   const selectedBlock = useMemo(() => blocks.find((b) => b.id === selection) ?? null, [blocks, selection]);
   const inspectorVisible = inspectorOpen;
@@ -914,10 +920,9 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
       flexDirection: 'column',
       gap: tokens.spacing.md,
       overflowY: 'auto',
-      transform: drawerOpen ? 'translateX(0)' : 'translateX(-100%)',
       transition: `transform 200ms ${tokens.easing.standard}`,
     }),
-    [drawerOpen]
+    []
   );
 
   const drawerOverlayStyle = useMemo<React.CSSProperties>(
@@ -925,29 +930,27 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
       position: 'fixed',
       inset: '44px 0 0 0',
       background: 'rgba(0, 0, 0, 0.25)',
-      opacity: drawerOpen ? 1 : 0,
-      pointerEvents: drawerOpen ? 'auto' : 'none',
       transition: `opacity 200ms ${tokens.easing.standard}`,
       zIndex: 59,
     }),
-    [drawerOpen]
+    []
   );
 
   useEffect(() => {
-    if (!drawerOpen) {
+    if (!blocksVisible) {
       return;
     }
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        setDrawerOpen(false);
+        setBlocksVisible(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [drawerOpen]);
+  }, [blocksVisible]);
 
   function undo() {
     const prev = history.current.pop();
@@ -988,11 +991,11 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
               if (isMobile) {
                 setBlockLibraryOpen(true);
               } else {
-                setDrawerOpen((prev) => !prev);
+                setBlocksVisible((prev) => !prev);
               }
             }}
-            className={`blocks-btn text-sm font-medium ${!isMobile && drawerOpen ? 'ring-1 ring-emerald-500 ring-offset-1 text-emerald-700' : ''}`}
-            aria-pressed={isMobile ? blockLibraryOpen : drawerOpen}
+            className={`blocks-btn text-sm font-medium ${!isMobile && blocksVisible ? 'ring-1 ring-emerald-500 ring-offset-1 text-emerald-700' : ''}`}
+            aria-pressed={isMobile ? blockLibraryOpen : blocksVisible}
           >
             Blocks
           </button>
@@ -1017,8 +1020,14 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
 
         <div className="flex flex-1" style={{ background: tokens.colors.canvas }}>
           <div className="relative flex flex-1">
-            <div className="hidden md:block" style={drawerOverlayStyle} onClick={() => setDrawerOpen(false)} />
-            <div className="hidden md:flex" style={drawerPanelStyle}>
+            {blocksVisible && (
+              <>
+                <div
+                  className="hidden md:block"
+                  style={drawerOverlayStyle}
+                  onClick={() => setBlocksVisible(false)}
+                />
+                <div className="hidden md:flex" style={drawerPanelStyle}>
               <div
                 style={{
                   display: 'flex',
@@ -1039,7 +1048,7 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
                 </span>
                 <button
                   type="button"
-                  onClick={() => setDrawerOpen(false)}
+                  onClick={() => setBlocksVisible(false)}
                   style={{
                     borderRadius: tokens.radius.sm,
                     border: `${tokens.border.thin}px solid transparent`,
@@ -1119,7 +1128,9 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
                   );
                 })}
               </div>
-            </div>
+                </div>
+              </>
+            )}
             <main
               ref={blockLibraryHostRef}
               className="flex-1"
@@ -1141,6 +1152,13 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
                 inspectorVisible={inspectorVisible}
               />
             </main>
+            {isMobileViewport && inspectorShouldOpen ? (
+              <div
+                className="inspector-overlay"
+                onClick={() => setInspectorOpen(false)}
+                aria-hidden="true"
+              />
+            ) : null}
             <InspectorPanel
               open={inspectorShouldOpen}
               title="Inspector"
@@ -1312,6 +1330,12 @@ export default function PageBuilderModal({ open, onClose, pageId, restaurantId }
           .builder-preview {
             padding: 24px clamp(12px, 6vw, 24px);
             min-height: calc(100vh - 120px);
+          }
+          .inspector-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.2);
+            z-index: 1100;
           }
         }
       `}</style>

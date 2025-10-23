@@ -24,18 +24,63 @@ export interface InputColorProps
   swatchClassName?: string;
 }
 
+function formatColorOutput(value: string): string {
+  const trimmed = value.trim();
+
+  if (/^#[0-9a-f]{3,8}$/i.test(trimmed)) {
+    return trimmed.toUpperCase();
+  }
+
+  if (trimmed.startsWith("rgb") || trimmed.startsWith("hsl")) {
+    return trimmed;
+  }
+
+  return trimmed.toUpperCase();
+}
+
+function extractFallbackFromVar(value: string): string {
+  const match = value.match(/var\(\s*[^,]+,\s*([^)]+)\)/i);
+  if (!match) return "";
+
+  const fallback = match[1].trim();
+  if (fallback.startsWith("var(")) {
+    return extractFallbackFromVar(fallback);
+  }
+
+  return fallback;
+}
+
+export function getReadableColor(value?: string | null): string {
+  if (!value) return "";
+
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  if (trimmed.startsWith("var(")) {
+    const fallback = extractFallbackFromVar(trimmed);
+    if (!fallback) {
+      return "";
+    }
+    return getReadableColor(fallback);
+  }
+
+  return formatColorOutput(trimmed);
+}
+
 function normalizeColorValue(value: string): string {
   if (typeof value !== "string") {
     return "#000000";
   }
 
-  if (value.startsWith("#") && (value.length === 7 || value.length === 4)) {
-    return value;
+  const formatted = formatColorOutput(value);
+
+  if (/^#[0-9A-F]{6}$/i.test(formatted) || /^#[0-9A-F]{3}$/i.test(formatted)) {
+    return formatted.toUpperCase();
   }
 
-  const hexMatch = value.match(/[0-9a-fA-F]{6}/);
+  const hexMatch = formatted.match(/[0-9A-F]{6}/i);
   if (hexMatch) {
-    return `#${hexMatch[0].slice(0, 6)}`;
+    return `#${hexMatch[0].toUpperCase().slice(0, 6)}`;
   }
 
   return "#000000";
@@ -61,8 +106,29 @@ export const InputColor = React.forwardRef<HTMLInputElement, InputColorProps>(
     ref,
   ) => {
     const colorInputRef = useRef<HTMLInputElement | null>(null);
-    const normalizedHex = useMemo(() => normalizeColorValue(value), [value]);
-    const displayPreview = previewValue ?? value ?? normalizedHex;
+    const readableColor = useMemo(() => getReadableColor(value), [value]);
+    const normalizedHex = useMemo(
+      () => normalizeColorValue(readableColor || value || ""),
+      [readableColor, value],
+    );
+    const displayValue = useMemo(() => {
+      if (readableColor) {
+        return readableColor;
+      }
+
+      if (typeof value !== "string") {
+        return "";
+      }
+
+      const trimmed = value.trim();
+      if (!trimmed || trimmed.startsWith("var(")) {
+        return "";
+      }
+
+      return formatColorOutput(trimmed);
+    }, [readableColor, value]);
+    const previewFallback = readableColor || value || normalizedHex;
+    const displayPreview = previewValue ?? previewFallback;
 
     const input = (
       <div className={mergeClassNames("flex items-center gap-3", containerClassName)}>
@@ -108,7 +174,7 @@ export const InputColor = React.forwardRef<HTMLInputElement, InputColorProps>(
           {...textProps}
           ref={ref}
           type="text"
-          value={value}
+          value={displayValue}
           onChange={(event) => onChange(event.target.value)}
           disabled={disabled}
           placeholder={placeholder}
