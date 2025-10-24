@@ -38,6 +38,7 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number }) {
       .from('addon_groups')
       .select('id,restaurant_id,name,multiple_choice,required,max_group_select,max_option_quantity')
       .eq('restaurant_id', restaurantId)
+      .is('archived_at', null)
       .order('id');
     setGroups(grp || []);
     if (grp && grp.length) {
@@ -46,7 +47,8 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number }) {
         .select(
           'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at'
         )
-        .in('group_id', grp.map((g) => g.id));
+        .in('group_id', grp.map((g) => g.id))
+        .is('archived_at', null);
       const map: Record<number, any[]> = {};
       const priceMap: Record<number, string> = {};
       grp.forEach((g) => (map[g.id] = []));

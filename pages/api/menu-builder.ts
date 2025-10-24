@@ -1,5 +1,10 @@
+import { randomUUID } from 'crypto';
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { supaServer } from '@/lib/supaServer';
+import {
+  ADDON_GROUP_WITH_OPTIONS_FIELDS,
+  ITEM_ADDON_LINK_WITH_GROUPS_AND_ITEMS_SELECT,
+} from '@/lib/queries/addons';
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -53,7 +58,9 @@ type DraftPayload = {
   items: Array<{
     id?: string; tempId?: string; name: string; description?: string|null; price?: number|null;
     image_url?: string|null; is_vegetarian?: boolean; is_vegan?: boolean; is_18_plus?: boolean;
-    stock_status?: string|null; available?: boolean; category_id?: string; sort_order?: number
+    stock_status?: string|null; available?: boolean; category_id?: string; sort_order?: number;
+    external_key?: string;
+    addons?: string[];
   }>;
   links?: Array<{ item_id: string; group_id: string }>; // IMPORTANT: group_id (schema uses group_id)
 };
@@ -127,18 +134,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       if (withAddons) {
         try {
-          logSupabaseCall(
-            'select',
-            'addon_groups',
-            'id,name,multiple_choice,required,max_group_select,max_option_quantity,addon_options(id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at)'
-          );
+          logSupabaseCall('select', 'addon_groups', ADDON_GROUP_WITH_OPTIONS_FIELDS);
           const response = await supabase
             .from('addon_groups')
-            .select(
-              `id,name,multiple_choice,required,max_group_select,max_option_quantity,
-              addon_options(id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at)`
-            )
+            .select(ADDON_GROUP_WITH_OPTIONS_FIELDS)
             .eq('restaurant_id', restaurantId)
+            .is('archived_at', null)
+            .is('addon_options.archived_at', null)
             .throwOnError();
           addonGroups = (response.data as any[])?.map((group) => ({
             id: group.id,
@@ -167,17 +169,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
 
         try {
-          logSupabaseCall('select', 'item_addon_links', 'id,item_id,group_id,menu_items!inner(id,restaurant_id)');
+          logSupabaseCall('select', 'item_addon_links', ITEM_ADDON_LINK_WITH_GROUPS_AND_ITEMS_SELECT);
           const response = await supabase
             .from('item_addon_links')
-            .select('id,item_id,group_id,menu_items!inner(id,restaurant_id)')
+            .select(ITEM_ADDON_LINK_WITH_GROUPS_AND_ITEMS_SELECT)
             .eq('menu_items.restaurant_id', restaurantId)
+            .is('addon_groups.archived_at', null)
+            .is('addon_groups.addon_options.archived_at', null)
             .throwOnError();
-          addonLinks = ((response.data as any[]) || []).map((link) => ({
-            id: String(link.id),
-            item_id: String(link.item_id),
-            group_id: String(link.group_id),
-          }));
+          addonLinks = ((response.data as any[]) || []).map((link) => {
+            const groupId = link.group_id ?? link.addon_groups?.id;
+            return {
+              id: String(link.id),
+              item_id: String(link.item_id),
+              group_id: groupId !== undefined && groupId !== null ? String(groupId) : '',
+            };
+          });
         } catch (error: any) {
           console.error('Supabase error:', error?.message, error?.details, error?.hint);
           return res.status(500).json({ error: error?.message, details: error?.details, hint: error?.hint });
@@ -232,7 +239,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       const table = 'menu_drafts';
       let data: { draft: DraftPayload; updated_at: string };
-      const upsertPayload = { restaurant_id: restaurantId, draft };
+
+      const itemsWithKeys = (draft.items || []).map((item) => {
+        if (item.external_key) return item;
+        return { ...item, external_key: randomUUID() };
+      });
+      const updatedDraft: DraftPayload = { ...draft, items: itemsWithKeys };
+
+      const upsertPayload = { restaurant_id: restaurantId, draft: updatedDraft };
       try {
         logSupabaseCall('upsert', table, 'draft, updated_at', upsertPayload);
         const response = await supabase
@@ -245,6 +259,46 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       } catch (error: any) {
         console.error('Supabase error:', error?.message, error?.details, error?.hint);
         return res.status(500).json({ error: error?.message, details: error?.details, hint: error?.hint });
+      }
+
+      const safeItems = Array.isArray(updatedDraft.items) ? updatedDraft.items : [];
+      const linkRows: Array<{ restaurant_id: string; item_external_key: string; group_id_draft: string }> = [];
+      const seen = new Set<string>();
+      for (const item of safeItems) {
+        const itemKey = typeof item.external_key === 'string' && item.external_key ? item.external_key : undefined;
+        if (!itemKey) continue;
+        const addonIds = Array.isArray(item.addons) ? item.addons : [];
+        for (const addonId of addonIds) {
+          if (!addonId) continue;
+          const strAddonId = String(addonId);
+          const dedupeKey = `${itemKey}:${strAddonId}`;
+          if (seen.has(dedupeKey)) continue;
+          seen.add(dedupeKey);
+          linkRows.push({
+            restaurant_id: restaurantId,
+            item_external_key: itemKey,
+            group_id_draft: strAddonId,
+          });
+        }
+      }
+
+      try {
+        await supabase
+          .from('item_addon_links_drafts')
+          .delete()
+          .eq('restaurant_id', restaurantId);
+
+        if (linkRows.length > 0) {
+          await supabase.from('item_addon_links_drafts').insert(linkRows);
+        }
+      } catch (error: any) {
+        console.error('[menu-builder:save-draft-links]', error);
+        return res.status(500).json({
+          message: 'failed_to_save_addon_links',
+          error: error?.message,
+          details: error?.details,
+          hint: error?.hint,
+        });
       }
       return res
         .status(200)
