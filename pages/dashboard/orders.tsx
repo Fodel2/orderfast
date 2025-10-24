@@ -169,12 +169,14 @@ export default function OrdersPage() {
       const { data: groups } = await supabase
         .from('addon_groups')
         .select('id')
-        .eq('restaurant_id', ruData.restaurant_id);
+        .eq('restaurant_id', ruData.restaurant_id)
+        .is('archived_at', null);
       if (groups && groups.length) {
         const { count: ac } = await supabase
           .from('addon_options')
           .select('*', { count: 'exact', head: true })
           .in('group_id', groups.map((g) => g.id))
+          .is('archived_at', null)
           .or('available.eq.false,stock_status.neq.in_stock');
         addonCount = ac || 0;
       }

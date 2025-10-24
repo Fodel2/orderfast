@@ -123,6 +123,7 @@ export default function AddItemModal({
           .from('addon_groups')
           .select('*')
           .eq('restaurant_id', restaurantId)
+          .is('archived_at', null)
           .order('id');
         setAddonGroups(addonData || []);
       } else {

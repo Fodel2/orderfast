@@ -11,7 +11,9 @@ export async function getAddonsForItem(
   const query = supabase
     .from('item_addon_links')
     .select(ITEM_ADDON_LINK_WITH_GROUPS_SELECT)
-    .eq('item_id', itemId);
+    .eq('item_id', itemId)
+    .is('addon_groups.archived_at', null)
+    .is('addon_groups.addon_options.archived_at', null);
 
   const requestUrl = (query as unknown as { url?: URL }).url?.toString();
 
@@ -37,19 +39,21 @@ export async function getAddonsForItem(
       });
     }
     const group = map.get(gid)!;
-    (g.addon_options || []).forEach((opt: any) => {
-      group.addon_options.push({
-        id: String(opt.id),
-        group_id: opt.group_id ? String(opt.group_id) : gid,
-        name: opt.name,
-        price: opt.price,
-        available: opt.available,
-        out_of_stock_until: opt.out_of_stock_until,
-        stock_status: opt.stock_status,
-        stock_return_date: opt.stock_return_date,
-        stock_last_updated_at: opt.stock_last_updated_at,
+    (g.addon_options || [])
+      .filter((opt: any) => opt?.archived_at == null)
+      .forEach((opt: any) => {
+        group.addon_options.push({
+          id: String(opt.id),
+          group_id: opt.group_id ? String(opt.group_id) : gid,
+          name: opt.name,
+          price: opt.price,
+          available: opt.available,
+          out_of_stock_until: opt.out_of_stock_until,
+          stock_status: opt.stock_status,
+          stock_return_date: opt.stock_return_date,
+          stock_last_updated_at: opt.stock_last_updated_at,
+        });
       });
-    });
   });
 
   if (process.env.NODE_ENV === 'development') {

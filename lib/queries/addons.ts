@@ -8,6 +8,7 @@ export const ADDON_OPTION_FIELDS = [
   'stock_status',
   'stock_return_date',
   'stock_last_updated_at',
+  'archived_at',
 ].join(',');
 
 export const ADDON_GROUP_FIELDS = [
@@ -18,6 +19,7 @@ export const ADDON_GROUP_FIELDS = [
   'multiple_choice',
   'max_group_select',
   'max_option_quantity',
+  'archived_at',
 ].join(',');
 
 export const ADDON_GROUP_WITH_OPTIONS_FIELDS = `${ADDON_GROUP_FIELDS},addon_options(${ADDON_OPTION_FIELDS})`;

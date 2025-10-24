@@ -139,6 +139,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             .from('addon_groups')
             .select(ADDON_GROUP_WITH_OPTIONS_FIELDS)
             .eq('restaurant_id', restaurantId)
+            .is('archived_at', null)
+            .is('addon_options.archived_at', null)
             .throwOnError();
           addonGroups = (response.data as any[])?.map((group) => ({
             id: group.id,
@@ -172,6 +174,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             .from('item_addon_links')
             .select(ITEM_ADDON_LINK_WITH_GROUPS_AND_ITEMS_SELECT)
             .eq('menu_items.restaurant_id', restaurantId)
+            .is('addon_groups.archived_at', null)
+            .is('addon_groups.addon_options.archived_at', null)
             .throwOnError();
           addonLinks = ((response.data as any[]) || []).map((link) => {
             const groupId = link.group_id ?? link.addon_groups?.id;

@@ -140,7 +140,9 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
         const { data: addData, error: addonErr } = await supabase
           .from('item_addon_links')
           .select(ITEM_ADDON_LINK_WITH_GROUPS_SELECT)
-          .in('item_id', liveItemIds);
+          .in('item_id', liveItemIds)
+          .is('addon_groups.archived_at', null)
+          .is('addon_groups.addon_options.archived_at', null);
         if (addonErr) console.error('Failed to fetch addons', addonErr);
         addonRows = addData || [];
       }
@@ -152,7 +154,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
           const group = {
             ...row.addon_groups,
             addon_options: (row.addon_groups.addon_options || []).filter(
-              (opt: any) => opt?.available !== false
+              (opt: any) => opt?.archived_at == null && opt?.available !== false
             ),
           };
           arr.push(group);

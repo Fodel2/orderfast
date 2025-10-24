@@ -315,13 +315,15 @@ export default function MenuBuilder() {
       const { data: groups } = await supabase
         .from('addon_groups')
         .select('id')
-        .eq('restaurant_id', rid);
+        .eq('restaurant_id', rid)
+        .is('archived_at', null);
       let mappedAddons: StockTabProps['addons'] = [];
       if (groups && groups.length) {
         const { data: opts } = await supabase
           .from('addon_options')
           .select('id,name,group_id,stock_status,stock_return_date,available,out_of_stock_until,stock_last_updated_at')
-          .in('group_id', groups.map((g) => g.id));
+          .in('group_id', groups.map((g) => g.id))
+          .is('archived_at', null);
         mappedAddons = (opts || []).map((o) => ({
           id: String(o.id),
           name: o.name,

@@ -312,33 +312,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const draftGroupIds = (draftGroups ?? []).map((g: any) => g.id);
 
-    const { data: liveGroupRows, error: liveGroupErr } = await supabase
-      .from('addon_groups')
-      .select('id')
-      .eq('restaurant_id', restaurantId);
-    if (liveGroupErr) {
-      logSupabaseError('[publish:loadLiveGroups]', liveGroupErr, { restaurantId });
-      return res.status(500).json({ where: 'load_live_groups', error: liveGroupErr.message, code: liveGroupErr.code, details: liveGroupErr.details });
-    }
-    const liveGroupIds = (liveGroupRows ?? []).map((row: any) => row.id);
-    if (liveGroupIds.length > 0) {
-      const { error: deleteOptionsErr } = await supabase
-        .from('addon_options')
-        .delete()
-        .in('group_id', liveGroupIds);
-      if (deleteOptionsErr) {
-        logSupabaseError('[publish:deleteLiveAddonOptions]', deleteOptionsErr, { restaurantId });
-        return res.status(500).json({ where: 'delete_live_addon_options', error: deleteOptionsErr.message, code: deleteOptionsErr.code, details: deleteOptionsErr.details });
-      }
+    const nowIso = new Date().toISOString();
+
+    const { error: archiveOptionsErr } = await supabase
+      .from('addon_options')
+      .update({ archived_at: nowIso })
+      .eq('restaurant_id', restaurantId)
+      .is('archived_at', null);
+    if (archiveOptionsErr) {
+      logSupabaseError('[publish:archiveLiveAddonOptions]', archiveOptionsErr, { restaurantId });
+      return res
+        .status(500)
+        .json({ where: 'archive_live_addon_options', error: archiveOptionsErr.message, code: archiveOptionsErr.code, details: archiveOptionsErr.details });
     }
 
-    const { error: deleteGroupsErr } = await supabase
+    const { error: archiveGroupsErr } = await supabase
       .from('addon_groups')
-      .delete()
-      .eq('restaurant_id', restaurantId);
-    if (deleteGroupsErr) {
-      logSupabaseError('[publish:deleteLiveAddonGroups]', deleteGroupsErr, { restaurantId });
-      return res.status(500).json({ where: 'delete_live_addon_groups', error: deleteGroupsErr.message, code: deleteGroupsErr.code, details: deleteGroupsErr.details });
+      .update({ archived_at: nowIso })
+      .eq('restaurant_id', restaurantId)
+      .is('archived_at', null);
+    if (archiveGroupsErr) {
+      logSupabaseError('[publish:archiveLiveAddonGroups]', archiveGroupsErr, { restaurantId });
+      return res
+        .status(500)
+        .json({ where: 'archive_live_addon_groups', error: archiveGroupsErr.message, code: archiveGroupsErr.code, details: archiveGroupsErr.details });
     }
 
     if (draftGroupIds.length > 0) {
@@ -365,7 +362,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         };
         const { data: insertedGroup, error: insertGroupErr } = await supabase
           .from('addon_groups')
-          .insert(payload)
+          .insert({ ...payload, archived_at: null })
           .select('id')
           .single();
         if (insertGroupErr || !insertedGroup) {
@@ -389,6 +386,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           stock_status: opt.stock_status,
           stock_return_date: opt.stock_return_date,
           stock_last_updated_at: opt.stock_last_updated_at,
+          archived_at: null,
         });
       }
 
