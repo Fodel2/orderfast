@@ -1,10 +1,6 @@
 import { randomUUID } from 'crypto';
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { supaServer } from '@/lib/supaServer';
-import {
-  ADDON_GROUP_WITH_OPTIONS_FIELDS,
-  ITEM_ADDON_LINK_WITH_GROUPS_AND_ITEMS_SELECT,
-} from '@/lib/queries/addons';
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -36,6 +32,190 @@ function logSupabaseCall(
   });
 }
 
+async function ensureAddonDraftsForRestaurant(
+  supabase: typeof supaServer,
+  restaurantId: string
+) {
+  const existingDrafts = await supabase
+    .from('addon_groups_drafts')
+    .select('id')
+    .eq('restaurant_id', restaurantId)
+    .limit(1);
+
+  if (existingDrafts.error) {
+    throw Object.assign(existingDrafts.error, { where: 'check_existing_addon_groups_drafts' });
+  }
+
+  if ((existingDrafts.data ?? []).length > 0) {
+    return { seeded: false };
+  }
+
+  const liveGroupsResponse = await supabase
+    .from('addon_groups')
+    .select(
+      'id,name,multiple_choice,required,max_group_select,max_option_quantity'
+    )
+    .eq('restaurant_id', restaurantId)
+    .is('archived_at', null);
+
+  if (liveGroupsResponse.error) {
+    throw Object.assign(liveGroupsResponse.error, { where: 'load_live_addon_groups' });
+  }
+
+  const liveGroups = liveGroupsResponse.data ?? [];
+  if (liveGroups.length === 0) {
+    return { seeded: false };
+  }
+
+  const groupIdMap = new Map<string, string>();
+  const groupPayload = liveGroups.map((group) => {
+    const newId = randomUUID();
+    groupIdMap.set(String(group.id), newId);
+    return {
+      id: newId,
+      restaurant_id: restaurantId,
+      name: group.name,
+      multiple_choice: group.multiple_choice,
+      required: group.required,
+      max_group_select: group.max_group_select,
+      max_option_quantity: group.max_option_quantity,
+      archived_at: null,
+      state: 'draft',
+    };
+  });
+
+  if (groupPayload.length === 0) {
+    return { seeded: false };
+  }
+
+  const insertedGroupIds = groupPayload.map((group) => group.id);
+
+  const insertGroupsResult = await supabase
+    .from('addon_groups_drafts')
+    .insert(groupPayload);
+
+  if (insertGroupsResult.error) {
+    throw Object.assign(insertGroupsResult.error, { where: 'insert_addon_groups_drafts' });
+  }
+
+  const liveGroupIds = liveGroups
+    .map((group) => group.id)
+    .filter((value) => value !== null && value !== undefined);
+
+  if (liveGroupIds.length > 0) {
+    const liveOptionsResponse = await supabase
+      .from('addon_options')
+      .select(
+        'group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at'
+      )
+      .in('group_id', liveGroupIds)
+      .is('archived_at', null);
+
+    if (liveOptionsResponse.error) {
+      await supabase
+        .from('addon_groups_drafts')
+        .delete()
+        .in('id', insertedGroupIds)
+        .eq('restaurant_id', restaurantId);
+      throw Object.assign(liveOptionsResponse.error, { where: 'load_live_addon_options' });
+    }
+
+    const optionPayload = (liveOptionsResponse.data ?? [])
+      .map((option) => {
+        const draftGroupId = groupIdMap.get(String(option.group_id));
+        if (!draftGroupId) return undefined;
+        return {
+          restaurant_id: restaurantId,
+          group_id: draftGroupId,
+          name: option.name,
+          price: option.price ?? null,
+          available: option.available,
+          out_of_stock_until: option.out_of_stock_until,
+          stock_status: option.stock_status,
+          stock_return_date: option.stock_return_date,
+          stock_last_updated_at: option.stock_last_updated_at,
+          archived_at: null,
+          state: 'draft',
+        };
+      })
+      .filter(Boolean) as Array<Record<string, unknown>>;
+
+    if (optionPayload.length > 0) {
+      const insertOptionsResult = await supabase
+        .from('addon_options_drafts')
+        .insert(optionPayload);
+
+      if (insertOptionsResult.error) {
+        await supabase
+          .from('addon_groups_drafts')
+          .delete()
+          .in('id', insertedGroupIds)
+          .eq('restaurant_id', restaurantId);
+        throw Object.assign(insertOptionsResult.error, { where: 'insert_addon_options_drafts' });
+      }
+    }
+  }
+
+  const liveLinksResponse = await supabase
+    .from('item_addon_links')
+    .select('group_id,item_id,menu_items!inner(id,restaurant_id,external_key)')
+    .eq('menu_items.restaurant_id', restaurantId);
+
+  if (liveLinksResponse.error) {
+    throw Object.assign(liveLinksResponse.error, { where: 'load_live_addon_links' });
+  }
+
+  const linkPayload: Array<{
+    restaurant_id: string;
+    item_external_key: string;
+    group_id_draft: string;
+  }> = [];
+  const seenLinks = new Set<string>();
+
+  for (const link of liveLinksResponse.data ?? []) {
+    const draftGroupId = groupIdMap.get(String(link.group_id));
+    const menuItem = Array.isArray(link?.menu_items)
+      ? link.menu_items[0]
+      : link?.menu_items;
+    const externalKey = menuItem?.external_key
+      ? String(menuItem.external_key)
+      : undefined;
+
+    if (!draftGroupId || !externalKey) continue;
+
+    const dedupeKey = `${externalKey}:${draftGroupId}`;
+    if (seenLinks.has(dedupeKey)) continue;
+    seenLinks.add(dedupeKey);
+
+    linkPayload.push({
+      restaurant_id: restaurantId,
+      item_external_key: externalKey,
+      group_id_draft: draftGroupId,
+    });
+  }
+
+  const deleteDraftLinks = await supabase
+    .from('item_addon_links_drafts')
+    .delete()
+    .eq('restaurant_id', restaurantId);
+
+  if (deleteDraftLinks.error) {
+    throw Object.assign(deleteDraftLinks.error, { where: 'reset_item_addon_links_drafts' });
+  }
+
+  if (linkPayload.length > 0) {
+    const insertDraftLinks = await supabase
+      .from('item_addon_links_drafts')
+      .insert(linkPayload);
+
+    if (insertDraftLinks.error) {
+      throw Object.assign(insertDraftLinks.error, { where: 'insert_item_addon_links_drafts' });
+    }
+  }
+
+  return { seeded: true };
+}
+
 function coerceId(input: unknown): string | undefined {
   if (typeof input === 'string' && input) return input;
   if (typeof input === 'number' && !Number.isNaN(input)) return String(input);
@@ -63,6 +243,13 @@ type DraftPayload = {
     addons?: string[];
   }>;
   links?: Array<{ item_id: string; group_id: string }>; // IMPORTANT: group_id (schema uses group_id)
+};
+
+type DraftAddonLinkRow = {
+  item_id: number | string;
+  item_external_key: string | null;
+  group_id: string;
+  group_id_draft: string;
 };
 
 function ensureDraftPayload(input: unknown): DraftPayload {
@@ -115,8 +302,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         : typeof withAddonsParam === 'string'
         ? withAddonsParam === '' || withAddonsParam === '1' || withAddonsParam.toLowerCase() === 'true'
         : false;
+      const ensureAddonsDraftsParam = req.query.ensureAddonsDrafts;
+      const ensureAddonsDrafts = Array.isArray(ensureAddonsDraftsParam)
+        ? ensureAddonsDraftsParam.some((value) =>
+            value === '' || value === '1' || value?.toLowerCase?.() === 'true'
+          )
+        : typeof ensureAddonsDraftsParam === 'string'
+        ? ensureAddonsDraftsParam === '' ||
+          ensureAddonsDraftsParam === '1' ||
+          ensureAddonsDraftsParam.toLowerCase() === 'true'
+        : false;
       let addonGroups: any[] | undefined;
-      let addonLinks: Array<{ id: string; item_id: string; group_id: string }> | undefined;
+      let addonLinks: DraftAddonLinkRow[] | undefined;
+      let addonDraftsSeeded = false;
 
       try {
         logSupabaseCall('select', table, 'draft, updated_at');
@@ -132,36 +330,81 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(500).json({ error: error?.message, details: error?.details, hint: error?.hint });
       }
 
-      if (withAddons) {
+      if (withAddons || ensureAddonsDrafts) {
         try {
-          logSupabaseCall('select', 'addon_groups', ADDON_GROUP_WITH_OPTIONS_FIELDS);
-          const response = await supabase
-            .from('addon_groups')
-            .select(ADDON_GROUP_WITH_OPTIONS_FIELDS)
+          const seeded = await ensureAddonDraftsForRestaurant(supabase, restaurantId);
+          addonDraftsSeeded = Boolean(seeded?.seeded);
+        } catch (error: any) {
+          console.error(
+            'Supabase error:',
+            error?.message,
+            error?.details,
+            error?.hint,
+            error?.where
+          );
+          return res.status(500).json({
+            error: error?.message,
+            details: error?.details,
+            hint: error?.hint,
+            where: error?.where,
+          });
+        }
+
+        try {
+          logSupabaseCall(
+            'select',
+            'addon_groups_drafts',
+            'id,name,multiple_choice,required,max_group_select,max_option_quantity,state,archived_at'
+          );
+          const groupsResponse = await supabase
+            .from('addon_groups_drafts')
+            .select(
+              'id,restaurant_id,name,multiple_choice,required,max_group_select,max_option_quantity,state,archived_at'
+            )
             .eq('restaurant_id', restaurantId)
+            .eq('state', 'draft')
             .is('archived_at', null)
-            .is('addon_options.archived_at', null)
-            .throwOnError();
-          addonGroups = (response.data as any[])?.map((group) => ({
-            id: group.id,
-            name: group.name,
-            multiple_choice: group.multiple_choice,
-            required: group.required,
-            max_group_select: group.max_group_select,
-            max_option_quantity: group.max_option_quantity,
-            addon_options: Array.isArray(group.addon_options)
-              ? group.addon_options.map((option: any) => ({
-                  id: option.id,
-                  group_id: option.group_id,
-                  name: option.name,
-                  price: option.price,
-                  available: option.available,
-                  out_of_stock_until: option.out_of_stock_until,
-                  stock_status: option.stock_status,
-                  stock_return_date: option.stock_return_date,
-                  stock_last_updated_at: option.stock_last_updated_at,
-                }))
-              : [],
+            .order('id', { ascending: true })
+            .order('name', { ascending: true });
+
+          if (groupsResponse.error) {
+            throw groupsResponse.error;
+          }
+
+          const rawGroups = groupsResponse.data ?? [];
+          const groupIds = rawGroups.map((group) => group.id).filter(Boolean);
+          const optionMap = new Map<string, any[]>();
+
+          if (groupIds.length > 0) {
+            const optionsResponse = await supabase
+              .from('addon_options_drafts')
+              .select(
+                'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at,state,archived_at'
+              )
+              .in('group_id', groupIds)
+              .eq('state', 'draft')
+              .is('archived_at', null);
+
+            if (optionsResponse.error) {
+              throw optionsResponse.error;
+            }
+
+            for (const option of optionsResponse.data ?? []) {
+              const groupId = option.group_id ? String(option.group_id) : '';
+              if (!groupId) continue;
+              if (!optionMap.has(groupId)) optionMap.set(groupId, []);
+              optionMap.get(groupId)!.push({
+                ...option,
+                id: String(option.id),
+                group_id: groupId,
+              });
+            }
+          }
+
+          addonGroups = rawGroups.map((group) => ({
+            ...group,
+            id: String(group.id),
+            addon_options: optionMap.get(String(group.id)) || [],
           }));
         } catch (error: any) {
           console.error('Supabase error:', error?.message, error?.details, error?.hint);
@@ -169,22 +412,61 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
 
         try {
-          logSupabaseCall('select', 'item_addon_links', ITEM_ADDON_LINK_WITH_GROUPS_AND_ITEMS_SELECT);
-          const response = await supabase
-            .from('item_addon_links')
-            .select(ITEM_ADDON_LINK_WITH_GROUPS_AND_ITEMS_SELECT)
-            .eq('menu_items.restaurant_id', restaurantId)
-            .is('addon_groups.archived_at', null)
-            .is('addon_groups.addon_options.archived_at', null)
-            .throwOnError();
-          addonLinks = ((response.data as any[]) || []).map((link) => {
-            const groupId = link.group_id ?? link.addon_groups?.id;
-            return {
-              id: String(link.id),
-              item_id: String(link.item_id),
-              group_id: groupId !== undefined && groupId !== null ? String(groupId) : '',
-            };
-          });
+          logSupabaseCall('select', 'item_addon_links_drafts', 'item_external_key,group_id_draft');
+          const linksResponse = await supabase
+            .from('item_addon_links_drafts')
+            .select('item_external_key,group_id_draft')
+            .eq('restaurant_id', restaurantId);
+
+          if (linksResponse.error) {
+            throw linksResponse.error;
+          }
+
+          const draftLinks = linksResponse.data ?? [];
+          const itemKeys = Array.from(
+            new Set(
+              draftLinks
+                .map((link) => (link.item_external_key ? String(link.item_external_key) : undefined))
+                .filter(Boolean) as string[]
+            )
+          );
+
+          const externalKeyToItemId = new Map<string, number | string>();
+
+          if (itemKeys.length > 0) {
+            const itemsResponse = await supabase
+              .from('menu_items')
+              .select('id,external_key')
+              .eq('restaurant_id', restaurantId)
+              .in('external_key', itemKeys);
+
+            if (itemsResponse.error) {
+              throw itemsResponse.error;
+            }
+
+            for (const item of itemsResponse.data ?? []) {
+              if (!item?.external_key) continue;
+              externalKeyToItemId.set(String(item.external_key), item.id);
+            }
+          }
+
+          addonLinks = draftLinks
+            .map((link) => {
+              const groupId = link.group_id_draft ? String(link.group_id_draft) : undefined;
+              const externalKey = link.item_external_key
+                ? String(link.item_external_key)
+                : undefined;
+              if (!groupId || !externalKey) return undefined;
+              const itemId = externalKeyToItemId.get(externalKey);
+              if (!itemId) return undefined;
+              return {
+                item_id: itemId,
+                item_external_key: externalKey,
+                group_id: groupId,
+                group_id_draft: groupId,
+              } as DraftAddonLinkRow;
+            })
+            .filter(Boolean) as DraftAddonLinkRow[];
         } catch (error: any) {
           console.error('Supabase error:', error?.message, error?.details, error?.hint);
           return res.status(500).json({ error: error?.message, details: error?.details, hint: error?.hint });
@@ -214,6 +496,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           updated_at: inserted.updated_at,
           addonGroups: addonGroups ?? [],
           addonLinks: addonLinks ?? [],
+          addonDraftsSeeded,
         });
       }
       return res.status(200).json({
@@ -222,6 +505,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         updated_at: data.updated_at,
         addonGroups: addonGroups ?? [],
         addonLinks: addonLinks ?? [],
+        addonDraftsSeeded,
       });
     }
 
