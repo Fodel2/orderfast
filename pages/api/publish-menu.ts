@@ -253,7 +253,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // 4) Insert items (map category_id if provided; allow null if schema allows)
-    const externalKeyToItemId = new Map<string, string>();
     let draftMutated = false;
     for (const [idx, it] of (draft.items ?? []).entries()) {
       const mappedCat = it.category_id ? (catIdMap.get(it.category_id) ?? null) : null;
@@ -284,7 +283,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         logSupabaseError('[publish:insertItem]', error, { restaurantId, payload: it });
         return res.status(500).json({ where: 'insert_item', error: error?.message || 'Insert item failed', code: error?.code, details: error?.details });
       }
-      if (externalKey) externalKeyToItemId.set(externalKey, inserted.id);
       insertedItems++;
       itemsUpserted++;
     }
@@ -300,174 +298,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
 
-    // 5) Publish add-on groups and options from drafts
-    const { data: draftGroups, error: draftGroupsErr } = await supabase
-      .from('addon_groups_drafts')
-      .select('id,name,required,multiple_choice,max_group_select,max_option_quantity')
-      .eq('restaurant_id', restaurantId);
-    if (draftGroupsErr) {
-      logSupabaseError('[publish:loadAddonGroupsDrafts]', draftGroupsErr, { restaurantId });
-      return res.status(500).json({ where: 'load_addon_groups_drafts', error: draftGroupsErr.message, code: draftGroupsErr.code, details: draftGroupsErr.details });
+    // 5) Publish add-on groups, options, and links via transactional helper
+    const { data: publishAddonRows, error: publishAddonsError } = await supabase.rpc(
+      'publish_addons_from_drafts',
+      { p_restaurant_id: restaurantId }
+    );
+
+    if (publishAddonsError) {
+      logSupabaseError('[publish:addons:rpc]', publishAddonsError, { restaurantId });
+      return res.status(500).json({
+        where: 'publish_addons_from_drafts',
+        error: publishAddonsError.message,
+        code: publishAddonsError.code,
+        details: publishAddonsError.details,
+      });
     }
 
-    const draftGroupIds = (draftGroups ?? []).map((g: any) => g.id);
-
-    const nowIso = new Date().toISOString();
-
-    const { error: archiveOptionsErr } = await supabase
-      .from('addon_options')
-      .update({ archived_at: nowIso })
-      .eq('restaurant_id', restaurantId)
-      .is('archived_at', null);
-    if (archiveOptionsErr) {
-      logSupabaseError('[publish:archiveLiveAddonOptions]', archiveOptionsErr, { restaurantId });
-      return res
-        .status(500)
-        .json({ where: 'archive_live_addon_options', error: archiveOptionsErr.message, code: archiveOptionsErr.code, details: archiveOptionsErr.details });
-    }
-
-    const { error: archiveGroupsErr } = await supabase
-      .from('addon_groups')
-      .update({ archived_at: nowIso })
-      .eq('restaurant_id', restaurantId)
-      .is('archived_at', null);
-    if (archiveGroupsErr) {
-      logSupabaseError('[publish:archiveLiveAddonGroups]', archiveGroupsErr, { restaurantId });
-      return res
-        .status(500)
-        .json({ where: 'archive_live_addon_groups', error: archiveGroupsErr.message, code: archiveGroupsErr.code, details: archiveGroupsErr.details });
-    }
-
-    if (draftGroupIds.length > 0) {
-      const { data: draftOptions, error: draftOptionsErr } = await supabase
-        .from('addon_options_drafts')
-        .select(
-          'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at'
-        )
-        .in('group_id', draftGroupIds);
-      if (draftOptionsErr) {
-        logSupabaseError('[publish:loadAddonOptionsDrafts]', draftOptionsErr, { restaurantId });
-        return res.status(500).json({ where: 'load_addon_options_drafts', error: draftOptionsErr.message, code: draftOptionsErr.code, details: draftOptionsErr.details });
-      }
-
-      const groupIdMap = new Map<string, string>();
-      for (const group of draftGroups ?? []) {
-        const payload = {
-          restaurant_id: restaurantId,
-          name: group.name,
-          required: group.required,
-          multiple_choice: group.multiple_choice,
-          max_group_select: group.max_group_select,
-          max_option_quantity: group.max_option_quantity,
-        };
-        const { data: insertedGroup, error: insertGroupErr } = await supabase
-          .from('addon_groups')
-          .insert({ ...payload, archived_at: null })
-          .select('id')
-          .single();
-        if (insertGroupErr || !insertedGroup) {
-          logSupabaseError('[publish:insertAddonGroup]', insertGroupErr, { restaurantId, payload: group });
-          return res.status(500).json({ where: 'insert_addon_group', error: insertGroupErr?.message || 'insert_group_failed', code: insertGroupErr?.code, details: insertGroupErr?.details });
-        }
-        groupIdMap.set(String(group.id), insertedGroup.id);
-        groupsInserted++;
-      }
-
-      const optionPayload: any[] = [];
-      for (const opt of draftOptions ?? []) {
-        const liveGroupId = groupIdMap.get(String(opt.group_id));
-        if (!liveGroupId) continue;
-        optionPayload.push({
-          group_id: liveGroupId,
-          name: opt.name,
-          price: opt.price,
-          available: opt.available,
-          out_of_stock_until: opt.out_of_stock_until,
-          stock_status: opt.stock_status,
-          stock_return_date: opt.stock_return_date,
-          stock_last_updated_at: opt.stock_last_updated_at,
-          archived_at: null,
-        });
-      }
-
-      if (optionPayload.length > 0) {
-        const { data: insertedOptions, error: insertOptionsErr } = await supabase
-          .from('addon_options')
-          .insert(optionPayload)
-          .select('id');
-        if (insertOptionsErr) {
-          logSupabaseError('[publish:insertAddonOptions]', insertOptionsErr, { restaurantId });
-          return res.status(500).json({ where: 'insert_addon_options', error: insertOptionsErr.message, code: insertOptionsErr.code, details: insertOptionsErr.details });
-        }
-        optionsInserted = insertedOptions?.length ?? optionPayload.length;
-      }
-
-        const { data: draftLinks, error: draftLinksErr } = await supabase
-          .from('item_addon_links_drafts')
-          .select('item_external_key,group_id')
-          .eq('restaurant_id', restaurantId);
-      if (draftLinksErr) {
-        logSupabaseError('[publish:loadAddonLinksDrafts]', draftLinksErr, { restaurantId });
-        return res.status(500).json({ where: 'load_addon_links_drafts', error: draftLinksErr.message, code: draftLinksErr.code, details: draftLinksErr.details });
-      }
-
-      const linkRows: Array<{ item_id: string; group_id: string }> = [];
-        for (const link of draftLinks ?? []) {
-          const itemKey = link.item_external_key;
-          const draftGroupId = link.group_id;
-        if (!itemKey || !draftGroupId) continue;
-        const liveItemId = externalKeyToItemId.get(String(itemKey));
-        const liveGroupId = groupIdMap.get(String(draftGroupId));
-        if (!liveItemId || !liveGroupId) continue;
-        linkRows.push({ item_id: liveItemId, group_id: liveGroupId });
-      }
-
-      if (linkRows.length > 0) {
-        const { data: insertedLinkRows, error: insertLinksErr } = await supabase
-          .from('item_addon_links')
-          .upsert(linkRows, { onConflict: 'item_id,group_id', ignoreDuplicates: true })
-          .select('id');
-        if (insertLinksErr) {
-          logSupabaseError('[publish:insertAddonLinks]', insertLinksErr, { restaurantId });
-          return res.status(500).json({ where: 'insert_addon_links', error: insertLinksErr.message, code: insertLinksErr.code, details: insertLinksErr.details });
-        }
-        linksInserted = insertedLinkRows?.length ?? linkRows.length;
-
-        const sampleLink = linkRows[0];
-        const { data: validationRows, error: validationErr } = await supabase
-          .from('item_addon_links')
-          .select('id')
-          .eq('item_id', sampleLink.item_id)
-          .limit(1);
-        if (validationErr) {
-          logSupabaseError('[publish:validateAddonLinks]', validationErr, { restaurantId, sampleLink });
-          return res.status(500).json({ where: 'validate_addon_links', error: validationErr.message, code: validationErr.code, details: validationErr.details });
-        }
-        if ((validationRows ?? []).length === 0) {
-          console.error('[publish:validateAddonLinks]', {
-            restaurantId,
-            sampleLink,
-            message: 'No live links found after publish validation',
-          });
-          return res.status(500).json({ where: 'validate_addon_links', error: 'addon_link_validation_failed' });
-        }
-      }
-
-      if (process.env.NODE_ENV !== 'production') {
-        console.info('[publish:addon-link-remap]', {
-          restaurantId,
-          sample: linkRows.slice(0, 3),
-        });
-        console.info('[publish:addon-counts]', {
-          restaurantId,
-          counts: {
-            groups: groupsInserted,
-            options: optionsInserted,
-            links: linksInserted,
-          },
-        });
-      }
-    }
+    const publishAddonResult = Array.isArray(publishAddonRows)
+      ? publishAddonRows[0]
+      : publishAddonRows;
+    groupsInserted = publishAddonResult?.groups_inserted ?? 0;
+    optionsInserted = publishAddonResult?.options_inserted ?? 0;
+    linksInserted = publishAddonResult?.links_inserted ?? 0;
 
     const publishCounts = {
       items_upserted: itemsUpserted,
