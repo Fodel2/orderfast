@@ -99,6 +99,7 @@ export default function AddItemModal({
     if (!showModal) return;
 
     const load = async () => {
+      const restaurantIdValue = String(restaurantId);
       if (categoriesProp) {
         setCategories(categoriesProp);
       } else {
@@ -118,16 +119,19 @@ export default function AddItemModal({
         setCategories(sortedCats);
       }
 
-      if (onSaveData) {
-        const { data: addonData } = await supabase
-          .from('addon_groups')
-          .select('*')
-          .eq('restaurant_id', restaurantId)
-          .is('archived_at', null)
-          .order('id');
-        setAddonGroups(addonData || []);
-      } else {
+      const { data: addonData, error: addonError } = await supabase
+        .from('addon_groups_drafts')
+        .select('id,name,restaurant_id,state,archived_at')
+        .eq('restaurant_id', restaurantIdValue)
+        .eq('state', 'draft')
+        .is('archived_at', null)
+        .order('name', { ascending: true });
+
+      if (addonError) {
+        console.error('Failed to load addon draft groups', addonError);
         setAddonGroups([]);
+      } else {
+        setAddonGroups(addonData || []);
       }
 
       if (item) {
@@ -147,11 +151,6 @@ export default function AddItemModal({
           } else {
             setSelectedCategories([]);
           }
-          if (Array.isArray(item.addons)) {
-            setSelectedAddons(item.addons.map(String));
-          } else {
-            setSelectedAddons([]);
-          }
         } else {
           const { data: links } = await supabase
             .from('menu_item_categories')
@@ -164,9 +163,37 @@ export default function AddItemModal({
           } else {
             setSelectedCategories([]);
           }
-
-          setSelectedAddons([]);
         }
+
+        let addonIds: string[] | undefined;
+        if (Array.isArray(item.addons)) {
+          addonIds = item.addons.map(String);
+        }
+
+        if (!addonIds || addonIds.length === 0) {
+          if (item.id) {
+            const { data: draftLinks, error: draftLinksError } = await supabase
+              .from('item_addon_links_drafts')
+              .select('group_id,group_id_draft')
+              .eq('restaurant_id', restaurantIdValue)
+              .eq('state', 'draft')
+              .eq('item_id', String(item.id));
+
+            if (draftLinksError) {
+              console.error('Failed to load draft addon links for item', {
+                itemId: item.id,
+                error: draftLinksError,
+              });
+            } else {
+              addonIds = (draftLinks || [])
+                .map((link) => link.group_id || link.group_id_draft)
+                .filter((value): value is string => Boolean(value))
+                .map(String);
+            }
+          }
+        }
+
+        setSelectedAddons(addonIds || []);
       } else {
         setName('');
         setDescription('');
@@ -331,9 +358,11 @@ export default function AddItemModal({
       .delete()
       .eq('item_id', String(item.id));
     await supabase
-      .from('item_addon_links')
+      .from('item_addon_links_drafts')
       .delete()
-      .eq('item_id', String(item.id));
+      .eq('item_id', String(item.id))
+      .eq('restaurant_id', String(restaurantId))
+      .eq('state', 'draft');
     onDeleted?.();
     onClose();
   };

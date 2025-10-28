@@ -49,18 +49,29 @@ export async function updateItemAddonLinks(
       .from('item_addon_links_drafts')
       .delete()
       .eq('restaurant_id', restaurantId)
-      .eq('item_external_key', externalKey);
+      .or(`item_external_key.eq.${externalKey},item_id.eq.${itemIdStr}`);
 
     const { error: deleteError } = await deleteQuery;
     if (deleteError) throw deleteError;
 
     if (selectedAddonGroupIds.length > 0) {
       const unique = Array.from(new Set(selectedAddonGroupIds.map(String)));
-      const rows = unique.map((groupId) => ({
-        restaurant_id: restaurantId,
-        item_external_key: externalKey,
-        group_id_draft: groupId,
-      }));
+      const rows = unique.map((groupId) => {
+        const strGroupId = String(groupId);
+        const id =
+          typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random()}`;
+        return {
+          id,
+          restaurant_id: restaurantId,
+          item_id: itemIdStr,
+          item_external_key: externalKey,
+          group_id: strGroupId,
+          group_id_draft: strGroupId,
+          state: 'draft',
+        };
+      });
       const { error: insertError } = await supabase
         .from('item_addon_links_drafts')
         .insert(rows);

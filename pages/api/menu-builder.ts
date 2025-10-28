@@ -165,10 +165,17 @@ async function ensureAddonDraftsForRestaurant(
     throw Object.assign(liveLinksResponse.error, { where: 'load_live_addon_links' });
   }
 
+  const nowIso = new Date().toISOString();
   const linkPayload: Array<{
+    id: string;
     restaurant_id: string;
+    item_id: string;
     item_external_key: string;
+    group_id: string;
     group_id_draft: string;
+    state: 'draft';
+    created_at: string;
+    updated_at: string;
   }> = [];
   const seenLinks = new Set<string>();
 
@@ -177,20 +184,29 @@ async function ensureAddonDraftsForRestaurant(
     const menuItem = Array.isArray(link?.menu_items)
       ? link.menu_items[0]
       : link?.menu_items;
+    const rawItemId = link.item_id ?? menuItem?.id;
     const externalKey = menuItem?.external_key
       ? String(menuItem.external_key)
       : undefined;
 
-    if (!draftGroupId || !externalKey) continue;
+    if (!draftGroupId || !externalKey || !rawItemId) continue;
 
-    const dedupeKey = `${externalKey}:${draftGroupId}`;
+    const itemIdStr = String(rawItemId);
+
+    const dedupeKey = `${itemIdStr}:${draftGroupId}`;
     if (seenLinks.has(dedupeKey)) continue;
     seenLinks.add(dedupeKey);
 
     linkPayload.push({
+      id: randomUUID(),
       restaurant_id: restaurantId,
+      item_id: itemIdStr,
       item_external_key: externalKey,
+      group_id: draftGroupId,
       group_id_draft: draftGroupId,
+      state: 'draft',
+      created_at: nowIso,
+      updated_at: nowIso,
     });
   }
 
