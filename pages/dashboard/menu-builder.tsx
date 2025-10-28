@@ -568,16 +568,20 @@ export default function MenuBuilder() {
           `/api/menu-builder?restaurant_id=${rid}&withAddons=1`
         );
         if (!linkRes.ok) throw new Error('Failed to fetch addon links');
-        const { addonLinks } = await linkRes.json();
-        const map: Record<number, string[]> = {};
-        (addonLinks || []).forEach((r: any) => {
-          if (!map[r.item_id]) map[r.item_id] = [];
-          map[r.item_id].push(String(r.group_id));
-        });
-        itemsWithAddons = itemsData.map((i) => ({
-          ...i,
-          addons: map[i.id] || [],
-        }));
+          const { addonLinks } = await linkRes.json();
+          const map: Record<string, string[]> = {};
+          (addonLinks || []).forEach((r: any) => {
+            const itemKey = r?.item_id ? String(r.item_id) : r?.item_external_key;
+            if (!itemKey) return;
+            if (!map[itemKey]) map[itemKey] = [];
+            map[itemKey].push(String(r.group_id));
+          });
+          itemsWithAddons = itemsData.map((i) => ({
+            ...i,
+            addons:
+              map[String(i.id)] ||
+              (i.external_key ? map[String(i.external_key)] : []),
+          }));
       } catch (err) {
         console.error('Error fetching addon links:', err);
       }

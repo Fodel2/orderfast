@@ -139,10 +139,10 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
         setOptions(optionsMap);
         setPriceInputs(priceMap);
 
-        const { data: links, error: linksError } = await supabase
-          .from('item_addon_links_drafts')
-          .select('group_id_draft,item_external_key')
-          .eq('restaurant_id', restaurantKey);
+          const { data: links, error: linksError } = await supabase
+            .from('item_addon_links_drafts')
+            .select('group_id,item_external_key')
+            .eq('restaurant_id', restaurantKey);
 
         if (linksError) {
           console.error('[addons-tab:load:links]', linksError.message);
@@ -194,11 +194,12 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
         });
 
         const assignMap: Record<string, string[]> = {};
-        (links || []).forEach((link) => {
-          const groupId = String(link.group_id_draft);
-          const item = link.item_external_key
-            ? externalToItem.get(String(link.item_external_key))
-            : undefined;
+          (links || []).forEach((link) => {
+            const groupId = link?.group_id ? String(link.group_id) : undefined;
+            if (!groupId) return;
+            const item = link.item_external_key
+              ? externalToItem.get(String(link.item_external_key))
+              : undefined;
           if (!item) return;
           const catName = item.category_id ? catMap.get(item.category_id) : undefined;
           const label = catName ? `${catName} - ${item.name}` : item.name;
@@ -353,7 +354,7 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
     await supabase
       .from('item_addon_links_drafts')
       .delete()
-      .eq('group_id_draft', g.id)
+      .eq('group_id', g.id)
       .eq('restaurant_id', restaurantKey);
     await supabase.from('addon_groups_drafts').delete().eq('id', g.id).eq('restaurant_id', restaurantKey);
     load();

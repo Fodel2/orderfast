@@ -1,8 +1,9 @@
 import { supabase } from '../lib/supabaseClient';
+import { ITEM_ADDON_LINK_WITH_GROUPS_SELECT } from '../lib/queries/addons';
 import type { AddonGroup } from './types';
 
 /**
- * Fetch addon groups and options for a menu item.
+ * Fetch live addon groups and options for a menu item.
  */
 export async function getAddonsForItem(
   itemId: number | string
@@ -10,14 +11,10 @@ export async function getAddonsForItem(
   const itemIdStr = String(itemId);
 
   const linkQuery = supabase
-    .from('item_addon_links_drafts')
-    .select(
-      'group_id,group_id_draft,restaurant_id,state,addon_groups_drafts!inner(id,name,required,multiple_choice,max_group_select,max_option_quantity,state,archived_at)'
-    )
+    .from('item_addon_links')
+    .select(ITEM_ADDON_LINK_WITH_GROUPS_SELECT)
     .eq('item_id', itemIdStr)
-    .eq('state', 'draft')
-    .eq('addon_groups_drafts.state', 'draft')
-    .is('addon_groups_drafts.archived_at', null);
+    .is('addon_groups.archived_at', null);
 
   const requestUrl = (linkQuery as unknown as { url?: URL }).url?.toString();
 
@@ -26,11 +23,13 @@ export async function getAddonsForItem(
   if (linkError) throw linkError;
 
   const groupsMap = new Map<string, AddonGroup>();
-  const groupIds: Set<string> = new Set();
 
   (linkRows || []).forEach((row: any) => {
-    const group = row.addon_groups_drafts;
-    if (!group) return;
+    const group = Array.isArray(row.addon_groups)
+      ? row.addon_groups[0]
+      : row.addon_groups;
+    if (!group || group.archived_at) return;
+
     const gid = String(group.id);
     if (!groupsMap.has(gid)) {
       groupsMap.set(gid, {
@@ -43,30 +42,18 @@ export async function getAddonsForItem(
         max_option_quantity: group.max_option_quantity,
         addon_options: [],
       });
-      groupIds.add(gid);
     }
-  });
 
-  let optionCount = 0;
+    const groupRef = groupsMap.get(gid)!;
+    const options = Array.isArray(group.addon_options)
+      ? group.addon_options
+      : group.addon_options
+      ? [group.addon_options]
+      : [];
 
-  if (groupIds.size > 0) {
-    const { data: optionRows, error: optionError } = await supabase
-      .from('addon_options_drafts')
-      .select(
-        'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at,state,archived_at'
-      )
-      .in('group_id', Array.from(groupIds))
-      .eq('state', 'draft')
-      .is('archived_at', null);
-
-    if (optionError) throw optionError;
-
-    for (const option of optionRows || []) {
-      const gid = option.group_id ? String(option.group_id) : undefined;
-      if (!gid) continue;
-      const group = groupsMap.get(gid);
-      if (!group) continue;
-      group.addon_options.push({
+    for (const option of options) {
+      if (!option || option.archived_at) continue;
+      groupRef.addon_options.push({
         id: String(option.id),
         group_id: gid,
         name: option.name,
@@ -77,16 +64,13 @@ export async function getAddonsForItem(
         stock_return_date: option.stock_return_date,
         stock_last_updated_at: option.stock_last_updated_at,
       });
-      optionCount++;
     }
-  }
+  });
 
   if (process.env.NODE_ENV === 'development') {
-    console.debug('[customer:addons:drafts]', {
+    console.debug('[customer:addons:live]', {
       itemId: itemIdStr,
-      rawRows: linkRows?.length ?? 0,
       groups: groupsMap.size,
-      options: optionCount,
       requestUrl,
     });
   }

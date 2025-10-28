@@ -172,12 +172,17 @@ export default function AddItemModal({
 
         if (!addonIds || addonIds.length === 0) {
           if (item.id) {
+            const linkFilters = [`item_id.eq.${String(item.id)}`];
+            if (item.external_key) {
+              linkFilters.push(`item_external_key.eq.${item.external_key}`);
+            }
+
             const { data: draftLinks, error: draftLinksError } = await supabase
               .from('item_addon_links_drafts')
-              .select('group_id,group_id_draft')
+              .select('group_id')
               .eq('restaurant_id', restaurantIdValue)
               .eq('state', 'draft')
-              .eq('item_id', String(item.id));
+              .or(linkFilters.join(','));
 
             if (draftLinksError) {
               console.error('Failed to load draft addon links for item', {
@@ -186,7 +191,7 @@ export default function AddItemModal({
               });
             } else {
               addonIds = (draftLinks || [])
-                .map((link) => link.group_id || link.group_id_draft)
+                .map((link) => link.group_id)
                 .filter((value): value is string => Boolean(value))
                 .map(String);
             }

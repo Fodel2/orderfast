@@ -45,11 +45,16 @@ export async function updateItemAddonLinks(
     const itemIdStr = String(itemId);
     const { restaurantId, externalKey } = await ensureItemExternalKey(itemIdStr);
 
+    const deleteFilters = [`item_external_key.eq.${externalKey}`];
+    if (itemIdStr) {
+      deleteFilters.push(`item_id.eq.${itemIdStr}`);
+    }
+
     const deleteQuery = supabase
       .from('item_addon_links_drafts')
       .delete()
       .eq('restaurant_id', restaurantId)
-      .or(`item_external_key.eq.${externalKey},item_id.eq.${itemIdStr}`);
+      .or(deleteFilters.join(','));
 
     const { error: deleteError } = await deleteQuery;
     if (deleteError) throw deleteError;
@@ -68,7 +73,6 @@ export async function updateItemAddonLinks(
           item_id: itemIdStr,
           item_external_key: externalKey,
           group_id: strGroupId,
-          group_id_draft: strGroupId,
           state: 'draft',
         };
       });

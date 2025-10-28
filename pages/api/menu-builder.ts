@@ -172,7 +172,6 @@ async function ensureAddonDraftsForRestaurant(
     item_id: string;
     item_external_key: string;
     group_id: string;
-    group_id_draft: string;
     state: 'draft';
     created_at: string;
     updated_at: string;
@@ -193,21 +192,20 @@ async function ensureAddonDraftsForRestaurant(
 
     const itemIdStr = String(rawItemId);
 
-    const dedupeKey = `${itemIdStr}:${draftGroupId}`;
+    const dedupeKey = `${externalKey}:${draftGroupId}`;
     if (seenLinks.has(dedupeKey)) continue;
     seenLinks.add(dedupeKey);
 
-    linkPayload.push({
-      id: randomUUID(),
-      restaurant_id: restaurantId,
-      item_id: itemIdStr,
-      item_external_key: externalKey,
-      group_id: draftGroupId,
-      group_id_draft: draftGroupId,
-      state: 'draft',
-      created_at: nowIso,
-      updated_at: nowIso,
-    });
+      linkPayload.push({
+        id: randomUUID(),
+        restaurant_id: restaurantId,
+        item_id: itemIdStr,
+        item_external_key: externalKey,
+        group_id: draftGroupId,
+        state: 'draft',
+        created_at: nowIso,
+        updated_at: nowIso,
+      });
   }
 
   const deleteDraftLinks = await supabase
@@ -265,7 +263,6 @@ type DraftAddonLinkRow = {
   item_id: number | string;
   item_external_key: string | null;
   group_id: string;
-  group_id_draft: string;
 };
 
 function ensureDraftPayload(input: unknown): DraftPayload {
@@ -428,10 +425,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
 
         try {
-          logSupabaseCall('select', 'item_addon_links_drafts', 'item_external_key,group_id_draft');
+          logSupabaseCall('select', 'item_addon_links_drafts', 'item_external_key,group_id,item_id');
           const linksResponse = await supabase
             .from('item_addon_links_drafts')
-            .select('item_external_key,group_id_draft')
+            .select('item_external_key,group_id,item_id')
             .eq('restaurant_id', restaurantId);
 
           if (linksResponse.error) {
@@ -468,7 +465,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
           addonLinks = draftLinks
             .map((link) => {
-              const groupId = link.group_id_draft ? String(link.group_id_draft) : undefined;
+              const groupId = link.group_id ? String(link.group_id) : undefined;
               const externalKey = link.item_external_key
                 ? String(link.item_external_key)
                 : undefined;
@@ -479,7 +476,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 item_id: itemId,
                 item_external_key: externalKey,
                 group_id: groupId,
-                group_id_draft: groupId,
               } as DraftAddonLinkRow;
             })
             .filter(Boolean) as DraftAddonLinkRow[];
@@ -562,7 +558,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
 
       const safeItems = Array.isArray(updatedDraft.items) ? updatedDraft.items : [];
-      const linkRows: Array<{ restaurant_id: string; item_external_key: string; group_id_draft: string }> = [];
+      const linkRows: Array<{
+        id?: string;
+        restaurant_id: string;
+        item_external_key: string;
+        group_id: string;
+        state?: string;
+        item_id?: string | null;
+      }> = [];
       const seen = new Set<string>();
       for (const item of safeItems) {
         const itemKey = typeof item.external_key === 'string' && item.external_key ? item.external_key : undefined;
@@ -575,9 +578,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           if (seen.has(dedupeKey)) continue;
           seen.add(dedupeKey);
           linkRows.push({
+            id: randomUUID(),
             restaurant_id: restaurantId,
             item_external_key: itemKey,
-            group_id_draft: strAddonId,
+            group_id: strAddonId,
+            state: 'draft',
+            item_id: typeof item.id === 'string' || typeof item.id === 'number'
+              ? String(item.id)
+              : undefined,
           });
         }
       }

@@ -402,19 +402,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         optionsInserted = insertedOptions?.length ?? optionPayload.length;
       }
 
-      const { data: draftLinks, error: draftLinksErr } = await supabase
-        .from('item_addon_links_drafts')
-        .select('item_external_key,group_id_draft')
-        .eq('restaurant_id', restaurantId);
+        const { data: draftLinks, error: draftLinksErr } = await supabase
+          .from('item_addon_links_drafts')
+          .select('item_external_key,group_id')
+          .eq('restaurant_id', restaurantId);
       if (draftLinksErr) {
         logSupabaseError('[publish:loadAddonLinksDrafts]', draftLinksErr, { restaurantId });
         return res.status(500).json({ where: 'load_addon_links_drafts', error: draftLinksErr.message, code: draftLinksErr.code, details: draftLinksErr.details });
       }
 
       const linkRows: Array<{ item_id: string; group_id: string }> = [];
-      for (const link of draftLinks ?? []) {
-        const itemKey = link.item_external_key;
-        const draftGroupId = link.group_id_draft;
+        for (const link of draftLinks ?? []) {
+          const itemKey = link.item_external_key;
+          const draftGroupId = link.group_id;
         if (!itemKey || !draftGroupId) continue;
         const liveItemId = externalKeyToItemId.get(String(itemKey));
         const liveGroupId = groupIdMap.get(String(draftGroupId));
