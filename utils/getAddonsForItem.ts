@@ -14,7 +14,8 @@ export async function getAddonsForItem(
     .from('item_addon_links')
     .select(ITEM_ADDON_LINK_WITH_GROUPS_SELECT)
     .eq('item_id', itemIdStr)
-    .is('addon_groups.archived_at', null);
+    .is('addon_groups.archived_at', null)
+    .is('addon_groups.addon_options.archived_at', null);
 
   const requestUrl = (linkQuery as unknown as { url?: URL }).url?.toString();
 
@@ -57,8 +58,11 @@ export async function getAddonsForItem(
         id: String(option.id),
         group_id: gid,
         name: option.name,
-        price: option.price,
-        available: option.available,
+        price:
+          typeof option.price === 'number'
+            ? option.price
+            : Number(option.price ?? 0),
+        available: option.available !== false,
         out_of_stock_until: option.out_of_stock_until,
         stock_status: option.stock_status,
         stock_return_date: option.stock_return_date,
