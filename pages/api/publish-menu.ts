@@ -307,7 +307,143 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       : publishAddonRows;
     stats.addon_groups_inserted = publishAddonResult?.groups_inserted ?? 0;
     stats.addon_options_inserted = publishAddonResult?.options_inserted ?? 0;
-    stats.addon_links_inserted = publishAddonResult?.links_inserted ?? 0;
+
+    // 6) Remap draft item->group links to live equivalents using external keys and group names
+    const { data: draftGroups, error: draftGroupsErr } = await supabase
+      .from('addon_groups_drafts')
+      .select('id,name')
+      .eq('restaurant_id', restaurantId)
+      .or('state.is.null,state.eq.draft')
+      .is('archived_at', null);
+
+    if (draftGroupsErr) {
+      logSupabaseError('[publish:loadDraftGroups]', draftGroupsErr, { restaurantId });
+      return res.status(500).json({
+        where: 'load_draft_groups',
+        error: draftGroupsErr.message,
+        code: draftGroupsErr.code,
+        details: draftGroupsErr.details,
+      });
+    }
+
+    const draftGroupNameById = new Map<string, string>();
+    for (const group of draftGroups ?? []) {
+      if (group?.id && group?.name) {
+        draftGroupNameById.set(String(group.id), String(group.name));
+      }
+    }
+
+    const { data: liveGroups, error: liveGroupsErr } = await supabase
+      .from('addon_groups')
+      .select('id,name')
+      .eq('restaurant_id', restaurantId)
+      .is('archived_at', null);
+
+    if (liveGroupsErr) {
+      logSupabaseError('[publish:loadLiveGroups]', liveGroupsErr, { restaurantId });
+      return res.status(500).json({
+        where: 'load_live_groups',
+        error: liveGroupsErr.message,
+        code: liveGroupsErr.code,
+        details: liveGroupsErr.details,
+      });
+    }
+
+    const liveGroupIdByName = new Map<string, string>();
+    for (const group of liveGroups ?? []) {
+      if (group?.id && group?.name) {
+        liveGroupIdByName.set(String(group.name), String(group.id));
+      }
+    }
+
+    const { data: draftLinks, error: draftLinksLoadErr } = await supabase
+      .from('item_addon_links_drafts')
+      .select('group_id,item_external_key')
+      .eq('restaurant_id', restaurantId)
+      .or('state.is.null,state.eq.draft')
+      .is('archived_at', null);
+
+    if (draftLinksLoadErr) {
+      logSupabaseError('[publish:loadDraftLinks]', draftLinksLoadErr, { restaurantId });
+      return res.status(500).json({
+        where: 'load_draft_links',
+        error: draftLinksLoadErr.message,
+        code: draftLinksLoadErr.code,
+        details: draftLinksLoadErr.details,
+      });
+    }
+
+    const { data: existingLiveLinks, error: existingLinksErr } = await supabase
+      .from('item_addon_links')
+      .select('item_id,group_id,addon_groups!inner(id,restaurant_id)')
+      .eq('addon_groups.restaurant_id', restaurantId);
+
+    if (existingLinksErr) {
+      logSupabaseError('[publish:loadExistingLinks]', existingLinksErr, { restaurantId });
+      return res.status(500).json({
+        where: 'load_existing_links',
+        error: existingLinksErr.message,
+        code: existingLinksErr.code,
+        details: existingLinksErr.details,
+      });
+    }
+
+    const existingPairs = new Set<string>();
+    for (const link of existingLiveLinks ?? []) {
+      const itemId = link?.item_id ? String(link.item_id) : undefined;
+      const groupId = link?.group_id ? String(link.group_id) : undefined;
+      const restaurantScope = (link as any)?.addon_groups?.restaurant_id
+        ? String((link as any).addon_groups.restaurant_id)
+        : undefined;
+      if (itemId && groupId && restaurantScope === restaurantId) {
+        existingPairs.add(`${itemId}:${groupId}`);
+      }
+    }
+
+    const linkInserts: Array<{ id: string; item_id: string; group_id: string }> = [];
+    for (const draftLink of draftLinks ?? []) {
+      const draftGroupId = draftLink?.group_id ? String(draftLink.group_id) : undefined;
+      const draftGroupName = draftGroupId ? draftGroupNameById.get(draftGroupId) : undefined;
+      if (!draftGroupName) continue;
+
+      const liveGroupId = liveGroupIdByName.get(draftGroupName);
+      if (!liveGroupId) continue;
+
+      const itemExternalKey = draftLink?.item_external_key ? String(draftLink.item_external_key) : undefined;
+      if (!itemExternalKey) continue;
+
+      const liveItemId = itemIdByExternalKey.get(itemExternalKey);
+      if (!liveItemId) continue;
+
+      const pairKey = `${liveItemId}:${liveGroupId}`;
+      if (existingPairs.has(pairKey)) continue;
+
+      existingPairs.add(pairKey);
+      linkInserts.push({ id: randomUUID(), item_id: liveItemId, group_id: liveGroupId });
+    }
+
+    if (linkInserts.length > 0) {
+      const { data: insertedLinks, error: insertLinksErr } = await supabase
+        .from('item_addon_links')
+        .upsert(linkInserts, { onConflict: 'item_id,group_id', ignoreDuplicates: true })
+        .select('id');
+
+      if (insertLinksErr) {
+        logSupabaseError('[publish:insertLinks]', insertLinksErr, { restaurantId, attempted: linkInserts.length });
+        return res.status(500).json({
+          where: 'insert_links',
+          error: insertLinksErr.message,
+          code: insertLinksErr.code,
+          details: insertLinksErr.details,
+        });
+      }
+
+      stats.addon_links_inserted = insertedLinks?.length ?? 0;
+      console.info('[publish:links]', { restaurantId, attempted: linkInserts.length, inserted: stats.addon_links_inserted });
+    } else {
+      stats.addon_links_inserted = 0;
+      console.info('[publish:links]', { restaurantId, attempted: 0, inserted: 0 });
+    }
 
     return res.status(200).json({
       restaurantId,
