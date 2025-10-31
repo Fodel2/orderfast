@@ -57,6 +57,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const nowIso = new Date().toISOString();
 
     const stats = {
+      categories_archived: 0,
       categories_upserted: 0,
       items_upserted: 0,
       item_external_keys_mapped: 0,
@@ -66,28 +67,95 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       draft_links_updated: 0,
     };
 
-    // 2) Upsert categories
+    // 2) Archive and upsert categories based on draft state
     const categoryIdMap = new Map<string, string>();
-    const categoryRecords = (draft.categories ?? []).map((category, index) => {
-      const stableId = category.id || category.tempId || randomUUID();
-      categoryIdMap.set(category.tempId ?? category.id ?? stableId, stableId);
-      return {
-        id: stableId,
-        restaurant_id: restaurantId,
-        name: category.name,
-        description: category.description ?? null,
-        sort_order: category.sort_order ?? index,
-        image_url: category.image_url ?? null,
-        archived_at: null,
-        updated_at: nowIso,
-      };
-    });
+    const draftCategories = draft.categories ?? [];
+    const draftCategoryNames = draftCategories
+      .map((category) => category?.name?.trim())
+      .filter((name): name is string => Boolean(name));
+    const draftCategoryNameSet = new Set(draftCategoryNames);
+    const draftCategoryNameArray = Array.from(draftCategoryNameSet);
 
-    if (categoryRecords.length > 0) {
-      const { data: categoryResult, error: categoryError } = await supabase
+    const { data: existingCategories, error: existingCategoriesErr } = await supabase
+      .from('menu_categories')
+      .select('id,name')
+      .eq('restaurant_id', restaurantId)
+      .is('archived_at', null);
+
+    if (existingCategoriesErr) {
+      logSupabaseError('[publish:loadExistingCategories]', existingCategoriesErr, { restaurantId });
+      return res.status(500).json({
+        where: 'load_existing_categories',
+        error: existingCategoriesErr.message,
+        code: existingCategoriesErr.code,
+        details: existingCategoriesErr.details,
+      });
+    }
+
+    const existingCategoryNameToId = new Map<string, string>();
+    for (const category of existingCategories ?? []) {
+      if (category?.name && category?.id) {
+        existingCategoryNameToId.set(String(category.name), String(category.id));
+      }
+    }
+
+    const categoryIdsToArchive = (existingCategories ?? [])
+      .filter((category) => !draftCategoryNameSet.has(category?.name ?? ''))
+      .map((category) => category?.id)
+      .filter((id): id is string => Boolean(id));
+
+    if (categoryIdsToArchive.length > 0) {
+      const { data: archivedCategories, error: archiveCategoriesErr } = await supabase
         .from('menu_categories')
-        .upsert(categoryRecords, { onConflict: 'id' })
+        .update({ archived_at: nowIso })
+        .in('id', categoryIdsToArchive)
         .select('id');
+
+      if (archiveCategoriesErr) {
+        logSupabaseError('[publish:archiveCategories]', archiveCategoriesErr, {
+          restaurantId,
+          archiveCount: categoryIdsToArchive.length,
+        });
+        return res.status(500).json({
+          where: 'archive_categories',
+          error: archiveCategoriesErr.message,
+          code: archiveCategoriesErr.code,
+          details: archiveCategoriesErr.details,
+        });
+      }
+
+      stats.categories_archived = archivedCategories?.length ?? 0;
+    }
+
+    const categoryUpsertRows = draftCategories
+      .map((category, index) => {
+        const name = category?.name?.trim();
+        if (!name) return undefined;
+
+        const row: Record<string, any> = {
+          restaurant_id: restaurantId,
+          name,
+          description: category.description ?? null,
+          sort_order: category.sort_order ?? index,
+          image_url: category.image_url ?? null,
+          archived_at: null,
+          updated_at: nowIso,
+        };
+
+        if (!category?.id) {
+          row.id = category?.tempId ?? randomUUID();
+        }
+
+        return row;
+      })
+      .filter(Boolean) as Array<Record<string, any>>;
+
+    let categoryUpsertResult: Array<{ id: string; name: string }> = [];
+    if (categoryUpsertRows.length > 0) {
+      const { data: upsertedCategories, error: categoryError } = await supabase
+        .from('menu_categories')
+        .upsert(categoryUpsertRows, { onConflict: 'restaurant_id,name' })
+        .select('id,name');
 
       if (categoryError) {
         logSupabaseError('[publish:upsertCategories]', categoryError, { restaurantId });
@@ -99,8 +167,69 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
       }
 
-      stats.categories_upserted = categoryResult?.length ?? 0;
+      categoryUpsertResult = upsertedCategories ?? [];
+      stats.categories_upserted = categoryUpsertResult.length;
     }
+
+    const categoryNameToId = new Map<string, string>();
+    for (const row of categoryUpsertResult ?? []) {
+      if (row?.id && row?.name) {
+        categoryNameToId.set(String(row.name), String(row.id));
+      }
+    }
+
+    for (const [name, id] of existingCategoryNameToId.entries()) {
+      if (!draftCategoryNameSet.has(name)) continue;
+      if (!categoryNameToId.has(name)) {
+        categoryNameToId.set(name, id);
+      }
+    }
+
+    if (draftCategoryNameArray.length > 0 && categoryNameToId.size < draftCategoryNameArray.length) {
+      const { data: refreshedCategories, error: refreshCategoriesErr } = await supabase
+        .from('menu_categories')
+        .select('id,name')
+        .eq('restaurant_id', restaurantId)
+        .in('name', draftCategoryNameArray);
+
+      if (refreshCategoriesErr) {
+        logSupabaseError('[publish:refreshCategories]', refreshCategoriesErr, { restaurantId });
+        return res.status(500).json({
+          where: 'refresh_categories',
+          error: refreshCategoriesErr.message,
+          code: refreshCategoriesErr.code,
+          details: refreshCategoriesErr.details,
+        });
+      }
+
+      for (const category of refreshedCategories ?? []) {
+        if (category?.id && category?.name) {
+          categoryNameToId.set(String(category.name), String(category.id));
+        }
+      }
+    }
+
+    for (const category of draftCategories) {
+      const name = category?.name?.trim();
+      if (!name) continue;
+
+      const liveId = categoryNameToId.get(name);
+      if (!liveId) continue;
+
+      if (category?.id) {
+        categoryIdMap.set(String(category.id), liveId);
+      }
+      if (category?.tempId) {
+        categoryIdMap.set(String(category.tempId), liveId);
+      }
+      categoryIdMap.set(liveId, liveId);
+    }
+
+    console.info('[publish:categories]', {
+      restaurantId,
+      archived: stats.categories_archived,
+      upserted: stats.categories_upserted,
+    });
 
     // 3) Upsert menu items using external key
     let draftMutated = false;
