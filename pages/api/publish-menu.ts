@@ -1,14 +1,17 @@
-import type { PostgrestFilterBuilder } from '@supabase/postgrest-js';
+import { randomUUID } from 'crypto';
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { supaServer } from '@/lib/supaServer';
 
-function logSupabaseError(scope: string, error: any, extra?: Record<string, any>) {
+type SupabaseError = { message?: string; code?: string; details?: string; hint?: string } & Record<string, any>;
+
+function logSupabaseError(scope: string, error: SupabaseError | null, extra?: Record<string, any>) {
+  if (!error) return;
   console.error(scope, {
     ...extra,
-    message: error?.message,
-    code: error?.code,
-    details: error?.details,
-    hint: error?.hint,
+    message: error.message,
+    code: error.code,
+    details: error.details,
+    hint: error.hint,
     error,
   });
 }
@@ -18,7 +21,9 @@ type DraftPayload = {
   items: Array<{
     id?: string; tempId?: string; name: string; description?: string|null; price?: number|null;
     image_url?: string|null; is_vegetarian?: boolean; is_vegan?: boolean; is_18_plus?: boolean;
-    stock_status?: string|null; available?: boolean; category_id?: string; sort_order?: number
+    stock_status?: string|null; available?: boolean; category_id?: string; sort_order?: number;
+    external_key?: string;
+    addons?: string[];
   }>;
   links?: Array<{ item_id: string; group_id: string }>; // IMPORTANT: group_id
 };
@@ -31,25 +36,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const supabase = supaServer;
   let restaurantId: string | undefined;
-
-  const archivedSupport: Record<'menu_items' | 'menu_categories', boolean> = {
-    menu_items: true,
-    menu_categories: true,
-  };
-
-  async function withArchivedFilter(
-    table: 'menu_items' | 'menu_categories',
-    build: (useArchivedFilter: boolean) => PostgrestFilterBuilder<any, any, any>,
-  ) {
-    const useArchived = archivedSupport[table];
-    const query = build(useArchived);
-    const { data, error } = await query;
-    if (error && error.code === '42703' && /archived_at/i.test(error.message || '')) {
-      archivedSupport[table] = false;
-      return await build(false);
-    }
-    return { data, error };
-  }
 
   try {
     ({ restaurantId } = req.body as { restaurantId?: string });
@@ -68,229 +54,529 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const draft = draftRow?.draft as DraftPayload | undefined;
     if (!draft) return res.status(400).json({ error: 'No draft to publish' });
 
-    // Counters
-    let deletedLinks = 0, deletedItems = 0, deletedCats = 0;
-    let archivedLinks = 0, archivedItems = 0, archivedCats = 0;
-    let insertedCats = 0, insertedItems = 0, insertedLinks = 0;
+    const nowIso = new Date().toISOString();
 
-    // 2) Try HARD-DELETE current live data (links -> items -> categories)
-    try {
-      const { data: liveItems, error: liveErr } = await withArchivedFilter(
-        'menu_items',
-        (useArchived) => {
-          const query = supabase
-            .from('menu_items')
-            .select('id')
-            .eq('restaurant_id', restaurantId) as PostgrestFilterBuilder<any, any, any>;
-          return useArchived ? query.filter('archived_at', 'is', null) : query;
-        },
-      );
-      if (liveErr) throw liveErr;
-      const liveItemIds = (liveItems ?? []).map((r: any) => r.id);
+    const stats = {
+      categories_archived: 0,
+      categories_upserted: 0,
+      items_upserted: 0,
+      item_external_keys_mapped: 0,
+      addon_groups_inserted: 0,
+      addon_options_inserted: 0,
+      addon_links_inserted: 0,
+      draft_links_updated: 0,
+    };
 
-      if (liveItemIds.length > 0) {
-        const { data: delLinks, error: delLinksErr } = await supabase
-          .from('item_addon_links')
-          .delete()
-          .in('item_id', liveItemIds)
-          .select('id');
-        if (delLinksErr) throw delLinksErr;
-        deletedLinks = delLinks?.length ?? 0;
-      }
+    // 2) Archive and upsert categories based on draft state
+    const categoryIdMap = new Map<string, string>();
+    const draftCategories = draft.categories ?? [];
+    const draftCategoryNames = draftCategories
+      .map((category) => category?.name?.trim())
+      .filter((name): name is string => Boolean(name));
+    const draftCategoryNameSet = new Set(draftCategoryNames);
+    const draftCategoryNameArray = Array.from(draftCategoryNameSet);
 
-      const { data: delItems, error: delItemsErr } = await withArchivedFilter(
-        'menu_items',
-        (useArchived) => {
-          const query = supabase
-            .from('menu_items')
-            .delete()
-            .eq('restaurant_id', restaurantId)
-            .select('id') as PostgrestFilterBuilder<any, any, any>;
-          return useArchived ? query.filter('archived_at', 'is', null) : query;
-        },
-      );
-      if (delItemsErr) throw delItemsErr;
-      deletedItems = delItems?.length ?? 0;
+    const { data: existingCategories, error: existingCategoriesErr } = await supabase
+      .from('menu_categories')
+      .select('id,name')
+      .eq('restaurant_id', restaurantId)
+      .is('archived_at', null);
 
-      const { data: delCats, error: delCatsErr } = await withArchivedFilter(
-        'menu_categories',
-        (useArchived) => {
-          const query = supabase
-            .from('menu_categories')
-            .delete()
-            .eq('restaurant_id', restaurantId)
-            .select('id') as PostgrestFilterBuilder<any, any, any>;
-          return useArchived ? query.filter('archived_at', 'is', null) : query;
-        },
-      );
-      if (delCatsErr) throw delCatsErr;
-      deletedCats = delCats?.length ?? 0;
-
-    } catch (hardDeleteErr: any) {
-      // FK violation (due to order_items) → ARCHIVE instead (so customer never sees old rows)
-      console.error('[publish:hardDeleteFallback]', {
-        restaurantId,
-        error: hardDeleteErr,
-        message: hardDeleteErr?.message,
-        code: hardDeleteErr?.code,
-        details: hardDeleteErr?.details,
-        hint: hardDeleteErr?.hint,
-        stack: hardDeleteErr?.stack,
+    if (existingCategoriesErr) {
+      logSupabaseError('[publish:loadExistingCategories]', existingCategoriesErr, { restaurantId });
+      return res.status(500).json({
+        where: 'load_existing_categories',
+        error: existingCategoriesErr.message,
+        code: existingCategoriesErr.code,
+        details: existingCategoriesErr.details,
       });
-
-      let archItemsErr;
-      let archItems;
-      if (archivedSupport.menu_items) {
-        ({ data: archItems, error: archItemsErr } = await withArchivedFilter(
-          'menu_items',
-          (useArchived) => {
-            const query = supabase
-              .from('menu_items')
-              .update({ archived_at: new Date().toISOString() })
-              .eq('restaurant_id', restaurantId)
-              .select('id') as PostgrestFilterBuilder<any, any, any>;
-            return useArchived ? query.filter('archived_at', 'is', null) : query;
-          },
-        ));
-        if (archItemsErr && archItemsErr.code === '42703' && /archived_at/i.test(archItemsErr.message || '')) {
-          archivedSupport.menu_items = false;
-        }
-      }
-
-      if ((!archItems || archItemsErr) && archivedSupport.menu_items === false) {
-        const { data, error } = await supabase
-          .from('menu_items')
-          .update({ status: 'archived' })
-          .eq('restaurant_id', restaurantId)
-          .select('id');
-        archItems = data;
-        archItemsErr = error;
-      }
-      if (archItemsErr) {
-        logSupabaseError('[publish:archiveItems]', archItemsErr, { restaurantId });
-        return res.status(500).json({ where: 'archive_items', error: archItemsErr.message, code: archItemsErr.code, details: archItemsErr.details });
-      }
-      const archivedItemIds = archItems?.map((r: any) => r.id) ?? [];
-      archivedItems = archivedItemIds.length;
-
-      if (archivedItemIds.length > 0) {
-        const { data: delLinks, error: delLinksErr } = await supabase
-          .from('item_addon_links')
-          .delete()
-          .in('item_id', archivedItemIds)
-          .select('id');
-        if (delLinksErr) {
-          logSupabaseError('[publish:deleteLinksForArchived]', delLinksErr, { restaurantId });
-          return res.status(500).json({ where: 'delete_archived_links', error: delLinksErr.message, code: delLinksErr.code, details: delLinksErr.details });
-        }
-        archivedLinks = delLinks?.length ?? 0;
-      }
-
-      let archCatsErr;
-      let archCats;
-      if (archivedSupport.menu_categories) {
-        ({ data: archCats, error: archCatsErr } = await withArchivedFilter(
-          'menu_categories',
-          (useArchived) => {
-            const query = supabase
-              .from('menu_categories')
-              .update({ archived_at: new Date().toISOString() })
-              .eq('restaurant_id', restaurantId)
-              .select('id') as PostgrestFilterBuilder<any, any, any>;
-            return useArchived ? query.filter('archived_at', 'is', null) : query;
-          },
-        ));
-        if (archCatsErr && archCatsErr.code === '42703' && /archived_at/i.test(archCatsErr.message || '')) {
-          archivedSupport.menu_categories = false;
-        }
-      }
-
-      if ((!archCats || archCatsErr) && archivedSupport.menu_categories === false) {
-        const { data, error } = await supabase
-          .from('menu_categories')
-          .update({ status: 'archived' })
-          .eq('restaurant_id', restaurantId)
-          .select('id');
-        archCats = data;
-        archCatsErr = error;
-      }
-      if (archCatsErr) {
-        logSupabaseError('[publish:archiveCats]', archCatsErr, { restaurantId });
-        return res.status(500).json({ where: 'archive_categories', error: archCatsErr.message, code: archCatsErr.code, details: archCatsErr.details });
-      }
-      archivedCats = archCats?.length ?? 0;
     }
 
-    // 3) Insert categories (set restaurant_id explicitly; keep sort_order)
-    const catIdMap = new Map<string, string>();
-    for (const [idx, c] of (draft.categories ?? []).entries()) {
-      const { data: inserted, error } = await supabase
+    const existingCategoryNameToId = new Map<string, string>();
+    for (const category of existingCategories ?? []) {
+      if (category?.name && category?.id) {
+        existingCategoryNameToId.set(String(category.name), String(category.id));
+      }
+    }
+
+    const categoryIdsToArchive = (existingCategories ?? [])
+      .filter((category) => !draftCategoryNameSet.has(category?.name ?? ''))
+      .map((category) => category?.id)
+      .filter((id): id is string => Boolean(id));
+
+    if (categoryIdsToArchive.length > 0) {
+      const { data: archivedCategories, error: archiveCategoriesErr } = await supabase
         .from('menu_categories')
-        .insert({
-          restaurant_id: restaurantId, // schema allows, even without FK constraint
-          name: c.name,
-          description: c.description ?? null,
-          sort_order: c.sort_order ?? idx,
-          image_url: c.image_url ?? null,
-        })
-        .select('id')
-        .single();
+        .update({ archived_at: nowIso })
+        .in('id', categoryIdsToArchive)
+        .select('id');
 
-      if (error || !inserted) {
-        logSupabaseError('[publish:insertCategory]', error, { restaurantId, payload: c });
-        return res.status(500).json({ where: 'insert_category', error: error?.message || 'Insert category failed', code: error?.code, details: error?.details });
+      if (archiveCategoriesErr) {
+        logSupabaseError('[publish:archiveCategories]', archiveCategoriesErr, {
+          restaurantId,
+          archiveCount: categoryIdsToArchive.length,
+        });
+        return res.status(500).json({
+          where: 'archive_categories',
+          error: archiveCategoriesErr.message,
+          code: archiveCategoriesErr.code,
+          details: archiveCategoriesErr.details,
+        });
       }
-      const key = (c.tempId ?? c.id) as string | undefined;
-      if (key) catIdMap.set(key, inserted.id);
-      insertedCats++;
+
+      stats.categories_archived = archivedCategories?.length ?? 0;
     }
 
-    // 4) Insert items (map category_id if provided; allow null if schema allows)
-    const itemIdMap = new Map<string, string>();
-    for (const [idx, it] of (draft.items ?? []).entries()) {
-      const mappedCat = it.category_id ? (catIdMap.get(it.category_id) ?? null) : null;
+    const categoryUpsertRows = draftCategories
+      .map((category, index) => {
+        const name = category?.name?.trim();
+        if (!name) return undefined;
 
-      const { data: inserted, error } = await supabase
-        .from('menu_items')
-        .insert({
+        const row: Record<string, any> = {
           restaurant_id: restaurantId,
-          category_id: mappedCat, // schema shows nullable
-          name: it.name,
-          description: it.description ?? null,
-          price: it.price ?? null,
-          image_url: it.image_url ?? null,
-          sort_order: it.sort_order ?? idx,
-        })
-        .select('id')
-        .single();
+          name,
+          description: category.description ?? null,
+          sort_order: category.sort_order ?? index,
+          image_url: category.image_url ?? null,
+          archived_at: null,
+          updated_at: nowIso,
+        };
 
-      if (error || !inserted) {
-        logSupabaseError('[publish:insertItem]', error, { restaurantId, payload: it });
-        return res.status(500).json({ where: 'insert_item', error: error?.message || 'Insert item failed', code: error?.code, details: error?.details });
+        if (!category?.id) {
+          row.id = category?.tempId ?? randomUUID();
+        }
+
+        return row;
+      })
+      .filter(Boolean) as Array<Record<string, any>>;
+
+    let categoryUpsertResult: Array<{ id: string; name: string }> = [];
+    if (categoryUpsertRows.length > 0) {
+      const { data: upsertedCategories, error: categoryError } = await supabase
+        .from('menu_categories')
+        .upsert(categoryUpsertRows, { onConflict: 'restaurant_id,name' })
+        .select('id,name');
+
+      if (categoryError) {
+        logSupabaseError('[publish:upsertCategories]', categoryError, { restaurantId });
+        return res.status(500).json({
+          where: 'upsert_categories',
+          error: categoryError.message,
+          code: categoryError.code,
+          details: categoryError.details,
+        });
       }
-      const key = (it.tempId ?? it.id) as string | undefined;
-      if (key) itemIdMap.set(key, inserted.id);
-      insertedItems++;
+
+      categoryUpsertResult = upsertedCategories ?? [];
+      stats.categories_upserted = categoryUpsertResult.length;
     }
 
-    // 5) Insert item_addon_links (schema uses group_id)
-    for (const l of (draft.links ?? [])) {
-      const newItemId = itemIdMap.get(l.item_id) || l.item_id;
-      if (!newItemId || !l.group_id) continue;
-      const { error } = await supabase
-        .from('item_addon_links')
-        .insert({ item_id: newItemId, group_id: l.group_id });
-      if (error) {
-        logSupabaseError('[publish:insertLink]', error, { restaurantId, payload: l });
-        return res.status(500).json({ where: 'insert_link', error: error.message, code: error.code, details: error.details });
+    const categoryNameToId = new Map<string, string>();
+    for (const row of categoryUpsertResult ?? []) {
+      if (row?.id && row?.name) {
+        categoryNameToId.set(String(row.name), String(row.id));
       }
-      insertedLinks++;
+    }
+
+    for (const [name, id] of existingCategoryNameToId.entries()) {
+      if (!draftCategoryNameSet.has(name)) continue;
+      if (!categoryNameToId.has(name)) {
+        categoryNameToId.set(name, id);
+      }
+    }
+
+    if (draftCategoryNameArray.length > 0 && categoryNameToId.size < draftCategoryNameArray.length) {
+      const { data: refreshedCategories, error: refreshCategoriesErr } = await supabase
+        .from('menu_categories')
+        .select('id,name')
+        .eq('restaurant_id', restaurantId)
+        .in('name', draftCategoryNameArray);
+
+      if (refreshCategoriesErr) {
+        logSupabaseError('[publish:refreshCategories]', refreshCategoriesErr, { restaurantId });
+        return res.status(500).json({
+          where: 'refresh_categories',
+          error: refreshCategoriesErr.message,
+          code: refreshCategoriesErr.code,
+          details: refreshCategoriesErr.details,
+        });
+      }
+
+      for (const category of refreshedCategories ?? []) {
+        if (category?.id && category?.name) {
+          categoryNameToId.set(String(category.name), String(category.id));
+        }
+      }
+    }
+
+    for (const category of draftCategories) {
+      const name = category?.name?.trim();
+      if (!name) continue;
+
+      const liveId = categoryNameToId.get(name);
+      if (!liveId) continue;
+
+      if (category?.id) {
+        categoryIdMap.set(String(category.id), liveId);
+      }
+      if (category?.tempId) {
+        categoryIdMap.set(String(category.tempId), liveId);
+      }
+      categoryIdMap.set(liveId, liveId);
+    }
+
+    console.info('[publish:categories]', {
+      restaurantId,
+      archived: stats.categories_archived,
+      upserted: stats.categories_upserted,
+    });
+
+    // 3) Upsert menu items using external key
+    let draftMutated = false;
+    const itemExternalKeys: string[] = [];
+    const itemRecords = (draft.items ?? []).map((item, index) => {
+      let externalKey = item.external_key?.trim();
+      if (!externalKey) {
+        externalKey = randomUUID();
+        draftMutated = true;
+        item.external_key = externalKey;
+      }
+      itemExternalKeys.push(externalKey);
+
+      const baseRecord: Record<string, any> = {
+        restaurant_id: restaurantId,
+        external_key: externalKey,
+        name: item.name,
+        description: item.description ?? null,
+        price: item.price ?? null,
+        image_url: item.image_url ?? null,
+        sort_order: item.sort_order ?? index,
+        archived_at: null,
+        updated_at: nowIso,
+        category_id: item.category_id ? categoryIdMap.get(item.category_id) ?? item.category_id : null,
+      };
+
+      if (item.id) {
+        baseRecord.id = item.id;
+      }
+
+      return baseRecord;
+    });
+
+    let itemUpsertResult: Array<{ id: string; external_key: string }> = [];
+    if (itemRecords.length > 0) {
+      const { data: upsertedItems, error: itemsError } = await supabase
+        .from('menu_items')
+        .upsert(itemRecords, { onConflict: 'restaurant_id,external_key' })
+        .select('id,external_key');
+
+      if (itemsError) {
+        logSupabaseError('[publish:upsertItems]', itemsError, { restaurantId });
+        return res.status(500).json({
+          where: 'upsert_items',
+          error: itemsError.message,
+          code: itemsError.code,
+          details: itemsError.details,
+        });
+      }
+
+      itemUpsertResult = upsertedItems ?? [];
+      stats.items_upserted = itemUpsertResult.length;
+    }
+
+    // ensure mapping for every external key we touched
+    const itemIdByExternalKey = new Map<string, string>();
+    for (const row of itemUpsertResult) {
+      if (row?.external_key) {
+        itemIdByExternalKey.set(row.external_key, String(row.id));
+      }
+    }
+
+    if (itemIdByExternalKey.size < itemExternalKeys.length) {
+      const { data: existingItems, error: existingErr } = await supabase
+        .from('menu_items')
+        .select('id,external_key')
+        .eq('restaurant_id', restaurantId)
+        .in('external_key', itemExternalKeys);
+
+      if (existingErr) {
+        logSupabaseError('[publish:fetchItemsForMap]', existingErr, { restaurantId });
+        return res.status(500).json({
+          where: 'fetch_items_for_map',
+          error: existingErr.message,
+          code: existingErr.code,
+          details: existingErr.details,
+        });
+      }
+
+      for (const row of existingItems ?? []) {
+        if (row?.external_key) {
+          itemIdByExternalKey.set(String(row.external_key), String(row.id));
+        }
+      }
+    }
+
+    stats.item_external_keys_mapped = itemIdByExternalKey.size;
+
+    if (draftMutated) {
+      const { error: draftUpdateErr } = await supabase
+        .from('menu_drafts')
+        .update({ draft })
+        .eq('restaurant_id', restaurantId);
+      if (draftUpdateErr) {
+        logSupabaseError('[publish:updateDraftExternalKeys]', draftUpdateErr, { restaurantId });
+        return res.status(500).json({
+          where: 'update_draft_external_keys',
+          error: draftUpdateErr.message,
+          code: draftUpdateErr.code,
+          details: draftUpdateErr.details,
+        });
+      }
+    }
+
+    // 4) Ensure draft links carry an external key for publish mapping
+    const { data: draftLinksNeedingKey, error: draftLinksErr } = await supabase
+      .from('item_addon_links_drafts')
+      .select('id,item_id,item_external_key')
+      .eq('restaurant_id', restaurantId)
+      .is('item_external_key', null);
+
+    if (draftLinksErr) {
+      logSupabaseError('[publish:fetchDraftLinksNeedingKey]', draftLinksErr, { restaurantId });
+      return res.status(500).json({
+        where: 'fetch_draft_links_missing_key',
+        error: draftLinksErr.message,
+        code: draftLinksErr.code,
+        details: draftLinksErr.details,
+      });
+    }
+
+    if ((draftLinksNeedingKey?.length ?? 0) > 0) {
+      const linkItemIds = Array.from(
+        new Set(
+          (draftLinksNeedingKey ?? [])
+            .map((link) => link.item_id)
+            .filter(Boolean)
+            .map(String),
+        ),
+      );
+
+      let itemLookup: Record<string, string> = {};
+      if (linkItemIds.length > 0) {
+        const { data: menuItemRows, error: menuItemErr } = await supabase
+          .from('menu_items')
+          .select('id,external_key')
+          .eq('restaurant_id', restaurantId)
+          .in('id', linkItemIds);
+
+        if (menuItemErr) {
+          logSupabaseError('[publish:fetchItemsForDraftLinks]', menuItemErr, { restaurantId });
+          return res.status(500).json({
+            where: 'fetch_items_for_draft_links',
+            error: menuItemErr.message,
+            code: menuItemErr.code,
+            details: menuItemErr.details,
+          });
+        }
+
+        itemLookup = Object.fromEntries(
+          (menuItemRows ?? [])
+            .filter((row) => row?.id && row?.external_key)
+            .map((row) => [String(row.id), String(row.external_key)]),
+        );
+      }
+
+      const updates = (draftLinksNeedingKey ?? [])
+        .map((link) => {
+          if (!link?.id || !link?.item_id) return undefined;
+          const externalKey = itemLookup[String(link.item_id)];
+          if (!externalKey) return undefined;
+          return { id: link.id, item_external_key: externalKey };
+        })
+        .filter(Boolean) as Array<{ id: string; item_external_key: string }>;
+
+      if (updates.length > 0) {
+        const { error: updateLinksErr, data: updatedLinks } = await supabase
+          .from('item_addon_links_drafts')
+          .upsert(updates, { onConflict: 'id' })
+          .select('id');
+
+        if (updateLinksErr) {
+          logSupabaseError('[publish:updateDraftLinksExternalKey]', updateLinksErr, { restaurantId });
+          return res.status(500).json({
+            where: 'update_draft_links_external_key',
+            error: updateLinksErr.message,
+            code: updateLinksErr.code,
+            details: updateLinksErr.details,
+          });
+        }
+
+        stats.draft_links_updated = updatedLinks?.length ?? 0;
+      }
+    }
+
+    // 5) Publish add-on groups, options, and links via transactional helper
+    const { data: publishAddonRows, error: publishAddonsError } = await supabase.rpc(
+      'publish_addons_from_drafts',
+      { p_restaurant_id: restaurantId }
+    );
+
+    if (publishAddonsError) {
+      logSupabaseError('[publish:addons:rpc]', publishAddonsError, { restaurantId });
+      return res.status(500).json({
+        where: 'publish_addons_from_drafts',
+        error: publishAddonsError.message,
+        code: publishAddonsError.code,
+        details: publishAddonsError.details,
+      });
+    }
+
+    const publishAddonResult = Array.isArray(publishAddonRows)
+      ? publishAddonRows[0]
+      : publishAddonRows;
+    stats.addon_groups_inserted = publishAddonResult?.groups_inserted ?? 0;
+    stats.addon_options_inserted = publishAddonResult?.options_inserted ?? 0;
+
+    // 6) Remap draft item->group links to live equivalents using external keys and group names
+    const { data: draftGroups, error: draftGroupsErr } = await supabase
+      .from('addon_groups_drafts')
+      .select('id,name')
+      .eq('restaurant_id', restaurantId)
+      .or('state.is.null,state.eq.draft')
+      .is('archived_at', null);
+
+    if (draftGroupsErr) {
+      logSupabaseError('[publish:loadDraftGroups]', draftGroupsErr, { restaurantId });
+      return res.status(500).json({
+        where: 'load_draft_groups',
+        error: draftGroupsErr.message,
+        code: draftGroupsErr.code,
+        details: draftGroupsErr.details,
+      });
+    }
+
+    const draftGroupNameById = new Map<string, string>();
+    for (const group of draftGroups ?? []) {
+      if (group?.id && group?.name) {
+        draftGroupNameById.set(String(group.id), String(group.name));
+      }
+    }
+
+    const { data: liveGroups, error: liveGroupsErr } = await supabase
+      .from('addon_groups')
+      .select('id,name')
+      .eq('restaurant_id', restaurantId)
+      .is('archived_at', null);
+
+    if (liveGroupsErr) {
+      logSupabaseError('[publish:loadLiveGroups]', liveGroupsErr, { restaurantId });
+      return res.status(500).json({
+        where: 'load_live_groups',
+        error: liveGroupsErr.message,
+        code: liveGroupsErr.code,
+        details: liveGroupsErr.details,
+      });
+    }
+
+    const liveGroupIdByName = new Map<string, string>();
+    for (const group of liveGroups ?? []) {
+      if (group?.id && group?.name) {
+        liveGroupIdByName.set(String(group.name), String(group.id));
+      }
+    }
+
+    const { data: draftLinks, error: draftLinksLoadErr } = await supabase
+      .from('item_addon_links_drafts')
+      .select('group_id,item_external_key')
+      .eq('restaurant_id', restaurantId)
+      .or('state.is.null,state.eq.draft')
+      .is('archived_at', null);
+
+    if (draftLinksLoadErr) {
+      logSupabaseError('[publish:loadDraftLinks]', draftLinksLoadErr, { restaurantId });
+      return res.status(500).json({
+        where: 'load_draft_links',
+        error: draftLinksLoadErr.message,
+        code: draftLinksLoadErr.code,
+        details: draftLinksLoadErr.details,
+      });
+    }
+
+    const { data: existingLiveLinks, error: existingLinksErr } = await supabase
+      .from('item_addon_links')
+      .select('item_id,group_id,addon_groups!inner(id,restaurant_id)')
+      .eq('addon_groups.restaurant_id', restaurantId);
+
+    if (existingLinksErr) {
+      logSupabaseError('[publish:loadExistingLinks]', existingLinksErr, { restaurantId });
+      return res.status(500).json({
+        where: 'load_existing_links',
+        error: existingLinksErr.message,
+        code: existingLinksErr.code,
+        details: existingLinksErr.details,
+      });
+    }
+
+    const existingPairs = new Set<string>();
+    for (const link of existingLiveLinks ?? []) {
+      const itemId = link?.item_id ? String(link.item_id) : undefined;
+      const groupId = link?.group_id ? String(link.group_id) : undefined;
+      const restaurantScope = (link as any)?.addon_groups?.restaurant_id
+        ? String((link as any).addon_groups.restaurant_id)
+        : undefined;
+      if (itemId && groupId && restaurantScope === restaurantId) {
+        existingPairs.add(`${itemId}:${groupId}`);
+      }
+    }
+
+    const linkInserts: Array<{ id: string; item_id: string; group_id: string }> = [];
+    for (const draftLink of draftLinks ?? []) {
+      const draftGroupId = draftLink?.group_id ? String(draftLink.group_id) : undefined;
+      const draftGroupName = draftGroupId ? draftGroupNameById.get(draftGroupId) : undefined;
+      if (!draftGroupName) continue;
+
+      const liveGroupId = liveGroupIdByName.get(draftGroupName);
+      if (!liveGroupId) continue;
+
+      const itemExternalKey = draftLink?.item_external_key ? String(draftLink.item_external_key) : undefined;
+      if (!itemExternalKey) continue;
+
+      const liveItemId = itemIdByExternalKey.get(itemExternalKey);
+      if (!liveItemId) continue;
+
+      const pairKey = `${liveItemId}:${liveGroupId}`;
+      if (existingPairs.has(pairKey)) continue;
+
+      existingPairs.add(pairKey);
+      linkInserts.push({ id: randomUUID(), item_id: liveItemId, group_id: liveGroupId });
+    }
+
+    if (linkInserts.length > 0) {
+      const { data: insertedLinks, error: insertLinksErr } = await supabase
+        .from('item_addon_links')
+        .upsert(linkInserts, { onConflict: 'item_id,group_id', ignoreDuplicates: true })
+        .select('id');
+
+      if (insertLinksErr) {
+        logSupabaseError('[publish:insertLinks]', insertLinksErr, { restaurantId, attempted: linkInserts.length });
+        return res.status(500).json({
+          where: 'insert_links',
+          error: insertLinksErr.message,
+          code: insertLinksErr.code,
+          details: insertLinksErr.details,
+        });
+      }
+
+      stats.addon_links_inserted = insertedLinks?.length ?? 0;
+      console.info('[publish:links]', { restaurantId, attempted: linkInserts.length, inserted: stats.addon_links_inserted });
+    } else {
+      stats.addon_links_inserted = 0;
+      console.info('[publish:links]', { restaurantId, attempted: 0, inserted: 0 });
     }
 
     return res.status(200).json({
-      deleted:  { categories: deletedCats, items: deletedItems, links: deletedLinks },
-      archived: { categories: archivedCats, items: archivedItems, links: archivedLinks },
-      inserted: { categories: insertedCats, items: insertedItems, links: insertedLinks },
+      restaurantId,
+      stats,
     });
 
   } catch (e: any) {

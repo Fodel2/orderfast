@@ -3,7 +3,7 @@ import { supabase } from '../utils/supabaseClient';
 
 interface AddonGroupModalProps {
   show: boolean;
-  restaurantId: number;
+  restaurantId: number | string;
   group?: any;
   onClose: () => void;
   onSaved: () => void;
@@ -61,9 +61,11 @@ export default function AddonGroupModal({
     const parsedMaxOption =
       maxOptionQuantity === '' ? null : parseInt(maxOptionQuantity, 10) || 0;
 
+    const restaurantKey = String(restaurantId);
+
     if (group) {
       const { error } = await supabase
-        .from('addon_groups')
+        .from('addon_groups_drafts')
         .update({
           name,
           multiple_choice: multipleChoice,
@@ -71,43 +73,27 @@ export default function AddonGroupModal({
           max_group_select: parsedMaxGroup,
           max_option_quantity: parsedMaxOption,
         })
-        .eq('id', group.id);
+        .eq('id', group.id)
+        .eq('restaurant_id', restaurantKey)
+        .eq('state', 'draft');
       if (error) {
         alert('Failed to save: ' + error.message);
         return;
       }
     } else {
-      // Patch: add restaurant_id to addon_groups insert
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      const { data: restaurantUser, error: fetchError } = await supabase
-        .from('restaurant_users')
-        .select('restaurant_id')
-        .eq('user_id', user?.id)
-        .single();
-
-      console.log('Fetched restaurant user:', restaurantUser, fetchError);
-
-      if (!restaurantUser) {
-        alert('No restaurant found for this user.');
-        return;
-      }
-
       const payload = {
         name,
         multiple_choice: multipleChoice,
         required,
-        restaurant_id: restaurantUser.restaurant_id,
+        restaurant_id: restaurantKey,
         max_group_select: parsedMaxGroup,
         max_option_quantity: parsedMaxOption,
+        archived_at: null,
+        state: 'draft',
       };
 
-      console.log('Inserting addon group:', payload);
-
       const { data, error: insertError } = await supabase
-        .from('addon_groups')
+        .from('addon_groups_drafts')
         .insert([payload])
         .select();
 

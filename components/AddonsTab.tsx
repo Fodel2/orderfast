@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { DndContext, PointerSensor, useSensor, useSensors, closestCenter, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -7,7 +7,7 @@ import { supabase } from '../utils/supabaseClient';
 import ConfirmModal from './ConfirmModal';
 import AddonGroupModal from './AddonGroupModal';
 
-function SortableOption({ id, children }: { id: number; children: React.ReactNode }) {
+function SortableOption({ id, children }: { id: string; children: React.ReactNode }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -23,114 +23,274 @@ function SortableOption({ id, children }: { id: number; children: React.ReactNod
   );
 }
 
-export default function AddonsTab({ restaurantId }: { restaurantId: number }) {
+export default function AddonsTab({ restaurantId }: { restaurantId: number | string }) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
   const [groups, setGroups] = useState<any[]>([]);
-  const [options, setOptions] = useState<Record<number, any[]>>({});
-  const [priceInputs, setPriceInputs] = useState<Record<number, string>>({});
+  const [options, setOptions] = useState<Record<string, any[]>>({});
+  const [priceInputs, setPriceInputs] = useState<Record<string, string>>({});
   const [showModal, setShowModal] = useState(false);
   const [editingGroup, setEditingGroup] = useState<any | null>(null);
   const [confirmDel, setConfirmDel] = useState<any | null>(null);
-  const [assignments, setAssignments] = useState<Record<number, string[]>>({});
+  const [assignments, setAssignments] = useState<Record<string, string[]>>({});
 
-  const load = async () => {
-    const { data: grp } = await supabase
-      .from('addon_groups')
-      .select('id,restaurant_id,name,multiple_choice,required,max_group_select,max_option_quantity')
-      .eq('restaurant_id', restaurantId)
-      .order('id');
-    setGroups(grp || []);
-    if (grp && grp.length) {
-      const { data: opts } = await supabase
-        .from('addon_options')
-        .select(
-          'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at'
-        )
-        .in('group_id', grp.map((g) => g.id));
-      const map: Record<number, any[]> = {};
-      const priceMap: Record<number, string> = {};
-      grp.forEach((g) => (map[g.id] = []));
-      opts?.forEach((o) => {
-        if (!map[o.group_id]) map[o.group_id] = [];
-        map[o.group_id].push(o);
-        priceMap[o.id] = String(o.price ?? 0);
-      });
-      setOptions(map);
-      setPriceInputs(priceMap);
+  const restaurantKey = String(restaurantId);
 
-      // Fetch item assignments for display
-      const { data: links } = await supabase
-        .from('item_addon_links')
-        .select('group_id,item_id');
-      const { data: items } = await supabase
-        .from('menu_items')
-        .select('id,name,category_id')
-        .eq('restaurant_id', restaurantId)
-        .order('archived_at', { ascending: true, nullsFirst: true })
-        .order('sort_order', { ascending: true, nullsFirst: false })
-        .order('name', { ascending: true });
-      const { data: cats } = await supabase
-        .from('menu_categories')
-        .select('id,name')
-        .eq('restaurant_id', restaurantId)
-        .order('archived_at', { ascending: true, nullsFirst: true })
-        .order('sort_order', { ascending: true, nullsFirst: false })
-        .order('name', { ascending: true });
-
-      const itemMap = new Map<number, { name: string; category_id: number | null }>();
-      items?.forEach((it) => {
-        itemMap.set(Number(it.id), { name: it.name, category_id: it.category_id });
-      });
-      const catMap = new Map<number, string>();
-      cats?.forEach((c) => catMap.set(Number(c.id), c.name));
-      const assignMap: Record<number, string[]> = {};
-      links?.forEach((l) => {
-        const gId = Number(l.group_id);
-        const item = itemMap.get(Number(l.item_id));
-        if (!item) return;
-        const catName = item.category_id ? catMap.get(Number(item.category_id)) : undefined;
-        const label = catName ? `${catName} - ${item.name}` : item.name;
-        if (!assignMap[gId]) assignMap[gId] = [];
-        assignMap[gId].push(label);
-      });
-      setAssignments(assignMap);
-    } else {
-      setOptions({});
-      setPriceInputs({});
-      setAssignments({});
+  const ensureDraftsSeeded = useCallback(async () => {
+    if (!restaurantKey) return false;
+    try {
+      const response = await fetch(
+        `/api/menu-builder?restaurant_id=${restaurantKey}&withAddons=1&ensureAddonsDrafts=1`
+      );
+      if (!response.ok) {
+        const detail = await response.text().catch(() => '');
+        console.error('[addons-tab:ensure-drafts]', response.status, detail);
+        return false;
+      }
+      const json = await response.json().catch(() => ({}));
+      if (json && typeof json === 'object') {
+        if (json.addonDraftsSeeded === true) return true;
+        if (Array.isArray(json.addonGroups) && json.addonGroups.length > 0) {
+          return true;
+        }
+      }
+      return false;
+    } catch (error) {
+      console.error('[addons-tab:ensure-drafts]', error);
+      return false;
     }
-  };
+  }, [restaurantKey]);
+
+  const load = useCallback(
+    async function loadDrafts(retry = false) {
+      try {
+        const { data: draftGroups, error: draftError } = await supabase
+          .from('addon_groups_drafts')
+          .select(
+            'id,restaurant_id,name,multiple_choice,required,max_group_select,max_option_quantity,archived_at,state'
+          )
+          .eq('restaurant_id', restaurantKey)
+          .eq('state', 'draft')
+          .is('archived_at', null)
+          .order('id', { ascending: true })
+          .order('name', { ascending: true });
+
+        if (draftError) {
+          console.error('[addons-tab:load:groups]', draftError.message);
+          setGroups([]);
+          setOptions({});
+          setPriceInputs({});
+          setAssignments({});
+          return;
+        }
+
+        if (!draftGroups || draftGroups.length === 0) {
+          if (!retry) {
+            const seeded = await ensureDraftsSeeded();
+            if (seeded) {
+              await loadDrafts(true);
+              return;
+            }
+          }
+          setGroups([]);
+          setOptions({});
+          setPriceInputs({});
+          setAssignments({});
+          return;
+        }
+
+        const normalizedGroups = draftGroups.map((group) => ({
+          ...group,
+          id: String(group.id),
+        }));
+
+        setGroups(normalizedGroups);
+
+        const groupIds = normalizedGroups.map((group) => group.id);
+        const { data: draftOptions, error: optionsError } = await supabase
+          .from('addon_options_drafts')
+          .select(
+            'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at,archived_at,state'
+          )
+          .eq('restaurant_id', restaurantKey)
+          .in('group_id', groupIds)
+          .eq('state', 'draft')
+          .is('archived_at', null);
+
+        const optionsMap: Record<string, any[]> = {};
+        const priceMap: Record<string, string> = {};
+        normalizedGroups.forEach((group) => {
+          optionsMap[group.id] = [];
+        });
+
+        if (optionsError) {
+          console.error('[addons-tab:load:options]', optionsError.message);
+        } else {
+          (draftOptions || []).forEach((opt) => {
+            const groupId = String(opt.group_id);
+            const normalizedOption = { ...opt, id: String(opt.id), group_id: groupId };
+            if (!optionsMap[groupId]) {
+              optionsMap[groupId] = [];
+            }
+            optionsMap[groupId].push(normalizedOption);
+            priceMap[String(opt.id)] = String(opt.price ?? 0);
+          });
+        }
+
+        setOptions(optionsMap);
+        setPriceInputs(priceMap);
+
+          const { data: links, error: linksError } = await supabase
+            .from('item_addon_links_drafts')
+            .select('group_id,item_external_key')
+            .eq('restaurant_id', restaurantKey);
+
+        if (linksError) {
+          console.error('[addons-tab:load:links]', linksError.message);
+          setAssignments({});
+          return;
+        }
+
+        const { data: items, error: itemsError } = await supabase
+          .from('menu_items')
+          .select('id,name,category_id,external_key')
+          .eq('restaurant_id', restaurantKey)
+          .order('archived_at', { ascending: true, nullsFirst: true })
+          .order('sort_order', { ascending: true, nullsFirst: false })
+          .order('name', { ascending: true });
+
+        if (itemsError) {
+          console.error('[addons-tab:load:items]', itemsError.message);
+          setAssignments({});
+          return;
+        }
+
+        const { data: cats, error: catsError } = await supabase
+          .from('menu_categories')
+          .select('id,name')
+          .eq('restaurant_id', restaurantKey)
+          .order('archived_at', { ascending: true, nullsFirst: true })
+          .order('sort_order', { ascending: true, nullsFirst: false })
+          .order('name', { ascending: true });
+
+        if (catsError) {
+          console.error('[addons-tab:load:categories]', catsError.message);
+          setAssignments({});
+          return;
+        }
+
+        const externalToItem = new Map<string, { name: string; category_id: string | null }>();
+        (items || []).forEach((item) => {
+          if (!item?.external_key) return;
+          externalToItem.set(String(item.external_key), {
+            name: item.name,
+            category_id: item.category_id ? String(item.category_id) : null,
+          });
+        });
+
+        const catMap = new Map<string, string>();
+        (cats || []).forEach((cat) => {
+          if (!cat?.id) return;
+          catMap.set(String(cat.id), cat.name);
+        });
+
+        const assignMap: Record<string, string[]> = {};
+          (links || []).forEach((link) => {
+            const groupId = link?.group_id ? String(link.group_id) : undefined;
+            if (!groupId) return;
+            const item = link.item_external_key
+              ? externalToItem.get(String(link.item_external_key))
+              : undefined;
+          if (!item) return;
+          const catName = item.category_id ? catMap.get(item.category_id) : undefined;
+          const label = catName ? `${catName} - ${item.name}` : item.name;
+          if (!assignMap[groupId]) assignMap[groupId] = [];
+          assignMap[groupId].push(label);
+        });
+
+        setAssignments(assignMap);
+      } catch (error) {
+        console.error('[addons-tab:load:error]', error);
+        setGroups([]);
+        setOptions({});
+        setPriceInputs({});
+        setAssignments({});
+      }
+    },
+    [restaurantKey, ensureDraftsSeeded]
+  );
 
   useEffect(() => {
+    if (!restaurantKey) return;
     load();
-  }, [restaurantId]);
+  }, [load, restaurantKey]);
 
-  const addOption = async (gid: number) => {
-    const { data } = await supabase
-      .from('addon_options')
-      .insert([{ name: '', price: 0, available: true, group_id: gid }])
-      .select()
+  const addOption = async (gid: string) => {
+    const { data, error } = await supabase
+      .from('addon_options_drafts')
+      .insert([
+        {
+          restaurant_id: restaurantKey,
+          group_id: gid,
+          name: '',
+          price: 0,
+          available: true,
+          archived_at: null,
+          state: 'draft',
+        },
+      ])
+      .select(
+        'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at'
+      )
       .single();
+
+    if (error) {
+      console.error('[addons-tab:add-option]', error.message);
+      return;
+    }
+
     if (data) {
-      setOptions((prev) => ({ ...prev, [gid]: [...(prev[gid] || []), data] }));
-      setPriceInputs((prev) => ({ ...prev, [data.id]: '0' }));
+      const optionId = String(data.id);
+      const groupId = String(data.group_id ?? gid);
+      const normalized = { ...data, id: optionId, group_id: groupId };
+      setOptions((prev) => ({ ...prev, [groupId]: [...(prev[groupId] || []), normalized] }));
+      setPriceInputs((prev) => ({ ...prev, [optionId]: '0' }));
     }
   };
 
-  const updateOption = async (gid: number, id: number, fields: any) => {
-    await supabase.from('addon_options').update(fields).eq('id', id);
+  const updateOption = async (gid: string, id: string, fields: any) => {
+    const { error } = await supabase
+      .from('addon_options_drafts')
+      .update(fields)
+      .eq('id', id)
+      .eq('restaurant_id', restaurantKey);
+
+    if (error) {
+      console.error('[addons-tab:update-option]', error.message);
+      return;
+    }
+
     setOptions((prev) => ({
       ...prev,
-      [gid]: prev[gid].map((o) => (o.id === id ? { ...o, ...fields } : o)),
+      [gid]: (prev[gid] || []).map((o) => (o.id === id ? { ...o, ...fields } : o)),
     }));
     if (fields.price !== undefined) {
       setPriceInputs((p) => ({ ...p, [id]: String(fields.price) }));
     }
   };
 
-  const deleteOption = async (gid: number, id: number) => {
-    await supabase.from('addon_options').delete().eq('id', id);
-    setOptions((prev) => ({ ...prev, [gid]: prev[gid].filter((o) => o.id !== id) }));
+  const deleteOption = async (gid: string, id: string) => {
+    const { error } = await supabase
+      .from('addon_options_drafts')
+      .delete()
+      .eq('id', id)
+      .eq('restaurant_id', restaurantKey);
+
+    if (error) {
+      console.error('[addons-tab:delete-option]', error.message);
+      return;
+    }
+
+    setOptions((prev) => ({ ...prev, [gid]: (prev[gid] || []).filter((o) => o.id !== id) }));
     setPriceInputs((prev) => {
       const copy = { ...prev };
       delete copy[id];
@@ -138,10 +298,10 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number }) {
     });
   };
 
-  const handleDragEnd = (gid: number) => ({ active, over }: DragEndEvent) => {
+  const handleDragEnd = (gid: string) => ({ active, over }: DragEndEvent) => {
     if (!over || active.id === over.id) return;
     setOptions((prev) => {
-      const arr = prev[gid];
+      const arr = prev[gid] || [];
       const oldIndex = arr.findIndex((o) => o.id === active.id);
       const newIndex = arr.findIndex((o) => o.id === over.id);
       return { ...prev, [gid]: arrayMove(arr, oldIndex, newIndex) };
@@ -150,32 +310,38 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number }) {
 
   const duplicateGroup = async (g: any) => {
     const { data: newGroup } = await supabase
-      .from('addon_groups')
+      .from('addon_groups_drafts')
       .insert([
         {
           name: `${g.name} - copy`,
           multiple_choice: g.multiple_choice,
           required: g.required,
-          restaurant_id: restaurantId,
+          restaurant_id: restaurantKey,
           max_group_select: g.max_group_select,
           max_option_quantity: g.max_option_quantity,
+          archived_at: null,
+          state: 'draft',
         },
       ])
       .select()
       .single();
     if (newGroup) {
-      const groupOpts = options[g.id] || [];
+      const newGroupId = String(newGroup.id);
+      const groupOpts = options[String(g.id)] || [];
       if (groupOpts.length) {
-        await supabase.from('addon_options').insert(
+        await supabase.from('addon_options_drafts').insert(
           groupOpts.map((o) => ({
             name: o.name,
             price: o.price,
             available: o.available,
-            group_id: newGroup.id,
+            group_id: newGroupId,
             out_of_stock_until: o.out_of_stock_until,
             stock_status: o.stock_status,
             stock_return_date: o.stock_return_date,
             stock_last_updated_at: o.stock_last_updated_at,
+            restaurant_id: restaurantKey,
+            archived_at: null,
+            state: 'draft',
           }))
         );
       }
@@ -184,9 +350,13 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number }) {
   };
 
   const deleteGroup = async (g: any) => {
-    await supabase.from('addon_options').delete().eq('group_id', g.id);
-    await supabase.from('item_addon_links').delete().eq('group_id', g.id);
-    await supabase.from('addon_groups').delete().eq('id', g.id);
+    await supabase.from('addon_options_drafts').delete().eq('group_id', g.id).eq('restaurant_id', restaurantKey);
+    await supabase
+      .from('item_addon_links_drafts')
+      .delete()
+      .eq('group_id', g.id)
+      .eq('restaurant_id', restaurantKey);
+    await supabase.from('addon_groups_drafts').delete().eq('id', g.id).eq('restaurant_id', restaurantKey);
     load();
   };
 

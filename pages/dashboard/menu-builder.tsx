@@ -50,17 +50,40 @@ const normalizeCats = (arr: any[]) =>
 
 const normalizeItems = (arr: any[]) =>
   [...arr]
-    .map(({ id, category_id, name, description, price, sort_order }) => ({
+    .map(({ id, category_id, name, description, price, sort_order, addons }) => ({
       id,
       category_id,
       name,
       description,
       price,
       sort_order,
+      addons: Array.isArray(addons)
+        ? [...addons].map(String).sort((a, b) => a.localeCompare(b))
+        : [],
     }))
     .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
 
 const deepEqual = (a: any, b: any) => JSON.stringify(a) === JSON.stringify(b);
+
+const createExternalKey = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random()}`;
+};
+
+const normalizeDraftItem = (item: any) => {
+  const addons = Array.isArray(item.addons) ? item.addons.map(String) : [];
+  const externalKey =
+    typeof item.external_key === 'string' && item.external_key
+      ? item.external_key
+      : createExternalKey();
+  return {
+    ...item,
+    external_key: externalKey,
+    addons,
+  };
+};
 
 // Small wrapper component used for dnd-kit sortable items
 function SortableWrapper({
@@ -168,10 +191,7 @@ export default function MenuBuilder() {
         const draft = json.draft ?? json.payload ?? json.data ?? json.draft_json ?? {};
         const cats = Array.isArray(draft?.categories) ? draft.categories : [];
         const itemsArr = Array.isArray(draft?.items) ? draft.items : [];
-        const items = itemsArr.map((it: any) => ({
-          ...it,
-          addons: Array.isArray(it.addons) ? it.addons : [],
-        }));
+        const items = itemsArr.map(normalizeDraftItem);
         setBuildCategories(cats);
         setBuildItems(items);
         setOrigBuildCategories(cats);
@@ -223,8 +243,22 @@ export default function MenuBuilder() {
         }
         draftErrorShown.current = false;
         setToastMessage('Draft saved');
-        setOrigBuildCategories(buildCategories);
-        setOrigBuildItems(buildItems);
+        const savedDraft = json?.draft ?? json?.payload;
+        if (savedDraft) {
+          const savedCategories = Array.isArray(savedDraft.categories)
+            ? savedDraft.categories
+            : [];
+          const savedItems = Array.isArray(savedDraft.items)
+            ? savedDraft.items.map(normalizeDraftItem)
+            : [];
+          setBuildCategories(savedCategories);
+          setBuildItems(savedItems);
+          setOrigBuildCategories(savedCategories);
+          setOrigBuildItems(savedItems);
+        } else {
+          setOrigBuildCategories(buildCategories);
+          setOrigBuildItems(buildItems);
+        }
         if (process.env.NODE_ENV === 'development') {
           console.debug('[menu-builder] draft saved');
         }
@@ -281,13 +315,15 @@ export default function MenuBuilder() {
       const { data: groups } = await supabase
         .from('addon_groups')
         .select('id')
-        .eq('restaurant_id', rid);
+        .eq('restaurant_id', rid)
+        .is('archived_at', null);
       let mappedAddons: StockTabProps['addons'] = [];
       if (groups && groups.length) {
         const { data: opts } = await supabase
           .from('addon_options')
           .select('id,name,group_id,stock_status,stock_return_date,available,out_of_stock_until,stock_last_updated_at')
-          .in('group_id', groups.map((g) => g.id));
+          .in('group_id', groups.map((g) => g.id))
+          .is('archived_at', null);
         mappedAddons = (opts || []).map((o) => ({
           id: String(o.id),
           name: o.name,
@@ -532,16 +568,20 @@ export default function MenuBuilder() {
           `/api/menu-builder?restaurant_id=${rid}&withAddons=1`
         );
         if (!linkRes.ok) throw new Error('Failed to fetch addon links');
-        const { addonLinks } = await linkRes.json();
-        const map: Record<number, string[]> = {};
-        (addonLinks || []).forEach((r: any) => {
-          if (!map[r.item_id]) map[r.item_id] = [];
-          map[r.item_id].push(String(r.group_id));
-        });
-        itemsWithAddons = itemsData.map((i) => ({
-          ...i,
-          addons: map[i.id] || [],
-        }));
+          const { addonLinks } = await linkRes.json();
+          const map: Record<string, string[]> = {};
+          (addonLinks || []).forEach((r: any) => {
+            const itemKey = r?.item_id ? String(r.item_id) : r?.item_external_key;
+            if (!itemKey) return;
+            if (!map[itemKey]) map[itemKey] = [];
+            map[itemKey].push(String(r.group_id));
+          });
+          itemsWithAddons = itemsData.map((i) => ({
+            ...i,
+            addons:
+              map[String(i.id)] ||
+              (i.external_key ? map[String(i.external_key)] : []),
+          }));
       } catch (err) {
         console.error('Error fetching addon links:', err);
       }
@@ -638,9 +678,10 @@ export default function MenuBuilder() {
             setToastMessage(`${json.where}: ${json.error || json.details || 'Failed to publish menu'}`);
             return;
           }
-          const { deleted = {}, archived = {}, inserted = {} } = json;
+          const { deleted = {}, archived = {}, inserted = {}, publish: publishCounts = {} } = json;
+          const addonSummary = `Add-ons ${publishCounts.groups_inserted || 0} groups/${publishCounts.options_inserted || 0} options/${publishCounts.links_inserted || 0} links`;
           setToastMessage(
-            `Deleted ${deleted.categories || 0}/${deleted.items || 0} Archived ${archived.categories || 0}/${archived.items || 0} Inserted ${inserted.categories || 0}/${inserted.items || 0}`
+            `Deleted ${deleted.categories || 0}/${deleted.items || 0} Archived ${archived.categories || 0}/${archived.items || 0} Inserted ${inserted.categories || 0}/${inserted.items || 0} ${addonSummary}`
           );
           fetchData(restaurantId);
         } catch (err: any) {

@@ -1,76 +1,84 @@
 import { supabase } from '../lib/supabaseClient';
+import { ITEM_ADDON_LINK_WITH_GROUPS_SELECT } from '../lib/queries/addons';
 import type { AddonGroup } from './types';
 
 /**
- * Fetch addon groups and options for a menu item.
+ * Fetch live addon groups and options for a menu item.
  */
 export async function getAddonsForItem(
   itemId: number | string
 ): Promise<AddonGroup[]> {
-  const query = supabase
+  const itemIdStr = String(itemId);
+
+  const linkQuery = supabase
     .from('item_addon_links')
-    .select(
-      `addon_groups!inner(
-        id,restaurant_id,name,required,multiple_choice,max_group_select,max_option_quantity,
-        addon_options!inner(
-          id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at
-        )
-      )`
-    )
-    .eq('item_id', itemId);
+    .select(ITEM_ADDON_LINK_WITH_GROUPS_SELECT)
+    .eq('item_id', itemIdStr)
+    .is('addon_groups.archived_at', null)
+    .is('addon_groups.addon_options.archived_at', null);
 
-  const requestUrl = (query as unknown as { url?: URL }).url?.toString();
+  const requestUrl = (linkQuery as unknown as { url?: URL }).url?.toString();
 
-  const { data, error } = await query;
+  const { data: linkRows, error: linkError } = await linkQuery;
 
-  if (error) throw error;
+  if (linkError) throw linkError;
 
-  const map = new Map<string, AddonGroup>();
-  (data || []).forEach((row: any) => {
-    const g = row.addon_groups;
-    if (!g) return;
-    const gid = String(g.id);
-    if (!map.has(gid)) {
-      map.set(gid, {
+  const groupsMap = new Map<string, AddonGroup>();
+
+  (linkRows || []).forEach((row: any) => {
+    const group = Array.isArray(row.addon_groups)
+      ? row.addon_groups[0]
+      : row.addon_groups;
+    if (!group || group.archived_at) return;
+
+    const gid = String(group.id);
+    if (!groupsMap.has(gid)) {
+      groupsMap.set(gid, {
         id: gid,
         group_id: gid,
-        name: g.name,
-        required: g.required,
-        multiple_choice: g.multiple_choice,
-        max_group_select: g.max_group_select,
-        max_option_quantity: g.max_option_quantity,
+        name: group.name,
+        required: group.required,
+        multiple_choice: group.multiple_choice,
+        max_group_select: group.max_group_select,
+        max_option_quantity: group.max_option_quantity,
         addon_options: [],
       });
     }
-    const group = map.get(gid)!;
-    (g.addon_options || []).forEach((opt: any) => {
-      group.addon_options.push({
-        id: String(opt.id),
-        group_id: opt.group_id ? String(opt.group_id) : gid,
-        name: opt.name,
-        price: opt.price,
-        available: opt.available,
-        out_of_stock_until: opt.out_of_stock_until,
-        stock_status: opt.stock_status,
-        stock_return_date: opt.stock_return_date,
-        stock_last_updated_at: opt.stock_last_updated_at,
+
+    const groupRef = groupsMap.get(gid)!;
+    const options = Array.isArray(group.addon_options)
+      ? group.addon_options
+      : group.addon_options
+      ? [group.addon_options]
+      : [];
+
+    for (const option of options) {
+      if (!option || option.archived_at) continue;
+      groupRef.addon_options.push({
+        id: String(option.id),
+        group_id: gid,
+        name: option.name,
+        price:
+          typeof option.price === 'number'
+            ? option.price
+            : Number(option.price ?? 0),
+        available: option.available !== false,
+        out_of_stock_until: option.out_of_stock_until,
+        stock_status: option.stock_status,
+        stock_return_date: option.stock_return_date,
+        stock_last_updated_at: option.stock_last_updated_at,
       });
-    });
+    }
   });
 
   if (process.env.NODE_ENV === 'development') {
-    console.debug('[customer:addons]', {
-      itemId,
-      rawRows: data?.length ?? 0,
-      groups: map.size,
-      options: Array.from(map.values()).reduce(
-        (sum, group) => sum + (group.addon_options?.length ?? 0),
-        0,
-      ),
+    console.debug('[customer:addons:live]', {
+      itemId: itemIdStr,
+      groups: groupsMap.size,
       requestUrl,
     });
   }
 
-  return Array.from(map.values());
+  return Array.from(groupsMap.values());
 }
 
