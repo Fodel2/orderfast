@@ -1,12 +1,10 @@
-import { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
+import type { CSSProperties } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useCart } from '../context/CartContext';
-import { getAddonsForItem } from '../utils/getAddonsForItem';
-import type { AddonGroup } from '../utils/types';
-import AddonGroups, { validateAddonSelections } from './AddonGroups';
 import PlateAdd from '@/components/icons/PlateAdd';
 import { useBrand } from '@/components/branding/BrandProvider';
 import { formatPrice } from '@/lib/orderDisplay';
+import ItemModal from '@/components/modals/ItemModal';
 
 function contrast(c?: string) {
   try {
@@ -42,13 +40,6 @@ export default function MenuItemCard({
   restaurantId: string | number;
 }) {
   const [showModal, setShowModal] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [groups, setGroups] = useState<AddonGroup[]>([]);
-  const [qty, setQty] = useState(1);
-  const [notes, setNotes] = useState('');
-  const [selections, setSelections] = useState<
-    Record<string, Record<string, number>>
-  >({});
   const { addToCart } = useCart();
   const brand = useBrand?.();
   const accent =
@@ -63,11 +54,15 @@ export default function MenuItemCard({
         ?.trim();
       setSecText(contrast(v));
       setMix(
-        !!(window.CSS && CSS.supports && CSS.supports('color', `color-mix(in oklab, ${sec} 50%, transparent)`))
+        !!(
+          window.CSS &&
+          CSS.supports &&
+          CSS.supports('color', `color-mix(in oklab, ${sec} 50%, transparent)`)
+        )
       );
     }
   }, []);
-  const badgeStyles = mix
+  const badgeStyles: CSSProperties = mix
     ? {
         background: `color-mix(in oklab, ${sec} 18%, transparent)`,
         borderColor: `color-mix(in oklab, ${sec} 60%, transparent)`,
@@ -75,259 +70,49 @@ export default function MenuItemCard({
       }
     : { background: `${sec}1A`, borderColor: sec, color: secText };
   const logo = brand?.logoUrl;
-  const [mounted, setMounted] = useState(false);
-  const [modalAnim, setModalAnim] = useState(false);
-
-  useEffect(() => setMounted(true), []);
-
-  useEffect(() => {
-    if (showModal) {
-      setModalAnim(true);
-    } else {
-      setModalAnim(false);
-    }
-  }, [showModal]);
-
-  useEffect(() => {
-    if (!showModal) return;
-    const prev = document.documentElement.style.overflow;
-    document.documentElement.style.overflow = 'hidden';
-    return () => {
-      document.documentElement.style.overflow = prev;
-    };
-  }, [showModal]);
 
   const price =
     typeof item?.price === 'number' ? item.price : Number(item?.price || 0);
   const imageUrl = item?.image_url || undefined;
   const currency = 'GBP';
   const formattedPrice = formatPrice(price / 100, currency);
-  const badges: string[] = [];
-  if (item?.is_vegan) badges.push('Vegan');
-  else if (item?.is_vegetarian) badges.push('Vegetarian');
-  if (item?.is_18_plus) badges.push('18+');
-
-  const loadAddons = async () => {
-    setLoading(true);
-    try {
-      const data = await getAddonsForItem(item.id);
-      const sanitized = Array.isArray(data) ? data : [];
-      setGroups(sanitized);
-      if (process.env.NODE_ENV === 'development') {
-        console.debug('[customer:item-modal] fetched add-on groups', {
-          itemId: item.id,
-          groupsCount: sanitized.length,
-        });
-        if (!Array.isArray(data)) {
-          console.warn('[customer:item-modal] unexpected add-on payload', {
-            itemId: item.id,
-            receivedType: typeof data,
-          });
-        }
-      }
-    } catch (err) {
-      console.error('Failed to load addons', err);
-      setGroups([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const badges = useMemo(() => {
+    const list: string[] = [];
+    if (item?.is_vegan) list.push('Vegan');
+    else if (item?.is_vegetarian) list.push('Vegetarian');
+    if (item?.is_18_plus) list.push('18+');
+    return list;
+  }, [item?.is_18_plus, item?.is_vegan, item?.is_vegetarian]);
 
   const handleClick = () => {
     setShowModal(true);
-    loadAddons();
   };
 
-  const increment = () => setQty((q) => q + 1);
-  const decrement = () => setQty((q) => (q > 1 ? q - 1 : 1));
-
-  useEffect(() => {
-    if (process.env.NODE_ENV === 'development') {
-      console.debug('[customer:item-modal] rendering with add-on groups', {
-        itemId: item.id,
-        groupsCount: groups.length,
-      });
-    }
-  }, [groups, item.id]);
-
-  const handleFinalAdd = () => {
-    const errors = validateAddonSelections(groups, selections);
-    if (Object.keys(errors).length) {
-      alert('Please complete required add-ons');
-      return;
-    }
-
-    const addons = groups.flatMap((g) => {
-      const gid = g.group_id ?? g.id;
-      const opts = selections[gid] || {};
-      return g.addon_options
-        .map((opt) => {
-          const q = opts[opt.id] || 0;
-          if (q > 0) {
-            return {
-              option_id: opt.id,
-              name: opt.name,
-              price: opt.price ?? 0,
-              quantity: q,
-            };
-          }
-          return null;
-        })
-        .filter(Boolean) as any;
-    });
+  const handleAddToCart = (modalItem: any, quantity: number, addons: any[]) => {
+    const { notes, ...rest } = modalItem || {};
+    const itemId = rest?.id ?? item.id;
+    const itemName = rest?.name ?? item.name;
+    const itemPrice = typeof rest?.price === 'number' ? rest.price : price;
+    const trimmedNotes = typeof notes === 'string' ? notes.trim() : '';
 
     addToCart(String(restaurantId), {
-      item_id: String(item.id),
-      name: item.name,
-      price: price,
-      quantity: qty,
-      notes: notes.trim() || undefined,
-      addons: addons.length ? addons : undefined,
+      item_id: String(itemId),
+      name: itemName,
+      price: itemPrice,
+      quantity,
+      notes: trimmedNotes ? trimmedNotes : undefined,
+      addons: Array.isArray(addons) && addons.length ? addons : undefined,
     });
 
-    setQty(1);
-    setNotes('');
-    setSelections({});
     setShowModal(false);
   };
 
-  const modalNode = (
-    <>
-      <div
-        className="fixed inset-0 z-[9998] bg-black/40 backdrop-blur-[2px]"
-        onClick={() => setShowModal(false)}
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        className={`fixed z-[9999] inset-x-0 bottom-0 md:inset-0 md:flex md:items-center md:justify-center w-full md:w-auto md:max-w-xl max-h-[92dvh] md:max-h-[88dvh] bg-white rounded-t-2xl md:rounded-2xl shadow-2xl flex flex-col transition-all duration-200 ease-out ${modalAnim ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1'}`}
-      >
-        {imageUrl && (
-          <div className="relative w-full overflow-hidden rounded-t-2xl">
-            <img
-              src={imageUrl}
-              alt={item?.name || ''}
-              className="w-full h-44 md:h-56 object-cover"
-            />
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/45 to-transparent" />
-            <div className="absolute inset-x-0 bottom-0 p-4 md:p-5 flex flex-col items-start">
-              <div className="w-full flex items-end justify-between">
-                <div className="text-white drop-shadow-md text-lg md:text-xl font-semibold">
-                  {item?.name}
-                </div>
-                {typeof price === 'number' && (
-                  <div className="text-white/95 drop-shadow-md font-semibold">
-                    {formattedPrice}
-                  </div>
-                )}
-              </div>
-              {badges.length > 0 && (
-                <div className="mt-2 flex gap-2">
-                {badges.map((b) => (
-                  <span
-                    key={b}
-                    className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium border"
-                    style={badgeStyles}
-                  >
-                    {b}
-                  </span>
-                ))}
-              </div>
-            )}
-            </div>
-          </div>
-        )}
-        <div
-          className="sticky top-0 z-10 bg-white/95 backdrop-blur border-b px-4 md:px-6 py-3"
-          style={{ borderColor: accent ? `${accent}33` : undefined }}
-        >
-          <div className="flex items-center justify-between">
-            {imageUrl ? (
-              <span className="text-sm font-medium">{item.name}</span>
-            ) : (
-              <h3 className="text-lg font-semibold">{item.name}</h3>
-            )}
-            <div className="flex items-center gap-4">
-              {!imageUrl && (
-                <span className="text-sm font-medium">{formatPrice(price / 100, currency)}</span>
-              )}
-              <button
-                type="button"
-                aria-label="Close"
-                onClick={() => setShowModal(false)}
-                className="p-2 rounded transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-                style={{ ['--tw-ring-color' as any]: accent } as React.CSSProperties}
-              >
-                ×
-              </button>
-            </div>
-          </div>
-          {!imageUrl && badges.length > 0 && (
-            <div className="mt-2 flex gap-2">
-              {badges.map((b) => (
-                <span
-                  key={b}
-                  className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium border"
-                  style={badgeStyles}
-                >
-                  {b}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="flex-1 overflow-y-auto px-4 md:px-6 py-3 space-y-4">
-          {loading ? (
-            <p className="text-center text-gray-500">Loading...</p>
-          ) : groups.length > 0 ? (
-            <AddonGroups addons={groups} onChange={setSelections} />
-          ) : null}
-          <textarea
-            className="w-full border rounded p-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-            style={{ ['--tw-ring-color' as any]: accent } as React.CSSProperties}
-            placeholder="Add notes (optional)"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-          />
-        </div>
-        <div className="sticky bottom-0 z-10 bg-white border-t px-4 md:px-6 py-3 pt-[env(safe-area-inset-bottom)] shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center border rounded">
-              <button
-                type="button"
-                aria-label="Decrease quantity"
-                onClick={decrement}
-                className="w-8 h-8 flex items-center justify-center rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-                style={{ ['--tw-ring-color' as any]: accent } as React.CSSProperties}
-              >
-                -
-              </button>
-              <span data-testid="qty" className="w-6 text-center">
-                {qty}
-              </span>
-              <button
-                type="button"
-                aria-label="Increase quantity"
-                onClick={increment}
-                className="w-8 h-8 flex items-center justify-center rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-                style={{ ['--tw-ring-color' as any]: accent } as React.CSSProperties}
-              >
-                +
-              </button>
-            </div>
-            <button
-              aria-label="Confirm Add to Plate"
-              onClick={handleFinalAdd}
-              className="px-4 py-2 rounded hover:opacity-90 btn-primary flex items-center gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition"
-              style={{ ['--tw-ring-color' as any]: accent || 'currentColor' } as React.CSSProperties}
-            >
-              <PlateAdd size={18} />
-              Add to Plate
-            </button>
-          </div>
-        </div>
-      </div>
-    </>
+  const itemForModal = useMemo(
+    () => ({
+      ...item,
+      __onClose: () => setShowModal(false),
+    }),
+    [item]
   );
 
   return (
@@ -338,12 +123,12 @@ export default function MenuItemCard({
           onClick={handleClick}
           role="button"
           tabIndex={0}
-          style={{ ['--tw-ring-color' as any]: accent || 'currentColor' } as React.CSSProperties}
+          style={{ ['--tw-ring-color' as any]: accent || 'currentColor' } as CSSProperties}
         >
           <div className="w-24 h-24 sm:w-28 sm:h-28 shrink-0 overflow-hidden rounded-xl">
-            {item?.image_url ? (
+            {imageUrl ? (
               <img
-                src={item.image_url}
+                src={imageUrl}
                 alt={item.name}
                 className="h-full w-full object-cover"
               />
@@ -370,22 +155,22 @@ export default function MenuItemCard({
             )}
             {badges.length > 0 && (
               <div className="mt-1 flex flex-wrap gap-1">
-                  {badges.map((b) => (
-                    <span
-                      key={b}
-                      className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium border"
-                      style={badgeStyles}
-                    >
-                      {b}
-                    </span>
-                  ))}
-                </div>
-              )}
+                {badges.map((b) => (
+                  <span
+                    key={b}
+                    className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium border"
+                    style={badgeStyles}
+                  >
+                    {b}
+                  </span>
+                ))}
+              </div>
+            )}
             <div className="mt-2 flex justify-end">
               <button
                 type="button"
                 className="btn-icon min-w-[40px] min-h-[40px] transition-transform duration-150 ease-out hover:scale-[1.05] active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-                style={{ ['--tw-ring-color' as any]: accent || 'currentColor' } as React.CSSProperties}
+                style={{ ['--tw-ring-color' as any]: accent || 'currentColor' } as CSSProperties}
                 onClick={(e) => {
                   e.stopPropagation();
                   handleClick();
@@ -399,7 +184,13 @@ export default function MenuItemCard({
         </div>
       </div>
 
-      {showModal && mounted ? createPortal(modalNode, document.body) : null}
+      {showModal ? (
+        <ItemModal
+          item={itemForModal}
+          restaurantId={String(restaurantId)}
+          onAddToCart={handleAddToCart}
+        />
+      ) : null}
     </>
   );
 }
