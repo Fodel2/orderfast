@@ -169,14 +169,16 @@ export default function KioskMenuPage() {
 
   const categorizedItems = useMemo(() => {
     if (!categories.length) return [];
-    return categories.map((category) => {
-      const catItems = items.filter(
-        (item) =>
-          item.category_id === category.id ||
-          itemLinks.some((link) => link.category_id === category.id && link.item_id === item.id)
-      );
-      return { ...category, items: catItems };
-    });
+    return categories
+      .map((category) => {
+        const catItems = items.filter(
+          (item) =>
+            item.category_id === category.id ||
+            itemLinks.some((link) => link.category_id === category.id && link.item_id === item.id)
+        );
+        return { ...category, items: catItems };
+      })
+      .filter((category) => category.items.length > 0);
   }, [categories, itemLinks, items]);
 
   const uncategorizedItems = useMemo(() => {
@@ -188,7 +190,8 @@ export default function KioskMenuPage() {
   const title = restaurant?.website_title || restaurant?.name || 'Restaurant';
   const subtitle = restaurant?.website_description || undefined;
 
-  const hasCategoryItems = categorizedItems.some((category) => category.items.length > 0);
+  const hasCategoryItems = categorizedItems.length > 0;
+  const hasUncategorizedItems = uncategorizedItems.length > 0;
 
   return (
     <KioskLayout
@@ -217,39 +220,36 @@ export default function KioskMenuPage() {
         </div>
       ) : (
         <div className="flex flex-col gap-10">
-          {categorizedItems.map((category) => {
-            if (!category.items.length) return null;
-            return (
-              <section key={category.id} className="flex flex-col gap-4">
-                <header className="flex flex-col gap-1">
-                  <h2 className="text-2xl font-semibold tracking-tight text-white">{category.name}</h2>
-                  {category.description ? (
-                    <p className="text-sm text-white/70">{category.description}</p>
-                  ) : null}
-                </header>
-                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-                  {category.items.map((item) => (
-                    <MenuItemCard key={item.id} item={item} restaurantId={restaurantId} />
-                  ))}
-                </div>
-              </section>
-            );
-          })}
+          {categorizedItems.map((category) => (
+            <section key={category.id} className="flex flex-col gap-4">
+              <header className="flex flex-col gap-1">
+                <h2 className="text-2xl font-semibold tracking-tight text-white">{category.name}</h2>
+                {category.description ? (
+                  <p className="text-sm text-white/70">{category.description}</p>
+                ) : null}
+              </header>
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                {category.items.map((item) => (
+                  <MenuItemCard key={item.id} item={item} restaurantId={restaurantId} variant="kiosk" />
+                ))}
+              </div>
+            </section>
+          ))}
 
-          {uncategorizedItems.length > 0 ? (
+          {hasUncategorizedItems ? (
             <section className="flex flex-col gap-4">
               <header>
                 <h2 className="text-2xl font-semibold tracking-tight text-white">Other items</h2>
               </header>
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                 {uncategorizedItems.map((item) => (
-                  <MenuItemCard key={item.id} item={item} restaurantId={restaurantId} />
+                  <MenuItemCard key={item.id} item={item} restaurantId={restaurantId} variant="kiosk" />
                 ))}
               </div>
             </section>
           ) : null}
 
-          {!hasCategoryItems && !uncategorizedItems.length ? (
+          {!hasCategoryItems && !hasUncategorizedItems ? (
             <div className="rounded-2xl border border-dashed border-white/20 p-8 text-center text-white/70">
               This menu is currently empty.
             </div>

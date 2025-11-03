@@ -1,5 +1,7 @@
 import type { CSSProperties } from 'react';
 import { useEffect, useMemo, useState } from 'react';
+import { Utensils } from 'lucide-react';
+
 import { useCart } from '../context/CartContext';
 import PlateAdd from '@/components/icons/PlateAdd';
 import { useBrand } from '@/components/branding/BrandProvider';
@@ -35,9 +37,11 @@ interface MenuItem {
 export default function MenuItemCard({
   item,
   restaurantId,
+  variant,
 }: {
   item: MenuItem;
   restaurantId: string | number;
+  variant?: 'default' | 'kiosk';
 }) {
   const [showModal, setShowModal] = useState(false);
   const { addToCart } = useCart();
@@ -115,11 +119,16 @@ export default function MenuItemCard({
     [item]
   );
 
+  const isKiosk = variant === 'kiosk';
+  const interactiveScale = isKiosk
+    ? 'transform-gpu transition-transform duration-150 ease-out hover:scale-[1.02] active:scale-[0.98]'
+    : '';
+
   return (
     <>
       <div>
         <div
-          className="rounded-xl bg-white/60 backdrop-blur-md shadow-sm p-3 sm:p-4 flex gap-3 sm:gap-4 hover:shadow-md transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+          className={`rounded-xl bg-white/60 backdrop-blur-md shadow-sm p-3 sm:p-4 flex gap-3 sm:gap-4 hover:shadow-md transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${interactiveScale}`}
           onClick={handleClick}
           role="button"
           tabIndex={0}
@@ -133,11 +142,16 @@ export default function MenuItemCard({
                 className="h-full w-full object-cover"
               />
             ) : (
-              <div className="h-full w-full bg-white/40 backdrop-blur-md flex items-center justify-center">
+              <div className="relative h-full w-full flex items-center justify-center bg-[var(--muted-bg,#f8f8f8)]">
                 {logo ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={logo} alt="" className="w-12 h-12 opacity-20 grayscale object-contain" />
+                  <img
+                    src={logo}
+                    alt=""
+                    className="absolute w-16 h-16 opacity-[0.08] object-contain"
+                  />
                 ) : null}
+                <Utensils aria-hidden className="relative h-8 w-8 text-slate-400" />
               </div>
             )}
           </div>
