@@ -184,6 +184,11 @@ export default function KioskMenuPage() {
   const uncategorizedItems = useMemo(() => {
     if (!items.length) return [];
     const linkedIds = new Set(itemLinks.map((link) => link.item_id));
+    items.forEach((menuItem) => {
+      if (menuItem?.category_id) {
+        linkedIds.add(menuItem.id);
+      }
+    });
     return items.filter((item) => !linkedIds.has(item.id));
   }, [itemLinks, items]);
 

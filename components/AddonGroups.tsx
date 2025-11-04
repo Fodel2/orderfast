@@ -203,7 +203,7 @@ export default function AddonGroups({
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {addons.map((group) => {
 
         const gid = group.group_id ?? group.id;
@@ -230,12 +230,12 @@ export default function AddonGroups({
         return (
           <div
             key={gid}
-            className={`rounded-2xl border bg-white/95 p-4 shadow-sm md:p-5 ${
+            className={`rounded-2xl border bg-white/95 p-3.5 shadow-sm md:px-5 md:py-4 ${
               hasError ? 'border-rose-200' : 'border-slate-200/80'
             }`}
             aria-invalid={hasError || undefined}
           >
-              <div className="mb-2 flex items-center justify-between">
+              <div className="mb-1.5 flex items-center justify-between">
                 <h3 className="text-lg font-semibold">
                   {group.name}
                   {group.required && (
@@ -339,7 +339,7 @@ export default function AddonGroups({
                       onClick={handleTileClick}
                       data-selected={quantity > 0}
                       tabIndex={0}
-                      className={`relative min-w-[148px] md:min-w-[164px] px-3.5 py-3 rounded-xl border bg-slate-50/80 border-slate-200 hover:bg-slate-100 flex-shrink-0 snap-start transition cursor-pointer text-center text-slate-900 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 data-[selected=true]:scale-[1.01] ${
+                      className={`relative min-w-[148px] md:min-w-[164px] px-3 py-2.5 rounded-xl border bg-slate-50/80 border-slate-200 hover:bg-slate-100 flex-shrink-0 snap-start transition cursor-pointer text-center text-slate-900 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 data-[selected=true]:scale-[1.01] ${
                         disabled ? 'pointer-events-none opacity-50' : ''
                       }`}
                       style={{
@@ -361,7 +361,7 @@ export default function AddonGroups({
                       )}
 
                       {quantity > 0 && multipleChoice && (
-                        <div className="mt-3 flex items-center justify-center gap-2">
+                        <div className="mt-2.5 flex items-center justify-center gap-2">
                           <button
                             type="button"
                             onClick={(e: React.MouseEvent) => {
@@ -376,7 +376,7 @@ export default function AddonGroups({
                                 multipleChoice,
                               );
                             }}
-                            className="w-8 h-8 rounded-full border border-gray-300 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                            className="h-8 w-8 rounded-full border border-gray-300 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
                             style={{ ['--tw-ring-color' as any]: accent } as CSSProperties}
                           >
                             –
@@ -403,7 +403,7 @@ export default function AddonGroups({
                               maxQty === 0 ||
                               groupMax === 0
                             }
-                            className="w-8 h-8 rounded-full border border-gray-300 hover:bg-gray-100 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                            className="h-8 w-8 rounded-full border border-gray-300 hover:bg-gray-100 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
                             style={{ ['--tw-ring-color' as any]: accent } as CSSProperties}
                           >
                             +

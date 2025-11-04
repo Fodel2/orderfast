@@ -126,11 +126,10 @@ export default function MenuItemCard({
   return (
     <>
       <div>
-        <div
-          className={`rounded-xl bg-white/60 backdrop-blur-md shadow-sm p-3 sm:p-4 flex gap-3 sm:gap-4 hover:shadow-md transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${interactiveScale}`}
+        <button
+          type="button"
+          className={`w-full rounded-xl bg-white/60 backdrop-blur-md shadow-sm p-3 sm:p-4 flex gap-3 sm:gap-4 hover:shadow-md transition text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${interactiveScale}`}
           onClick={handleClick}
-          role="button"
-          tabIndex={0}
           style={{ ['--tw-ring-color' as any]: accent || 'currentColor' } as CSSProperties}
         >
           <div className="h-24 w-24 shrink-0 overflow-hidden rounded-xl bg-[var(--muted-bg,#f8f8f8)] sm:h-28 sm:w-28">
@@ -178,22 +177,8 @@ export default function MenuItemCard({
                 ))}
               </div>
             )}
-            <div className="mt-2 flex justify-end">
-              <button
-                type="button"
-                className="btn-icon min-h-[40px] min-w-[40px] text-sm font-semibold transition-transform duration-150 ease-out hover:scale-[1.05] active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-                style={{ ['--tw-ring-color' as any]: accent || 'currentColor' } as CSSProperties}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleClick();
-                }}
-                aria-label={`Add ${item?.name} to plate`}
-              >
-                Add
-              </button>
-            </div>
           </div>
-        </div>
+        </button>
       </div>
 
       {showModal ? (

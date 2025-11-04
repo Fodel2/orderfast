@@ -1,7 +1,6 @@
 import type { CSSProperties } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Utensils } from 'lucide-react';
 
 import AddonGroups, { validateAddonSelections } from '@/components/AddonGroups';
 import PlateAdd from '@/components/icons/PlateAdd';
@@ -34,7 +33,6 @@ export default function ItemModal({ item, restaurantId, onAddToCart }: ItemModal
   const [loading, setLoading] = useState(false);
   const [groups, setGroups] = useState<AddonGroup[]>([]);
   const [qty, setQty] = useState(1);
-  const [notes, setNotes] = useState('');
   const [selections, setSelections] = useState<Record<string, Record<string, number>>>({});
   const [modalAnim, setModalAnim] = useState(false);
   const [secText, setSecText] = useState('#fff');
@@ -138,6 +136,12 @@ export default function ItemModal({ item, restaurantId, onAddToCart }: ItemModal
   const formattedPrice = formatPrice(price / 100, currency);
   const imageUrl = item?.image_url || undefined;
   const logoUrl = brand?.logoUrl || undefined;
+  const focalXRaw = typeof item?.menu_header_focal_x === 'number' ? item.menu_header_focal_x : undefined;
+  const focalYRaw = typeof item?.menu_header_focal_y === 'number' ? item.menu_header_focal_y : undefined;
+  const focalX = Math.min(100, Math.max(0, Math.round((focalXRaw ?? 0.5) * 100)));
+  const focalY = Math.min(100, Math.max(0, Math.round((focalYRaw ?? 0.5) * 100)));
+  const showLogoFallback = !imageUrl && !!logoUrl;
+  const showImageSection = Boolean(imageUrl || showLogoFallback);
 
   const badges = useMemo(() => {
     const result: string[] = [];
@@ -192,15 +196,10 @@ export default function ItemModal({ item, restaurantId, onAddToCart }: ItemModal
       .filter(Boolean);
 
     const { __onClose, ...rest } = item || {};
-    const payload = {
-      ...rest,
-      notes: notes.trim() || undefined,
-    };
 
-    onAddToCart(payload, qty, addons);
+    onAddToCart(rest, qty, addons);
 
     setQty(1);
-    setNotes('');
     setSelections({});
     handleClose();
   };
@@ -231,34 +230,31 @@ export default function ItemModal({ item, restaurantId, onAddToCart }: ItemModal
         </button>
         <div className="max-h-[90vh] overflow-hidden rounded-3xl bg-white text-slate-900 shadow-[0_20px_60px_rgba(15,23,42,0.28)]">
           <div className="max-h-[90vh] overflow-y-auto">
-            <div className="relative aspect-[4/3] w-full overflow-hidden bg-[var(--muted-bg,#f8f8f8)]">
-              {imageUrl ? (
-                <img
-                  src={imageUrl}
-                  alt={item?.name || ''}
-                  className="h-full w-full object-cover"
-                />
-              ) : logoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={logoUrl}
-                  alt=""
-                  className="h-full w-full object-contain opacity-35 mix-blend-multiply"
-                />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center bg-gradient-to-b from-white to-slate-100">
-                  <Utensils aria-hidden className="h-10 w-10 text-slate-400" />
-                </div>
-              )}
-            </div>
+            {showImageSection ? (
+              <div
+                className="relative w-full overflow-hidden bg-[var(--muted-bg,#f8f8f8)]"
+                style={{ aspectRatio: '4 / 3', maxHeight: '50vh' }}
+              >
+                {imageUrl ? (
+                  <img
+                    src={imageUrl}
+                    alt={item?.name || ''}
+                    className="h-full w-full object-cover"
+                    style={{ objectPosition: `${focalX}% ${focalY}%` }}
+                  />
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={logoUrl!}
+                    alt=""
+                    className="h-full w-full object-contain opacity-35 mix-blend-multiply"
+                  />
+                )}
+              </div>
+            ) : null}
             <div className="space-y-6 px-6 py-6 text-sm text-slate-700 md:px-8 md:py-8 md:text-base">
               <div className="space-y-3 text-slate-900">
-                <div className="flex flex-wrap items-end justify-between gap-3">
-                  <h2 className="text-xl font-semibold md:text-2xl">{item?.name}</h2>
-                  {typeof price === 'number' ? (
-                    <span className="text-lg font-semibold md:text-xl">{formattedPrice}</span>
-                  ) : null}
-                </div>
+                <h2 className="text-xl font-semibold md:text-2xl">{item?.name}</h2>
                 {badges.length > 0 && (
                   <div className="flex flex-wrap gap-2">
                     {badges.map((b) => (
@@ -282,22 +278,11 @@ export default function ItemModal({ item, restaurantId, onAddToCart }: ItemModal
               ) : groups.length > 0 ? (
                 <AddonGroups addons={groups} onChange={setSelections} />
               ) : null}
-
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-slate-700 md:text-base">
-                  Special instructions
-                  <textarea
-                    className="mt-2 w-full min-h-[100px] resize-y rounded-2xl border border-slate-200 bg-white p-3 text-sm text-slate-700 shadow-inner focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 md:text-base"
-                    style={{ ['--tw-ring-color' as any]: accent } as CSSProperties}
-                    placeholder="Add notes (optional)"
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                  />
-                </label>
-              </div>
-
-              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <div className="flex items-center justify-between gap-3 rounded-full border border-slate-200/90 bg-slate-50/80 px-3 py-2 md:gap-4">
+            </div>
+            <div className="border-t border-slate-200/80 px-6 py-6 text-sm text-slate-700 md:px-8 md:py-8 md:text-base">
+              <div className="flex flex-wrap items-center gap-4 md:gap-5">
+                <span className="text-lg font-semibold text-slate-900 md:text-xl">{formattedPrice}</span>
+                <div className="ml-auto flex items-center gap-3 rounded-full border border-slate-200/90 bg-slate-50/80 px-3 py-2 md:gap-4">
                   <button
                     type="button"
                     aria-label="Decrease quantity"
@@ -323,7 +308,7 @@ export default function ItemModal({ item, restaurantId, onAddToCart }: ItemModal
                 <button
                   aria-label="Confirm Add to Plate"
                   onClick={handleFinalAdd}
-                  className="btn-primary flex h-12 w-full items-center justify-center gap-2 rounded-full px-6 text-base font-semibold transition hover:opacity-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 md:w-auto md:px-8"
+                  className="btn-primary flex h-12 flex-1 items-center justify-center gap-2 rounded-full px-6 text-base font-semibold transition hover:opacity-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 md:flex-none md:px-8"
                   style={{ ['--tw-ring-color' as any]: accent || 'currentColor' } as CSSProperties}
                 >
                   <PlateAdd size={20} />
