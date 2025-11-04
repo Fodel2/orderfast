@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { Home, Utensils, ListOrdered, Menu } from 'lucide-react';
-import PlateLick from '@/components/icons/PlateLick';
+import PlateIcon from '@/components/icons/PlateIcon';
 import React from 'react';
 
 interface Props {
@@ -69,7 +69,7 @@ export default function FooterNav({ cartCount = 0, hidden }: Props) {
             title={cartLabel}
             className="relative w-14 h-14 rounded-full fab flex items-center justify-center shadow-lg"
           >
-            <PlateLick size={22} />
+            <PlateIcon size={22} />
             {cartCount > 0 && (
               <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center">
                 {cartCount}

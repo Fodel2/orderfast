@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import CartDrawer from '@/components/CartDrawer';
+import CartView, { CartViewActionProps } from '@/components/CartView';
 import KioskLayout from '@/components/layouts/KioskLayout';
 import { useCart } from '@/context/CartContext';
 import { supabase } from '@/lib/supabaseClient';
@@ -55,6 +55,36 @@ export default function KioskCartPage() {
     ? `${cartCount} item${cartCount === 1 ? '' : 's'} ready to check out`
     : 'Your cart is currently empty';
 
+  const goToConfirm = () => {
+    if (!restaurantId) return;
+    router.push(`/kiosk/${restaurantId}/confirm`);
+  };
+
+  const kioskActions = ({ cartIsEmpty, clearCart }: CartViewActionProps) => (
+    <>
+      <button
+        type="button"
+        onClick={clearCart}
+        className={`w-full rounded border border-gray-300 px-4 py-2 text-sm font-medium transition hover:bg-gray-100${
+          cartIsEmpty ? ' opacity-60 cursor-not-allowed' : ''
+        }`}
+        disabled={cartIsEmpty}
+      >
+        Clean Plate
+      </button>
+      <button
+        type="button"
+        onClick={goToConfirm}
+        className={`w-full rounded px-4 py-2 text-sm font-semibold uppercase tracking-wide text-white transition btn-primary${
+          cartIsEmpty ? ' opacity-60 cursor-not-allowed' : ''
+        }`}
+        disabled={cartIsEmpty}
+      >
+        Review & Place Order
+      </button>
+    </>
+  );
+
   const action =
     restaurantId && cartCount > 0 ? (
       <Link
@@ -72,8 +102,8 @@ export default function KioskCartPage() {
       backHref={restaurantId ? `/kiosk/${restaurantId}/menu` : undefined}
       action={action}
     >
-      <div className="mx-auto w-full max-w-3xl">
-        <CartDrawer inline />
+      <div className="mx-auto w-full max-w-3xl px-4 pb-16 pt-6">
+        <CartView renderActions={kioskActions} />
       </div>
     </KioskLayout>
   );

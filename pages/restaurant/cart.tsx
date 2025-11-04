@@ -1,6 +1,6 @@
 import { useCart } from '../../context/CartContext';
 import CustomerLayout from '../../components/CustomerLayout';
-import CartDrawer from '../../components/CartDrawer';
+import CartView from '@/components/CartView';
 
 export default function CartPage() {
   const { cart } = useCart();
@@ -8,7 +8,9 @@ export default function CartPage() {
 
   return (
     <CustomerLayout cartCount={itemCount}>
-      <CartDrawer inline />
+      <div className="mx-auto max-w-screen-sm px-4 pt-6 pb-16">
+        <CartView />
+      </div>
     </CustomerLayout>
   );
 }
