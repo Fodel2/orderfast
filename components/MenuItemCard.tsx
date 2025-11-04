@@ -1,11 +1,10 @@
 import type { CSSProperties } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Utensils } from 'lucide-react';
-
 import { useCart } from '../context/CartContext';
 import { useBrand } from '@/components/branding/BrandProvider';
 import { formatPrice } from '@/lib/orderDisplay';
 import ItemModal from '@/components/modals/ItemModal';
+import PlateIcon from '@/components/icons/PlateIcon';
 
 function contrast(c?: string) {
   try {
@@ -72,11 +71,10 @@ export default function MenuItemCard({
         color: secText,
       }
     : { background: `${sec}1A`, borderColor: sec, color: secText };
-  const logo = brand?.logoUrl || undefined;
-
   const price =
     typeof item?.price === 'number' ? item.price : Number(item?.price || 0);
   const imageUrl = item?.image_url || undefined;
+  const showImage = Boolean(imageUrl);
   const currency = 'GBP';
   const formattedPrice = formatPrice(price / 100, currency);
   const badges = useMemo(() => {
@@ -128,55 +126,70 @@ export default function MenuItemCard({
       <div>
         <button
           type="button"
-          className={`w-full rounded-xl bg-white/60 backdrop-blur-md shadow-sm p-3 sm:p-4 flex gap-3 sm:gap-4 hover:shadow-md transition text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${interactiveScale}`}
+          className={`w-full overflow-hidden rounded-2xl bg-white/70 text-left shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 hover:shadow-md ${interactiveScale}`}
           onClick={handleClick}
           style={{ ['--tw-ring-color' as any]: accent || 'currentColor' } as CSSProperties}
         >
-          <div className="h-24 w-24 shrink-0 overflow-hidden rounded-xl bg-[var(--muted-bg,#f8f8f8)] sm:h-28 sm:w-28">
-            {imageUrl ? (
-              <img
-                src={imageUrl}
-                alt={item.name}
-                className="h-full w-full object-cover"
-              />
-            ) : logo ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={logo}
-                alt=""
-                className="h-full w-full object-contain opacity-30 mix-blend-multiply"
-              />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center">
-                <Utensils aria-hidden className="h-8 w-8 text-slate-400" />
-              </div>
-            )}
-          </div>
-          <div className="flex-1 min-w-0 flex flex-col gap-1">
-            <div className="flex items-start justify-between gap-2">
-              <h4 className="text-base sm:text-lg font-semibold text-gray-900 truncate">
-                {item.name}
-              </h4>
-              <div className="price font-semibold text-gray-900 whitespace-nowrap text-sm sm:text-base">
-                {formattedPrice}
-              </div>
-            </div>
-            {item.description && (
-              <p className="text-sm text-gray-600 line-clamp-2 mt-0.5">{item.description}</p>
-            )}
-            {badges.length > 0 && (
-              <div className="mt-1 flex flex-wrap gap-1">
-                {badges.map((b) => (
-                  <span
-                    key={b}
-                    className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium border"
-                    style={badgeStyles}
-                  >
-                    {b}
+          <div className="flex flex-col">
+            <div className="relative aspect-[4/3] w-full overflow-hidden bg-[var(--muted-bg,#f4f4f5)]">
+              {showImage ? (
+                <img
+                  src={imageUrl!}
+                  alt={item.name}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center">
+                  <PlateIcon size={72} tone={accent} className="text-slate-300" />
+                </div>
+              )}
+              {showImage ? (
+                <div
+                  className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 px-4 py-3 text-white backdrop-blur-sm sm:px-5"
+                  style={{ background: 'linear-gradient(180deg, rgba(15,23,42,0) 0%, rgba(15,23,42,0.55) 100%)' }}
+                >
+                  <span className="text-sm font-semibold tracking-tight sm:text-base">
+                    {item.name}
                   </span>
-                ))}
-              </div>
-            )}
+                  <span className="text-sm font-semibold sm:text-base">{formattedPrice}</span>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="flex flex-col gap-2 px-4 py-3 sm:px-5 sm:py-4">
+              {!showImage ? (
+                <div className="flex items-start justify-between gap-2">
+                  <h4 className="text-base font-semibold text-gray-900 sm:text-lg">
+                    {item.name}
+                  </h4>
+                  <span className="text-sm font-semibold text-gray-900 sm:text-base">
+                    {formattedPrice}
+                  </span>
+                </div>
+              ) : (
+                <h4 className="sr-only">{item.name}</h4>
+              )}
+
+              {item.description ? (
+                <p className="line-clamp-2 text-sm text-gray-600">
+                  {item.description}
+                </p>
+              ) : null}
+
+              {badges.length > 0 ? (
+                <div className="flex flex-wrap gap-1">
+                  {badges.map((b) => (
+                    <span
+                      key={b}
+                      className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium"
+                      style={badgeStyles}
+                    >
+                      {b}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+            </div>
           </div>
         </button>
       </div>

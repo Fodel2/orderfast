@@ -73,7 +73,7 @@ export default function KioskCartPage() {
       action={action}
     >
       <div className="mx-auto w-full max-w-3xl">
-        <CartDrawer inline />
+        <CartDrawer inline mode="kiosk" />
       </div>
     </KioskLayout>
   );

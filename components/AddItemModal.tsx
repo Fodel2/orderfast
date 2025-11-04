@@ -390,13 +390,13 @@ export default function AddItemModal({
           type="button"
           aria-label="Close"
           onClick={onClose}
-          className="absolute right-4 top-4 inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/40 bg-white/70 text-slate-700 shadow-lg backdrop-blur focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+          className="absolute right-6 top-6 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/40 bg-white/70 text-slate-700 shadow-lg backdrop-blur focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
           style={{ ['--tw-ring-color' as any]: 'var(--brand-primary,#0d9488)' } as CSSProperties}
         >
           <XMarkIcon className="h-5 w-5" />
         </button>
-        <div className="max-h-[90vh] overflow-hidden rounded-3xl bg-white shadow-[0_20px_60px_rgba(15,23,42,0.28)]">
-          <div className="max-h-[90vh] overflow-y-auto px-6 py-6 sm:px-8 sm:py-8">
+        <div className="flex max-h-[90vh] flex-col overflow-hidden rounded-3xl bg-white shadow-[0_20px_60px_rgba(15,23,42,0.28)]">
+          <div className="flex-1 overflow-y-auto px-6 py-6 sm:px-8 sm:py-8">
             <h2 className="mb-6 text-2xl font-bold">{item ? 'Edit Item' : 'Add Item'}</h2>
             <form className="space-y-4" onSubmit={handleSubmit}>
           <div className="flex items-start space-x-4">
@@ -492,7 +492,7 @@ export default function AddItemModal({
               onChange={handleAddonChange}
             />
           )}
-          <div className="mt-6 space-x-2 text-right">
+          <div className="border-t border-slate-200/80 px-6 py-5 text-right sm:px-8 sm:py-6">
             {item && (
               <button
                 type="button"
@@ -502,16 +502,21 @@ export default function AddItemModal({
                 Delete
               </button>
             )}
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 border border-teal-600 text-teal-600 rounded hover:bg-teal-50"
-            >
-              Cancel
-            </button>
-            <button type="submit" className="px-4 py-2 bg-teal-600 text-white rounded hover:bg-teal-700">
-              Save
-            </button>
+            <div className="flex flex-wrap justify-end gap-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-full border border-teal-600 px-4 py-2 text-teal-600 transition hover:bg-teal-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="rounded-full bg-teal-600 px-5 py-2 text-white shadow-sm transition hover:bg-teal-700"
+              >
+                Save
+              </button>
+            </div>
           </div>
             </form>
           </div>

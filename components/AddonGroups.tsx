@@ -203,7 +203,7 @@ export default function AddonGroups({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3.5">
       {addons.map((group) => {
 
         const gid = group.group_id ?? group.id;
@@ -230,24 +230,24 @@ export default function AddonGroups({
         return (
           <div
             key={gid}
-            className={`rounded-2xl border bg-white/95 p-3.5 shadow-sm md:px-5 md:py-4 ${
+            className={`rounded-2xl border bg-white/95 p-3 shadow-sm md:px-5 md:py-3.5 ${
               hasError ? 'border-rose-200' : 'border-slate-200/80'
             }`}
             aria-invalid={hasError || undefined}
           >
-              <div className="mb-1.5 flex items-center justify-between">
-                <h3 className="text-lg font-semibold">
+              <div className="mb-1 flex items-center justify-between">
+                <h3 className="text-base font-semibold md:text-lg">
                   {group.name}
                   {group.required && (
                     <span
-                      className="text-sm ml-2"
+                      className="ml-2 text-sm"
                       style={{ color: accent, opacity: 0.9 }}
                     >
                       (Required)
                     </span>
                   )}
                 </h3>
-                <p className="text-sm text-gray-500">
+                <p className="text-xs font-medium uppercase tracking-wide text-gray-400 md:text-sm">
                   {multipleChoice
                     ? max_group_select !== Infinity
                       ? `Pick up to ${max_group_select}`

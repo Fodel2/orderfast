@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import AddonGroups, { validateAddonSelections } from '@/components/AddonGroups';
-import PlateAdd from '@/components/icons/PlateAdd';
+import PlateIcon, { PlateIconAdd } from '@/components/icons/PlateIcon';
 import { useBrand } from '@/components/branding/BrandProvider';
 import { formatPrice } from '@/lib/orderDisplay';
 import { getAddonsForItem } from '@/utils/getAddonsForItem';
@@ -135,13 +135,11 @@ export default function ItemModal({ item, restaurantId, onAddToCart }: ItemModal
   const price = typeof item?.price === 'number' ? item.price : Number(item?.price || 0);
   const formattedPrice = formatPrice(price / 100, currency);
   const imageUrl = item?.image_url || undefined;
-  const logoUrl = brand?.logoUrl || undefined;
   const focalXRaw = typeof item?.menu_header_focal_x === 'number' ? item.menu_header_focal_x : undefined;
   const focalYRaw = typeof item?.menu_header_focal_y === 'number' ? item.menu_header_focal_y : undefined;
   const focalX = Math.min(100, Math.max(0, Math.round((focalXRaw ?? 0.5) * 100)));
   const focalY = Math.min(100, Math.max(0, Math.round((focalYRaw ?? 0.5) * 100)));
-  const showLogoFallback = !imageUrl && !!logoUrl;
-  const showImageSection = Boolean(imageUrl || showLogoFallback);
+  const showImageSection = Boolean(imageUrl);
 
   const badges = useMemo(() => {
     const result: string[] = [];
@@ -223,40 +221,38 @@ export default function ItemModal({ item, restaurantId, onAddToCart }: ItemModal
           type="button"
           aria-label="Close"
           onClick={handleClose}
-          className="absolute right-4 top-4 inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/40 bg-white/70 text-slate-700 shadow-lg backdrop-blur focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+          className="absolute right-6 top-6 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/40 bg-white/70 text-slate-700 shadow-lg backdrop-blur focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
           style={{ ['--tw-ring-color' as any]: accent } as CSSProperties}
         >
           <span className="text-xl leading-none">×</span>
         </button>
-        <div className="max-h-[90vh] overflow-hidden rounded-3xl bg-white text-slate-900 shadow-[0_20px_60px_rgba(15,23,42,0.28)]">
-          <div className="max-h-[90vh] overflow-y-auto">
+        <div className="flex max-h-[90vh] flex-col overflow-hidden rounded-3xl bg-white text-slate-900 shadow-[0_20px_60px_rgba(15,23,42,0.28)]">
+          <div className="flex-1 overflow-y-auto">
             {showImageSection ? (
-              <div
-                className="relative w-full overflow-hidden bg-[var(--muted-bg,#f8f8f8)]"
-                style={{ aspectRatio: '4 / 3', maxHeight: '50vh' }}
-              >
-                {imageUrl ? (
-                  <img
-                    src={imageUrl}
-                    alt={item?.name || ''}
-                    className="h-full w-full object-cover"
-                    style={{ objectPosition: `${focalX}% ${focalY}%` }}
-                  />
-                ) : (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={logoUrl!}
-                    alt=""
-                    className="h-full w-full object-contain opacity-35 mix-blend-multiply"
-                  />
-                )}
+              <div className="relative h-[45vh] min-h-[260px] w-full overflow-hidden bg-slate-100">
+                <img
+                  src={imageUrl!}
+                  alt={item?.name || ''}
+                  className="h-full w-full object-cover"
+                  style={{ objectPosition: `${focalX}% ${focalY}%` }}
+                />
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center px-6 py-4 text-white backdrop-blur-sm md:px-8" style={{ background: 'linear-gradient(180deg, rgba(15,23,42,0) 0%, rgba(15,23,42,0.55) 100%)' }}>
+                  <h2 className="text-lg font-semibold tracking-tight md:text-xl">{item?.name}</h2>
+                </div>
               </div>
-            ) : null}
-            <div className="space-y-6 px-6 py-6 text-sm text-slate-700 md:px-8 md:py-8 md:text-base">
-              <div className="space-y-3 text-slate-900">
-                <h2 className="text-xl font-semibold md:text-2xl">{item?.name}</h2>
+            ) : (
+              <div className="flex flex-col items-center gap-4 px-6 pt-12 text-center md:px-8 md:pt-14">
+                <PlateIcon size={72} tone={accent} className="text-slate-300" />
+                <h2 className="text-2xl font-semibold text-slate-900 md:text-3xl">{item?.name}</h2>
+              </div>
+            )}
+            <div className={`px-6 pb-8 pt-6 text-sm text-slate-700 md:px-8 md:pb-10 md:pt-8 md:text-base ${showImageSection ? '' : 'text-center'}`}>
+              <div className={`mx-auto flex max-w-2xl flex-col gap-3 ${showImageSection ? 'items-start text-left' : 'items-center text-center'}`}>
+                {showImageSection ? (
+                  <h2 className="sr-only">{item?.name}</h2>
+                ) : null}
                 {badges.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap justify-center gap-2 text-left md:justify-center">
                     {badges.map((b) => (
                       <span
                         key={b}
@@ -274,47 +270,49 @@ export default function ItemModal({ item, restaurantId, onAddToCart }: ItemModal
               </div>
 
               {loading ? (
-                <p className="text-center text-slate-500">Loading add-ons…</p>
+                <p className="mt-8 text-center text-slate-500">Loading add-ons…</p>
               ) : groups.length > 0 ? (
-                <AddonGroups addons={groups} onChange={setSelections} />
+                <div className="mt-8">
+                  <AddonGroups addons={groups} onChange={setSelections} />
+                </div>
               ) : null}
             </div>
-            <div className="border-t border-slate-200/80 px-6 py-6 text-sm text-slate-700 md:px-8 md:py-8 md:text-base">
-              <div className="flex flex-wrap items-center gap-4 md:gap-5">
-                <span className="text-lg font-semibold text-slate-900 md:text-xl">{formattedPrice}</span>
-                <div className="ml-auto flex items-center gap-3 rounded-full border border-slate-200/90 bg-slate-50/80 px-3 py-2 md:gap-4">
-                  <button
-                    type="button"
-                    aria-label="Decrease quantity"
-                    onClick={decrement}
-                    className="flex h-11 w-11 items-center justify-center rounded-full text-lg text-slate-700 transition hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-                    style={{ ['--tw-ring-color' as any]: accent } as CSSProperties}
-                  >
-                    –
-                  </button>
-                  <span data-testid="qty" className="min-w-[2.5rem] text-center text-base font-semibold text-slate-900 md:text-lg">
-                    {qty}
-                  </span>
-                  <button
-                    type="button"
-                    aria-label="Increase quantity"
-                    onClick={increment}
-                    className="flex h-11 w-11 items-center justify-center rounded-full text-lg text-slate-700 transition hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-                    style={{ ['--tw-ring-color' as any]: accent } as CSSProperties}
-                  >
-                    +
-                  </button>
-                </div>
+          </div>
+          <div className="border-t border-slate-200/80 px-6 py-5 text-sm text-slate-700 md:px-8 md:py-6 md:text-base">
+            <div className="flex flex-wrap items-center gap-4 md:gap-6">
+              <span className="text-lg font-semibold text-slate-900 md:text-xl">{formattedPrice}</span>
+              <div className="flex items-center gap-3 rounded-full border border-slate-200/90 bg-slate-50/80 px-3 py-2 md:gap-4">
                 <button
-                  aria-label="Confirm Add to Plate"
-                  onClick={handleFinalAdd}
-                  className="btn-primary flex h-12 flex-1 items-center justify-center gap-2 rounded-full px-6 text-base font-semibold transition hover:opacity-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 md:flex-none md:px-8"
-                  style={{ ['--tw-ring-color' as any]: accent || 'currentColor' } as CSSProperties}
+                  type="button"
+                  aria-label="Decrease quantity"
+                  onClick={decrement}
+                  className="flex h-11 w-11 items-center justify-center rounded-full text-lg text-slate-700 transition hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                  style={{ ['--tw-ring-color' as any]: accent } as CSSProperties}
                 >
-                  <PlateAdd size={20} />
-                  Add to Plate
+                  –
+                </button>
+                <span data-testid="qty" className="min-w-[2.5rem] text-center text-base font-semibold text-slate-900 md:text-lg">
+                  {qty}
+                </span>
+                <button
+                  type="button"
+                  aria-label="Increase quantity"
+                  onClick={increment}
+                  className="flex h-11 w-11 items-center justify-center rounded-full text-lg text-slate-700 transition hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                  style={{ ['--tw-ring-color' as any]: accent } as CSSProperties}
+                >
+                  +
                 </button>
               </div>
+              <button
+                aria-label="Confirm Add to Plate"
+                onClick={handleFinalAdd}
+                className="btn-primary ml-auto flex h-12 min-w-[11rem] flex-1 items-center justify-center gap-2 rounded-full px-6 text-base font-semibold transition hover:opacity-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 md:flex-none md:px-8"
+                style={{ ['--tw-ring-color' as any]: accent || 'currentColor' } as CSSProperties}
+              >
+                <PlateIconAdd size={24} tone={accent} />
+                Add to Plate
+              </button>
             </div>
           </div>
         </div>

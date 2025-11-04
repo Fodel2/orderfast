@@ -8,7 +8,7 @@ export default function CartPage() {
 
   return (
     <CustomerLayout cartCount={itemCount}>
-      <CartDrawer inline />
+      <CartDrawer inline mode="customer" />
     </CustomerLayout>
   );
 }
