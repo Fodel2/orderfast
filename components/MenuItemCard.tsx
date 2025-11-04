@@ -25,12 +25,13 @@ interface MenuItem {
   description?: string | null;
   price: number;
   image_url?: string | null;
+  menu_header_focal_x?: number | null;
+  menu_header_focal_y?: number | null;
   is_vegan?: boolean | null;
   is_vegetarian?: boolean | null;
   is_18_plus?: boolean | null;
   stock_status?: 'in_stock' | 'scheduled' | 'out' | null;
 }
-
 
 export default function MenuItemCard({
   item,
@@ -75,6 +76,16 @@ export default function MenuItemCard({
     typeof item?.price === 'number' ? item.price : Number(item?.price || 0);
   const imageUrl = item?.image_url || undefined;
   const showImage = Boolean(imageUrl);
+  const focalXRaw =
+    typeof item?.menu_header_focal_x === 'number'
+      ? item.menu_header_focal_x
+      : undefined;
+  const focalYRaw =
+    typeof item?.menu_header_focal_y === 'number'
+      ? item.menu_header_focal_y
+      : undefined;
+  const focalX = Math.min(100, Math.max(0, Math.round((focalXRaw ?? 0.5) * 100)));
+  const focalY = Math.min(100, Math.max(0, Math.round((focalYRaw ?? 0.5) * 100)));
   const currency = 'GBP';
   const formattedPrice = formatPrice(price / 100, currency);
   const badges = useMemo(() => {
@@ -126,49 +137,35 @@ export default function MenuItemCard({
       <div>
         <button
           type="button"
-          className={`w-full overflow-hidden rounded-2xl bg-white/70 text-left shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 hover:shadow-md ${interactiveScale}`}
+          className={`group w-full overflow-hidden rounded-2xl bg-white/70 text-left shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 hover:shadow-md ${interactiveScale}`}
           onClick={handleClick}
           style={{ ['--tw-ring-color' as any]: accent || 'currentColor' } as CSSProperties}
         >
-          <div className="flex flex-col">
+          <div className="flex h-full flex-col">
             <div className="relative aspect-[4/3] w-full overflow-hidden bg-[var(--muted-bg,#f4f4f5)]">
               {showImage ? (
                 <img
                   src={imageUrl!}
                   alt={item.name}
                   className="h-full w-full object-cover"
+                  style={{ objectPosition: `${focalX}% ${focalY}%` }}
                 />
               ) : (
-                <div className="flex h-full w-full items-center justify-center">
-                  <PlateIcon size={72} tone={accent} className="text-slate-300" />
+                <div className="flex h-full w-full items-center justify-center text-slate-300">
+                  <PlateIcon size={64} tone={accent} className="text-inherit" />
                 </div>
               )}
-              {showImage ? (
-                <div
-                  className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 px-4 py-3 text-white backdrop-blur-sm sm:px-5"
-                  style={{ background: 'linear-gradient(180deg, rgba(15,23,42,0) 0%, rgba(15,23,42,0.55) 100%)' }}
-                >
-                  <span className="text-sm font-semibold tracking-tight sm:text-base">
-                    {item.name}
-                  </span>
-                  <span className="text-sm font-semibold sm:text-base">{formattedPrice}</span>
-                </div>
-              ) : null}
             </div>
 
-            <div className="flex flex-col gap-2 px-4 py-3 sm:px-5 sm:py-4">
-              {!showImage ? (
-                <div className="flex items-start justify-between gap-2">
-                  <h4 className="text-base font-semibold text-gray-900 sm:text-lg">
-                    {item.name}
-                  </h4>
-                  <span className="text-sm font-semibold text-gray-900 sm:text-base">
-                    {formattedPrice}
-                  </span>
-                </div>
-              ) : (
-                <h4 className="sr-only">{item.name}</h4>
-              )}
+            <div className="flex flex-1 flex-col gap-2 px-4 py-3 sm:px-5 sm:py-4">
+              <div className="flex items-start justify-between gap-3">
+                <h4 className="text-base font-semibold text-gray-900 sm:text-lg">
+                  {item.name}
+                </h4>
+                <span className="text-sm font-semibold text-gray-900 sm:text-base">
+                  {formattedPrice}
+                </span>
+              </div>
 
               {item.description ? (
                 <p className="line-clamp-2 text-sm text-gray-600">
@@ -177,7 +174,7 @@ export default function MenuItemCard({
               ) : null}
 
               {badges.length > 0 ? (
-                <div className="flex flex-wrap gap-1">
+                <div className="mt-auto flex flex-wrap gap-1">
                   {badges.map((b) => (
                     <span
                       key={b}
