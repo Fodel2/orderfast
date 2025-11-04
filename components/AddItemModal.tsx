@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import Cropper, { Area } from 'react-easy-crop';
 import { CloudArrowUpIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { Trash2 } from 'lucide-react';
@@ -380,22 +380,25 @@ export default function AddItemModal({
       onClick={(e) => {
         if (e.target === overlayRef.current) onClose();
       }}
-      className="fixed inset-0 bg-black bg-opacity-40 flex justify-center items-center p-4 overflow-x-hidden overflow-y-auto z-[1000] font-sans"
+      className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/55 px-4 py-8 backdrop-blur-sm"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-xl shadow-lg p-6 sm:p-8 max-w-lg w-full relative max-h-[90vh] overflow-y-auto"
+        className="relative w-full max-w-3xl transition-all"
       >
         <button
           type="button"
           aria-label="Close"
           onClick={onClose}
-          className="absolute right-2 top-2 text-gray-500 hover:text-gray-700"
+          className="absolute right-4 top-4 inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/40 bg-white/70 text-slate-700 shadow-lg backdrop-blur focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+          style={{ ['--tw-ring-color' as any]: 'var(--brand-primary,#0d9488)' } as CSSProperties}
         >
-          <XMarkIcon className="w-5 h-5" />
+          <XMarkIcon className="h-5 w-5" />
         </button>
-        <h2 className="text-2xl font-bold mb-6">{item ? 'Edit Item' : 'Add Item'}</h2>
-        <form className="space-y-4" onSubmit={handleSubmit}>
+        <div className="max-h-[90vh] overflow-hidden rounded-3xl bg-white shadow-[0_20px_60px_rgba(15,23,42,0.28)]">
+          <div className="max-h-[90vh] overflow-y-auto px-6 py-6 sm:px-8 sm:py-8">
+            <h2 className="mb-6 text-2xl font-bold">{item ? 'Edit Item' : 'Add Item'}</h2>
+            <form className="space-y-4" onSubmit={handleSubmit}>
           <div className="flex items-start space-x-4">
             <div
               className="relative w-32 h-32 border border-dashed border-gray-400 rounded flex items-center justify-center cursor-pointer overflow-hidden flex-shrink-0"
@@ -489,7 +492,7 @@ export default function AddItemModal({
               onChange={handleAddonChange}
             />
           )}
-          <div className="text-right mt-6 space-x-2">
+          <div className="mt-6 space-x-2 text-right">
             {item && (
               <button
                 type="button"
@@ -510,7 +513,9 @@ export default function AddItemModal({
               Save
             </button>
           </div>
-        </form>
+            </form>
+          </div>
+        </div>
       </div>
 
       {cropping && tempImage && (

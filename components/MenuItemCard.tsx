@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { Utensils } from 'lucide-react';
 
 import { useCart } from '../context/CartContext';
-import PlateAdd from '@/components/icons/PlateAdd';
 import { useBrand } from '@/components/branding/BrandProvider';
 import { formatPrice } from '@/lib/orderDisplay';
 import ItemModal from '@/components/modals/ItemModal';
@@ -73,7 +72,7 @@ export default function MenuItemCard({
         color: secText,
       }
     : { background: `${sec}1A`, borderColor: sec, color: secText };
-  const logo = brand?.logoUrl;
+  const logo = brand?.logoUrl || undefined;
 
   const price =
     typeof item?.price === 'number' ? item.price : Number(item?.price || 0);
@@ -134,24 +133,23 @@ export default function MenuItemCard({
           tabIndex={0}
           style={{ ['--tw-ring-color' as any]: accent || 'currentColor' } as CSSProperties}
         >
-          <div className="w-24 h-24 sm:w-28 sm:h-28 shrink-0 overflow-hidden rounded-xl">
+          <div className="h-24 w-24 shrink-0 overflow-hidden rounded-xl bg-[var(--muted-bg,#f8f8f8)] sm:h-28 sm:w-28">
             {imageUrl ? (
               <img
                 src={imageUrl}
                 alt={item.name}
                 className="h-full w-full object-cover"
               />
+            ) : logo ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={logo}
+                alt=""
+                className="h-full w-full object-contain opacity-30 mix-blend-multiply"
+              />
             ) : (
-              <div className="relative h-full w-full flex items-center justify-center bg-[var(--muted-bg,#f8f8f8)]">
-                {logo ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={logo}
-                    alt=""
-                    className="absolute w-16 h-16 opacity-[0.08] object-contain"
-                  />
-                ) : null}
-                <Utensils aria-hidden className="relative h-8 w-8 text-slate-400" />
+              <div className="flex h-full w-full items-center justify-center">
+                <Utensils aria-hidden className="h-8 w-8 text-slate-400" />
               </div>
             )}
           </div>
@@ -183,7 +181,7 @@ export default function MenuItemCard({
             <div className="mt-2 flex justify-end">
               <button
                 type="button"
-                className="btn-icon min-w-[40px] min-h-[40px] transition-transform duration-150 ease-out hover:scale-[1.05] active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                className="btn-icon min-h-[40px] min-w-[40px] text-sm font-semibold transition-transform duration-150 ease-out hover:scale-[1.05] active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
                 style={{ ['--tw-ring-color' as any]: accent || 'currentColor' } as CSSProperties}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -191,7 +189,7 @@ export default function MenuItemCard({
                 }}
                 aria-label={`Add ${item?.name} to plate`}
               >
-                <PlateAdd size={22} />
+                Add
               </button>
             </div>
           </div>
