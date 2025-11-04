@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Utensils } from 'lucide-react';
+import PlateIcon from '@/components/icons/PlateIcon';
 
 import { useCart } from '../context/CartContext';
 import { useBrand } from '@/components/branding/BrandProvider';
@@ -148,7 +148,7 @@ export default function MenuItemCard({
               />
             ) : (
               <div className="flex h-full w-full items-center justify-center">
-                <Utensils aria-hidden className="h-8 w-8 text-slate-400" />
+                <PlateIcon size={32} className="text-slate-400" aria-hidden />
               </div>
             )}
           </div>

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import AddonGroups, { validateAddonSelections } from '@/components/AddonGroups';
-import PlateAdd from '@/components/icons/PlateAdd';
+import PlateIcon from '@/components/icons/PlateIcon';
 import { useBrand } from '@/components/branding/BrandProvider';
 import { formatPrice } from '@/lib/orderDisplay';
 import { getAddonsForItem } from '@/utils/getAddonsForItem';
@@ -311,7 +311,7 @@ export default function ItemModal({ item, restaurantId, onAddToCart }: ItemModal
                   className="btn-primary flex h-12 flex-1 items-center justify-center gap-2 rounded-full px-6 text-base font-semibold transition hover:opacity-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 md:flex-none md:px-8"
                   style={{ ['--tw-ring-color' as any]: accent || 'currentColor' } as CSSProperties}
                 >
-                  <PlateAdd size={20} />
+                  <PlateIcon size={20} withBadge className="text-white" />
                   Add to Plate
                 </button>
               </div>
