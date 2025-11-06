@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react';
 
-const FALLBACK_PLACEHOLDER_SRC = '/icons/plate-outline.svg';
+export const FALLBACK_PLACEHOLDER_SRC = '/icons/knife-fork.svg';
 
 function normalizeSource(src?: string | null): string | undefined {
   if (typeof src !== 'string') return undefined;

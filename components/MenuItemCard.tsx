@@ -5,7 +5,11 @@ import { useCart } from '../context/CartContext';
 import { useBrand } from '@/components/branding/BrandProvider';
 import { formatPrice } from '@/lib/orderDisplay';
 import ItemModal from '@/components/modals/ItemModal';
-import { getItemPlaceholder, normalizeSource } from '@/lib/media/placeholders';
+import {
+  FALLBACK_PLACEHOLDER_SRC,
+  getItemPlaceholder,
+  normalizeSource,
+} from '@/lib/media/placeholders';
 
 function contrast(c?: string) {
   try {
@@ -87,6 +91,7 @@ export default function MenuItemCard({
     () => getItemPlaceholder(restaurantLogo),
     [restaurantLogo]
   );
+  const [placeholderSrc, setPlaceholderSrc] = useState(placeholder.src);
   const [placeholderLoaded, setPlaceholderLoaded] = useState(false);
   const resolvedRestaurantId = restaurantId ?? restaurant?.id;
   const restaurantKey = resolvedRestaurantId != null ? String(resolvedRestaurantId) : undefined;
@@ -156,6 +161,7 @@ export default function MenuItemCard({
 
   useEffect(() => {
     if (imageUrl) return;
+    setPlaceholderSrc(placeholder.src);
     setPlaceholderLoaded(false);
   }, [imageUrl, placeholder.src]);
 
@@ -209,12 +215,19 @@ export default function MenuItemCard({
               />
             ) : (
               <img
-                src={placeholder.src}
+                src={placeholderSrc}
                 alt=""
-                className="h-full w-full object-contain transition-opacity duration-300"
+                className="h-full w-full object-cover transition-opacity duration-300"
                 style={placeholderStyle}
                 onLoad={() => setPlaceholderLoaded(true)}
-                onError={() => setPlaceholderLoaded(true)}
+                onError={() => {
+                  if (placeholderSrc !== FALLBACK_PLACEHOLDER_SRC) {
+                    setPlaceholderLoaded(false);
+                    setPlaceholderSrc(FALLBACK_PLACEHOLDER_SRC);
+                    return;
+                  }
+                  setPlaceholderLoaded(true);
+                }}
               />
             )}
           </div>
