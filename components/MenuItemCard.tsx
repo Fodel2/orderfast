@@ -1,11 +1,11 @@
 import type { CSSProperties } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Utensils } from 'lucide-react';
 
 import { useCart } from '../context/CartContext';
 import { useBrand } from '@/components/branding/BrandProvider';
 import { formatPrice } from '@/lib/orderDisplay';
 import ItemModal from '@/components/modals/ItemModal';
+import { getItemPlaceholder } from '@/lib/media/placeholders';
 
 function contrast(c?: string) {
   try {
@@ -73,6 +73,8 @@ export default function MenuItemCard({
       }
     : { background: `${sec}1A`, borderColor: sec, color: secText };
   const logo = brand?.logoUrl || undefined;
+  const placeholder = useMemo(() => getItemPlaceholder(logo), [logo]);
+  const [placeholderLoaded, setPlaceholderLoaded] = useState(false);
 
   const price =
     typeof item?.price === 'number' ? item.price : Number(item?.price || 0);
@@ -123,6 +125,30 @@ export default function MenuItemCard({
     ? 'transform-gpu transition-transform duration-150 ease-out hover:scale-[1.02] active:scale-[0.98]'
     : '';
 
+  useEffect(() => {
+    if (imageUrl) return;
+    setPlaceholderLoaded(false);
+  }, [imageUrl, placeholder.src]);
+
+  const placeholderStyle = useMemo(() => {
+    const base = placeholder.style ?? {};
+    const { opacity, ...rest } = base;
+    const parsedOpacity =
+      typeof opacity === 'number'
+        ? opacity
+        : typeof opacity === 'string'
+          ? Number.parseFloat(opacity)
+          : undefined;
+    const finalOpacity =
+      typeof parsedOpacity === 'number' && Number.isFinite(parsedOpacity)
+        ? parsedOpacity
+        : undefined;
+    return {
+      ...rest,
+      opacity: placeholderLoaded ? finalOpacity ?? 1 : 0,
+    } as CSSProperties;
+  }, [placeholder.style, placeholderLoaded]);
+
   return (
     <>
       <div>
@@ -139,17 +165,15 @@ export default function MenuItemCard({
                 alt={item.name}
                 className="h-full w-full object-cover"
               />
-            ) : logo ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={logo}
-                alt=""
-                className="h-full w-full object-contain opacity-30 mix-blend-multiply"
-              />
             ) : (
-              <div className="flex h-full w-full items-center justify-center">
-                <Utensils aria-hidden className="h-8 w-8 text-slate-400" />
-              </div>
+              <img
+                src={placeholder.src}
+                alt=""
+                className="h-full w-full object-contain transition-opacity duration-300"
+                style={placeholderStyle}
+                onLoad={() => setPlaceholderLoaded(true)}
+                onError={() => setPlaceholderLoaded(true)}
+              />
             )}
           </div>
           <div className="flex-1 min-w-0 flex flex-col gap-1">

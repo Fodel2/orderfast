@@ -8,6 +8,7 @@ import { useBrand } from '@/components/branding/BrandProvider';
 import { formatPrice } from '@/lib/orderDisplay';
 import { getAddonsForItem } from '@/utils/getAddonsForItem';
 import type { AddonGroup } from '@/utils/types';
+import { getItemPlaceholder } from '@/lib/media/placeholders';
 
 function contrast(c?: string) {
   try {
@@ -40,6 +41,9 @@ export default function ItemModal({ item, restaurantId, onAddToCart }: ItemModal
   const brand = useBrand?.();
   const accent = typeof brand?.brand === 'string' && brand.brand ? brand.brand : undefined;
   const sec = 'var(--brand-secondary, var(--brand-primary))';
+  const logoUrl = brand?.logoUrl || undefined;
+  const placeholder = useMemo(() => getItemPlaceholder(logoUrl), [logoUrl]);
+  const [placeholderLoaded, setPlaceholderLoaded] = useState(false);
 
   useEffect(() => setMounted(true), []);
 
@@ -135,13 +139,35 @@ export default function ItemModal({ item, restaurantId, onAddToCart }: ItemModal
   const price = typeof item?.price === 'number' ? item.price : Number(item?.price || 0);
   const formattedPrice = formatPrice(price / 100, currency);
   const imageUrl = item?.image_url || undefined;
-  const logoUrl = brand?.logoUrl || undefined;
   const focalXRaw = typeof item?.menu_header_focal_x === 'number' ? item.menu_header_focal_x : undefined;
   const focalYRaw = typeof item?.menu_header_focal_y === 'number' ? item.menu_header_focal_y : undefined;
   const focalX = Math.min(100, Math.max(0, Math.round((focalXRaw ?? 0.5) * 100)));
   const focalY = Math.min(100, Math.max(0, Math.round((focalYRaw ?? 0.5) * 100)));
-  const showLogoFallback = !imageUrl && !!logoUrl;
-  const showImageSection = Boolean(imageUrl || showLogoFallback);
+  const showImageSection = Boolean(imageUrl || placeholder.src);
+
+  useEffect(() => {
+    if (imageUrl) return;
+    setPlaceholderLoaded(false);
+  }, [imageUrl, placeholder.src]);
+
+  const placeholderStyle = useMemo(() => {
+    const base = placeholder.style ?? {};
+    const { opacity, ...rest } = base;
+    const parsedOpacity =
+      typeof opacity === 'number'
+        ? opacity
+        : typeof opacity === 'string'
+          ? Number.parseFloat(opacity)
+          : undefined;
+    const finalOpacity =
+      typeof parsedOpacity === 'number' && Number.isFinite(parsedOpacity)
+        ? parsedOpacity
+        : undefined;
+    return {
+      ...rest,
+      opacity: placeholderLoaded ? finalOpacity ?? 1 : 0,
+    } as CSSProperties;
+  }, [placeholder.style, placeholderLoaded]);
 
   const badges = useMemo(() => {
     const result: string[] = [];
@@ -243,11 +269,13 @@ export default function ItemModal({ item, restaurantId, onAddToCart }: ItemModal
                     style={{ objectPosition: `${focalX}% ${focalY}%` }}
                   />
                 ) : (
-                  // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={logoUrl!}
+                    src={placeholder.src}
                     alt=""
-                    className="h-full w-full object-contain opacity-35 mix-blend-multiply"
+                    className="h-full w-full object-contain transition-opacity duration-300"
+                    style={placeholderStyle}
+                    onLoad={() => setPlaceholderLoaded(true)}
+                    onError={() => setPlaceholderLoaded(true)}
                   />
                 )}
               </div>

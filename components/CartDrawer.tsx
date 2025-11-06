@@ -17,6 +17,16 @@ interface CartDrawerProps {
 function CartContent({ onClose }: { onClose?: () => void }) {
   const { cart, subtotal, updateQuantity, removeFromCart, clearCart } = useCart();
   const router = useRouter();
+  const emptyMessageRef = useRef(randomEmptyPlateMessage());
+  const previousCount = useRef(cart.items.length);
+
+  useEffect(() => {
+    const count = cart.items.length;
+    if (count === 0 && previousCount.current !== 0) {
+      emptyMessageRef.current = randomEmptyPlateMessage();
+    }
+    previousCount.current = count;
+  }, [cart.items.length]);
 
   return (
     <>
@@ -35,7 +45,7 @@ function CartContent({ onClose }: { onClose?: () => void }) {
         {cart.items.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-6">
             <PlateIcon size={64} className="text-gray-300" />
-            <p className="text-center text-gray-500">{randomEmptyPlateMessage()}</p>
+            <p className="text-center text-gray-500">{emptyMessageRef.current}</p>
           </div>
         ) : (
           cart.items.map((item) => {
@@ -115,7 +125,7 @@ function CartContent({ onClose }: { onClose?: () => void }) {
         <button
           type="button"
           onClick={clearCart}
-          className="w-full px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
+          className="w-full px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-[var(--ink,#111827)]"
         >
           Clean Plate
         </button>
