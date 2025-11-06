@@ -8,7 +8,6 @@ import { useBrand } from '@/components/branding/BrandProvider';
 import { formatPrice } from '@/lib/orderDisplay';
 import { getAddonsForItem } from '@/utils/getAddonsForItem';
 import type { AddonGroup } from '@/utils/types';
-import { getItemPlaceholder } from '@/lib/media/placeholders';
 
 function contrast(c?: string) {
   try {
@@ -41,9 +40,6 @@ export default function ItemModal({ item, restaurantId, onAddToCart }: ItemModal
   const brand = useBrand?.();
   const accent = typeof brand?.brand === 'string' && brand.brand ? brand.brand : undefined;
   const sec = 'var(--brand-secondary, var(--brand-primary))';
-  const logoUrl = brand?.logoUrl || undefined;
-  const placeholder = useMemo(() => getItemPlaceholder(logoUrl), [logoUrl]);
-  const [placeholderLoaded, setPlaceholderLoaded] = useState(false);
 
   useEffect(() => setMounted(true), []);
 
@@ -143,31 +139,6 @@ export default function ItemModal({ item, restaurantId, onAddToCart }: ItemModal
   const focalYRaw = typeof item?.menu_header_focal_y === 'number' ? item.menu_header_focal_y : undefined;
   const focalX = Math.min(100, Math.max(0, Math.round((focalXRaw ?? 0.5) * 100)));
   const focalY = Math.min(100, Math.max(0, Math.round((focalYRaw ?? 0.5) * 100)));
-  const showImageSection = Boolean(imageUrl || placeholder.src);
-
-  useEffect(() => {
-    if (imageUrl) return;
-    setPlaceholderLoaded(false);
-  }, [imageUrl, placeholder.src]);
-
-  const placeholderStyle = useMemo(() => {
-    const base = placeholder.style ?? {};
-    const { opacity, ...rest } = base;
-    const parsedOpacity =
-      typeof opacity === 'number'
-        ? opacity
-        : typeof opacity === 'string'
-          ? Number.parseFloat(opacity)
-          : undefined;
-    const finalOpacity =
-      typeof parsedOpacity === 'number' && Number.isFinite(parsedOpacity)
-        ? parsedOpacity
-        : undefined;
-    return {
-      ...rest,
-      opacity: placeholderLoaded ? finalOpacity ?? 1 : 0,
-    } as CSSProperties;
-  }, [placeholder.style, placeholderLoaded]);
 
   const badges = useMemo(() => {
     const result: string[] = [];
@@ -256,28 +227,17 @@ export default function ItemModal({ item, restaurantId, onAddToCart }: ItemModal
         </button>
         <div className="max-h-[90vh] overflow-hidden rounded-3xl bg-white text-slate-900 shadow-[0_20px_60px_rgba(15,23,42,0.28)]">
           <div className="max-h-[90vh] overflow-y-auto">
-            {showImageSection ? (
+            {imageUrl ? (
               <div
                 className="relative w-full overflow-hidden bg-[var(--muted-bg,#f8f8f8)]"
                 style={{ aspectRatio: '4 / 3', maxHeight: '50vh' }}
               >
-                {imageUrl ? (
-                  <img
-                    src={imageUrl}
-                    alt={item?.name || ''}
-                    className="h-full w-full object-cover"
-                    style={{ objectPosition: `${focalX}% ${focalY}%` }}
-                  />
-                ) : (
-                  <img
-                    src={placeholder.src}
-                    alt=""
-                    className="h-full w-full object-contain transition-opacity duration-300"
-                    style={placeholderStyle}
-                    onLoad={() => setPlaceholderLoaded(true)}
-                    onError={() => setPlaceholderLoaded(true)}
-                  />
-                )}
+                <img
+                  src={imageUrl}
+                  alt={item?.name || ''}
+                  className="h-full w-full object-cover"
+                  style={{ objectPosition: `${focalX}% ${focalY}%` }}
+                />
               </div>
             ) : null}
             <div className="space-y-6 px-6 py-6 text-sm text-slate-700 md:px-8 md:py-8 md:text-base">

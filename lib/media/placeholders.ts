@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react';
 
-const FALLBACK_PLACEHOLDER_SRC = '/illustrations/placeholder-cutlery.svg';
+const FALLBACK_PLACEHOLDER_SRC = '/icons/knife-fork.svg';
 
 export function getItemPlaceholder(
   restaurantLogoUrl?: string
@@ -10,8 +10,7 @@ export function getItemPlaceholder(
       src: restaurantLogoUrl,
       style: {
         filter: 'grayscale(100%)',
-        opacity: 0.4,
-        mixBlendMode: 'multiply',
+        opacity: 0.6,
       },
     };
   }

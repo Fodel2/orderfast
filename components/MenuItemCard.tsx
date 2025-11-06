@@ -32,15 +32,21 @@ interface MenuItem {
   stock_status?: 'in_stock' | 'scheduled' | 'out' | null;
 }
 
+type RestaurantSummary = {
+  id: string | number;
+  logo_url?: string | null;
+} | null;
 
 export default function MenuItemCard({
   item,
   restaurantId,
-  variant,
+  restaurant,
+  mode,
 }: {
   item: MenuItem;
-  restaurantId: string | number;
-  variant?: 'default' | 'kiosk';
+  restaurantId?: string | number;
+  restaurant?: RestaurantSummary;
+  mode?: 'customer' | 'kiosk';
 }) {
   const [showModal, setShowModal] = useState(false);
   const { addToCart } = useCart();
@@ -72,9 +78,11 @@ export default function MenuItemCard({
         color: secText,
       }
     : { background: `${sec}1A`, borderColor: sec, color: secText };
-  const logo = brand?.logoUrl || undefined;
-  const placeholder = useMemo(() => getItemPlaceholder(logo), [logo]);
+  const restaurantLogo = restaurant?.logo_url ?? brand?.logoUrl ?? undefined;
+  const placeholder = useMemo(() => getItemPlaceholder(restaurantLogo), [restaurantLogo]);
   const [placeholderLoaded, setPlaceholderLoaded] = useState(false);
+  const resolvedRestaurantId = restaurantId ?? restaurant?.id;
+  const restaurantKey = resolvedRestaurantId != null ? String(resolvedRestaurantId) : undefined;
 
   const price =
     typeof item?.price === 'number' ? item.price : Number(item?.price || 0);
@@ -90,17 +98,24 @@ export default function MenuItemCard({
   }, [item?.is_18_plus, item?.is_vegan, item?.is_vegetarian]);
 
   const handleClick = () => {
+    if (!restaurantKey) return;
     setShowModal(true);
   };
 
   const handleAddToCart = (modalItem: any, quantity: number, addons: any[]) => {
+    if (!restaurantKey) {
+      console.warn('[menu-item-card] missing restaurant id for addToCart', {
+        itemId: item?.id,
+      });
+      return;
+    }
     const { notes, ...rest } = modalItem || {};
     const itemId = rest?.id ?? item.id;
     const itemName = rest?.name ?? item.name;
     const itemPrice = typeof rest?.price === 'number' ? rest.price : price;
     const trimmedNotes = typeof notes === 'string' ? notes.trim() : '';
 
-    addToCart(String(restaurantId), {
+    addToCart(restaurantKey, {
       item_id: String(itemId),
       name: itemName,
       price: itemPrice,
@@ -120,7 +135,7 @@ export default function MenuItemCard({
     [item]
   );
 
-  const isKiosk = variant === 'kiosk';
+  const isKiosk = mode === 'kiosk';
   const interactiveScale = isKiosk
     ? 'transform-gpu transition-transform duration-150 ease-out hover:scale-[1.02] active:scale-[0.98]'
     : '';
@@ -205,12 +220,8 @@ export default function MenuItemCard({
         </button>
       </div>
 
-      {showModal ? (
-        <ItemModal
-          item={itemForModal}
-          restaurantId={String(restaurantId)}
-          onAddToCart={handleAddToCart}
-        />
+      {showModal && restaurantKey ? (
+        <ItemModal item={itemForModal} restaurantId={restaurantKey} onAddToCart={handleAddToCart} />
       ) : null}
     </>
   );
