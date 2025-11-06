@@ -14,10 +14,15 @@ interface CartDrawerProps {
   inline?: boolean;
 }
 
-function CartContent({ onClose }: { onClose?: () => void }) {
+function CartContent({
+  onClose,
+  emptyMessage,
+}: {
+  onClose?: () => void;
+  emptyMessage: string;
+}) {
   const { cart, subtotal, updateQuantity, removeFromCart, clearCart } = useCart();
   const router = useRouter();
-  const [emptyMessage] = useState(() => randomEmptyPlateMessage());
 
   return (
     <>
@@ -134,6 +139,7 @@ function CartContent({ onClose }: { onClose?: () => void }) {
 
 export default function CartDrawer({ inline = false }: CartDrawerProps) {
   const { cart } = useCart();
+  const [emptyMessage] = useState(() => randomEmptyPlateMessage());
   const [open, setOpen] = useState(false);
 
   const toggle = () => setOpen((o) => !o);
@@ -156,7 +162,7 @@ export default function CartDrawer({ inline = false }: CartDrawerProps) {
     // Render content directly without drawer behaviour
     return (
       <div className="max-w-screen-sm mx-auto px-4 pt-6">
-        <CartContent />
+        <CartContent emptyMessage={emptyMessage} />
       </div>
     );
   }
@@ -178,7 +184,7 @@ export default function CartDrawer({ inline = false }: CartDrawerProps) {
         <>
           <div className="fixed inset-0 bg-black/40 z-40" onClick={toggle} />
           <div className="fixed inset-y-0 right-0 w-80 max-w-full bg-white shadow-lg z-50">
-            <CartContent onClose={toggle} />
+            <CartContent onClose={toggle} emptyMessage={emptyMessage} />
           </div>
         </>
       )}
