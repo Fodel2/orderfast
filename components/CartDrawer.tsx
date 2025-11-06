@@ -17,16 +17,7 @@ interface CartDrawerProps {
 function CartContent({ onClose }: { onClose?: () => void }) {
   const { cart, subtotal, updateQuantity, removeFromCart, clearCart } = useCart();
   const router = useRouter();
-  const emptyMessageRef = useRef(randomEmptyPlateMessage());
-  const previousCount = useRef(cart.items.length);
-
-  useEffect(() => {
-    const count = cart.items.length;
-    if (count === 0 && previousCount.current !== 0) {
-      emptyMessageRef.current = randomEmptyPlateMessage();
-    }
-    previousCount.current = count;
-  }, [cart.items.length]);
+  const [emptyMessage] = useState(() => randomEmptyPlateMessage());
 
   return (
     <>
@@ -45,7 +36,7 @@ function CartContent({ onClose }: { onClose?: () => void }) {
         {cart.items.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-6">
             <PlateIcon size={64} className="text-gray-300" />
-            <p className="text-center text-gray-500">{emptyMessageRef.current}</p>
+            <p className="text-center text-gray-500">{emptyMessage}</p>
           </div>
         ) : (
           cart.items.map((item) => {

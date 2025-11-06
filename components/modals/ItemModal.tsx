@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { XMarkIcon } from '@heroicons/react/24/outline';
 
 import AddonGroups, { validateAddonSelections } from '@/components/AddonGroups';
 import PlateAdd from '@/components/icons/PlateAdd';
@@ -220,10 +221,10 @@ export default function ItemModal({ item, restaurantId, onAddToCart }: ItemModal
           type="button"
           aria-label="Close"
           onClick={handleClose}
-          className="absolute right-4 top-4 inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/40 bg-white/70 text-slate-700 shadow-lg backdrop-blur focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+          className="absolute right-4 top-4 z-20 inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/60 bg-white/80 text-slate-700 shadow-md backdrop-blur-md transition hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
           style={{ ['--tw-ring-color' as any]: accent } as CSSProperties}
         >
-          <span className="text-xl leading-none">×</span>
+          <XMarkIcon className="h-5 w-5" aria-hidden="true" />
         </button>
         <div className="max-h-[90vh] overflow-hidden rounded-3xl bg-white text-slate-900 shadow-[0_20px_60px_rgba(15,23,42,0.28)]">
           <div className="max-h-[90vh] overflow-y-auto">
