@@ -239,7 +239,7 @@ export default function KioskMenuPage() {
                   <MenuItemCard
                     key={item.id}
                     item={item}
-                    restaurant={restaurant}
+                    restaurantId={restaurantId}
                     restaurantLogoUrl={restaurant?.logo_url ?? null}
                     mode="kiosk"
                   />
@@ -258,7 +258,7 @@ export default function KioskMenuPage() {
                   <MenuItemCard
                     key={item.id}
                     item={item}
-                    restaurant={restaurant}
+                    restaurantId={restaurantId}
                     restaurantLogoUrl={restaurant?.logo_url ?? null}
                     mode="kiosk"
                   />

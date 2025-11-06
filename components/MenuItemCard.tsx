@@ -36,21 +36,14 @@ interface MenuItem {
   stock_status?: 'in_stock' | 'scheduled' | 'out' | null;
 }
 
-type RestaurantSummary = {
-  id: string | number;
-  logo_url?: string | null;
-} | null;
-
 export default function MenuItemCard({
   item,
   restaurantId,
-  restaurant,
   restaurantLogoUrl,
   mode,
 }: {
   item: MenuItem;
   restaurantId?: string | number;
-  restaurant?: RestaurantSummary;
   restaurantLogoUrl?: string | null;
   mode?: 'customer' | 'kiosk';
 }) {
@@ -84,23 +77,20 @@ export default function MenuItemCard({
         color: secText,
       }
     : { background: `${sec}1A`, borderColor: sec, color: secText };
-  const normalizedExplicitLogo = useMemo(
+  const explicitLogo = useMemo(
     () => normalizeSource(restaurantLogoUrl ?? null),
     [restaurantLogoUrl]
   );
   const restaurantLogo = useMemo(() => {
-    if (normalizedExplicitLogo) return normalizedExplicitLogo;
-    const direct = normalizeSource(restaurant?.logo_url ?? null);
-    if (direct) return direct;
+    if (explicitLogo) return explicitLogo;
     return normalizeSource(brand?.logoUrl ?? null);
-  }, [normalizedExplicitLogo, restaurant?.logo_url, brand?.logoUrl]);
+  }, [explicitLogo, brand?.logoUrl]);
   const placeholder = useMemo(
     () => getItemPlaceholder(restaurantLogo),
     [restaurantLogo]
   );
   const [placeholderSrc, setPlaceholderSrc] = useState(placeholder.src);
-  const resolvedRestaurantId = restaurantId ?? restaurant?.id;
-  const restaurantKey = resolvedRestaurantId != null ? String(resolvedRestaurantId) : undefined;
+  const restaurantKey = restaurantId != null ? String(restaurantId) : undefined;
 
   const price =
     typeof item?.price === 'number' ? item.price : Number(item?.price || 0);
