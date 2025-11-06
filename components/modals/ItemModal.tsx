@@ -228,81 +228,87 @@ export default function ItemModal({ item, restaurantId, onAddToCart }: ItemModal
         </button>
         <div className="max-h-[90vh] overflow-hidden rounded-3xl bg-white text-slate-900 shadow-[0_20px_60px_rgba(15,23,42,0.28)]">
           <div className="max-h-[90vh] overflow-y-auto">
-            {imageUrl ? (
-              <div
-                className="relative w-full overflow-hidden bg-[var(--muted-bg,#f8f8f8)]"
-                style={{ aspectRatio: '4 / 3', maxHeight: '50vh' }}
-              >
-                <img
-                  src={imageUrl}
-                  alt={item?.name || ''}
-                  className="h-full w-full object-cover"
-                  style={{ objectPosition: `${focalX}% ${focalY}%` }}
-                />
-              </div>
-            ) : null}
-            <div className="space-y-6 px-6 py-6 text-sm text-slate-700 md:px-8 md:py-8 md:text-base">
-              <div className="space-y-3 text-slate-900">
-                <h2 className="text-xl font-semibold md:text-2xl">{item?.name}</h2>
-                {badges.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {badges.map((b) => (
-                      <span
-                        key={b}
-                        className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium"
-                        style={badgeStyles}
-                      >
-                        {b}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                {item?.description ? (
-                  <p className="text-sm text-slate-600 md:text-base">{item.description}</p>
-                ) : null}
+            <div className="mx-auto flex w-full max-w-xl flex-col items-center justify-center">
+              {imageUrl ? (
+                <div
+                  className="relative w-full overflow-hidden bg-[var(--muted-bg,#f8f8f8)]"
+                  style={{ aspectRatio: '4 / 3', maxHeight: '50vh' }}
+                >
+                  <img
+                    src={imageUrl}
+                    alt={item?.name || ''}
+                    className="h-full w-full object-cover"
+                    style={{ objectPosition: `${focalX}% ${focalY}%` }}
+                  />
+                </div>
+              ) : null}
+
+              <div className="flex w-full flex-col items-center justify-center px-6 py-6 text-sm text-slate-700 md:px-8 md:py-8 md:text-base">
+                <div className="mt-3 flex flex-col items-center gap-3 px-4 text-center md:px-6">
+                  <h2 className="text-xl font-semibold md:text-2xl">{item?.name}</h2>
+                  {badges.length > 0 && (
+                    <div className="flex flex-wrap justify-center gap-2">
+                      {badges.map((b) => (
+                        <span
+                          key={b}
+                          className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium"
+                          style={badgeStyles}
+                        >
+                          {b}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {item?.description ? (
+                    <p className="text-base leading-snug text-gray-600">{item.description}</p>
+                  ) : null}
+                </div>
+
+                <div className="mt-6 w-full">
+                  {loading ? (
+                    <p className="text-center text-slate-500">Loading add-ons…</p>
+                  ) : groups.length > 0 ? (
+                    <AddonGroups addons={groups} onChange={setSelections} />
+                  ) : null}
+                </div>
               </div>
 
-              {loading ? (
-                <p className="text-center text-slate-500">Loading add-ons…</p>
-              ) : groups.length > 0 ? (
-                <AddonGroups addons={groups} onChange={setSelections} />
-              ) : null}
-            </div>
-            <div className="border-t border-slate-200/80 px-6 py-6 text-sm text-slate-700 md:px-8 md:py-8 md:text-base">
-              <div className="flex flex-wrap items-center gap-4 md:gap-5">
-                <span className="text-lg font-semibold text-slate-900 md:text-xl">{formattedPrice}</span>
-                <div className="ml-auto flex items-center gap-3 rounded-full border border-slate-200/90 bg-slate-50/80 px-3 py-2 md:gap-4">
+              <div className="w-full border-t border-slate-200/80 px-6 py-6 text-sm text-slate-700 md:px-8 md:py-8 md:text-base">
+                <div className="flex flex-wrap items-center gap-4 md:gap-5">
+                  <span className="text-lg font-semibold text-slate-900 md:text-xl">{formattedPrice}</span>
+                  <div className="ml-auto flex items-center gap-3 rounded-full border border-slate-200/90 bg-slate-50/80 px-3 py-2 md:gap-4">
+                    <button
+                      type="button"
+                      aria-label="Decrease quantity"
+                      onClick={decrement}
+                      className="flex h-11 w-11 items-center justify-center rounded-full text-lg text-slate-700 transition hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                      style={{ ['--tw-ring-color' as any]: accent } as CSSProperties}
+                    >
+                      –
+                    </button>
+                    <span data-testid="qty" className="min-w-[2.5rem] text-center text-base font-semibold text-slate-900 md:text-lg">
+                      {qty}
+                    </span>
+                    <button
+                      type="button"
+                      aria-label="Increase quantity"
+                      onClick={increment}
+                      className="flex h-11 w-11 items-center justify-center rounded-full text-lg text-slate-700 transition hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                      style={{ ['--tw-ring-color' as any]: accent } as CSSProperties}
+                    >
+                      +
+                    </button>
+                  </div>
                   <button
-                    type="button"
-                    aria-label="Decrease quantity"
-                    onClick={decrement}
-                    className="flex h-11 w-11 items-center justify-center rounded-full text-lg text-slate-700 transition hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-                    style={{ ['--tw-ring-color' as any]: accent } as CSSProperties}
+                    aria-label="Confirm Add to Plate"
+                    onClick={handleFinalAdd}
+                    className="btn-primary flex h-12 flex-1 items-center justify-center gap-2 rounded-full px-6 text-base font-semibold transition hover:opacity-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 md:flex-none md:px-8"
+                    style={{ ['--tw-ring-color' as any]: accent || 'currentColor' } as CSSProperties}
                   >
-                    –
-                  </button>
-                  <span data-testid="qty" className="min-w-[2.5rem] text-center text-base font-semibold text-slate-900 md:text-lg">
-                    {qty}
-                  </span>
-                  <button
-                    type="button"
-                    aria-label="Increase quantity"
-                    onClick={increment}
-                    className="flex h-11 w-11 items-center justify-center rounded-full text-lg text-slate-700 transition hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-                    style={{ ['--tw-ring-color' as any]: accent } as CSSProperties}
-                  >
-                    +
+                    <PlateAdd size={20} />
+                    Add to Plate
                   </button>
                 </div>
-                <button
-                  aria-label="Confirm Add to Plate"
-                  onClick={handleFinalAdd}
-                  className="btn-primary flex h-12 flex-1 items-center justify-center gap-2 rounded-full px-6 text-base font-semibold transition hover:opacity-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 md:flex-none md:px-8"
-                  style={{ ['--tw-ring-color' as any]: accent || 'currentColor' } as CSSProperties}
-                >
-                  <PlateAdd size={20} />
-                  Add to Plate
-                </button>
               </div>
             </div>
           </div>
