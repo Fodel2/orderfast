@@ -45,11 +45,13 @@ export default function MenuItemCard({
   item,
   restaurantId,
   restaurant,
+  restaurantLogoUrl,
   mode,
 }: {
   item: MenuItem;
   restaurantId?: string | number;
   restaurant?: RestaurantSummary;
+  restaurantLogoUrl?: string | null;
   mode?: 'customer' | 'kiosk';
 }) {
   const [showModal, setShowModal] = useState(false);
@@ -82,17 +84,21 @@ export default function MenuItemCard({
         color: secText,
       }
     : { background: `${sec}1A`, borderColor: sec, color: secText };
+  const normalizedExplicitLogo = useMemo(
+    () => normalizeSource(restaurantLogoUrl ?? null),
+    [restaurantLogoUrl]
+  );
   const restaurantLogo = useMemo(() => {
+    if (normalizedExplicitLogo) return normalizedExplicitLogo;
     const direct = normalizeSource(restaurant?.logo_url ?? null);
     if (direct) return direct;
     return normalizeSource(brand?.logoUrl ?? null);
-  }, [restaurant?.logo_url, brand?.logoUrl]);
+  }, [normalizedExplicitLogo, restaurant?.logo_url, brand?.logoUrl]);
   const placeholder = useMemo(
     () => getItemPlaceholder(restaurantLogo),
     [restaurantLogo]
   );
   const [placeholderSrc, setPlaceholderSrc] = useState(placeholder.src);
-  const [placeholderLoaded, setPlaceholderLoaded] = useState(false);
   const resolvedRestaurantId = restaurantId ?? restaurant?.id;
   const restaurantKey = resolvedRestaurantId != null ? String(resolvedRestaurantId) : undefined;
 
@@ -162,7 +168,6 @@ export default function MenuItemCard({
   useEffect(() => {
     if (imageUrl) return;
     setPlaceholderSrc(placeholder.src);
-    setPlaceholderLoaded(false);
   }, [imageUrl, placeholder.src]);
 
   useEffect(() => {
@@ -178,24 +183,10 @@ export default function MenuItemCard({
     });
   }, [imageUrl, restaurantLogo, placeholder.src, item?.id]);
 
-  const placeholderStyle = useMemo(() => {
-    const base = placeholder.style ?? {};
-    const { opacity, ...rest } = base;
-    const parsedOpacity =
-      typeof opacity === 'number'
-        ? opacity
-        : typeof opacity === 'string'
-          ? Number.parseFloat(opacity)
-          : undefined;
-    const finalOpacity =
-      typeof parsedOpacity === 'number' && Number.isFinite(parsedOpacity)
-        ? parsedOpacity
-        : undefined;
-    return {
-      ...rest,
-      opacity: placeholderLoaded ? finalOpacity ?? 1 : 0,
-    } as CSSProperties;
-  }, [placeholder.style, placeholderLoaded]);
+  const placeholderStyle = useMemo(
+    () => (placeholder.style ? ({ ...placeholder.style } as CSSProperties) : undefined),
+    [placeholder.style]
+  );
 
   return (
     <>
@@ -217,16 +208,13 @@ export default function MenuItemCard({
               <img
                 src={placeholderSrc}
                 alt=""
-                className="h-full w-full object-cover transition-opacity duration-300"
+                className="h-full w-full object-cover"
                 style={placeholderStyle}
-                onLoad={() => setPlaceholderLoaded(true)}
                 onError={() => {
                   if (placeholderSrc !== FALLBACK_PLACEHOLDER_SRC) {
-                    setPlaceholderLoaded(false);
                     setPlaceholderSrc(FALLBACK_PLACEHOLDER_SRC);
                     return;
                   }
-                  setPlaceholderLoaded(true);
                 }}
               />
             )}

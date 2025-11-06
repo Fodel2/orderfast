@@ -236,7 +236,13 @@ export default function KioskMenuPage() {
               </header>
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                 {category.items.map((item) => (
-                  <MenuItemCard key={item.id} item={item} restaurant={restaurant} mode="kiosk" />
+                  <MenuItemCard
+                    key={item.id}
+                    item={item}
+                    restaurant={restaurant}
+                    restaurantLogoUrl={restaurant?.logo_url ?? null}
+                    mode="kiosk"
+                  />
                 ))}
               </div>
             </section>
@@ -249,7 +255,13 @@ export default function KioskMenuPage() {
               </header>
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                 {uncategorizedItems.map((item) => (
-                  <MenuItemCard key={item.id} item={item} restaurant={restaurant} mode="kiosk" />
+                  <MenuItemCard
+                    key={item.id}
+                    item={item}
+                    restaurant={restaurant}
+                    restaurantLogoUrl={restaurant?.logo_url ?? null}
+                    mode="kiosk"
+                  />
                 ))}
               </div>
             </section>
