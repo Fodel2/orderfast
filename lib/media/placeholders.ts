@@ -2,17 +2,25 @@ import type { CSSProperties } from 'react';
 
 const FALLBACK_PLACEHOLDER_SRC = '/icons/plate-outline.svg';
 
+function normalizeSource(src?: string | null): string | undefined {
+  if (typeof src !== 'string') return undefined;
+  const trimmed = src.trim();
+  return trimmed.length ? trimmed : undefined;
+}
+
 export function getItemPlaceholder(
-  restaurantLogoUrl?: string
+  restaurantLogoUrl?: string | null
 ): { src: string; style?: CSSProperties } {
   const sharedStyle: CSSProperties = {
     filter: 'grayscale(100%)',
     opacity: 0.55,
   };
 
-  if (restaurantLogoUrl) {
+  const normalizedLogo = normalizeSource(restaurantLogoUrl);
+
+  if (normalizedLogo) {
     return {
-      src: restaurantLogoUrl,
+      src: normalizedLogo,
       style: sharedStyle,
     };
   }
@@ -22,3 +30,5 @@ export function getItemPlaceholder(
     style: sharedStyle,
   };
 }
+
+export { normalizeSource };

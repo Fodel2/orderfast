@@ -5,7 +5,7 @@ import { useCart } from '../context/CartContext';
 import { useBrand } from '@/components/branding/BrandProvider';
 import { formatPrice } from '@/lib/orderDisplay';
 import ItemModal from '@/components/modals/ItemModal';
-import { getItemPlaceholder } from '@/lib/media/placeholders';
+import { getItemPlaceholder, normalizeSource } from '@/lib/media/placeholders';
 
 function contrast(c?: string) {
   try {
@@ -78,15 +78,29 @@ export default function MenuItemCard({
         color: secText,
       }
     : { background: `${sec}1A`, borderColor: sec, color: secText };
-  const restaurantLogo = restaurant?.logo_url ?? brand?.logoUrl ?? undefined;
-  const placeholder = useMemo(() => getItemPlaceholder(restaurantLogo), [restaurantLogo]);
+  const restaurantLogo = useMemo(() => {
+    const direct = normalizeSource(restaurant?.logo_url ?? null);
+    if (direct) return direct;
+    return normalizeSource(brand?.logoUrl ?? null);
+  }, [restaurant?.logo_url, brand?.logoUrl]);
+  const placeholder = useMemo(
+    () => getItemPlaceholder(restaurantLogo),
+    [restaurantLogo]
+  );
   const [placeholderLoaded, setPlaceholderLoaded] = useState(false);
   const resolvedRestaurantId = restaurantId ?? restaurant?.id;
   const restaurantKey = resolvedRestaurantId != null ? String(resolvedRestaurantId) : undefined;
 
   const price =
     typeof item?.price === 'number' ? item.price : Number(item?.price || 0);
-  const imageUrl = item?.image_url || undefined;
+  const imageUrl = useMemo(() => {
+    const source = item?.image_url;
+    if (typeof source === 'string') {
+      const trimmed = source.trim();
+      return trimmed.length ? trimmed : undefined;
+    }
+    return source ?? undefined;
+  }, [item?.image_url]);
   const currency = 'GBP';
   const formattedPrice = formatPrice(price / 100, currency);
   const badges = useMemo(() => {
@@ -144,6 +158,19 @@ export default function MenuItemCard({
     if (imageUrl) return;
     setPlaceholderLoaded(false);
   }, [imageUrl, placeholder.src]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (process.env.NODE_ENV === 'production') return;
+    if (imageUrl) return;
+
+    console.debug('[menu-item-card] placeholder sources', {
+      itemId: item?.id ?? null,
+      imageUrl: imageUrl ?? null,
+      restaurantLogo: restaurantLogo ?? null,
+      placeholderSrc: placeholder.src,
+    });
+  }, [imageUrl, restaurantLogo, placeholder.src, item?.id]);
 
   const placeholderStyle = useMemo(() => {
     const base = placeholder.style ?? {};
