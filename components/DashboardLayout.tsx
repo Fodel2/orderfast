@@ -34,6 +34,7 @@ type NavItem = {
   onClick?: () => void;
   disabled?: boolean;
   children?: NavChild[];
+  tooltip?: string;
 };
 
 interface DashboardLayoutProps {
@@ -41,7 +42,7 @@ interface DashboardLayoutProps {
 }
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
-  const [restaurant, setRestaurant] = useState<{ id: string } | null>(null);
+  const [restaurant, setRestaurant] = useState<{ id: string; subdomain: string | null } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -61,8 +62,20 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
         if (membershipError || !membership?.restaurant_id) return;
 
+        const restaurantId = membership.restaurant_id;
+
+        const { data: restaurantRow, error: restaurantError } = await supabase
+          .from('restaurants')
+          .select('id, subdomain')
+          .eq('id', restaurantId)
+          .maybeSingle();
+
+        if (restaurantError && process.env.NODE_ENV !== 'production') {
+          console.error('[dashboard-layout] failed to load restaurant details', restaurantError);
+        }
+
         if (!active) return;
-        setRestaurant({ id: membership.restaurant_id });
+        setRestaurant({ id: restaurantId, subdomain: restaurantRow?.subdomain ?? null });
       } catch (err) {
         if (process.env.NODE_ENV !== 'production') {
           console.error('[dashboard-layout] failed to load restaurant', err);
@@ -79,8 +92,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
   const handleOpenKiosk = useCallback(() => {
     if (!restaurant) return;
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || window.location.origin;
-    const normalizedBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+    const host = restaurant.subdomain
+      ? `https://${restaurant.subdomain}.orderfast.app`
+      : process.env.NEXT_PUBLIC_BASE_URL || window.location.origin;
+    const normalizedBase = host.endsWith('/') ? host.slice(0, -1) : host;
     const kioskUrl = `${normalizedBase}/kiosk/${restaurant.id}/menu`;
     const win = window.open(kioskUrl, '_blank');
     if (win && win.focus) win.focus();
@@ -101,6 +116,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       icon: DeviceTabletIcon,
       onClick: kioskDisabled ? undefined : handleOpenKiosk,
       disabled: kioskDisabled,
+      tooltip: 'Opens in fullscreen kiosk mode.',
     },
     {
       label: 'Website',
@@ -228,6 +244,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   disabled={disabled}
                   className={`${base} ${interactive ? 'text-gray-700' : 'text-gray-400'}`}
                   aria-label={n.label}
+                  title={n.tooltip}
                 >
                   <n.icon className={iconClass} aria-hidden="true" />
                   <span className={labelClass}>{n.label}</span>
@@ -236,7 +253,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             }
 
             return n.href ? (
-              <Link key={n.label} href={n.href} className={base} aria-label={n.label}>
+              <Link key={n.label} href={n.href} className={base} aria-label={n.label} title={n.tooltip}>
                 <n.icon className={iconClass} aria-hidden="true" />
                 <span className={labelClass}>{n.label}</span>
               </Link>

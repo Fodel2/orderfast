@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 
 interface WakeLockSentinel {
@@ -16,7 +16,7 @@ type WakeLockNavigator = Navigator & {
 
 type BeforeInstallPromptEvent = Event & {
   prompt?: () => Promise<void>;
-  userChoice?: Promise<unknown>;
+  userChoice?: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
 };
 
 type KioskLayoutProps = {
@@ -36,6 +36,25 @@ export default function KioskLayout({
 }: KioskLayoutProps) {
   const [wakeLock, setWakeLock] = useState<WakeLockSentinel | null>(null);
   const requestedRef = useRef(false);
+  const hasRequestedFullscreen = useRef(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [installDismissed, setInstallDismissed] = useState(false);
+  const [isInstalled, setIsInstalled] = useState(false);
+
+  const attemptFullscreen = useCallback(async () => {
+    if (typeof document === 'undefined') return;
+    if (document.fullscreenElement) return;
+    const el = document.documentElement;
+    if (!el || typeof el.requestFullscreen !== 'function') return;
+    if (hasRequestedFullscreen.current) return;
+    hasRequestedFullscreen.current = true;
+    try {
+      await el.requestFullscreen();
+    } catch (err) {
+      hasRequestedFullscreen.current = false;
+      console.debug('[kiosk] fullscreen request failed', err);
+    }
+  }, []);
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -56,41 +75,73 @@ export default function KioskLayout({
   useEffect(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return;
 
-    let deferredPrompt: BeforeInstallPromptEvent | null = null;
-
-    const enterFullscreen = async () => {
-      const el = document.documentElement;
-      try {
-        if (el?.requestFullscreen) {
-          await el.requestFullscreen();
-        }
-      } catch (err) {
-        console.debug('[kiosk] fullscreen request failed', err);
+    const updateInstalledState = (installed: boolean) => {
+      setIsInstalled(installed);
+      if (installed) {
+        setDeferredPrompt(null);
+        setInstallDismissed(true);
       }
     };
 
-    const handleBeforeInstallPrompt = (e: BeforeInstallPromptEvent) => {
-      e.preventDefault();
-      deferredPrompt = e;
-      const installBanner = window.confirm('Install this kiosk app for quicker access?');
-      if (installBanner && deferredPrompt?.prompt) {
-        deferredPrompt.prompt();
-        if (deferredPrompt.userChoice && typeof deferredPrompt.userChoice.then === 'function') {
-          deferredPrompt.userChoice.then(() => {
-            enterFullscreen();
-            deferredPrompt = null;
-          });
-        }
-      }
+    const evaluateDisplayMode = () => {
+      const media = window.matchMedia?.('(display-mode: standalone)');
+      const nav = window.navigator as Navigator & { standalone?: boolean };
+      const installed = Boolean(media?.matches) || nav?.standalone === true;
+      updateInstalledState(installed);
     };
+
+    const handleDisplayModeChange = (event: MediaQueryListEvent) => {
+      updateInstalledState(event.matches);
+    };
+
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      if (isInstalled) return;
+      const promptEvent = event as BeforeInstallPromptEvent;
+      setDeferredPrompt(promptEvent);
+      setInstallDismissed(false);
+    };
+
+    const handleAppInstalled = () => {
+      updateInstalledState(true);
+    };
+
+    const media = window.matchMedia?.('(display-mode: standalone)');
+
+    evaluateDisplayMode();
+    attemptFullscreen();
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    enterFullscreen();
+    window.addEventListener('appinstalled', handleAppInstalled);
+    media?.addEventListener?.('change', handleDisplayModeChange);
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+      media?.removeEventListener?.('change', handleDisplayModeChange);
     };
-  }, []);
+  }, [attemptFullscreen, isInstalled]);
+
+  const handleInstallClick = useCallback(async () => {
+    if (!deferredPrompt) return;
+    try {
+      if (typeof deferredPrompt.prompt === 'function') {
+        await deferredPrompt.prompt();
+      }
+      const choice = deferredPrompt.userChoice ? await deferredPrompt.userChoice.catch(() => null) : null;
+      if (choice && choice.outcome === 'accepted') {
+        setIsInstalled(true);
+        await attemptFullscreen();
+      } else {
+        setInstallDismissed(true);
+      }
+    } catch (err) {
+      console.debug('[kiosk] install prompt failed', err);
+      setInstallDismissed(true);
+    } finally {
+      setDeferredPrompt(null);
+    }
+  }, [attemptFullscreen, deferredPrompt]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -108,19 +159,10 @@ export default function KioskLayout({
       }
     };
 
-    const requestFullscreen = async () => {
-      try {
-        if (document.fullscreenElement || !document.documentElement?.requestFullscreen) return;
-        await document.documentElement.requestFullscreen();
-      } catch (err) {
-        console.debug('[kiosk] fullscreen rejected', err);
-      }
-    };
-
     const handleInteraction = async () => {
       if (requestedRef.current) return;
       requestedRef.current = true;
-      await Promise.allSettled([requestFullscreen(), requestWakeLock()]);
+      await Promise.allSettled([attemptFullscreen(), requestWakeLock()]);
     };
 
     window.addEventListener('pointerdown', handleInteraction, { once: true });
@@ -130,7 +172,7 @@ export default function KioskLayout({
       window.removeEventListener('pointerdown', handleInteraction);
       window.removeEventListener('keydown', handleInteraction);
     };
-  }, []);
+  }, [attemptFullscreen]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -199,6 +241,17 @@ export default function KioskLayout({
           </div>
         </div>
       </main>
+      {deferredPrompt && !isInstalled && !installDismissed ? (
+        <div className="pointer-events-none fixed bottom-6 left-1/2 z-40 -translate-x-1/2 sm:left-auto sm:right-6 sm:translate-x-0">
+          <button
+            type="button"
+            onClick={handleInstallClick}
+            className="pointer-events-auto flex items-center gap-3 rounded-full border border-white/60 bg-white/90 px-5 py-3 text-sm font-semibold text-slate-900 shadow-lg shadow-slate-200/70 backdrop-blur transition hover:bg-white"
+          >
+            Install Kiosk
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
