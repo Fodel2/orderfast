@@ -1,11 +1,15 @@
 import type { CSSProperties } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Utensils } from 'lucide-react';
 
 import { useCart } from '../context/CartContext';
 import { useBrand } from '@/components/branding/BrandProvider';
 import { formatPrice } from '@/lib/orderDisplay';
 import ItemModal from '@/components/modals/ItemModal';
+import {
+  FALLBACK_PLACEHOLDER_SRC,
+  getItemPlaceholder,
+  normalizeSource,
+} from '@/lib/media/placeholders';
 
 function contrast(c?: string) {
   try {
@@ -32,15 +36,16 @@ interface MenuItem {
   stock_status?: 'in_stock' | 'scheduled' | 'out' | null;
 }
 
-
 export default function MenuItemCard({
   item,
   restaurantId,
-  variant,
+  restaurantLogoUrl,
+  mode,
 }: {
   item: MenuItem;
-  restaurantId: string | number;
-  variant?: 'default' | 'kiosk';
+  restaurantId?: string | number;
+  restaurantLogoUrl?: string | null;
+  mode?: 'customer' | 'kiosk';
 }) {
   const [showModal, setShowModal] = useState(false);
   const { addToCart } = useCart();
@@ -72,11 +77,31 @@ export default function MenuItemCard({
         color: secText,
       }
     : { background: `${sec}1A`, borderColor: sec, color: secText };
-  const logo = brand?.logoUrl || undefined;
+  const explicitLogo = useMemo(
+    () => normalizeSource(restaurantLogoUrl ?? null),
+    [restaurantLogoUrl]
+  );
+  const restaurantLogo = useMemo(() => {
+    if (explicitLogo) return explicitLogo;
+    return normalizeSource(brand?.logoUrl ?? null);
+  }, [explicitLogo, brand?.logoUrl]);
+  const placeholder = useMemo(
+    () => getItemPlaceholder(restaurantLogo),
+    [restaurantLogo]
+  );
+  const [placeholderSrc, setPlaceholderSrc] = useState(placeholder.src);
+  const restaurantKey = restaurantId != null ? String(restaurantId) : undefined;
 
   const price =
     typeof item?.price === 'number' ? item.price : Number(item?.price || 0);
-  const imageUrl = item?.image_url || undefined;
+  const imageUrl = useMemo(() => {
+    const source = item?.image_url;
+    if (typeof source === 'string') {
+      const trimmed = source.trim();
+      return trimmed.length ? trimmed : undefined;
+    }
+    return source ?? undefined;
+  }, [item?.image_url]);
   const currency = 'GBP';
   const formattedPrice = formatPrice(price / 100, currency);
   const badges = useMemo(() => {
@@ -88,17 +113,24 @@ export default function MenuItemCard({
   }, [item?.is_18_plus, item?.is_vegan, item?.is_vegetarian]);
 
   const handleClick = () => {
+    if (!restaurantKey) return;
     setShowModal(true);
   };
 
   const handleAddToCart = (modalItem: any, quantity: number, addons: any[]) => {
+    if (!restaurantKey) {
+      console.warn('[menu-item-card] missing restaurant id for addToCart', {
+        itemId: item?.id,
+      });
+      return;
+    }
     const { notes, ...rest } = modalItem || {};
     const itemId = rest?.id ?? item.id;
     const itemName = rest?.name ?? item.name;
     const itemPrice = typeof rest?.price === 'number' ? rest.price : price;
     const trimmedNotes = typeof notes === 'string' ? notes.trim() : '';
 
-    addToCart(String(restaurantId), {
+    addToCart(restaurantKey, {
       item_id: String(itemId),
       name: itemName,
       price: itemPrice,
@@ -118,10 +150,33 @@ export default function MenuItemCard({
     [item]
   );
 
-  const isKiosk = variant === 'kiosk';
+  const isKiosk = mode === 'kiosk';
   const interactiveScale = isKiosk
     ? 'transform-gpu transition-transform duration-150 ease-out hover:scale-[1.02] active:scale-[0.98]'
     : '';
+
+  useEffect(() => {
+    if (imageUrl) return;
+    setPlaceholderSrc(placeholder.src);
+  }, [imageUrl, placeholder.src]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (process.env.NODE_ENV === 'production') return;
+    if (imageUrl) return;
+
+    console.debug('[menu-item-card] placeholder sources', {
+      itemId: item?.id ?? null,
+      imageUrl: imageUrl ?? null,
+      restaurantLogo: restaurantLogo ?? null,
+      placeholderSrc: placeholder.src,
+    });
+  }, [imageUrl, restaurantLogo, placeholder.src, item?.id]);
+
+  const placeholderStyle = useMemo(
+    () => (placeholder.style ? ({ ...placeholder.style } as CSSProperties) : undefined),
+    [placeholder.style]
+  );
 
   return (
     <>
@@ -139,17 +194,19 @@ export default function MenuItemCard({
                 alt={item.name}
                 className="h-full w-full object-cover"
               />
-            ) : logo ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={logo}
-                alt=""
-                className="h-full w-full object-contain opacity-30 mix-blend-multiply"
-              />
             ) : (
-              <div className="flex h-full w-full items-center justify-center">
-                <Utensils aria-hidden className="h-8 w-8 text-slate-400" />
-              </div>
+              <img
+                src={placeholderSrc}
+                alt=""
+                className="h-full w-full object-cover"
+                style={placeholderStyle}
+                onError={() => {
+                  if (placeholderSrc !== FALLBACK_PLACEHOLDER_SRC) {
+                    setPlaceholderSrc(FALLBACK_PLACEHOLDER_SRC);
+                    return;
+                  }
+                }}
+              />
             )}
           </div>
           <div className="flex-1 min-w-0 flex flex-col gap-1">
@@ -181,12 +238,8 @@ export default function MenuItemCard({
         </button>
       </div>
 
-      {showModal ? (
-        <ItemModal
-          item={itemForModal}
-          restaurantId={String(restaurantId)}
-          onAddToCart={handleAddToCart}
-        />
+      {showModal && restaurantKey ? (
+        <ItemModal item={itemForModal} restaurantId={restaurantKey} onAddToCart={handleAddToCart} />
       ) : null}
     </>
   );

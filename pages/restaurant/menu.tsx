@@ -378,7 +378,11 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
                           className={`opacity-0 translate-y-2 transition-all duration-500 ease-out will-change-transform will-change-opacity ${mounted ? 'opacity-100 translate-y-0' : ''}`}
                           style={{ transitionDelay: `${idx * 75}ms` }}
                         >
-                          <MenuItemCard item={item} restaurantId={restaurantId as string} />
+                          <MenuItemCard
+                            item={item}
+                            restaurantId={restaurantId as string}
+                            restaurantLogoUrl={restaurant?.logo_url ?? null}
+                          />
                         </div>
                       ))}
                     </div>
