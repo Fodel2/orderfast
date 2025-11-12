@@ -41,8 +41,14 @@ interface DashboardLayoutProps {
   children: ReactNode;
 }
 
+type RestaurantContext = {
+  id: string;
+  subdomain: string | null;
+  name: string | null;
+};
+
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
-  const [restaurant, setRestaurant] = useState<{ id: string; subdomain: string | null } | null>(null);
+  const [restaurant, setRestaurant] = useState<RestaurantContext | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -66,7 +72,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
         const { data: restaurantRow, error: restaurantError } = await supabase
           .from('restaurants')
-          .select('id, subdomain')
+          .select('id, subdomain, name')
           .eq('id', restaurantId)
           .maybeSingle();
 
@@ -75,7 +81,11 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         }
 
         if (!active) return;
-        setRestaurant({ id: restaurantId, subdomain: restaurantRow?.subdomain ?? null });
+        setRestaurant({
+          id: restaurantId,
+          subdomain: restaurantRow?.subdomain ?? null,
+          name: restaurantRow?.name ?? null,
+        });
       } catch (err) {
         if (process.env.NODE_ENV !== 'production') {
           console.error('[dashboard-layout] failed to load restaurant', err);
@@ -92,11 +102,30 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
   const handleOpenKiosk = useCallback(() => {
     if (!restaurant) return;
-    const host = restaurant.subdomain
-      ? `https://${restaurant.subdomain}.orderfast.app`
-      : process.env.NEXT_PUBLIC_BASE_URL || window.location.origin;
-    const normalizedBase = host.endsWith('/') ? host.slice(0, -1) : host;
-    const kioskUrl = `${normalizedBase}/kiosk/${restaurant.id}/menu`;
+    const derivedSlug = restaurant.subdomain?.trim()
+      ? restaurant.subdomain.trim().toLowerCase()
+      : restaurant.name
+      ? (() => {
+          const sanitized = restaurant.name
+            .toLowerCase()
+            .replace(/\s+/g, '')
+            .replace(/[^a-z0-9]/g, '');
+          return sanitized.length > 0 ? sanitized : null;
+        })()
+      : null;
+    const kioskUrl = derivedSlug
+      ? `https://${derivedSlug}.orderfast.app/kiosk/${restaurant.id}/menu`
+      : `${(process.env.NEXT_PUBLIC_BASE_URL || window.location.origin).replace(/\/$/, '')}/kiosk/${
+          restaurant.id
+        }/menu`;
+
+    if (process.env.NODE_ENV !== 'production') {
+      if (kioskUrl.includes('%20')) {
+        console.warn('[dashboard-layout] generated kiosk URL contains encoded spaces', kioskUrl);
+      } else {
+        console.log('[dashboard-layout] opening kiosk URL', kioskUrl);
+      }
+    }
     const win = window.open(kioskUrl, '_blank');
     if (win && win.focus) win.focus();
   }, [restaurant]);
