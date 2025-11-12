@@ -207,7 +207,7 @@ export default function KioskMenuPage() {
         restaurantId ? (
           <Link
             href={`/kiosk/${restaurantId}/cart`}
-            className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-900 shadow transition hover:bg-white/90"
+            className="rounded-full bg-teal-600 px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-teal-500"
           >
             View cart ({cartCount})
           </Link>
@@ -221,7 +221,7 @@ export default function KioskMenuPage() {
           ))}
         </div>
       ) : !restaurantId ? (
-        <div className="rounded-2xl bg-white/10 p-6 text-center text-sm font-semibold uppercase tracking-[0.2em] text-red-200">
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center text-sm font-semibold uppercase tracking-[0.2em] text-amber-700">
           Missing restaurant ID
         </div>
       ) : (
@@ -229,9 +229,9 @@ export default function KioskMenuPage() {
           {categorizedItems.map((category) => (
             <section key={category.id} className="flex flex-col gap-4">
               <header className="flex flex-col gap-1">
-                <h2 className="text-2xl font-semibold tracking-tight text-white">{category.name}</h2>
+                <h2 className="text-2xl font-semibold tracking-tight text-slate-900">{category.name}</h2>
                 {category.description ? (
-                  <p className="text-sm text-white/70">{category.description}</p>
+                  <p className="text-sm text-slate-600">{category.description}</p>
                 ) : null}
               </header>
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
@@ -251,7 +251,7 @@ export default function KioskMenuPage() {
           {hasUncategorizedItems ? (
             <section className="flex flex-col gap-4">
               <header>
-                <h2 className="text-2xl font-semibold tracking-tight text-white">Other items</h2>
+                <h2 className="text-2xl font-semibold tracking-tight text-slate-900">Other items</h2>
               </header>
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                 {uncategorizedItems.map((item) => (
@@ -268,7 +268,7 @@ export default function KioskMenuPage() {
           ) : null}
 
           {!hasCategoryItems && !hasUncategorizedItems ? (
-            <div className="rounded-2xl border border-dashed border-white/20 p-8 text-center text-white/70">
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-600">
               This menu is currently empty.
             </div>
           ) : null}

@@ -59,7 +59,7 @@ export default function KioskCartPage() {
     restaurantId && cartCount > 0 ? (
       <Link
         href={`/kiosk/${restaurantId}/confirm`}
-        className="rounded-full bg-white px-5 py-2 text-sm font-semibold uppercase tracking-wide text-slate-900 shadow transition hover:bg-white/90"
+        className="rounded-full bg-teal-600 px-5 py-2 text-sm font-semibold uppercase tracking-wide text-white shadow transition hover:bg-teal-500"
       >
         Place order
       </Link>

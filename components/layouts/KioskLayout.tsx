@@ -14,6 +14,11 @@ type WakeLockNavigator = Navigator & {
   };
 };
 
+type BeforeInstallPromptEvent = Event & {
+  prompt?: () => Promise<void>;
+  userChoice?: Promise<unknown>;
+};
+
 type KioskLayoutProps = {
   title?: string;
   subtitle?: string;
@@ -45,6 +50,45 @@ export default function KioskLayout({
     return () => {
       html.style.overflow = previousHtmlOverflow;
       body.style.overflow = previousBodyOverflow;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+
+    let deferredPrompt: BeforeInstallPromptEvent | null = null;
+
+    const enterFullscreen = async () => {
+      const el = document.documentElement;
+      try {
+        if (el?.requestFullscreen) {
+          await el.requestFullscreen();
+        }
+      } catch (err) {
+        console.debug('[kiosk] fullscreen request failed', err);
+      }
+    };
+
+    const handleBeforeInstallPrompt = (e: BeforeInstallPromptEvent) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      const installBanner = window.confirm('Install this kiosk app for quicker access?');
+      if (installBanner && deferredPrompt?.prompt) {
+        deferredPrompt.prompt();
+        if (deferredPrompt.userChoice && typeof deferredPrompt.userChoice.then === 'function') {
+          deferredPrompt.userChoice.then(() => {
+            enterFullscreen();
+            deferredPrompt = null;
+          });
+        }
+      }
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    enterFullscreen();
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     };
   }, []);
 
@@ -123,20 +167,20 @@ export default function KioskLayout({
     if (!title && !subtitle && !backHref && !action) return null;
 
     return (
-      <header className="flex items-center justify-between gap-4 border-b border-white/10 bg-black/40 px-6 py-4 text-white">
+      <header className="flex items-center justify-between gap-4 border-b border-slate-200 bg-white px-6 py-4 text-slate-900 shadow-sm">
         <div className="flex items-center gap-4">
           {backHref ? (
             <Link
               href={backHref}
-              className="rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm font-semibold tracking-wide transition hover:bg-white/20"
+              className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold tracking-wide text-slate-700 transition hover:bg-slate-50"
             >
               Back
             </Link>
           ) : null}
           <div>
-            {title ? <h1 className="text-lg font-semibold tracking-wide sm:text-xl">{title}</h1> : null}
+            {title ? <h1 className="text-lg font-semibold tracking-wide text-slate-900 sm:text-xl">{title}</h1> : null}
             {subtitle ? (
-              <p className="text-sm font-medium text-white/70 sm:text-base">{subtitle}</p>
+              <p className="text-sm font-medium text-slate-500 sm:text-base">{subtitle}</p>
             ) : null}
           </div>
         </div>
@@ -146,7 +190,7 @@ export default function KioskLayout({
   }, [action, backHref, subtitle, title]);
 
   return (
-    <div className="min-h-screen w-full bg-slate-900 text-white">
+    <div className="min-h-screen w-full bg-slate-100 text-slate-900">
       <main className="flex min-h-screen flex-col">
         {headerContent}
         <div className="flex-1 overflow-auto px-4 py-6 sm:px-8">

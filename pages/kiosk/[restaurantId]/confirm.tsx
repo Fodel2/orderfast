@@ -54,16 +54,16 @@ export default function KioskConfirmPage() {
       subtitle="Thank you for your order!"
       backHref={restaurantId ? `/kiosk/${restaurantId}/menu` : undefined}
     >
-      <div className="mx-auto w-full max-w-4xl rounded-3xl border border-white/10 bg-black/30 p-10 text-center shadow-2xl">
-        <h2 className="text-3xl font-semibold tracking-tight text-white">Order placed</h2>
-        <p className="mt-4 text-base text-white/70">
+      <div className="mx-auto w-full max-w-4xl rounded-3xl border border-slate-200 bg-white p-10 text-center shadow-xl">
+        <h2 className="text-3xl font-semibold tracking-tight text-slate-900">Order placed</h2>
+        <p className="mt-4 text-base text-slate-600">
           Your order is being prepared. Please wait for the staff to confirm your pickup number on screen.
         </p>
         {restaurantId ? (
           <div className="mt-8 flex justify-center">
             <Link
               href={`/kiosk/${restaurantId}/menu`}
-              className="rounded-full bg-white px-6 py-3 text-sm font-semibold uppercase tracking-wide text-slate-900 shadow transition hover:bg-white/90"
+              className="rounded-full bg-teal-600 px-6 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow transition hover:bg-teal-500"
             >
               Start a new order
             </Link>

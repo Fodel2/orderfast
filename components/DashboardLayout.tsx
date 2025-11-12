@@ -18,22 +18,90 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
 } from '@heroicons/react/24/outline';
-import { ReactNode, useState } from 'react';
+import { ReactNode, useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
+import { supabase } from '@/lib/supabaseClient';
+
+type NavChild = {
+  href: string;
+  label: string;
+};
+
+type NavItem = {
+  href?: string | null;
+  label: string;
+  icon: React.ComponentType<any>;
+  onClick?: () => void;
+  disabled?: boolean;
+  children?: NavChild[];
+};
 
 interface DashboardLayoutProps {
   children: ReactNode;
 }
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
-  const nav = [
+  const [restaurant, setRestaurant] = useState<{ id: string } | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadRestaurant = async () => {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (!session) return;
+
+        const { data: membership, error: membershipError } = await supabase
+          .from('restaurant_users')
+          .select('restaurant_id')
+          .eq('user_id', session.user.id)
+          .maybeSingle();
+
+        if (membershipError || !membership?.restaurant_id) return;
+
+        if (!active) return;
+        setRestaurant({ id: membership.restaurant_id });
+      } catch (err) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.error('[dashboard-layout] failed to load restaurant', err);
+        }
+      }
+    };
+
+    loadRestaurant();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const handleOpenKiosk = useCallback(() => {
+    if (!restaurant) return;
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || window.location.origin;
+    const normalizedBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+    const kioskUrl = `${normalizedBase}/kiosk/${restaurant.id}/menu`;
+    const win = window.open(kioskUrl, '_blank');
+    if (win && win.focus) win.focus();
+  }, [restaurant]);
+
+  const kioskDisabled = !restaurant;
+
+  const nav: NavItem[] = [
     { href: '/dashboard', label: 'Home', icon: HomeIcon },
     { href: '/dashboard/orders', label: 'Orders', icon: TruckIcon },
     { href: '/dashboard/menu-builder', label: 'Menu', icon: ClipboardDocumentListIcon },
     { href: null, label: 'Promotions', icon: MegaphoneIcon },
     { href: null, label: 'POS', icon: ComputerDesktopIcon },
     { href: null, label: 'KOD', icon: CpuChipIcon },
-    { href: null, label: 'Kiosk', icon: DeviceTabletIcon },
+    {
+      href: null,
+      label: 'Kiosk',
+      icon: DeviceTabletIcon,
+      onClick: kioskDisabled ? undefined : handleOpenKiosk,
+      disabled: kioskDisabled,
+    },
     {
       label: 'Website',
       icon: GlobeAltIcon,
@@ -93,13 +161,24 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         </div>
         <nav className="flex-1 px-2 space-y-1">
           {nav.map((n) => {
-            const hasChildren = Array.isArray(n.children);
+            const children = Array.isArray(n.children) ? n.children : [];
+            const hasChildren = children.length > 0;
             const active =
               (!!n.href && router.pathname === n.href) ||
-              (hasChildren && n.children!.some((c) => router.pathname === c.href));
-            const base = `flex items-center px-4 py-2 rounded hover:bg-gray-50 focus:outline-none ${active ? 'bg-gray-50 border-l-4 border-teal-600' : ''}`;
-            const labelClass = `${active ? highlight : 'text-gray-700'} ${collapsed ? 'hidden' : 'ml-3'}`;
-            const iconClass = `w-6 h-6 ${active ? highlight : 'text-gray-400'}`;
+              (hasChildren && children.some((c) => router.pathname === c.href));
+            const isButton = typeof n.onClick === 'function';
+            const disabled = Boolean(n.disabled);
+            const interactive = !disabled;
+            const base = `flex items-center px-4 py-2 rounded focus:outline-none transition ${
+              active ? 'bg-gray-50 border-l-4 border-teal-600' : ''
+            } ${interactive ? 'hover:bg-gray-50' : 'cursor-not-allowed'}`;
+            const labelColor = active
+              ? highlight
+              : disabled
+              ? 'text-gray-400'
+              : 'text-gray-700';
+            const labelClass = `${labelColor} ${collapsed ? 'hidden' : 'ml-3'}`;
+            const iconClass = `w-6 h-6 ${active ? highlight : disabled ? 'text-gray-300' : 'text-gray-400'}`;
 
             if (hasChildren) {
               const openDrop = dropdownOpen[n.label];
@@ -118,7 +197,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   </button>
                   {openDrop && !collapsed && (
                     <div className="mt-1 ml-8 space-y-1">
-                      {n.children!.map((c) => {
+                      {children.map((c) => {
                         const childActive = router.pathname === c.href;
                         return (
                           <Link
@@ -137,6 +216,22 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                     </div>
                   )}
                 </div>
+              );
+            }
+
+            if (isButton) {
+              return (
+                <button
+                  key={n.label}
+                  type="button"
+                  onClick={n.onClick}
+                  disabled={disabled}
+                  className={`${base} ${interactive ? 'text-gray-700' : 'text-gray-400'}`}
+                  aria-label={n.label}
+                >
+                  <n.icon className={iconClass} aria-hidden="true" />
+                  <span className={labelClass}>{n.label}</span>
+                </button>
               );
             }
 

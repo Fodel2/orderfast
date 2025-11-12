@@ -279,7 +279,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
               restaurant?.website_description ||
               '';
             return desc ? (
-              <p className="mt-3 text-[15px] leading-6 text-neutral-700 dark:text-neutral-300">{desc}</p>
+              <p className="mt-3 text-[15px] leading-6 text-neutral-700">{desc}</p>
             ) : null;
           })()}
 

@@ -17,17 +17,15 @@ body,
 body {
   margin: 0;
   font-family: 'Inter', sans-serif;
-  background-color: #ffffff;
-}
-
-@media (prefers-color-scheme: dark) {
-  body {
-    background-color: #0f172a;
-  }
+  background-color: var(--app-background);
+  color: var(--app-text);
 }
 
 :root {
   --brand-color: #0ea5e9;
+  --app-background: #f8fafc;
+  --app-surface: #ffffff;
+  --app-text: #0f172a;
   --of-canvas-w: 100vw;
   --of-canvas-h: 100svh;
   --of-safe-top: env(safe-area-inset-top, 0px);
