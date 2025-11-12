@@ -33,9 +33,9 @@ export function Button({
         variant === "primary" &&
           "bg-[var(--brand-color,theme(colors.sky.500))] text-white hover:brightness-110 border border-transparent shadow-sm",
         variant === "secondary" &&
-          "bg-white text-neutral-900 border border-neutral-200 hover:bg-neutral-50 dark:bg-neutral-900 dark:text-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800",
+          "bg-white text-neutral-900 border border-neutral-200 hover:bg-neutral-50",
         variant === "icon" &&
-          "w-9 h-9 rounded-full border border-neutral-200 bg-white text-neutral-900 hover:bg-neutral-50 dark:bg-neutral-900 dark:text-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800",
+          "w-9 h-9 rounded-full border border-neutral-200 bg-white text-neutral-900 hover:bg-neutral-50",
         variant === "destructive" &&
           "bg-red-500 text-white hover:bg-red-600 border border-transparent shadow-sm",
 
