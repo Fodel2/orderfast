@@ -18,7 +18,7 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
 } from '@heroicons/react/24/outline';
-import { ReactNode, useCallback, useEffect, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '@/lib/supabaseClient';
 
@@ -35,6 +35,8 @@ type NavItem = {
   disabled?: boolean;
   children?: NavChild[];
   tooltip?: string;
+  target?: string;
+  rel?: string;
 };
 
 interface DashboardLayoutProps {
@@ -43,8 +45,6 @@ interface DashboardLayoutProps {
 
 type RestaurantContext = {
   id: string;
-  subdomain: string | null;
-  name: string | null;
 };
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
@@ -70,9 +70,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
         const restaurantId = membership.restaurant_id;
 
-        const { data: restaurantRow, error: restaurantError } = await supabase
+        const { error: restaurantError } = await supabase
           .from('restaurants')
-          .select('id, subdomain, name')
+          .select('id')
           .eq('id', restaurantId)
           .maybeSingle();
 
@@ -83,8 +83,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         if (!active) return;
         setRestaurant({
           id: restaurantId,
-          subdomain: restaurantRow?.subdomain ?? null,
-          name: restaurantRow?.name ?? null,
         });
       } catch (err) {
         if (process.env.NODE_ENV !== 'production') {
@@ -100,35 +98,15 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     };
   }, []);
 
-  const handleOpenKiosk = useCallback(() => {
-    if (!restaurant) return;
-    const derivedSlug = restaurant.subdomain?.trim()
-      ? restaurant.subdomain.trim().toLowerCase()
-      : restaurant.name
-      ? (() => {
-          const sanitized = restaurant.name
-            .toLowerCase()
-            .replace(/\s+/g, '')
-            .replace(/[^a-z0-9]/g, '');
-          return sanitized.length > 0 ? sanitized : null;
-        })()
-      : null;
-    const kioskUrl = derivedSlug
-      ? `https://${derivedSlug}.orderfast.app/kiosk/${restaurant.id}/menu`
-      : `${(process.env.NEXT_PUBLIC_BASE_URL || window.location.origin).replace(/\/$/, '')}/kiosk/${
-          restaurant.id
-        }/menu`;
+  const base =
+    typeof window !== 'undefined'
+      ? window.location.origin
+      : process.env.NEXT_PUBLIC_BASE_URL;
 
-    if (process.env.NODE_ENV !== 'production') {
-      if (kioskUrl.includes('%20')) {
-        console.warn('[dashboard-layout] generated kiosk URL contains encoded spaces', kioskUrl);
-      } else {
-        console.log('[dashboard-layout] opening kiosk URL', kioskUrl);
-      }
-    }
-    const win = window.open(kioskUrl, '_blank');
-    if (win && win.focus) win.focus();
-  }, [restaurant]);
+  const kioskUrl =
+    restaurant && base
+      ? `${base.replace(/\/$/, '')}/kiosk/${restaurant.id}/menu`
+      : null;
 
   const kioskDisabled = !restaurant;
 
@@ -140,11 +118,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     { href: null, label: 'POS', icon: ComputerDesktopIcon },
     { href: null, label: 'KOD', icon: CpuChipIcon },
     {
-      href: null,
       label: 'Kiosk',
       icon: DeviceTabletIcon,
-      onClick: kioskDisabled ? undefined : handleOpenKiosk,
-      disabled: kioskDisabled,
+      href: kioskUrl,
+      disabled: kioskDisabled || !kioskUrl,
+      target: '_blank',
+      rel: 'noopener noreferrer',
       tooltip: 'Opens in fullscreen kiosk mode.',
     },
     {
@@ -281,12 +260,38 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               );
             }
 
-            return n.href ? (
-              <Link key={n.label} href={n.href} className={base} aria-label={n.label} title={n.tooltip}>
-                <n.icon className={iconClass} aria-hidden="true" />
-                <span className={labelClass}>{n.label}</span>
-              </Link>
-            ) : (
+            if (n.href) {
+              if (disabled) {
+                return (
+                  <span
+                    key={n.label}
+                    className={`${base} text-gray-400 cursor-not-allowed`}
+                    title={n.tooltip || 'Unavailable'}
+                    aria-label={n.label}
+                  >
+                    <n.icon className="w-6 h-6 text-gray-400" aria-hidden="true" />
+                    <span className={labelClass}>{n.label}</span>
+                  </span>
+                );
+              }
+
+              return (
+                <Link
+                  key={n.label}
+                  href={n.href}
+                  className={base}
+                  aria-label={n.label}
+                  title={n.tooltip}
+                  target={n.target}
+                  rel={n.rel}
+                >
+                  <n.icon className={iconClass} aria-hidden="true" />
+                  <span className={labelClass}>{n.label}</span>
+                </Link>
+              );
+            }
+
+            return (
               <span
                 key={n.label}
                 className={`${base} text-gray-400 cursor-not-allowed`}
