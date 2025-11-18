@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import Link from 'next/link';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 interface WakeLockSentinel {
   released: boolean;
@@ -40,6 +41,32 @@ export default function KioskLayout({
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [installDismissed, setInstallDismissed] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
+
+  const headerContent = useMemo(() => {
+    if (!title && !subtitle && !backHref && !action) return null;
+
+    return (
+      <header className="flex items-center justify-between gap-4 border-b border-white/10 bg-black/40 px-6 py-4 text-white">
+        <div className="flex items-center gap-4">
+          {backHref ? (
+            <Link
+              href={backHref}
+              className="rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm font-semibold tracking-wide transition hover:bg-white/20"
+            >
+              Back
+            </Link>
+          ) : null}
+          <div>
+            {title ? <h1 className="text-lg font-semibold tracking-wide sm:text-xl">{title}</h1> : null}
+            {subtitle ? (
+              <p className="text-sm font-medium text-white/70 sm:text-base">{subtitle}</p>
+            ) : null}
+          </div>
+        </div>
+        {action ? <div className="shrink-0">{action}</div> : null}
+      </header>
+    );
+  }, [action, backHref, subtitle, title]);
 
   const attemptFullscreen = useCallback(async () => {
     if (typeof document === 'undefined') return;
@@ -264,6 +291,7 @@ export default function KioskLayout({
   return (
     <div className="min-h-screen w-full overflow-hidden bg-slate-100 text-slate-900">
       <main className="flex min-h-screen flex-col overflow-hidden">
+        {headerContent}
         <div className="flex-1 overflow-auto px-4 py-6 sm:px-8">
           <div className="mx-auto flex w-full max-w-none flex-col gap-8">
             {children}
