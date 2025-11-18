@@ -150,3 +150,12 @@ body {
   caret-color: transparent;
   touch-action: manipulation;
 }
+
+html.kiosk-mode,
+body.kiosk-mode {
+  overscroll-behavior: none;
+}
+
+body.kiosk-mode {
+  overflow: hidden;
+}

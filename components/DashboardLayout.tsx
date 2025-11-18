@@ -49,6 +49,7 @@ type RestaurantContext = {
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [restaurant, setRestaurant] = useState<RestaurantContext | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
     let active = true;
@@ -98,17 +99,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     };
   }, []);
 
-  const base =
-    typeof window !== 'undefined'
-      ? window.location.origin
-      : process.env.NEXT_PUBLIC_BASE_URL;
+  const restaurantIdFromRoute = (router.query.restaurantId as string | undefined) || null;
+  const activeRestaurantId = restaurantIdFromRoute || restaurant?.id || null;
 
-  const kioskUrl =
-    restaurant && base
-      ? `${base.replace(/\/$/, '')}/kiosk/${restaurant.id}/menu`
-      : null;
+  const kioskUrl = activeRestaurantId ? `/kiosk/${activeRestaurantId}/menu` : null;
 
-  const kioskDisabled = !restaurant;
+  const kioskDisabled = !activeRestaurantId;
 
   const nav: NavItem[] = [
     { href: '/dashboard', label: 'Home', icon: HomeIcon },
@@ -122,8 +118,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       icon: DeviceTabletIcon,
       href: kioskUrl,
       disabled: kioskDisabled || !kioskUrl,
-      target: '_blank',
-      rel: 'noopener noreferrer',
       tooltip: 'Opens in fullscreen kiosk mode.',
     },
     {
@@ -141,7 +135,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     { href: null, label: 'Settings', icon: Cog6ToothIcon },
   ];
 
-  const router = useRouter();
   const [open, setOpen] = useState(false); // mobile open state
   const [collapsed, setCollapsed] = useState(false); // desktop collapse state
   const [dropdownOpen, setDropdownOpen] = useState<Record<string, boolean>>({});

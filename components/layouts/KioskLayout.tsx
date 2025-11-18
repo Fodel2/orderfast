@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import Link from 'next/link';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
 interface WakeLockSentinel {
   released: boolean;
@@ -37,6 +36,7 @@ export default function KioskLayout({
   const [wakeLock, setWakeLock] = useState<WakeLockSentinel | null>(null);
   const requestedRef = useRef(false);
   const hasRequestedFullscreen = useRef(false);
+  const autoPromptedRef = useRef(false);
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [installDismissed, setInstallDismissed] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
@@ -44,12 +44,17 @@ export default function KioskLayout({
   const attemptFullscreen = useCallback(async () => {
     if (typeof document === 'undefined') return;
     if (document.fullscreenElement) return;
-    const el = document.documentElement;
-    if (!el || typeof el.requestFullscreen !== 'function') return;
+    const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> };
+    if (!el) return;
     if (hasRequestedFullscreen.current) return;
     hasRequestedFullscreen.current = true;
     try {
-      await el.requestFullscreen();
+      const request = el.requestFullscreen?.bind(el) || el.webkitRequestFullscreen?.bind(el);
+      if (request) {
+        await request();
+      } else {
+        hasRequestedFullscreen.current = false;
+      }
     } catch (err) {
       hasRequestedFullscreen.current = false;
       console.debug('[kiosk] fullscreen request failed', err);
@@ -63,12 +68,22 @@ export default function KioskLayout({
     const body = document.body;
     const previousHtmlOverflow = html.style.overflow;
     const previousBodyOverflow = body.style.overflow;
+    const previousHtmlOverscroll = html.style.overscrollBehavior;
+    const previousBodyOverscroll = body.style.overscrollBehavior;
     html.style.overflow = 'hidden';
     body.style.overflow = 'hidden';
+    html.style.overscrollBehavior = 'none';
+    body.style.overscrollBehavior = 'none';
+    html.classList.add('kiosk-mode');
+    body.classList.add('kiosk-mode');
 
     return () => {
       html.style.overflow = previousHtmlOverflow;
       body.style.overflow = previousBodyOverflow;
+      html.style.overscrollBehavior = previousHtmlOverscroll;
+      body.style.overscrollBehavior = previousBodyOverscroll;
+      html.classList.remove('kiosk-mode');
+      body.classList.remove('kiosk-mode');
     };
   }, []);
 
@@ -100,6 +115,7 @@ export default function KioskLayout({
       const promptEvent = event as BeforeInstallPromptEvent;
       setDeferredPrompt(promptEvent);
       setInstallDismissed(false);
+      autoPromptedRef.current = false;
     };
 
     const handleAppInstalled = () => {
@@ -144,6 +160,30 @@ export default function KioskLayout({
   }, [attemptFullscreen, deferredPrompt]);
 
   useEffect(() => {
+    if (!deferredPrompt || isInstalled || installDismissed || autoPromptedRef.current) return;
+
+    autoPromptedRef.current = true;
+
+    const attemptAutoPrompt = async () => {
+      try {
+        if (typeof deferredPrompt.prompt === 'function') {
+          await deferredPrompt.prompt();
+        }
+        const choice = deferredPrompt.userChoice ? await deferredPrompt.userChoice.catch(() => null) : null;
+        if (choice && choice.outcome === 'accepted') {
+          setIsInstalled(true);
+          setDeferredPrompt(null);
+          await attemptFullscreen();
+        }
+      } catch (err) {
+        console.debug('[kiosk] auto install prompt blocked', err);
+      }
+    };
+
+    attemptAutoPrompt();
+  }, [attemptFullscreen, deferredPrompt, installDismissed, isInstalled]);
+
+  useEffect(() => {
     if (typeof window === 'undefined') return;
 
     const requestWakeLock = async () => {
@@ -164,6 +204,9 @@ export default function KioskLayout({
       requestedRef.current = true;
       await Promise.allSettled([attemptFullscreen(), requestWakeLock()]);
     };
+
+    attemptFullscreen();
+    requestWakeLock();
 
     window.addEventListener('pointerdown', handleInteraction, { once: true });
     window.addEventListener('keydown', handleInteraction, { once: true });
@@ -191,10 +234,23 @@ export default function KioskLayout({
       }
     };
 
+    const handleRelease = async () => {
+      try {
+        const nav = navigator as WakeLockNavigator;
+        if (!nav.wakeLock?.request) return;
+        const renewed: WakeLockSentinel | null = await nav.wakeLock.request('screen');
+        if (renewed) setWakeLock(renewed);
+      } catch (err) {
+        console.debug('[kiosk] wake lock re-acquire failed', err);
+      }
+    };
+
     document.addEventListener('visibilitychange', handleVisibility);
+    wakeLock.addEventListener?.('release', handleRelease);
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibility);
+      wakeLock.removeEventListener?.('release', handleRelease);
       try {
         if (!wakeLock.released) {
           wakeLock.release().catch(() => undefined);
@@ -205,36 +261,9 @@ export default function KioskLayout({
     };
   }, [wakeLock]);
 
-  const headerContent = useMemo(() => {
-    if (!title && !subtitle && !backHref && !action) return null;
-
-    return (
-      <header className="flex items-center justify-between gap-4 border-b border-slate-200 bg-white px-6 py-4 text-slate-900 shadow-sm">
-        <div className="flex items-center gap-4">
-          {backHref ? (
-            <Link
-              href={backHref}
-              className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold tracking-wide text-slate-700 transition hover:bg-slate-50"
-            >
-              Back
-            </Link>
-          ) : null}
-          <div>
-            {title ? <h1 className="text-lg font-semibold tracking-wide text-slate-900 sm:text-xl">{title}</h1> : null}
-            {subtitle ? (
-              <p className="text-sm font-medium text-slate-500 sm:text-base">{subtitle}</p>
-            ) : null}
-          </div>
-        </div>
-        {action ? <div className="shrink-0">{action}</div> : null}
-      </header>
-    );
-  }, [action, backHref, subtitle, title]);
-
   return (
-    <div className="min-h-screen w-full bg-slate-100 text-slate-900">
-      <main className="flex min-h-screen flex-col">
-        {headerContent}
+    <div className="min-h-screen w-full overflow-hidden bg-slate-100 text-slate-900">
+      <main className="flex min-h-screen flex-col overflow-hidden">
         <div className="flex-1 overflow-auto px-4 py-6 sm:px-8">
           <div className="mx-auto flex w-full max-w-none flex-col gap-8">
             {children}
@@ -242,13 +271,13 @@ export default function KioskLayout({
         </div>
       </main>
       {deferredPrompt && !isInstalled && !installDismissed ? (
-        <div className="pointer-events-none fixed bottom-6 left-1/2 z-40 -translate-x-1/2 sm:left-auto sm:right-6 sm:translate-x-0">
+        <div className="pointer-events-none fixed bottom-4 right-4 z-40">
           <button
             type="button"
             onClick={handleInstallClick}
-            className="pointer-events-auto flex items-center gap-3 rounded-full border border-white/60 bg-white/90 px-5 py-3 text-sm font-semibold text-slate-900 shadow-lg shadow-slate-200/70 backdrop-blur transition hover:bg-white"
+            className="pointer-events-auto flex items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-4 py-2 text-sm font-semibold text-slate-900 shadow-lg shadow-slate-200/70 backdrop-blur transition hover:bg-white"
           >
-            Install Kiosk
+            Install App
           </button>
         </div>
       ) : null}
