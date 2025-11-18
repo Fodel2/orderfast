@@ -102,7 +102,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const restaurantIdFromRoute = (router.query.restaurantId as string | undefined) || null;
   const activeRestaurantId = restaurantIdFromRoute || restaurant?.id || null;
 
-  const kioskUrl = activeRestaurantId ? `/kiosk/${activeRestaurantId}/menu` : null;
+  const kioskUrl = activeRestaurantId ? `/kiosk/${activeRestaurantId}` : null;
 
   const kioskDisabled = !activeRestaurantId;
 

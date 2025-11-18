@@ -8,6 +8,13 @@ type Restaurant = {
   id: string;
   name: string;
   website_title?: string | null;
+  website_description?: string | null;
+  logo_url?: string | null;
+  theme_primary_color?: string | null;
+  menu_header_image_url?: string | null;
+  menu_header_image_updated_at?: string | null;
+  menu_header_focal_x?: number | null;
+  menu_header_focal_y?: number | null;
 };
 
 export default function KioskConfirmPage() {
@@ -24,7 +31,9 @@ export default function KioskConfirmPage() {
       try {
         const { data, error } = await supabase
           .from('restaurants')
-          .select('id,name,website_title')
+          .select(
+            'id,name,website_title,website_description,logo_url,theme_primary_color,menu_header_image_url,menu_header_image_updated_at,menu_header_focal_x,menu_header_focal_y'
+          )
           .eq('id', restaurantId)
           .maybeSingle();
 
@@ -46,14 +55,8 @@ export default function KioskConfirmPage() {
     };
   }, [restaurantId]);
 
-  const title = restaurant?.website_title || restaurant?.name || 'Order placed';
-
   return (
-    <KioskLayout
-      title={title}
-      subtitle="Thank you for your order!"
-      backHref={restaurantId ? `/kiosk/${restaurantId}/menu` : undefined}
-    >
+    <KioskLayout restaurantId={restaurantId} restaurant={restaurant}>
       <div className="mx-auto w-full max-w-4xl rounded-3xl border border-slate-200 bg-white p-10 text-center shadow-xl">
         <h2 className="text-3xl font-semibold tracking-tight text-slate-900">Order placed</h2>
         <p className="mt-4 text-base text-slate-600">
@@ -63,7 +66,7 @@ export default function KioskConfirmPage() {
           <div className="mt-8 flex justify-center">
             <Link
               href={`/kiosk/${restaurantId}/menu`}
-              className="rounded-full bg-teal-600 px-6 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow transition hover:bg-teal-500"
+              className="rounded-full bg-slate-900 px-6 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow transition hover:bg-slate-800"
             >
               Start a new order
             </Link>

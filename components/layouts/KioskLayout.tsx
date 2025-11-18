@@ -1,5 +1,8 @@
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import HomeScreen, { type KioskRestaurant } from '@/components/kiosk/HomeScreen';
+import { clearHomeSeen, hasSeenHome, markHomeSeen } from '@/utils/kiosk/session';
 
 interface WakeLockSentinel {
   released: boolean;
@@ -20,71 +23,72 @@ type BeforeInstallPromptEvent = Event & {
 };
 
 type KioskLayoutProps = {
-  title?: string;
-  subtitle?: string;
-  backHref?: string;
-  action?: ReactNode;
+  restaurantId?: string | null;
+  restaurant?: KioskRestaurant | null;
+  cartCount?: number;
   children: ReactNode;
+  forceHome?: boolean;
 };
 
 export default function KioskLayout({
-  title,
-  subtitle,
-  backHref,
-  action,
+  restaurantId,
+  restaurant,
+  cartCount = 0,
   children,
+  forceHome = false,
 }: KioskLayoutProps) {
+  const router = useRouter();
   const [wakeLock, setWakeLock] = useState<WakeLockSentinel | null>(null);
-  const requestedRef = useRef(false);
-  const hasRequestedFullscreen = useRef(false);
-  const autoPromptedRef = useRef(false);
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [installDismissed, setInstallDismissed] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
+  const [homeVisible, setHomeVisible] = useState<boolean>(() =>
+    forceHome ? true : restaurantId ? !hasSeenHome(restaurantId) : false
+  );
+  const [homeFading, setHomeFading] = useState(false);
+  const [contentVisible, setContentVisible] = useState<boolean>(() =>
+    forceHome ? false : restaurantId ? hasSeenHome(restaurantId) : true
+  );
+  const autoPromptedRef = useRef(false);
+  const hasRequestedFullscreen = useRef(false);
+  const inactivityTimer = useRef<NodeJS.Timeout | null>(null);
 
-  const headerContent = useMemo(() => {
-    if (!title && !subtitle && !backHref && !action) return null;
-
-    return (
-      <header className="flex items-center justify-between gap-4 border-b border-white/10 bg-black/40 px-6 py-4 text-white">
-        <div className="flex items-center gap-4">
-          {backHref ? (
-            <Link
-              href={backHref}
-              className="rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm font-semibold tracking-wide transition hover:bg-white/20"
-            >
-              Back
-            </Link>
-          ) : null}
-          <div>
-            {title ? <h1 className="text-lg font-semibold tracking-wide sm:text-xl">{title}</h1> : null}
-            {subtitle ? (
-              <p className="text-sm font-medium text-white/70 sm:text-base">{subtitle}</p>
-            ) : null}
-          </div>
-        </div>
-        {action ? <div className="shrink-0">{action}</div> : null}
-      </header>
-    );
-  }, [action, backHref, subtitle, title]);
+  const isFullscreenActive = useCallback(() => {
+    if (typeof document === 'undefined') return false;
+    const anyDoc = document as Document & { webkitFullscreenElement?: Element | null };
+    return Boolean(document.fullscreenElement || anyDoc.webkitFullscreenElement);
+  }, []);
 
   const attemptFullscreen = useCallback(async () => {
     if (typeof document === 'undefined') return;
-    if (document.fullscreenElement) return;
     const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> };
     if (!el) return;
+    if (isFullscreenActive()) return;
     if (hasRequestedFullscreen.current) return;
     hasRequestedFullscreen.current = true;
     try {
       const request = el.requestFullscreen?.bind(el) || el.webkitRequestFullscreen?.bind(el);
       if (request) {
         await request();
-      } else {
-        hasRequestedFullscreen.current = false;
       }
     } catch (err) {
-      hasRequestedFullscreen.current = false;
       console.debug('[kiosk] fullscreen request failed', err);
+      hasRequestedFullscreen.current = false;
+    }
+  }, [isFullscreenActive]);
+
+  const requestWakeLock = useCallback(async () => {
+    try {
+      const nav = navigator as WakeLockNavigator;
+      if (!nav.wakeLock?.request) return null;
+      const sentinel: WakeLockSentinel | null = await nav.wakeLock.request('screen');
+      if (sentinel) {
+        setWakeLock(sentinel);
+      }
+      return sentinel;
+    } catch (err) {
+      console.debug('[kiosk] wake lock unavailable', err);
+      return null;
     }
   }, []);
 
@@ -97,10 +101,13 @@ export default function KioskLayout({
     const previousBodyOverflow = body.style.overflow;
     const previousHtmlOverscroll = html.style.overscrollBehavior;
     const previousBodyOverscroll = body.style.overscrollBehavior;
+    const previousColorScheme = html.style.colorScheme;
+
     html.style.overflow = 'hidden';
     body.style.overflow = 'hidden';
     html.style.overscrollBehavior = 'none';
     body.style.overscrollBehavior = 'none';
+    html.style.colorScheme = 'light';
     html.classList.add('kiosk-mode');
     body.classList.add('kiosk-mode');
 
@@ -109,6 +116,7 @@ export default function KioskLayout({
       body.style.overflow = previousBodyOverflow;
       html.style.overscrollBehavior = previousHtmlOverscroll;
       body.style.overscrollBehavior = previousBodyOverscroll;
+      html.style.colorScheme = previousColorScheme;
       html.classList.remove('kiosk-mode');
       body.classList.remove('kiosk-mode');
     };
@@ -149,6 +157,14 @@ export default function KioskLayout({
       updateInstalledState(true);
     };
 
+    const handleFullscreenChange = () => {
+      if (isFullscreenActive()) return;
+      hasRequestedFullscreen.current = false;
+      setTimeout(() => {
+        attemptFullscreen();
+      }, 200);
+    };
+
     const media = window.matchMedia?.('(display-mode: standalone)');
 
     evaluateDisplayMode();
@@ -156,14 +172,18 @@ export default function KioskLayout({
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     window.addEventListener('appinstalled', handleAppInstalled);
+    window.addEventListener('fullscreenchange', handleFullscreenChange);
+    window.addEventListener('webkitfullscreenchange', handleFullscreenChange as any);
     media?.addEventListener?.('change', handleDisplayModeChange);
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('appinstalled', handleAppInstalled);
+      window.removeEventListener('fullscreenchange', handleFullscreenChange);
+      window.removeEventListener('webkitfullscreenchange', handleFullscreenChange as any);
       media?.removeEventListener?.('change', handleDisplayModeChange);
     };
-  }, [attemptFullscreen, isInstalled]);
+  }, [attemptFullscreen, isInstalled, isFullscreenActive]);
 
   const handleInstallClick = useCallback(async () => {
     if (!deferredPrompt) return;
@@ -213,22 +233,7 @@ export default function KioskLayout({
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const requestWakeLock = async () => {
-      try {
-        const nav = navigator as WakeLockNavigator;
-        if (!nav.wakeLock?.request) return;
-        const sentinel: WakeLockSentinel | null = await nav.wakeLock.request('screen');
-        if (sentinel) {
-          setWakeLock(sentinel);
-        }
-      } catch (err) {
-        console.debug('[kiosk] wake lock unavailable', err);
-      }
-    };
-
     const handleInteraction = async () => {
-      if (requestedRef.current) return;
-      requestedRef.current = true;
       await Promise.allSettled([attemptFullscreen(), requestWakeLock()]);
     };
 
@@ -242,7 +247,7 @@ export default function KioskLayout({
       window.removeEventListener('pointerdown', handleInteraction);
       window.removeEventListener('keydown', handleInteraction);
     };
-  }, [attemptFullscreen]);
+  }, [attemptFullscreen, requestWakeLock]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -251,10 +256,7 @@ export default function KioskLayout({
     const handleVisibility = async () => {
       try {
         if (document.visibilityState === 'visible') {
-          const nav = navigator as WakeLockNavigator;
-          if (!nav.wakeLock?.request) return;
-          const renewed: WakeLockSentinel | null = await nav.wakeLock.request('screen');
-          if (renewed) setWakeLock(renewed);
+          await requestWakeLock();
         }
       } catch (err) {
         console.debug('[kiosk] wake lock renewal failed', err);
@@ -262,14 +264,7 @@ export default function KioskLayout({
     };
 
     const handleRelease = async () => {
-      try {
-        const nav = navigator as WakeLockNavigator;
-        if (!nav.wakeLock?.request) return;
-        const renewed: WakeLockSentinel | null = await nav.wakeLock.request('screen');
-        if (renewed) setWakeLock(renewed);
-      } catch (err) {
-        console.debug('[kiosk] wake lock re-acquire failed', err);
-      }
+      await requestWakeLock();
     };
 
     document.addEventListener('visibilitychange', handleVisibility);
@@ -286,18 +281,107 @@ export default function KioskLayout({
         // ignore
       }
     };
-  }, [wakeLock]);
+  }, [requestWakeLock, wakeLock]);
+
+  useEffect(() => {
+    if (!restaurantId) return;
+    const shouldShow = forceHome || !hasSeenHome(restaurantId);
+    setHomeVisible(shouldShow);
+    setContentVisible(!shouldShow);
+  }, [forceHome, restaurantId]);
+
+  const basePath = useMemo(() => (restaurantId ? `/kiosk/${restaurantId}` : null), [restaurantId]);
+  const menuPath = useMemo(() => (restaurantId ? `/kiosk/${restaurantId}/menu` : null), [restaurantId]);
+
+  const startOrdering = useCallback(async () => {
+    if (restaurantId) {
+      markHomeSeen(restaurantId);
+    }
+    setHomeFading(true);
+    setContentVisible(true);
+    setTimeout(() => {
+      setHomeVisible(false);
+      setHomeFading(false);
+    }, 220);
+    await Promise.allSettled([attemptFullscreen(), requestWakeLock()]);
+    if (menuPath && router.asPath !== menuPath) {
+      router.push(menuPath).catch(() => undefined);
+    }
+    resetInactivityTimer();
+  }, [attemptFullscreen, menuPath, requestWakeLock, restaurantId, router]);
+
+  const resetInactivityTimer = useCallback(() => {
+    if (inactivityTimer.current) {
+      clearTimeout(inactivityTimer.current);
+    }
+    if (homeVisible) return;
+    inactivityTimer.current = setTimeout(() => {
+      if (!restaurantId) return;
+      clearHomeSeen(restaurantId);
+      setHomeVisible(true);
+      setContentVisible(false);
+      if (basePath && router.asPath !== basePath) {
+        router.push(basePath).catch(() => undefined);
+      }
+    }, 25000);
+  }, [basePath, homeVisible, restaurantId, router]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleUserActivity = () => {
+      resetInactivityTimer();
+    };
+
+    const events = ['pointerdown', 'keydown', 'scroll', 'touchstart'];
+    events.forEach((evt) => window.addEventListener(evt, handleUserActivity, { passive: true }));
+
+    resetInactivityTimer();
+
+    return () => {
+      if (inactivityTimer.current) {
+        clearTimeout(inactivityTimer.current);
+      }
+      events.forEach((evt) => window.removeEventListener(evt, handleUserActivity));
+    };
+  }, [resetInactivityTimer]);
+
+  const headerContent = useMemo(() => {
+    if (!contentVisible) return null;
+    const headerTitle = restaurant?.name || 'Restaurant';
+
+    return (
+      <header className="sticky top-0 z-30 flex items-center justify-between gap-4 border-b border-slate-200 bg-white/95 px-6 py-4 text-slate-900 shadow-sm">
+        <div className="flex flex-col">
+          <span className="text-lg font-semibold tracking-tight sm:text-xl">{headerTitle}</span>
+        </div>
+        {menuPath ? (
+          <Link
+            href={`/kiosk/${restaurantId}/cart`}
+            className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-slate-800"
+          >
+            View Cart ({cartCount})
+          </Link>
+        ) : null}
+      </header>
+    );
+  }, [cartCount, contentVisible, menuPath, restaurant?.name, restaurantId]);
 
   return (
-    <div className="min-h-screen w-full overflow-hidden bg-slate-100 text-slate-900">
+    <div className="min-h-screen w-full overflow-hidden bg-slate-50 text-slate-900">
       <main className="flex min-h-screen flex-col overflow-hidden">
         {headerContent}
-        <div className="flex-1 overflow-auto px-4 py-6 sm:px-8">
-          <div className="mx-auto flex w-full max-w-none flex-col gap-8">
-            {children}
-          </div>
+        <div
+          className={`flex-1 overflow-auto px-4 py-6 transition-opacity duration-200 sm:px-8 ${
+            contentVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          }`}
+        >
+          <div className="mx-auto flex w-full max-w-none flex-col gap-8">{children}</div>
         </div>
       </main>
+      {homeVisible ? (
+        <HomeScreen restaurant={restaurant || null} onStart={startOrdering} fadingOut={homeFading} />
+      ) : null}
       {deferredPrompt && !isInstalled && !installDismissed ? (
         <div className="pointer-events-none fixed bottom-4 right-4 z-40">
           <button

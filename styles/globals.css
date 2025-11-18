@@ -154,6 +154,8 @@ body {
 html.kiosk-mode,
 body.kiosk-mode {
   overscroll-behavior: none;
+  background-color: #f8fafc;
+  color: #0f172a;
 }
 
 body.kiosk-mode {

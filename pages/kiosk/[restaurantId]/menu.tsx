@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/router';
 import MenuItemCard from '@/components/MenuItemCard';
 import KioskLayout from '@/components/layouts/KioskLayout';
@@ -37,6 +36,11 @@ type Restaurant = {
   website_title?: string | null;
   website_description?: string | null;
   logo_url?: string | null;
+  theme_primary_color?: string | null;
+  menu_header_image_url?: string | null;
+  menu_header_image_updated_at?: string | null;
+  menu_header_focal_x?: number | null;
+  menu_header_focal_y?: number | null;
 };
 
 export default function KioskMenuPage() {
@@ -67,7 +71,9 @@ export default function KioskMenuPage() {
       try {
         const restPromise = supabase
           .from('restaurants')
-          .select('id,name,website_title,website_description,logo_url')
+          .select(
+            'id,name,website_title,website_description,logo_url,theme_primary_color,menu_header_image_url,menu_header_image_updated_at,menu_header_focal_x,menu_header_focal_y'
+          )
           .eq('id', restaurantId)
           .maybeSingle();
 
@@ -193,27 +199,11 @@ export default function KioskMenuPage() {
     return items.filter((item) => !linkedIds.has(item.id));
   }, [itemLinks, items]);
 
-  const title = restaurant?.website_title || restaurant?.name || 'Restaurant';
-  const subtitle = restaurant?.website_description || undefined;
-
   const hasCategoryItems = categorizedItems.length > 0;
   const hasUncategorizedItems = uncategorizedItems.length > 0;
 
   return (
-    <KioskLayout
-      title={title}
-      subtitle={subtitle}
-      action={
-        restaurantId ? (
-          <Link
-            href={`/kiosk/${restaurantId}/cart`}
-            className="rounded-full bg-teal-600 px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-teal-500"
-          >
-            View cart ({cartCount})
-          </Link>
-        ) : null
-      }
-    >
+    <KioskLayout restaurantId={restaurantId} restaurant={restaurant} cartCount={cartCount}>
       {loading ? (
         <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 6 }).map((_, idx) => (
