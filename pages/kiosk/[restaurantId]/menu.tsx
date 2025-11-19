@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/router';
 import MenuItemCard from '@/components/MenuItemCard';
 import KioskLayout from '@/components/layouts/KioskLayout';
@@ -37,6 +36,11 @@ type Restaurant = {
   website_title?: string | null;
   website_description?: string | null;
   logo_url?: string | null;
+  theme_primary_color?: string | null;
+  menu_header_image_url?: string | null;
+  menu_header_image_updated_at?: string | null;
+  menu_header_focal_x?: number | null;
+  menu_header_focal_y?: number | null;
 };
 
 export default function KioskMenuPage() {
@@ -67,7 +71,9 @@ export default function KioskMenuPage() {
       try {
         const restPromise = supabase
           .from('restaurants')
-          .select('id,name,website_title,website_description,logo_url')
+          .select(
+            'id,name,website_title,website_description,logo_url,theme_primary_color,menu_header_image_url,menu_header_image_updated_at,menu_header_focal_x,menu_header_focal_y'
+          )
           .eq('id', restaurantId)
           .maybeSingle();
 
@@ -193,27 +199,11 @@ export default function KioskMenuPage() {
     return items.filter((item) => !linkedIds.has(item.id));
   }, [itemLinks, items]);
 
-  const title = restaurant?.website_title || restaurant?.name || 'Restaurant';
-  const subtitle = restaurant?.website_description || undefined;
-
   const hasCategoryItems = categorizedItems.length > 0;
   const hasUncategorizedItems = uncategorizedItems.length > 0;
 
   return (
-    <KioskLayout
-      title={title}
-      subtitle={subtitle}
-      action={
-        restaurantId ? (
-          <Link
-            href={`/kiosk/${restaurantId}/cart`}
-            className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-900 shadow transition hover:bg-white/90"
-          >
-            View cart ({cartCount})
-          </Link>
-        ) : null
-      }
-    >
+    <KioskLayout restaurantId={restaurantId} restaurant={restaurant} cartCount={cartCount}>
       {loading ? (
         <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 6 }).map((_, idx) => (
@@ -221,7 +211,7 @@ export default function KioskMenuPage() {
           ))}
         </div>
       ) : !restaurantId ? (
-        <div className="rounded-2xl bg-white/10 p-6 text-center text-sm font-semibold uppercase tracking-[0.2em] text-red-200">
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center text-sm font-semibold uppercase tracking-[0.2em] text-amber-700">
           Missing restaurant ID
         </div>
       ) : (
@@ -229,9 +219,9 @@ export default function KioskMenuPage() {
           {categorizedItems.map((category) => (
             <section key={category.id} className="flex flex-col gap-4">
               <header className="flex flex-col gap-1">
-                <h2 className="text-2xl font-semibold tracking-tight text-white">{category.name}</h2>
+                <h2 className="text-2xl font-semibold tracking-tight text-slate-900">{category.name}</h2>
                 {category.description ? (
-                  <p className="text-sm text-white/70">{category.description}</p>
+                  <p className="text-sm text-slate-600">{category.description}</p>
                 ) : null}
               </header>
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
@@ -251,7 +241,7 @@ export default function KioskMenuPage() {
           {hasUncategorizedItems ? (
             <section className="flex flex-col gap-4">
               <header>
-                <h2 className="text-2xl font-semibold tracking-tight text-white">Other items</h2>
+                <h2 className="text-2xl font-semibold tracking-tight text-slate-900">Other items</h2>
               </header>
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                 {uncategorizedItems.map((item) => (
@@ -268,7 +258,7 @@ export default function KioskMenuPage() {
           ) : null}
 
           {!hasCategoryItems && !hasUncategorizedItems ? (
-            <div className="rounded-2xl border border-dashed border-white/20 p-8 text-center text-white/70">
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-600">
               This menu is currently empty.
             </div>
           ) : null}
