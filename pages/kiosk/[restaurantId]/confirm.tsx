@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/router';
 import KioskLayout from '@/components/layouts/KioskLayout';
 import { supabase } from '@/lib/supabaseClient';
+import KioskActionButton from '@/components/kiosk/KioskActionButton';
 
 type Restaurant = {
   id: string;
@@ -57,19 +57,16 @@ export default function KioskConfirmPage() {
 
   return (
     <KioskLayout restaurantId={restaurantId} restaurant={restaurant}>
-      <div className="mx-auto w-full max-w-4xl rounded-3xl border border-slate-200 bg-white p-10 text-center shadow-xl">
-        <h2 className="text-3xl font-semibold tracking-tight text-slate-900">Order placed</h2>
-        <p className="mt-4 text-base text-slate-600">
+      <div className="mx-auto w-full max-w-4xl rounded-3xl border border-neutral-200 bg-white p-10 text-center shadow-xl">
+        <h2 className="text-3xl font-semibold tracking-tight text-neutral-900">Order placed</h2>
+        <p className="mt-4 text-base text-neutral-600">
           Your order is being prepared. Please wait for the staff to confirm your pickup number on screen.
         </p>
         {restaurantId ? (
           <div className="mt-8 flex justify-center">
-            <Link
-              href={`/kiosk/${restaurantId}/menu`}
-              className="rounded-full bg-slate-900 px-6 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow transition hover:bg-slate-800"
-            >
+            <KioskActionButton href={`/kiosk/${restaurantId}/menu`} className="px-6 py-3 text-sm uppercase tracking-wide">
               Start a new order
-            </Link>
+            </KioskActionButton>
           </div>
         ) : null}
       </div>

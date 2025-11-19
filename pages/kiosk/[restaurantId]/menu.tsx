@@ -219,9 +219,9 @@ export default function KioskMenuPage() {
           {categorizedItems.map((category) => (
             <section key={category.id} className="flex flex-col gap-4">
               <header className="flex flex-col gap-1">
-                <h2 className="text-2xl font-semibold tracking-tight text-slate-900">{category.name}</h2>
+                <h2 className="text-2xl font-semibold tracking-tight text-neutral-900">{category.name}</h2>
                 {category.description ? (
-                  <p className="text-sm text-slate-600">{category.description}</p>
+                  <p className="text-sm text-neutral-600">{category.description}</p>
                 ) : null}
               </header>
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
@@ -241,7 +241,7 @@ export default function KioskMenuPage() {
           {hasUncategorizedItems ? (
             <section className="flex flex-col gap-4">
               <header>
-                <h2 className="text-2xl font-semibold tracking-tight text-slate-900">Other items</h2>
+                <h2 className="text-2xl font-semibold tracking-tight text-neutral-900">Other items</h2>
               </header>
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                 {uncategorizedItems.map((item) => (
@@ -258,7 +258,7 @@ export default function KioskMenuPage() {
           ) : null}
 
           {!hasCategoryItems && !hasUncategorizedItems ? (
-            <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-600">
+            <div className="rounded-2xl border border-dashed border-neutral-300 bg-white p-8 text-center text-neutral-600">
               This menu is currently empty.
             </div>
           ) : null}
