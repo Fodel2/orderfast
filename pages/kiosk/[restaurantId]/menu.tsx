@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import MenuItemCard from '@/components/MenuItemCard';
 import KioskLayout from '@/components/layouts/KioskLayout';
@@ -6,11 +6,13 @@ import { supabase } from '@/lib/supabaseClient';
 import { ITEM_ADDON_LINK_WITH_GROUPS_SELECT } from '@/lib/queries/addons';
 import Skeleton from '@/components/ui/Skeleton';
 import { useCart } from '@/context/CartContext';
+import KioskCategoryTile from '@/components/kiosk/KioskCategoryTile';
 
 type Category = {
   id: number;
   name: string;
   description: string | null;
+  image_url?: string | null;
 };
 
 type Item = {
@@ -79,7 +81,7 @@ export default function KioskMenuPage() {
 
         const categoriesPromise = supabase
           .from('menu_categories')
-          .select('id,name,description,sort_order')
+          .select('id,name,description,sort_order,image_url')
           .eq('restaurant_id', restaurantId)
           .is('archived_at', null)
           .order('sort_order', { ascending: true, nullsFirst: false })
@@ -202,6 +204,13 @@ export default function KioskMenuPage() {
   const hasCategoryItems = categorizedItems.length > 0;
   const hasUncategorizedItems = uncategorizedItems.length > 0;
 
+  const handleCategorySelect = useCallback((categoryId: number) => {
+    const el = document.getElementById(`cat-${categoryId}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, []);
+
   return (
     <KioskLayout restaurantId={restaurantId} restaurant={restaurant} cartCount={cartCount}>
       {loading ? (
@@ -216,8 +225,20 @@ export default function KioskMenuPage() {
         </div>
       ) : (
         <div className="flex flex-col gap-10">
+          {categorizedItems.length ? (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {categorizedItems.map((category) => (
+                <KioskCategoryTile
+                  key={category.id}
+                  category={category}
+                  restaurantLogoUrl={restaurant?.logo_url ?? null}
+                  onSelect={handleCategorySelect}
+                />
+              ))}
+            </div>
+          ) : null}
           {categorizedItems.map((category) => (
-            <section key={category.id} className="flex flex-col gap-4">
+            <section key={category.id} id={`cat-${category.id}`} className="flex flex-col gap-4">
               <header className="flex flex-col gap-1">
                 <h2 className="text-2xl font-semibold tracking-tight text-neutral-900">{category.name}</h2>
                 {category.description ? (
