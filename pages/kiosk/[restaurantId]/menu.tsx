@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import MenuItemCard from '@/components/MenuItemCard';
 import KioskLayout from '@/components/layouts/KioskLayout';
@@ -54,6 +54,8 @@ export default function KioskMenuPage() {
   const [items, setItems] = useState<Item[]>([]);
   const [itemLinks, setItemLinks] = useState<ItemLink[]>([]);
   const [loading, setLoading] = useState(true);
+  const scrollAnimationRef = useRef<number | null>(null);
+  const lastScrollTargetRef = useRef<number | null>(null);
   const { cart } = useCart();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
 
@@ -204,11 +206,48 @@ export default function KioskMenuPage() {
   const hasCategoryItems = categorizedItems.length > 0;
   const hasUncategorizedItems = uncategorizedItems.length > 0;
 
+  useEffect(() => {
+    return () => {
+      if (scrollAnimationRef.current) {
+        cancelAnimationFrame(scrollAnimationRef.current);
+      }
+    };
+  }, []);
+
   const handleCategorySelect = useCallback((categoryId: number) => {
+    if (categoryId === lastScrollTargetRef.current) return;
+
     const el = document.getElementById(`cat-${categoryId}`);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (!el) return;
+
+    if (scrollAnimationRef.current) {
+      cancelAnimationFrame(scrollAnimationRef.current);
     }
+
+    const startY = window.scrollY;
+    const targetY = el.getBoundingClientRect().top + window.scrollY - 40;
+    const distance = targetY - startY;
+    const duration = 350;
+    const startTime = performance.now();
+
+    const easeOut = (t: number) => 1 - (1 - t) * (1 - t);
+
+    const step = (currentTime: number) => {
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = easeOut(progress);
+      const nextY = startY + distance * eased;
+      window.scrollTo({ top: nextY });
+
+      if (progress < 1) {
+        scrollAnimationRef.current = requestAnimationFrame(step);
+      } else {
+        scrollAnimationRef.current = null;
+      }
+    };
+
+    lastScrollTargetRef.current = categoryId;
+    scrollAnimationRef.current = requestAnimationFrame(step);
   }, []);
 
   return (
@@ -226,14 +265,9 @@ export default function KioskMenuPage() {
       ) : (
         <div className="flex flex-col gap-10">
           {categorizedItems.length ? (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="flex flex-col gap-3 sm:gap-4">
               {categorizedItems.map((category) => (
-                <KioskCategoryTile
-                  key={category.id}
-                  category={category}
-                  restaurantLogoUrl={restaurant?.logo_url ?? null}
-                  onSelect={handleCategorySelect}
-                />
+                <KioskCategoryTile key={category.id} category={category} onSelect={handleCategorySelect} />
               ))}
             </div>
           ) : null}
