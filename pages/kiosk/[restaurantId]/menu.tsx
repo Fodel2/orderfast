@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { ITEM_ADDON_LINK_WITH_GROUPS_SELECT } from '@/lib/queries/addons';
 import Skeleton from '@/components/ui/Skeleton';
 import { useCart } from '@/context/CartContext';
-import KioskCategoryTile from '@/components/kiosk/KioskCategoryTile';
+import KioskCategories from '@/components/kiosk/KioskCategories';
 
 type Category = {
   id: number;
@@ -54,6 +54,7 @@ export default function KioskMenuPage() {
   const [items, setItems] = useState<Item[]>([]);
   const [itemLinks, setItemLinks] = useState<ItemLink[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeCategoryId, setActiveCategoryId] = useState<number | null>(null);
   const scrollAnimationRef = useRef<number | null>(null);
   const lastScrollTargetRef = useRef<number | null>(null);
   const { cart } = useCart();
@@ -216,6 +217,7 @@ export default function KioskMenuPage() {
 
   const handleCategorySelect = useCallback((categoryId: number) => {
     if (categoryId === lastScrollTargetRef.current) return;
+    setActiveCategoryId(categoryId);
 
     const el = document.getElementById(`cat-${categoryId}`);
     if (!el) return;
@@ -265,11 +267,11 @@ export default function KioskMenuPage() {
       ) : (
         <div className="flex flex-col gap-10">
           {categorizedItems.length ? (
-            <div className="flex flex-col gap-3 sm:gap-4">
-              {categorizedItems.map((category) => (
-                <KioskCategoryTile key={category.id} category={category} onSelect={handleCategorySelect} />
-              ))}
-            </div>
+            <KioskCategories
+              categories={categorizedItems}
+              activeCategoryId={activeCategoryId}
+              onSelect={handleCategorySelect}
+            />
           ) : null}
           {categorizedItems.map((category) => (
             <section key={category.id} id={`cat-${category.id}`} className="flex flex-col gap-4">
