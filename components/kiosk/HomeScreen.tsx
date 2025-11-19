@@ -37,7 +37,6 @@ export default function HomeScreen({ restaurant, onStart, fadingOut }: HomeScree
   const logoUrl = useMemo(() => normalizeSource(restaurant?.logo_url), [restaurant?.logo_url]);
 
   const backgroundImage = heroUrl || logoUrl || FALLBACK_PLACEHOLDER_SRC;
-  const isFallback = !heroUrl;
 
   const focalX = restaurant?.menu_header_focal_x ?? 0.5;
   const focalY = restaurant?.menu_header_focal_y ?? 0.5;
@@ -52,14 +51,14 @@ export default function HomeScreen({ restaurant, onStart, fadingOut }: HomeScree
     >
       <div className="absolute inset-0 overflow-hidden">
         <div
-          className="absolute inset-0 opacity-20"
+          className="absolute inset-0"
           style={{
             backgroundImage: `url(${backgroundImage})`,
             backgroundSize: 'cover',
             backgroundPosition: `${focalX * 100}% ${focalY * 100}%`,
-            filter: isFallback ? 'blur(12px) grayscale(100%)' : 'none',
           }}
         />
+        <div className="kiosk-hero-dim" />
       </div>
 
       <div className="relative z-10 flex w-full max-w-xl flex-col items-center gap-6 px-6 text-center">
@@ -98,6 +97,15 @@ export default function HomeScreen({ restaurant, onStart, fadingOut }: HomeScree
           </button>
         </div>
       </div>
+
+      <style jsx>{`
+        .kiosk-hero-dim {
+          position: absolute;
+          inset: 0;
+          background: rgba(255, 255, 255, 0.275);
+          pointer-events: none;
+        }
+      `}</style>
     </div>
   );
 }
