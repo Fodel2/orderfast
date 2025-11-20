@@ -16,6 +16,7 @@ import {
   KIOSK_HEADER_COLLAPSED_HEIGHT,
   KIOSK_HEADER_FULL_HEIGHT,
   KIOSK_HEADER_SHRINK_THRESHOLD,
+  KIOSK_SCROLL_PADDING,
 } from '@/components/kiosk/kioskHeaderConstants';
 
 interface WakeLockSentinel {
@@ -71,6 +72,7 @@ export default function KioskLayout({
   const inactivityTimer = useRef<NodeJS.Timeout | null>(null);
   const accentColor = useMemo(() => restaurant?.theme_primary_color || '#111827', [restaurant?.theme_primary_color]);
   const [isShrunk, setIsShrunk] = useState(false);
+  const scrollTickingRef = useRef(false);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const layoutStyle = useMemo(() => ({ '--kiosk-accent': accentColor }) as CSSProperties, [accentColor]);
   const headerHeight = isShrunk ? KIOSK_HEADER_COLLAPSED_HEIGHT : KIOSK_HEADER_FULL_HEIGHT;
@@ -283,32 +285,6 @@ export default function KioskLayout({
   }, [attemptFullscreen, deferredPrompt, installDismissed, isInstalled]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const el = scrollContainerRef.current;
-    if (!el) return;
-
-    let ticking = false;
-
-    const handleScroll = () => {
-      if (ticking) return;
-      ticking = true;
-      requestAnimationFrame(() => {
-        const nextShrunk = el.scrollTop > KIOSK_HEADER_SHRINK_THRESHOLD;
-        setIsShrunk((prev) => (prev !== nextShrunk ? nextShrunk : prev));
-        ticking = false;
-      });
-    };
-
-    handleScroll();
-    el.addEventListener('scroll', handleScroll, { passive: true });
-
-    return () => {
-      el.removeEventListener('scroll', handleScroll);
-    };
-  }, []);
-
-  useEffect(() => {
     onScrollContainerChange?.(scrollContainerRef.current);
 
     return () => {
@@ -432,6 +408,25 @@ export default function KioskLayout({
     };
   }, [resetInactivityTimer]);
 
+  const handleScroll = useCallback(
+    (el: HTMLDivElement | null) => {
+      if (!el) return;
+      if (scrollTickingRef.current) return;
+      scrollTickingRef.current = true;
+      requestAnimationFrame(() => {
+        const nextShrunk = el.scrollTop > KIOSK_HEADER_SHRINK_THRESHOLD;
+        setIsShrunk((prev) => (prev !== nextShrunk ? nextShrunk : prev));
+        scrollTickingRef.current = false;
+      });
+      resetInactivityTimer();
+    },
+    [resetInactivityTimer]
+  );
+
+  useEffect(() => {
+    handleScroll(scrollContainerRef.current);
+  }, [handleScroll]);
+
   const headerContent = useMemo(() => {
     const headerTitle = restaurant?.name || 'Restaurant';
     const subtitle = restaurant?.website_description;
@@ -479,9 +474,11 @@ export default function KioskLayout({
         {headerContent}
         <div
           ref={scrollContainerRef}
+          onScroll={(event) => handleScroll(event.currentTarget)}
           className={`flex-1 overflow-auto bg-white px-4 py-6 transition-opacity duration-200 sm:px-8 ${
             contentVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
           }`}
+          style={{ scrollPaddingTop: `${KIOSK_SCROLL_PADDING}px` }}
         >
           <div className="mx-auto flex w-full max-w-none flex-col gap-8">{children}</div>
         </div>

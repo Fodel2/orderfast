@@ -226,15 +226,16 @@ export default function KioskMenuPage() {
       const el = document.getElementById(`cat-${categoryId}`);
       if (!el) return;
 
-      const scroller = scrollContainer || window;
-      const isWindowScroller = (node: Window | HTMLDivElement): node is Window => 'scrollY' in node;
+      const scroller = scrollContainer;
+      if (!scroller) return;
 
       if (scrollAnimationRef.current) {
         cancelAnimationFrame(scrollAnimationRef.current);
       }
 
-      const startY = isWindowScroller(scroller) ? scroller.scrollY : scroller.scrollTop;
-      const targetOffset = el.getBoundingClientRect().top + startY - KIOSK_SCROLL_PADDING;
+      const scrollerRect = scroller.getBoundingClientRect();
+      const startY = scroller.scrollTop;
+      const targetOffset = el.getBoundingClientRect().top - scrollerRect.top + startY - KIOSK_SCROLL_PADDING;
       const distance = targetOffset - startY;
       const duration = 350;
       const startTime = performance.now();
@@ -247,11 +248,7 @@ export default function KioskMenuPage() {
         const eased = easeOut(progress);
         const nextY = startY + distance * eased;
 
-        if (isWindowScroller(scroller)) {
-          scroller.scrollTo({ top: nextY });
-        } else {
-          scroller.scrollTo({ top: nextY });
-        }
+        scroller.scrollTo({ top: nextY });
 
         if (progress < 1) {
           scrollAnimationRef.current = requestAnimationFrame(step);
@@ -343,7 +340,7 @@ export default function KioskMenuPage() {
           {categorizedItems.length ? (
             <div
               className="sticky -mx-4 z-20 bg-white/95 backdrop-blur sm:-mx-8"
-              style={{ top: 'var(--kiosk-header-height, 0px)' }}
+              style={{ top: 0 }}
             >
               <KioskCategories
                 categories={categorizedItems}
@@ -354,7 +351,12 @@ export default function KioskMenuPage() {
             </div>
           ) : null}
           {categorizedItems.map((category) => (
-            <section key={category.id} id={`cat-${category.id}`} className="flex flex-col gap-4">
+            <section
+              key={category.id}
+              id={`cat-${category.id}`}
+              className="flex flex-col gap-4"
+              style={{ scrollMarginTop: `${KIOSK_SCROLL_PADDING}px` }}
+            >
               <header className="flex flex-col gap-1">
                 <h2 className="text-2xl font-semibold tracking-tight text-neutral-900">{category.name}</h2>
                 {category.description ? (
