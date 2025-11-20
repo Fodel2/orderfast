@@ -7,7 +7,11 @@ import { ITEM_ADDON_LINK_WITH_GROUPS_SELECT } from '@/lib/queries/addons';
 import Skeleton from '@/components/ui/Skeleton';
 import { useCart } from '@/context/CartContext';
 import KioskCategories from '@/components/kiosk/KioskCategories';
-import { KIOSK_SCROLL_PADDING } from '@/components/kiosk/kioskHeaderConstants';
+import {
+  KIOSK_CATEGORY_BAR_HEIGHT,
+  KIOSK_HEADER_COLLAPSED_HEIGHT,
+  KIOSK_SCROLL_PADDING,
+} from '@/components/kiosk/kioskHeaderConstants';
 
 type Category = {
   id: number;
@@ -60,6 +64,12 @@ export default function KioskMenuPage() {
   const scrollAnimationRef = useRef<number | null>(null);
   const lastScrollTargetRef = useRef<number | null>(null);
   const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
+  const categoryBarRef = useRef<HTMLDivElement | null>(null);
+  const [scrollOffsets, setScrollOffsets] = useState({
+    header: KIOSK_HEADER_COLLAPSED_HEIGHT,
+    categoryBar: KIOSK_CATEGORY_BAR_HEIGHT,
+    padding: KIOSK_SCROLL_PADDING,
+  });
   const { cart } = useCart();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
 
@@ -218,6 +228,36 @@ export default function KioskMenuPage() {
     };
   }, []);
 
+  const recomputeOffsets = useCallback(() => {
+    const headerEl = scrollContainer?.previousElementSibling as HTMLElement | null;
+    const measuredHeader = headerEl?.getBoundingClientRect().height ?? KIOSK_HEADER_COLLAPSED_HEIGHT;
+    const headerOffset = Math.min(measuredHeader, KIOSK_HEADER_COLLAPSED_HEIGHT);
+
+    const categoryHeight = categoryBarRef.current?.getBoundingClientRect().height ?? KIOSK_CATEGORY_BAR_HEIGHT;
+
+    const padding = headerOffset + categoryHeight + 12;
+
+    setScrollOffsets({
+      header: headerOffset,
+      categoryBar: categoryHeight,
+      padding,
+    });
+  }, [scrollContainer]);
+
+  useEffect(() => {
+    recomputeOffsets();
+    const handleResize = () => recomputeOffsets();
+    window.addEventListener('resize', handleResize, { passive: true });
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [recomputeOffsets]);
+
+  useEffect(() => {
+    recomputeOffsets();
+  }, [categorizedItems.length, recomputeOffsets]);
+
   const handleCategorySelect = useCallback(
     (categoryId: number) => {
       if (categoryId === lastScrollTargetRef.current) return;
@@ -235,7 +275,7 @@ export default function KioskMenuPage() {
 
       const scrollerRect = scroller.getBoundingClientRect();
       const startY = scroller.scrollTop;
-      const targetOffset = el.getBoundingClientRect().top - scrollerRect.top + startY - KIOSK_SCROLL_PADDING;
+      const targetOffset = el.getBoundingClientRect().top - scrollerRect.top + startY - scrollOffsets.padding;
       const distance = targetOffset - startY;
       const duration = 350;
       const startTime = performance.now();
@@ -260,7 +300,7 @@ export default function KioskMenuPage() {
       lastScrollTargetRef.current = categoryId;
       scrollAnimationRef.current = requestAnimationFrame(step);
     },
-    [scrollContainer]
+    [scrollContainer, scrollOffsets.padding]
   );
 
   useEffect(() => {
@@ -299,7 +339,7 @@ export default function KioskMenuPage() {
       },
       {
         root: scrollContainer,
-        rootMargin: `-${KIOSK_SCROLL_PADDING}px 0px -55% 0px`,
+        rootMargin: `-${scrollOffsets.padding}px 0px -55% 0px`,
         threshold: [0.25, 0.5, 0.75, 1],
       }
     );
@@ -316,13 +356,14 @@ export default function KioskMenuPage() {
     return () => {
       observer.disconnect();
     };
-  }, [categorizedItems, scrollContainer]);
+  }, [categorizedItems, scrollContainer, scrollOffsets.padding]);
 
   return (
     <KioskLayout
       restaurantId={restaurantId}
       restaurant={restaurant}
       cartCount={cartCount}
+      scrollPaddingTop={scrollOffsets.padding}
       onScrollContainerChange={setScrollContainer}
     >
       {loading ? (
@@ -339,6 +380,7 @@ export default function KioskMenuPage() {
         <div className="flex flex-col gap-10">
           {categorizedItems.length ? (
             <div
+              ref={categoryBarRef}
               className="sticky -mx-4 z-20 bg-white/95 backdrop-blur sm:-mx-8"
               style={{ top: 0 }}
             >
@@ -355,7 +397,7 @@ export default function KioskMenuPage() {
               key={category.id}
               id={`cat-${category.id}`}
               className="flex flex-col gap-4"
-              style={{ scrollMarginTop: `${KIOSK_SCROLL_PADDING}px` }}
+              style={{ scrollMarginTop: `${scrollOffsets.padding}px` }}
             >
               <header className="flex flex-col gap-1">
                 <h2 className="text-2xl font-semibold tracking-tight text-neutral-900">{category.name}</h2>

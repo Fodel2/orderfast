@@ -44,6 +44,7 @@ type KioskLayoutProps = {
   children: ReactNode;
   forceHome?: boolean;
   onScrollContainerChange?: (el: HTMLDivElement | null) => void;
+  scrollPaddingTop?: number;
 };
 
 export default function KioskLayout({
@@ -53,6 +54,7 @@ export default function KioskLayout({
   children,
   forceHome = false,
   onScrollContainerChange,
+  scrollPaddingTop = KIOSK_SCROLL_PADDING,
 }: KioskLayoutProps) {
   const router = useRouter();
   const [wakeLock, setWakeLock] = useState<WakeLockSentinel | null>(null);
@@ -436,6 +438,7 @@ export default function KioskLayout({
         className={`sticky top-0 z-30 w-full border-b border-neutral-200 bg-white/90 text-neutral-900 shadow-sm backdrop-blur transition-[min-height,padding] duration-200 ease-out ${
           isShrunk ? 'min-h-[92px] py-4' : 'min-h-[148px] py-8'
         }`}
+        style={{ minHeight: `${headerHeight}px` }}
       >
         <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-4 sm:px-6">
           <div className="flex flex-col">
@@ -478,7 +481,7 @@ export default function KioskLayout({
           className={`flex-1 overflow-auto bg-white px-4 py-6 transition-opacity duration-200 sm:px-8 ${
             contentVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
           }`}
-          style={{ scrollPaddingTop: `${KIOSK_SCROLL_PADDING}px` }}
+          style={{ scrollPaddingTop: `${scrollPaddingTop}px` }}
         >
           <div className="mx-auto flex w-full max-w-none flex-col gap-8">{children}</div>
         </div>
