@@ -7,6 +7,7 @@ import { ITEM_ADDON_LINK_WITH_GROUPS_SELECT } from '@/lib/queries/addons';
 import Skeleton from '@/components/ui/Skeleton';
 import { useCart } from '@/context/CartContext';
 import KioskCategories from '@/components/kiosk/KioskCategories';
+import { KIOSK_SCROLL_PADDING } from '@/components/kiosk/kioskHeaderConstants';
 
 type Category = {
   id: number;
@@ -58,6 +59,7 @@ export default function KioskMenuPage() {
   const activeCategoryRef = useRef<number | null>(null);
   const scrollAnimationRef = useRef<number | null>(null);
   const lastScrollTargetRef = useRef<number | null>(null);
+  const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
   const { cart } = useCart();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
 
@@ -216,42 +218,53 @@ export default function KioskMenuPage() {
     };
   }, []);
 
-  const handleCategorySelect = useCallback((categoryId: number) => {
-    if (categoryId === lastScrollTargetRef.current) return;
-    setActiveCategoryId(categoryId);
+  const handleCategorySelect = useCallback(
+    (categoryId: number) => {
+      if (categoryId === lastScrollTargetRef.current) return;
+      setActiveCategoryId(categoryId);
 
-    const el = document.getElementById(`cat-${categoryId}`);
-    if (!el) return;
+      const el = document.getElementById(`cat-${categoryId}`);
+      if (!el) return;
 
-    if (scrollAnimationRef.current) {
-      cancelAnimationFrame(scrollAnimationRef.current);
-    }
+      const scroller = scrollContainer || window;
+      const isWindowScroller = (node: Window | HTMLDivElement): node is Window => 'scrollY' in node;
 
-    const startY = window.scrollY;
-    const targetY = el.getBoundingClientRect().top + window.scrollY - 40;
-    const distance = targetY - startY;
-    const duration = 350;
-    const startTime = performance.now();
-
-    const easeOut = (t: number) => 1 - (1 - t) * (1 - t);
-
-    const step = (currentTime: number) => {
-      const elapsed = currentTime - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      const eased = easeOut(progress);
-      const nextY = startY + distance * eased;
-      window.scrollTo({ top: nextY });
-
-      if (progress < 1) {
-        scrollAnimationRef.current = requestAnimationFrame(step);
-      } else {
-        scrollAnimationRef.current = null;
+      if (scrollAnimationRef.current) {
+        cancelAnimationFrame(scrollAnimationRef.current);
       }
-    };
 
-    lastScrollTargetRef.current = categoryId;
-    scrollAnimationRef.current = requestAnimationFrame(step);
-  }, []);
+      const startY = isWindowScroller(scroller) ? scroller.scrollY : scroller.scrollTop;
+      const targetOffset = el.getBoundingClientRect().top + startY - KIOSK_SCROLL_PADDING;
+      const distance = targetOffset - startY;
+      const duration = 350;
+      const startTime = performance.now();
+
+      const easeOut = (t: number) => 1 - (1 - t) * (1 - t);
+
+      const step = (currentTime: number) => {
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        const eased = easeOut(progress);
+        const nextY = startY + distance * eased;
+
+        if (isWindowScroller(scroller)) {
+          scroller.scrollTo({ top: nextY });
+        } else {
+          scroller.scrollTo({ top: nextY });
+        }
+
+        if (progress < 1) {
+          scrollAnimationRef.current = requestAnimationFrame(step);
+        } else {
+          scrollAnimationRef.current = null;
+        }
+      };
+
+      lastScrollTargetRef.current = categoryId;
+      scrollAnimationRef.current = requestAnimationFrame(step);
+    },
+    [scrollContainer]
+  );
 
   useEffect(() => {
     activeCategoryRef.current = activeCategoryId;
@@ -288,8 +301,8 @@ export default function KioskMenuPage() {
         }
       },
       {
-        root: null,
-        rootMargin: '-40px 0px -55% 0px',
+        root: scrollContainer,
+        rootMargin: `-${KIOSK_SCROLL_PADDING}px 0px -55% 0px`,
         threshold: [0.25, 0.5, 0.75, 1],
       }
     );
@@ -306,10 +319,15 @@ export default function KioskMenuPage() {
     return () => {
       observer.disconnect();
     };
-  }, [categorizedItems]);
+  }, [categorizedItems, scrollContainer]);
 
   return (
-    <KioskLayout restaurantId={restaurantId} restaurant={restaurant} cartCount={cartCount}>
+    <KioskLayout
+      restaurantId={restaurantId}
+      restaurant={restaurant}
+      cartCount={cartCount}
+      onScrollContainerChange={setScrollContainer}
+    >
       {loading ? (
         <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 6 }).map((_, idx) => (
@@ -323,11 +341,17 @@ export default function KioskMenuPage() {
       ) : (
         <div className="flex flex-col gap-10">
           {categorizedItems.length ? (
-            <KioskCategories
-              categories={categorizedItems}
-              activeCategoryId={activeCategoryId}
-              onSelect={handleCategorySelect}
-            />
+            <div
+              className="sticky -mx-4 z-20 bg-white/95 backdrop-blur sm:-mx-8"
+              style={{ top: 'var(--kiosk-header-height, 0px)' }}
+            >
+              <KioskCategories
+                categories={categorizedItems}
+                activeCategoryId={activeCategoryId}
+                onSelect={handleCategorySelect}
+              />
+              <div className="h-px w-full bg-neutral-200" />
+            </div>
           ) : null}
           {categorizedItems.map((category) => (
             <section key={category.id} id={`cat-${category.id}`} className="flex flex-col gap-4">

@@ -12,6 +12,11 @@ import {
 import HomeScreen, { type KioskRestaurant } from '@/components/kiosk/HomeScreen';
 import KioskActionButton from '@/components/kiosk/KioskActionButton';
 import { clearHomeSeen, hasSeenHome, markHomeSeen } from '@/utils/kiosk/session';
+import {
+  KIOSK_HEADER_COLLAPSED_HEIGHT,
+  KIOSK_HEADER_FULL_HEIGHT,
+  KIOSK_HEADER_SHRINK_THRESHOLD,
+} from '@/components/kiosk/kioskHeaderConstants';
 
 interface WakeLockSentinel {
   released: boolean;
@@ -37,6 +42,7 @@ type KioskLayoutProps = {
   cartCount?: number;
   children: ReactNode;
   forceHome?: boolean;
+  onScrollContainerChange?: (el: HTMLDivElement | null) => void;
 };
 
 export default function KioskLayout({
@@ -45,6 +51,7 @@ export default function KioskLayout({
   cartCount = 0,
   children,
   forceHome = false,
+  onScrollContainerChange,
 }: KioskLayoutProps) {
   const router = useRouter();
   const [wakeLock, setWakeLock] = useState<WakeLockSentinel | null>(null);
@@ -63,9 +70,16 @@ export default function KioskLayout({
   const fullscreenRequestInFlight = useRef(false);
   const inactivityTimer = useRef<NodeJS.Timeout | null>(null);
   const accentColor = useMemo(() => restaurant?.theme_primary_color || '#111827', [restaurant?.theme_primary_color]);
-  const layoutStyle = useMemo(
-    () => ({ '--kiosk-accent': accentColor }) as CSSProperties,
-    [accentColor]
+  const [isShrunk, setIsShrunk] = useState(false);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const layoutStyle = useMemo(() => ({ '--kiosk-accent': accentColor }) as CSSProperties, [accentColor]);
+  const headerHeight = isShrunk ? KIOSK_HEADER_COLLAPSED_HEIGHT : KIOSK_HEADER_FULL_HEIGHT;
+  const layoutWithHeaderStyle = useMemo(
+    () => ({
+      ...layoutStyle,
+      '--kiosk-header-height': `${headerHeight}px`,
+    }) as CSSProperties,
+    [headerHeight, layoutStyle]
   );
 
   const isFullscreenActive = useCallback(() => {
@@ -271,6 +285,40 @@ export default function KioskLayout({
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
+    const el = scrollContainerRef.current;
+    if (!el) return;
+
+    let ticking = false;
+
+    const handleScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        const nextShrunk = el.scrollTop > KIOSK_HEADER_SHRINK_THRESHOLD;
+        setIsShrunk((prev) => (prev !== nextShrunk ? nextShrunk : prev));
+        ticking = false;
+      });
+    };
+
+    handleScroll();
+    el.addEventListener('scroll', handleScroll, { passive: true });
+
+    return () => {
+      el.removeEventListener('scroll', handleScroll);
+    };
+  }, []);
+
+  useEffect(() => {
+    onScrollContainerChange?.(scrollContainerRef.current);
+
+    return () => {
+      onScrollContainerChange?.(null);
+    };
+  }, [onScrollContainerChange]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
     const handleInteraction = async () => {
       await Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]);
     };
@@ -386,15 +434,32 @@ export default function KioskLayout({
 
   const headerContent = useMemo(() => {
     const headerTitle = restaurant?.name || 'Restaurant';
+    const subtitle = restaurant?.website_description;
 
     return (
-      <header className="sticky top-0 z-30 w-full border-b border-neutral-200 bg-white/95 text-neutral-900 shadow-sm backdrop-blur">
-        <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
+      <header
+        className={`sticky top-0 z-30 w-full border-b border-neutral-200 bg-white/90 text-neutral-900 shadow-sm backdrop-blur transition-[min-height,padding] duration-200 ease-out ${
+          isShrunk ? 'min-h-[92px] py-4' : 'min-h-[148px] py-8'
+        }`}
+      >
+        <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-4 sm:px-6">
           <div className="flex flex-col">
-            <span className="text-lg font-semibold tracking-tight sm:text-xl">{headerTitle}</span>
+            <span
+              className={`font-semibold leading-tight tracking-tight text-neutral-900 transition-[font-size] duration-200 ease-out ${
+                isShrunk ? 'text-lg sm:text-xl' : 'text-2xl sm:text-3xl'
+              }`}
+            >
+              {headerTitle}
+            </span>
+            {!isShrunk && subtitle ? (
+              <span className="mt-2 text-sm font-medium text-neutral-600 sm:text-base">{subtitle}</span>
+            ) : null}
           </div>
           {restaurantId ? (
-            <KioskActionButton href={`/kiosk/${restaurantId}/cart`} className="px-4 py-2 text-sm font-semibold">
+            <KioskActionButton
+              href={`/kiosk/${restaurantId}/cart`}
+              className="px-4 py-2 text-sm font-semibold sm:px-5 sm:py-3"
+            >
               <ShoppingCartIcon className="h-5 w-5" />
               View cart ({cartCount})
             </KioskActionButton>
@@ -402,17 +467,18 @@ export default function KioskLayout({
         </div>
       </header>
     );
-  }, [cartCount, restaurant?.name, restaurantId]);
+  }, [cartCount, isShrunk, restaurant?.name, restaurant?.website_description, restaurantId]);
 
   const handleFullscreenPromptClick = useCallback(async () => {
     await Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]);
   }, [attemptFullscreen, requestWakeLock]);
 
   return (
-    <div className="min-h-screen w-full overflow-hidden bg-white text-neutral-900" style={layoutStyle}>
+    <div className="min-h-screen w-full overflow-hidden bg-white text-neutral-900" style={layoutWithHeaderStyle}>
       <main className="flex min-h-screen flex-col overflow-hidden">
         {headerContent}
         <div
+          ref={scrollContainerRef}
           className={`flex-1 overflow-auto bg-white px-4 py-6 transition-opacity duration-200 sm:px-8 ${
             contentVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
           }`}
