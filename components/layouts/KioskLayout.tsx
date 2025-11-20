@@ -76,14 +76,17 @@ export default function KioskLayout({
   const [isShrunk, setIsShrunk] = useState(false);
   const scrollTickingRef = useRef(false);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const headerRef = useRef<HTMLDivElement | null>(null);
+  const [headerMeasuredHeight, setHeaderMeasuredHeight] = useState(KIOSK_HEADER_FULL_HEIGHT);
   const layoutStyle = useMemo(() => ({ '--kiosk-accent': accentColor }) as CSSProperties, [accentColor]);
   const headerHeight = isShrunk ? KIOSK_HEADER_COLLAPSED_HEIGHT : KIOSK_HEADER_FULL_HEIGHT;
+  const effectiveHeaderHeight = headerMeasuredHeight || headerHeight;
   const layoutWithHeaderStyle = useMemo(
     () => ({
       ...layoutStyle,
-      '--kiosk-header-height': `${headerHeight}px`,
+      '--kiosk-header-height': `${effectiveHeaderHeight}px`,
     }) as CSSProperties,
-    [headerHeight, layoutStyle]
+    [effectiveHeaderHeight, layoutStyle]
   );
 
   const isFullscreenActive = useCallback(() => {
@@ -295,6 +298,28 @@ export default function KioskLayout({
   }, [onScrollContainerChange]);
 
   useEffect(() => {
+    const headerEl = headerRef.current;
+    if (!headerEl) return;
+
+    const measure = () => {
+      const next = Math.round(headerEl.getBoundingClientRect().height);
+      setHeaderMeasuredHeight((prev) => (prev !== next ? next : prev));
+    };
+
+    measure();
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(() => measure());
+      observer.observe(headerEl);
+      return () => observer.disconnect();
+    }
+
+    const handleResize = () => measure();
+    window.addEventListener('resize', handleResize, { passive: true });
+    return () => window.removeEventListener('resize', handleResize);
+  }, [headerHeight]);
+
+  useEffect(() => {
     if (typeof window === 'undefined') return;
 
     const handleInteraction = async () => {
@@ -435,7 +460,9 @@ export default function KioskLayout({
 
     return (
       <header
-        className={`sticky top-0 z-30 w-full border-b border-neutral-200 bg-white/90 text-neutral-900 shadow-sm backdrop-blur transition-[min-height,padding] duration-200 ease-out ${
+        ref={headerRef}
+        data-kiosk-header
+        className={`absolute left-0 right-0 top-0 z-30 w-full border-b border-neutral-200 bg-white/90 text-neutral-900 shadow-sm backdrop-blur transition-[min-height,padding] duration-200 ease-out ${
           isShrunk ? 'min-h-[92px] py-4' : 'min-h-[148px] py-8'
         }`}
         style={{ minHeight: `${headerHeight}px` }}
@@ -472,20 +499,24 @@ export default function KioskLayout({
   }, [attemptFullscreen, requestWakeLock]);
 
   return (
-    <div className="min-h-screen w-full overflow-hidden bg-white text-neutral-900" style={layoutWithHeaderStyle}>
-      <main className="flex min-h-screen flex-col overflow-hidden">
-        {headerContent}
-        <div
-          ref={scrollContainerRef}
-          onScroll={(event) => handleScroll(event.currentTarget)}
-          className={`flex-1 overflow-auto bg-white px-4 py-6 transition-opacity duration-200 sm:px-8 ${
-            contentVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
-          }`}
-          style={{ scrollPaddingTop: `${scrollPaddingTop}px` }}
-        >
-          <div className="mx-auto flex w-full max-w-none flex-col gap-8">{children}</div>
-        </div>
-      </main>
+    <div className="relative h-screen w-full overflow-hidden bg-white text-neutral-900" style={layoutWithHeaderStyle}>
+      {headerContent}
+      <div
+        ref={scrollContainerRef}
+        onScroll={(event) => handleScroll(event.currentTarget)}
+        className={`relative h-full w-full bg-white px-4 pb-6 transition-opacity duration-200 sm:px-8 ${
+          contentVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+        style={{
+          height: '100vh',
+          overflowY: 'auto',
+          WebkitOverflowScrolling: 'touch',
+          paddingTop: effectiveHeaderHeight,
+          scrollPaddingTop: `${scrollPaddingTop}px`,
+        }}
+      >
+        <div className="mx-auto flex w-full max-w-none flex-col gap-8">{children}</div>
+      </div>
       {homeVisible ? (
         <HomeScreen restaurant={restaurant || null} onStart={startOrdering} fadingOut={homeFading} />
       ) : null}

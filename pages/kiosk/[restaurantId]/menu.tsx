@@ -61,7 +61,6 @@ export default function KioskMenuPage() {
   const [loading, setLoading] = useState(true);
   const [activeCategoryId, setActiveCategoryId] = useState<number | null>(null);
   const activeCategoryRef = useRef<number | null>(null);
-  const scrollAnimationRef = useRef<number | null>(null);
   const lastScrollTargetRef = useRef<number | null>(null);
   const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
   const categoryBarRef = useRef<HTMLDivElement | null>(null);
@@ -220,22 +219,13 @@ export default function KioskMenuPage() {
   const hasCategoryItems = categorizedItems.length > 0;
   const hasUncategorizedItems = uncategorizedItems.length > 0;
 
-  useEffect(() => {
-    return () => {
-      if (scrollAnimationRef.current) {
-        cancelAnimationFrame(scrollAnimationRef.current);
-      }
-    };
-  }, []);
-
   const recomputeOffsets = useCallback(() => {
     const headerEl = scrollContainer?.previousElementSibling as HTMLElement | null;
-    const measuredHeader = headerEl?.getBoundingClientRect().height ?? KIOSK_HEADER_COLLAPSED_HEIGHT;
-    const headerOffset = Math.min(measuredHeader, KIOSK_HEADER_COLLAPSED_HEIGHT);
+    const headerOffset = headerEl?.getBoundingClientRect().height ?? KIOSK_HEADER_COLLAPSED_HEIGHT;
 
     const categoryHeight = categoryBarRef.current?.getBoundingClientRect().height ?? KIOSK_CATEGORY_BAR_HEIGHT;
 
-    const padding = headerOffset + categoryHeight + 12;
+    const padding = headerOffset + categoryHeight + 8;
 
     setScrollOffsets({
       header: headerOffset,
@@ -249,14 +239,25 @@ export default function KioskMenuPage() {
     const handleResize = () => recomputeOffsets();
     window.addEventListener('resize', handleResize, { passive: true });
 
+    const headerEl = scrollContainer?.previousElementSibling as HTMLElement | null;
+    const headerObserver =
+      typeof ResizeObserver !== 'undefined' && headerEl
+        ? new ResizeObserver(() => recomputeOffsets())
+        : null;
+    headerObserver?.observe(headerEl as Element);
+
+    const categoryObserver =
+      typeof ResizeObserver !== 'undefined' && categoryBarRef.current
+        ? new ResizeObserver(() => recomputeOffsets())
+        : null;
+    categoryObserver?.observe(categoryBarRef.current as Element);
+
     return () => {
       window.removeEventListener('resize', handleResize);
+      headerObserver?.disconnect();
+      categoryObserver?.disconnect();
     };
-  }, [recomputeOffsets]);
-
-  useEffect(() => {
-    recomputeOffsets();
-  }, [categorizedItems.length, recomputeOffsets]);
+  }, [categorizedItems.length, recomputeOffsets, scrollContainer]);
 
   const handleCategorySelect = useCallback(
     (categoryId: number) => {
@@ -269,38 +270,12 @@ export default function KioskMenuPage() {
       const scroller = scrollContainer;
       if (!scroller) return;
 
-      if (scrollAnimationRef.current) {
-        cancelAnimationFrame(scrollAnimationRef.current);
-      }
-
-      const scrollerRect = scroller.getBoundingClientRect();
-      const startY = scroller.scrollTop;
-      const targetOffset = el.getBoundingClientRect().top - scrollerRect.top + startY - scrollOffsets.padding;
-      const distance = targetOffset - startY;
-      const duration = 350;
-      const startTime = performance.now();
-
-      const easeOut = (t: number) => 1 - (1 - t) * (1 - t);
-
-      const step = (currentTime: number) => {
-        const elapsed = currentTime - startTime;
-        const progress = Math.min(elapsed / duration, 1);
-        const eased = easeOut(progress);
-        const nextY = startY + distance * eased;
-
-        scroller.scrollTo({ top: nextY });
-
-        if (progress < 1) {
-          scrollAnimationRef.current = requestAnimationFrame(step);
-        } else {
-          scrollAnimationRef.current = null;
-        }
-      };
+      const offset = scrollOffsets.header + scrollOffsets.categoryBar + 8;
 
       lastScrollTargetRef.current = categoryId;
-      scrollAnimationRef.current = requestAnimationFrame(step);
+      scroller.scrollTo({ top: Math.max(el.offsetTop - offset, 0), behavior: 'smooth' });
     },
-    [scrollContainer, scrollOffsets.padding]
+    [scrollContainer, scrollOffsets.categoryBar, scrollOffsets.header]
   );
 
   useEffect(() => {
@@ -382,7 +357,7 @@ export default function KioskMenuPage() {
             <div
               ref={categoryBarRef}
               className="sticky -mx-4 z-20 bg-white/95 backdrop-blur sm:-mx-8"
-              style={{ top: 0 }}
+              style={{ top: scrollOffsets.header }}
             >
               <KioskCategories
                 categories={categorizedItems}
