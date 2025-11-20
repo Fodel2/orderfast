@@ -55,6 +55,7 @@ export default function KioskMenuPage() {
   const [itemLinks, setItemLinks] = useState<ItemLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeCategoryId, setActiveCategoryId] = useState<number | null>(null);
+  const activeCategoryRef = useRef<number | null>(null);
   const scrollAnimationRef = useRef<number | null>(null);
   const lastScrollTargetRef = useRef<number | null>(null);
   const { cart } = useCart();
@@ -251,6 +252,61 @@ export default function KioskMenuPage() {
     lastScrollTargetRef.current = categoryId;
     scrollAnimationRef.current = requestAnimationFrame(step);
   }, []);
+
+  useEffect(() => {
+    activeCategoryRef.current = activeCategoryId;
+  }, [activeCategoryId]);
+
+  useEffect(() => {
+    if (categorizedItems.length === 0) return;
+    if (activeCategoryRef.current !== null) return;
+    setActiveCategoryId(categorizedItems[0].id);
+  }, [categorizedItems]);
+
+  useEffect(() => {
+    if (!categorizedItems.length) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visibleEntries = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => {
+            if (b.intersectionRatio !== a.intersectionRatio) {
+              return b.intersectionRatio - a.intersectionRatio;
+            }
+            return a.boundingClientRect.top - b.boundingClientRect.top;
+          });
+
+        const topEntry = visibleEntries[0];
+        if (!topEntry) return;
+
+        const targetId = Number(topEntry.target.getAttribute('data-category-id'));
+        if (Number.isNaN(targetId)) return;
+
+        if (activeCategoryRef.current !== targetId) {
+          setActiveCategoryId(targetId);
+        }
+      },
+      {
+        root: null,
+        rootMargin: '-40px 0px -55% 0px',
+        threshold: [0.25, 0.5, 0.75, 1],
+      }
+    );
+
+    const sections = categorizedItems
+      .map((category) => document.getElementById(`cat-${category.id}`))
+      .filter((el): el is HTMLElement => Boolean(el));
+
+    sections.forEach((section) => {
+      section.setAttribute('data-category-id', section.id.replace('cat-', ''));
+      observer.observe(section);
+    });
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [categorizedItems]);
 
   return (
     <KioskLayout restaurantId={restaurantId} restaurant={restaurant} cartCount={cartCount}>

@@ -10,9 +10,16 @@ interface KioskCategoryTileProps {
   active?: boolean;
   onSelect?: (categoryId: number) => void;
   className?: string;
+  buttonRef?: (el: HTMLButtonElement | null) => void;
 }
 
-export default function KioskCategoryTile({ category, active = false, onSelect, className }: KioskCategoryTileProps) {
+export default function KioskCategoryTile({
+  category,
+  active = false,
+  onSelect,
+  className,
+  buttonRef,
+}: KioskCategoryTileProps) {
   const categoryImage = category.image_url ? normalizeSource(category.image_url) : null;
 
   const handleClick = () => {
@@ -31,6 +38,7 @@ export default function KioskCategoryTile({ category, active = false, onSelect, 
     <button
       type="button"
       onClick={handleClick}
+      ref={buttonRef}
       className={cn(baseClasses, active ? activeClasses : inactiveClasses, className)}
     >
       {categoryImage ? (
