@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/router';
 import CartDrawer from '@/components/CartDrawer';
 import KioskLayout from '@/components/layouts/KioskLayout';
 import { useCart } from '@/context/CartContext';
 import { supabase } from '@/lib/supabaseClient';
+import KioskActionButton from '@/components/kiosk/KioskActionButton';
 
 type Restaurant = {
   id: string;
@@ -64,12 +64,9 @@ export default function KioskCartPage() {
       <div className="mx-auto w-full max-w-3xl space-y-6">
         {restaurantId && cartCount > 0 ? (
           <div className="flex justify-end">
-            <Link
-              href={`/kiosk/${restaurantId}/confirm`}
-              className="rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold uppercase tracking-wide text-white shadow transition hover:bg-slate-800"
-            >
+            <KioskActionButton href={`/kiosk/${restaurantId}/confirm`} className="px-5 py-2 text-sm uppercase tracking-wide">
               Place order
-            </Link>
+            </KioskActionButton>
           </div>
         ) : null}
         <CartDrawer inline />

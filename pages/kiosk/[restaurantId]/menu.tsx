@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import MenuItemCard from '@/components/MenuItemCard';
 import KioskLayout from '@/components/layouts/KioskLayout';
@@ -6,11 +6,13 @@ import { supabase } from '@/lib/supabaseClient';
 import { ITEM_ADDON_LINK_WITH_GROUPS_SELECT } from '@/lib/queries/addons';
 import Skeleton from '@/components/ui/Skeleton';
 import { useCart } from '@/context/CartContext';
+import KioskCategories from '@/components/kiosk/KioskCategories';
 
 type Category = {
   id: number;
   name: string;
   description: string | null;
+  image_url?: string | null;
 };
 
 type Item = {
@@ -52,6 +54,10 @@ export default function KioskMenuPage() {
   const [items, setItems] = useState<Item[]>([]);
   const [itemLinks, setItemLinks] = useState<ItemLink[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeCategoryId, setActiveCategoryId] = useState<number | null>(null);
+  const activeCategoryRef = useRef<number | null>(null);
+  const scrollAnimationRef = useRef<number | null>(null);
+  const lastScrollTargetRef = useRef<number | null>(null);
   const { cart } = useCart();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
 
@@ -79,7 +85,7 @@ export default function KioskMenuPage() {
 
         const categoriesPromise = supabase
           .from('menu_categories')
-          .select('id,name,description,sort_order')
+          .select('id,name,description,sort_order,image_url')
           .eq('restaurant_id', restaurantId)
           .is('archived_at', null)
           .order('sort_order', { ascending: true, nullsFirst: false })
@@ -202,6 +208,106 @@ export default function KioskMenuPage() {
   const hasCategoryItems = categorizedItems.length > 0;
   const hasUncategorizedItems = uncategorizedItems.length > 0;
 
+  useEffect(() => {
+    return () => {
+      if (scrollAnimationRef.current) {
+        cancelAnimationFrame(scrollAnimationRef.current);
+      }
+    };
+  }, []);
+
+  const handleCategorySelect = useCallback((categoryId: number) => {
+    if (categoryId === lastScrollTargetRef.current) return;
+    setActiveCategoryId(categoryId);
+
+    const el = document.getElementById(`cat-${categoryId}`);
+    if (!el) return;
+
+    if (scrollAnimationRef.current) {
+      cancelAnimationFrame(scrollAnimationRef.current);
+    }
+
+    const startY = window.scrollY;
+    const targetY = el.getBoundingClientRect().top + window.scrollY - 40;
+    const distance = targetY - startY;
+    const duration = 350;
+    const startTime = performance.now();
+
+    const easeOut = (t: number) => 1 - (1 - t) * (1 - t);
+
+    const step = (currentTime: number) => {
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = easeOut(progress);
+      const nextY = startY + distance * eased;
+      window.scrollTo({ top: nextY });
+
+      if (progress < 1) {
+        scrollAnimationRef.current = requestAnimationFrame(step);
+      } else {
+        scrollAnimationRef.current = null;
+      }
+    };
+
+    lastScrollTargetRef.current = categoryId;
+    scrollAnimationRef.current = requestAnimationFrame(step);
+  }, []);
+
+  useEffect(() => {
+    activeCategoryRef.current = activeCategoryId;
+  }, [activeCategoryId]);
+
+  useEffect(() => {
+    if (categorizedItems.length === 0) return;
+    if (activeCategoryRef.current !== null) return;
+    setActiveCategoryId(categorizedItems[0].id);
+  }, [categorizedItems]);
+
+  useEffect(() => {
+    if (!categorizedItems.length) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visibleEntries = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => {
+            if (b.intersectionRatio !== a.intersectionRatio) {
+              return b.intersectionRatio - a.intersectionRatio;
+            }
+            return a.boundingClientRect.top - b.boundingClientRect.top;
+          });
+
+        const topEntry = visibleEntries[0];
+        if (!topEntry) return;
+
+        const targetId = Number(topEntry.target.getAttribute('data-category-id'));
+        if (Number.isNaN(targetId)) return;
+
+        if (activeCategoryRef.current !== targetId) {
+          setActiveCategoryId(targetId);
+        }
+      },
+      {
+        root: null,
+        rootMargin: '-40px 0px -55% 0px',
+        threshold: [0.25, 0.5, 0.75, 1],
+      }
+    );
+
+    const sections = categorizedItems
+      .map((category) => document.getElementById(`cat-${category.id}`))
+      .filter((el): el is HTMLElement => Boolean(el));
+
+    sections.forEach((section) => {
+      section.setAttribute('data-category-id', section.id.replace('cat-', ''));
+      observer.observe(section);
+    });
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [categorizedItems]);
+
   return (
     <KioskLayout restaurantId={restaurantId} restaurant={restaurant} cartCount={cartCount}>
       {loading ? (
@@ -216,12 +322,19 @@ export default function KioskMenuPage() {
         </div>
       ) : (
         <div className="flex flex-col gap-10">
+          {categorizedItems.length ? (
+            <KioskCategories
+              categories={categorizedItems}
+              activeCategoryId={activeCategoryId}
+              onSelect={handleCategorySelect}
+            />
+          ) : null}
           {categorizedItems.map((category) => (
-            <section key={category.id} className="flex flex-col gap-4">
+            <section key={category.id} id={`cat-${category.id}`} className="flex flex-col gap-4">
               <header className="flex flex-col gap-1">
-                <h2 className="text-2xl font-semibold tracking-tight text-slate-900">{category.name}</h2>
+                <h2 className="text-2xl font-semibold tracking-tight text-neutral-900">{category.name}</h2>
                 {category.description ? (
-                  <p className="text-sm text-slate-600">{category.description}</p>
+                  <p className="text-sm text-neutral-600">{category.description}</p>
                 ) : null}
               </header>
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
@@ -241,7 +354,7 @@ export default function KioskMenuPage() {
           {hasUncategorizedItems ? (
             <section className="flex flex-col gap-4">
               <header>
-                <h2 className="text-2xl font-semibold tracking-tight text-slate-900">Other items</h2>
+                <h2 className="text-2xl font-semibold tracking-tight text-neutral-900">Other items</h2>
               </header>
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                 {uncategorizedItems.map((item) => (
@@ -258,7 +371,7 @@ export default function KioskMenuPage() {
           ) : null}
 
           {!hasCategoryItems && !hasUncategorizedItems ? (
-            <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-600">
+            <div className="rounded-2xl border border-dashed border-neutral-300 bg-white p-8 text-center text-neutral-600">
               This menu is currently empty.
             </div>
           ) : null}

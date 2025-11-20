@@ -50,7 +50,7 @@ export default function KioskHomePage() {
 
   return (
     <KioskLayout restaurantId={restaurantId} restaurant={restaurant} forceHome>
-      <div className="flex min-h-[50vh] items-center justify-center text-sm text-slate-500">
+      <div className="flex min-h-[50vh] items-center justify-center text-sm text-neutral-500">
         Preparing kiosk experience...
       </div>
     </KioskLayout>

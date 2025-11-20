@@ -1,7 +1,16 @@
-import Link from 'next/link';
+import { ShoppingCartIcon } from '@heroicons/react/24/outline';
 import { useRouter } from 'next/router';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import HomeScreen, { type KioskRestaurant } from '@/components/kiosk/HomeScreen';
+import KioskActionButton from '@/components/kiosk/KioskActionButton';
 import { clearHomeSeen, hasSeenHome, markHomeSeen } from '@/utils/kiosk/session';
 
 interface WakeLockSentinel {
@@ -49,9 +58,15 @@ export default function KioskLayout({
   const [contentVisible, setContentVisible] = useState<boolean>(() =>
     forceHome ? false : restaurantId ? hasSeenHome(restaurantId) : true
   );
+  const [showFullscreenPrompt, setShowFullscreenPrompt] = useState(false);
   const autoPromptedRef = useRef(false);
-  const hasRequestedFullscreen = useRef(false);
+  const fullscreenRequestInFlight = useRef(false);
   const inactivityTimer = useRef<NodeJS.Timeout | null>(null);
+  const accentColor = useMemo(() => restaurant?.theme_primary_color || '#111827', [restaurant?.theme_primary_color]);
+  const layoutStyle = useMemo(
+    () => ({ '--kiosk-accent': accentColor }) as CSSProperties,
+    [accentColor]
+  );
 
   const isFullscreenActive = useCallback(() => {
     if (typeof document === 'undefined') return false;
@@ -59,23 +74,44 @@ export default function KioskLayout({
     return Boolean(document.fullscreenElement || anyDoc.webkitFullscreenElement);
   }, []);
 
-  const attemptFullscreen = useCallback(async () => {
-    if (typeof document === 'undefined') return;
-    const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> };
-    if (!el) return;
-    if (isFullscreenActive()) return;
-    if (hasRequestedFullscreen.current) return;
-    hasRequestedFullscreen.current = true;
-    try {
-      const request = el.requestFullscreen?.bind(el) || el.webkitRequestFullscreen?.bind(el);
-      if (request) {
-        await request();
+  const attemptFullscreen = useCallback(
+    async (options: { allowModal?: boolean } = {}) => {
+      if (typeof document === 'undefined') return false;
+      const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> };
+      if (!el) return false;
+      if (fullscreenRequestInFlight.current) {
+        return isFullscreenActive();
       }
-    } catch (err) {
-      console.debug('[kiosk] fullscreen request failed', err);
-      hasRequestedFullscreen.current = false;
-    }
-  }, [isFullscreenActive]);
+      fullscreenRequestInFlight.current = true;
+      let success = false;
+      try {
+        if (isFullscreenActive()) {
+          setShowFullscreenPrompt(false);
+          success = true;
+        } else {
+          const request = el.requestFullscreen?.bind(el) || el.webkitRequestFullscreen?.bind(el);
+          if (!request) {
+            if (options.allowModal) {
+              setShowFullscreenPrompt(true);
+            }
+          } else {
+            await Promise.resolve(request());
+            setShowFullscreenPrompt(false);
+            success = true;
+          }
+        }
+      } catch (err) {
+        console.debug('[kiosk] fullscreen request failed', err);
+        if (options.allowModal) {
+          setShowFullscreenPrompt(true);
+        }
+      } finally {
+        fullscreenRequestInFlight.current = false;
+      }
+      return success;
+    },
+    [isFullscreenActive]
+  );
 
   const requestWakeLock = useCallback(async () => {
     try {
@@ -158,17 +194,19 @@ export default function KioskLayout({
     };
 
     const handleFullscreenChange = () => {
-      if (isFullscreenActive()) return;
-      hasRequestedFullscreen.current = false;
+      if (isFullscreenActive()) {
+        setShowFullscreenPrompt(false);
+        return;
+      }
       setTimeout(() => {
-        attemptFullscreen();
-      }, 200);
+        attemptFullscreen({ allowModal: true });
+      }, 150);
     };
 
     const media = window.matchMedia?.('(display-mode: standalone)');
 
     evaluateDisplayMode();
-    attemptFullscreen();
+    attemptFullscreen({ allowModal: true });
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     window.addEventListener('appinstalled', handleAppInstalled);
@@ -194,7 +232,7 @@ export default function KioskLayout({
       const choice = deferredPrompt.userChoice ? await deferredPrompt.userChoice.catch(() => null) : null;
       if (choice && choice.outcome === 'accepted') {
         setIsInstalled(true);
-        await attemptFullscreen();
+        await attemptFullscreen({ allowModal: true });
       } else {
         setInstallDismissed(true);
       }
@@ -220,7 +258,7 @@ export default function KioskLayout({
         if (choice && choice.outcome === 'accepted') {
           setIsInstalled(true);
           setDeferredPrompt(null);
-          await attemptFullscreen();
+          await attemptFullscreen({ allowModal: true });
         }
       } catch (err) {
         console.debug('[kiosk] auto install prompt blocked', err);
@@ -234,10 +272,10 @@ export default function KioskLayout({
     if (typeof window === 'undefined') return;
 
     const handleInteraction = async () => {
-      await Promise.allSettled([attemptFullscreen(), requestWakeLock()]);
+      await Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]);
     };
 
-    attemptFullscreen();
+    attemptFullscreen({ allowModal: true });
     requestWakeLock();
 
     window.addEventListener('pointerdown', handleInteraction, { once: true });
@@ -303,7 +341,7 @@ export default function KioskLayout({
       setHomeVisible(false);
       setHomeFading(false);
     }, 220);
-    await Promise.allSettled([attemptFullscreen(), requestWakeLock()]);
+    await Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]);
     if (menuPath && router.asPath !== menuPath) {
       router.push(menuPath).catch(() => undefined);
     }
@@ -347,32 +385,35 @@ export default function KioskLayout({
   }, [resetInactivityTimer]);
 
   const headerContent = useMemo(() => {
-    if (!contentVisible) return null;
     const headerTitle = restaurant?.name || 'Restaurant';
 
     return (
-      <header className="sticky top-0 z-30 flex items-center justify-between gap-4 border-b border-slate-200 bg-white/95 px-6 py-4 text-slate-900 shadow-sm">
-        <div className="flex flex-col">
-          <span className="text-lg font-semibold tracking-tight sm:text-xl">{headerTitle}</span>
+      <header className="sticky top-0 z-30 w-full border-b border-neutral-200 bg-white/95 text-neutral-900 shadow-sm backdrop-blur">
+        <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
+          <div className="flex flex-col">
+            <span className="text-lg font-semibold tracking-tight sm:text-xl">{headerTitle}</span>
+          </div>
+          {restaurantId ? (
+            <KioskActionButton href={`/kiosk/${restaurantId}/cart`} className="px-4 py-2 text-sm font-semibold">
+              <ShoppingCartIcon className="h-5 w-5" />
+              View cart ({cartCount})
+            </KioskActionButton>
+          ) : null}
         </div>
-        {menuPath ? (
-          <Link
-            href={`/kiosk/${restaurantId}/cart`}
-            className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-slate-800"
-          >
-            View Cart ({cartCount})
-          </Link>
-        ) : null}
       </header>
     );
-  }, [cartCount, contentVisible, menuPath, restaurant?.name, restaurantId]);
+  }, [cartCount, restaurant?.name, restaurantId]);
+
+  const handleFullscreenPromptClick = useCallback(async () => {
+    await Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]);
+  }, [attemptFullscreen, requestWakeLock]);
 
   return (
-    <div className="min-h-screen w-full overflow-hidden bg-slate-50 text-slate-900">
+    <div className="min-h-screen w-full overflow-hidden bg-white text-neutral-900" style={layoutStyle}>
       <main className="flex min-h-screen flex-col overflow-hidden">
         {headerContent}
         <div
-          className={`flex-1 overflow-auto px-4 py-6 transition-opacity duration-200 sm:px-8 ${
+          className={`flex-1 overflow-auto bg-white px-4 py-6 transition-opacity duration-200 sm:px-8 ${
             contentVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
           }`}
         >
@@ -387,10 +428,24 @@ export default function KioskLayout({
           <button
             type="button"
             onClick={handleInstallClick}
-            className="pointer-events-auto flex items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-4 py-2 text-sm font-semibold text-slate-900 shadow-lg shadow-slate-200/70 backdrop-blur transition hover:bg-white"
+            className="pointer-events-auto flex items-center gap-2 rounded-full border border-neutral-200 bg-white/95 px-4 py-2 text-sm font-semibold text-neutral-900 shadow-lg shadow-neutral-300/70 backdrop-blur transition hover:bg-white"
           >
             Install App
           </button>
+        </div>
+      ) : null}
+      {showFullscreenPrompt ? (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/20 px-6 text-center">
+          <div className="w-full max-w-sm rounded-3xl border border-neutral-200 bg-white p-6 shadow-2xl shadow-black/10">
+            <p className="text-lg font-semibold text-neutral-900">Tap to enter kiosk mode</p>
+            <p className="mt-2 text-sm text-neutral-600">Tap below to stay fully immersed in the kiosk experience.</p>
+            <KioskActionButton
+              onClick={handleFullscreenPromptClick}
+              className="mt-6 w-full justify-center text-base"
+            >
+              Enter fullscreen
+            </KioskActionButton>
+          </div>
         </div>
       ) : null}
     </div>
