@@ -1,6 +1,5 @@
-import Button from '@/components/ui/Button';
-import { normalizeSource } from '@/lib/media/placeholders';
 import { cn } from '@/lib/utils';
+import { normalizeSource } from '@/lib/media/placeholders';
 
 interface KioskCategoryTileProps {
   category: {
@@ -20,24 +19,33 @@ export default function KioskCategoryTile({ category, active = false, onSelect, 
     onSelect?.(category.id);
   };
 
+  const baseClasses =
+    'inline-flex min-h-[52px] shrink-0 items-center justify-center gap-3 whitespace-nowrap rounded-full px-5 py-2 text-base font-semibold tracking-wide transition-all duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--kiosk-accent,#111827)]/40 sm:min-h-[60px] sm:px-6';
+
+  const activeClasses =
+    'border border-transparent bg-[var(--kiosk-accent,#111827)] text-white shadow-md shadow-black/5 hover:brightness-110 active:translate-y-px';
+
+  const inactiveClasses = 'border border-neutral-200 bg-white text-neutral-900 shadow-sm hover:bg-neutral-50';
+
   return (
-    <Button
+    <button
       type="button"
-      variant={active ? 'primary' : 'secondary'}
-      size="lg"
       onClick={handleClick}
-      className={cn(
-        'flex min-h-[52px] shrink-0 items-center gap-3 whitespace-nowrap px-4 text-left transition-all duration-200 ease-out sm:min-h-[60px] sm:px-6',
-        active ? 'shadow-md' : 'shadow-sm',
-        className
-      )}
+      className={cn(baseClasses, active ? activeClasses : inactiveClasses, className)}
     >
       {categoryImage ? (
         <span className="relative h-10 w-10 overflow-hidden rounded-xl bg-white shadow-sm sm:h-11 sm:w-11">
           <img src={categoryImage} alt={category.name} className="h-full w-full object-cover" loading="lazy" />
         </span>
       ) : null}
-      <span className="text-sm font-semibold leading-tight text-neutral-900 sm:text-base">{category.name}</span>
-    </Button>
+      <span
+        className={cn(
+          'text-sm font-semibold leading-tight sm:text-base',
+          active ? 'text-white' : 'text-neutral-900'
+        )}
+      >
+        {category.name}
+      </span>
+    </button>
   );
 }
