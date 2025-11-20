@@ -10,9 +10,10 @@ interface KioskCategoryTileProps {
   };
   active?: boolean;
   onSelect?: (categoryId: number) => void;
+  className?: string;
 }
 
-export default function KioskCategoryTile({ category, active = false, onSelect }: KioskCategoryTileProps) {
+export default function KioskCategoryTile({ category, active = false, onSelect, className }: KioskCategoryTileProps) {
   const categoryImage = category.image_url ? normalizeSource(category.image_url) : null;
 
   const handleClick = () => {
@@ -22,19 +23,17 @@ export default function KioskCategoryTile({ category, active = false, onSelect }
   return (
     <Button
       type="button"
-      variant="secondary"
+      variant={active ? 'primary' : 'secondary'}
       size="lg"
       onClick={handleClick}
       className={cn(
-        'flex min-h-[52px] items-center gap-3 whitespace-nowrap px-4 text-left sm:min-h-[60px] sm:px-5',
-        active
-          ? 'border-[var(--kiosk-accent,#111827)] bg-white shadow-md ring-2 ring-[var(--kiosk-accent,#111827)]/15'
-          : 'border-neutral-200 bg-white/90 shadow-sm hover:bg-white',
-        'transition-all duration-200 ease-out'
+        'flex min-h-[52px] shrink-0 items-center gap-3 whitespace-nowrap px-4 text-left transition-all duration-200 ease-out sm:min-h-[60px] sm:px-6',
+        active ? 'shadow-md' : 'shadow-sm',
+        className
       )}
     >
       {categoryImage ? (
-        <span className="relative h-10 w-10 overflow-hidden rounded-2xl bg-white shadow-sm sm:h-11 sm:w-11">
+        <span className="relative h-10 w-10 overflow-hidden rounded-xl bg-white shadow-sm sm:h-11 sm:w-11">
           <img src={categoryImage} alt={category.name} className="h-full w-full object-cover" loading="lazy" />
         </span>
       ) : null}
