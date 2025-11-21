@@ -8,8 +8,8 @@ interface KioskCategoriesProps {
 
 export default function KioskCategories({ categories, activeCategoryId, onSelect }: KioskCategoriesProps) {
   return (
-    <div className="overflow-x-auto" role="tablist" aria-label="Categories">
-      <div className="inline-flex min-w-full items-center gap-4 whitespace-nowrap px-4 py-2 sm:px-6">
+    <div className="flex h-full items-center overflow-x-auto" role="tablist" aria-label="Categories">
+      <div className="inline-flex min-w-full items-center gap-4 whitespace-nowrap px-4 sm:px-6">
         {categories.map((category) => (
           <KioskCategoryTile
             key={category.id}

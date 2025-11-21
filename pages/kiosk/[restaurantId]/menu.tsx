@@ -6,6 +6,7 @@ import KioskLayout, {
   COLLAPSED_HEADER_HEIGHT,
   FULL_CAT_HEIGHT,
   FULL_HEADER_HEIGHT,
+  SHRINK_SCROLL_DISTANCE,
 } from '@/components/layouts/KioskLayout';
 import { supabase } from '@/lib/supabaseClient';
 import { ITEM_ADDON_LINK_WITH_GROUPS_SELECT } from '@/lib/queries/addons';
@@ -214,7 +215,7 @@ export default function KioskMenuPage() {
     if (typeof window === 'undefined') {
       return { headerHeight: FULL_HEADER_HEIGHT, categoryHeight: FULL_CAT_HEIGHT };
     }
-    const progress = Math.min(Math.max(window.scrollY / 64, 0), 1);
+    const progress = Math.min(Math.max(window.scrollY / SHRINK_SCROLL_DISTANCE, 0), 1);
     const headerHeight =
       FULL_HEADER_HEIGHT - (FULL_HEADER_HEIGHT - COLLAPSED_HEADER_HEIGHT) * progress;
     const categoryHeight = FULL_CAT_HEIGHT - (FULL_CAT_HEIGHT - COLLAPSED_CAT_HEIGHT) * progress;
@@ -228,7 +229,7 @@ export default function KioskMenuPage() {
       if (!el || typeof window === 'undefined') return;
       const { headerHeight, categoryHeight } = getCurrentHeaderHeights();
       window.scrollTo({
-        top: el.offsetTop - (headerHeight + categoryHeight + 12),
+        top: el.offsetTop - (headerHeight + categoryHeight),
         behavior: 'smooth',
       });
     },
