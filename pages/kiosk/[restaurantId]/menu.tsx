@@ -1,13 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import MenuItemCard from '@/components/MenuItemCard';
-import KioskLayout from '@/components/layouts/KioskLayout';
+import KioskLayout, {
+  COLLAPSED_CAT_HEIGHT,
+  COLLAPSED_HEADER_HEIGHT,
+  FULL_CAT_HEIGHT,
+  FULL_HEADER_HEIGHT,
+} from '@/components/layouts/KioskLayout';
 import { supabase } from '@/lib/supabaseClient';
 import { ITEM_ADDON_LINK_WITH_GROUPS_SELECT } from '@/lib/queries/addons';
 import Skeleton from '@/components/ui/Skeleton';
 import { useCart } from '@/context/CartContext';
 import KioskCategories from '@/components/kiosk/KioskCategories';
-import { KIOSK_CHROME_OFFSET } from '@/components/kiosk/kioskHeaderConstants';
 
 type Category = {
   id: number;
@@ -56,8 +60,6 @@ export default function KioskMenuPage() {
   const [itemLinks, setItemLinks] = useState<ItemLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeCategoryId, setActiveCategoryId] = useState<number | null>(null);
-  const activeCategoryRef = useRef<number | null>(null);
-  const lastScrollTargetRef = useRef<number | null>(null);
   const { cart } = useCart();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
 
@@ -208,74 +210,36 @@ export default function KioskMenuPage() {
   const hasCategoryItems = categorizedItems.length > 0;
   const hasUncategorizedItems = uncategorizedItems.length > 0;
 
+  const getCurrentHeaderHeights = useCallback(() => {
+    if (typeof window === 'undefined') {
+      return { headerHeight: FULL_HEADER_HEIGHT, categoryHeight: FULL_CAT_HEIGHT };
+    }
+    const progress = Math.min(Math.max(window.scrollY / 64, 0), 1);
+    const headerHeight =
+      FULL_HEADER_HEIGHT - (FULL_HEADER_HEIGHT - COLLAPSED_HEADER_HEIGHT) * progress;
+    const categoryHeight = FULL_CAT_HEIGHT - (FULL_CAT_HEIGHT - COLLAPSED_CAT_HEIGHT) * progress;
+    return { headerHeight, categoryHeight };
+  }, []);
+
   const handleCategorySelect = useCallback(
     (categoryId: number) => {
-      if (categoryId === lastScrollTargetRef.current) return;
       setActiveCategoryId(categoryId);
-
       const el = document.getElementById(`cat-${categoryId}`);
-      if (!el) return;
-
-      lastScrollTargetRef.current = categoryId;
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (!el || typeof window === 'undefined') return;
+      const { headerHeight, categoryHeight } = getCurrentHeaderHeights();
+      window.scrollTo({
+        top: el.offsetTop - (headerHeight + categoryHeight + 12),
+        behavior: 'smooth',
+      });
     },
-    []
+    [getCurrentHeaderHeights]
   );
 
   useEffect(() => {
-    activeCategoryRef.current = activeCategoryId;
-  }, [activeCategoryId]);
-
-  useEffect(() => {
     if (categorizedItems.length === 0) return;
-    if (activeCategoryRef.current !== null) return;
+    if (activeCategoryId !== null) return;
     setActiveCategoryId(categorizedItems[0].id);
-  }, [categorizedItems]);
-
-  useEffect(() => {
-    if (!categorizedItems.length) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visibleEntries = entries
-          .filter((entry) => entry.isIntersecting)
-          .sort((a, b) => {
-            if (b.intersectionRatio !== a.intersectionRatio) {
-              return b.intersectionRatio - a.intersectionRatio;
-            }
-            return a.boundingClientRect.top - b.boundingClientRect.top;
-          });
-
-        const topEntry = visibleEntries[0];
-        if (!topEntry) return;
-
-        const targetId = Number(topEntry.target.getAttribute('data-category-id'));
-        if (Number.isNaN(targetId)) return;
-
-        if (activeCategoryRef.current !== targetId) {
-          setActiveCategoryId(targetId);
-        }
-      },
-      {
-        root: null,
-        rootMargin: `-${KIOSK_CHROME_OFFSET}px 0px -55% 0px`,
-        threshold: [0.25, 0.5, 0.75, 1],
-      }
-    );
-
-    const sections = categorizedItems
-      .map((category) => document.getElementById(`cat-${category.id}`))
-      .filter((el): el is HTMLElement => Boolean(el));
-
-    sections.forEach((section) => {
-      section.setAttribute('data-category-id', section.id.replace('cat-', ''));
-      observer.observe(section);
-    });
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [categorizedItems, KIOSK_CHROME_OFFSET]);
+  }, [activeCategoryId, categorizedItems]);
 
   return (
     <KioskLayout
@@ -309,7 +273,6 @@ export default function KioskMenuPage() {
               key={category.id}
               id={`cat-${category.id}`}
               className="flex flex-col gap-4"
-              style={{ scrollMarginTop: `${KIOSK_CHROME_OFFSET}px` }}
             >
               <header className="flex flex-col gap-1">
                 <h2 className="text-2xl font-semibold tracking-tight text-neutral-900">{category.name}</h2>

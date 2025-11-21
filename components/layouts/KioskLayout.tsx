@@ -12,7 +12,11 @@ import {
 import HomeScreen, { type KioskRestaurant } from '@/components/kiosk/HomeScreen';
 import KioskActionButton from '@/components/kiosk/KioskActionButton';
 import { clearHomeSeen, hasSeenHome, markHomeSeen } from '@/utils/kiosk/session';
-import { KIOSK_HEADER_BASE_HEIGHT, KIOSK_HEADER_SHRINK_THRESHOLD } from '@/components/kiosk/kioskHeaderConstants';
+
+export const FULL_HEADER_HEIGHT = 148;
+export const COLLAPSED_HEADER_HEIGHT = 92;
+export const FULL_CAT_HEIGHT = 64;
+export const COLLAPSED_CAT_HEIGHT = 50;
 
 interface WakeLockSentinel {
   released: boolean;
@@ -61,16 +65,12 @@ export default function KioskLayout({
   const [contentVisible, setContentVisible] = useState<boolean>(() =>
     forceHome ? false : restaurantId ? hasSeenHome(restaurantId) : true
   );
+  const [shrinkProgress, setShrinkProgress] = useState(0);
   const [showFullscreenPrompt, setShowFullscreenPrompt] = useState(false);
   const autoPromptedRef = useRef(false);
   const fullscreenRequestInFlight = useRef(false);
   const inactivityTimer = useRef<NodeJS.Timeout | null>(null);
   const accentColor = useMemo(() => restaurant?.theme_primary_color || '#111827', [restaurant?.theme_primary_color]);
-  const [shrinkProgress, setShrinkProgress] = useState(0);
-  const scrollTickingRef = useRef(false);
-  const clampedProgress = useMemo(() => Math.min(Math.max(shrinkProgress, 0), 1), [shrinkProgress]);
-  const headerPaddingY = useMemo(() => 28 - 10 * clampedProgress, [clampedProgress]);
-  const titleScale = useMemo(() => 1 - 0.08 * clampedProgress, [clampedProgress]);
   const layoutStyle = useMemo(
     () => ({
       '--kiosk-accent': accentColor,
@@ -322,6 +322,22 @@ export default function KioskLayout({
     setContentVisible(!shouldShow);
   }, [forceHome, restaurantId]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleScroll = () => {
+      const progress = Math.min(Math.max(window.scrollY / 64, 0), 1);
+      setShrinkProgress(progress);
+    };
+
+    handleScroll();
+    window.addEventListener('scroll', handleScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+    };
+  }, []);
+
   const basePath = useMemo(() => (restaurantId ? `/kiosk/${restaurantId}` : null), [restaurantId]);
   const menuPath = useMemo(() => (restaurantId ? `/kiosk/${restaurantId}/menu` : null), [restaurantId]);
 
@@ -378,96 +394,19 @@ export default function KioskLayout({
     };
   }, [resetInactivityTimer]);
 
-  const handleScroll = useCallback(() => {
-    if (scrollTickingRef.current) return;
-    if (typeof window === 'undefined') return;
-    scrollTickingRef.current = true;
-    requestAnimationFrame(() => {
-      const maxDistance = Math.max(KIOSK_HEADER_SHRINK_THRESHOLD, 1);
-      const progress = Math.min(Math.max(window.scrollY / maxDistance, 0), 1);
-      setShrinkProgress((prev) => (prev !== progress ? progress : prev));
-      scrollTickingRef.current = false;
-    });
-  }, []);
+  const headerTitle = restaurant?.name || 'Restaurant';
+  const subtitle = restaurant?.website_description;
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    handleScroll();
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, [handleScroll]);
-
-  const headerContent = useMemo(() => {
-    const headerTitle = restaurant?.name || 'Restaurant';
-    const subtitle = restaurant?.website_description;
-
-    const headerStyle = {
-      minHeight: `${KIOSK_HEADER_BASE_HEIGHT}px`,
-      paddingTop: `${headerPaddingY}px`,
-      paddingBottom: `${headerPaddingY}px`,
-      transition: 'padding 200ms ease',
-    };
-
-    return (
-      <header className="sticky top-0 z-50 w-full border-b border-neutral-200 bg-white text-neutral-900 shadow-sm">
-        <div data-kiosk-header className="w-full" style={headerStyle}>
-          <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-4 sm:px-6">
-            <div className="flex flex-col">
-              <span
-                className="font-semibold leading-tight tracking-tight text-neutral-900 text-2xl sm:text-3xl"
-                style={{
-                  transform: `scale(${titleScale}) translateY(${(-2 * shrinkProgress).toFixed(2)}px)`,
-                  transformOrigin: 'left center',
-                  transition: 'transform 200ms ease',
-                }}
-              >
-                {headerTitle}
-              </span>
-              {subtitle ? (
-                <span
-                  className="mt-2 text-sm font-medium text-neutral-600 sm:text-base"
-                  style={{
-                    opacity: 1 - shrinkProgress,
-                    transform: `translateY(${(6 * shrinkProgress).toFixed(2)}px)`,
-                    transition: 'opacity 200ms ease, transform 200ms ease',
-                    display: shrinkProgress >= 0.98 ? 'none' : undefined,
-                  }}
-                >
-                  {subtitle}
-                </span>
-              ) : null}
-            </div>
-            {restaurantId ? (
-              <KioskActionButton
-                href={`/kiosk/${restaurantId}/cart`}
-                className="px-4 py-2 text-sm font-semibold sm:px-5 sm:py-3"
-                style={{
-                  transform: `translateY(${(-2 * shrinkProgress).toFixed(2)}px) scale(${1 - 0.04 * shrinkProgress})`,
-                  transition: 'transform 200ms ease',
-                  transformOrigin: 'center',
-                }}
-              >
-                <ShoppingCartIcon className="h-5 w-5" />
-                View cart ({cartCount})
-              </KioskActionButton>
-            ) : null}
-          </div>
-        </div>
-        {categoryBar ? (
-          <div
-            className="border-t border-neutral-200 bg-white"
-            style={{
-              paddingTop: `${8 - 4 * clampedProgress}px`,
-              paddingBottom: `${8 - 4 * clampedProgress}px`,
-              transition: 'padding 200ms ease',
-            }}
-          >
-            {categoryBar}
-          </div>
-        ) : null}
-      </header>
-    );
-  }, [cartCount, categoryBar, clampedProgress, headerPaddingY, restaurant?.name, restaurant?.website_description, restaurantId, shrinkProgress, titleScale]);
+  const headerHeight =
+    FULL_HEADER_HEIGHT - (FULL_HEADER_HEIGHT - COLLAPSED_HEADER_HEIGHT) * shrinkProgress;
+  const categoryHeight = FULL_CAT_HEIGHT - (FULL_CAT_HEIGHT - COLLAPSED_CAT_HEIGHT) * shrinkProgress;
+  const headerPaddingY = 20 - (20 - 12) * shrinkProgress;
+  const brandScale = 1 - shrinkProgress * 0.08;
+  const cartScale = 1 - shrinkProgress * 0.08;
+  const subtitleOpacity = Math.max(0, 1 - shrinkProgress * 0.6);
+  const categoriesScale = 1 - shrinkProgress * 0.06;
+  const showHeader = !homeVisible;
+  const showCategoryBar = showHeader && Boolean(categoryBar);
 
   const handleFullscreenPromptClick = useCallback(async () => {
     await Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]);
@@ -475,17 +414,65 @@ export default function KioskLayout({
 
   return (
     <div className="min-h-screen w-full bg-white text-neutral-900" style={layoutStyle}>
-      {headerContent}
-      <main
-        className={`transition-opacity duration-200 ${
-          contentVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        }`}
-      >
-        <div className="mx-auto w-full max-w-none px-4 pb-10 sm:px-8">{children}</div>
-      </main>
-      {homeVisible ? (
-        <HomeScreen restaurant={restaurant || null} onStart={startOrdering} fadingOut={homeFading} />
+      {showHeader ? (
+        <div
+          id="kiosk-header-stack"
+          className="fixed top-0 left-0 right-0 z-50 bg-white shadow-sm"
+          style={{ willChange: 'transform' }}
+        >
+          <header
+            id="kioskHeader"
+            className="w-full border-b border-neutral-200 bg-white text-neutral-900"
+            style={{ height: headerHeight, paddingTop: headerPaddingY, paddingBottom: headerPaddingY }}
+          >
+            <div className="mx-auto flex h-full w-full max-w-5xl items-center justify-between px-4 sm:px-6" style={{ gap: '1rem' }}>
+              <div
+                className="flex flex-col"
+                style={{ transform: `scale(${brandScale})`, transformOrigin: 'left top' }}
+              >
+                <span className="text-2xl font-semibold leading-tight tracking-tight text-neutral-900 sm:text-3xl">
+                  {headerTitle}
+                </span>
+                {subtitle ? (
+                  <span
+                    className="mt-2 text-sm text-neutral-600 sm:text-base"
+                    style={{ opacity: subtitleOpacity }}
+                  >
+                    {subtitle}
+                  </span>
+                ) : null}
+              </div>
+              {restaurantId ? (
+                <div style={{ transform: `scale(${cartScale})`, transformOrigin: 'right center' }}>
+                  <KioskActionButton
+                    href={`/kiosk/${restaurantId}/cart`}
+                    className="px-4 py-2 text-sm font-semibold sm:px-5 sm:py-3"
+                  >
+                    <ShoppingCartIcon className="h-5 w-5" />
+                    View cart ({cartCount})
+                  </KioskActionButton>
+                </div>
+              ) : null}
+            </div>
+          </header>
+          {showCategoryBar ? (
+            <div
+              className="border-b border-neutral-200 bg-white"
+              style={{ height: categoryHeight, transform: `scale(${categoriesScale})`, transformOrigin: 'top center' }}
+            >
+              <div className="mx-auto flex h-full w-full max-w-5xl items-center px-4 sm:px-6">{categoryBar}</div>
+            </div>
+          ) : null}
+        </div>
       ) : null}
+      <main
+        id="kioskContent"
+        style={{ paddingTop: showHeader ? headerHeight + categoryHeight : 0 }}
+        className={`transition-opacity duration-200 ${contentVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+      >
+        <div className="mx-auto w-full max-w-none px-4 pb-10 sm:px-8">{contentVisible ? children : null}</div>
+      </main>
+      {homeVisible ? <HomeScreen restaurant={restaurant || null} onStart={startOrdering} fadingOut={homeFading} /> : null}
       {deferredPrompt && !isInstalled && !installDismissed ? (
         <div className="pointer-events-none fixed bottom-4 right-4 z-40">
           <button
