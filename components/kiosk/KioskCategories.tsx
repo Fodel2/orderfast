@@ -30,12 +30,7 @@ export default function KioskCategories({ categories, activeCategoryId, onSelect
   }, [activeCategoryId]);
 
   return (
-    <div
-      className="sticky z-40 bg-white border-b border-neutral-200"
-      role="tablist"
-      aria-label="Categories"
-      style={{ top: 'var(--kiosk-header-height, 148px)' }}
-    >
+    <div className="z-40 bg-white border-b border-neutral-200" role="tablist" aria-label="Categories">
       <div ref={containerRef} className="overflow-x-auto pb-3 scroll-smooth">
         <div className="flex min-h-[64px] items-center gap-3 px-4 sm:min-h-[64px] sm:gap-4 sm:px-6 snap-x snap-mandatory">
           {orderedCategories.map((category) => (

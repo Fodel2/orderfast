@@ -84,9 +84,8 @@ export default function KioskLayout({
   const layoutStyle = useMemo(
     () => ({
       '--kiosk-accent': accentColor,
-      '--kiosk-header-height': `${headerHeight}px`,
     }) as CSSProperties,
-    [accentColor, headerHeight]
+    [accentColor]
   );
   const isFullscreenActive = useCallback(() => {
     if (typeof document === 'undefined') return false;
@@ -469,9 +468,10 @@ export default function KioskLayout({
             ) : null}
           </div>
         </header>
+        {categoryBar ? <div className="border-b border-neutral-200">{categoryBar}</div> : null}
       </div>
     );
-  }, [cartCount, headerHeight, headerPaddingY, headerTranslateY, restaurant?.name, restaurant?.website_description, restaurantId, shrinkProgress, titleScale]);
+  }, [cartCount, categoryBar, headerHeight, headerPaddingY, headerTranslateY, restaurant?.name, restaurant?.website_description, restaurantId, shrinkProgress, titleScale]);
 
   const handleFullscreenPromptClick = useCallback(async () => {
     await Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]);
@@ -480,7 +480,6 @@ export default function KioskLayout({
   return (
     <div className="min-h-screen w-full bg-white text-neutral-900" style={layoutStyle}>
       {headerContent}
-      {categoryBar ? <div>{categoryBar}</div> : null}
       <main
         className={`transition-opacity duration-200 ${
           contentVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
