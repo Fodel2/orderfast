@@ -161,3 +161,12 @@ body.kiosk-mode {
 body.kiosk-mode {
   overflow: hidden;
 }
+
+/* Hide floating preview bubbles or controls in kiosk mode */
+html.kiosk-mode [data-vercel-live-feedback],
+html.kiosk-mode .vercel-badge,
+html.kiosk-mode .vercel-toolbar,
+html.kiosk-mode .nextjs-portal,
+html.kiosk-mode [data-vercel-preview-indicator] {
+  display: none !important;
+}
