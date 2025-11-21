@@ -62,8 +62,14 @@ export default function TopBar({ hidden }: { hidden?: boolean }) {
       style={style}
     >
       {logoUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={logoUrl} alt={title ?? 'Restaurant'} className="h-8 w-8 rounded-full object-cover" />
+        <div className="h-8 w-8 rounded-full overflow-hidden">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={logoUrl}
+            alt={title ?? 'Restaurant'}
+            className="h-full w-full object-cover rounded-full"
+          />
+        </div>
       ) : null}
       <div className="font-semibold text-lg">{title ?? 'Restaurant'}</div>
     </header>

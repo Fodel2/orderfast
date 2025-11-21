@@ -1,4 +1,5 @@
 import { ShoppingCartIcon } from '@heroicons/react/24/outline';
+import Image from 'next/image';
 import { useRouter } from 'next/router';
 import {
   type CSSProperties,
@@ -396,6 +397,7 @@ export default function KioskLayout({
 
   const headerTitle = restaurant?.name || 'Restaurant';
   const subtitle = restaurant?.website_description;
+  const logoUrl = restaurant?.logo_url || null;
 
   const headerHeight =
     FULL_HEADER_HEIGHT - (FULL_HEADER_HEIGHT - COLLAPSED_HEADER_HEIGHT) * shrinkProgress;
@@ -417,30 +419,45 @@ export default function KioskLayout({
       {showHeader ? (
         <div
           id="kiosk-header-stack"
-          className="fixed top-0 left-0 right-0 z-50 bg-white shadow-sm"
+          className="fixed top-0 left-0 right-0 z-50 bg-white"
           style={{ willChange: 'transform' }}
         >
           <header
             id="kioskHeader"
-            className="w-full border-b border-neutral-200 bg-white text-neutral-900"
+            className="w-full bg-white text-neutral-900"
             style={{ height: headerHeight, paddingTop: headerPaddingY, paddingBottom: headerPaddingY }}
           >
             <div className="mx-auto flex h-full w-full max-w-5xl items-center justify-between px-4 sm:px-6" style={{ gap: '1rem' }}>
               <div
-                className="flex flex-col"
+                className="flex items-center gap-3"
                 style={{ transform: `scale(${brandScale})`, transformOrigin: 'left top' }}
               >
-                <span className="text-2xl font-semibold leading-tight tracking-tight text-neutral-900 sm:text-3xl">
-                  {headerTitle}
-                </span>
-                {subtitle ? (
-                  <span
-                    className="mt-2 text-sm text-neutral-600 sm:text-base"
-                    style={{ opacity: subtitleOpacity }}
-                  >
-                    {subtitle}
-                  </span>
+                {logoUrl ? (
+                  <div className="hidden h-12 w-12 flex-shrink-0 items-center justify-center rounded-full md:flex">
+                    <div className="relative h-11 w-11 overflow-hidden rounded-full">
+                      <Image
+                        src={logoUrl}
+                        alt={`${headerTitle} logo`}
+                        fill
+                        sizes="44px"
+                        className="rounded-full object-cover"
+                      />
+                    </div>
+                  </div>
                 ) : null}
+                <div className="flex flex-col">
+                  <span className="text-2xl font-semibold leading-tight tracking-tight text-neutral-900 sm:text-3xl">
+                    {headerTitle}
+                  </span>
+                  {subtitle ? (
+                    <span
+                      className="mt-2 text-sm text-neutral-600 sm:text-base"
+                      style={{ opacity: subtitleOpacity }}
+                    >
+                      {subtitle}
+                    </span>
+                  ) : null}
+                </div>
               </div>
               {restaurantId ? (
                 <div style={{ transform: `scale(${cartScale})`, transformOrigin: 'right center' }}>
@@ -457,7 +474,7 @@ export default function KioskLayout({
           </header>
           {showCategoryBar ? (
             <div
-              className="border-b border-neutral-200 bg-white"
+              className="bg-white"
               style={{ height: categoryHeight, transform: `scale(${categoriesScale})`, transformOrigin: 'top center' }}
             >
               <div className="mx-auto flex h-full w-full max-w-5xl items-center px-4 sm:px-6">{categoryBar}</div>

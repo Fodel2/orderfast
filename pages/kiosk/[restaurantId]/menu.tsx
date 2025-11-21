@@ -256,70 +256,72 @@ export default function KioskMenuPage() {
         ) : null
       }
     >
-      {loading ? (
-        <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, idx) => (
-            <Skeleton key={idx} className="h-40 rounded-2xl" />
-          ))}
-        </div>
-      ) : !restaurantId ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center text-sm font-semibold uppercase tracking-[0.2em] text-amber-700">
-          Missing restaurant ID
-        </div>
-      ) : (
-        <div className="flex flex-col gap-10">
-          {categorizedItems.map((category) => (
-            <section
-              key={category.id}
-              id={`cat-${category.id}`}
-              className="flex flex-col gap-4"
-            >
-              <header className="flex flex-col gap-1">
-                <h2 className="text-2xl font-semibold tracking-tight text-neutral-900">{category.name}</h2>
-                {category.description ? (
-                  <p className="text-sm text-neutral-600">{category.description}</p>
-                ) : null}
-              </header>
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-                {category.items.map((item) => (
-                  <MenuItemCard
-                    key={item.id}
-                    item={item}
-                    restaurantId={restaurantId}
-                    restaurantLogoUrl={restaurant?.logo_url ?? null}
-                    mode="kiosk"
-                  />
-                ))}
-              </div>
-            </section>
-          ))}
+      <div className="pt-5">
+        {loading ? (
+          <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, idx) => (
+              <Skeleton key={idx} className="h-40 rounded-2xl" />
+            ))}
+          </div>
+        ) : !restaurantId ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center text-sm font-semibold uppercase tracking-[0.2em] text-amber-700">
+            Missing restaurant ID
+          </div>
+        ) : (
+          <div className="flex flex-col gap-10">
+            {categorizedItems.map((category) => (
+              <section
+                key={category.id}
+                id={`cat-${category.id}`}
+                className="flex flex-col gap-4"
+              >
+                <header className="flex flex-col gap-1">
+                  <h2 className="text-2xl font-semibold tracking-tight text-neutral-900">{category.name}</h2>
+                  {category.description ? (
+                    <p className="text-sm text-neutral-600">{category.description}</p>
+                  ) : null}
+                </header>
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                  {category.items.map((item) => (
+                    <MenuItemCard
+                      key={item.id}
+                      item={item}
+                      restaurantId={restaurantId}
+                      restaurantLogoUrl={restaurant?.logo_url ?? null}
+                      mode="kiosk"
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
 
-          {hasUncategorizedItems ? (
-            <section className="flex flex-col gap-4">
-              <header>
-                <h2 className="text-2xl font-semibold tracking-tight text-neutral-900">Other items</h2>
-              </header>
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-                {uncategorizedItems.map((item) => (
-                  <MenuItemCard
-                    key={item.id}
-                    item={item}
-                    restaurantId={restaurantId}
-                    restaurantLogoUrl={restaurant?.logo_url ?? null}
-                    mode="kiosk"
-                  />
-                ))}
-              </div>
-            </section>
-          ) : null}
+            {hasUncategorizedItems ? (
+              <section className="flex flex-col gap-4">
+                <header>
+                  <h2 className="text-2xl font-semibold tracking-tight text-neutral-900">Other items</h2>
+                </header>
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                  {uncategorizedItems.map((item) => (
+                    <MenuItemCard
+                      key={item.id}
+                      item={item}
+                      restaurantId={restaurantId}
+                      restaurantLogoUrl={restaurant?.logo_url ?? null}
+                      mode="kiosk"
+                    />
+                  ))}
+                </div>
+              </section>
+            ) : null}
 
-          {!hasCategoryItems && !hasUncategorizedItems ? (
-            <div className="rounded-2xl border border-dashed border-neutral-300 bg-white p-8 text-center text-neutral-600">
-              This menu is currently empty.
-            </div>
-          ) : null}
-        </div>
-      )}
+            {!hasCategoryItems && !hasUncategorizedItems ? (
+              <div className="rounded-2xl border border-dashed border-neutral-300 bg-white p-8 text-center text-neutral-600">
+                This menu is currently empty.
+              </div>
+            ) : null}
+          </div>
+        )}
+      </div>
     </KioskLayout>
   );
 }
