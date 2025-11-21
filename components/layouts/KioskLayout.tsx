@@ -44,6 +44,7 @@ type KioskLayoutProps = {
   children: ReactNode;
   forceHome?: boolean;
   categoryBar?: ReactNode;
+  customHeaderContent?: ReactNode;
 };
 
 export default function KioskLayout({
@@ -53,6 +54,7 @@ export default function KioskLayout({
   children,
   forceHome = false,
   categoryBar,
+  customHeaderContent,
 }: KioskLayoutProps) {
   const router = useRouter();
   const [wakeLock, setWakeLock] = useState<WakeLockSentinel | null>(null);
@@ -409,6 +411,55 @@ export default function KioskLayout({
   const categoriesScale = 1 - shrinkProgress * 0.06;
   const showHeader = !homeVisible;
   const showCategoryBar = showHeader && Boolean(categoryBar);
+  const headerContent = useMemo(() => {
+    if (customHeaderContent) return customHeaderContent;
+    return (
+      <div className="mx-auto flex h-full w-full max-w-5xl items-center justify-between px-4 sm:px-6" style={{ gap: '1rem' }}>
+        <div
+          className="flex items-center gap-3"
+          style={{ transform: `scale(${brandScale})`, transformOrigin: 'left top' }}
+        >
+          {logoUrl ? (
+            <div className="hidden h-12 w-12 flex-shrink-0 items-center justify-center rounded-full md:flex">
+              <div className="relative h-11 w-11 overflow-hidden rounded-full">
+                <Image
+                  src={logoUrl}
+                  alt={`${headerTitle} logo`}
+                  fill
+                  sizes="44px"
+                  className="rounded-full object-cover"
+                />
+              </div>
+            </div>
+          ) : null}
+          <div className="flex flex-col">
+            <span className="text-2xl font-semibold leading-tight tracking-tight text-neutral-900 sm:text-3xl">
+              {headerTitle}
+            </span>
+            {subtitle ? (
+              <span
+                className="mt-2 text-sm text-neutral-600 sm:text-base"
+                style={{ opacity: subtitleOpacity }}
+              >
+                {subtitle}
+              </span>
+            ) : null}
+          </div>
+        </div>
+        {restaurantId ? (
+          <div style={{ transform: `scale(${cartScale})`, transformOrigin: 'right center' }}>
+            <KioskActionButton
+              href={`/kiosk/${restaurantId}/cart`}
+              className="px-4 py-2 text-sm font-semibold sm:px-5 sm:py-3"
+            >
+              <ShoppingCartIcon className="h-5 w-5" />
+              View cart ({cartCount})
+            </KioskActionButton>
+          </div>
+        ) : null}
+      </div>
+    );
+  }, [brandScale, cartCount, cartScale, customHeaderContent, headerTitle, logoUrl, restaurantId, subtitle, subtitleOpacity]);
 
   const handleFullscreenPromptClick = useCallback(async () => {
     await Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]);
@@ -427,50 +478,7 @@ export default function KioskLayout({
             className="w-full bg-white text-neutral-900"
             style={{ height: headerHeight, paddingTop: headerPaddingY, paddingBottom: headerPaddingY }}
           >
-            <div className="mx-auto flex h-full w-full max-w-5xl items-center justify-between px-4 sm:px-6" style={{ gap: '1rem' }}>
-              <div
-                className="flex items-center gap-3"
-                style={{ transform: `scale(${brandScale})`, transformOrigin: 'left top' }}
-              >
-                {logoUrl ? (
-                  <div className="hidden h-12 w-12 flex-shrink-0 items-center justify-center rounded-full md:flex">
-                    <div className="relative h-11 w-11 overflow-hidden rounded-full">
-                      <Image
-                        src={logoUrl}
-                        alt={`${headerTitle} logo`}
-                        fill
-                        sizes="44px"
-                        className="rounded-full object-cover"
-                      />
-                    </div>
-                  </div>
-                ) : null}
-                <div className="flex flex-col">
-                  <span className="text-2xl font-semibold leading-tight tracking-tight text-neutral-900 sm:text-3xl">
-                    {headerTitle}
-                  </span>
-                  {subtitle ? (
-                    <span
-                      className="mt-2 text-sm text-neutral-600 sm:text-base"
-                      style={{ opacity: subtitleOpacity }}
-                    >
-                      {subtitle}
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-              {restaurantId ? (
-                <div style={{ transform: `scale(${cartScale})`, transformOrigin: 'right center' }}>
-                  <KioskActionButton
-                    href={`/kiosk/${restaurantId}/cart`}
-                    className="px-4 py-2 text-sm font-semibold sm:px-5 sm:py-3"
-                  >
-                    <ShoppingCartIcon className="h-5 w-5" />
-                    View cart ({cartCount})
-                  </KioskActionButton>
-                </div>
-              ) : null}
-            </div>
+            {headerContent}
           </header>
           {showCategoryBar ? (
             <div

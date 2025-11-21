@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/router';
 import { useCart } from '../context/CartContext';
 import { XMarkIcon, ShoppingCartIcon } from '@heroicons/react/24/outline';
 import { Trash2 } from 'lucide-react';
@@ -17,122 +16,140 @@ interface CartDrawerProps {
 function CartContent({
   onClose,
   emptyMessage,
+  inline = false,
 }: {
   onClose?: () => void;
   emptyMessage: string;
+  inline?: boolean;
 }) {
   const { cart, subtotal, updateQuantity, removeFromCart, clearCart } = useCart();
-  const router = useRouter();
 
   return (
     <>
-      <div className="p-4 flex justify-between items-center border-b">
-        <h2 className="text-lg font-semibold">Your Plate</h2>
-        {onClose && (
-          <button onClick={onClose} aria-label="Close" className="text-gray-500">
-            <XMarkIcon className="w-5 h-5" />
-          </button>
-        )}
-      </div>
+      {!inline ? (
+        <div className="flex items-center justify-between border-b p-4">
+          <h2 className="text-lg font-semibold">Your Plate</h2>
+          {onClose && (
+            <button onClick={onClose} aria-label="Close" className="text-gray-500">
+              <XMarkIcon className="h-5 w-5" />
+            </button>
+          )}
+        </div>
+      ) : null}
       <div
-        className="p-4 overflow-y-auto"
+        className={`overflow-y-auto p-4 ${inline ? 'pb-10 sm:pb-16' : ''}`}
         style={onClose ? { maxHeight: 'calc(100vh - 9rem)' } : undefined}
       >
         {cart.items.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 py-6">
-            <PlateIcon size={64} className="text-gray-300" />
-            <p className="text-center text-gray-500">{emptyMessage}</p>
+          <div className="flex flex-col items-center gap-3 py-10 text-center text-neutral-500">
+            <PlateIcon size={72} className="text-gray-300" />
+            <p className="text-lg font-medium text-slate-500">{emptyMessage}</p>
           </div>
         ) : (
-          cart.items.map((item) => {
-            const addonsTotal = (item.addons || []).reduce(
-              (sum, a) => sum + a.price * a.quantity,
-              0
-            );
-            const itemTotal = item.price * item.quantity + addonsTotal;
-            return (
-              <div key={item.item_id} className="border-b py-3 text-sm">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="font-medium">{item.name}</p>
-                    <p className="text-xs text-gray-500">
-                      ${(item.price / 100).toFixed(2)}
-                    </p>
+          <div className="space-y-4 sm:space-y-5">
+            {cart.items.map((item) => {
+              const addonsTotal = (item.addons || []).reduce(
+                (sum, a) => sum + a.price * a.quantity,
+                0
+              );
+              const itemTotal = item.price * item.quantity + addonsTotal;
+              return (
+                <div
+                  key={item.item_id}
+                  className="rounded-3xl border border-slate-100 bg-white p-4 shadow-[0_14px_50px_-28px_rgba(15,23,42,0.35)] sm:p-5"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 space-y-2">
+                      <div className="space-y-1">
+                        <p className="text-xl font-semibold text-slate-900 sm:text-2xl">{item.name}</p>
+                        <p className="text-base text-slate-500 sm:text-lg">
+                          ${(item.price / 100).toFixed(2)} each
+                        </p>
+                      </div>
+                      {item.addons && item.addons.length > 0 && (
+                        <ul className="space-y-1 pl-4 text-base text-slate-600 sm:text-lg">
+                          {item.addons.map((addon) => (
+                            <li key={addon.option_id} className="flex justify-between gap-3">
+                              <span className="flex-1">{addon.name} × {addon.quantity}</span>
+                              <span className="font-medium text-slate-700">
+                                ${((addon.price * addon.quantity) / 100).toFixed(2)}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {item.notes && (
+                        <p className="text-sm italic text-slate-600">{item.notes}</p>
+                      )}
+                    </div>
+                    <div className="flex flex-col items-end gap-3">
+                      <span className="text-lg font-semibold text-slate-900 sm:text-xl">
+                        ${(itemTotal / 100).toFixed(2)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removeFromCart(item.item_id)}
+                        className="inline-flex items-center gap-1 text-sm font-semibold text-rose-600 transition hover:text-rose-700"
+                      >
+                        <Trash2 className="h-4 w-4" /> Remove
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <button
-                      type="button"
-                      onClick={() => updateQuantity(item.item_id, item.quantity - 1)}
-                      className="w-6 h-6 flex items-center justify-center border rounded"
-                    >
-                      -
-                    </button>
-                    <span>{item.quantity}</span>
-                    <button
-                      type="button"
-                      onClick={() => updateQuantity(item.item_id, item.quantity + 1)}
-                      className="w-6 h-6 flex items-center justify-center border rounded"
-                    >
-                      +
-                    </button>
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center rounded-full bg-slate-100 px-2 py-1 text-lg font-semibold text-slate-900 shadow-inner shadow-slate-200">
+                      <button
+                        type="button"
+                        onClick={() => updateQuantity(item.item_id, item.quantity - 1)}
+                        className="flex h-12 w-12 items-center justify-center rounded-full text-2xl transition-transform duration-150 hover:scale-[1.02] active:scale-95"
+                        aria-label={`Decrease ${item.name}`}
+                      >
+                        –
+                      </button>
+                      <span className="min-w-[2.5rem] text-center text-xl font-bold">{item.quantity}</span>
+                      <button
+                        type="button"
+                        onClick={() => updateQuantity(item.item_id, item.quantity + 1)}
+                        className="flex h-12 w-12 items-center justify-center rounded-full text-2xl transition-transform duration-150 hover:scale-[1.02] active:scale-95"
+                        aria-label={`Increase ${item.name}`}
+                      >
+                        +
+                      </button>
+                    </div>
+                    <div className="text-right text-sm text-slate-500 sm:text-base">
+                      <p className="text-xs uppercase tracking-wide text-slate-400">Subtotal</p>
+                      <p className="text-lg font-semibold text-slate-900 sm:text-xl">${(itemTotal / 100).toFixed(2)}</p>
+                    </div>
                   </div>
                 </div>
-                {item.addons && item.addons.length > 0 && (
-                  <ul className="mt-2 ml-4 space-y-1">
-                    {item.addons.map((addon) => (
-                      <li key={addon.option_id} className="flex justify-between">
-                        <span>
-                          {addon.name} × {addon.quantity}
-                        </span>
-                        <span>
-                          ${((addon.price * addon.quantity) / 100).toFixed(2)}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {item.notes && (
-                  <p className="mt-1 ml-4 text-xs italic text-gray-600">
-                    {item.notes}
-                  </p>
-                )}
-                <div className="mt-2 flex justify-between items-center">
-                  <span className="font-medium">
-                    Subtotal: ${(itemTotal / 100).toFixed(2)}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => removeFromCart(item.item_id)}
-                    className="text-red-600 flex items-center text-sm"
-                  >
-                    <Trash2 className="w-4 h-4 mr-1" /> Remove
-                  </button>
-                </div>
-              </div>
-            );
-          })
+              );
+            })}
+          </div>
         )}
       </div>
-      <div className="p-4 border-t space-y-2">
-        <div className="flex justify-between font-semibold">
-          <span>Subtotal</span>
-          <span>${(subtotal / 100).toFixed(2)}</span>
+      {inline ? (
+        cart.items.length > 0 ? (
+          <div className="flex items-center justify-end border-t px-4 py-3 text-sm text-slate-600">
+            <button
+              type="button"
+              onClick={clearCart}
+              className="text-sm font-semibold text-slate-500 underline underline-offset-4 transition hover:text-slate-700"
+            >
+              Clean Plate
+            </button>
+          </div>
+        ) : null
+      ) : (
+        <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-slate-600">
+          <span className="text-base font-semibold text-slate-900 sm:text-lg">Subtotal: ${(subtotal / 100).toFixed(2)}</span>
+          <button
+            type="button"
+            onClick={clearCart}
+            className="text-sm font-semibold text-slate-500 underline underline-offset-4 transition hover:text-slate-700"
+          >
+            Clean Plate
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={clearCart}
-          className="w-full px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-[var(--ink,#111827)]"
-        >
-          Clean Plate
-        </button>
-        <button
-          type="button"
-          onClick={() => router.push('/checkout')}
-          className="w-full px-4 py-2 rounded hover:opacity-90 btn-primary"
-        >
-          Proceed to Checkout
-        </button>
-      </div>
+      )}
     </>
   );
 }
@@ -161,8 +178,8 @@ export default function CartDrawer({ inline = false }: CartDrawerProps) {
   if (inline) {
     // Render content directly without drawer behaviour
     return (
-      <div className="max-w-screen-sm mx-auto px-4 pt-6">
-        <CartContent emptyMessage={emptyMessage} />
+      <div className="mx-auto w-full max-w-4xl px-2 pb-6 pt-2 sm:px-4 sm:pt-6">
+        <CartContent emptyMessage={emptyMessage} inline />
       </div>
     );
   }
