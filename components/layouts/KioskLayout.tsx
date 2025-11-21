@@ -106,7 +106,6 @@ export default function KioskLayout({
       '--kiosk-header-translate': `${headerTranslateY}px`,
       '--kiosk-header-padding-y': `${headerPaddingY}px`,
       '--kiosk-header-title-scale': titleScale,
-      '--kiosk-category-translate': `${-6 * Math.min(Math.max(shrinkProgress, 0), 1)}px`,
       '--kiosk-category-scale': `${1 - 0.06 * Math.min(Math.max(shrinkProgress, 0), 1)}`,
     }) as CSSProperties,
     [categoryBarHeight, effectiveHeaderHeight, headerPaddingY, headerTranslateY, layoutStyle, shrinkProgress, titleScale]
@@ -561,7 +560,7 @@ export default function KioskLayout({
           height: '100vh',
           overflowY: 'auto',
           WebkitOverflowScrolling: 'touch',
-          paddingTop: effectiveHeaderHeight,
+          paddingTop: scrollPaddingTop,
           scrollPaddingTop: `${scrollPaddingTop}px`,
         }}
       >

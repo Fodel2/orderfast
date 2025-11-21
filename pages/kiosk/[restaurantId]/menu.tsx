@@ -225,7 +225,7 @@ export default function KioskMenuPage() {
 
     const categoryHeight = categoryBarRef.current?.getBoundingClientRect().height ?? KIOSK_CATEGORY_BAR_HEIGHT;
 
-    const padding = headerOffset + categoryHeight + 8;
+    const padding = headerOffset + categoryHeight;
 
     setScrollOffsets({
       header: headerOffset,
@@ -270,7 +270,7 @@ export default function KioskMenuPage() {
       const scroller = scrollContainer;
       if (!scroller) return;
 
-      const offset = scrollOffsets.header + scrollOffsets.categoryBar + 8;
+      const offset = scrollOffsets.header + scrollOffsets.categoryBar;
 
       lastScrollTargetRef.current = categoryId;
       scroller.scrollTo({ top: Math.max(el.offsetTop - offset, 0), behavior: 'smooth' });
@@ -359,8 +359,9 @@ export default function KioskMenuPage() {
               className="sticky z-20 w-full bg-white/95 px-4 backdrop-blur sm:px-8"
               style={{
                 top: scrollOffsets.header,
+                marginTop: -scrollOffsets.categoryBar,
                 height: 'var(--kiosk-category-height, 64px)',
-                transform: 'translateY(var(--kiosk-category-translate, 0px)) scale(var(--kiosk-category-scale, 1))',
+                transform: 'scale(var(--kiosk-category-scale, 1))',
                 transformOrigin: 'top',
                 transition: 'transform 200ms ease, height 200ms ease',
               }}
