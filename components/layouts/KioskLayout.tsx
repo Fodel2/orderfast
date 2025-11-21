@@ -401,10 +401,14 @@ export default function KioskLayout({
   const subtitle = restaurant?.website_description;
   const logoUrl = restaurant?.logo_url || null;
 
+  const hasCustomHeader = Boolean(customHeaderContent);
+  const expandedHeaderHeight = hasCustomHeader ? 116 : FULL_HEADER_HEIGHT;
+  const collapsedHeaderHeight = hasCustomHeader ? 86 : COLLAPSED_HEADER_HEIGHT;
   const headerHeight =
-    FULL_HEADER_HEIGHT - (FULL_HEADER_HEIGHT - COLLAPSED_HEADER_HEIGHT) * shrinkProgress;
+    expandedHeaderHeight - (expandedHeaderHeight - collapsedHeaderHeight) * shrinkProgress;
   const categoryHeight = FULL_CAT_HEIGHT - (FULL_CAT_HEIGHT - COLLAPSED_CAT_HEIGHT) * shrinkProgress;
-  const headerPaddingY = 20 - (20 - 12) * shrinkProgress;
+  const headerPaddingY =
+    (hasCustomHeader ? 14 : 20) - ((hasCustomHeader ? 14 : 20) - (hasCustomHeader ? 9 : 12)) * shrinkProgress;
   const brandScale = 1 - shrinkProgress * 0.08;
   const cartScale = 1 - shrinkProgress * 0.08;
   const subtitleOpacity = Math.max(0, 1 - shrinkProgress * 0.6);

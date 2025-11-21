@@ -37,8 +37,8 @@ function CartContent({
         </div>
       ) : null}
       <div
-        className={`overflow-y-auto p-4 ${inline ? 'pb-10 sm:pb-16' : ''}`}
-        style={onClose ? { maxHeight: 'calc(100vh - 9rem)' } : undefined}
+        className={`overflow-y-auto px-3 py-3 ${inline ? 'pb-8 sm:pb-12' : ''}`}
+        style={onClose ? { maxHeight: 'calc(100vh - 8.5rem)' } : undefined}
       >
         {cart.items.length === 0 ? (
           <div className="flex flex-col items-center gap-3 py-10 text-center text-neutral-500">
@@ -46,7 +46,7 @@ function CartContent({
             <p className="text-lg font-medium text-slate-500">{emptyMessage}</p>
           </div>
         ) : (
-          <div className="space-y-4 sm:space-y-5">
+          <div className="space-y-3.5 sm:space-y-4">
             {cart.items.map((item) => {
               const addonsTotal = (item.addons || []).reduce(
                 (sum, a) => sum + a.price * a.quantity,
@@ -56,18 +56,18 @@ function CartContent({
               return (
                 <div
                   key={item.item_id}
-                  className="rounded-3xl border border-slate-100 bg-white p-4 shadow-[0_14px_50px_-28px_rgba(15,23,42,0.35)] sm:p-5"
+                  className="rounded-3xl border border-slate-100 bg-white p-3.5 shadow-[0_14px_40px_-28px_rgba(15,23,42,0.35)] sm:p-4"
                 >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 space-y-2">
-                      <div className="space-y-1">
-                        <p className="text-xl font-semibold text-slate-900 sm:text-2xl">{item.name}</p>
-                        <p className="text-base text-slate-500 sm:text-lg">
+                  <div className="flex items-start justify-between gap-3.5 sm:gap-4">
+                    <div className="flex-1 space-y-1.5">
+                      <div className="space-y-0.5">
+                        <p className="text-xl font-semibold text-slate-900 sm:text-[22px]">{item.name}</p>
+                        <p className="text-base text-slate-500 sm:text-[17px]">
                           ${(item.price / 100).toFixed(2)} each
                         </p>
                       </div>
                       {item.addons && item.addons.length > 0 && (
-                        <ul className="space-y-1 pl-4 text-base text-slate-600 sm:text-lg">
+                        <ul className="space-y-0.5 pl-4 text-base text-slate-600 sm:text-lg">
                           {item.addons.map((addon) => (
                             <li key={addon.option_id} className="flex justify-between gap-3">
                               <span className="flex-1">{addon.name} × {addon.quantity}</span>
@@ -82,7 +82,7 @@ function CartContent({
                         <p className="text-sm italic text-slate-600">{item.notes}</p>
                       )}
                     </div>
-                    <div className="flex flex-col items-end gap-3">
+                    <div className="flex flex-col items-end gap-2.5">
                       <span className="text-lg font-semibold text-slate-900 sm:text-xl">
                         ${(itemTotal / 100).toFixed(2)}
                       </span>
@@ -95,12 +95,12 @@ function CartContent({
                       </button>
                     </div>
                   </div>
-                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex items-center rounded-full bg-slate-100 px-2 py-1 text-lg font-semibold text-slate-900 shadow-inner shadow-slate-200">
+                  <div className="mt-3.5 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-lg font-semibold text-slate-900 shadow-inner shadow-slate-200">
                       <button
                         type="button"
                         onClick={() => updateQuantity(item.item_id, item.quantity - 1)}
-                        className="flex h-12 w-12 items-center justify-center rounded-full text-2xl transition-transform duration-150 hover:scale-[1.02] active:scale-95"
+                        className="flex h-11 w-11 items-center justify-center rounded-full text-2xl transition-transform duration-150 hover:scale-[1.02] active:scale-95"
                         aria-label={`Decrease ${item.name}`}
                       >
                         –
@@ -109,7 +109,7 @@ function CartContent({
                       <button
                         type="button"
                         onClick={() => updateQuantity(item.item_id, item.quantity + 1)}
-                        className="flex h-12 w-12 items-center justify-center rounded-full text-2xl transition-transform duration-150 hover:scale-[1.02] active:scale-95"
+                        className="flex h-11 w-11 items-center justify-center rounded-full text-2xl transition-transform duration-150 hover:scale-[1.02] active:scale-95"
                         aria-label={`Increase ${item.name}`}
                       >
                         +
@@ -178,7 +178,7 @@ export default function CartDrawer({ inline = false }: CartDrawerProps) {
   if (inline) {
     // Render content directly without drawer behaviour
     return (
-      <div className="mx-auto w-full max-w-4xl px-2 pb-6 pt-2 sm:px-4 sm:pt-6">
+      <div className="mx-auto w-full max-w-4xl px-2 pb-5 pt-1.5 sm:px-4 sm:pt-5">
         <CartContent emptyMessage={emptyMessage} inline />
       </div>
     );
