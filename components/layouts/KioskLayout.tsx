@@ -12,11 +12,7 @@ import {
 import HomeScreen, { type KioskRestaurant } from '@/components/kiosk/HomeScreen';
 import KioskActionButton from '@/components/kiosk/KioskActionButton';
 import { clearHomeSeen, hasSeenHome, markHomeSeen } from '@/utils/kiosk/session';
-import {
-  KIOSK_HEADER_COLLAPSED_HEIGHT,
-  KIOSK_HEADER_FULL_HEIGHT,
-  KIOSK_HEADER_SHRINK_THRESHOLD,
-} from '@/components/kiosk/kioskHeaderConstants';
+import { KIOSK_HEADER_BASE_HEIGHT, KIOSK_HEADER_SHRINK_THRESHOLD } from '@/components/kiosk/kioskHeaderConstants';
 
 interface WakeLockSentinel {
   released: boolean;
@@ -72,17 +68,9 @@ export default function KioskLayout({
   const accentColor = useMemo(() => restaurant?.theme_primary_color || '#111827', [restaurant?.theme_primary_color]);
   const [shrinkProgress, setShrinkProgress] = useState(0);
   const scrollTickingRef = useRef(false);
-  const headerHeight = useMemo(
-    () =>
-      Math.round(
-        KIOSK_HEADER_FULL_HEIGHT -
-          (KIOSK_HEADER_FULL_HEIGHT - KIOSK_HEADER_COLLAPSED_HEIGHT) * Math.min(Math.max(shrinkProgress, 0), 1)
-      ),
-    [shrinkProgress]
-  );
-  const headerTranslateY = useMemo(() => -10 * Math.min(Math.max(shrinkProgress, 0), 1), [shrinkProgress]);
-  const headerPaddingY = useMemo(() => 32 - 14 * Math.min(Math.max(shrinkProgress, 0), 1), [shrinkProgress]);
-  const titleScale = useMemo(() => 1 - 0.08 * Math.min(Math.max(shrinkProgress, 0), 1), [shrinkProgress]);
+  const clampedProgress = useMemo(() => Math.min(Math.max(shrinkProgress, 0), 1), [shrinkProgress]);
+  const headerPaddingY = useMemo(() => 28 - 10 * clampedProgress, [clampedProgress]);
+  const titleScale = useMemo(() => 1 - 0.08 * clampedProgress, [clampedProgress]);
   const layoutStyle = useMemo(
     () => ({
       '--kiosk-accent': accentColor,
@@ -414,20 +402,15 @@ export default function KioskLayout({
     const subtitle = restaurant?.website_description;
 
     const headerStyle = {
-      minHeight: `${headerHeight}px`,
+      minHeight: `${KIOSK_HEADER_BASE_HEIGHT}px`,
       paddingTop: `${headerPaddingY}px`,
       paddingBottom: `${headerPaddingY}px`,
-      transform: `translateY(${headerTranslateY}px)`,
-      transition: 'transform 200ms ease, min-height 220ms ease, padding 220ms ease',
+      transition: 'padding 200ms ease',
     };
 
     return (
       <header className="sticky top-0 z-50 w-full border-b border-neutral-200 bg-white text-neutral-900 shadow-sm">
-        <div
-          data-kiosk-header
-          className="w-full"
-          style={headerStyle}
-        >
+        <div data-kiosk-header className="w-full" style={headerStyle}>
           <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-4 sm:px-6">
             <div className="flex flex-col">
               <span
@@ -470,10 +453,21 @@ export default function KioskLayout({
             ) : null}
           </div>
         </div>
-        {categoryBar ? <div className="border-t border-neutral-200 bg-white">{categoryBar}</div> : null}
+        {categoryBar ? (
+          <div
+            className="border-t border-neutral-200 bg-white"
+            style={{
+              paddingTop: `${8 - 4 * clampedProgress}px`,
+              paddingBottom: `${8 - 4 * clampedProgress}px`,
+              transition: 'padding 200ms ease',
+            }}
+          >
+            {categoryBar}
+          </div>
+        ) : null}
       </header>
     );
-  }, [cartCount, categoryBar, headerHeight, headerPaddingY, headerTranslateY, restaurant?.name, restaurant?.website_description, restaurantId, shrinkProgress, titleScale]);
+  }, [cartCount, categoryBar, clampedProgress, headerPaddingY, restaurant?.name, restaurant?.website_description, restaurantId, shrinkProgress, titleScale]);
 
   const handleFullscreenPromptClick = useCallback(async () => {
     await Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]);
@@ -487,7 +481,7 @@ export default function KioskLayout({
           contentVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
       >
-        <div className="mx-auto w-full max-w-none px-4 pb-10 pt-4 sm:px-8">{children}</div>
+        <div className="mx-auto w-full max-w-none px-4 pb-10 sm:px-8">{children}</div>
       </main>
       {homeVisible ? (
         <HomeScreen restaurant={restaurant || null} onStart={startOrdering} fadingOut={homeFading} />
