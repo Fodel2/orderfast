@@ -59,7 +59,7 @@ export default function KioskMenuPage() {
   const lastScrollTargetRef = useRef<number | null>(null);
   const { cart } = useCart();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
-  const CHROME_OFFSET = 212;
+  const CHROME_OFFSET = 156;
 
   useEffect(() => {
     if (!restaurantId) {

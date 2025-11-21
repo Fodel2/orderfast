@@ -70,7 +70,6 @@ export default function KioskLayout({
   const accentColor = useMemo(() => restaurant?.theme_primary_color || '#111827', [restaurant?.theme_primary_color]);
   const [shrinkProgress, setShrinkProgress] = useState(0);
   const scrollTickingRef = useRef(false);
-  const layoutStyle = useMemo(() => ({ '--kiosk-accent': accentColor }) as CSSProperties, [accentColor]);
   const headerHeight = useMemo(
     () =>
       Math.round(
@@ -82,6 +81,13 @@ export default function KioskLayout({
   const headerTranslateY = useMemo(() => -10 * Math.min(Math.max(shrinkProgress, 0), 1), [shrinkProgress]);
   const headerPaddingY = useMemo(() => 32 - 14 * Math.min(Math.max(shrinkProgress, 0), 1), [shrinkProgress]);
   const titleScale = useMemo(() => 1 - 0.08 * Math.min(Math.max(shrinkProgress, 0), 1), [shrinkProgress]);
+  const layoutStyle = useMemo(
+    () => ({
+      '--kiosk-accent': accentColor,
+      '--kiosk-header-height': `${headerHeight}px`,
+    }) as CSSProperties,
+    [accentColor, headerHeight]
+  );
   const isFullscreenActive = useCallback(() => {
     if (typeof document === 'undefined') return false;
     const anyDoc = document as Document & { webkitFullscreenElement?: Element | null };
