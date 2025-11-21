@@ -12,11 +12,9 @@ import {
 import HomeScreen, { type KioskRestaurant } from '@/components/kiosk/HomeScreen';
 import KioskActionButton from '@/components/kiosk/KioskActionButton';
 import { clearHomeSeen, hasSeenHome, markHomeSeen } from '@/utils/kiosk/session';
-import {
-  KIOSK_HEADER_COLLAPSED_HEIGHT,
-  KIOSK_HEADER_FULL_HEIGHT,
-  KIOSK_HEADER_SHRINK_THRESHOLD,
-} from '@/components/kiosk/kioskHeaderConstants';
+const KIOSK_HEADER_FULL_HEIGHT = 148;
+const KIOSK_HEADER_COLLAPSED_HEIGHT = 92;
+const KIOSK_HEADER_SHRINK_THRESHOLD = 64;
 
 interface WakeLockSentinel {
   released: boolean;
@@ -417,53 +415,55 @@ export default function KioskLayout({
     };
 
     return (
-      <header
-        data-kiosk-header
-        className="sticky top-0 z-50 w-full border-b border-neutral-200 bg-white text-neutral-900 shadow-sm"
-        style={headerStyle}
-      >
-        <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-4 sm:px-6">
-          <div className="flex flex-col">
-            <span
-              className="font-semibold leading-tight tracking-tight text-neutral-900 text-2xl sm:text-3xl"
-              style={{
-                transform: `scale(${titleScale}) translateY(${(-2 * shrinkProgress).toFixed(2)}px)`,
-                transformOrigin: 'left center',
-                transition: 'transform 200ms ease',
-              }}
-            >
-              {headerTitle}
-            </span>
-            {subtitle ? (
+      <div className="sticky top-0 z-50 bg-white">
+        <header
+          data-kiosk-header
+          className="w-full border-b border-neutral-200 bg-white text-neutral-900 shadow-sm"
+          style={headerStyle}
+        >
+          <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-4 sm:px-6">
+            <div className="flex flex-col">
               <span
-                className="mt-2 text-sm font-medium text-neutral-600 sm:text-base"
+                className="font-semibold leading-tight tracking-tight text-neutral-900 text-2xl sm:text-3xl"
                 style={{
-                  opacity: 1 - shrinkProgress,
-                  transform: `translateY(${(6 * shrinkProgress).toFixed(2)}px)`,
-                  transition: 'opacity 200ms ease, transform 200ms ease',
-                  display: shrinkProgress >= 0.98 ? 'none' : undefined,
+                  transform: `scale(${titleScale}) translateY(${(-2 * shrinkProgress).toFixed(2)}px)`,
+                  transformOrigin: 'left center',
+                  transition: 'transform 200ms ease',
                 }}
               >
-                {subtitle}
+                {headerTitle}
               </span>
+              {subtitle ? (
+                <span
+                  className="mt-2 text-sm font-medium text-neutral-600 sm:text-base"
+                  style={{
+                    opacity: 1 - shrinkProgress,
+                    transform: `translateY(${(6 * shrinkProgress).toFixed(2)}px)`,
+                    transition: 'opacity 200ms ease, transform 200ms ease',
+                    display: shrinkProgress >= 0.98 ? 'none' : undefined,
+                  }}
+                >
+                  {subtitle}
+                </span>
+              ) : null}
+            </div>
+            {restaurantId ? (
+              <KioskActionButton
+                href={`/kiosk/${restaurantId}/cart`}
+                className="px-4 py-2 text-sm font-semibold sm:px-5 sm:py-3"
+                style={{
+                  transform: `translateY(${(-2 * shrinkProgress).toFixed(2)}px) scale(${1 - 0.04 * shrinkProgress})`,
+                  transition: 'transform 200ms ease',
+                  transformOrigin: 'center',
+                }}
+              >
+                <ShoppingCartIcon className="h-5 w-5" />
+                View cart ({cartCount})
+              </KioskActionButton>
             ) : null}
           </div>
-          {restaurantId ? (
-            <KioskActionButton
-              href={`/kiosk/${restaurantId}/cart`}
-              className="px-4 py-2 text-sm font-semibold sm:px-5 sm:py-3"
-              style={{
-                transform: `translateY(${(-2 * shrinkProgress).toFixed(2)}px) scale(${1 - 0.04 * shrinkProgress})`,
-                transition: 'transform 200ms ease',
-                transformOrigin: 'center',
-              }}
-            >
-              <ShoppingCartIcon className="h-5 w-5" />
-              View cart ({cartCount})
-            </KioskActionButton>
-          ) : null}
-        </div>
-      </header>
+        </header>
+      </div>
     );
   }, [cartCount, headerHeight, headerPaddingY, headerTranslateY, restaurant?.name, restaurant?.website_description, restaurantId, shrinkProgress, titleScale]);
 
@@ -474,14 +474,7 @@ export default function KioskLayout({
   return (
     <div className="min-h-screen w-full bg-white text-neutral-900" style={layoutStyle}>
       {headerContent}
-      {categoryBar ? (
-        <div
-          className="sticky z-40 bg-white"
-          style={{ top: `${KIOSK_HEADER_FULL_HEIGHT}px` }}
-        >
-          {categoryBar}
-        </div>
-      ) : null}
+      {categoryBar ? <div>{categoryBar}</div> : null}
       <main
         className={`transition-opacity duration-200 ${
           contentVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'

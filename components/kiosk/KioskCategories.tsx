@@ -32,7 +32,7 @@ export default function KioskCategories({ categories, activeCategoryId, onSelect
   return (
     <div
       ref={containerRef}
-      className="overflow-x-auto pb-3 scroll-smooth"
+      className="sticky top-[148px] z-40 bg-white border-b border-neutral-200 overflow-x-auto pb-3 scroll-smooth"
       role="tablist"
       aria-label="Categories"
       >

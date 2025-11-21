@@ -7,7 +7,6 @@ import { ITEM_ADDON_LINK_WITH_GROUPS_SELECT } from '@/lib/queries/addons';
 import Skeleton from '@/components/ui/Skeleton';
 import { useCart } from '@/context/CartContext';
 import KioskCategories from '@/components/kiosk/KioskCategories';
-import { KIOSK_CATEGORY_BAR_HEIGHT, KIOSK_HEADER_FULL_HEIGHT } from '@/components/kiosk/kioskHeaderConstants';
 
 type Category = {
   id: number;
@@ -60,7 +59,7 @@ export default function KioskMenuPage() {
   const lastScrollTargetRef = useRef<number | null>(null);
   const { cart } = useCart();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
-  const chromeOffset = KIOSK_HEADER_FULL_HEIGHT + KIOSK_CATEGORY_BAR_HEIGHT;
+  const CHROME_OFFSET = 212;
 
   useEffect(() => {
     if (!restaurantId) {
@@ -217,13 +216,10 @@ export default function KioskMenuPage() {
       const el = document.getElementById(`cat-${categoryId}`);
       if (!el) return;
 
-      const rect = el.getBoundingClientRect();
-      const target = window.scrollY + rect.top - chromeOffset;
-
       lastScrollTargetRef.current = categoryId;
-      window.scrollTo({ top: Math.max(target, 0), behavior: 'smooth' });
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     },
-    [chromeOffset]
+    []
   );
 
   useEffect(() => {
@@ -262,7 +258,7 @@ export default function KioskMenuPage() {
       },
       {
         root: null,
-        rootMargin: `-${chromeOffset}px 0px -55% 0px`,
+        rootMargin: `-${CHROME_OFFSET}px 0px -55% 0px`,
         threshold: [0.25, 0.5, 0.75, 1],
       }
     );
@@ -279,7 +275,7 @@ export default function KioskMenuPage() {
     return () => {
       observer.disconnect();
     };
-  }, [categorizedItems, chromeOffset]);
+  }, [categorizedItems, CHROME_OFFSET]);
 
   return (
     <KioskLayout
@@ -288,13 +284,11 @@ export default function KioskMenuPage() {
       cartCount={cartCount}
       categoryBar={
         categorizedItems.length ? (
-          <div className="w-full border-b border-neutral-200 bg-white px-4 sm:px-8">
-            <KioskCategories
-              categories={categorizedItems}
-              activeCategoryId={activeCategoryId}
-              onSelect={handleCategorySelect}
-            />
-          </div>
+          <KioskCategories
+            categories={categorizedItems}
+            activeCategoryId={activeCategoryId}
+            onSelect={handleCategorySelect}
+          />
         ) : null
       }
     >
@@ -315,7 +309,7 @@ export default function KioskMenuPage() {
               key={category.id}
               id={`cat-${category.id}`}
               className="flex flex-col gap-4"
-              style={{ scrollMarginTop: `${chromeOffset}px` }}
+              style={{ scrollMarginTop: `${CHROME_OFFSET}px` }}
             >
               <header className="flex flex-col gap-1">
                 <h2 className="text-2xl font-semibold tracking-tight text-neutral-900">{category.name}</h2>
