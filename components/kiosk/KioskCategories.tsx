@@ -37,8 +37,7 @@ export default function KioskCategories({ categories, activeCategoryId, onSelect
       aria-label="Categories"
       >
       <div
-        className="flex min-h-[56px] items-center gap-3 px-4 sm:min-h-[60px] sm:gap-4 sm:px-6 snap-x snap-mandatory"
-        style={{ minHeight: 'var(--kiosk-category-height, 64px)', transition: 'min-height 200ms ease' }}
+        className="flex min-h-[64px] items-center gap-3 px-4 sm:min-h-[64px] sm:gap-4 sm:px-6 snap-x snap-mandatory"
       >
         {orderedCategories.map((category) => (
           <KioskCategoryTile

@@ -9,8 +9,7 @@ import { useCart } from '@/context/CartContext';
 import KioskCategories from '@/components/kiosk/KioskCategories';
 import {
   KIOSK_CATEGORY_BAR_HEIGHT,
-  KIOSK_HEADER_COLLAPSED_HEIGHT,
-  KIOSK_SCROLL_PADDING,
+  KIOSK_HEADER_FULL_HEIGHT,
 } from '@/components/kiosk/kioskHeaderConstants';
 
 type Category = {
@@ -62,15 +61,12 @@ export default function KioskMenuPage() {
   const [activeCategoryId, setActiveCategoryId] = useState<number | null>(null);
   const activeCategoryRef = useRef<number | null>(null);
   const lastScrollTargetRef = useRef<number | null>(null);
-  const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
-  const categoryBarRef = useRef<HTMLDivElement | null>(null);
-  const [scrollOffsets, setScrollOffsets] = useState({
-    header: KIOSK_HEADER_COLLAPSED_HEIGHT,
-    categoryBar: KIOSK_CATEGORY_BAR_HEIGHT,
-    padding: KIOSK_SCROLL_PADDING,
-  });
   const { cart } = useCart();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
+  const chromeOffset = useMemo(
+    () => KIOSK_HEADER_FULL_HEIGHT + KIOSK_CATEGORY_BAR_HEIGHT,
+    []
+  );
 
   useEffect(() => {
     if (!restaurantId) {
@@ -219,46 +215,6 @@ export default function KioskMenuPage() {
   const hasCategoryItems = categorizedItems.length > 0;
   const hasUncategorizedItems = uncategorizedItems.length > 0;
 
-  const recomputeOffsets = useCallback(() => {
-    const headerEl = scrollContainer?.previousElementSibling as HTMLElement | null;
-    const headerOffset = headerEl?.getBoundingClientRect().height ?? KIOSK_HEADER_COLLAPSED_HEIGHT;
-
-    const categoryHeight = categoryBarRef.current?.getBoundingClientRect().height ?? KIOSK_CATEGORY_BAR_HEIGHT;
-
-    const padding = headerOffset + categoryHeight;
-
-    setScrollOffsets({
-      header: headerOffset,
-      categoryBar: categoryHeight,
-      padding,
-    });
-  }, [scrollContainer]);
-
-  useEffect(() => {
-    recomputeOffsets();
-    const handleResize = () => recomputeOffsets();
-    window.addEventListener('resize', handleResize, { passive: true });
-
-    const headerEl = scrollContainer?.previousElementSibling as HTMLElement | null;
-    const headerObserver =
-      typeof ResizeObserver !== 'undefined' && headerEl
-        ? new ResizeObserver(() => recomputeOffsets())
-        : null;
-    headerObserver?.observe(headerEl as Element);
-
-    const categoryObserver =
-      typeof ResizeObserver !== 'undefined' && categoryBarRef.current
-        ? new ResizeObserver(() => recomputeOffsets())
-        : null;
-    categoryObserver?.observe(categoryBarRef.current as Element);
-
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      headerObserver?.disconnect();
-      categoryObserver?.disconnect();
-    };
-  }, [categorizedItems.length, recomputeOffsets, scrollContainer]);
-
   const handleCategorySelect = useCallback(
     (categoryId: number) => {
       if (categoryId === lastScrollTargetRef.current) return;
@@ -267,15 +223,13 @@ export default function KioskMenuPage() {
       const el = document.getElementById(`cat-${categoryId}`);
       if (!el) return;
 
-      const scroller = scrollContainer;
-      if (!scroller) return;
-
-      const offset = scrollOffsets.header + scrollOffsets.categoryBar;
+      const rect = el.getBoundingClientRect();
+      const target = window.scrollY + rect.top - chromeOffset;
 
       lastScrollTargetRef.current = categoryId;
-      scroller.scrollTo({ top: Math.max(el.offsetTop - offset, 0), behavior: 'smooth' });
+      window.scrollTo({ top: Math.max(target, 0), behavior: 'smooth' });
     },
-    [scrollContainer, scrollOffsets.categoryBar, scrollOffsets.header]
+    [chromeOffset]
   );
 
   useEffect(() => {
@@ -313,8 +267,8 @@ export default function KioskMenuPage() {
         }
       },
       {
-        root: scrollContainer,
-        rootMargin: `-${scrollOffsets.padding}px 0px -55% 0px`,
+        root: null,
+        rootMargin: `-${chromeOffset}px 0px -55% 0px`,
         threshold: [0.25, 0.5, 0.75, 1],
       }
     );
@@ -331,16 +285,10 @@ export default function KioskMenuPage() {
     return () => {
       observer.disconnect();
     };
-  }, [categorizedItems, scrollContainer, scrollOffsets.padding]);
+  }, [categorizedItems, chromeOffset]);
 
   return (
-    <KioskLayout
-      restaurantId={restaurantId}
-      restaurant={restaurant}
-      cartCount={cartCount}
-      scrollPaddingTop={scrollOffsets.header}
-      onScrollContainerChange={setScrollContainer}
-    >
+    <KioskLayout restaurantId={restaurantId} restaurant={restaurant} cartCount={cartCount}>
       {loading ? (
         <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 6 }).map((_, idx) => (
@@ -355,15 +303,8 @@ export default function KioskMenuPage() {
         <div className="flex flex-col gap-10">
           {categorizedItems.length ? (
             <div
-              ref={categoryBarRef}
-              className="sticky z-20 w-full bg-white/95 px-4 backdrop-blur sm:px-8"
-              style={{
-                top: scrollOffsets.header,
-                height: 'var(--kiosk-category-height, 64px)',
-                transform: 'scale(var(--kiosk-category-scale, 1))',
-                transformOrigin: 'top',
-                transition: 'transform 200ms ease, height 200ms ease',
-              }}
+              className="sticky z-30 w-full bg-white/95 px-4 backdrop-blur sm:px-8"
+              style={{ top: 'var(--kiosk-header-height, 148px)' }}
             >
               <KioskCategories
                 categories={categorizedItems}
@@ -378,7 +319,7 @@ export default function KioskMenuPage() {
               key={category.id}
               id={`cat-${category.id}`}
               className="flex flex-col gap-4"
-              style={{ scrollMarginTop: `${scrollOffsets.padding}px` }}
+              style={{ scrollMarginTop: `${chromeOffset}px` }}
             >
               <header className="flex flex-col gap-1">
                 <h2 className="text-2xl font-semibold tracking-tight text-neutral-900">{category.name}</h2>
