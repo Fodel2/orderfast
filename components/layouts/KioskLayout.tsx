@@ -13,6 +13,9 @@ import HomeScreen, { type KioskRestaurant } from '@/components/kiosk/HomeScreen'
 import KioskActionButton from '@/components/kiosk/KioskActionButton';
 import { clearHomeSeen, hasSeenHome, markHomeSeen } from '@/utils/kiosk/session';
 
+const HEADER_HEIGHT = 110;
+const CATEGORY_HEIGHT = 64;
+
 interface WakeLockSentinel {
   released: boolean;
   release: () => Promise<void>;
@@ -60,6 +63,7 @@ export default function KioskLayout({
   const [contentVisible, setContentVisible] = useState<boolean>(() =>
     forceHome ? false : restaurantId ? hasSeenHome(restaurantId) : true
   );
+  const [shrinkProgress, setShrinkProgress] = useState(0);
   const [showFullscreenPrompt, setShowFullscreenPrompt] = useState(false);
   const autoPromptedRef = useRef(false);
   const fullscreenRequestInFlight = useRef(false);
@@ -316,6 +320,22 @@ export default function KioskLayout({
     setContentVisible(!shouldShow);
   }, [forceHome, restaurantId]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleScroll = () => {
+      const progress = Math.min(Math.max(window.scrollY / 120, 0), 1);
+      setShrinkProgress(progress);
+    };
+
+    handleScroll();
+    window.addEventListener('scroll', handleScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+    };
+  }, []);
+
   const basePath = useMemo(() => (restaurantId ? `/kiosk/${restaurantId}` : null), [restaurantId]);
   const menuPath = useMemo(() => (restaurantId ? `/kiosk/${restaurantId}/menu` : null), [restaurantId]);
 
@@ -375,50 +395,76 @@ export default function KioskLayout({
   const headerTitle = restaurant?.name || 'Restaurant';
   const subtitle = restaurant?.website_description;
 
+  const brandScale = 1 - shrinkProgress * 0.08;
+  const paddingY = Math.max(14, 24 - shrinkProgress * 8);
+  const subtitleOpacity = Math.max(0, 1 - shrinkProgress * 0.6);
+  const showHeader = !homeVisible;
+  const showCategoryBar = showHeader && Boolean(categoryBar);
+
   const handleFullscreenPromptClick = useCallback(async () => {
     await Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]);
   }, [attemptFullscreen, requestWakeLock]);
 
   return (
     <div className="min-h-screen w-full bg-white text-neutral-900" style={layoutStyle}>
-      <header
-        id="kioskHeader"
-        className="fixed top-0 left-0 z-[9999] w-full border-b border-neutral-200 bg-white text-neutral-900 shadow-sm"
-      >
-        <div className="mx-auto flex w-full max-w-5xl items-start justify-between gap-4 px-4 py-6 sm:px-6">
-          <div className="flex flex-col">
-            <span className="text-2xl font-semibold leading-tight tracking-tight text-neutral-900 sm:text-3xl">
-              {headerTitle}
-            </span>
-            {subtitle ? <span className="mt-2 text-sm text-neutral-600 sm:text-base">{subtitle}</span> : null}
-          </div>
-          {restaurantId ? (
-            <KioskActionButton
-              href={`/kiosk/${restaurantId}/cart`}
-              className="px-4 py-2 text-sm font-semibold sm:px-5 sm:py-3"
+      {showHeader ? (
+        <>
+          <header
+            id="kioskHeader"
+            className="sticky top-0 z-[100] w-full border-b border-neutral-200 bg-white text-neutral-900 shadow-sm"
+            style={{ height: HEADER_HEIGHT }}
+          >
+            <div
+              className="mx-auto flex w-full max-w-5xl items-start justify-between px-4 sm:px-6"
+              style={{ paddingTop: paddingY, paddingBottom: paddingY, gap: '1rem' }}
             >
-              <ShoppingCartIcon className="h-5 w-5" />
-              View cart ({cartCount})
-            </KioskActionButton>
+              <div
+                className="flex flex-col"
+                style={{ transform: `scale(${brandScale})`, transformOrigin: 'left top' }}
+              >
+                <span className="text-2xl font-semibold leading-tight tracking-tight text-neutral-900 sm:text-3xl">
+                  {headerTitle}
+                </span>
+                {subtitle ? (
+                  <span
+                    className="mt-2 text-sm text-neutral-600 sm:text-base"
+                    style={{ opacity: subtitleOpacity }}
+                  >
+                    {subtitle}
+                  </span>
+                ) : null}
+              </div>
+              {restaurantId ? (
+                <KioskActionButton
+                  href={`/kiosk/${restaurantId}/cart`}
+                  className="px-4 py-2 text-sm font-semibold sm:px-5 sm:py-3"
+                >
+                  <ShoppingCartIcon className="h-5 w-5" />
+                  View cart ({cartCount})
+                </KioskActionButton>
+              ) : null}
+            </div>
+          </header>
+          {showCategoryBar ? (
+            <div
+              className="sticky z-[90] border-b border-neutral-200 bg-white"
+              style={{ top: HEADER_HEIGHT, height: CATEGORY_HEIGHT }}
+            >
+              <div className="mx-auto w-full max-w-5xl px-4 sm:px-6" style={{ height: '100%' }}>
+                <div className="flex h-full items-center">{categoryBar}</div>
+              </div>
+            </div>
           ) : null}
-        </div>
-        {categoryBar ? (
-          <div className="border-t border-neutral-200 bg-white">
-            <div className="mx-auto w-full max-w-5xl px-4 py-3 sm:px-6">{categoryBar}</div>
-          </div>
-        ) : null}
-      </header>
+        </>
+      ) : null}
       <main
         id="kioskContent"
-        className={`pt-[200px] transition-opacity duration-200 ${
-          contentVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        }`}
+        style={{ paddingTop: showHeader ? HEADER_HEIGHT + CATEGORY_HEIGHT : 0 }}
+        className={`transition-opacity duration-200 ${contentVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
       >
-        <div className="mx-auto w-full max-w-none px-4 pb-10 sm:px-8">{children}</div>
+        <div className="mx-auto w-full max-w-none px-4 pb-10 sm:px-8">{contentVisible ? children : null}</div>
       </main>
-      {homeVisible ? (
-        <HomeScreen restaurant={restaurant || null} onStart={startOrdering} fadingOut={homeFading} />
-      ) : null}
+      {homeVisible ? <HomeScreen restaurant={restaurant || null} onStart={startOrdering} fadingOut={homeFading} /> : null}
       {deferredPrompt && !isInstalled && !installDismissed ? (
         <div className="pointer-events-none fixed bottom-4 right-4 z-40">
           <button

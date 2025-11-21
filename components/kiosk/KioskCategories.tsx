@@ -8,20 +8,19 @@ interface KioskCategoriesProps {
 
 export default function KioskCategories({ categories, activeCategoryId, onSelect }: KioskCategoriesProps) {
   return (
-    <div className="bg-white" role="tablist" aria-label="Categories">
-      <div className="overflow-x-auto pb-3 scroll-smooth">
-        <div className="flex min-h-[64px] items-center gap-3 px-4 sm:min-h-[64px] sm:gap-4 sm:px-6 snap-x snap-mandatory">
-          {categories.map((category) => (
-            <KioskCategoryTile
-              key={category.id}
-              category={category}
-              active={category.id === activeCategoryId}
-              onSelect={onSelect}
-              className="snap-start"
-            />
-          ))}
-        </div>
-      </div>
+    <div
+      className="flex gap-3 overflow-x-auto bg-white px-4 py-3 sm:px-6 sticky"
+      role="tablist"
+      aria-label="Categories"
+    >
+      {categories.map((category) => (
+        <KioskCategoryTile
+          key={category.id}
+          category={category}
+          active={category.id === activeCategoryId}
+          onSelect={onSelect}
+        />
+      ))}
     </div>
   );
 }
