@@ -6,6 +6,7 @@ export default function TopBar({ hidden }: { hidden?: boolean }) {
   const { restaurantId, loading } = useRestaurant();
   const [title, setTitle] = useState<string | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [logoShape, setLogoShape] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -20,7 +21,7 @@ export default function TopBar({ hidden }: { hidden?: boolean }) {
     (async () => {
       const { data, error } = await supabase
         .from('restaurants')
-        .select('website_title, name, logo_url')
+        .select('website_title, name, logo_url, logo_shape')
         .eq('id', restaurantId)
         .single();
 
@@ -28,6 +29,7 @@ export default function TopBar({ hidden }: { hidden?: boolean }) {
       if (!error && data) {
         setTitle(data.website_title ?? data.name ?? 'Restaurant');
         setLogoUrl(data.logo_url ?? null);
+        setLogoShape(data.logo_shape ?? null);
       }
       setReady(true);
     })();
@@ -63,7 +65,11 @@ export default function TopBar({ hidden }: { hidden?: boolean }) {
     >
       {logoUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={logoUrl} alt={title ?? 'Restaurant'} className="h-8 w-8 rounded-full object-cover" />
+        <img
+          src={logoUrl}
+          alt={title ?? 'Restaurant'}
+          className={`h-8 w-8 object-cover ${logoShape === 'square' ? 'rounded-[8px]' : 'rounded-full'}`}
+        />
       ) : null}
       <div className="font-semibold text-lg">{title ?? 'Restaurant'}</div>
     </header>
