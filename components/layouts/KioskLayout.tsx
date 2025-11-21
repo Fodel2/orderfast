@@ -13,8 +13,10 @@ import HomeScreen, { type KioskRestaurant } from '@/components/kiosk/HomeScreen'
 import KioskActionButton from '@/components/kiosk/KioskActionButton';
 import { clearHomeSeen, hasSeenHome, markHomeSeen } from '@/utils/kiosk/session';
 
-export const KIOSK_HEADER_HEIGHT = 88;
-export const KIOSK_CATEGORY_HEIGHT = 64;
+export const FULL_HEADER_HEIGHT = 148;
+export const COLLAPSED_HEADER_HEIGHT = 92;
+export const FULL_CAT_HEIGHT = 64;
+export const COLLAPSED_CAT_HEIGHT = 50;
 
 interface WakeLockSentinel {
   released: boolean;
@@ -324,7 +326,7 @@ export default function KioskLayout({
     if (typeof window === 'undefined') return;
 
     const handleScroll = () => {
-      const progress = Math.min(Math.max(window.scrollY / 120, 0), 1);
+      const progress = Math.min(Math.max(window.scrollY / 64, 0), 1);
       setShrinkProgress(progress);
     };
 
@@ -395,9 +397,14 @@ export default function KioskLayout({
   const headerTitle = restaurant?.name || 'Restaurant';
   const subtitle = restaurant?.website_description;
 
+  const headerHeight =
+    FULL_HEADER_HEIGHT - (FULL_HEADER_HEIGHT - COLLAPSED_HEADER_HEIGHT) * shrinkProgress;
+  const categoryHeight = FULL_CAT_HEIGHT - (FULL_CAT_HEIGHT - COLLAPSED_CAT_HEIGHT) * shrinkProgress;
+  const headerPaddingY = 20 - (20 - 12) * shrinkProgress;
   const brandScale = 1 - shrinkProgress * 0.08;
-  const paddingY = Math.max(12, 20 - shrinkProgress * 6);
+  const cartScale = 1 - shrinkProgress * 0.08;
   const subtitleOpacity = Math.max(0, 1 - shrinkProgress * 0.6);
+  const categoriesScale = 1 - shrinkProgress * 0.06;
   const showHeader = !homeVisible;
   const showCategoryBar = showHeader && Boolean(categoryBar);
 
@@ -408,16 +415,17 @@ export default function KioskLayout({
   return (
     <div className="min-h-screen w-full bg-white text-neutral-900" style={layoutStyle}>
       {showHeader ? (
-        <>
+        <div
+          id="kiosk-header-stack"
+          className="fixed top-0 left-0 right-0 z-50 bg-white shadow-sm"
+          style={{ willChange: 'transform' }}
+        >
           <header
             id="kioskHeader"
-            className="fixed top-0 left-0 right-0 z-50 w-full border-b border-neutral-200 bg-white text-neutral-900 shadow-sm"
-            style={{ height: `${KIOSK_HEADER_HEIGHT}px` }}
+            className="w-full border-b border-neutral-200 bg-white text-neutral-900"
+            style={{ height: headerHeight, paddingTop: headerPaddingY, paddingBottom: headerPaddingY }}
           >
-            <div
-              className="mx-auto flex h-full w-full max-w-5xl items-center justify-between px-4 sm:px-6"
-              style={{ paddingTop: paddingY, paddingBottom: paddingY, gap: '1rem' }}
-            >
+            <div className="mx-auto flex h-full w-full max-w-5xl items-center justify-between px-4 sm:px-6" style={{ gap: '1rem' }}>
               <div
                 className="flex flex-col"
                 style={{ transform: `scale(${brandScale})`, transformOrigin: 'left top' }}
@@ -435,29 +443,31 @@ export default function KioskLayout({
                 ) : null}
               </div>
               {restaurantId ? (
-                <KioskActionButton
-                  href={`/kiosk/${restaurantId}/cart`}
-                  className="px-4 py-2 text-sm font-semibold sm:px-5 sm:py-3"
-                >
-                  <ShoppingCartIcon className="h-5 w-5" />
-                  View cart ({cartCount})
-                </KioskActionButton>
+                <div style={{ transform: `scale(${cartScale})`, transformOrigin: 'right center' }}>
+                  <KioskActionButton
+                    href={`/kiosk/${restaurantId}/cart`}
+                    className="px-4 py-2 text-sm font-semibold sm:px-5 sm:py-3"
+                  >
+                    <ShoppingCartIcon className="h-5 w-5" />
+                    View cart ({cartCount})
+                  </KioskActionButton>
+                </div>
               ) : null}
             </div>
           </header>
           {showCategoryBar ? (
             <div
-              className="fixed left-0 right-0 z-40 border-b border-neutral-200 bg-white"
-              style={{ top: `${KIOSK_HEADER_HEIGHT}px`, height: `${KIOSK_CATEGORY_HEIGHT}px` }}
+              className="border-b border-neutral-200 bg-white"
+              style={{ height: categoryHeight, transform: `scale(${categoriesScale})`, transformOrigin: 'top center' }}
             >
               <div className="mx-auto flex h-full w-full max-w-5xl items-center px-4 sm:px-6">{categoryBar}</div>
             </div>
           ) : null}
-        </>
+        </div>
       ) : null}
       <main
         id="kioskContent"
-        style={{ paddingTop: showHeader ? KIOSK_HEADER_HEIGHT + KIOSK_CATEGORY_HEIGHT : 0 }}
+        style={{ paddingTop: showHeader ? headerHeight + categoryHeight : 0 }}
         className={`transition-opacity duration-200 ${contentVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
       >
         <div className="mx-auto w-full max-w-none px-4 pb-10 sm:px-8">{contentVisible ? children : null}</div>

@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import MenuItemCard from '@/components/MenuItemCard';
-import KioskLayout, { KIOSK_CATEGORY_HEIGHT, KIOSK_HEADER_HEIGHT } from '@/components/layouts/KioskLayout';
+import KioskLayout, {
+  COLLAPSED_CAT_HEIGHT,
+  COLLAPSED_HEADER_HEIGHT,
+  FULL_CAT_HEIGHT,
+  FULL_HEADER_HEIGHT,
+} from '@/components/layouts/KioskLayout';
 import { supabase } from '@/lib/supabaseClient';
 import { ITEM_ADDON_LINK_WITH_GROUPS_SELECT } from '@/lib/queries/addons';
 import Skeleton from '@/components/ui/Skeleton';
@@ -205,17 +210,29 @@ export default function KioskMenuPage() {
   const hasCategoryItems = categorizedItems.length > 0;
   const hasUncategorizedItems = uncategorizedItems.length > 0;
 
+  const getCurrentHeaderHeights = useCallback(() => {
+    if (typeof window === 'undefined') {
+      return { headerHeight: FULL_HEADER_HEIGHT, categoryHeight: FULL_CAT_HEIGHT };
+    }
+    const progress = Math.min(Math.max(window.scrollY / 64, 0), 1);
+    const headerHeight =
+      FULL_HEADER_HEIGHT - (FULL_HEADER_HEIGHT - COLLAPSED_HEADER_HEIGHT) * progress;
+    const categoryHeight = FULL_CAT_HEIGHT - (FULL_CAT_HEIGHT - COLLAPSED_CAT_HEIGHT) * progress;
+    return { headerHeight, categoryHeight };
+  }, []);
+
   const handleCategorySelect = useCallback(
     (categoryId: number) => {
       setActiveCategoryId(categoryId);
       const el = document.getElementById(`cat-${categoryId}`);
       if (!el || typeof window === 'undefined') return;
+      const { headerHeight, categoryHeight } = getCurrentHeaderHeights();
       window.scrollTo({
-        top: el.offsetTop - (KIOSK_HEADER_HEIGHT + KIOSK_CATEGORY_HEIGHT),
+        top: el.offsetTop - (headerHeight + categoryHeight + 12),
         behavior: 'smooth',
       });
     },
-    []
+    [getCurrentHeaderHeights]
   );
 
   useEffect(() => {
