@@ -338,7 +338,7 @@ export default function KioskMenuPage() {
       restaurantId={restaurantId}
       restaurant={restaurant}
       cartCount={cartCount}
-      scrollPaddingTop={scrollOffsets.padding}
+      scrollPaddingTop={scrollOffsets.header}
       onScrollContainerChange={setScrollContainer}
     >
       {loading ? (
@@ -359,7 +359,6 @@ export default function KioskMenuPage() {
               className="sticky z-20 w-full bg-white/95 px-4 backdrop-blur sm:px-8"
               style={{
                 top: scrollOffsets.header,
-                marginTop: -scrollOffsets.categoryBar,
                 height: 'var(--kiosk-category-height, 64px)',
                 transform: 'scale(var(--kiosk-category-scale, 1))',
                 transformOrigin: 'top',
