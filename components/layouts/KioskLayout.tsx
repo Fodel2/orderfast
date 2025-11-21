@@ -16,6 +16,7 @@ import {
   KIOSK_HEADER_COLLAPSED_HEIGHT,
   KIOSK_HEADER_FULL_HEIGHT,
   KIOSK_HEADER_SHRINK_THRESHOLD,
+  KIOSK_CATEGORY_BAR_HEIGHT,
   KIOSK_SCROLL_PADDING,
 } from '@/components/kiosk/kioskHeaderConstants';
 
@@ -74,19 +75,41 @@ export default function KioskLayout({
   const inactivityTimer = useRef<NodeJS.Timeout | null>(null);
   const accentColor = useMemo(() => restaurant?.theme_primary_color || '#111827', [restaurant?.theme_primary_color]);
   const [isShrunk, setIsShrunk] = useState(false);
+  const [shrinkProgress, setShrinkProgress] = useState(0);
   const scrollTickingRef = useRef(false);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const headerRef = useRef<HTMLDivElement | null>(null);
   const [headerMeasuredHeight, setHeaderMeasuredHeight] = useState(KIOSK_HEADER_FULL_HEIGHT);
   const layoutStyle = useMemo(() => ({ '--kiosk-accent': accentColor }) as CSSProperties, [accentColor]);
-  const headerHeight = isShrunk ? KIOSK_HEADER_COLLAPSED_HEIGHT : KIOSK_HEADER_FULL_HEIGHT;
+  const headerHeight = useMemo(
+    () =>
+      Math.round(
+        KIOSK_HEADER_FULL_HEIGHT -
+          (KIOSK_HEADER_FULL_HEIGHT - KIOSK_HEADER_COLLAPSED_HEIGHT) * Math.min(Math.max(shrinkProgress, 0), 1)
+      ),
+    [shrinkProgress]
+  );
+  const categoryBarHeight = useMemo(
+    () => Math.round(KIOSK_CATEGORY_BAR_HEIGHT - 10 * Math.min(Math.max(shrinkProgress, 0), 1)),
+    [shrinkProgress]
+  );
+  const headerTranslateY = useMemo(() => -10 * Math.min(Math.max(shrinkProgress, 0), 1), [shrinkProgress]);
+  const headerPaddingY = useMemo(() => 32 - 14 * Math.min(Math.max(shrinkProgress, 0), 1), [shrinkProgress]);
+  const titleScale = useMemo(() => 1 - 0.08 * Math.min(Math.max(shrinkProgress, 0), 1), [shrinkProgress]);
   const effectiveHeaderHeight = headerMeasuredHeight || headerHeight;
   const layoutWithHeaderStyle = useMemo(
     () => ({
       ...layoutStyle,
       '--kiosk-header-height': `${effectiveHeaderHeight}px`,
+      '--kiosk-category-height': `${categoryBarHeight}px`,
+      '--kiosk-header-progress': shrinkProgress,
+      '--kiosk-header-translate': `${headerTranslateY}px`,
+      '--kiosk-header-padding-y': `${headerPaddingY}px`,
+      '--kiosk-header-title-scale': titleScale,
+      '--kiosk-category-translate': `${-6 * Math.min(Math.max(shrinkProgress, 0), 1)}px`,
+      '--kiosk-category-scale': `${1 - 0.06 * Math.min(Math.max(shrinkProgress, 0), 1)}`,
     }) as CSSProperties,
-    [effectiveHeaderHeight, layoutStyle]
+    [categoryBarHeight, effectiveHeaderHeight, headerPaddingY, headerTranslateY, layoutStyle, shrinkProgress, titleScale]
   );
 
   const isFullscreenActive = useCallback(() => {
@@ -441,7 +464,10 @@ export default function KioskLayout({
       if (scrollTickingRef.current) return;
       scrollTickingRef.current = true;
       requestAnimationFrame(() => {
-        const nextShrunk = el.scrollTop > KIOSK_HEADER_SHRINK_THRESHOLD;
+        const maxDistance = Math.max(KIOSK_HEADER_SHRINK_THRESHOLD, 1);
+        const progress = Math.min(Math.max(el.scrollTop / maxDistance, 0), 1);
+        const nextShrunk = progress >= 0.98;
+        setShrinkProgress((prev) => (prev !== progress ? progress : prev));
         setIsShrunk((prev) => (prev !== nextShrunk ? nextShrunk : prev));
         scrollTickingRef.current = false;
       });
@@ -458,32 +484,56 @@ export default function KioskLayout({
     const headerTitle = restaurant?.name || 'Restaurant';
     const subtitle = restaurant?.website_description;
 
+    const headerStyle = {
+      minHeight: `${headerHeight}px`,
+      paddingTop: `${headerPaddingY}px`,
+      paddingBottom: `${headerPaddingY}px`,
+      transform: `translateY(${headerTranslateY}px)`,
+      transition: 'transform 200ms ease, min-height 220ms ease, padding 220ms ease',
+    };
+
     return (
       <header
         ref={headerRef}
         data-kiosk-header
-        className={`absolute left-0 right-0 top-0 z-30 w-full border-b border-neutral-200 bg-white/90 text-neutral-900 shadow-sm backdrop-blur transition-[min-height,padding] duration-200 ease-out ${
-          isShrunk ? 'min-h-[92px] py-4' : 'min-h-[148px] py-8'
-        }`}
-        style={{ minHeight: `${headerHeight}px` }}
+        className="absolute left-0 right-0 top-0 z-30 w-full border-b border-neutral-200 bg-white/90 text-neutral-900 shadow-sm backdrop-blur"
+        style={headerStyle}
       >
         <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-4 sm:px-6">
           <div className="flex flex-col">
             <span
-              className={`font-semibold leading-tight tracking-tight text-neutral-900 transition-[font-size] duration-200 ease-out ${
-                isShrunk ? 'text-lg sm:text-xl' : 'text-2xl sm:text-3xl'
-              }`}
+              className="font-semibold leading-tight tracking-tight text-neutral-900 text-2xl sm:text-3xl"
+              style={{
+                transform: `scale(${titleScale}) translateY(${(-2 * shrinkProgress).toFixed(2)}px)`,
+                transformOrigin: 'left center',
+                transition: 'transform 200ms ease',
+              }}
             >
               {headerTitle}
             </span>
-            {!isShrunk && subtitle ? (
-              <span className="mt-2 text-sm font-medium text-neutral-600 sm:text-base">{subtitle}</span>
+            {subtitle ? (
+              <span
+                className="mt-2 text-sm font-medium text-neutral-600 sm:text-base"
+                style={{
+                  opacity: 1 - shrinkProgress,
+                  transform: `translateY(${(6 * shrinkProgress).toFixed(2)}px)`,
+                  transition: 'opacity 200ms ease, transform 200ms ease',
+                  display: shrinkProgress >= 0.98 ? 'none' : undefined,
+                }}
+              >
+                {subtitle}
+              </span>
             ) : null}
           </div>
           {restaurantId ? (
             <KioskActionButton
               href={`/kiosk/${restaurantId}/cart`}
               className="px-4 py-2 text-sm font-semibold sm:px-5 sm:py-3"
+              style={{
+                transform: `translateY(${(-2 * shrinkProgress).toFixed(2)}px) scale(${1 - 0.04 * shrinkProgress})`,
+                transition: 'transform 200ms ease',
+                transformOrigin: 'center',
+              }}
             >
               <ShoppingCartIcon className="h-5 w-5" />
               View cart ({cartCount})
@@ -492,7 +542,7 @@ export default function KioskLayout({
         </div>
       </header>
     );
-  }, [cartCount, isShrunk, restaurant?.name, restaurant?.website_description, restaurantId]);
+  }, [cartCount, headerHeight, headerPaddingY, headerTranslateY, restaurant?.name, restaurant?.website_description, restaurantId, shrinkProgress, titleScale]);
 
   const handleFullscreenPromptClick = useCallback(async () => {
     await Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]);

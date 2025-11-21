@@ -356,8 +356,14 @@ export default function KioskMenuPage() {
           {categorizedItems.length ? (
             <div
               ref={categoryBarRef}
-              className="sticky -mx-4 z-20 bg-white/95 backdrop-blur sm:-mx-8"
-              style={{ top: scrollOffsets.header }}
+              className="sticky z-20 w-full bg-white/95 px-4 backdrop-blur sm:px-8"
+              style={{
+                top: scrollOffsets.header,
+                height: 'var(--kiosk-category-height, 64px)',
+                transform: 'translateY(var(--kiosk-category-translate, 0px)) scale(var(--kiosk-category-scale, 1))',
+                transformOrigin: 'top',
+                transition: 'transform 200ms ease, height 200ms ease',
+              }}
             >
               <KioskCategories
                 categories={categorizedItems}

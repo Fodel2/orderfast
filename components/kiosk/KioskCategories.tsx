@@ -32,11 +32,14 @@ export default function KioskCategories({ categories, activeCategoryId, onSelect
   return (
     <div
       ref={containerRef}
-      className="-mx-4 overflow-x-auto pb-3 scroll-smooth sm:-mx-6"
+      className="overflow-x-auto pb-3 scroll-smooth"
       role="tablist"
       aria-label="Categories"
-    >
-      <div className="flex min-h-[56px] items-center gap-3 px-4 sm:min-h-[60px] sm:gap-4 sm:px-6 snap-x snap-mandatory">
+      >
+      <div
+        className="flex min-h-[56px] items-center gap-3 px-4 sm:min-h-[60px] sm:gap-4 sm:px-6 snap-x snap-mandatory"
+        style={{ minHeight: 'var(--kiosk-category-height, 64px)', transition: 'min-height 200ms ease' }}
+      >
         {orderedCategories.map((category) => (
           <KioskCategoryTile
             key={category.id}
