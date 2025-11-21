@@ -419,7 +419,7 @@ export default function KioskLayout({
       {showHeader ? (
         <div
           id="kiosk-header-stack"
-          className="fixed top-0 left-0 right-0 z-50 bg-white shadow-sm"
+          className="fixed top-0 left-0 right-0 z-50 bg-white"
           style={{ willChange: 'transform' }}
         >
           <header
@@ -433,14 +433,16 @@ export default function KioskLayout({
                 style={{ transform: `scale(${brandScale})`, transformOrigin: 'left top' }}
               >
                 {logoUrl ? (
-                  <div className="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-full">
-                    <Image
-                      src={logoUrl}
-                      alt={`${headerTitle} logo`}
-                      fill
-                      sizes="48px"
-                      className="rounded-full object-cover"
-                    />
+                  <div className="hidden h-12 w-12 flex-shrink-0 items-center justify-center rounded-full md:flex">
+                    <div className="relative h-11 w-11 overflow-hidden rounded-full">
+                      <Image
+                        src={logoUrl}
+                        alt={`${headerTitle} logo`}
+                        fill
+                        sizes="44px"
+                        className="rounded-full object-cover"
+                      />
+                    </div>
                   </div>
                 ) : null}
                 <div className="flex flex-col">
