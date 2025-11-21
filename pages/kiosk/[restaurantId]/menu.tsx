@@ -7,6 +7,7 @@ import { ITEM_ADDON_LINK_WITH_GROUPS_SELECT } from '@/lib/queries/addons';
 import Skeleton from '@/components/ui/Skeleton';
 import { useCart } from '@/context/CartContext';
 import KioskCategories from '@/components/kiosk/KioskCategories';
+import { KIOSK_CHROME_OFFSET } from '@/components/kiosk/kioskHeaderConstants';
 
 type Category = {
   id: number;
@@ -56,7 +57,6 @@ export default function KioskMenuPage() {
   const [loading, setLoading] = useState(true);
   const [activeCategoryId, setActiveCategoryId] = useState<number | null>(null);
   const activeCategoryRef = useRef<number | null>(null);
-  const scrollAnimationRef = useRef<number | null>(null);
   const lastScrollTargetRef = useRef<number | null>(null);
   const { cart } = useCart();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
@@ -208,50 +208,19 @@ export default function KioskMenuPage() {
   const hasCategoryItems = categorizedItems.length > 0;
   const hasUncategorizedItems = uncategorizedItems.length > 0;
 
-  useEffect(() => {
-    return () => {
-      if (scrollAnimationRef.current) {
-        cancelAnimationFrame(scrollAnimationRef.current);
-      }
-    };
-  }, []);
+  const handleCategorySelect = useCallback(
+    (categoryId: number) => {
+      if (categoryId === lastScrollTargetRef.current) return;
+      setActiveCategoryId(categoryId);
 
-  const handleCategorySelect = useCallback((categoryId: number) => {
-    if (categoryId === lastScrollTargetRef.current) return;
-    setActiveCategoryId(categoryId);
+      const el = document.getElementById(`cat-${categoryId}`);
+      if (!el) return;
 
-    const el = document.getElementById(`cat-${categoryId}`);
-    if (!el) return;
-
-    if (scrollAnimationRef.current) {
-      cancelAnimationFrame(scrollAnimationRef.current);
-    }
-
-    const startY = window.scrollY;
-    const targetY = el.getBoundingClientRect().top + window.scrollY - 40;
-    const distance = targetY - startY;
-    const duration = 350;
-    const startTime = performance.now();
-
-    const easeOut = (t: number) => 1 - (1 - t) * (1 - t);
-
-    const step = (currentTime: number) => {
-      const elapsed = currentTime - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      const eased = easeOut(progress);
-      const nextY = startY + distance * eased;
-      window.scrollTo({ top: nextY });
-
-      if (progress < 1) {
-        scrollAnimationRef.current = requestAnimationFrame(step);
-      } else {
-        scrollAnimationRef.current = null;
-      }
-    };
-
-    lastScrollTargetRef.current = categoryId;
-    scrollAnimationRef.current = requestAnimationFrame(step);
-  }, []);
+      lastScrollTargetRef.current = categoryId;
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    },
+    []
+  );
 
   useEffect(() => {
     activeCategoryRef.current = activeCategoryId;
@@ -289,7 +258,7 @@ export default function KioskMenuPage() {
       },
       {
         root: null,
-        rootMargin: '-40px 0px -55% 0px',
+        rootMargin: `-${KIOSK_CHROME_OFFSET}px 0px -55% 0px`,
         threshold: [0.25, 0.5, 0.75, 1],
       }
     );
@@ -306,10 +275,23 @@ export default function KioskMenuPage() {
     return () => {
       observer.disconnect();
     };
-  }, [categorizedItems]);
+  }, [categorizedItems, KIOSK_CHROME_OFFSET]);
 
   return (
-    <KioskLayout restaurantId={restaurantId} restaurant={restaurant} cartCount={cartCount}>
+    <KioskLayout
+      restaurantId={restaurantId}
+      restaurant={restaurant}
+      cartCount={cartCount}
+      categoryBar={
+        categorizedItems.length ? (
+          <KioskCategories
+            categories={categorizedItems}
+            activeCategoryId={activeCategoryId}
+            onSelect={handleCategorySelect}
+          />
+        ) : null
+      }
+    >
       {loading ? (
         <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 6 }).map((_, idx) => (
@@ -322,15 +304,13 @@ export default function KioskMenuPage() {
         </div>
       ) : (
         <div className="flex flex-col gap-10">
-          {categorizedItems.length ? (
-            <KioskCategories
-              categories={categorizedItems}
-              activeCategoryId={activeCategoryId}
-              onSelect={handleCategorySelect}
-            />
-          ) : null}
           {categorizedItems.map((category) => (
-            <section key={category.id} id={`cat-${category.id}`} className="flex flex-col gap-4">
+            <section
+              key={category.id}
+              id={`cat-${category.id}`}
+              className="flex flex-col gap-4"
+              style={{ scrollMarginTop: `${KIOSK_CHROME_OFFSET}px` }}
+            >
               <header className="flex flex-col gap-1">
                 <h2 className="text-2xl font-semibold tracking-tight text-neutral-900">{category.name}</h2>
                 {category.description ? (

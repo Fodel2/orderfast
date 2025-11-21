@@ -12,6 +12,7 @@ import {
 import HomeScreen, { type KioskRestaurant } from '@/components/kiosk/HomeScreen';
 import KioskActionButton from '@/components/kiosk/KioskActionButton';
 import { clearHomeSeen, hasSeenHome, markHomeSeen } from '@/utils/kiosk/session';
+import { KIOSK_HEADER_BASE_HEIGHT, KIOSK_HEADER_SHRINK_THRESHOLD } from '@/components/kiosk/kioskHeaderConstants';
 
 interface WakeLockSentinel {
   released: boolean;
@@ -37,6 +38,7 @@ type KioskLayoutProps = {
   cartCount?: number;
   children: ReactNode;
   forceHome?: boolean;
+  categoryBar?: ReactNode;
 };
 
 export default function KioskLayout({
@@ -45,6 +47,7 @@ export default function KioskLayout({
   cartCount = 0,
   children,
   forceHome = false,
+  categoryBar,
 }: KioskLayoutProps) {
   const router = useRouter();
   const [wakeLock, setWakeLock] = useState<WakeLockSentinel | null>(null);
@@ -63,11 +66,17 @@ export default function KioskLayout({
   const fullscreenRequestInFlight = useRef(false);
   const inactivityTimer = useRef<NodeJS.Timeout | null>(null);
   const accentColor = useMemo(() => restaurant?.theme_primary_color || '#111827', [restaurant?.theme_primary_color]);
+  const [shrinkProgress, setShrinkProgress] = useState(0);
+  const scrollTickingRef = useRef(false);
+  const clampedProgress = useMemo(() => Math.min(Math.max(shrinkProgress, 0), 1), [shrinkProgress]);
+  const headerPaddingY = useMemo(() => 28 - 10 * clampedProgress, [clampedProgress]);
+  const titleScale = useMemo(() => 1 - 0.08 * clampedProgress, [clampedProgress]);
   const layoutStyle = useMemo(
-    () => ({ '--kiosk-accent': accentColor }) as CSSProperties,
+    () => ({
+      '--kiosk-accent': accentColor,
+    }) as CSSProperties,
     [accentColor]
   );
-
   const isFullscreenActive = useCallback(() => {
     if (typeof document === 'undefined') return false;
     const anyDoc = document as Document & { webkitFullscreenElement?: Element | null };
@@ -132,29 +141,14 @@ export default function KioskLayout({
     if (typeof document === 'undefined') return;
 
     const html = document.documentElement;
-    const body = document.body;
-    const previousHtmlOverflow = html.style.overflow;
-    const previousBodyOverflow = body.style.overflow;
-    const previousHtmlOverscroll = html.style.overscrollBehavior;
-    const previousBodyOverscroll = body.style.overscrollBehavior;
     const previousColorScheme = html.style.colorScheme;
 
-    html.style.overflow = 'hidden';
-    body.style.overflow = 'hidden';
-    html.style.overscrollBehavior = 'none';
-    body.style.overscrollBehavior = 'none';
     html.style.colorScheme = 'light';
     html.classList.add('kiosk-mode');
-    body.classList.add('kiosk-mode');
 
     return () => {
-      html.style.overflow = previousHtmlOverflow;
-      body.style.overflow = previousBodyOverflow;
-      html.style.overscrollBehavior = previousHtmlOverscroll;
-      body.style.overscrollBehavior = previousBodyOverscroll;
       html.style.colorScheme = previousColorScheme;
       html.classList.remove('kiosk-mode');
-      body.classList.remove('kiosk-mode');
     };
   }, []);
 
@@ -384,41 +378,110 @@ export default function KioskLayout({
     };
   }, [resetInactivityTimer]);
 
+  const handleScroll = useCallback(() => {
+    if (scrollTickingRef.current) return;
+    if (typeof window === 'undefined') return;
+    scrollTickingRef.current = true;
+    requestAnimationFrame(() => {
+      const maxDistance = Math.max(KIOSK_HEADER_SHRINK_THRESHOLD, 1);
+      const progress = Math.min(Math.max(window.scrollY / maxDistance, 0), 1);
+      setShrinkProgress((prev) => (prev !== progress ? progress : prev));
+      scrollTickingRef.current = false;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    handleScroll();
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [handleScroll]);
+
   const headerContent = useMemo(() => {
     const headerTitle = restaurant?.name || 'Restaurant';
+    const subtitle = restaurant?.website_description;
+
+    const headerStyle = {
+      minHeight: `${KIOSK_HEADER_BASE_HEIGHT}px`,
+      paddingTop: `${headerPaddingY}px`,
+      paddingBottom: `${headerPaddingY}px`,
+      transition: 'padding 200ms ease',
+    };
 
     return (
-      <header className="sticky top-0 z-30 w-full border-b border-neutral-200 bg-white/95 text-neutral-900 shadow-sm backdrop-blur">
-        <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
-          <div className="flex flex-col">
-            <span className="text-lg font-semibold tracking-tight sm:text-xl">{headerTitle}</span>
+      <header className="sticky top-0 z-50 w-full border-b border-neutral-200 bg-white text-neutral-900 shadow-sm">
+        <div data-kiosk-header className="w-full" style={headerStyle}>
+          <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-4 sm:px-6">
+            <div className="flex flex-col">
+              <span
+                className="font-semibold leading-tight tracking-tight text-neutral-900 text-2xl sm:text-3xl"
+                style={{
+                  transform: `scale(${titleScale}) translateY(${(-2 * shrinkProgress).toFixed(2)}px)`,
+                  transformOrigin: 'left center',
+                  transition: 'transform 200ms ease',
+                }}
+              >
+                {headerTitle}
+              </span>
+              {subtitle ? (
+                <span
+                  className="mt-2 text-sm font-medium text-neutral-600 sm:text-base"
+                  style={{
+                    opacity: 1 - shrinkProgress,
+                    transform: `translateY(${(6 * shrinkProgress).toFixed(2)}px)`,
+                    transition: 'opacity 200ms ease, transform 200ms ease',
+                    display: shrinkProgress >= 0.98 ? 'none' : undefined,
+                  }}
+                >
+                  {subtitle}
+                </span>
+              ) : null}
+            </div>
+            {restaurantId ? (
+              <KioskActionButton
+                href={`/kiosk/${restaurantId}/cart`}
+                className="px-4 py-2 text-sm font-semibold sm:px-5 sm:py-3"
+                style={{
+                  transform: `translateY(${(-2 * shrinkProgress).toFixed(2)}px) scale(${1 - 0.04 * shrinkProgress})`,
+                  transition: 'transform 200ms ease',
+                  transformOrigin: 'center',
+                }}
+              >
+                <ShoppingCartIcon className="h-5 w-5" />
+                View cart ({cartCount})
+              </KioskActionButton>
+            ) : null}
           </div>
-          {restaurantId ? (
-            <KioskActionButton href={`/kiosk/${restaurantId}/cart`} className="px-4 py-2 text-sm font-semibold">
-              <ShoppingCartIcon className="h-5 w-5" />
-              View cart ({cartCount})
-            </KioskActionButton>
-          ) : null}
         </div>
+        {categoryBar ? (
+          <div
+            className="border-t border-neutral-200 bg-white"
+            style={{
+              paddingTop: `${8 - 4 * clampedProgress}px`,
+              paddingBottom: `${8 - 4 * clampedProgress}px`,
+              transition: 'padding 200ms ease',
+            }}
+          >
+            {categoryBar}
+          </div>
+        ) : null}
       </header>
     );
-  }, [cartCount, restaurant?.name, restaurantId]);
+  }, [cartCount, categoryBar, clampedProgress, headerPaddingY, restaurant?.name, restaurant?.website_description, restaurantId, shrinkProgress, titleScale]);
 
   const handleFullscreenPromptClick = useCallback(async () => {
     await Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]);
   }, [attemptFullscreen, requestWakeLock]);
 
   return (
-    <div className="min-h-screen w-full overflow-hidden bg-white text-neutral-900" style={layoutStyle}>
-      <main className="flex min-h-screen flex-col overflow-hidden">
-        {headerContent}
-        <div
-          className={`flex-1 overflow-auto bg-white px-4 py-6 transition-opacity duration-200 sm:px-8 ${
-            contentVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
-          }`}
-        >
-          <div className="mx-auto flex w-full max-w-none flex-col gap-8">{children}</div>
-        </div>
+    <div className="min-h-screen w-full bg-white text-neutral-900" style={layoutStyle}>
+      {headerContent}
+      <main
+        className={`transition-opacity duration-200 ${
+          contentVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+      >
+        <div className="mx-auto w-full max-w-none px-4 pb-10 sm:px-8">{children}</div>
       </main>
       {homeVisible ? (
         <HomeScreen restaurant={restaurant || null} onStart={startOrdering} fadingOut={homeFading} />
@@ -439,10 +502,7 @@ export default function KioskLayout({
           <div className="w-full max-w-sm rounded-3xl border border-neutral-200 bg-white p-6 shadow-2xl shadow-black/10">
             <p className="text-lg font-semibold text-neutral-900">Tap to enter kiosk mode</p>
             <p className="mt-2 text-sm text-neutral-600">Tap below to stay fully immersed in the kiosk experience.</p>
-            <KioskActionButton
-              onClick={handleFullscreenPromptClick}
-              className="mt-6 w-full justify-center text-base"
-            >
+            <KioskActionButton onClick={handleFullscreenPromptClick} className="mt-6 w-full justify-center text-base">
               Enter fullscreen
             </KioskActionButton>
           </div>
