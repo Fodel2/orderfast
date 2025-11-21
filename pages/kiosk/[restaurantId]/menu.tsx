@@ -7,10 +7,7 @@ import { ITEM_ADDON_LINK_WITH_GROUPS_SELECT } from '@/lib/queries/addons';
 import Skeleton from '@/components/ui/Skeleton';
 import { useCart } from '@/context/CartContext';
 import KioskCategories from '@/components/kiosk/KioskCategories';
-import {
-  KIOSK_CATEGORY_BAR_HEIGHT,
-  KIOSK_HEADER_FULL_HEIGHT,
-} from '@/components/kiosk/kioskHeaderConstants';
+import { KIOSK_CATEGORY_BAR_HEIGHT, KIOSK_HEADER_FULL_HEIGHT } from '@/components/kiosk/kioskHeaderConstants';
 
 type Category = {
   id: number;
@@ -63,10 +60,7 @@ export default function KioskMenuPage() {
   const lastScrollTargetRef = useRef<number | null>(null);
   const { cart } = useCart();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
-  const chromeOffset = useMemo(
-    () => KIOSK_HEADER_FULL_HEIGHT + KIOSK_CATEGORY_BAR_HEIGHT,
-    []
-  );
+  const chromeOffset = KIOSK_HEADER_FULL_HEIGHT + KIOSK_CATEGORY_BAR_HEIGHT;
 
   useEffect(() => {
     if (!restaurantId) {
@@ -288,7 +282,22 @@ export default function KioskMenuPage() {
   }, [categorizedItems, chromeOffset]);
 
   return (
-    <KioskLayout restaurantId={restaurantId} restaurant={restaurant} cartCount={cartCount}>
+    <KioskLayout
+      restaurantId={restaurantId}
+      restaurant={restaurant}
+      cartCount={cartCount}
+      categoryBar={
+        categorizedItems.length ? (
+          <div className="w-full border-b border-neutral-200 bg-white px-4 sm:px-8">
+            <KioskCategories
+              categories={categorizedItems}
+              activeCategoryId={activeCategoryId}
+              onSelect={handleCategorySelect}
+            />
+          </div>
+        ) : null
+      }
+    >
       {loading ? (
         <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 6 }).map((_, idx) => (
@@ -301,19 +310,6 @@ export default function KioskMenuPage() {
         </div>
       ) : (
         <div className="flex flex-col gap-10">
-          {categorizedItems.length ? (
-            <div
-              className="sticky z-30 w-full bg-white/95 px-4 backdrop-blur sm:px-8"
-              style={{ top: 'var(--kiosk-header-height, 148px)' }}
-            >
-              <KioskCategories
-                categories={categorizedItems}
-                activeCategoryId={activeCategoryId}
-                onSelect={handleCategorySelect}
-              />
-              <div className="h-px w-full bg-neutral-200" />
-            </div>
-          ) : null}
           {categorizedItems.map((category) => (
             <section
               key={category.id}

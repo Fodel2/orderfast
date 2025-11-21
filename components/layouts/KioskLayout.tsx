@@ -13,7 +13,6 @@ import HomeScreen, { type KioskRestaurant } from '@/components/kiosk/HomeScreen'
 import KioskActionButton from '@/components/kiosk/KioskActionButton';
 import { clearHomeSeen, hasSeenHome, markHomeSeen } from '@/utils/kiosk/session';
 import {
-  KIOSK_CATEGORY_BAR_HEIGHT,
   KIOSK_HEADER_COLLAPSED_HEIGHT,
   KIOSK_HEADER_FULL_HEIGHT,
   KIOSK_HEADER_SHRINK_THRESHOLD,
@@ -43,6 +42,7 @@ type KioskLayoutProps = {
   cartCount?: number;
   children: ReactNode;
   forceHome?: boolean;
+  categoryBar?: ReactNode;
 };
 
 export default function KioskLayout({
@@ -51,6 +51,7 @@ export default function KioskLayout({
   cartCount = 0,
   children,
   forceHome = false,
+  categoryBar,
 }: KioskLayoutProps) {
   const router = useRouter();
   const [wakeLock, setWakeLock] = useState<WakeLockSentinel | null>(null);
@@ -83,20 +84,6 @@ export default function KioskLayout({
   const headerTranslateY = useMemo(() => -10 * Math.min(Math.max(shrinkProgress, 0), 1), [shrinkProgress]);
   const headerPaddingY = useMemo(() => 32 - 14 * Math.min(Math.max(shrinkProgress, 0), 1), [shrinkProgress]);
   const titleScale = useMemo(() => 1 - 0.08 * Math.min(Math.max(shrinkProgress, 0), 1), [shrinkProgress]);
-  const layoutWithHeaderStyle = useMemo(
-    () =>
-      ({
-        ...layoutStyle,
-        '--kiosk-header-height': `${headerHeight}px`,
-        '--kiosk-category-height': `${KIOSK_CATEGORY_BAR_HEIGHT}px`,
-        '--kiosk-header-progress': shrinkProgress,
-        '--kiosk-header-translate': `${headerTranslateY}px`,
-        '--kiosk-header-padding-y': `${headerPaddingY}px`,
-        '--kiosk-header-title-scale': titleScale,
-      }) as CSSProperties,
-    [headerHeight, headerPaddingY, headerTranslateY, layoutStyle, shrinkProgress, titleScale]
-  );
-
   const isFullscreenActive = useCallback(() => {
     if (typeof document === 'undefined') return false;
     const anyDoc = document as Document & { webkitFullscreenElement?: Element | null };
@@ -432,7 +419,7 @@ export default function KioskLayout({
     return (
       <header
         data-kiosk-header
-        className="sticky top-0 z-40 w-full border-b border-neutral-200 bg-white/90 text-neutral-900 shadow-sm backdrop-blur"
+        className="sticky top-0 z-50 w-full border-b border-neutral-200 bg-white text-neutral-900 shadow-sm"
         style={headerStyle}
       >
         <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-4 sm:px-6">
@@ -485,8 +472,16 @@ export default function KioskLayout({
   }, [attemptFullscreen, requestWakeLock]);
 
   return (
-    <div className="min-h-screen w-full bg-white text-neutral-900" style={layoutWithHeaderStyle}>
+    <div className="min-h-screen w-full bg-white text-neutral-900" style={layoutStyle}>
       {headerContent}
+      {categoryBar ? (
+        <div
+          className="sticky z-40 bg-white"
+          style={{ top: `${KIOSK_HEADER_FULL_HEIGHT}px` }}
+        >
+          {categoryBar}
+        </div>
+      ) : null}
       <main
         className={`transition-opacity duration-200 ${
           contentVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
