@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import MenuItemCard from '@/components/MenuItemCard';
-import KioskLayout from '@/components/layouts/KioskLayout';
+import KioskLayout, { KIOSK_CATEGORY_HEIGHT, KIOSK_HEADER_HEIGHT } from '@/components/layouts/KioskLayout';
 import { supabase } from '@/lib/supabaseClient';
 import { ITEM_ADDON_LINK_WITH_GROUPS_SELECT } from '@/lib/queries/addons';
 import Skeleton from '@/components/ui/Skeleton';
@@ -209,8 +209,11 @@ export default function KioskMenuPage() {
     (categoryId: number) => {
       setActiveCategoryId(categoryId);
       const el = document.getElementById(`cat-${categoryId}`);
-      if (!el) return;
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (!el || typeof window === 'undefined') return;
+      window.scrollTo({
+        top: el.offsetTop - (KIOSK_HEADER_HEIGHT + KIOSK_CATEGORY_HEIGHT),
+        behavior: 'smooth',
+      });
     },
     []
   );

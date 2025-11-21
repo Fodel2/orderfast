@@ -9,7 +9,7 @@ interface KioskCategoriesProps {
 export default function KioskCategories({ categories, activeCategoryId, onSelect }: KioskCategoriesProps) {
   return (
     <div
-      className="flex gap-3 overflow-x-auto bg-white px-4 py-3 sm:px-6 sticky"
+      className="flex flex-wrap gap-3 overflow-x-auto bg-white px-4 py-3 sm:px-6 md:flex-nowrap"
       role="tablist"
       aria-label="Categories"
     >

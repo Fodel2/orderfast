@@ -13,8 +13,8 @@ import HomeScreen, { type KioskRestaurant } from '@/components/kiosk/HomeScreen'
 import KioskActionButton from '@/components/kiosk/KioskActionButton';
 import { clearHomeSeen, hasSeenHome, markHomeSeen } from '@/utils/kiosk/session';
 
-const HEADER_HEIGHT = 110;
-const CATEGORY_HEIGHT = 64;
+export const KIOSK_HEADER_HEIGHT = 88;
+export const KIOSK_CATEGORY_HEIGHT = 64;
 
 interface WakeLockSentinel {
   released: boolean;
@@ -396,7 +396,7 @@ export default function KioskLayout({
   const subtitle = restaurant?.website_description;
 
   const brandScale = 1 - shrinkProgress * 0.08;
-  const paddingY = Math.max(14, 24 - shrinkProgress * 8);
+  const paddingY = Math.max(12, 20 - shrinkProgress * 6);
   const subtitleOpacity = Math.max(0, 1 - shrinkProgress * 0.6);
   const showHeader = !homeVisible;
   const showCategoryBar = showHeader && Boolean(categoryBar);
@@ -411,11 +411,11 @@ export default function KioskLayout({
         <>
           <header
             id="kioskHeader"
-            className="sticky top-0 z-[100] w-full border-b border-neutral-200 bg-white text-neutral-900 shadow-sm"
-            style={{ height: HEADER_HEIGHT }}
+            className="fixed top-0 left-0 right-0 z-50 w-full border-b border-neutral-200 bg-white text-neutral-900 shadow-sm"
+            style={{ height: `${KIOSK_HEADER_HEIGHT}px` }}
           >
             <div
-              className="mx-auto flex w-full max-w-5xl items-start justify-between px-4 sm:px-6"
+              className="mx-auto flex h-full w-full max-w-5xl items-center justify-between px-4 sm:px-6"
               style={{ paddingTop: paddingY, paddingBottom: paddingY, gap: '1rem' }}
             >
               <div
@@ -447,19 +447,17 @@ export default function KioskLayout({
           </header>
           {showCategoryBar ? (
             <div
-              className="sticky z-[90] border-b border-neutral-200 bg-white"
-              style={{ top: HEADER_HEIGHT, height: CATEGORY_HEIGHT }}
+              className="fixed left-0 right-0 z-40 border-b border-neutral-200 bg-white"
+              style={{ top: `${KIOSK_HEADER_HEIGHT}px`, height: `${KIOSK_CATEGORY_HEIGHT}px` }}
             >
-              <div className="mx-auto w-full max-w-5xl px-4 sm:px-6" style={{ height: '100%' }}>
-                <div className="flex h-full items-center">{categoryBar}</div>
-              </div>
+              <div className="mx-auto flex h-full w-full max-w-5xl items-center px-4 sm:px-6">{categoryBar}</div>
             </div>
           ) : null}
         </>
       ) : null}
       <main
         id="kioskContent"
-        style={{ paddingTop: showHeader ? HEADER_HEIGHT + CATEGORY_HEIGHT : 0 }}
+        style={{ paddingTop: showHeader ? KIOSK_HEADER_HEIGHT + KIOSK_CATEGORY_HEIGHT : 0 }}
         className={`transition-opacity duration-200 ${contentVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
       >
         <div className="mx-auto w-full max-w-none px-4 pb-10 sm:px-8">{contentVisible ? children : null}</div>
