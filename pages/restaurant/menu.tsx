@@ -305,7 +305,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
               className={`sticky top-[60px] z-20 pt-2 pb-3 bg-white/70 backdrop-blur supports-[backdrop-filter]:backdrop-blur rounded-b-xl transition-all duration-400 ease-out will-change-transform will-change-opacity ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'}`}
               style={{ transitionDelay: '100ms' }}
             >
-              <div className="flex gap-3 overflow-x-auto overflow-y-visible no-scrollbar py-2 md:py-3">
+              <div className="flex gap-3 overflow-x-auto overflow-y-hidden no-scrollbar py-2 md:py-3">
                 {categories.map((c: any) => {
                   const isActive = activeCat === String(c.id);
                   const cls = isActive
