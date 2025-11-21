@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import KioskLayout from '@/components/layouts/KioskLayout';
 import { supabase } from '@/lib/supabaseClient';
 import KioskActionButton from '@/components/kiosk/KioskActionButton';
+import { CheckIcon } from '@heroicons/react/24/outline';
 
 type Restaurant = {
   id: string;
@@ -55,20 +56,35 @@ export default function KioskConfirmPage() {
     };
   }, [restaurantId]);
 
+  const minimalHeader = useMemo(
+    () => (
+      <div className="mx-auto w-full max-w-5xl px-4 pt-[calc(env(safe-area-inset-top)+16px)]" aria-hidden />
+    ),
+    []
+  );
+
   return (
-    <KioskLayout restaurantId={restaurantId} restaurant={restaurant}>
-      <div className="mx-auto w-full max-w-4xl rounded-3xl border border-neutral-200 bg-white p-10 text-center shadow-xl">
-        <h2 className="text-3xl font-semibold tracking-tight text-neutral-900">Order placed</h2>
-        <p className="mt-4 text-base text-neutral-600">
-          Your order is being prepared. Please wait for the staff to confirm your pickup number on screen.
-        </p>
-        {restaurantId ? (
-          <div className="mt-8 flex justify-center">
-            <KioskActionButton href={`/kiosk/${restaurantId}/menu`} className="px-6 py-3 text-sm uppercase tracking-wide">
-              Start a new order
-            </KioskActionButton>
+    <KioskLayout restaurantId={restaurantId} restaurant={restaurant} customHeaderContent={minimalHeader}>
+      <div className="mx-auto flex min-h-[70vh] w-full max-w-2xl flex-col items-center justify-center px-4 py-10 sm:py-14">
+        <div className="w-full rounded-[32px] border border-neutral-200 bg-white/95 px-7 py-10 text-center shadow-2xl shadow-neutral-300/40 backdrop-blur sm:px-9 sm:py-12">
+          <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 shadow-[0_15px_50px_-30px_rgba(16,185,129,0.9)]">
+            <CheckIcon className="h-10 w-10" strokeWidth={2.4} />
           </div>
-        ) : null}
+          <h2 className="text-3xl font-semibold tracking-tight text-neutral-900 sm:text-[32px]">Order placed</h2>
+          <p className="mt-4 text-base leading-relaxed text-neutral-600 sm:text-lg">
+            Your order is being prepared. Please wait for the staff to confirm your pickup number on screen.
+          </p>
+          {restaurantId ? (
+            <div className="mt-8 flex justify-center">
+              <KioskActionButton
+                href={`/kiosk/${restaurantId}/menu`}
+                className="px-7 py-3 text-sm font-semibold uppercase tracking-wide sm:text-base"
+              >
+                Start a new order
+              </KioskActionButton>
+            </div>
+          ) : null}
+        </div>
       </div>
     </KioskLayout>
   );
