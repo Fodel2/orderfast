@@ -435,12 +435,19 @@ export default function KioskLayout({
                 style={{ transform: `scale(${brandScale})`, transformOrigin: 'left center' }}
               >
                 {showLogo ? (
-                  <div className="hidden sm:block">
-                    <div className="relative h-12 w-12 overflow-hidden rounded-2xl bg-neutral-100 shadow-sm">
+                  <div
+                    className="hidden md:block shrink-0"
+                    style={{
+                      transform: `scale(${1 - 0.05 * shrinkProgress})`,
+                      transformOrigin: 'left center',
+                      transition: 'transform 200ms ease',
+                    }}
+                  >
+                    <div className="h-12 w-auto">
                       <img
                         src={restaurant?.logo_url ?? ''}
                         alt={`${headerTitle} logo`}
-                        className="h-full w-full object-cover"
+                        className="h-full w-auto object-contain"
                       />
                     </div>
                   </div>
