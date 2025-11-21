@@ -12,9 +12,11 @@ import {
 import HomeScreen, { type KioskRestaurant } from '@/components/kiosk/HomeScreen';
 import KioskActionButton from '@/components/kiosk/KioskActionButton';
 import { clearHomeSeen, hasSeenHome, markHomeSeen } from '@/utils/kiosk/session';
-const KIOSK_HEADER_FULL_HEIGHT = 148;
-const KIOSK_HEADER_COLLAPSED_HEIGHT = 92;
-const KIOSK_HEADER_SHRINK_THRESHOLD = 64;
+import {
+  KIOSK_HEADER_COLLAPSED_HEIGHT,
+  KIOSK_HEADER_FULL_HEIGHT,
+  KIOSK_HEADER_SHRINK_THRESHOLD,
+} from '@/components/kiosk/kioskHeaderConstants';
 
 interface WakeLockSentinel {
   released: boolean;
@@ -420,10 +422,10 @@ export default function KioskLayout({
     };
 
     return (
-      <div className="sticky top-0 z-50 bg-white">
-        <header
+      <header className="sticky top-0 z-50 w-full border-b border-neutral-200 bg-white text-neutral-900 shadow-sm">
+        <div
           data-kiosk-header
-          className="w-full border-b border-neutral-200 bg-white text-neutral-900 shadow-sm"
+          className="w-full"
           style={headerStyle}
         >
           <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-4 sm:px-6">
@@ -467,9 +469,9 @@ export default function KioskLayout({
               </KioskActionButton>
             ) : null}
           </div>
-        </header>
-        {categoryBar ? <div className="border-b border-neutral-200">{categoryBar}</div> : null}
-      </div>
+        </div>
+        {categoryBar ? <div className="border-t border-neutral-200 bg-white">{categoryBar}</div> : null}
+      </header>
     );
   }, [cartCount, categoryBar, headerHeight, headerPaddingY, headerTranslateY, restaurant?.name, restaurant?.website_description, restaurantId, shrinkProgress, titleScale]);
 

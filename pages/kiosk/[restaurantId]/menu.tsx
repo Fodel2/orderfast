@@ -7,6 +7,7 @@ import { ITEM_ADDON_LINK_WITH_GROUPS_SELECT } from '@/lib/queries/addons';
 import Skeleton from '@/components/ui/Skeleton';
 import { useCart } from '@/context/CartContext';
 import KioskCategories from '@/components/kiosk/KioskCategories';
+import { KIOSK_CHROME_OFFSET } from '@/components/kiosk/kioskHeaderConstants';
 
 type Category = {
   id: number;
@@ -59,7 +60,6 @@ export default function KioskMenuPage() {
   const lastScrollTargetRef = useRef<number | null>(null);
   const { cart } = useCart();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
-  const CHROME_OFFSET = 220;
 
   useEffect(() => {
     if (!restaurantId) {
@@ -258,7 +258,7 @@ export default function KioskMenuPage() {
       },
       {
         root: null,
-        rootMargin: `-${CHROME_OFFSET}px 0px -55% 0px`,
+        rootMargin: `-${KIOSK_CHROME_OFFSET}px 0px -55% 0px`,
         threshold: [0.25, 0.5, 0.75, 1],
       }
     );
@@ -275,7 +275,7 @@ export default function KioskMenuPage() {
     return () => {
       observer.disconnect();
     };
-  }, [categorizedItems, CHROME_OFFSET]);
+  }, [categorizedItems, KIOSK_CHROME_OFFSET]);
 
   return (
     <KioskLayout
@@ -309,7 +309,7 @@ export default function KioskMenuPage() {
               key={category.id}
               id={`cat-${category.id}`}
               className="flex flex-col gap-4"
-              style={{ scrollMarginTop: `${CHROME_OFFSET}px` }}
+              style={{ scrollMarginTop: `${KIOSK_CHROME_OFFSET}px` }}
             >
               <header className="flex flex-col gap-1">
                 <h2 className="text-2xl font-semibold tracking-tight text-neutral-900">{category.name}</h2>
