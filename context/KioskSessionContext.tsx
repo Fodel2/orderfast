@@ -48,18 +48,29 @@ export function KioskSessionProvider({
 }) {
   const router = useRouter();
   const { clearCart } = useCart();
-  const [sessionActive, setSessionActive] = useState<boolean>(() => Boolean(restaurantId && hasSeenHome(restaurantId)));
+  const [sessionActiveState, setSessionActiveState] = useState<boolean>(() => Boolean(restaurantId && hasSeenHome(restaurantId)));
   const [showIdleModal, setShowIdleModal] = useState(false);
   const [idleCountdown, setIdleCountdown] = useState(10);
   const [idleMessage, setIdleMessage] = useState('');
   const idleTimeoutRef = useRef<number | null>(null);
   const idleCountdownIntervalRef = useRef<number | null>(null);
+  const sessionActiveRef = useRef(sessionActiveState);
 
   const basePath = useMemo(() => (restaurantId ? `/kiosk/${restaurantId}` : '/kiosk'), [restaurantId]);
+  const sessionActive = sessionActiveState;
+
+  useEffect(() => {
+    sessionActiveRef.current = sessionActiveState;
+  }, [sessionActiveState]);
+
+  const setSessionActive = useCallback((active: boolean) => {
+    sessionActiveRef.current = active;
+    setSessionActiveState(active);
+  }, []);
 
   useEffect(() => {
     setSessionActive(Boolean(restaurantId && hasSeenHome(restaurantId)));
-  }, [restaurantId]);
+  }, [restaurantId, setSessionActive]);
 
   const idleMessages = useMemo(
     () => [
@@ -81,7 +92,6 @@ export function KioskSessionProvider({
   const idleOverlayStyle = useMemo(
     () =>
       ({
-        height: '100dvh',
         paddingTop: 'env(safe-area-inset-top)',
         paddingBottom: 'env(safe-area-inset-bottom)',
         overflow: 'hidden',
@@ -90,7 +100,11 @@ export function KioskSessionProvider({
   );
 
   const idleCardStyle = useMemo(
-    () => ({ maxHeight: 'calc(100dvh - 32px - env(safe-area-inset-bottom))' }) as CSSProperties,
+    () =>
+      ({
+        maxHeight: 'calc(100dvh - 64px - env(safe-area-inset-bottom))',
+        overflowY: 'auto',
+      }) as CSSProperties,
     []
   );
 
@@ -111,7 +125,7 @@ export function KioskSessionProvider({
     }
     setSessionActive(false);
     router.push(basePath).catch(() => undefined);
-  }, [basePath, clearCart, restaurantId, router]);
+  }, [basePath, clearCart, restaurantId, router, setSessionActive]);
 
   const startIdleCountdown = useCallback(() => {
     if (idleCountdownIntervalRef.current) {
@@ -120,7 +134,8 @@ export function KioskSessionProvider({
     setIdleCountdown(10);
     idleCountdownIntervalRef.current = window.setInterval(() => {
       setIdleCountdown((prev) => {
-        if (prev <= 1) {
+        const next = prev - 1;
+        if (next <= 0) {
           if (idleCountdownIntervalRef.current) {
             clearInterval(idleCountdownIntervalRef.current);
             idleCountdownIntervalRef.current = null;
@@ -128,30 +143,29 @@ export function KioskSessionProvider({
           handleIdleTimeout();
           return 0;
         }
-        return prev - 1;
+        return next;
       });
     }, 1000);
   }, [handleIdleTimeout]);
 
   const resetIdleTimer = useCallback(() => {
-    if (!sessionActive) return;
+    if (!sessionActiveRef.current) return;
     if (idleTimeoutRef.current) {
       clearTimeout(idleTimeoutRef.current);
       idleTimeoutRef.current = null;
     }
-    if (showIdleModal) return;
     idleTimeoutRef.current = window.setTimeout(() => {
       idleTimeoutRef.current = null;
       setIdleMessage(getRandomMessage(idleMessages));
       setShowIdleModal(true);
       startIdleCountdown();
     }, 30000);
-  }, [getRandomMessage, idleMessages, sessionActive, showIdleModal, startIdleCountdown]);
+  }, [getRandomMessage, idleMessages, startIdleCountdown]);
 
   const registerActivity = useCallback(() => {
-    if (!sessionActive) return;
+    if (!sessionActiveRef.current) return;
     resetIdleTimer();
-  }, [resetIdleTimer, sessionActive]);
+  }, [resetIdleTimer]);
 
   const handleIdleStay = useCallback(() => {
     if (idleCountdownIntervalRef.current) {
@@ -181,7 +195,7 @@ export function KioskSessionProvider({
     }
     setSessionActive(false);
     router.push(basePath).catch(() => undefined);
-  }, [basePath, clearCart, restaurantId, router]);
+  }, [basePath, clearCart, restaurantId, router, setSessionActive]);
 
   useEffect(() => {
     if (sessionActive) {
@@ -226,41 +240,97 @@ export function KioskSessionProvider({
       {children}
       {showIdleModal ? (
         <div
-          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 px-4 backdrop-blur-sm"
+          className="idle-overlay pointer-events-auto fixed inset-0 z-[120] flex items-center justify-center bg-[rgba(0,0,0,0.55)] px-4 backdrop-blur-[8px]"
           style={idleOverlayStyle}
         >
           <div
-            className="flex w-full max-w-xl flex-col overflow-hidden rounded-[28px] bg-white shadow-2xl shadow-slate-900/25"
+            className="idle-card flex w-[calc(100%-32px)] max-w-[480px] flex-col items-center rounded-[36px] bg-white px-9 pb-10 pt-12 text-neutral-900 shadow-[0_20px_40px_rgba(0,0,0,0.25)] sm:px-10 sm:pb-12 sm:pt-[52px]"
             style={idleCardStyle}
           >
-            <div className="modalContent flex-1 overflow-y-auto overscroll-contain px-6 py-7 sm:px-8 sm:py-9">
-              <div className="flex h-full flex-col gap-6 text-center text-neutral-900">
-                <div className="space-y-2">
-                  <h3 className="text-2xl font-semibold sm:text-3xl">Still there?</h3>
-                  <p className="text-base leading-relaxed text-neutral-600 sm:text-lg">{idleMessage}</p>
-                </div>
-                <div className="flex flex-col items-center gap-2 pt-1">
-                  <span className="text-6xl font-extrabold leading-none sm:text-7xl">{idleCountdown}</span>
-                  <p className="text-sm text-neutral-500 sm:text-base">Resetting in {idleCountdown} seconds…</p>
-                </div>
-                <div className="mt-auto grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    onClick={handleIdleStay}
-                    className="inline-flex items-center justify-center rounded-2xl border border-neutral-200 px-4 py-3 text-base font-semibold text-neutral-800 transition hover:bg-neutral-50"
-                  >
-                    I’m still here
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleIdleTimeout}
-                    className="inline-flex items-center justify-center rounded-2xl bg-rose-600 px-4 py-3 text-base font-semibold uppercase tracking-wide text-white shadow-lg shadow-rose-900/20 transition hover:bg-rose-700 active:translate-y-px"
-                  >
-                    Start over
-                  </button>
-                </div>
+            <div className="flex w-full flex-col items-center text-center">
+              <h3 className="text-[32px] font-bold leading-tight sm:text-[36px]">Still there?</h3>
+              <p className="mt-3 text-[16px] leading-relaxed text-neutral-600 sm:text-[18px]">{idleMessage}</p>
+              <div className="mt-8 flex flex-col items-center">
+                <span
+                  className={`idle-count-number text-[96px] font-black leading-none sm:text-[110px] ${
+                    idleCountdown <= 3
+                      ? 'text-[#E63946]'
+                      : idleCountdown <= 6
+                      ? 'text-[#F5A623]'
+                      : 'text-[#111111]'
+                  } ${showIdleModal ? 'idle-count-bump' : ''}`}
+                  key={idleCountdown}
+                >
+                  {idleCountdown}
+                </span>
+                <p className="mt-2 text-[15px] font-medium text-[#777777]">Resetting in {idleCountdown} seconds…</p>
               </div>
             </div>
+            <div className="mt-10 flex w-full flex-col gap-4">
+              <button
+                type="button"
+                onClick={handleIdleStay}
+                className="inline-flex h-[60px] w-full items-center justify-center rounded-full border-[2px] border-[rgba(0,0,0,0.06)] bg-white text-[18px] font-semibold text-[#111111] shadow-[0_10px_35px_-18px_rgba(0,0,0,0.35)] transition hover:bg-neutral-50"
+              >
+                I’m still here
+              </button>
+              <button
+                type="button"
+                onClick={handleIdleTimeout}
+                className="inline-flex h-[68px] w-full items-center justify-center rounded-full bg-[#E63946] text-[19px] font-bold text-white shadow-[0_16px_30px_rgba(0,0,0,0.25)] transition hover:bg-[#d3323f] active:translate-y-[1px]"
+              >
+                Start over
+              </button>
+            </div>
+            <style jsx>{`
+              .idle-overlay {
+                animation: idle-overlay-fade 180ms ease;
+              }
+
+              .idle-card {
+                animation: idle-card-rise 200ms ease;
+              }
+
+              .idle-count-number {
+                transition: color 160ms ease;
+              }
+
+              .idle-count-bump {
+                animation: idle-count-bump 140ms ease;
+              }
+
+              @keyframes idle-overlay-fade {
+                from {
+                  opacity: 0;
+                }
+                to {
+                  opacity: 1;
+                }
+              }
+
+              @keyframes idle-card-rise {
+                from {
+                  opacity: 0;
+                  transform: translateY(20px);
+                }
+                to {
+                  opacity: 1;
+                  transform: translateY(0);
+                }
+              }
+
+              @keyframes idle-count-bump {
+                0% {
+                  transform: scale(1);
+                }
+                45% {
+                  transform: scale(1.08);
+                }
+                100% {
+                  transform: scale(1);
+                }
+              }
+            `}</style>
           </div>
         </div>
       ) : null}
