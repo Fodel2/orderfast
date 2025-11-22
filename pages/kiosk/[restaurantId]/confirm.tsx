@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import KioskLayout from '@/components/layouts/KioskLayout';
 import { supabase } from '@/lib/supabaseClient';
 import KioskActionButton from '@/components/kiosk/KioskActionButton';
 import { CheckIcon } from '@heroicons/react/24/outline';
+import { useCart } from '@/context/CartContext';
 
 type Restaurant = {
   id: string;
@@ -23,6 +24,8 @@ export default function KioskConfirmPage() {
   const { restaurantId: routeParam } = router.query;
   const restaurantId = Array.isArray(routeParam) ? routeParam[0] : routeParam;
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
+  const { clearCart } = useCart();
+  const resetTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!restaurantId) return;
@@ -63,6 +66,38 @@ export default function KioskConfirmPage() {
     []
   );
 
+  const resetAfterOrderPlaced = useCallback(() => {
+    clearCart();
+    if (restaurantId) {
+      router.push(`/kiosk/${restaurantId}/menu`);
+    } else {
+      router.push('/kiosk');
+    }
+  }, [clearCart, restaurantId, router]);
+
+  const handleStartNewOrder = () => {
+    if (resetTimeoutRef.current) {
+      clearTimeout(resetTimeoutRef.current);
+      resetTimeoutRef.current = null;
+    }
+    resetAfterOrderPlaced();
+  };
+
+  useEffect(() => {
+    if (!restaurantId) return;
+
+    resetTimeoutRef.current = window.setTimeout(() => {
+      resetAfterOrderPlaced();
+    }, 10000);
+
+    return () => {
+      if (resetTimeoutRef.current) {
+        clearTimeout(resetTimeoutRef.current);
+        resetTimeoutRef.current = null;
+      }
+    };
+  }, [restaurantId, resetAfterOrderPlaced]);
+
   return (
     <KioskLayout restaurantId={restaurantId} restaurant={restaurant} customHeaderContent={minimalHeader}>
       <div className="mx-auto flex min-h-[70vh] w-full max-w-2xl flex-col items-center justify-center px-4 py-10 sm:py-14">
@@ -77,7 +112,7 @@ export default function KioskConfirmPage() {
           {restaurantId ? (
             <div className="mt-8 flex justify-center">
               <KioskActionButton
-                href={`/kiosk/${restaurantId}/menu`}
+                onClick={handleStartNewOrder}
                 className="px-7 py-3 text-sm font-semibold uppercase tracking-wide sm:text-base"
               >
                 Start a new order
