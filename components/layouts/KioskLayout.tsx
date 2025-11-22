@@ -396,7 +396,10 @@ export default function KioskLayout({
   const headerContent = useMemo(() => {
     if (customHeaderContent) return customHeaderContent;
     return (
-      <div className="mx-auto flex h-full w-full max-w-5xl items-center justify-between px-4 sm:px-6" style={{ gap: '1rem' }}>
+      <div
+        className="mx-auto flex h-full w-full max-w-5xl items-center justify-between px-4 sm:px-6"
+        style={{ gap: '1rem' }}
+      >
         <div
           className="flex items-center gap-3"
           style={{ transform: `scale(${brandScale})`, transformOrigin: 'left top' }}
@@ -429,11 +432,15 @@ export default function KioskLayout({
           </div>
         </div>
         {restaurantId ? (
-          <div style={{ transform: `scale(${cartScale})`, transformOrigin: 'right center' }}>
+          <div
+            style={{ transform: `scale(${cartScale})`, transformOrigin: 'right center' }}
+            className="hidden md:block"
+          >
             <KioskActionButton
               href={`/kiosk/${restaurantId}/cart`}
               onClick={registerActivity}
-              className="px-4 py-2 text-sm font-semibold sm:px-5 sm:py-3"
+              className="px-5 py-3 text-sm font-semibold shadow-lg shadow-black/10"
+              data-cart-anchor="desktop"
             >
               <ShoppingCartIcon className="h-5 w-5" />
               View cart ({cartCount})
@@ -455,23 +462,26 @@ export default function KioskLayout({
   }, [idleCountdown]);
 
   return (
-    <div className="min-h-screen w-full bg-white text-neutral-900" style={layoutStyle}>
+    <div
+      className="min-h-screen w-full bg-gradient-to-b from-[#fafafa] via-white to-white text-neutral-900"
+      style={layoutStyle}
+    >
       {showHeader ? (
         <div
           id="kiosk-header-stack"
-          className="fixed top-0 left-0 right-0 z-50 bg-white"
+          className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur"
           style={{ willChange: 'transform' }}
         >
           <header
             id="kioskHeader"
-            className="w-full bg-white text-neutral-900"
+            className="w-full bg-transparent text-neutral-900"
             style={{ height: headerHeight, paddingTop: headerPaddingY, paddingBottom: headerPaddingY }}
           >
             {headerContent}
           </header>
           {showCategoryBar ? (
             <div
-              className="bg-white"
+              className="bg-transparent"
               style={{ height: categoryHeight, transform: `scale(${categoriesScale})`, transformOrigin: 'top center' }}
             >
               <div className="mx-auto flex h-full w-full max-w-5xl items-center px-4 sm:px-6">{categoryBar}</div>
@@ -484,7 +494,9 @@ export default function KioskLayout({
         style={{ paddingTop: showHeader ? headerHeight + categoryHeight : 0 }}
         className={`transition-opacity duration-200 ${contentVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
       >
-        <div className="mx-auto w-full max-w-none px-4 pb-10 sm:px-8">{contentVisible ? children : null}</div>
+        <div className="mx-auto w-full max-w-6xl px-4 pb-20 sm:px-8 lg:max-w-7xl">
+          {contentVisible ? children : null}
+        </div>
       </main>
       {homeVisible ? <HomeScreen restaurant={restaurant || null} onStart={startOrdering} fadingOut={homeFading} /> : null}
       {deferredPrompt && !isInstalled && !installDismissed ? (
@@ -532,6 +544,24 @@ export default function KioskLayout({
               </button>
             </div>
           </div>
+        </div>
+      ) : null}
+      {restaurantId ? (
+        <div className="fixed bottom-4 right-4 z-40 flex items-center justify-end md:hidden">
+          <KioskActionButton
+            href={`/kiosk/${restaurantId}/cart`}
+            onClick={registerActivity}
+            className="h-14 w-14 rounded-full p-0 text-base shadow-2xl shadow-black/20 transition active:scale-95"
+            aria-label={`View cart (${cartCount})`}
+            data-cart-anchor="fab"
+          >
+            <div className="relative flex h-full w-full items-center justify-center">
+              <ShoppingCartIcon className="h-6 w-6" />
+              <span className="absolute -right-1 -top-1 inline-flex min-w-[24px] items-center justify-center rounded-full bg-white px-2 text-xs font-bold text-[var(--kiosk-accent,#111827)] shadow-md">
+                {cartCount}
+              </span>
+            </div>
+          </KioskActionButton>
         </div>
       ) : null}
       <style jsx global>{`
