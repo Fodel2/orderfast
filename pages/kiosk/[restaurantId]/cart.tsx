@@ -159,7 +159,9 @@ export default function KioskCartPage() {
   const resetIdleTimer = useCallback(() => {
     if (idleTimeoutRef.current) {
       clearTimeout(idleTimeoutRef.current);
+      idleTimeoutRef.current = null;
     }
+    if (showIdleModal) return;
     idleTimeoutRef.current = window.setTimeout(() => {
       idleTimeoutRef.current = null;
       setIdleMessage(getRandomMessage(idleMessages));
@@ -167,7 +169,7 @@ export default function KioskCartPage() {
       setShowIdleModal(true);
       startIdleCountdown();
     }, 30000);
-  }, [getRandomMessage, idleMessages, startIdleCountdown]);
+  }, [getRandomMessage, idleMessages, showIdleModal, startIdleCountdown]);
 
   const registerActivity = useCallback(() => {
     resetIdleTimer();
