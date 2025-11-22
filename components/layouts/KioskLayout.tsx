@@ -12,7 +12,8 @@ import {
 } from 'react';
 import HomeScreen, { type KioskRestaurant } from '@/components/kiosk/HomeScreen';
 import KioskActionButton from '@/components/kiosk/KioskActionButton';
-import { clearHomeSeen, hasSeenHome, markHomeSeen } from '@/utils/kiosk/session';
+import { useKioskSession } from '@/context/KioskSessionContext';
+import { hasSeenHome, markHomeSeen } from '@/utils/kiosk/session';
 
 export const FULL_HEADER_HEIGHT = 148;
 export const COLLAPSED_HEADER_HEIGHT = 92;
@@ -72,8 +73,8 @@ export default function KioskLayout({
   const [showFullscreenPrompt, setShowFullscreenPrompt] = useState(false);
   const autoPromptedRef = useRef(false);
   const fullscreenRequestInFlight = useRef(false);
-  const inactivityTimer = useRef<NodeJS.Timeout | null>(null);
   const accentColor = useMemo(() => restaurant?.theme_primary_color || '#111827', [restaurant?.theme_primary_color]);
+  const { setSessionActive, registerActivity } = useKioskSession();
   const layoutStyle = useMemo(
     () => ({
       '--kiosk-accent': accentColor,
@@ -323,7 +324,10 @@ export default function KioskLayout({
     const shouldShow = forceHome || !hasSeenHome(restaurantId);
     setHomeVisible(shouldShow);
     setContentVisible(!shouldShow);
-  }, [forceHome, restaurantId]);
+    if (shouldShow) {
+      setSessionActive(false);
+    }
+  }, [forceHome, restaurantId, setSessionActive]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -348,6 +352,8 @@ export default function KioskLayout({
     if (restaurantId) {
       markHomeSeen(restaurantId);
     }
+    setSessionActive(true);
+    registerActivity();
     setHomeFading(true);
     setContentVisible(true);
     setTimeout(() => {
@@ -358,44 +364,7 @@ export default function KioskLayout({
     if (menuPath && router.asPath !== menuPath) {
       router.push(menuPath).catch(() => undefined);
     }
-    resetInactivityTimer();
-  }, [attemptFullscreen, menuPath, requestWakeLock, restaurantId, router]);
-
-  const resetInactivityTimer = useCallback(() => {
-    if (inactivityTimer.current) {
-      clearTimeout(inactivityTimer.current);
-    }
-    if (homeVisible) return;
-    inactivityTimer.current = setTimeout(() => {
-      if (!restaurantId) return;
-      clearHomeSeen(restaurantId);
-      setHomeVisible(true);
-      setContentVisible(false);
-      if (basePath && router.asPath !== basePath) {
-        router.push(basePath).catch(() => undefined);
-      }
-    }, 25000);
-  }, [basePath, homeVisible, restaurantId, router]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const handleUserActivity = () => {
-      resetInactivityTimer();
-    };
-
-    const events = ['pointerdown', 'keydown', 'scroll', 'touchstart'];
-    events.forEach((evt) => window.addEventListener(evt, handleUserActivity, { passive: true }));
-
-    resetInactivityTimer();
-
-    return () => {
-      if (inactivityTimer.current) {
-        clearTimeout(inactivityTimer.current);
-      }
-      events.forEach((evt) => window.removeEventListener(evt, handleUserActivity));
-    };
-  }, [resetInactivityTimer]);
+  }, [attemptFullscreen, menuPath, registerActivity, requestWakeLock, restaurantId, router]);
 
   const headerTitle = restaurant?.name || 'Restaurant';
   const subtitle = restaurant?.website_description;
@@ -454,6 +423,7 @@ export default function KioskLayout({
           <div style={{ transform: `scale(${cartScale})`, transformOrigin: 'right center' }}>
             <KioskActionButton
               href={`/kiosk/${restaurantId}/cart`}
+              onClick={registerActivity}
               className="px-4 py-2 text-sm font-semibold sm:px-5 sm:py-3"
             >
               <ShoppingCartIcon className="h-5 w-5" />

@@ -7,6 +7,7 @@ import KioskLayout, {
   FULL_CAT_HEIGHT,
   FULL_HEADER_HEIGHT,
 } from '@/components/layouts/KioskLayout';
+import { KioskSessionProvider, useKioskSession } from '@/context/KioskSessionContext';
 import { supabase } from '@/lib/supabaseClient';
 import { ITEM_ADDON_LINK_WITH_GROUPS_SELECT } from '@/lib/queries/addons';
 import Skeleton from '@/components/ui/Skeleton';
@@ -54,6 +55,15 @@ export default function KioskMenuPage() {
   const router = useRouter();
   const { restaurantId: routeParam } = router.query;
   const restaurantId = Array.isArray(routeParam) ? routeParam[0] : routeParam;
+
+  return (
+    <KioskSessionProvider restaurantId={restaurantId}>
+      <KioskMenuScreen restaurantId={restaurantId} />
+    </KioskSessionProvider>
+  );
+}
+
+function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [items, setItems] = useState<Item[]>([]);
@@ -62,6 +72,7 @@ export default function KioskMenuPage() {
   const [activeCategoryId, setActiveCategoryId] = useState<number | null>(null);
   const { cart } = useCart();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
+  const { registerActivity } = useKioskSession();
 
   useEffect(() => {
     if (!restaurantId) {
@@ -223,6 +234,7 @@ export default function KioskMenuPage() {
 
   const handleCategorySelect = useCallback(
     (categoryId: number) => {
+      registerActivity();
       setActiveCategoryId(categoryId);
       const el = document.getElementById(`cat-${categoryId}`);
       if (!el || typeof window === 'undefined') return;
@@ -232,7 +244,7 @@ export default function KioskMenuPage() {
         behavior: 'smooth',
       });
     },
-    [getCurrentHeaderHeights]
+    [getCurrentHeaderHeights, registerActivity]
   );
 
   useEffect(() => {
@@ -289,6 +301,7 @@ export default function KioskMenuPage() {
                       restaurantId={restaurantId}
                       restaurantLogoUrl={restaurant?.logo_url ?? null}
                       mode="kiosk"
+                      onInteraction={registerActivity}
                     />
                   ))}
                 </div>
@@ -308,6 +321,7 @@ export default function KioskMenuPage() {
                       restaurantId={restaurantId}
                       restaurantLogoUrl={restaurant?.logo_url ?? null}
                       mode="kiosk"
+                      onInteraction={registerActivity}
                     />
                   ))}
                 </div>

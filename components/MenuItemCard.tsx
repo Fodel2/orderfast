@@ -41,11 +41,13 @@ export default function MenuItemCard({
   restaurantId,
   restaurantLogoUrl,
   mode,
+  onInteraction,
 }: {
   item: MenuItem;
   restaurantId?: string | number;
   restaurantLogoUrl?: string | null;
   mode?: 'customer' | 'kiosk';
+  onInteraction?: () => void;
 }) {
   const [showModal, setShowModal] = useState(false);
   const { addToCart } = useCart();
@@ -113,11 +115,13 @@ export default function MenuItemCard({
   }, [item?.is_18_plus, item?.is_vegan, item?.is_vegetarian]);
 
   const handleClick = () => {
+    onInteraction?.();
     if (!restaurantKey) return;
     setShowModal(true);
   };
 
   const handleAddToCart = (modalItem: any, quantity: number, addons: any[]) => {
+    onInteraction?.();
     if (!restaurantKey) {
       console.warn('[menu-item-card] missing restaurant id for addToCart', {
         itemId: item?.id,

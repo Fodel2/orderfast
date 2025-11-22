@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import { AnimatePresence, motion } from 'framer-motion';
 import CartDrawer from '@/components/CartDrawer';
 import KioskLayout from '@/components/layouts/KioskLayout';
+import { KioskSessionProvider, useKioskSession } from '@/context/KioskSessionContext';
 import { useCart } from '@/context/CartContext';
 import { supabase } from '@/lib/supabaseClient';
 import KioskActionButton from '@/components/kiosk/KioskActionButton';
@@ -25,7 +26,18 @@ export default function KioskCartPage() {
   const router = useRouter();
   const { restaurantId: routeParam } = router.query;
   const restaurantId = Array.isArray(routeParam) ? routeParam[0] : routeParam;
+
+  return (
+    <KioskSessionProvider restaurantId={restaurantId}>
+      <KioskCartScreen restaurantId={restaurantId} />
+    </KioskSessionProvider>
+  );
+}
+
+function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
+  const router = useRouter();
   const { cart, subtotal } = useCart();
+  const { resetKioskToStart, registerActivity } = useKioskSession();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const placeOrderDisabled = cartCount === 0;
@@ -35,6 +47,15 @@ export default function KioskCartPage() {
   const [namePromptMessage, setNamePromptMessage] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [nameError, setNameError] = useState('');
+  const modalOverlayStyle = {
+    height: '100dvh',
+    paddingTop: 'env(safe-area-inset-top)',
+    paddingBottom: 'env(safe-area-inset-bottom)',
+    overflow: 'hidden',
+  } as const;
+  const modalCardStyle = {
+    maxHeight: 'calc(100dvh - 32px - env(safe-area-inset-bottom))',
+  } as const;
 
   const confirmMessages = useMemo(
     () => [
@@ -74,7 +95,10 @@ export default function KioskCartPage() {
     []
   );
 
-  const getRandomMessage = (list: string[]) => list[Math.floor(Math.random() * list.length)];
+  const getRandomMessage = useCallback(
+    (list: string[]) => list[Math.floor(Math.random() * list.length)],
+    []
+  );
 
   useEffect(() => {
     if (!restaurantId) return;
@@ -114,7 +138,10 @@ export default function KioskCartPage() {
       <div className="mx-auto flex h-full w-full max-w-5xl items-start px-4 pb-3 pt-[calc(env(safe-area-inset-top)+12px)] sm:px-6">
         <button
           type="button"
-          onClick={() => router.push(`/kiosk/${restaurantId}/menu`)}
+          onClick={() => {
+            registerActivity();
+            router.push(`/kiosk/${restaurantId}/menu`);
+          }}
           className="inline-flex min-h-[3rem] items-center gap-2 rounded-full bg-white/95 px-4 py-2.5 text-base font-semibold text-neutral-900 shadow-md shadow-slate-300/70 ring-1 ring-slate-200 transition hover:-translate-y-[1px] hover:shadow-lg sm:text-lg"
         >
           <ChevronLeftIcon className="h-6 w-6" />
@@ -130,6 +157,7 @@ export default function KioskCartPage() {
   };
 
   const openConfirmModal = () => {
+    registerActivity();
     setConfirmStep(1);
     setConfirmMessage(getRandomMessage(confirmMessages));
     setCustomerName('');
@@ -139,11 +167,13 @@ export default function KioskCartPage() {
   };
 
   const goToNameStep = () => {
+    registerActivity();
     setNamePromptMessage(getRandomMessage(nameMessages));
     setConfirmStep(2);
   };
 
   const handlePlaceOrder = () => {
+    registerActivity();
     if (!customerName.trim()) {
       setNameError('We need something to call you!');
       return;
@@ -154,6 +184,7 @@ export default function KioskCartPage() {
   };
 
   const handleBackToReview = () => {
+    registerActivity();
     setConfirmStep(1);
     setNameError('');
   };
@@ -170,7 +201,7 @@ export default function KioskCartPage() {
           <h1 className="text-2xl font-semibold text-slate-900 sm:text-[26px]">Review your order</h1>
           <p className="text-base leading-relaxed text-slate-600 sm:text-lg">Check your items before placing your order.</p>
         </div>
-        <CartDrawer inline />
+        <CartDrawer inline onInteraction={registerActivity} />
       </div>
       {restaurantId ? (
         <div className="fixed bottom-0 left-0 right-0 z-30 bg-white/95 shadow-[0_-8px_40px_rgba(15,23,42,0.14)] backdrop-blur">
@@ -199,18 +230,20 @@ export default function KioskCartPage() {
         {showConfirmModal ? (
           <motion.div
             className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm"
+            style={modalOverlayStyle}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
             <motion.div
-              className="w-full max-w-lg rounded-[28px] bg-white p-6 shadow-2xl shadow-slate-900/20 sm:p-8"
+              className="flex w-full max-w-lg flex-col overflow-hidden rounded-[28px] bg-white shadow-2xl shadow-slate-900/20"
+              style={modalCardStyle}
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.96 }}
               transition={{ duration: 0.18, ease: 'easeOut' }}
             >
-              <div className="relative overflow-hidden">
+              <div className="modalContent flex-1 overflow-y-auto overscroll-contain px-6 py-6 sm:px-8 sm:py-8">
                 <AnimatePresence mode="wait">
                   {confirmStep === 1 ? (
                     <motion.div
@@ -228,7 +261,10 @@ export default function KioskCartPage() {
                       <div className="mt-auto grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <button
                           type="button"
-                          onClick={() => setShowConfirmModal(false)}
+                          onClick={() => {
+                            registerActivity();
+                            setShowConfirmModal(false);
+                          }}
                           className="inline-flex items-center justify-center rounded-2xl border border-neutral-200 px-4 py-3 text-base font-semibold text-neutral-800 transition hover:bg-neutral-50"
                         >
                           Go back
@@ -260,7 +296,10 @@ export default function KioskCartPage() {
                         <input
                           type="text"
                           value={customerName}
-                          onChange={(e) => setCustomerName(e.target.value)}
+                          onChange={(e) => {
+                            registerActivity();
+                            setCustomerName(e.target.value);
+                          }}
                           placeholder="Enter your name…"
                           className="w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-4 text-lg font-semibold text-neutral-900 shadow-inner shadow-neutral-200/70 outline-none transition focus:border-[var(--kiosk-accent,#111827)]/60 focus:bg-white"
                         />
@@ -291,6 +330,7 @@ export default function KioskCartPage() {
           </motion.div>
         ) : null}
       </AnimatePresence>
+
     </KioskLayout>
   );
 }

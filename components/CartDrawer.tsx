@@ -11,18 +11,36 @@ interface CartDrawerProps {
    * or overlay. Used for the full cart page.
    */
   inline?: boolean;
+  onInteraction?: () => void;
 }
 
 function CartContent({
   onClose,
   emptyMessage,
   inline = false,
+  onInteraction,
 }: {
   onClose?: () => void;
   emptyMessage: string;
   inline?: boolean;
+  onInteraction?: () => void;
 }) {
   const { cart, subtotal, updateQuantity, removeFromCart, clearCart } = useCart();
+
+  const handleRemove = (item_id: string) => {
+    onInteraction?.();
+    removeFromCart(item_id);
+  };
+
+  const handleUpdateQuantity = (item_id: string, newQty: number) => {
+    onInteraction?.();
+    updateQuantity(item_id, newQty);
+  };
+
+  const handleClearCart = () => {
+    onInteraction?.();
+    clearCart();
+  };
 
   return (
     <>
@@ -88,7 +106,7 @@ function CartContent({
                       </span>
                       <button
                         type="button"
-                        onClick={() => removeFromCart(item.item_id)}
+                        onClick={() => handleRemove(item.item_id)}
                         className="inline-flex items-center gap-1 text-sm font-semibold text-rose-600 transition hover:text-rose-700"
                       >
                         <Trash2 className="h-4 w-4" /> Remove
@@ -99,7 +117,7 @@ function CartContent({
                     <div className="flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-lg font-semibold text-slate-900 shadow-inner shadow-slate-200">
                       <button
                         type="button"
-                        onClick={() => updateQuantity(item.item_id, item.quantity - 1)}
+                        onClick={() => handleUpdateQuantity(item.item_id, item.quantity - 1)}
                         className="flex h-11 w-11 items-center justify-center rounded-full text-2xl transition-transform duration-150 hover:scale-[1.02] active:scale-95"
                         aria-label={`Decrease ${item.name}`}
                       >
@@ -108,7 +126,7 @@ function CartContent({
                       <span className="min-w-[2.5rem] text-center text-xl font-bold">{item.quantity}</span>
                       <button
                         type="button"
-                        onClick={() => updateQuantity(item.item_id, item.quantity + 1)}
+                        onClick={() => handleUpdateQuantity(item.item_id, item.quantity + 1)}
                         className="flex h-11 w-11 items-center justify-center rounded-full text-2xl transition-transform duration-150 hover:scale-[1.02] active:scale-95"
                         aria-label={`Increase ${item.name}`}
                       >
@@ -131,7 +149,7 @@ function CartContent({
           <div className="flex items-center justify-end border-t px-4 py-3 text-sm text-slate-600">
             <button
               type="button"
-              onClick={clearCart}
+              onClick={handleClearCart}
               className="text-sm font-semibold text-slate-500 underline underline-offset-4 transition hover:text-slate-700"
             >
               Clean Plate
@@ -143,7 +161,7 @@ function CartContent({
           <span className="text-base font-semibold text-slate-900 sm:text-lg">Subtotal: ${(subtotal / 100).toFixed(2)}</span>
           <button
             type="button"
-            onClick={clearCart}
+            onClick={handleClearCart}
             className="text-sm font-semibold text-slate-500 underline underline-offset-4 transition hover:text-slate-700"
           >
             Clean Plate
@@ -154,7 +172,7 @@ function CartContent({
   );
 }
 
-export default function CartDrawer({ inline = false }: CartDrawerProps) {
+export default function CartDrawer({ inline = false, onInteraction }: CartDrawerProps) {
   const { cart } = useCart();
   const [emptyMessage] = useState(() => randomEmptyPlateMessage());
   const [open, setOpen] = useState(false);
@@ -179,7 +197,7 @@ export default function CartDrawer({ inline = false }: CartDrawerProps) {
     // Render content directly without drawer behaviour
     return (
       <div className="mx-auto w-full max-w-4xl px-2 pb-5 pt-1.5 sm:px-4 sm:pt-5">
-        <CartContent emptyMessage={emptyMessage} inline />
+        <CartContent emptyMessage={emptyMessage} inline onInteraction={onInteraction} />
       </div>
     );
   }
@@ -201,7 +219,7 @@ export default function CartDrawer({ inline = false }: CartDrawerProps) {
         <>
           <div className="fixed inset-0 bg-black/40 z-40" onClick={toggle} />
           <div className="fixed inset-y-0 right-0 w-80 max-w-full bg-white shadow-lg z-50">
-            <CartContent onClose={toggle} emptyMessage={emptyMessage} />
+            <CartContent onClose={toggle} emptyMessage={emptyMessage} onInteraction={onInteraction} />
           </div>
         </>
       )}
