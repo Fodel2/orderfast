@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
+import { AnimatePresence, motion } from 'framer-motion';
 import CartDrawer from '@/components/CartDrawer';
 import KioskLayout from '@/components/layouts/KioskLayout';
 import { useCart } from '@/context/CartContext';
@@ -28,6 +29,52 @@ export default function KioskCartPage() {
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const placeOrderDisabled = cartCount === 0;
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmStep, setConfirmStep] = useState<1 | 2>(1);
+  const [confirmMessage, setConfirmMessage] = useState('');
+  const [namePromptMessage, setNamePromptMessage] = useState('');
+  const [customerName, setCustomerName] = useState('');
+  const [nameError, setNameError] = useState('');
+
+  const confirmMessages = useMemo(
+    () => [
+      'Everything look right? Now’s your moment of truth.',
+      'Spot anything odd? Maybe it’s your order. Maybe it’s your life choices.',
+      'Quick check — the kitchen takes this personally.',
+      'Anything missing? Extra sauce? Emotional support items?',
+      'You’re almost there. Just confirm you’re not ordering by accident.',
+      'Is everything correct? Pretend we care — we actually do.',
+      'Before you blame the chef, double-check your order.',
+      'Review your order, because we don\'t accept responsibility for your hunger-related decisions.',
+      'Take a second look. We’ll wait. The kitchen won’t.',
+      'Everything perfect? Pinky promise?',
+      'Double-check. Triple-check. Mega-check.',
+      'Before we send this to the kitchen gods…',
+      'Final chance! The tortilla cannot be unwrapped once wrapped.',
+      'Ready? Because our chefs definitely are not.',
+    ],
+    []
+  );
+
+  const nameMessages = useMemo(
+    () => [
+      'Who we gonna call?',
+      'What name should we shout when it’s ready?',
+      'Tell us the name of the chosen one.',
+      'Who shall we summon when your order is complete?',
+      'A name, please. Preferably your own.',
+      'What do we yell when your food is done?',
+      'Write down something we can shout confidently across the room.',
+      'Give us a name worthy of a sizzling plate.',
+      'Your legendary name goes here.',
+      'Be honest. What should we call you today?',
+      'Your food needs a name. So do you.',
+      'Enter your government-approved food-collection alias.',
+    ],
+    []
+  );
+
+  const getRandomMessage = (list: string[]) => list[Math.floor(Math.random() * list.length)];
 
   useEffect(() => {
     if (!restaurantId) return;
@@ -77,6 +124,40 @@ export default function KioskCartPage() {
     );
   }, [restaurantId, router]);
 
+  const placeOrder = () => {
+    if (!restaurantId) return;
+    router.push(`/kiosk/${restaurantId}/confirm`);
+  };
+
+  const openConfirmModal = () => {
+    setConfirmStep(1);
+    setConfirmMessage(getRandomMessage(confirmMessages));
+    setCustomerName('');
+    setNameError('');
+    setNamePromptMessage('');
+    setShowConfirmModal(true);
+  };
+
+  const goToNameStep = () => {
+    setNamePromptMessage(getRandomMessage(nameMessages));
+    setConfirmStep(2);
+  };
+
+  const handlePlaceOrder = () => {
+    if (!customerName.trim()) {
+      setNameError('We need something to call you!');
+      return;
+    }
+    setNameError('');
+    placeOrder();
+    setShowConfirmModal(false);
+  };
+
+  const handleBackToReview = () => {
+    setConfirmStep(1);
+    setNameError('');
+  };
+
   return (
     <KioskLayout
       restaurantId={restaurantId}
@@ -84,8 +165,8 @@ export default function KioskCartPage() {
       cartCount={cartCount}
       customHeaderContent={headerContent}
     >
-      <div className="mx-auto w-full max-w-5xl space-y-5 pb-28 pt-4 sm:space-y-6 sm:pt-5">
-        <div className="space-y-1.5 px-2 sm:px-0">
+      <div className="mx-auto w-full max-w-5xl space-y-4 pb-28 pt-2 sm:space-y-5 sm:pt-3">
+        <div className="space-y-1 px-2 sm:px-0">
           <h1 className="text-2xl font-semibold text-slate-900 sm:text-[26px]">Review your order</h1>
           <p className="text-base leading-relaxed text-slate-600 sm:text-lg">Check your items before placing your order.</p>
         </div>
@@ -101,7 +182,7 @@ export default function KioskCartPage() {
             </div>
             <div className="flex-1 sm:flex-none sm:w-80">
               <KioskActionButton
-                href={`/kiosk/${restaurantId}/confirm`}
+                onClick={openConfirmModal}
                 aria-disabled={placeOrderDisabled}
                 className={`w-full justify-center rounded-2xl px-6 py-3 text-lg font-bold uppercase tracking-wide shadow-xl shadow-slate-900/15 min-h-[3.25rem] ${
                   placeOrderDisabled ? 'pointer-events-none opacity-50' : ''
@@ -113,6 +194,103 @@ export default function KioskCartPage() {
           </div>
         </div>
       ) : null}
+
+      <AnimatePresence>
+        {showConfirmModal ? (
+          <motion.div
+            className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              className="w-full max-w-lg rounded-[28px] bg-white p-6 shadow-2xl shadow-slate-900/20 sm:p-8"
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
+            >
+              <div className="relative overflow-hidden">
+                <AnimatePresence mode="wait">
+                  {confirmStep === 1 ? (
+                    <motion.div
+                      key="confirm-step"
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -12 }}
+                      transition={{ duration: 0.2, ease: 'easeOut' }}
+                      className="flex min-h-[260px] flex-col gap-6"
+                    >
+                      <div className="space-y-2">
+                        <h3 className="text-2xl font-semibold text-neutral-900 sm:text-[26px]">Is everything correct?</h3>
+                        <p className="text-base leading-relaxed text-neutral-600 sm:text-lg">{confirmMessage}</p>
+                      </div>
+                      <div className="mt-auto grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowConfirmModal(false)}
+                          className="inline-flex items-center justify-center rounded-2xl border border-neutral-200 px-4 py-3 text-base font-semibold text-neutral-800 transition hover:bg-neutral-50"
+                        >
+                          Go back
+                        </button>
+                        <KioskActionButton
+                          onClick={goToNameStep}
+                          className="w-full justify-center rounded-2xl px-4 py-3 text-base font-semibold uppercase tracking-wide shadow-lg shadow-slate-900/15"
+                        >
+                          Looks good!
+                        </KioskActionButton>
+                      </div>
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="name-step"
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -12 }}
+                      transition={{ duration: 0.2, ease: 'easeOut' }}
+                      className="flex min-h-[260px] flex-col gap-5"
+                    >
+                      <div className="space-y-2.5">
+                        <h3 className="text-2xl font-semibold text-neutral-900 sm:text-[26px]">{namePromptMessage}</h3>
+                        <p className="text-base leading-relaxed text-neutral-600 sm:text-lg">
+                          This is the name we’ll shout when your order is ready.
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <input
+                          type="text"
+                          value={customerName}
+                          onChange={(e) => setCustomerName(e.target.value)}
+                          placeholder="Enter your name…"
+                          className="w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-4 text-lg font-semibold text-neutral-900 shadow-inner shadow-neutral-200/70 outline-none transition focus:border-[var(--kiosk-accent,#111827)]/60 focus:bg-white"
+                        />
+                        {nameError ? (
+                          <p className="text-sm font-semibold text-rose-600">{nameError}</p>
+                        ) : null}
+                      </div>
+                      <div className="mt-auto grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <button
+                          type="button"
+                          onClick={handleBackToReview}
+                          className="inline-flex items-center justify-center rounded-2xl border border-neutral-200 px-4 py-3 text-base font-semibold text-neutral-800 transition hover:bg-neutral-50"
+                        >
+                          Back
+                        </button>
+                        <KioskActionButton
+                          onClick={handlePlaceOrder}
+                          className="w-full justify-center rounded-2xl px-4 py-3 text-base font-semibold uppercase tracking-wide shadow-lg shadow-slate-900/15"
+                        >
+                          Place order
+                        </KioskActionButton>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </KioskLayout>
   );
 }
