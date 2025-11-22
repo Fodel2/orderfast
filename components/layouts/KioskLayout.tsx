@@ -12,6 +12,7 @@ import {
 } from 'react';
 import HomeScreen, { type KioskRestaurant } from '@/components/kiosk/HomeScreen';
 import KioskActionButton from '@/components/kiosk/KioskActionButton';
+import { useKioskSession } from '@/context/KioskSessionContext';
 import { hasSeenHome, markHomeSeen } from '@/utils/kiosk/session';
 
 export const FULL_HEADER_HEIGHT = 148;
@@ -73,6 +74,7 @@ export default function KioskLayout({
   const autoPromptedRef = useRef(false);
   const fullscreenRequestInFlight = useRef(false);
   const accentColor = useMemo(() => restaurant?.theme_primary_color || '#111827', [restaurant?.theme_primary_color]);
+  const { setSessionActive } = useKioskSession();
   const layoutStyle = useMemo(
     () => ({
       '--kiosk-accent': accentColor,
@@ -322,7 +324,8 @@ export default function KioskLayout({
     const shouldShow = forceHome || !hasSeenHome(restaurantId);
     setHomeVisible(shouldShow);
     setContentVisible(!shouldShow);
-  }, [forceHome, restaurantId]);
+    setSessionActive(!shouldShow && hasSeenHome(restaurantId));
+  }, [forceHome, restaurantId, setSessionActive]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -347,6 +350,7 @@ export default function KioskLayout({
     if (restaurantId) {
       markHomeSeen(restaurantId);
     }
+    setSessionActive(true);
     setHomeFading(true);
     setContentVisible(true);
     setTimeout(() => {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import KioskLayout from '@/components/layouts/KioskLayout';
+import { KioskSessionProvider } from '@/context/KioskSessionContext';
 import type { KioskRestaurant } from '@/components/kiosk/HomeScreen';
 import { supabase } from '@/lib/supabaseClient';
 
@@ -12,6 +13,15 @@ export default function KioskHomePage() {
   const router = useRouter();
   const { restaurantId: routeParam } = router.query;
   const restaurantId = Array.isArray(routeParam) ? routeParam[0] : routeParam;
+
+  return (
+    <KioskSessionProvider restaurantId={restaurantId}>
+      <KioskHomeScreen restaurantId={restaurantId} />
+    </KioskSessionProvider>
+  );
+}
+
+function KioskHomeScreen({ restaurantId }: { restaurantId?: string | null }) {
   const [restaurant, setRestaurant] = useState<RestaurantRow | null>(null);
 
   useEffect(() => {

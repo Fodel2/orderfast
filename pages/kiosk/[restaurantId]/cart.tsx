@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import { AnimatePresence, motion } from 'framer-motion';
 import CartDrawer from '@/components/CartDrawer';
 import KioskLayout from '@/components/layouts/KioskLayout';
+import { KioskSessionProvider, useKioskSession } from '@/context/KioskSessionContext';
 import { useCart } from '@/context/CartContext';
 import { supabase } from '@/lib/supabaseClient';
 import KioskActionButton from '@/components/kiosk/KioskActionButton';
@@ -25,7 +26,18 @@ export default function KioskCartPage() {
   const router = useRouter();
   const { restaurantId: routeParam } = router.query;
   const restaurantId = Array.isArray(routeParam) ? routeParam[0] : routeParam;
-  const { cart, subtotal, clearCart } = useCart();
+
+  return (
+    <KioskSessionProvider restaurantId={restaurantId}>
+      <KioskCartScreen restaurantId={restaurantId} />
+    </KioskSessionProvider>
+  );
+}
+
+function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
+  const router = useRouter();
+  const { cart, subtotal } = useCart();
+  const { sessionActive, resetKioskToStart } = useKioskSession();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const placeOrderDisabled = cartCount === 0;
@@ -108,21 +120,6 @@ export default function KioskCartPage() {
     []
   );
 
-  const resetKioskToStart = useCallback(() => {
-    clearCart();
-    setShowConfirmModal(false);
-    setConfirmStep(1);
-    setCustomerName('');
-    setNameError('');
-    setNamePromptMessage('');
-    setConfirmMessage('');
-    if (restaurantId) {
-      router.push(`/kiosk/${restaurantId}/menu`);
-    } else {
-      router.push('/kiosk');
-    }
-  }, [clearCart, restaurantId, router]);
-
   const handleIdleTimeout = useCallback(() => {
     setShowIdleModal(false);
     if (idleCountdownIntervalRef.current) {
@@ -133,6 +130,12 @@ export default function KioskCartPage() {
       clearTimeout(idleTimeoutRef.current);
       idleTimeoutRef.current = null;
     }
+    setShowConfirmModal(false);
+    setConfirmStep(1);
+    setCustomerName('');
+    setNameError('');
+    setNamePromptMessage('');
+    setConfirmMessage('');
     resetKioskToStart();
   }, [resetKioskToStart]);
 
@@ -157,6 +160,7 @@ export default function KioskCartPage() {
   }, [handleIdleTimeout]);
 
   const resetIdleTimer = useCallback(() => {
+    if (!sessionActive) return;
     if (idleTimeoutRef.current) {
       clearTimeout(idleTimeoutRef.current);
       idleTimeoutRef.current = null;
@@ -169,11 +173,12 @@ export default function KioskCartPage() {
       setShowIdleModal(true);
       startIdleCountdown();
     }, 30000);
-  }, [getRandomMessage, idleMessages, showIdleModal, startIdleCountdown]);
+  }, [getRandomMessage, idleMessages, sessionActive, showIdleModal, startIdleCountdown]);
 
   const registerActivity = useCallback(() => {
+    if (!sessionActive) return;
     resetIdleTimer();
-  }, [resetIdleTimer]);
+  }, [resetIdleTimer, sessionActive]);
 
   const handleIdleStay = useCallback(() => {
     if (idleCountdownIntervalRef.current) {
@@ -186,12 +191,16 @@ export default function KioskCartPage() {
   }, [resetIdleTimer]);
 
   useEffect(() => {
-    resetIdleTimer();
+    if (sessionActive) {
+      resetIdleTimer();
+    } else {
+      setShowIdleModal(false);
+    }
     return () => {
       if (idleTimeoutRef.current) clearTimeout(idleTimeoutRef.current);
       if (idleCountdownIntervalRef.current) clearInterval(idleCountdownIntervalRef.current);
     };
-  }, [resetIdleTimer]);
+  }, [resetIdleTimer, sessionActive]);
 
   useEffect(() => {
     if (!restaurantId) return;

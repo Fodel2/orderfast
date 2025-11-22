@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import KioskLayout from '@/components/layouts/KioskLayout';
+import { KioskSessionProvider, useKioskSession } from '@/context/KioskSessionContext';
 import { supabase } from '@/lib/supabaseClient';
 import KioskActionButton from '@/components/kiosk/KioskActionButton';
 import { CheckIcon } from '@heroicons/react/24/outline';
-import { useCart } from '@/context/CartContext';
 
 type Restaurant = {
   id: string;
@@ -23,8 +23,18 @@ export default function KioskConfirmPage() {
   const router = useRouter();
   const { restaurantId: routeParam } = router.query;
   const restaurantId = Array.isArray(routeParam) ? routeParam[0] : routeParam;
+
+  return (
+    <KioskSessionProvider restaurantId={restaurantId}>
+      <KioskConfirmScreen restaurantId={restaurantId} />
+    </KioskSessionProvider>
+  );
+}
+
+function KioskConfirmScreen({ restaurantId }: { restaurantId?: string | null }) {
+  const router = useRouter();
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
-  const { clearCart } = useCart();
+  const { resetKioskToStart } = useKioskSession();
   const resetTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -67,13 +77,8 @@ export default function KioskConfirmPage() {
   );
 
   const resetAfterOrderPlaced = useCallback(() => {
-    clearCart();
-    if (restaurantId) {
-      router.push(`/kiosk/${restaurantId}/menu`);
-    } else {
-      router.push('/kiosk');
-    }
-  }, [clearCart, restaurantId, router]);
+    resetKioskToStart();
+  }, [resetKioskToStart]);
 
   const handleStartNewOrder = () => {
     if (resetTimeoutRef.current) {
@@ -84,8 +89,6 @@ export default function KioskConfirmPage() {
   };
 
   useEffect(() => {
-    if (!restaurantId) return;
-
     resetTimeoutRef.current = window.setTimeout(() => {
       resetAfterOrderPlaced();
     }, 10000);
@@ -96,7 +99,7 @@ export default function KioskConfirmPage() {
         resetTimeoutRef.current = null;
       }
     };
-  }, [restaurantId, resetAfterOrderPlaced]);
+  }, [resetAfterOrderPlaced]);
 
   return (
     <KioskLayout restaurantId={restaurantId} restaurant={restaurant} customHeaderContent={minimalHeader}>
