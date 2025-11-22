@@ -74,7 +74,7 @@ export default function KioskLayout({
   const autoPromptedRef = useRef(false);
   const fullscreenRequestInFlight = useRef(false);
   const accentColor = useMemo(() => restaurant?.theme_primary_color || '#111827', [restaurant?.theme_primary_color]);
-  const { setSessionActive, registerActivity } = useKioskSession();
+  const { setSessionActive, registerActivity, resetIdleTimer } = useKioskSession();
   const layoutStyle = useMemo(
     () => ({
       '--kiosk-accent': accentColor,
@@ -353,7 +353,7 @@ export default function KioskLayout({
       markHomeSeen(restaurantId);
     }
     setSessionActive(true);
-    registerActivity();
+    resetIdleTimer();
     setHomeFading(true);
     setContentVisible(true);
     setTimeout(() => {
@@ -364,7 +364,7 @@ export default function KioskLayout({
     if (menuPath && router.asPath !== menuPath) {
       router.push(menuPath).catch(() => undefined);
     }
-  }, [attemptFullscreen, menuPath, registerActivity, requestWakeLock, restaurantId, router]);
+  }, [attemptFullscreen, menuPath, resetIdleTimer, requestWakeLock, restaurantId, router]);
 
   const headerTitle = restaurant?.name || 'Restaurant';
   const subtitle = restaurant?.website_description;
