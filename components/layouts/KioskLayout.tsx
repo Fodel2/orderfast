@@ -74,7 +74,16 @@ export default function KioskLayout({
   const autoPromptedRef = useRef(false);
   const fullscreenRequestInFlight = useRef(false);
   const accentColor = useMemo(() => restaurant?.theme_primary_color || '#111827', [restaurant?.theme_primary_color]);
-  const { setSessionActive, registerActivity, resetIdleTimer } = useKioskSession();
+  const {
+    setSessionActive,
+    registerActivity,
+    resetIdleTimer,
+    showIdleModal,
+    idleCountdown,
+    idleMessage,
+    handleIdleStay,
+    handleIdleTimeout,
+  } = useKioskSession();
   const layoutStyle = useMemo(
     () => ({
       '--kiosk-accent': accentColor,
@@ -439,6 +448,12 @@ export default function KioskLayout({
     await Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]);
   }, [attemptFullscreen, requestWakeLock]);
 
+  const countdownColor = useMemo(() => {
+    if (idleCountdown <= 3) return '#E63946';
+    if (idleCountdown <= 6) return '#F5A623';
+    return '#000000';
+  }, [idleCountdown]);
+
   return (
     <div className="min-h-screen w-full bg-white text-neutral-900" style={layoutStyle}>
       {showHeader ? (
@@ -494,6 +509,136 @@ export default function KioskLayout({
           </div>
         </div>
       ) : null}
+      {showIdleModal ? (
+        <div className="IdleOverlay">
+          <div className="IdleModalCard">
+            <h2 className="IdleTitle">Still there?</h2>
+            <p className="IdleSubtitle">{idleMessage}</p>
+
+            <div className="IdleCountdownWrapper">
+              <div className="IdleCountdownNumber" key={idleCountdown} style={{ color: countdownColor }}>
+                {idleCountdown}
+              </div>
+              <div className="IdleCountdownText">Resetting in {idleCountdown} seconds...</div>
+            </div>
+
+            <div className="IdleButtons">
+              <button className="IdleStayButton" onClick={handleIdleStay}>
+                I'm still here
+              </button>
+
+              <button className="IdleResetButton" onClick={handleIdleTimeout}>
+                Start over
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      <style jsx global>{`
+        .IdleOverlay {
+          position: fixed;
+          inset: 0;
+          z-index: 99999;
+          background: rgba(0, 0, 0, 0.55);
+          backdrop-filter: blur(8px);
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          pointer-events: auto;
+        }
+
+        .IdleModalCard {
+          width: calc(100% - 48px);
+          max-width: 480px;
+          background: #ffffff;
+          border-radius: 36px;
+          padding: 48px 36px 40px;
+          box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+        }
+
+        .IdleTitle {
+          font-size: 34px;
+          font-weight: 700;
+          text-align: center;
+          margin-bottom: 12px;
+        }
+
+        .IdleSubtitle {
+          font-size: 17px;
+          text-align: center;
+          color: #555;
+          margin-bottom: 24px;
+          max-width: 90%;
+        }
+
+        .IdleCountdownWrapper {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          margin-bottom: 32px;
+        }
+
+        .IdleCountdownNumber {
+          font-size: 100px;
+          font-weight: 800;
+          line-height: 1;
+          margin-bottom: 8px;
+          animation: idleBump 120ms ease-out;
+        }
+
+        @keyframes idleBump {
+          0% {
+            transform: scale(1);
+          }
+          40% {
+            transform: scale(1.12);
+          }
+          100% {
+            transform: scale(1);
+          }
+        }
+
+        .IdleCountdownText {
+          font-size: 15px;
+          color: #777;
+        }
+
+        .IdleButtons {
+          width: 100%;
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+
+        .IdleStayButton,
+        .IdleResetButton {
+          width: 100%;
+          height: 64px;
+          border-radius: 999px;
+          font-size: 18px;
+          font-weight: 600;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+        }
+
+        .IdleStayButton {
+          background: #ffffff;
+          border: 2px solid rgba(0, 0, 0, 0.08);
+          color: #111;
+          box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+        }
+
+        .IdleResetButton {
+          background: #e63946;
+          color: white;
+          font-weight: 700;
+          box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+        }
+      `}</style>
     </div>
   );
 }
