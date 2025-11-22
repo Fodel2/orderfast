@@ -92,7 +92,6 @@ export function KioskSessionProvider({
   const idleOverlayStyle = useMemo(
     () =>
       ({
-        height: '100dvh',
         paddingTop: 'env(safe-area-inset-top)',
         paddingBottom: 'env(safe-area-inset-bottom)',
         overflow: 'hidden',
@@ -101,7 +100,11 @@ export function KioskSessionProvider({
   );
 
   const idleCardStyle = useMemo(
-    () => ({ maxHeight: 'calc(100dvh - 32px - env(safe-area-inset-bottom))' }) as CSSProperties,
+    () =>
+      ({
+        maxHeight: 'calc(100dvh - 64px - env(safe-area-inset-bottom))',
+        overflowY: 'auto',
+      }) as CSSProperties,
     []
   );
 
@@ -237,55 +240,91 @@ export function KioskSessionProvider({
       {children}
       {showIdleModal ? (
         <div
-          className="fixed inset-0 z-[80] flex items-center justify-center bg-[rgba(15,23,42,0.65)] px-4 backdrop-blur-md"
+          className="idle-overlay fixed inset-0 z-[80] flex items-center justify-center bg-[rgba(0,0,0,0.55)] px-4 backdrop-blur-[8px]"
           style={idleOverlayStyle}
         >
           <div
-            className="relative w-full max-w-2xl overflow-hidden rounded-[32px] border border-white/70 bg-white shadow-[0_25px_80px_rgba(15,23,42,0.35)]"
+            className="idle-card relative w-[calc(100%-32px)] max-w-[480px] rounded-[36px] bg-white shadow-[0_20px_40px_rgba(0,0,0,0.25)]"
             style={idleCardStyle}
           >
-            <div className="modalContent flex-1 overflow-y-auto overscroll-contain px-7 py-9 sm:px-10 sm:py-11">
-              <div className="flex h-full flex-col gap-8 text-center text-neutral-900">
-                <div className="space-y-3">
-                  <h3 className="text-3xl font-semibold sm:text-[34px]">Still there?</h3>
-                  <p className="text-base leading-relaxed text-neutral-600 sm:text-lg">{idleMessage}</p>
+            <div className="modalContent flex flex-col items-stretch px-9 pb-10 pt-12 text-neutral-900 sm:px-10 sm:pb-12 sm:pt-[52px]">
+              <div className="flex flex-col items-center gap-6 text-center">
+                <div className="space-y-2">
+                  <h3 className="text-[32px] font-bold leading-tight sm:text-[36px]">Still there?</h3>
+                  <p className="text-[16px] leading-relaxed text-neutral-600 sm:text-[18px]">{idleMessage}</p>
                 </div>
-                <div className="flex flex-col items-center gap-4">
+                <div className="flex flex-col items-center">
                   <span
-                    className={`text-[96px] font-black leading-none sm:text-[110px] ${
+                    className={`idle-count-number text-[96px] font-black leading-none sm:text-[110px] ${
                       idleCountdown <= 3
-                        ? 'text-rose-600'
+                        ? 'text-[#E63946]'
                         : idleCountdown <= 6
-                        ? 'text-amber-500'
-                        : 'text-neutral-900'
+                        ? 'text-[#F5A623]'
+                        : 'text-[#111111]'
                     } ${showIdleModal ? 'idle-count-bump' : ''}`}
                     key={idleCountdown}
                   >
                     {idleCountdown}
                   </span>
-                  <p className="text-base font-medium text-neutral-500 sm:text-lg">Resetting in {idleCountdown} seconds…</p>
+                  <p className="mt-2 text-[15px] font-medium text-[#777777]">Resetting in {idleCountdown} seconds…</p>
                 </div>
-                <div className="mt-auto flex flex-col gap-3">
-                  <button
-                    type="button"
-                    onClick={handleIdleStay}
-                    className="inline-flex w-full items-center justify-center rounded-full border border-neutral-200 bg-white px-5 py-4 text-lg font-semibold text-neutral-900 shadow-[0_10px_35px_-20px_rgba(15,23,42,0.35)] transition hover:bg-neutral-50"
-                  >
-                    I’m still here
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleIdleTimeout}
-                    className="inline-flex w-full items-center justify-center rounded-full bg-rose-600 px-5 py-4 text-lg font-semibold text-white shadow-[0_14px_40px_-18px_rgba(225,29,72,0.9)] transition hover:bg-rose-700 active:translate-y-[1px]"
-                  >
-                    Start over
-                  </button>
-                </div>
+              </div>
+              <div className="mt-10 flex w-full flex-col gap-4">
+                <button
+                  type="button"
+                  onClick={handleIdleStay}
+                  className="inline-flex h-[60px] w-full items-center justify-center rounded-full border-[2px] border-[rgba(0,0,0,0.06)] bg-white text-[18px] font-semibold text-[#111111] shadow-[0_10px_35px_-18px_rgba(0,0,0,0.35)] transition hover:bg-neutral-50"
+                >
+                  I’m still here
+                </button>
+                <button
+                  type="button"
+                  onClick={handleIdleTimeout}
+                  className="inline-flex h-[68px] w-full items-center justify-center rounded-full bg-[#E63946] text-[19px] font-bold text-white shadow-[0_16px_30px_rgba(0,0,0,0.25)] transition hover:bg-[#d3323f] active:translate-y-[1px]"
+                >
+                  Start over
+                </button>
               </div>
             </div>
             <style jsx>{`
+              .idle-overlay {
+                animation: idle-overlay-fade 180ms ease;
+              }
+
+              .idle-card {
+                display: flex;
+                flex-direction: column;
+                align-items: stretch;
+                padding: 0;
+                animation: idle-card-rise 200ms ease;
+              }
+
+              .idle-count-number {
+                transition: color 160ms ease;
+              }
+
               .idle-count-bump {
                 animation: idle-count-bump 140ms ease;
+              }
+
+              @keyframes idle-overlay-fade {
+                from {
+                  opacity: 0;
+                }
+                to {
+                  opacity: 1;
+                }
+              }
+
+              @keyframes idle-card-rise {
+                from {
+                  opacity: 0;
+                  transform: translateY(20px);
+                }
+                to {
+                  opacity: 1;
+                  transform: translateY(0);
+                }
               }
 
               @keyframes idle-count-bump {
