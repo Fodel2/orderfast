@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import type { CSSProperties, KeyboardEvent, MouseEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { useCart } from '../context/CartContext';
@@ -155,9 +155,7 @@ export default function MenuItemCard({
   );
 
   const isKiosk = mode === 'kiosk';
-  const interactiveScale = isKiosk
-    ? 'transform-gpu transition-transform duration-150 ease-out hover:scale-[1.02] active:scale-[0.98]'
-    : '';
+  const cardAccent = accent || 'var(--kiosk-accent,#111827)';
 
   useEffect(() => {
     if (imageUrl) return;
@@ -182,69 +180,198 @@ export default function MenuItemCard({
     [placeholder.style]
   );
 
+  const triggerFlyToCart = (event: MouseEvent<HTMLElement>) => {
+    if (typeof document === 'undefined' || typeof window === 'undefined') return;
+
+    const selectors = window.matchMedia('(max-width: 768px)').matches
+      ? ['[data-cart-anchor="fab"]', '[data-cart-anchor="desktop"]']
+      : ['[data-cart-anchor="desktop"]', '[data-cart-anchor="fab"]'];
+
+    const anchor = selectors
+      .map((selector) => document.querySelector(selector) as HTMLElement | null)
+      .find((el) => Boolean(el));
+
+    if (!anchor) return;
+
+    const startRect = event.currentTarget.getBoundingClientRect();
+    const targetRect = anchor.getBoundingClientRect();
+    const fly = document.createElement('div');
+    fly.className = 'kiosk-fly-dot';
+    fly.style.left = `${startRect.left + startRect.width / 2}px`;
+    fly.style.top = `${startRect.top + startRect.height / 2}px`;
+    fly.style.background = cardAccent;
+    document.body.appendChild(fly);
+
+    const animation = fly.animate(
+      [
+        {
+          transform: 'translate(-50%, -50%) scale(1)',
+          opacity: 0.95,
+        },
+        {
+          transform: `translate(${targetRect.left + targetRect.width / 2 - (startRect.left + startRect.width / 2)}px, ${
+            targetRect.top + targetRect.height / 2 - (startRect.top + startRect.height / 2)
+          }px) scale(0.3)`,
+          opacity: 0.65,
+        },
+      ],
+      {
+        duration: 650,
+        easing: 'cubic-bezier(0.22, 0.61, 0.36, 1)',
+        fill: 'forwards',
+      }
+    );
+
+    animation.onfinish = () => fly.remove();
+    animation.oncancel = () => fly.remove();
+
+    anchor.classList.add('cart-pulse');
+    anchor.addEventListener(
+      'animationend',
+      () => {
+        anchor.classList.remove('cart-pulse');
+      },
+      { once: true }
+    );
+  };
+
+  const handleQuickAdd = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    onInteraction?.();
+    if (!restaurantKey) {
+      console.warn('[menu-item-card] missing restaurant id for quick add', { itemId: item?.id });
+      return;
+    }
+
+    addToCart(String(restaurantKey), {
+      item_id: String(item.id),
+      name: item.name,
+      price,
+      quantity: 1,
+      addons: undefined,
+      notes: undefined,
+    });
+
+    triggerFlyToCart(event);
+  };
+
+  const handleCardKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      handleClick();
+    }
+  };
+
   return (
     <>
-      <div>
-        <button
-          type="button"
-          className={`w-full rounded-xl bg-white/60 backdrop-blur-md shadow-sm p-3 sm:p-4 flex gap-3 sm:gap-4 hover:shadow-md transition text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${interactiveScale}`}
+      <div className="relative h-full">
+        <div
+          role="button"
+          tabIndex={0}
           onClick={handleClick}
-          style={{ ['--tw-ring-color' as any]: accent || 'currentColor' } as CSSProperties}
+          onKeyDown={handleCardKeyDown}
+          className={`group relative flex h-full flex-col overflow-hidden rounded-[26px] bg-white shadow-[0_8px_32px_rgba(0,0,0,0.06)] transition duration-150 ease-out ${
+            isKiosk ? 'hover:-translate-y-1 active:scale-[0.98]' : ''
+          } focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2`}
+          style={{ ['--tw-ring-color' as any]: cardAccent } as CSSProperties}
         >
-          <div className="h-24 w-24 shrink-0 overflow-hidden rounded-xl bg-[var(--muted-bg,#f8f8f8)] sm:h-28 sm:w-28">
-            {imageUrl ? (
-              <img
-                src={imageUrl}
-                alt={item.name}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <img
-                src={placeholderSrc}
-                alt=""
-                className="h-full w-full object-cover"
-                style={placeholderStyle}
-                onError={() => {
-                  if (placeholderSrc !== FALLBACK_PLACEHOLDER_SRC) {
-                    setPlaceholderSrc(FALLBACK_PLACEHOLDER_SRC);
-                    return;
-                  }
-                }}
-              />
-            )}
+          <div className="relative w-full overflow-hidden bg-[var(--muted-bg,#f5f5f5)]">
+            <div className="relative h-[200px] sm:h-[180px] lg:h-[240px] w-full overflow-hidden">
+              {imageUrl ? (
+                <img
+                  src={imageUrl}
+                  alt={item.name}
+                  className="h-full w-full object-cover transition duration-200 group-hover:scale-[1.02]"
+                />
+              ) : (
+                <img
+                  src={placeholderSrc}
+                  alt=""
+                  className="h-full w-full object-cover"
+                  style={placeholderStyle}
+                  onError={() => {
+                    if (placeholderSrc !== FALLBACK_PLACEHOLDER_SRC) {
+                      setPlaceholderSrc(FALLBACK_PLACEHOLDER_SRC);
+                      return;
+                    }
+                  }}
+                />
+              )}
+            </div>
+
+            <button
+              type="button"
+              className="absolute bottom-4 right-4 inline-flex h-12 w-12 items-center justify-center rounded-full bg-[var(--kiosk-accent,#111827)] text-white shadow-lg shadow-black/20 transition active:scale-95"
+              aria-label={`Add ${item.name} to cart`}
+              onClick={handleQuickAdd}
+            >
+              <span className="text-2xl leading-none">+</span>
+            </button>
           </div>
-          <div className="flex-1 min-w-0 flex flex-col gap-1">
-            <div className="flex items-start justify-between gap-2">
-              <h4 className="text-base sm:text-lg font-semibold text-gray-900 truncate">
-                {item.name}
-              </h4>
-              <div className="price font-semibold text-gray-900 whitespace-nowrap text-sm sm:text-base">
-                {formattedPrice}
+
+          <div className="flex flex-1 flex-col gap-3 px-4 pb-5 pt-4 sm:px-5 sm:pt-5">
+            <div className="flex items-start gap-3">
+              <div className="flex min-w-0 flex-1 flex-col gap-2">
+                <div className="flex items-start justify-between gap-3">
+                  <h4 className="truncate text-lg font-semibold text-neutral-900 sm:text-xl">{item.name}</h4>
+                  <span className="shrink-0 rounded-full bg-black/5 px-3 py-1 text-sm font-semibold text-neutral-900">
+                    {formattedPrice}
+                  </span>
+                </div>
+                {item.description ? (
+                  <p className="line-clamp-2 text-sm text-neutral-600 sm:text-base">{item.description}</p>
+                ) : null}
               </div>
             </div>
-            {item.description && (
-              <p className="text-sm text-gray-600 line-clamp-2 mt-0.5">{item.description}</p>
-            )}
-            {badges.length > 0 && (
-              <div className="mt-1 flex flex-wrap gap-1">
+
+            {badges.length > 0 ? (
+              <div className="mt-auto flex flex-wrap gap-2">
                 {badges.map((b) => (
                   <span
                     key={b}
-                    className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium border"
+                    className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold border"
                     style={badgeStyles}
                   >
                     {b}
                   </span>
                 ))}
               </div>
-            )}
+            ) : null}
           </div>
-        </button>
+        </div>
       </div>
 
       {showModal && restaurantKey ? (
         <ItemModal item={itemForModal} restaurantId={restaurantKey} onAddToCart={handleAddToCart} />
       ) : null}
+
+      <style jsx global>{`
+        .kiosk-fly-dot {
+          position: fixed;
+          width: 14px;
+          height: 14px;
+          border-radius: 999px;
+          z-index: 9999;
+          pointer-events: none;
+          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        .cart-pulse {
+          animation: cartPulse 320ms ease-out;
+        }
+
+        @keyframes cartPulse {
+          0% {
+            transform: scale(1);
+          }
+          40% {
+            transform: scale(1.08);
+          }
+          100% {
+            transform: scale(1);
+          }
+        }
+      `}</style>
     </>
   );
 }
