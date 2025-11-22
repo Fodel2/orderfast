@@ -240,51 +240,47 @@ export function KioskSessionProvider({
       {children}
       {showIdleModal ? (
         <div
-          className="idle-overlay fixed inset-0 z-[80] flex items-center justify-center bg-[rgba(0,0,0,0.55)] px-4 backdrop-blur-[8px]"
+          className="idle-overlay pointer-events-auto fixed inset-0 z-[120] flex items-center justify-center bg-[rgba(0,0,0,0.55)] px-4 backdrop-blur-[8px]"
           style={idleOverlayStyle}
         >
           <div
-            className="idle-card relative w-[calc(100%-32px)] max-w-[480px] rounded-[36px] bg-white shadow-[0_20px_40px_rgba(0,0,0,0.25)]"
+            className="idle-card flex w-[calc(100%-32px)] max-w-[480px] flex-col items-center rounded-[36px] bg-white px-9 pb-10 pt-12 text-neutral-900 shadow-[0_20px_40px_rgba(0,0,0,0.25)] sm:px-10 sm:pb-12 sm:pt-[52px]"
             style={idleCardStyle}
           >
-            <div className="modalContent flex flex-col items-stretch px-9 pb-10 pt-12 text-neutral-900 sm:px-10 sm:pb-12 sm:pt-[52px]">
-              <div className="flex flex-col items-center gap-6 text-center">
-                <div className="space-y-2">
-                  <h3 className="text-[32px] font-bold leading-tight sm:text-[36px]">Still there?</h3>
-                  <p className="text-[16px] leading-relaxed text-neutral-600 sm:text-[18px]">{idleMessage}</p>
-                </div>
-                <div className="flex flex-col items-center">
-                  <span
-                    className={`idle-count-number text-[96px] font-black leading-none sm:text-[110px] ${
-                      idleCountdown <= 3
-                        ? 'text-[#E63946]'
-                        : idleCountdown <= 6
-                        ? 'text-[#F5A623]'
-                        : 'text-[#111111]'
-                    } ${showIdleModal ? 'idle-count-bump' : ''}`}
-                    key={idleCountdown}
-                  >
-                    {idleCountdown}
-                  </span>
-                  <p className="mt-2 text-[15px] font-medium text-[#777777]">Resetting in {idleCountdown} seconds…</p>
-                </div>
-              </div>
-              <div className="mt-10 flex w-full flex-col gap-4">
-                <button
-                  type="button"
-                  onClick={handleIdleStay}
-                  className="inline-flex h-[60px] w-full items-center justify-center rounded-full border-[2px] border-[rgba(0,0,0,0.06)] bg-white text-[18px] font-semibold text-[#111111] shadow-[0_10px_35px_-18px_rgba(0,0,0,0.35)] transition hover:bg-neutral-50"
+            <div className="flex w-full flex-col items-center text-center">
+              <h3 className="text-[32px] font-bold leading-tight sm:text-[36px]">Still there?</h3>
+              <p className="mt-3 text-[16px] leading-relaxed text-neutral-600 sm:text-[18px]">{idleMessage}</p>
+              <div className="mt-8 flex flex-col items-center">
+                <span
+                  className={`idle-count-number text-[96px] font-black leading-none sm:text-[110px] ${
+                    idleCountdown <= 3
+                      ? 'text-[#E63946]'
+                      : idleCountdown <= 6
+                      ? 'text-[#F5A623]'
+                      : 'text-[#111111]'
+                  } ${showIdleModal ? 'idle-count-bump' : ''}`}
+                  key={idleCountdown}
                 >
-                  I’m still here
-                </button>
-                <button
-                  type="button"
-                  onClick={handleIdleTimeout}
-                  className="inline-flex h-[68px] w-full items-center justify-center rounded-full bg-[#E63946] text-[19px] font-bold text-white shadow-[0_16px_30px_rgba(0,0,0,0.25)] transition hover:bg-[#d3323f] active:translate-y-[1px]"
-                >
-                  Start over
-                </button>
+                  {idleCountdown}
+                </span>
+                <p className="mt-2 text-[15px] font-medium text-[#777777]">Resetting in {idleCountdown} seconds…</p>
               </div>
+            </div>
+            <div className="mt-10 flex w-full flex-col gap-4">
+              <button
+                type="button"
+                onClick={handleIdleStay}
+                className="inline-flex h-[60px] w-full items-center justify-center rounded-full border-[2px] border-[rgba(0,0,0,0.06)] bg-white text-[18px] font-semibold text-[#111111] shadow-[0_10px_35px_-18px_rgba(0,0,0,0.35)] transition hover:bg-neutral-50"
+              >
+                I’m still here
+              </button>
+              <button
+                type="button"
+                onClick={handleIdleTimeout}
+                className="inline-flex h-[68px] w-full items-center justify-center rounded-full bg-[#E63946] text-[19px] font-bold text-white shadow-[0_16px_30px_rgba(0,0,0,0.25)] transition hover:bg-[#d3323f] active:translate-y-[1px]"
+              >
+                Start over
+              </button>
             </div>
             <style jsx>{`
               .idle-overlay {
@@ -292,10 +288,6 @@ export function KioskSessionProvider({
               }
 
               .idle-card {
-                display: flex;
-                flex-direction: column;
-                align-items: stretch;
-                padding: 0;
                 animation: idle-card-rise 200ms ease;
               }
 
