@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import { AnimatePresence, motion } from 'framer-motion';
 import CartDrawer from '@/components/CartDrawer';
@@ -37,7 +37,7 @@ export default function KioskCartPage() {
 function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   const router = useRouter();
   const { cart, subtotal } = useCart();
-  const { sessionActive, resetKioskToStart } = useKioskSession();
+  const { resetKioskToStart, registerActivity } = useKioskSession();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const placeOrderDisabled = cartCount === 0;
@@ -47,11 +47,6 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   const [namePromptMessage, setNamePromptMessage] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [nameError, setNameError] = useState('');
-  const [showIdleModal, setShowIdleModal] = useState(false);
-  const [idleCountdown, setIdleCountdown] = useState(10);
-  const [idleMessage, setIdleMessage] = useState('');
-  const idleTimeoutRef = useRef<number | null>(null);
-  const idleCountdownIntervalRef = useRef<number | null>(null);
   const modalOverlayStyle = {
     height: '100dvh',
     paddingTop: 'env(safe-area-inset-top)',
@@ -105,103 +100,6 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     []
   );
 
-  const idleMessages = useMemo(
-    () => [
-      'Just checking… did you wander off?',
-      'You still there? Or did a pigeon steal your attention?',
-      'We haven’t heard from you. Should we alert the missing-persons unit?',
-      'Do you require adult supervision?',
-      'If you don’t press something, the kiosk WILL win.',
-      'Move your finger if you can hear us.',
-      'This screen will self-destruct in 10 seconds. Kidding. Mostly.',
-      'We’re not clingy. We just need a tiny tap to know you’re alive.',
-      'If you’re thinking, take your time. If you’re napping, we’re impressed.',
-    ],
-    []
-  );
-
-  const handleIdleTimeout = useCallback(() => {
-    setShowIdleModal(false);
-    if (idleCountdownIntervalRef.current) {
-      clearInterval(idleCountdownIntervalRef.current);
-      idleCountdownIntervalRef.current = null;
-    }
-    if (idleTimeoutRef.current) {
-      clearTimeout(idleTimeoutRef.current);
-      idleTimeoutRef.current = null;
-    }
-    setShowConfirmModal(false);
-    setConfirmStep(1);
-    setCustomerName('');
-    setNameError('');
-    setNamePromptMessage('');
-    setConfirmMessage('');
-    resetKioskToStart();
-  }, [resetKioskToStart]);
-
-  const startIdleCountdown = useCallback(() => {
-    if (idleCountdownIntervalRef.current) {
-      clearInterval(idleCountdownIntervalRef.current);
-    }
-    setIdleCountdown(10);
-    idleCountdownIntervalRef.current = window.setInterval(() => {
-      setIdleCountdown((prev) => {
-        if (prev <= 1) {
-          if (idleCountdownIntervalRef.current) {
-            clearInterval(idleCountdownIntervalRef.current);
-            idleCountdownIntervalRef.current = null;
-          }
-          handleIdleTimeout();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-  }, [handleIdleTimeout]);
-
-  const resetIdleTimer = useCallback(() => {
-    if (!sessionActive) return;
-    if (idleTimeoutRef.current) {
-      clearTimeout(idleTimeoutRef.current);
-      idleTimeoutRef.current = null;
-    }
-    if (showIdleModal) return;
-    idleTimeoutRef.current = window.setTimeout(() => {
-      idleTimeoutRef.current = null;
-      setIdleMessage(getRandomMessage(idleMessages));
-      setIdleCountdown(10);
-      setShowIdleModal(true);
-      startIdleCountdown();
-    }, 30000);
-  }, [getRandomMessage, idleMessages, sessionActive, showIdleModal, startIdleCountdown]);
-
-  const registerActivity = useCallback(() => {
-    if (!sessionActive) return;
-    resetIdleTimer();
-  }, [resetIdleTimer, sessionActive]);
-
-  const handleIdleStay = useCallback(() => {
-    if (idleCountdownIntervalRef.current) {
-      clearInterval(idleCountdownIntervalRef.current);
-      idleCountdownIntervalRef.current = null;
-    }
-    setShowIdleModal(false);
-    setIdleCountdown(10);
-    resetIdleTimer();
-  }, [resetIdleTimer]);
-
-  useEffect(() => {
-    if (sessionActive) {
-      resetIdleTimer();
-    } else {
-      setShowIdleModal(false);
-    }
-    return () => {
-      if (idleTimeoutRef.current) clearTimeout(idleTimeoutRef.current);
-      if (idleCountdownIntervalRef.current) clearInterval(idleCountdownIntervalRef.current);
-    };
-  }, [resetIdleTimer, sessionActive]);
-
   useEffect(() => {
     if (!restaurantId) return;
     let active = true;
@@ -240,7 +138,10 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
       <div className="mx-auto flex h-full w-full max-w-5xl items-start px-4 pb-3 pt-[calc(env(safe-area-inset-top)+12px)] sm:px-6">
         <button
           type="button"
-          onClick={() => router.push(`/kiosk/${restaurantId}/menu`)}
+          onClick={() => {
+            registerActivity();
+            router.push(`/kiosk/${restaurantId}/menu`);
+          }}
           className="inline-flex min-h-[3rem] items-center gap-2 rounded-full bg-white/95 px-4 py-2.5 text-base font-semibold text-neutral-900 shadow-md shadow-slate-300/70 ring-1 ring-slate-200 transition hover:-translate-y-[1px] hover:shadow-lg sm:text-lg"
         >
           <ChevronLeftIcon className="h-6 w-6" />
@@ -430,57 +331,6 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
         ) : null}
       </AnimatePresence>
 
-      <AnimatePresence>
-        {showIdleModal ? (
-          <motion.div
-            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 px-4 backdrop-blur-sm"
-            style={modalOverlayStyle}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-          >
-            <motion.div
-              className="flex w-full max-w-xl flex-col overflow-hidden rounded-[28px] bg-white shadow-2xl shadow-slate-900/25"
-              style={modalCardStyle}
-              initial={{ opacity: 0, scale: 0.96 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.96 }}
-              transition={{ duration: 0.18, ease: 'easeOut' }}
-            >
-              <div className="modalContent flex-1 overflow-y-auto overscroll-contain px-6 py-7 sm:px-8 sm:py-9">
-                <div className="flex h-full flex-col gap-6 text-center text-neutral-900">
-                  <div className="space-y-2">
-                    <h3 className="text-2xl font-semibold sm:text-3xl">Still there?</h3>
-                    <p className="text-base leading-relaxed text-neutral-600 sm:text-lg">{idleMessage}</p>
-                  </div>
-                  <div className="flex flex-col items-center gap-2 pt-1">
-                    <span className="text-6xl font-extrabold leading-none sm:text-7xl">{idleCountdown}</span>
-                    <p className="text-sm text-neutral-500 sm:text-base">
-                      Resetting in {idleCountdown} seconds…
-                    </p>
-                  </div>
-                  <div className="mt-auto grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <button
-                      type="button"
-                      onClick={handleIdleStay}
-                      className="inline-flex items-center justify-center rounded-2xl border border-neutral-200 px-4 py-3 text-base font-semibold text-neutral-800 transition hover:bg-neutral-50"
-                    >
-                      I’m still here
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleIdleTimeout}
-                      className="inline-flex items-center justify-center rounded-2xl bg-rose-600 px-4 py-3 text-base font-semibold uppercase tracking-wide text-white shadow-lg shadow-rose-900/20 transition hover:bg-rose-700 active:translate-y-px"
-                    >
-                      Start over
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
     </KioskLayout>
   );
 }

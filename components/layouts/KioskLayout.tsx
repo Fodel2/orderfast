@@ -74,12 +74,34 @@ export default function KioskLayout({
   const autoPromptedRef = useRef(false);
   const fullscreenRequestInFlight = useRef(false);
   const accentColor = useMemo(() => restaurant?.theme_primary_color || '#111827', [restaurant?.theme_primary_color]);
-  const { setSessionActive } = useKioskSession();
+  const {
+    setSessionActive,
+    registerActivity,
+    showIdleModal,
+    idleCountdown,
+    idleMessage,
+    handleIdleStay,
+    handleIdleTimeout,
+  } = useKioskSession();
   const layoutStyle = useMemo(
     () => ({
       '--kiosk-accent': accentColor,
     }) as CSSProperties,
     [accentColor]
+  );
+  const idleOverlayStyle = useMemo(
+    () =>
+      ({
+        height: '100dvh',
+        paddingTop: 'env(safe-area-inset-top)',
+        paddingBottom: 'env(safe-area-inset-bottom)',
+        overflow: 'hidden',
+      }) as CSSProperties,
+    []
+  );
+  const idleCardStyle = useMemo(
+    () => ({ maxHeight: 'calc(100dvh - 32px - env(safe-area-inset-bottom))' }) as CSSProperties,
+    []
   );
   const isFullscreenActive = useCallback(() => {
     if (typeof document === 'undefined') return false;
@@ -324,7 +346,9 @@ export default function KioskLayout({
     const shouldShow = forceHome || !hasSeenHome(restaurantId);
     setHomeVisible(shouldShow);
     setContentVisible(!shouldShow);
-    setSessionActive(!shouldShow && hasSeenHome(restaurantId));
+    if (shouldShow) {
+      setSessionActive(false);
+    }
   }, [forceHome, restaurantId, setSessionActive]);
 
   useEffect(() => {
@@ -351,6 +375,7 @@ export default function KioskLayout({
       markHomeSeen(restaurantId);
     }
     setSessionActive(true);
+    registerActivity();
     setHomeFading(true);
     setContentVisible(true);
     setTimeout(() => {
@@ -361,7 +386,7 @@ export default function KioskLayout({
     if (menuPath && router.asPath !== menuPath) {
       router.push(menuPath).catch(() => undefined);
     }
-  }, [attemptFullscreen, menuPath, requestWakeLock, restaurantId, router]);
+  }, [attemptFullscreen, menuPath, registerActivity, requestWakeLock, restaurantId, router]);
 
   const headerTitle = restaurant?.name || 'Restaurant';
   const subtitle = restaurant?.website_description;
@@ -420,6 +445,7 @@ export default function KioskLayout({
           <div style={{ transform: `scale(${cartScale})`, transformOrigin: 'right center' }}>
             <KioskActionButton
               href={`/kiosk/${restaurantId}/cart`}
+              onClick={registerActivity}
               className="px-4 py-2 text-sm font-semibold sm:px-5 sm:py-3"
             >
               <ShoppingCartIcon className="h-5 w-5" />
@@ -487,6 +513,46 @@ export default function KioskLayout({
             <KioskActionButton onClick={handleFullscreenPromptClick} className="mt-6 w-full justify-center text-base">
               Enter fullscreen
             </KioskActionButton>
+          </div>
+        </div>
+      ) : null}
+      {showIdleModal ? (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 px-4 backdrop-blur-sm"
+          style={idleOverlayStyle}
+        >
+          <div
+            className="flex w-full max-w-xl flex-col overflow-hidden rounded-[28px] bg-white shadow-2xl shadow-slate-900/25"
+            style={idleCardStyle}
+          >
+            <div className="modalContent flex-1 overflow-y-auto overscroll-contain px-6 py-7 sm:px-8 sm:py-9">
+              <div className="flex h-full flex-col gap-6 text-center text-neutral-900">
+                <div className="space-y-2">
+                  <h3 className="text-2xl font-semibold sm:text-3xl">Still there?</h3>
+                  <p className="text-base leading-relaxed text-neutral-600 sm:text-lg">{idleMessage}</p>
+                </div>
+                <div className="flex flex-col items-center gap-2 pt-1">
+                  <span className="text-6xl font-extrabold leading-none sm:text-7xl">{idleCountdown}</span>
+                  <p className="text-sm text-neutral-500 sm:text-base">Resetting in {idleCountdown} seconds…</p>
+                </div>
+                <div className="mt-auto grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={handleIdleStay}
+                    className="inline-flex items-center justify-center rounded-2xl border border-neutral-200 px-4 py-3 text-base font-semibold text-neutral-800 transition hover:bg-neutral-50"
+                  >
+                    I’m still here
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleIdleTimeout}
+                    className="inline-flex items-center justify-center rounded-2xl bg-rose-600 px-4 py-3 text-base font-semibold uppercase tracking-wide text-white shadow-lg shadow-rose-900/20 transition hover:bg-rose-700 active:translate-y-px"
+                  >
+                    Start over
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       ) : null}

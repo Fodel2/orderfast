@@ -7,7 +7,7 @@ import KioskLayout, {
   FULL_CAT_HEIGHT,
   FULL_HEADER_HEIGHT,
 } from '@/components/layouts/KioskLayout';
-import { KioskSessionProvider } from '@/context/KioskSessionContext';
+import { KioskSessionProvider, useKioskSession } from '@/context/KioskSessionContext';
 import { supabase } from '@/lib/supabaseClient';
 import { ITEM_ADDON_LINK_WITH_GROUPS_SELECT } from '@/lib/queries/addons';
 import Skeleton from '@/components/ui/Skeleton';
@@ -72,6 +72,7 @@ function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
   const [activeCategoryId, setActiveCategoryId] = useState<number | null>(null);
   const { cart } = useCart();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
+  const { registerActivity } = useKioskSession();
 
   useEffect(() => {
     if (!restaurantId) {
@@ -233,6 +234,7 @@ function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
 
   const handleCategorySelect = useCallback(
     (categoryId: number) => {
+      registerActivity();
       setActiveCategoryId(categoryId);
       const el = document.getElementById(`cat-${categoryId}`);
       if (!el || typeof window === 'undefined') return;
@@ -242,7 +244,7 @@ function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
         behavior: 'smooth',
       });
     },
-    [getCurrentHeaderHeights]
+    [getCurrentHeaderHeights, registerActivity]
   );
 
   useEffect(() => {
@@ -299,6 +301,7 @@ function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
                       restaurantId={restaurantId}
                       restaurantLogoUrl={restaurant?.logo_url ?? null}
                       mode="kiosk"
+                      onInteraction={registerActivity}
                     />
                   ))}
                 </div>
@@ -318,6 +321,7 @@ function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
                       restaurantId={restaurantId}
                       restaurantLogoUrl={restaurant?.logo_url ?? null}
                       mode="kiosk"
+                      onInteraction={registerActivity}
                     />
                   ))}
                 </div>
