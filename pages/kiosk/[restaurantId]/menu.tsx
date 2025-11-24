@@ -270,9 +270,9 @@ function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
     >
       <div className="pt-5">
         {loading ? (
-          <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-6 sm:[grid-template-columns:repeat(auto-fill,minmax(240px,1fr))] lg:[grid-template-columns:repeat(3,minmax(0,1fr))]">
             {Array.from({ length: 6 }).map((_, idx) => (
-              <Skeleton key={idx} className="h-40 rounded-2xl" />
+              <Skeleton key={idx} className="h-64 rounded-3xl" />
             ))}
           </div>
         ) : !restaurantId ? (
@@ -285,15 +285,17 @@ function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
               <section
                 key={category.id}
                 id={`cat-${category.id}`}
-                className="flex flex-col gap-4"
+                className="flex flex-col gap-5"
               >
-                <header className="flex flex-col gap-1">
-                  <h2 className="text-2xl font-semibold tracking-tight text-neutral-900">{category.name}</h2>
+                <header className="flex flex-col gap-2">
+                  <h2 className="text-3xl font-semibold tracking-tight text-neutral-900">
+                    {category.name}
+                  </h2>
                   {category.description ? (
-                    <p className="text-sm text-neutral-600">{category.description}</p>
+                    <p className="text-base text-neutral-600">{category.description}</p>
                   ) : null}
                 </header>
-                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                <div className="grid grid-cols-1 gap-6 sm:[grid-template-columns:repeat(auto-fill,minmax(240px,1fr))] lg:[grid-template-columns:repeat(3,minmax(0,1fr))]">
                   {category.items.map((item) => (
                     <MenuItemCard
                       key={item.id}
@@ -310,10 +312,10 @@ function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
 
             {hasUncategorizedItems ? (
               <section className="flex flex-col gap-4">
-                <header>
-                  <h2 className="text-2xl font-semibold tracking-tight text-neutral-900">Other items</h2>
+                <header className="flex flex-col gap-2">
+                  <h2 className="text-3xl font-semibold tracking-tight text-neutral-900">Other items</h2>
                 </header>
-                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                <div className="grid grid-cols-1 gap-6 sm:[grid-template-columns:repeat(auto-fill,minmax(240px,1fr))] lg:[grid-template-columns:repeat(3,minmax(0,1fr))]">
                   {uncategorizedItems.map((item) => (
                     <MenuItemCard
                       key={item.id}
