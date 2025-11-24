@@ -269,6 +269,7 @@ function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
       }
     >
       <div className="pt-5">
+        <div className="MenuFadeOverlay" aria-hidden="true" />
         {loading ? (
           <div className="grid grid-cols-1 gap-6 sm:[grid-template-columns:repeat(auto-fill,minmax(240px,1fr))] lg:[grid-template-columns:repeat(3,minmax(0,1fr))]">
             {Array.from({ length: 6 }).map((_, idx) => (

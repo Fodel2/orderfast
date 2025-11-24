@@ -170,3 +170,17 @@ html.kiosk-mode .nextjs-portal,
 html.kiosk-mode [data-vercel-preview-indicator] {
   display: none !important;
 }
+
+.MenuFadeOverlay {
+  position: sticky;
+  top: 0;
+  height: 20px;
+  width: 100%;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 1) 0%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  z-index: 2;
+}
