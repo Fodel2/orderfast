@@ -254,21 +254,22 @@ function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
   }, [activeCategoryId, categorizedItems]);
 
   return (
-    <KioskLayout
-      restaurantId={restaurantId}
-      restaurant={restaurant}
-      cartCount={cartCount}
-      categoryBar={
-        categorizedItems.length ? (
-          <KioskCategories
-            categories={categorizedItems}
-            activeCategoryId={activeCategoryId}
-            onSelect={handleCategorySelect}
-          />
-        ) : null
-      }
-    >
-      <div className="pt-5">
+    <>
+      <KioskLayout
+        restaurantId={restaurantId}
+        restaurant={restaurant}
+        cartCount={cartCount}
+        categoryBar={
+          categorizedItems.length ? (
+            <KioskCategories
+              categories={categorizedItems}
+              activeCategoryId={activeCategoryId}
+              onSelect={handleCategorySelect}
+            />
+          ) : null
+        }
+      >
+        <div className="pt-5 kiosk-menu-content">
         {loading ? (
           <div className="grid grid-cols-1 gap-6 sm:[grid-template-columns:repeat(auto-fill,minmax(240px,1fr))] lg:[grid-template-columns:repeat(3,minmax(0,1fr))]">
             {Array.from({ length: 6 }).map((_, idx) => (
@@ -337,7 +338,14 @@ function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
             ) : null}
           </div>
         )}
-      </div>
-    </KioskLayout>
+        </div>
+      </KioskLayout>
+
+      <style jsx>{`
+        .kiosk-menu-content {
+          margin-top: 4px;
+        }
+      `}</style>
+    </>
   );
 }
