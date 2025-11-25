@@ -114,6 +114,17 @@ export default function MenuItemCard({
     return list;
   }, [item?.is_18_plus, item?.is_vegan, item?.is_vegetarian]);
 
+  const addonGroups = useMemo(() => {
+    if (!item || typeof item !== 'object') return undefined;
+    if (!('addon_groups' in item)) return undefined;
+    return (item as { addon_groups?: any[] }).addon_groups;
+  }, [item]);
+
+  const hasRequiredAddons = useMemo(() => {
+    if (!Array.isArray(addonGroups)) return false;
+    return addonGroups.some((group) => group?.required);
+  }, [addonGroups]);
+
   const handleClick = () => {
     onInteraction?.();
     if (!restaurantKey) return;
@@ -240,6 +251,11 @@ export default function MenuItemCard({
     onInteraction?.();
     if (!restaurantKey) {
       console.warn('[menu-item-card] missing restaurant id for quick add', { itemId: item?.id });
+      return;
+    }
+
+    if (isKiosk && hasRequiredAddons) {
+      setShowModal(true);
       return;
     }
 
