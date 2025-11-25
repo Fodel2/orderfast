@@ -282,16 +282,8 @@ function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
       <div className="relative pt-5">
         <div
           aria-hidden
-          className="pointer-events-none sticky left-0 right-0 z-30"
-          style={{
-            top: 0,
-            height: 48,
-            marginTop: -48,
-            opacity: showTopFade ? 1 : 0,
-            background:
-              'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(255,255,255,0.92) 28%, rgba(255,255,255,0.85) 56%, rgba(255,255,255,0) 100%)',
-            transition: 'opacity 120ms ease-out',
-          }}
+          className="pointer-events-none sticky left-0 right-0 z-30 -mt-12 h-12 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98)_0%,_rgba(255,255,255,0.92)_28%,_rgba(255,255,255,0.85)_56%,_rgba(255,255,255,0)_100%)] transition-opacity duration-150"
+          style={{ top: 0, opacity: showTopFade ? 1 : 0 }}
         />
         {loading ? (
           <div className="grid grid-cols-1 gap-6 sm:[grid-template-columns:repeat(auto-fill,minmax(240px,1fr))] lg:[grid-template-columns:repeat(3,minmax(0,1fr))]">
