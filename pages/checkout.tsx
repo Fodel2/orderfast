@@ -8,6 +8,7 @@ import { useCart } from '../context/CartContext';
 import { useOrderType, OrderType } from '../context/OrderTypeContext';
 import { supabase } from '../utils/supabaseClient';
 import { useSession } from '@supabase/auth-helpers-react';
+import { formatPrice, normalizePriceValue } from '@/lib/orderDisplay';
 
 // Generate a unique 4-digit order number between 1000-9999
 async function generateShortOrderNumber(restaurantId: string): Promise<number> {
@@ -34,6 +35,8 @@ export default function CheckoutPage() {
   const [location, setLocation] = useState<{ x: number; y: number } | null>(null);
   const [asap, setAsap] = useState(true);
   const router = useRouter();
+  const currency = 'GBP';
+  const formatAmount = (value: number) => formatPrice(normalizePriceValue(value), currency);
 
   const selectClass = (type: OrderType) =>
     `border rounded-lg p-6 flex flex-col items-center justify-center cursor-pointer space-y-2 hover:border-teal-600 ${orderType === type ? 'border-teal-600 bg-teal-50' : 'border-gray-300'}`;
@@ -250,12 +253,12 @@ export default function CheckoutPage() {
                   const total = item.price * item.quantity + addonsTotal;
                   return (
                     <li key={item.item_id} className="border rounded p-3 text-sm">
-                      <div className="flex justify-between">
-                        <span>
-                          {item.name} × {item.quantity}
-                        </span>
-                        <span>${(total / 100).toFixed(2)}</span>
-                      </div>
+                    <div className="flex justify-between">
+                      <span>
+                        {item.name} × {item.quantity}
+                      </span>
+                      <span>{formatAmount(total)}</span>
+                    </div>
                       {item.addons && item.addons.length > 0 && (
                         <ul className="mt-2 space-y-1 pl-4 text-gray-600">
                           {item.addons.map((a) => (
@@ -263,7 +266,7 @@ export default function CheckoutPage() {
                               <span>
                                 {a.name} × {a.quantity}
                               </span>
-                              <span>${((a.price * a.quantity) / 100).toFixed(2)}</span>
+                              <span>{formatAmount(a.price * a.quantity)}</span>
                             </li>
                           ))}
                         </ul>
@@ -290,25 +293,25 @@ export default function CheckoutPage() {
           </MotionDiv>
         )}
       </AnimatePresence>
-      {step === 'details' && (
+          {step === 'details' && (
         <div className="mt-6 border-t pt-4">
           <div className="flex justify-between mb-2">
             <span>Subtotal</span>
-            <span>${(subtotal / 100).toFixed(2)}</span>
+            <span>{formatAmount(subtotal)}</span>
           </div>
           {orderType === 'delivery' && (
             <div className="flex justify-between mb-2">
               <span>Delivery Fee</span>
-              <span>${(deliveryFee / 100).toFixed(2)}</span>
+              <span>{formatAmount(deliveryFee)}</span>
             </div>
           )}
           <div className="flex justify-between mb-2">
             <span>Service Fee</span>
-            <span>${(serviceFee / 100).toFixed(2)}</span>
+            <span>{formatAmount(serviceFee)}</span>
           </div>
           <div className="flex justify-between font-semibold text-lg mb-4">
             <span>Total</span>
-            <span>${((subtotal + serviceFee + deliveryFee) / 100).toFixed(2)}</span>
+            <span>{formatAmount(subtotal + serviceFee + deliveryFee)}</span>
           </div>
           <button
             type="button"

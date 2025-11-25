@@ -16,13 +16,19 @@ export function displayOrderNo(order: any): string {
 
 export function formatPrice(amount: number, currency = 'GBP') {
   try {
-    return new Intl.NumberFormat(undefined, {
+    return new Intl.NumberFormat('en-GB', {
       style: 'currency',
       currency,
     }).format(amount);
   } catch {
     return `£${Number(amount).toFixed(2)}`;
   }
+}
+
+export function normalizePriceValue(amount: number) {
+  const numericAmount = typeof amount === 'number' ? amount : Number(amount || 0);
+  if (!Number.isFinite(numericAmount)) return 0;
+  return numericAmount >= 100 ? numericAmount / 100 : numericAmount;
 }
 
 export function extractCancelReason(order: any): { reason?: string; note?: string } {

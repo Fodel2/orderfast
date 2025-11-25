@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { useCart } from '../context/CartContext';
 import { useBrand } from '@/components/branding/BrandProvider';
-import { formatPrice } from '@/lib/orderDisplay';
+import { formatPrice, normalizePriceValue } from '@/lib/orderDisplay';
 import ItemModal from '@/components/modals/ItemModal';
 import {
   FALLBACK_PLACEHOLDER_SRC,
@@ -105,7 +105,8 @@ export default function MenuItemCard({
     return source ?? undefined;
   }, [item?.image_url]);
   const currency = 'GBP';
-  const formattedPrice = formatPrice(price / 100, currency);
+  const normalizedPrice = normalizePriceValue(price);
+  const formattedPrice = formatPrice(normalizedPrice, currency);
   const badges = useMemo(() => {
     const list: string[] = [];
     if (item?.is_vegan) list.push('Vegan');
@@ -254,7 +255,7 @@ export default function MenuItemCard({
       return;
     }
 
-    if (isKiosk && hasRequiredAddons) {
+    if (hasRequiredAddons) {
       setShowModal(true);
       return;
     }
