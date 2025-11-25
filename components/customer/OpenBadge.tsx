@@ -1,16 +1,24 @@
 import React from 'react';
 
 export default function OpenBadge({ isOpen }: { isOpen?: boolean | null }) {
+  const isOpenState = Boolean(isOpen);
+  const activeStyles = {
+    border: '1px solid var(--brand)',
+    background: 'var(--brand)',
+    color: '#ffffff',
+  } as const;
+  const inactiveStyles = {
+    border: '1px solid var(--muted)',
+    background: 'var(--card)',
+    color: 'var(--muted)',
+  } as const;
+
   return (
     <span
       className="pill"
-      style={{
-        border: `1px solid var(--brand)`,
-        color: isOpen ? 'var(--brand-700)' : 'var(--muted)',
-        background: isOpen ? undefined : 'var(--card)',
-      }}
+      style={isOpenState ? activeStyles : inactiveStyles}
     >
-      {isOpen ? 'Open' : 'Closed'}
+      {isOpenState ? 'Open' : 'Closed'}
     </span>
   );
 }
