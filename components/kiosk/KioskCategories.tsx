@@ -12,7 +12,7 @@ export default function KioskCategories({ categories, activeCategoryId, onSelect
       className="overflow-x-auto pb-1"
       role="tablist"
       aria-label="Categories"
-      style={{ scrollSnapType: 'x mandatory' }}
+      style={{ scrollSnapType: 'x mandatory', background: '#ffffff' }}
     >
       <div className="inline-flex min-w-full items-center gap-3 whitespace-nowrap px-1 sm:px-2">
         {categories.map((category) => (

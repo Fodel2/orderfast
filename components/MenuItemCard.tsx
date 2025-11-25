@@ -24,6 +24,11 @@ function contrast(c?: string) {
   }
 }
 
+interface AddonGroup {
+  required?: boolean | null;
+  max_group_select?: number | string | null;
+}
+
 interface MenuItem {
   id: number;
   name: string;
@@ -34,6 +39,7 @@ interface MenuItem {
   is_vegetarian?: boolean | null;
   is_18_plus?: boolean | null;
   stock_status?: 'in_stock' | 'scheduled' | 'out' | null;
+  addon_groups?: AddonGroup[] | null;
 }
 
 export default function MenuItemCard({
@@ -240,6 +246,24 @@ export default function MenuItemCard({
     onInteraction?.();
     if (!restaurantKey) {
       console.warn('[menu-item-card] missing restaurant id for quick add', { itemId: item?.id });
+      return;
+    }
+
+    const addonGroups = Array.isArray(item?.addon_groups) ? item.addon_groups : [];
+    const hasRequiredAddons = addonGroups.some((group) => {
+      if (!group) return false;
+      const maxValue =
+        typeof group.max_group_select === 'number'
+          ? group.max_group_select
+          : typeof group.max_group_select === 'string'
+          ? Number(group.max_group_select)
+          : null;
+      const hasMaxSelection = maxValue != null && !Number.isNaN(maxValue) && maxValue > 0;
+      return group.required === true || hasMaxSelection;
+    });
+
+    if (hasRequiredAddons) {
+      handleClick();
       return;
     }
 
