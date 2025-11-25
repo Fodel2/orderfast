@@ -196,7 +196,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
       cartCount={cartCount}
       customHeaderContent={headerContent}
     >
-      <div className="mx-auto w-full max-w-5xl space-y-4 pb-28 pt-2 sm:space-y-5 sm:pt-3">
+      <div className="mx-auto w-full max-w-5xl space-y-4 pb-28 pt-1 sm:space-y-5 sm:pt-2">
         <div className="space-y-1 px-2 sm:px-0">
           <h1 className="text-2xl font-semibold text-slate-900 sm:text-[26px]">Review your order</h1>
           <p className="text-base leading-relaxed text-slate-600 sm:text-lg">Check your items before placing your order.</p>
