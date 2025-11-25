@@ -15,8 +15,8 @@ import KioskActionButton from '@/components/kiosk/KioskActionButton';
 import { useKioskSession } from '@/context/KioskSessionContext';
 import { hasSeenHome, markHomeSeen } from '@/utils/kiosk/session';
 
-export const FULL_HEADER_HEIGHT = 148;
-export const COLLAPSED_HEADER_HEIGHT = 92;
+export const FULL_HEADER_HEIGHT = 136;
+export const COLLAPSED_HEADER_HEIGHT = 88;
 export const FULL_CAT_HEIGHT = 64;
 export const COLLAPSED_CAT_HEIGHT = 50;
 
@@ -376,7 +376,6 @@ export default function KioskLayout({
   }, [attemptFullscreen, menuPath, resetIdleTimer, requestWakeLock, restaurantId, router]);
 
   const headerTitle = restaurant?.name || 'Restaurant';
-  const subtitle = restaurant?.website_description;
   const logoUrl = restaurant?.logo_url || null;
 
   const hasCustomHeader = Boolean(customHeaderContent);
@@ -385,51 +384,43 @@ export default function KioskLayout({
   const headerHeight =
     expandedHeaderHeight - (expandedHeaderHeight - collapsedHeaderHeight) * shrinkProgress;
   const categoryHeight = FULL_CAT_HEIGHT - (FULL_CAT_HEIGHT - COLLAPSED_CAT_HEIGHT) * shrinkProgress;
+  const headerPaddingExpanded = hasCustomHeader ? 14 : 16;
+  const headerPaddingCollapsed = hasCustomHeader ? 9 : 10;
   const headerPaddingY =
-    (hasCustomHeader ? 14 : 20) - ((hasCustomHeader ? 14 : 20) - (hasCustomHeader ? 9 : 12)) * shrinkProgress;
+    headerPaddingExpanded - (headerPaddingExpanded - headerPaddingCollapsed) * shrinkProgress;
   const brandScale = 1 - shrinkProgress * 0.08;
   const cartScale = 1 - shrinkProgress * 0.08;
-  const subtitleOpacity = Math.max(0, 1 - shrinkProgress * 0.6);
   const categoriesScale = 1 - shrinkProgress * 0.06;
+  const fadeOverlayOpacity = Math.min(shrinkProgress * 1.2, 1);
   const showHeader = !homeVisible;
   const showCategoryBar = showHeader && Boolean(categoryBar);
   const headerContent = useMemo(() => {
     if (customHeaderContent) return customHeaderContent;
     return (
       <div
-        className="mx-auto flex h-full w-full max-w-5xl items-center justify-between px-4 sm:px-6"
-        style={{ gap: '1rem' }}
+        className="flex h-full w-full items-center justify-between px-5 sm:px-8"
+        style={{ gap: '1.25rem' }}
       >
         <div
-          className="flex items-center gap-3"
-          style={{ transform: `scale(${brandScale})`, transformOrigin: 'left top' }}
+          className="flex items-center gap-4"
+          style={{ transform: `scale(${brandScale})`, transformOrigin: 'left center' }}
         >
           {logoUrl ? (
-            <div className="hidden h-12 w-12 flex-shrink-0 items-center justify-center rounded-full md:flex">
-              <div className="relative h-11 w-11 overflow-hidden rounded-full">
+            <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-full bg-white/90">
+              <div className="relative h-14 w-14 overflow-hidden rounded-full border border-neutral-200 shadow-sm">
                 <Image
                   src={logoUrl}
                   alt={`${headerTitle} logo`}
                   fill
-                  sizes="44px"
+                  sizes="64px"
                   className="rounded-full object-cover"
                 />
               </div>
             </div>
           ) : null}
-          <div className="flex flex-col">
-            <span className="text-2xl font-semibold leading-tight tracking-tight text-neutral-900 sm:text-3xl">
-              {headerTitle}
-            </span>
-            {subtitle ? (
-              <span
-                className="mt-2 text-sm text-neutral-600 sm:text-base"
-                style={{ opacity: subtitleOpacity }}
-              >
-                {subtitle}
-              </span>
-            ) : null}
-          </div>
+          <span className="text-3xl font-semibold leading-tight tracking-tight text-neutral-900">
+            {headerTitle}
+          </span>
         </div>
         {restaurantId ? (
           <div
@@ -449,7 +440,7 @@ export default function KioskLayout({
         ) : null}
       </div>
     );
-  }, [brandScale, cartCount, cartScale, customHeaderContent, headerTitle, logoUrl, restaurantId, subtitle, subtitleOpacity]);
+  }, [brandScale, cartCount, cartScale, customHeaderContent, headerTitle, logoUrl, registerActivity, restaurantId]);
 
   const handleFullscreenPromptClick = useCallback(async () => {
     await Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]);
@@ -501,6 +492,8 @@ export default function KioskLayout({
             style={{
               top: headerHeight + categoryHeight - 1,
               height: 48,
+              opacity: fadeOverlayOpacity,
+              transition: 'opacity 150ms linear',
               background: 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(255,255,255,0.92) 28%, rgba(255,255,255,0.85) 56%, rgba(255,255,255,0) 100%)',
             }}
           />
