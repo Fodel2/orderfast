@@ -376,7 +376,6 @@ export default function KioskLayout({
   }, [attemptFullscreen, menuPath, resetIdleTimer, requestWakeLock, restaurantId, router]);
 
   const headerTitle = restaurant?.name || 'Restaurant';
-  const subtitle = restaurant?.website_description;
   const logoUrl = restaurant?.logo_url || null;
 
   const hasCustomHeader = Boolean(customHeaderContent);
@@ -389,7 +388,6 @@ export default function KioskLayout({
     (hasCustomHeader ? 14 : 20) - ((hasCustomHeader ? 14 : 20) - (hasCustomHeader ? 9 : 12)) * shrinkProgress;
   const brandScale = 1 - shrinkProgress * 0.08;
   const cartScale = 1 - shrinkProgress * 0.08;
-  const subtitleOpacity = Math.max(0, 1 - shrinkProgress * 0.6);
   const categoriesScale = 1 - shrinkProgress * 0.06;
   const showHeader = !homeVisible;
   const showCategoryBar = showHeader && Boolean(categoryBar);
@@ -397,21 +395,21 @@ export default function KioskLayout({
     if (customHeaderContent) return customHeaderContent;
     return (
       <div
-        className="mx-auto flex h-full w-full max-w-5xl items-center justify-between px-4 sm:px-6"
+        className="flex h-full w-full items-center justify-between px-4 sm:px-6 lg:px-10"
         style={{ gap: '1rem' }}
       >
         <div
-          className="flex items-center gap-3"
+          className="flex items-center gap-4"
           style={{ transform: `scale(${brandScale})`, transformOrigin: 'left top' }}
         >
           {logoUrl ? (
-            <div className="hidden h-12 w-12 flex-shrink-0 items-center justify-center rounded-full md:flex">
-              <div className="relative h-11 w-11 overflow-hidden rounded-full">
+            <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-full">
+              <div className="relative h-14 w-14 overflow-hidden rounded-full shadow-sm shadow-black/10">
                 <Image
                   src={logoUrl}
                   alt={`${headerTitle} logo`}
                   fill
-                  sizes="44px"
+                  sizes="64px"
                   className="rounded-full object-cover"
                 />
               </div>
@@ -421,14 +419,6 @@ export default function KioskLayout({
             <span className="text-2xl font-semibold leading-tight tracking-tight text-neutral-900 sm:text-3xl">
               {headerTitle}
             </span>
-            {subtitle ? (
-              <span
-                className="mt-2 text-sm text-neutral-600 sm:text-base"
-                style={{ opacity: subtitleOpacity }}
-              >
-                {subtitle}
-              </span>
-            ) : null}
           </div>
         </div>
         {restaurantId ? (
@@ -449,7 +439,7 @@ export default function KioskLayout({
         ) : null}
       </div>
     );
-  }, [brandScale, cartCount, cartScale, customHeaderContent, headerTitle, logoUrl, restaurantId, subtitle, subtitleOpacity]);
+  }, [brandScale, cartCount, cartScale, customHeaderContent, headerTitle, logoUrl, restaurantId]);
 
   const handleFullscreenPromptClick = useCallback(async () => {
     await Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]);
