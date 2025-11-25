@@ -71,6 +71,7 @@ function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
   const [loading, setLoading] = useState(true);
   const [activeCategoryId, setActiveCategoryId] = useState<number | null>(null);
   const [showTopFade, setShowTopFade] = useState(false);
+  const [fadeTopOffset, setFadeTopOffset] = useState<number>(FULL_HEADER_HEIGHT + FULL_CAT_HEIGHT - 1);
   const { cart } = useCart();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
   const { registerActivity } = useKioskSession();
@@ -256,13 +257,15 @@ function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
 
   useEffect(() => {
     const handleScroll = () => {
+      const { headerHeight, categoryHeight } = getCurrentHeaderHeights();
+      setFadeTopOffset(headerHeight + categoryHeight - 1);
       setShowTopFade((window?.scrollY || 0) > 0);
     };
 
     handleScroll();
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+  }, [getCurrentHeaderHeights]);
 
   return (
     <KioskLayout
@@ -282,8 +285,8 @@ function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
       <div className="relative pt-5">
         <div
           aria-hidden
-          className="pointer-events-none sticky left-0 right-0 z-30 -mt-12 h-12 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98)_0%,_rgba(255,255,255,0.92)_28%,_rgba(255,255,255,0.85)_56%,_rgba(255,255,255,0)_100%)] transition-opacity duration-150"
-          style={{ top: 0, opacity: showTopFade ? 1 : 0 }}
+          className="pointer-events-none sticky left-0 right-0 z-30 h-12 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98)_0%,_rgba(255,255,255,0.92)_28%,_rgba(255,255,255,0.85)_56%,_rgba(255,255,255,0)_100%)] transition-opacity duration-150"
+          style={{ top: fadeTopOffset, opacity: showTopFade ? 1 : 0 }}
         />
         {loading ? (
           <div className="grid grid-cols-1 gap-6 sm:[grid-template-columns:repeat(auto-fill,minmax(240px,1fr))] lg:[grid-template-columns:repeat(3,minmax(0,1fr))]">
