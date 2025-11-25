@@ -12,8 +12,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
   const booted = useRef(false);
 
   useEffect(() => {
-    if (booted.current) return;
-    booted.current = true;
+    if (!router.isReady) return;
 
     // Resolution order:
     // 1) query param ?restaurant_id=<uuid> (most reliable today)
@@ -22,9 +21,14 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     const rid = (q?.restaurant_id as string) || (q?.rid as string) || null;
     const demo = process.env.NEXT_PUBLIC_DEMO_RESTAURANT_ID || null;
 
-    setRestaurantId(rid || demo || null);
+    // Avoid resetting after initial resolution to prevent flashes on navigation.
+    if (!booted.current || rid || demo) {
+      setRestaurantId(rid || demo || null);
+    }
+
+    booted.current = true;
     setLoading(false);
-  }, [router.query]);
+  }, [router.isReady, router.query]);
 
   const value = useMemo(() => ({ restaurantId, loading }), [restaurantId, loading]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

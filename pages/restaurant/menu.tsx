@@ -216,6 +216,12 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
     const headerFocalY = restaurant?.menu_header_focal_y ?? 0.5;
 
     useEffect(() => {
+      if (Array.isArray(categories) && categories.length > 0) {
+        setActiveCat((prev) => prev ?? String(categories[0].id));
+      }
+    }, [categories]);
+
+    useEffect(() => {
       if (!Array.isArray(categories) || categories.length === 0) return;
       const obs = new IntersectionObserver(
         (entries) => {
@@ -237,30 +243,14 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
     function onChipSelect(c: any) {
       const id = c?.id ? `cat-${c.id}` : '';
       const el = id ? document.getElementById(id) : null;
+      if (c?.id) setActiveCat(String(c.id));
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
 
     return (
-      <div className="px-4 sm:px-6 pb-28 max-w-6xl mx-auto">
-        <div className="pt-4 space-y-8 scroll-smooth">
-          {/* Inline guards rendered inside layout */}
-          {!routerReady || ridLoading ? (
-            <div className="p-6" />
-          ) : !restaurantId ? (
-            <div className="p-6 text-center text-red-500">No restaurant specified</div>
-          ) : !restaurant ? (
-            <div className="p-6">
-              <Skeleton className="h-24 rounded-lg mb-4" />
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                <Skeleton className="h-36 rounded-lg" />
-                <Skeleton className="h-36 rounded-lg" />
-                <Skeleton className="h-36 rounded-lg" />
-              </div>
-            </div>
-          ) : null}
-
-          {/* Menu header hero */}
+      <div className="pb-28">
+        <div className="relative -mx-4 sm:-mx-6 md:-mx-8 lg:-mx-10 xl:-mx-12">
           {(() => {
             const menuTitle = restaurant?.website_title || restaurant?.name || 'Restaurant';
             return (
@@ -273,144 +263,162 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
               />
             );
           })()}
-          {(() => {
-            const desc =
-              restaurant?.menu_description ||
-              restaurant?.website_description ||
-              '';
-            return desc ? (
-              <p className="mt-3 text-[15px] leading-6 text-neutral-700">{desc}</p>
-            ) : null;
-          })()}
+        </div>
 
-          <div className="relative">
+        <div className="px-4 sm:px-6 max-w-6xl mx-auto">
+          <div className="space-y-8 scroll-smooth">
+            {/* Inline guards rendered inside layout */}
+            {!routerReady || ridLoading ? (
+              <div className="p-6" />
+            ) : !restaurantId ? (
+              <div className="p-6 text-center text-red-500">No restaurant specified</div>
+            ) : !restaurant ? (
+              <div className="p-6">
+                <Skeleton className="h-24 rounded-lg mb-4" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  <Skeleton className="h-36 rounded-lg" />
+                  <Skeleton className="h-36 rounded-lg" />
+                  <Skeleton className="h-36 rounded-lg" />
+                </div>
+              </div>
+            ) : null}
+
+            {(() => {
+              const desc =
+                restaurant?.menu_description ||
+                restaurant?.website_description ||
+                '';
+              return desc ? (
+                <p className="mt-2 text-[15px] leading-6 text-neutral-700">{desc}</p>
+              ) : null;
+            })()}
+
             <div className="relative">
-              <input
-                type="text"
-                placeholder="Search menu..."
-                value={tempQuery}
-                onChange={(e) => setTempQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && setSearchQuery(tempQuery)}
-                className="w-full rounded-full bg-white/50 backdrop-blur-md shadow px-12 py-3 text-base placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)]"
-              />
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none opacity-70">
-                <Search className="w-5 h-5" />
-              </span>
-            </div>
-          </div>
-
-          {/* sticky category chips */}
-          {Array.isArray(categories) && categories.length > 0 && (
-            <div
-              className={`sticky top-[60px] z-20 pt-2 pb-3 bg-white/70 backdrop-blur supports-[backdrop-filter]:backdrop-blur rounded-b-xl border-y-0 transition-all duration-400 ease-out will-change-transform will-change-opacity ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'}`}
-              style={{ transitionDelay: '100ms' }}
-            >
-              <div className="flex gap-3 overflow-x-auto overflow-y-hidden no-scrollbar py-2 md:py-3">
-                {categories.map((c: any) => {
-                  const isActive = activeCat === String(c.id);
-                  const cls = isActive
-                    ? 'rounded-full px-5 py-2 text-sm font-semibold shadow-sm text-white'
-                    : 'rounded-full bg-white/40 backdrop-blur px-4 py-2 text-sm font-medium hover:bg-white/60 transition';
-                  return (
-                    <button
-                      key={c.id}
-                      onClick={() => onChipSelect(c)}
-                      className={cls}
-                      aria-pressed={isActive}
-                      aria-current={isActive ? 'true' : undefined}
-                      style={isActive ? { backgroundColor: 'var(--brand-primary)' } : undefined}
-                    >
-                      {c.name}
-                    </button>
-                  );
-                })}
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Search menu..."
+                  value={tempQuery}
+                  onChange={(e) => setTempQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && setSearchQuery(tempQuery)}
+                  className="w-full rounded-full bg-white/50 backdrop-blur-md shadow px-12 py-3 text-base placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)]"
+                />
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none opacity-70">
+                  <Search className="w-5 h-5" />
+                </span>
               </div>
             </div>
-          )}
 
-          <div className="space-y-8">
-            {categories.length === 0 ? (
-              <p className="text-center text-gray-500">This menu is currently empty.</p>
-            ) : (
-              categories.map((cat) => {
-                const catItems = items.filter(
-                  (it) =>
-                    (it.category_id === cat.id ||
-                      itemLinks.some(
-                        (link) => link.item_id === it.id && link.category_id === cat.id,
-                      )) &&
-                    (!searchQuery ||
-                      it.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                      (it.description || '')
-                        .toLowerCase()
-                        .includes(searchQuery.toLowerCase())),
-                );
-                if (catItems.length === 0) return null;
-                return (
-                  <section
-                    key={cat.id}
-                    id={`cat-${cat.id}`}
-                    data-cat-id={cat.id}
-                    ref={(el) => (sectionsRef.current[cat.id] = el)}
-                    style={{ scrollMarginTop: 76 }}
-                  >
-                    {(() => {
-                      const isActive = activeCat === String(cat.id);
-                      return (
-                        <div className="mt-8 mb-3">
-                          <h2
-                            className="text-xl font-semibold tracking-tight pb-1 border-b-2"
-                            style={{
-                              borderColor: isActive
-                                ? 'var(--brand-secondary, var(--brand-primary))'
-                                : 'var(--brand-primary)',
-                            }}
+            {/* sticky category chips */}
+            {Array.isArray(categories) && categories.length > 0 && (
+              <div
+                className={`sticky top-[56px] z-20 pt-2 pb-3 bg-white/80 backdrop-blur supports-[backdrop-filter]:backdrop-blur-md transition-all duration-400 ease-out will-change-transform will-change-opacity ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'}`}
+                style={{ transitionDelay: '100ms' }}
+              >
+                <div className="flex gap-3 overflow-x-auto overflow-y-hidden no-scrollbar py-2 md:py-3">
+                  {categories.map((c: any) => {
+                    const isActive = activeCat === String(c.id);
+                    const baseCls =
+                      'inline-flex items-center rounded-full px-5 py-2 text-sm font-semibold whitespace-nowrap transition-all duration-200 border';
+                    const activeCls =
+                      'shadow-md shadow-black/5 text-white';
+                    const inactiveCls =
+                      'bg-white text-neutral-900 border-neutral-200 hover:bg-neutral-50';
+                    return (
+                      <button
+                        key={c.id}
+                        onClick={() => onChipSelect(c)}
+                        className={`${baseCls} ${isActive ? activeCls : inactiveCls}`}
+                        aria-pressed={isActive}
+                        aria-current={isActive ? 'true' : undefined}
+                        style={
+                          isActive
+                            ? { backgroundColor: 'var(--brand-primary)', borderColor: 'var(--brand-primary)' }
+                            : undefined
+                        }
+                      >
+                        {c.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-8">
+              {categories.length === 0 ? (
+                <p className="text-center text-gray-500">This menu is currently empty.</p>
+              ) : (
+                categories.map((cat) => {
+                  const catItems = items.filter(
+                    (it) =>
+                      (it.category_id === cat.id ||
+                        itemLinks.some(
+                          (link) => link.item_id === it.id && link.category_id === cat.id,
+                        )) &&
+                      (!searchQuery ||
+                        it.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        (it.description || '')
+                          .toLowerCase()
+                          .includes(searchQuery.toLowerCase())),
+                  );
+                  if (catItems.length === 0) return null;
+                  return (
+                    <section
+                      key={cat.id}
+                      id={`cat-${cat.id}`}
+                      data-cat-id={cat.id}
+                      ref={(el) => (sectionsRef.current[cat.id] = el)}
+                      style={{ scrollMarginTop: 76 }}
+                    >
+                      {(() => {
+                        return (
+                          <div className="mt-8 mb-3">
+                            <h2 className="text-xl font-semibold tracking-tight text-neutral-900">{cat.name}</h2>
+                          </div>
+                        );
+                      })()}
+                      <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+                        {catItems.map((item, idx) => (
+                          <div
+                            key={item.id}
+                            className={`opacity-0 translate-y-2 transition-all duration-500 ease-out will-change-transform will-change-opacity ${mounted ? 'opacity-100 translate-y-0' : ''}`}
+                            style={{ transitionDelay: `${idx * 75}ms` }}
                           >
-                            {cat.name}
-                          </h2>
-                        </div>
-                      );
-                    })()}
-                    <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-                      {catItems.map((item, idx) => (
-                        <div
-                          key={item.id}
-                          className={`opacity-0 translate-y-2 transition-all duration-500 ease-out will-change-transform will-change-opacity ${mounted ? 'opacity-100 translate-y-0' : ''}`}
-                          style={{ transitionDelay: `${idx * 75}ms` }}
-                        >
-                          <MenuItemCard
-                            item={item}
-                            restaurantId={restaurantId as string}
-                            restaurantLogoUrl={restaurant?.logo_url ?? null}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </section>
-                );
-              })
+                            <MenuItemCard
+                              item={item}
+                              restaurantId={restaurantId as string}
+                              restaurantLogoUrl={restaurant?.logo_url ?? null}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  );
+                })
               )}
+            </div>
+            {showTop && (
+              <motion.button
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                whileHover={{ scale: 1.05 }}
+                onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                className="fixed bottom-6 right-4 z-50 bg-white shadow-lg rounded-full w-10 h-10 flex items-center justify-center transition"
+              >
+                <ChevronUp className="w-5 h-5" />
+              </motion.button>
+            )}
           </div>
-          {showTop && (
-            <motion.button
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              whileHover={{ scale: 1.05 }}
-              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-              className="fixed bottom-6 right-4 z-50 bg-white shadow-lg rounded-full w-10 h-10 flex items-center justify-center transition"
-            >
-              <ChevronUp className="w-5 h-5" />
-            </motion.button>
-          )}
         </div>
       </div>
     );
   };
 
   return (
-      <CustomerLayout cartCount={itemCount}>
-        <Inner />
-      </CustomerLayout>
+    <CustomerLayout cartCount={itemCount}>
+      <Inner />
+    </CustomerLayout>
   );
 }
 
