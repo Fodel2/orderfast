@@ -255,7 +255,7 @@ export default function MenuItemCard({
       return;
     }
 
-    if (isKiosk && hasRequiredAddons) {
+    if (hasRequiredAddons) {
       setShowModal(true);
       return;
     }
