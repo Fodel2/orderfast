@@ -485,18 +485,6 @@ export default function KioskLayout({
         className={`transition-opacity duration-200 ${contentVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
       >
         <div className="relative mx-auto w-full max-w-6xl px-4 pb-20 sm:px-8 lg:max-w-7xl">
-          {showCategoryBar ? (
-            <div
-              aria-hidden
-              className="pointer-events-none fixed left-0 right-0 z-40"
-              style={{
-                top: headerHeight + categoryHeight - 1,
-                height: 48,
-                background:
-                  'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(255,255,255,0.92) 28%, rgba(255,255,255,0.85) 56%, rgba(255,255,255,0) 100%)',
-              }}
-            />
-          ) : null}
           {contentVisible ? children : null}
         </div>
       </main>

@@ -70,6 +70,7 @@ function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
   const [itemLinks, setItemLinks] = useState<ItemLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeCategoryId, setActiveCategoryId] = useState<number | null>(null);
+  const [showTopFade, setShowTopFade] = useState(false);
   const { cart } = useCart();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
   const { registerActivity } = useKioskSession();
@@ -253,6 +254,16 @@ function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
     setActiveCategoryId(categorizedItems[0].id);
   }, [activeCategoryId, categorizedItems]);
 
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowTopFade((window?.scrollY || 0) > 0);
+    };
+
+    handleScroll();
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
   return (
     <KioskLayout
       restaurantId={restaurantId}
@@ -268,7 +279,20 @@ function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
         ) : null
       }
     >
-      <div className="pt-5">
+      <div className="relative pt-5">
+        <div
+          aria-hidden
+          className="pointer-events-none sticky left-0 right-0 z-30"
+          style={{
+            top: 0,
+            height: 48,
+            marginTop: -48,
+            opacity: showTopFade ? 1 : 0,
+            background:
+              'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(255,255,255,0.92) 28%, rgba(255,255,255,0.85) 56%, rgba(255,255,255,0) 100%)',
+            transition: 'opacity 120ms ease-out',
+          }}
+        />
         {loading ? (
           <div className="grid grid-cols-1 gap-6 sm:[grid-template-columns:repeat(auto-fill,minmax(240px,1fr))] lg:[grid-template-columns:repeat(3,minmax(0,1fr))]">
             {Array.from({ length: 6 }).map((_, idx) => (
