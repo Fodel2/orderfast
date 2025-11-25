@@ -6,7 +6,7 @@ import { XMarkIcon } from '@heroicons/react/24/outline';
 import AddonGroups, { validateAddonSelections } from '@/components/AddonGroups';
 import PlateAdd from '@/components/icons/PlateAdd';
 import { useBrand } from '@/components/branding/BrandProvider';
-import { formatPrice } from '@/lib/orderDisplay';
+import { formatPrice, normalizePriceValue } from '@/lib/orderDisplay';
 import { getAddonsForItem } from '@/utils/getAddonsForItem';
 import type { AddonGroup } from '@/utils/types';
 
@@ -134,7 +134,8 @@ export default function ItemModal({ item, restaurantId, onAddToCart }: ItemModal
 
   const currency = 'GBP';
   const price = typeof item?.price === 'number' ? item.price : Number(item?.price || 0);
-  const formattedPrice = formatPrice(price / 100, currency);
+  const normalizedPrice = normalizePriceValue(price);
+  const formattedPrice = formatPrice(normalizedPrice, currency);
   const imageUrl = item?.image_url || undefined;
   const focalXRaw = typeof item?.menu_header_focal_x === 'number' ? item.menu_header_focal_x : undefined;
   const focalYRaw = typeof item?.menu_header_focal_y === 'number' ? item.menu_header_focal_y : undefined;

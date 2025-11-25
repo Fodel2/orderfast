@@ -4,6 +4,7 @@ import { XMarkIcon, ShoppingCartIcon } from '@heroicons/react/24/outline';
 import { Trash2 } from 'lucide-react';
 import PlateIcon from '@/components/icons/PlateIcon';
 import { randomEmptyPlateMessage } from '@/lib/uiCopy';
+import { formatPrice, normalizePriceValue } from '@/lib/orderDisplay';
 
 interface CartDrawerProps {
   /**
@@ -26,6 +27,7 @@ function CartContent({
   onInteraction?: () => void;
 }) {
   const { cart, subtotal, updateQuantity, removeFromCart, clearCart } = useCart();
+  const currency = 'GBP';
 
   const handleRemove = (item_id: string) => {
     onInteraction?.();
@@ -71,6 +73,14 @@ function CartContent({
                 0
               );
               const itemTotal = item.price * item.quantity + addonsTotal;
+              const formattedItemTotal = formatPrice(
+                normalizePriceValue(itemTotal),
+                currency
+              );
+              const formattedItemPrice = formatPrice(
+                normalizePriceValue(item.price),
+                currency
+              );
               return (
                 <div
                   key={item.item_id}
@@ -81,7 +91,7 @@ function CartContent({
                       <div className="space-y-0.5">
                         <p className="text-xl font-semibold text-slate-900 sm:text-[22px]">{item.name}</p>
                         <p className="text-base text-slate-500 sm:text-[17px]">
-                          ${(item.price / 100).toFixed(2)} each
+                          {formattedItemPrice} each
                         </p>
                       </div>
                       {item.addons && item.addons.length > 0 && (
@@ -90,7 +100,10 @@ function CartContent({
                             <li key={addon.option_id} className="flex justify-between gap-3">
                               <span className="flex-1">{addon.name} × {addon.quantity}</span>
                               <span className="font-medium text-slate-700">
-                                ${((addon.price * addon.quantity) / 100).toFixed(2)}
+                                {formatPrice(
+                                  normalizePriceValue(addon.price * addon.quantity),
+                                  currency
+                                )}
                               </span>
                             </li>
                           ))}
@@ -102,7 +115,7 @@ function CartContent({
                     </div>
                     <div className="flex flex-col items-end gap-2.5">
                       <span className="text-lg font-semibold text-slate-900 sm:text-xl">
-                        ${(itemTotal / 100).toFixed(2)}
+                        {formattedItemTotal}
                       </span>
                       <button
                         type="button"
@@ -135,7 +148,7 @@ function CartContent({
                     </div>
                     <div className="text-right text-sm text-slate-500 sm:text-base">
                       <p className="text-xs uppercase tracking-wide text-slate-400">Subtotal</p>
-                      <p className="text-lg font-semibold text-slate-900 sm:text-xl">${(itemTotal / 100).toFixed(2)}</p>
+                      <p className="text-lg font-semibold text-slate-900 sm:text-xl">{formattedItemTotal}</p>
                     </div>
                   </div>
                 </div>
@@ -158,7 +171,9 @@ function CartContent({
         ) : null
       ) : (
         <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-slate-600">
-          <span className="text-base font-semibold text-slate-900 sm:text-lg">Subtotal: ${(subtotal / 100).toFixed(2)}</span>
+          <span className="text-base font-semibold text-slate-900 sm:text-lg">
+            Subtotal: {formatPrice(normalizePriceValue(subtotal), currency)}
+          </span>
           <button
             type="button"
             onClick={handleClearCart}
