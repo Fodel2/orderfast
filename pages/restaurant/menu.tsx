@@ -230,6 +230,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
 
     useEffect(() => {
       if (!Array.isArray(categories) || categories.length === 0) return;
+      const scrollRoot = scrollContainerRef.current;
       const obs = new IntersectionObserver(
         (entries) => {
           const visible = entries
@@ -238,7 +239,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
           const id = visible?.target?.getAttribute('data-cat-id');
           if (id) setActiveCat(id);
         },
-        { root: null, rootMargin: '-64px 0px -70% 0px', threshold: [0, 0.25, 0.5, 0.75, 1] }
+        { root: scrollRoot ?? null, rootMargin: '-64px 0px -70% 0px', threshold: [0, 0.25, 0.5, 0.75, 1] }
       );
       categories.forEach((c: any) => {
         const el = sectionsRef.current[c.id];
@@ -283,8 +284,9 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
         {/* sticky category chips */}
         {Array.isArray(categories) && categories.length > 0 && (
           <div
-            className="sticky top-[calc(env(safe-area-inset-top)+56px)] z-30 bg-white/90 backdrop-blur border-b border-neutral-200"
+            className="sticky z-30 bg-white/90 backdrop-blur border-b border-neutral-200"
             style={{
+              top: '56px',
               WebkitBackdropFilter: 'blur(12px)',
               backdropFilter: 'blur(12px)',
             }}
