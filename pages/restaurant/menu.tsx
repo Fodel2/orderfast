@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/router";
 import { motion } from "framer-motion";
-import { Search, ChevronUp } from "lucide-react";
+import { ChevronUp } from "lucide-react";
 import { supabase } from '@/lib/supabaseClient';
 import { ITEM_ADDON_LINK_WITH_GROUPS_SELECT } from '@/lib/queries/addons';
 import MenuItemCard from "../../components/MenuItemCard";
@@ -75,8 +75,6 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
     { item_id: number; category_id: number }[]
   >([]);
   const [loading, setLoading] = useState(true);
-  const [tempQuery, setTempQuery] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
   const [showTop, setShowTop] = useState(false);
   const { cart } = useCart();
   const itemCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
@@ -282,22 +280,6 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
               </div>
             ) : null}
 
-            <div className="relative">
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="Search menu..."
-                  value={tempQuery}
-                  onChange={(e) => setTempQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && setSearchQuery(tempQuery)}
-                  className="w-full rounded-full bg-white/50 backdrop-blur-md shadow px-12 py-3 text-base placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)]"
-                />
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none opacity-70">
-                  <Search className="w-5 h-5" />
-                </span>
-              </div>
-            </div>
-
             {/* sticky category chips */}
             {Array.isArray(categories) && categories.length > 0 && (
               <div
@@ -341,15 +323,10 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
                 categories.map((cat) => {
                   const catItems = items.filter(
                     (it) =>
-                      (it.category_id === cat.id ||
-                        itemLinks.some(
-                          (link) => link.item_id === it.id && link.category_id === cat.id,
-                        )) &&
-                      (!searchQuery ||
-                        it.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                        (it.description || '')
-                          .toLowerCase()
-                          .includes(searchQuery.toLowerCase())),
+                      it.category_id === cat.id ||
+                      itemLinks.some(
+                        (link) => link.item_id === it.id && link.category_id === cat.id,
+                      ),
                   );
                   if (catItems.length === 0) return null;
                   return (
