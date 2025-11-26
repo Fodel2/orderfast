@@ -283,7 +283,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
         {/* sticky category chips */}
         {Array.isArray(categories) && categories.length > 0 && (
           <div
-            className="sticky top-[safe-area-inset-top] z-30 bg-white/90 backdrop-blur border-b border-neutral-200"
+            className="sticky top-[calc(env(safe-area-inset-top)+56px)] z-30 bg-white/90 backdrop-blur border-b border-neutral-200"
             style={{
               WebkitBackdropFilter: 'blur(12px)',
               backdropFilter: 'blur(12px)',
