@@ -265,7 +265,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
 
 
     return (
-      <div className="pb-28">
+      <div>
         <div className="relative -mx-4 sm:-mx-6 md:-mx-8 lg:-mx-10 xl:-mx-12">
           {(() => {
             const menuTitle = restaurant?.website_title || restaurant?.name || 'Restaurant';
@@ -319,7 +319,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
           </div>
         )}
 
-        <div className="px-4 sm:px-6 max-w-6xl mx-auto space-y-8 scroll-smooth">
+        <div className="px-4 sm:px-6 max-w-6xl mx-auto space-y-8 scroll-smooth pb-28">
           {/* Inline guards rendered inside layout */}
           {!routerReady || ridLoading ? (
             <div className="p-6" />
