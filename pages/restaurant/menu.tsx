@@ -7,7 +7,6 @@ import { ITEM_ADDON_LINK_WITH_GROUPS_SELECT } from '@/lib/queries/addons';
 import MenuItemCard from "../../components/MenuItemCard";
 import { useCart } from "../../context/CartContext";
 import CustomerLayout from "../../components/CustomerLayout";
-import { useBrand } from "../../components/branding/BrandProvider";
 import Skeleton from '@/components/ui/Skeleton';
 import MenuHeader from '@/components/customer/menu/MenuHeader';
 import { useRestaurant } from '@/lib/restaurant-context';
@@ -66,7 +65,6 @@ interface Item {
 
 export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any | null }) {
   const router = useRouter();
-  const brand = useBrand();
   const [routerReady, setRouterReady] = useState(false);
   useEffect(() => { if (router?.isReady) setRouterReady(true); }, [router?.isReady]);
 
@@ -83,6 +81,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
   const { cart } = useCart();
   const itemCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
   const { restaurantId, loading: ridLoading } = useRestaurant();
+  const effectiveRestaurantId = restaurantId || (initialBrand?.id ? String(initialBrand.id) : null);
 
   useEffect(() => {
     const onScroll = () => {
@@ -93,25 +92,25 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
   }, []);
 
   useEffect(() => {
-    if (!routerReady || ridLoading || !restaurantId) return;
+    if (!routerReady || ridLoading || !effectiveRestaurantId) return;
 
     const load = async () => {
       console.log(
         'Loading menu for',
-        restaurantId,
+        effectiveRestaurantId,
         'subdomain',
         router.query.subdomain
       );
       const restRes = await supabase
         .from("restaurants")
         .select("*")
-        .eq("id", restaurantId)
+        .eq("id", effectiveRestaurantId)
         .maybeSingle();
 
       const { data: catData, error: catErr } = await supabase
         .from('menu_categories')
         .select('id,name,description,image_url,sort_order,restaurant_id')
-        .eq('restaurant_id', restaurantId)
+        .eq('restaurant_id', effectiveRestaurantId)
         .is('archived_at', null)
         .order('sort_order', { ascending: true, nullsFirst: false })
         .order('name', { ascending: true });
@@ -121,7 +120,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
         .select(
           'id,name,description,price,image_url,is_vegetarian,is_vegan,is_18_plus,available,out_of_stock_until,sort_order,stock_status,stock_return_date,category_id'
         )
-        .eq('restaurant_id', restaurantId)
+        .eq('restaurant_id', effectiveRestaurantId)
         .is('archived_at', null)
         .order('sort_order', { ascending: true, nullsFirst: false })
         .order('name', { ascending: true });
@@ -173,7 +172,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
 
       if (process.env.NODE_ENV === 'development') {
         console.debug('[customer:menu]', {
-          rid: restaurantId,
+          rid: effectiveRestaurantId,
           cats: catData?.length || 0,
           items: itemData?.length || 0,
         });
@@ -186,7 +185,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
 
       if (process.env.NODE_ENV === 'development') {
         console.debug('[customer:menu]', {
-          rid: restaurantId,
+          rid: effectiveRestaurantId,
           cats: catData?.length || 0,
           items: itemData?.length || 0,
         });
@@ -195,7 +194,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
     };
 
     load();
-  }, [routerReady, ridLoading, restaurantId]);
+  }, [routerReady, ridLoading, effectiveRestaurantId]);
 
 
   const Inner = () => {
@@ -257,7 +256,6 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
               <MenuHeader
                 title={menuTitle}
                 imageUrl={headerImg || undefined}
-                accentHex={(brand?.brand as string) || undefined}
                 focalX={headerFocalX}
                 focalY={headerFocalY}
               />
@@ -270,7 +268,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
             {/* Inline guards rendered inside layout */}
             {!routerReady || ridLoading ? (
               <div className="p-6" />
-            ) : !restaurantId ? (
+            ) : !effectiveRestaurantId ? (
               <div className="p-6 text-center text-red-500">No restaurant specified</div>
             ) : !restaurant ? (
               <div className="p-6">
@@ -312,16 +310,15 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
             {/* sticky category chips */}
             {Array.isArray(categories) && categories.length > 0 && (
               <div
-                className={`sticky top-[56px] z-20 pt-2 pb-3 bg-white/80 backdrop-blur supports-[backdrop-filter]:backdrop-blur-md transition-all duration-400 ease-out will-change-transform will-change-opacity ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'}`}
-                style={{ transitionDelay: '100ms' }}
+                className={`sticky top-14 z-30 pt-1 pb-3 bg-white/90 backdrop-blur supports-[backdrop-filter]:backdrop-blur-md border-b border-neutral-100 transition-all duration-400 ease-out will-change-transform will-change-opacity ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'}`}
               >
-                <div className="flex gap-3 overflow-x-auto overflow-y-hidden no-scrollbar py-2 md:py-3">
+                <div className="flex items-center gap-2 overflow-x-auto overflow-y-hidden no-scrollbar py-2 md:py-3 px-1">
                   {categories.map((c: any) => {
                     const isActive = activeCat === String(c.id);
                     const baseCls =
-                      'inline-flex items-center rounded-full px-5 py-2 text-sm font-semibold whitespace-nowrap transition-all duration-200 border';
+                      'inline-flex items-center rounded-full px-4 sm:px-5 py-2 text-sm font-semibold whitespace-nowrap transition-all duration-200 border';
                     const activeCls =
-                      'shadow-md shadow-black/5 text-white';
+                      'shadow-sm shadow-black/5 text-white';
                     const inactiveCls =
                       'bg-white text-neutral-900 border-neutral-200 hover:bg-neutral-50';
                     return (
@@ -387,7 +384,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
                           >
                             <MenuItemCard
                               item={item}
-                              restaurantId={restaurantId as string}
+                              restaurantId={effectiveRestaurantId as string}
                               restaurantLogoUrl={restaurant?.logo_url ?? null}
                             />
                           </div>

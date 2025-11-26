@@ -16,9 +16,15 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
 
     // Resolution order:
     // 1) query param ?restaurant_id=<uuid> (most reliable today)
-    // 2) optional demo fallback env
+    // 2) alternate aliases (?rid, ?id, ?r)
+    // 3) optional demo fallback env
     const q = router.query;
-    const rid = (q?.restaurant_id as string) || (q?.rid as string) || null;
+    const rid =
+      (q?.restaurant_id as string) ||
+      (q?.rid as string) ||
+      (q?.id as string) ||
+      (q?.r as string) ||
+      null;
     const demo = process.env.NEXT_PUBLIC_DEMO_RESTAURANT_ID || null;
 
     // Avoid resetting after initial resolution to prevent flashes on navigation.

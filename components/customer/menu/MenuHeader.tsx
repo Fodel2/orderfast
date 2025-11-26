@@ -3,7 +3,6 @@ import React, { useEffect, useState } from 'react';
 type MenuHeaderProps = {
   title: string;
   imageUrl?: string; // header/hero image (optional)
-  accentHex?: string | null; // optional brand accent for overlay
   focalX?: number | null;
   focalY?: number | null;
 };
@@ -11,7 +10,6 @@ type MenuHeaderProps = {
 export default function MenuHeader({
   title,
   imageUrl,
-  accentHex,
   focalX,
   focalY,
 }: MenuHeaderProps) {
@@ -36,14 +34,9 @@ export default function MenuHeader({
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
-
-  const overlay =
-    accentHex && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(accentHex)
-      ? `linear-gradient(180deg, ${accentHex}22, ${accentHex}11, #00000022)`
-      : 'linear-gradient(180deg, rgba(0,0,0,0.10), rgba(0,0,0,0.06), rgba(0,0,0,0.08))';
   return (
     <section
-      aria-label="Restaurant header"
+      aria-label={title || 'Restaurant header'}
       className={[
         'relative w-full overflow-hidden',
         'transition-all duration-500 ease-out will-change-transform will-change-opacity',
@@ -64,12 +57,7 @@ export default function MenuHeader({
       ) : (
         <div className="absolute inset-0 bg-gradient-to-br from-gray-200 via-gray-100 to-gray-200" />
       )}
-      <div className="absolute inset-0" style={{ backgroundImage: overlay }} />
-      <div className="absolute bottom-4 left-4">
-        <div className="px-3 py-1 rounded-md bg-white/70 backdrop-blur-sm shadow text-sm font-semibold">
-          {title}
-        </div>
-      </div>
+      <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/5 to-black/15 pointer-events-none" />
     </section>
   );
 }
