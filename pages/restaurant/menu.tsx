@@ -1,5 +1,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/router";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/router";
 import { motion } from "framer-motion";
 import { ChevronUp } from "lucide-react";
 import { supabase } from '@/lib/supabaseClient';
@@ -200,8 +202,8 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
     useEffect(() => setMounted(true), []);
     const [activeCat, setActiveCat] = useState<string | undefined>(undefined);
     const sectionsRef = useRef<Record<string, HTMLElement | null>>({});
-    const CATEGORY_BAR_TOP = 'calc(env(safe-area-inset-top) + 0px)';
-    const qp = router?.query || {};
+    const CATEGORY_BAR_TOP = 'calc(env(safe-area-inset-top, 0px) + 56px)';
+    const SECTION_SCROLL_MARGIN = 132;
     const headerImg =
       restaurant?.menu_header_image_url
         ? `${restaurant.menu_header_image_url}${
@@ -261,55 +263,49 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
           })()}
         </div>
 
-        {/* sticky category chips */}
-        {Array.isArray(categories) && categories.length > 0 && (
-          <>
+        <div className="mx-auto max-w-6xl px-4 sm:px-6">
+          {/* sticky category chips */}
+          {Array.isArray(categories) && categories.length > 0 && (
             <div
-              className="px-4 sm:px-6"
+              className={`sticky z-30 pt-1 pb-3 transition-all duration-400 ease-out will-change-transform will-change-opacity ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'}`}
+              style={{
+                top: CATEGORY_BAR_TOP,
+                background: 'rgba(255, 255, 255, 0.75)',
+                backdropFilter: 'blur(12px)',
+                WebkitBackdropFilter: 'blur(12px)',
+                borderBottom: '1px solid rgba(15, 23, 42, 0.06)',
+              }}
             >
-              <div
-                className={`sticky z-30 max-w-6xl mx-auto pt-1 pb-3 border-b transition-all duration-400 ease-out will-change-transform will-change-opacity ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'}`}
-                style={{
-                  top: CATEGORY_BAR_TOP,
-                  background: 'rgba(255, 255, 255, 0.72)',
-                  backdropFilter: 'blur(12px)',
-                  WebkitBackdropFilter: 'blur(12px)',
-                  borderColor: 'rgba(0, 0, 0, 0.04)',
-                }}
-              >
-                <div className="flex items-center gap-2 overflow-x-auto overflow-y-hidden no-scrollbar py-2 md:py-3 px-1">
-                  {categories.map((c: any) => {
-                    const isActive = activeCat === String(c.id);
-                    const baseCls =
-                      'inline-flex items-center rounded-full px-4 sm:px-5 py-2 text-sm font-semibold whitespace-nowrap transition-all duration-200 border';
-                    const activeCls =
-                      'shadow-sm shadow-black/5 text-white';
-                    const inactiveCls =
-                      'bg-white text-neutral-900 border-neutral-200 hover:bg-neutral-50';
-                    return (
-                      <button
-                        key={c.id}
-                        onClick={() => onChipSelect(c)}
-                        className={`${baseCls} ${isActive ? activeCls : inactiveCls}`}
-                        aria-pressed={isActive}
-                        aria-current={isActive ? 'true' : undefined}
-                        style={
-                          isActive
-                            ? { backgroundColor: 'var(--brand-primary)', borderColor: 'var(--brand-primary)' }
-                            : undefined
-                        }
-                      >
-                        {c.name}
-                      </button>
-                    );
-                  })}
-                </div>
+              <div className="flex items-center gap-2 overflow-x-auto overflow-y-hidden no-scrollbar py-2 md:py-3 px-1">
+                {categories.map((c: any) => {
+                  const isActive = activeCat === String(c.id);
+                  const baseCls =
+                    'inline-flex items-center rounded-full px-4 sm:px-5 py-2 text-sm font-semibold whitespace-nowrap transition-all duration-200 border';
+                  const activeCls =
+                    'shadow-sm shadow-black/5 text-white';
+                  const inactiveCls =
+                    'bg-white text-neutral-900 border-neutral-200 hover:bg-neutral-50';
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => onChipSelect(c)}
+                      className={`${baseCls} ${isActive ? activeCls : inactiveCls}`}
+                      aria-pressed={isActive}
+                      aria-current={isActive ? 'true' : undefined}
+                      style={
+                        isActive
+                          ? { backgroundColor: 'var(--brand-primary)', borderColor: 'var(--brand-primary)' }
+                          : undefined
+                      }
+                    >
+                      {c.name}
+                    </button>
+                  );
+                })}
               </div>
             </div>
-          </>
-        )}
+          )}
 
-        <div className="px-4 sm:px-6 max-w-6xl mx-auto overflow-visible">
           <div className="space-y-8 scroll-smooth overflow-visible">
             {/* Inline guards rendered inside layout */}
             {!routerReady || ridLoading ? (
@@ -346,7 +342,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
                       id={`cat-${cat.id}`}
                       data-cat-id={cat.id}
                       ref={(el) => (sectionsRef.current[cat.id] = el)}
-                      style={{ scrollMarginTop: 76 }}
+                      style={{ scrollMarginTop: SECTION_SCROLL_MARGIN }}
                     >
                       {(() => {
                         return (
