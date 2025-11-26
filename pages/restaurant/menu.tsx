@@ -211,7 +211,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
         : '';
     const headerFocalX = restaurant?.menu_header_focal_x ?? 0.5;
     const headerFocalY = restaurant?.menu_header_focal_y ?? 0.5;
-    const categoryBarOffset = 'calc(3.5rem + env(safe-area-inset-top))';
+    const categoryBarOffset = 'calc(env(safe-area-inset-top) + 3.5rem)';
 
     useEffect(() => {
       if (Array.isArray(categories) && categories.length > 0) {
@@ -283,7 +283,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
             {/* sticky category chips */}
             {Array.isArray(categories) && categories.length > 0 && (
               <div
-                className={`sticky top-14 z-30 pt-1 pb-3 bg-white/90 backdrop-blur supports-[backdrop-filter]:backdrop-blur-md border-b border-neutral-100 transition-all duration-400 ease-out will-change-transform will-change-opacity ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'}`}
+                className={`sticky z-30 pt-1 pb-3 bg-white/90 backdrop-blur supports-[backdrop-filter]:backdrop-blur-md border-b border-neutral-100 transition-all duration-400 ease-out will-change-transform will-change-opacity ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'}`}
                 style={{ top: categoryBarOffset }}
               >
                 <div className="flex items-center gap-2 overflow-x-auto overflow-y-hidden no-scrollbar py-2 md:py-3 px-1">
@@ -344,7 +344,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
                           </div>
                         );
                       })()}
-                      <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+                      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                         {catItems.map((item, idx) => (
                           <div
                             key={item.id}
