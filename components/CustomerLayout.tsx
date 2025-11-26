@@ -32,8 +32,13 @@ export default function CustomerLayout({
       <TopBar hidden={hideHeader} />
 
       <main
-        className={`min-h-screen ${hideFooter ? '' : 'pb-24'} ${hideHeader ? '' : 'pt-14'}`}
-        style={{ background: 'var(--surface)', color: 'var(--ink)' }}
+        id="scroll-root"
+        className={`relative flex flex-col h-screen min-h-screen overflow-y-auto ${hideFooter ? '' : 'pb-24'} ${hideHeader ? '' : 'pt-14'}`}
+        style={{
+          background: 'var(--surface)',
+          color: 'var(--ink)',
+          WebkitOverflowScrolling: 'touch',
+        }}
       >
         {children}
       </main>

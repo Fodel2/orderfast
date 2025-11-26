@@ -82,14 +82,6 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
   const effectiveRestaurantId = restaurantId || (initialBrand?.id ? String(initialBrand.id) : null);
 
   useEffect(() => {
-    const onScroll = () => {
-      setShowTop(window.scrollY > 400);
-    };
-    window.addEventListener('scroll', onScroll);
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
-
-  useEffect(() => {
     if (!routerReady || ridLoading || !effectiveRestaurantId) return;
 
     const load = async () => {
@@ -200,8 +192,8 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
     useEffect(() => setMounted(true), []);
     const [activeCat, setActiveCat] = useState<string | undefined>(undefined);
     const sectionsRef = useRef<Record<string, HTMLElement | null>>({});
-    const CATEGORY_BAR_TOP = 'calc(env(safe-area-inset-top) + 0px)';
-    const qp = router?.query || {};
+    const scrollContainerRef = useRef<HTMLElement | null>(null);
+    const SECTION_SCROLL_MARGIN = 128;
     const headerImg =
       restaurant?.menu_header_image_url
         ? `${restaurant.menu_header_image_url}${
@@ -219,7 +211,26 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
     }, [categories]);
 
     useEffect(() => {
+      const root = document.getElementById('scroll-root') as HTMLElement | null;
+      scrollContainerRef.current = root;
+
+      const handleScroll = (_event: Event) => {
+        const target = scrollContainerRef.current;
+        const scrollTop = target ? target.scrollTop : window.scrollY;
+        setShowTop(scrollTop > 400);
+      };
+
+      const target: HTMLElement | Window = root || window;
+      target.addEventListener('scroll', handleScroll, { passive: true });
+
+      return () => {
+        target.removeEventListener('scroll', handleScroll);
+      };
+    }, []);
+
+    useEffect(() => {
       if (!Array.isArray(categories) || categories.length === 0) return;
+      const scrollRoot = scrollContainerRef.current;
       const obs = new IntersectionObserver(
         (entries) => {
           const visible = entries
@@ -228,7 +239,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
           const id = visible?.target?.getAttribute('data-cat-id');
           if (id) setActiveCat(id);
         },
-        { root: null, rootMargin: '-64px 0px -70% 0px', threshold: [0, 0.25, 0.5, 0.75, 1] }
+        { root: scrollRoot ?? null, rootMargin: '-64px 0px -70% 0px', threshold: [0, 0.25, 0.5, 0.75, 1] }
       );
       categories.forEach((c: any) => {
         const el = sectionsRef.current[c.id];
@@ -244,9 +255,64 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
+    const renderCategorySections = () => {
+      let isFirstRenderedSection = true;
+      return categories.map((cat) => {
+        const catItems = items.filter(
+          (it) =>
+            it.category_id === cat.id ||
+            itemLinks.some((link) => link.item_id === it.id && link.category_id === cat.id),
+        );
+        if (catItems.length === 0) return null;
+        const isFirstSection = isFirstRenderedSection;
+        isFirstRenderedSection = false;
+        return (
+          <section
+            key={cat.id}
+            id={`cat-${cat.id}`}
+            data-cat-id={cat.id}
+            ref={(el) => (sectionsRef.current[cat.id] = el)}
+            style={{ scrollMarginTop: SECTION_SCROLL_MARGIN }}
+          >
+            {(() => {
+              return (
+                <div className={`${isFirstSection ? 'mt-4' : 'mt-8'} mb-3`}>
+                  <h2 className="text-xl font-semibold tracking-tight text-neutral-900">{cat.name}</h2>
+                </div>
+              );
+            })()}
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {catItems.map((item, idx) => (
+                <div
+                  key={item.id}
+                  className={`opacity-0 translate-y-2 transition-all duration-500 ease-out will-change-transform will-change-opacity ${mounted ? 'opacity-100 translate-y-0' : ''}`}
+                  style={{ transitionDelay: `${idx * 75}ms` }}
+                >
+                  <MenuItemCard
+                    item={item}
+                    restaurantId={effectiveRestaurantId as string}
+                    restaurantLogoUrl={restaurant?.logo_url ?? null}
+                  />
+                </div>
+              ))}
+            </div>
+          </section>
+        );
+      });
+    };
+
+    const scrollToTop = () => {
+      const target = scrollContainerRef.current;
+      if (target) {
+        target.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    };
+
 
     return (
-      <div className="pb-28">
+      <div>
         <div className="relative -mx-4 sm:-mx-6 md:-mx-8 lg:-mx-10 xl:-mx-12">
           {(() => {
             const menuTitle = restaurant?.website_title || restaurant?.name || 'Restaurant';
@@ -263,130 +329,79 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
 
         {/* sticky category chips */}
         {Array.isArray(categories) && categories.length > 0 && (
-          <>
-            <div
-              className="px-4 sm:px-6"
-            >
-              <div
-                className={`sticky z-30 max-w-6xl mx-auto pt-1 pb-3 border-b transition-all duration-400 ease-out will-change-transform will-change-opacity ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'}`}
-                style={{
-                  top: CATEGORY_BAR_TOP,
-                  background: 'rgba(255, 255, 255, 0.72)',
-                  backdropFilter: 'blur(12px)',
-                  WebkitBackdropFilter: 'blur(12px)',
-                  borderColor: 'rgba(0, 0, 0, 0.04)',
-                }}
-              >
-                <div className="flex items-center gap-2 overflow-x-auto overflow-y-hidden no-scrollbar py-2 md:py-3 px-1">
-                  {categories.map((c: any) => {
-                    const isActive = activeCat === String(c.id);
-                    const baseCls =
-                      'inline-flex items-center rounded-full px-4 sm:px-5 py-2 text-sm font-semibold whitespace-nowrap transition-all duration-200 border';
-                    const activeCls =
-                      'shadow-sm shadow-black/5 text-white';
-                    const inactiveCls =
-                      'bg-white text-neutral-900 border-neutral-200 hover:bg-neutral-50';
-                    return (
-                      <button
-                        key={c.id}
-                        onClick={() => onChipSelect(c)}
-                        className={`${baseCls} ${isActive ? activeCls : inactiveCls}`}
-                        aria-pressed={isActive}
-                        aria-current={isActive ? 'true' : undefined}
-                        style={
-                          isActive
-                            ? { backgroundColor: 'var(--brand-primary)', borderColor: 'var(--brand-primary)' }
-                            : undefined
-                        }
-                      >
-                        {c.name}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+          <div
+            className="sticky z-30 bg-white/90 backdrop-blur border-b border-neutral-200"
+            style={{
+              top: 56,
+              WebkitBackdropFilter: 'blur(12px)',
+              backdropFilter: 'blur(12px)',
+            }}
+          >
+            <div className="px-4 sm:px-6 max-w-6xl mx-auto py-3 flex gap-2 overflow-x-auto no-scrollbar">
+              {categories.map((c: any) => {
+                const isActive = activeCat === String(c.id);
+                const baseCls =
+                  'inline-flex items-center rounded-full px-4 sm:px-5 py-2 text-sm font-semibold whitespace-nowrap transition-all duration-200 border';
+                const activeCls =
+                  'shadow-sm shadow-black/5 text-white';
+                const inactiveCls =
+                  'bg-white text-neutral-900 border-neutral-200 hover:bg-neutral-50';
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => onChipSelect(c)}
+                    className={`${baseCls} ${isActive ? activeCls : inactiveCls}`}
+                    aria-pressed={isActive}
+                    aria-current={isActive ? 'true' : undefined}
+                    style={
+                      isActive
+                        ? { backgroundColor: 'var(--brand-primary)', borderColor: 'var(--brand-primary)' }
+                        : undefined
+                    }
+                  >
+                    {c.name}
+                  </button>
+                );
+              })}
             </div>
-          </>
+          </div>
         )}
 
-        <div className="px-4 sm:px-6 max-w-6xl mx-auto overflow-visible">
-          <div className="space-y-8 scroll-smooth overflow-visible">
-            {/* Inline guards rendered inside layout */}
-            {!routerReady || ridLoading ? (
-              <div className="p-6" />
-            ) : !effectiveRestaurantId ? (
-              <div className="p-6 text-center text-red-500">No restaurant specified</div>
-            ) : !restaurant ? (
-              <div className="p-6">
-                <Skeleton className="h-24 rounded-lg mb-4" />
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  <Skeleton className="h-36 rounded-lg" />
-                  <Skeleton className="h-36 rounded-lg" />
-                  <Skeleton className="h-36 rounded-lg" />
-                </div>
+        <div className="px-4 sm:px-6 max-w-6xl mx-auto space-y-8 scroll-smooth pb-28">
+          {/* Inline guards rendered inside layout */}
+          {!routerReady || ridLoading ? (
+            <div className="p-6" />
+          ) : !effectiveRestaurantId ? (
+            <div className="p-6 text-center text-red-500">No restaurant specified</div>
+          ) : !restaurant ? (
+            <div className="p-6">
+              <Skeleton className="h-24 rounded-lg mb-4" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <Skeleton className="h-36 rounded-lg" />
+                <Skeleton className="h-36 rounded-lg" />
+                <Skeleton className="h-36 rounded-lg" />
               </div>
-            ) : null}
-
-            <div className="space-y-8">
-              {categories.length === 0 ? (
-                <p className="text-center text-gray-500">This menu is currently empty.</p>
-              ) : (
-                categories.map((cat) => {
-                  const catItems = items.filter(
-                    (it) =>
-                      it.category_id === cat.id ||
-                      itemLinks.some(
-                        (link) => link.item_id === it.id && link.category_id === cat.id,
-                      ),
-                  );
-                  if (catItems.length === 0) return null;
-                  return (
-                    <section
-                      key={cat.id}
-                      id={`cat-${cat.id}`}
-                      data-cat-id={cat.id}
-                      ref={(el) => (sectionsRef.current[cat.id] = el)}
-                      style={{ scrollMarginTop: 76 }}
-                    >
-                      {(() => {
-                        return (
-                          <div className="mt-8 mb-3">
-                            <h2 className="text-xl font-semibold tracking-tight text-neutral-900">{cat.name}</h2>
-                          </div>
-                        );
-                      })()}
-                      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                        {catItems.map((item, idx) => (
-                          <div
-                            key={item.id}
-                            className={`opacity-0 translate-y-2 transition-all duration-500 ease-out will-change-transform will-change-opacity ${mounted ? 'opacity-100 translate-y-0' : ''}`}
-                            style={{ transitionDelay: `${idx * 75}ms` }}
-                          >
-                            <MenuItemCard
-                              item={item}
-                              restaurantId={effectiveRestaurantId as string}
-                              restaurantLogoUrl={restaurant?.logo_url ?? null}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    </section>
-                  );
-                })
-              )}
             </div>
-            {showTop && (
-              <motion.button
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                whileHover={{ scale: 1.05 }}
-                onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-                className="fixed bottom-6 right-4 z-50 bg-white shadow-lg rounded-full w-10 h-10 flex items-center justify-center transition"
-              >
-                <ChevronUp className="w-5 h-5" />
-              </motion.button>
+          ) : null}
+
+          <div className="space-y-8">
+            {categories.length === 0 ? (
+              <p className="text-center text-gray-500">This menu is currently empty.</p>
+            ) : (
+              renderCategorySections()
             )}
           </div>
+          {showTop && (
+            <motion.button
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              whileHover={{ scale: 1.05 }}
+              onClick={scrollToTop}
+              className="fixed bottom-6 right-4 z-50 bg-white shadow-lg rounded-full w-10 h-10 flex items-center justify-center transition"
+            >
+              <ChevronUp className="w-5 h-5" />
+            </motion.button>
+          )}
         </div>
       </div>
     );
