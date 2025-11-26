@@ -222,7 +222,6 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
 
       const target: HTMLElement | Window = root || window;
       target.addEventListener('scroll', handleScroll, { passive: true });
-      handleScroll();
 
       return () => {
         target.removeEventListener('scroll', handleScroll);
