@@ -332,7 +332,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
           <div
             className="sticky z-30 bg-white/90 backdrop-blur border-b border-neutral-200"
             style={{
-              top: 56,
+              top: 0,
               WebkitBackdropFilter: 'blur(12px)',
               backdropFilter: 'blur(12px)',
             }}
