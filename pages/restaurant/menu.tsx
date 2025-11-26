@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/router";
 import { motion } from "framer-motion";
 import { ChevronUp } from "lucide-react";
@@ -200,12 +200,6 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
     useEffect(() => setMounted(true), []);
     const [activeCat, setActiveCat] = useState<string | undefined>(undefined);
     const sectionsRef = useRef<Record<string, HTMLElement | null>>({});
-    const headerRef = useRef<HTMLDivElement | null>(null);
-    const [headerHeight, setHeaderHeight] = useState<number>(0);
-    const measureHeader = useCallback(() => {
-      const height = headerRef.current?.getBoundingClientRect().height ?? 0;
-      setHeaderHeight(height);
-    }, []);
     const qp = router?.query || {};
     const headerImg =
       restaurant?.menu_header_image_url
@@ -217,20 +211,6 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
         : '';
     const headerFocalX = restaurant?.menu_header_focal_x ?? 0.5;
     const headerFocalY = restaurant?.menu_header_focal_y ?? 0.5;
-    useEffect(() => {
-      measureHeader();
-      const timer = setTimeout(measureHeader, 300);
-      window.addEventListener('resize', measureHeader);
-      return () => {
-        clearTimeout(timer);
-        window.removeEventListener('resize', measureHeader);
-      };
-    }, [measureHeader]);
-
-    useEffect(() => {
-      measureHeader();
-    }, [headerImg, measureHeader]);
-
     useEffect(() => {
       if (Array.isArray(categories) && categories.length > 0) {
         setActiveCat((prev) => prev ?? String(categories[0].id));
@@ -266,10 +246,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
 
     return (
       <div className="pb-28">
-        <div
-          ref={headerRef}
-          className="relative -mx-4 sm:-mx-6 md:-mx-8 lg:-mx-10 xl:-mx-12"
-        >
+        <div className="relative -mx-4 sm:-mx-6 md:-mx-8 lg:-mx-10 xl:-mx-12">
           {(() => {
             const menuTitle = restaurant?.website_title || restaurant?.name || 'Restaurant';
             return (
@@ -287,7 +264,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
         {Array.isArray(categories) && categories.length > 0 && (
           <div
             className="sticky z-30 px-4 sm:px-6 max-w-6xl mx-auto"
-            style={{ top: headerHeight }}
+            style={{ top: 'calc(env(safe-area-inset-top) + 64px)' }}
           >
             <div
               className={`pt-1 pb-3 bg-white/90 backdrop-blur supports-[backdrop-filter]:backdrop-blur-md border-b border-neutral-100 transition-all duration-400 ease-out will-change-transform will-change-opacity ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'}`}
