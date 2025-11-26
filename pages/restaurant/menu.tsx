@@ -313,7 +313,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
 
     return (
       <div>
-        <div className="relative -mx-4 sm:-mx-6 md:-mx-8 lg:-mx-10 xl:-mx-12">
+        <div className="hero-wrapper">
           {(() => {
             const menuTitle = restaurant?.website_title || restaurant?.name || 'Restaurant';
             return (
