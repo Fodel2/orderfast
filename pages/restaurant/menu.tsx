@@ -200,8 +200,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
     useEffect(() => setMounted(true), []);
     const [activeCat, setActiveCat] = useState<string | undefined>(undefined);
     const sectionsRef = useRef<Record<string, HTMLElement | null>>({});
-    const CATEGORY_BAR_TOP = 'calc(env(safe-area-inset-top) + 64px)';
-    const CATEGORY_BAR_HEIGHT = 72;
+    const CATEGORY_BAR_TOP = 'calc(env(safe-area-inset-top) + 0px)';
     const qp = router?.query || {};
     const headerImg =
       restaurant?.menu_header_image_url
@@ -262,15 +261,21 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
           })()}
         </div>
 
-        {/* fixed category chips */}
+        {/* sticky category chips */}
         {Array.isArray(categories) && categories.length > 0 && (
           <>
             <div
-              className="fixed z-30 left-0 right-0 px-4 sm:px-6"
-              style={{ top: CATEGORY_BAR_TOP }}
+              className="px-4 sm:px-6"
             >
               <div
-                className={`max-w-6xl mx-auto pt-1 pb-3 bg-white/90 backdrop-blur supports-[backdrop-filter]:backdrop-blur-md border-b border-neutral-100 transition-all duration-400 ease-out will-change-transform will-change-opacity ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'}`}
+                className={`sticky z-30 max-w-6xl mx-auto pt-1 pb-3 border-b transition-all duration-400 ease-out will-change-transform will-change-opacity ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'}`}
+                style={{
+                  top: CATEGORY_BAR_TOP,
+                  background: 'rgba(255, 255, 255, 0.72)',
+                  backdropFilter: 'blur(12px)',
+                  WebkitBackdropFilter: 'blur(12px)',
+                  borderColor: 'rgba(0, 0, 0, 0.04)',
+                }}
               >
                 <div className="flex items-center gap-2 overflow-x-auto overflow-y-hidden no-scrollbar py-2 md:py-3 px-1">
                   {categories.map((c: any) => {
@@ -301,7 +306,6 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
                 </div>
               </div>
             </div>
-            <div aria-hidden className="w-full" style={{ height: CATEGORY_BAR_HEIGHT }} />
           </>
         )}
 
