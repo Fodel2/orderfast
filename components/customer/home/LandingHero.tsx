@@ -5,14 +5,78 @@ import { supabase } from '@/utils/supabaseClient';
 import Button from '../../ui/Button';
 import Skeleton from '../../ui/Skeleton';
 
-function readableText(hex?: string | null) {
-  if (!hex) return '#fff';
-  const h = hex.replace('#', '');
-  const r = parseInt(h.length === 3 ? h[0] + h[0] : h.slice(0, 2), 16);
-  const g = parseInt(h.length === 3 ? h[1] + h[1] : h.slice(2, 4), 16);
-  const b = parseInt(h.length === 3 ? h[2] + h[2] : h.slice(4, 6), 16);
-  const yiq = (r * 299 + g * 587 + b * 114) / 1000;
-  return yiq >= 145 ? '#000' : '#fff';
+function readableText(color?: string | null) {
+  if (!color) return '#111827';
+  const c = color.trim();
+  const rgbMatch = c.match(/rgb[a]?\(([^)]+)\)/i);
+  const hslMatch = c.match(/hsl[a]?\(([^)]+)\)/i);
+  let r: number, g: number, b: number, a = 1;
+
+  if (hslMatch) {
+    const parts = hslMatch[1]
+      .replace('/', ',')
+      .split(/[\s,]+/)
+      .filter(Boolean)
+      .map((v) => v.replace('%', ''));
+    const h = parseFloat(parts[0] || '0');
+    const s = (parseFloat(parts[1] || '0') || 0) / 100;
+    const l = (parseFloat(parts[2] || '0') || 0) / 100;
+    a = isNaN(parseFloat(parts[3])) ? 1 : parseFloat(parts[3]);
+    const cVal = (1 - Math.abs(2 * l - 1)) * s;
+    const x = cVal * (1 - Math.abs(((h / 60) % 2) - 1));
+    const m = l - cVal / 2;
+    const [r1, g1, b1] =
+      h < 60
+        ? [cVal, x, 0]
+        : h < 120
+        ? [x, cVal, 0]
+        : h < 180
+        ? [0, cVal, x]
+        : h < 240
+        ? [0, x, cVal]
+        : h < 300
+        ? [x, 0, cVal]
+        : [cVal, 0, x];
+    r = Math.round((r1 + m) * 255);
+    g = Math.round((g1 + m) * 255);
+    b = Math.round((b1 + m) * 255);
+  } else if (rgbMatch) {
+    const parts = rgbMatch[1]
+      .replace('/', ',')
+      .split(',')
+      .map((v) => v.trim());
+    r = parseFloat(parts[0] || '0');
+    g = parseFloat(parts[1] || '0');
+    b = parseFloat(parts[2] || '0');
+    a = isNaN(parseFloat(parts[3])) ? 1 : parseFloat(parts[3]);
+  } else {
+    const h = c.replace('#', '');
+    const hex =
+      h.length === 3
+        ? h
+            .split('')
+            .map((x) => x + x)
+            .join('')
+        : h.length === 4
+        ? h
+            .split('')
+            .map((x) => x + x)
+            .join('')
+        : h;
+    r = parseInt(hex.slice(0, 2) || '00', 16);
+    g = parseInt(hex.slice(2, 4) || '00', 16);
+    b = parseInt(hex.slice(4, 6) || '00', 16);
+    if (hex.length >= 8) {
+      a = parseInt(hex.slice(6, 8) || 'ff', 16) / 255;
+    }
+  }
+
+  const alpha = Math.min(Math.max(isNaN(a) ? 1 : a, 0), 1);
+  const blendedR = Math.round(r * alpha + 255 * (1 - alpha));
+  const blendedG = Math.round(g * alpha + 255 * (1 - alpha));
+  const blendedB = Math.round(b * alpha + 255 * (1 - alpha));
+  const yiq = (blendedR * 299 + blendedG * 587 + blendedB * 114) / 1000;
+  return yiq >= 145 ? '#111827' : '#ffffff';
 }
 type LandingHeroProps = {
   title: string;
@@ -38,6 +102,7 @@ export default function LandingHero({
   const router = useRouter();
   const [open, setOpen] = useState<boolean | null>(typeof isOpen === 'boolean' ? isOpen : null);
   const [primary, setPrimary] = useState<string | undefined>(undefined);
+  const [secondary, setSecondary] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     if (!primary && typeof window !== 'undefined') {
@@ -46,7 +111,16 @@ export default function LandingHero({
     }
   }, [primary]);
 
+  useEffect(() => {
+    if (!secondary && typeof window !== 'undefined') {
+      const v = getComputedStyle(document.documentElement).getPropertyValue('--brand-secondary').trim();
+      if (v) setSecondary(v);
+    }
+  }, [secondary]);
+
   const ctaText = readableText(primary);
+  const badgeBackground = secondary || 'rgba(255,255,255,0.18)';
+  const badgeTextColor = readableText(badgeBackground);
 
   const shape = logoShape || 'round';
   const rounding =
@@ -118,8 +192,8 @@ export default function LandingHero({
                 <span
                   className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium shadow-sm"
                   style={{
-                    backgroundColor: 'var(--brand-secondary, rgba(255,255,255,0.18))',
-                    color: '#fff',
+                    backgroundColor: badgeBackground,
+                    color: badgeTextColor,
                   }}
                 >
                   <span

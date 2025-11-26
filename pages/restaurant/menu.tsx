@@ -213,6 +213,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
         : '';
     const headerFocalX = restaurant?.menu_header_focal_x ?? 0.5;
     const headerFocalY = restaurant?.menu_header_focal_y ?? 0.5;
+    const categoryBarOffset = 'calc(3.5rem + env(safe-area-inset-top))';
 
     useEffect(() => {
       if (Array.isArray(categories) && categories.length > 0) {
@@ -281,16 +282,6 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
               </div>
             ) : null}
 
-            {(() => {
-              const desc =
-                restaurant?.menu_description ||
-                restaurant?.website_description ||
-                '';
-              return desc ? (
-                <p className="mt-2 text-[15px] leading-6 text-neutral-700">{desc}</p>
-              ) : null;
-            })()}
-
             <div className="relative">
               <div className="relative">
                 <input
@@ -311,6 +302,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
             {Array.isArray(categories) && categories.length > 0 && (
               <div
                 className={`sticky top-14 z-30 pt-1 pb-3 bg-white/90 backdrop-blur supports-[backdrop-filter]:backdrop-blur-md border-b border-neutral-100 transition-all duration-400 ease-out will-change-transform will-change-opacity ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'}`}
+                style={{ top: categoryBarOffset }}
               >
                 <div className="flex items-center gap-2 overflow-x-auto overflow-y-hidden no-scrollbar py-2 md:py-3 px-1">
                   {categories.map((c: any) => {
