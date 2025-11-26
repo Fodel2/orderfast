@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/router";
 import { motion } from "framer-motion";
-import { Search, ChevronUp } from "lucide-react";
+import { ChevronUp } from "lucide-react";
 import { supabase } from '@/lib/supabaseClient';
 import { ITEM_ADDON_LINK_WITH_GROUPS_SELECT } from '@/lib/queries/addons';
 import MenuItemCard from "../../components/MenuItemCard";
@@ -75,8 +75,6 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
     { item_id: number; category_id: number }[]
   >([]);
   const [loading, setLoading] = useState(true);
-  const [tempQuery, setTempQuery] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
   const [showTop, setShowTop] = useState(false);
   const { cart } = useCart();
   const itemCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
@@ -202,6 +200,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
     useEffect(() => setMounted(true), []);
     const [activeCat, setActiveCat] = useState<string | undefined>(undefined);
     const sectionsRef = useRef<Record<string, HTMLElement | null>>({});
+    const CATEGORY_BAR_TOP = 'calc(env(safe-area-inset-top) + 0px)';
     const qp = router?.query || {};
     const headerImg =
       restaurant?.menu_header_image_url
@@ -213,8 +212,6 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
         : '';
     const headerFocalX = restaurant?.menu_header_focal_x ?? 0.5;
     const headerFocalY = restaurant?.menu_header_focal_y ?? 0.5;
-    const categoryBarOffset = 'calc(3.5rem + env(safe-area-inset-top))';
-
     useEffect(() => {
       if (Array.isArray(categories) && categories.length > 0) {
         setActiveCat((prev) => prev ?? String(categories[0].id));
@@ -264,45 +261,21 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
           })()}
         </div>
 
-        <div className="px-4 sm:px-6 max-w-6xl mx-auto">
-          <div className="space-y-8 scroll-smooth">
-            {/* Inline guards rendered inside layout */}
-            {!routerReady || ridLoading ? (
-              <div className="p-6" />
-            ) : !effectiveRestaurantId ? (
-              <div className="p-6 text-center text-red-500">No restaurant specified</div>
-            ) : !restaurant ? (
-              <div className="p-6">
-                <Skeleton className="h-24 rounded-lg mb-4" />
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  <Skeleton className="h-36 rounded-lg" />
-                  <Skeleton className="h-36 rounded-lg" />
-                  <Skeleton className="h-36 rounded-lg" />
-                </div>
-              </div>
-            ) : null}
-
-            <div className="relative">
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="Search menu..."
-                  value={tempQuery}
-                  onChange={(e) => setTempQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && setSearchQuery(tempQuery)}
-                  className="w-full rounded-full bg-white/50 backdrop-blur-md shadow px-12 py-3 text-base placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)]"
-                />
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none opacity-70">
-                  <Search className="w-5 h-5" />
-                </span>
-              </div>
-            </div>
-
-            {/* sticky category chips */}
-            {Array.isArray(categories) && categories.length > 0 && (
+        {/* sticky category chips */}
+        {Array.isArray(categories) && categories.length > 0 && (
+          <>
+            <div
+              className="px-4 sm:px-6"
+            >
               <div
-                className={`sticky top-14 z-30 pt-1 pb-3 bg-white/90 backdrop-blur supports-[backdrop-filter]:backdrop-blur-md border-b border-neutral-100 transition-all duration-400 ease-out will-change-transform will-change-opacity ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'}`}
-                style={{ top: categoryBarOffset }}
+                className={`sticky z-30 max-w-6xl mx-auto pt-1 pb-3 border-b transition-all duration-400 ease-out will-change-transform will-change-opacity ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'}`}
+                style={{
+                  top: CATEGORY_BAR_TOP,
+                  background: 'rgba(255, 255, 255, 0.72)',
+                  backdropFilter: 'blur(12px)',
+                  WebkitBackdropFilter: 'blur(12px)',
+                  borderColor: 'rgba(0, 0, 0, 0.04)',
+                }}
               >
                 <div className="flex items-center gap-2 overflow-x-auto overflow-y-hidden no-scrollbar py-2 md:py-3 px-1">
                   {categories.map((c: any) => {
@@ -332,7 +305,27 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
                   })}
                 </div>
               </div>
-            )}
+            </div>
+          </>
+        )}
+
+        <div className="px-4 sm:px-6 max-w-6xl mx-auto overflow-visible">
+          <div className="space-y-8 scroll-smooth overflow-visible">
+            {/* Inline guards rendered inside layout */}
+            {!routerReady || ridLoading ? (
+              <div className="p-6" />
+            ) : !effectiveRestaurantId ? (
+              <div className="p-6 text-center text-red-500">No restaurant specified</div>
+            ) : !restaurant ? (
+              <div className="p-6">
+                <Skeleton className="h-24 rounded-lg mb-4" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  <Skeleton className="h-36 rounded-lg" />
+                  <Skeleton className="h-36 rounded-lg" />
+                  <Skeleton className="h-36 rounded-lg" />
+                </div>
+              </div>
+            ) : null}
 
             <div className="space-y-8">
               {categories.length === 0 ? (
@@ -341,15 +334,10 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
                 categories.map((cat) => {
                   const catItems = items.filter(
                     (it) =>
-                      (it.category_id === cat.id ||
-                        itemLinks.some(
-                          (link) => link.item_id === it.id && link.category_id === cat.id,
-                        )) &&
-                      (!searchQuery ||
-                        it.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                        (it.description || '')
-                          .toLowerCase()
-                          .includes(searchQuery.toLowerCase())),
+                      it.category_id === cat.id ||
+                      itemLinks.some(
+                        (link) => link.item_id === it.id && link.category_id === cat.id,
+                      ),
                   );
                   if (catItems.length === 0) return null;
                   return (
@@ -367,7 +355,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
                           </div>
                         );
                       })()}
-                      <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+                      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                         {catItems.map((item, idx) => (
                           <div
                             key={item.id}
