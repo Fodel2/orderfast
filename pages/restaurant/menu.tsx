@@ -211,7 +211,19 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
         : '';
     const headerFocalX = restaurant?.menu_header_focal_x ?? 0.5;
     const headerFocalY = restaurant?.menu_header_focal_y ?? 0.5;
-    const categoryBarTop = 'calc(env(safe-area-inset-top) + 3.5rem)';
+    const [categoryBarTop, setCategoryBarTop] = useState<number>(56);
+
+    useEffect(() => {
+      const computeTop = () => {
+        const topBar = document.querySelector<HTMLElement>('header.brand-glass');
+        const height = topBar?.getBoundingClientRect().height;
+        setCategoryBarTop(height && !Number.isNaN(height) ? height : 56);
+      };
+
+      computeTop();
+      window.addEventListener('resize', computeTop);
+      return () => window.removeEventListener('resize', computeTop);
+    }, []);
 
     useEffect(() => {
       if (Array.isArray(categories) && categories.length > 0) {
@@ -266,7 +278,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
         {Array.isArray(categories) && categories.length > 0 && (
           <div
             className="sticky z-30 px-4 sm:px-6 max-w-6xl mx-auto"
-            style={{ top: categoryBarTop }}
+            style={{ top: `calc(env(safe-area-inset-top) + ${categoryBarTop}px)` }}
           >
             <div
               className={`pt-1 pb-3 bg-white/90 backdrop-blur supports-[backdrop-filter]:backdrop-blur-md border-b border-neutral-100 transition-all duration-400 ease-out will-change-transform will-change-opacity ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'}`}
