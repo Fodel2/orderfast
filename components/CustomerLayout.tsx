@@ -32,10 +32,16 @@ export default function CustomerLayout({
       <TopBar hidden={hideHeader} />
 
       <main
-        className={`min-h-screen ${hideFooter ? '' : 'pb-24'} ${hideHeader ? '' : 'pt-14'}`}
+        className="relative flex flex-col h-screen min-h-screen"
         style={{ background: 'var(--surface)', color: 'var(--ink)' }}
       >
-        {children}
+        <div
+          id="scroll-root"
+          className={`flex-1 overflow-y-auto ${hideFooter ? '' : 'pb-24'} ${hideHeader ? '' : 'pt-14'}`}
+          style={{ WebkitOverflowScrolling: 'touch' }}
+        >
+          {children}
+        </div>
       </main>
 
       {!hideFooter ? <FooterNav cartCount={cartCount} /> : null} {/* slides: footer hides on hero */}

@@ -82,14 +82,6 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
   const effectiveRestaurantId = restaurantId || (initialBrand?.id ? String(initialBrand.id) : null);
 
   useEffect(() => {
-    const onScroll = () => {
-      setShowTop(window.scrollY > 400);
-    };
-    window.addEventListener('scroll', onScroll);
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
-
-  useEffect(() => {
     if (!routerReady || ridLoading || !effectiveRestaurantId) return;
 
     const load = async () => {
@@ -200,6 +192,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
     useEffect(() => setMounted(true), []);
     const [activeCat, setActiveCat] = useState<string | undefined>(undefined);
     const sectionsRef = useRef<Record<string, HTMLElement | null>>({});
+    const scrollContainerRef = useRef<HTMLElement | null>(null);
     const SECTION_SCROLL_MARGIN = 132;
     const headerImg =
       restaurant?.menu_header_image_url
@@ -216,6 +209,25 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
         setActiveCat((prev) => prev ?? String(categories[0].id));
       }
     }, [categories]);
+
+    useEffect(() => {
+      const root = document.getElementById('scroll-root') as HTMLElement | null;
+      scrollContainerRef.current = root;
+
+      const handleScroll = (_event: Event) => {
+        const target = scrollContainerRef.current;
+        const scrollTop = target ? target.scrollTop : window.scrollY;
+        setShowTop(scrollTop > 400);
+      };
+
+      const target: HTMLElement | Window = root || window;
+      target.addEventListener('scroll', handleScroll, { passive: true });
+      handleScroll();
+
+      return () => {
+        target.removeEventListener('scroll', handleScroll);
+      };
+    }, []);
 
     useEffect(() => {
       if (!Array.isArray(categories) || categories.length === 0) return;
@@ -243,6 +255,15 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
+    const scrollToTop = () => {
+      const target = scrollContainerRef.current;
+      if (target) {
+        target.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    };
+
 
     return (
       <div className="pb-28">
@@ -263,7 +284,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
         {/* sticky category chips */}
         {Array.isArray(categories) && categories.length > 0 && (
           <div
-            className="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-neutral-200"
+            className="sticky top-[safe-area-inset-top] z-30 bg-white/90 backdrop-blur border-b border-neutral-200"
             style={{
               WebkitBackdropFilter: 'blur(12px)',
               backdropFilter: 'blur(12px)',
@@ -369,7 +390,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               whileHover={{ scale: 1.05 }}
-              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+              onClick={scrollToTop}
               className="fixed bottom-6 right-4 z-50 bg-white shadow-lg rounded-full w-10 h-10 flex items-center justify-center transition"
             >
               <ChevronUp className="w-5 h-5" />
