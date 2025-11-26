@@ -193,7 +193,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
     const [activeCat, setActiveCat] = useState<string | undefined>(undefined);
     const sectionsRef = useRef<Record<string, HTMLElement | null>>({});
     const scrollContainerRef = useRef<HTMLElement | null>(null);
-    const SECTION_SCROLL_MARGIN = 132;
+    const SECTION_SCROLL_MARGIN = 128;
     const headerImg =
       restaurant?.menu_header_image_url
         ? `${restaurant.menu_header_image_url}${
@@ -255,6 +255,52 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
+    const renderCategorySections = () => {
+      let isFirstRenderedSection = true;
+      return categories.map((cat) => {
+        const catItems = items.filter(
+          (it) =>
+            it.category_id === cat.id ||
+            itemLinks.some((link) => link.item_id === it.id && link.category_id === cat.id),
+        );
+        if (catItems.length === 0) return null;
+        const isFirstSection = isFirstRenderedSection;
+        isFirstRenderedSection = false;
+        return (
+          <section
+            key={cat.id}
+            id={`cat-${cat.id}`}
+            data-cat-id={cat.id}
+            ref={(el) => (sectionsRef.current[cat.id] = el)}
+            style={{ scrollMarginTop: SECTION_SCROLL_MARGIN }}
+          >
+            {(() => {
+              return (
+                <div className={`${isFirstSection ? 'mt-4' : 'mt-8'} mb-3`}>
+                  <h2 className="text-xl font-semibold tracking-tight text-neutral-900">{cat.name}</h2>
+                </div>
+              );
+            })()}
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {catItems.map((item, idx) => (
+                <div
+                  key={item.id}
+                  className={`opacity-0 translate-y-2 transition-all duration-500 ease-out will-change-transform will-change-opacity ${mounted ? 'opacity-100 translate-y-0' : ''}`}
+                  style={{ transitionDelay: `${idx * 75}ms` }}
+                >
+                  <MenuItemCard
+                    item={item}
+                    restaurantId={effectiveRestaurantId as string}
+                    restaurantLogoUrl={restaurant?.logo_url ?? null}
+                  />
+                </div>
+              ))}
+            </div>
+          </section>
+        );
+      });
+    };
+
     const scrollToTop = () => {
       const target = scrollContainerRef.current;
       if (target) {
@@ -286,7 +332,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
           <div
             className="sticky z-30 bg-white/90 backdrop-blur border-b border-neutral-200"
             style={{
-              top: '56px',
+              top: 56,
               WebkitBackdropFilter: 'blur(12px)',
               backdropFilter: 'blur(12px)',
             }}
@@ -342,48 +388,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
             {categories.length === 0 ? (
               <p className="text-center text-gray-500">This menu is currently empty.</p>
             ) : (
-              categories.map((cat) => {
-                const catItems = items.filter(
-                  (it) =>
-                    it.category_id === cat.id ||
-                    itemLinks.some(
-                      (link) => link.item_id === it.id && link.category_id === cat.id,
-                    ),
-                );
-                if (catItems.length === 0) return null;
-                return (
-                  <section
-                    key={cat.id}
-                    id={`cat-${cat.id}`}
-                    data-cat-id={cat.id}
-                    ref={(el) => (sectionsRef.current[cat.id] = el)}
-                    style={{ scrollMarginTop: SECTION_SCROLL_MARGIN }}
-                  >
-                    {(() => {
-                      return (
-                        <div className="mt-8 mb-3">
-                          <h2 className="text-xl font-semibold tracking-tight text-neutral-900">{cat.name}</h2>
-                        </div>
-                      );
-                    })()}
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                      {catItems.map((item, idx) => (
-                        <div
-                          key={item.id}
-                          className={`opacity-0 translate-y-2 transition-all duration-500 ease-out will-change-transform will-change-opacity ${mounted ? 'opacity-100 translate-y-0' : ''}`}
-                          style={{ transitionDelay: `${idx * 75}ms` }}
-                        >
-                          <MenuItemCard
-                            item={item}
-                            restaurantId={effectiveRestaurantId as string}
-                            restaurantLogoUrl={restaurant?.logo_url ?? null}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </section>
-                );
-              })
+              renderCategorySections()
             )}
           </div>
           {showTop && (
