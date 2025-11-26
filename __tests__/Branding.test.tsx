@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, waitFor } from '@testing-library/react';
 import CustomerLayout from '../components/CustomerLayout';
 import Hero from '../components/customer/Hero';
 import Slides from '../components/customer/Slides';
@@ -12,7 +12,7 @@ jest.mock('next/router', () => ({
 
 const restaurant = { id: 1, name: 'Demo Diner', is_open: true, brand_color: '#ff0000' };
 
-test('brand variables apply to button and badge', () => {
+test('brand variables apply to button and badge', async () => {
   render(
     <BrandProvider restaurant={restaurant}>
       <button data-testid="btn" className="btn-primary">
@@ -26,7 +26,7 @@ test('brand variables apply to button and badge', () => {
   const root = btn.closest('[data-brand-root]') as HTMLElement;
   expect(root).toHaveStyle('--brand: #ff0000');
   expect(btn).toHaveClass('btn-primary');
-  expect(badge).toHaveStyle('border: 1px solid var(--brand)');
+  await waitFor(() => expect(badge).toHaveStyle('border: 1px solid #ff0000'));
   expect(badge).toHaveClass('pill');
 });
 
