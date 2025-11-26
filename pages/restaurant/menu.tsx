@@ -262,6 +262,46 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
           })()}
         </div>
 
+        {/* sticky category chips */}
+        {Array.isArray(categories) && categories.length > 0 && (
+          <div
+            className="sticky z-30 px-4 sm:px-6 max-w-6xl mx-auto"
+            style={{ top: categoryBarTop }}
+          >
+            <div
+              className={`pt-1 pb-3 bg-white/90 backdrop-blur supports-[backdrop-filter]:backdrop-blur-md border-b border-neutral-100 transition-all duration-400 ease-out will-change-transform will-change-opacity ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'}`}
+            >
+              <div className="flex items-center gap-2 overflow-x-auto overflow-y-hidden no-scrollbar py-2 md:py-3 px-1">
+                {categories.map((c: any) => {
+                  const isActive = activeCat === String(c.id);
+                  const baseCls =
+                    'inline-flex items-center rounded-full px-4 sm:px-5 py-2 text-sm font-semibold whitespace-nowrap transition-all duration-200 border';
+                  const activeCls =
+                    'shadow-sm shadow-black/5 text-white';
+                  const inactiveCls =
+                    'bg-white text-neutral-900 border-neutral-200 hover:bg-neutral-50';
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => onChipSelect(c)}
+                      className={`${baseCls} ${isActive ? activeCls : inactiveCls}`}
+                      aria-pressed={isActive}
+                      aria-current={isActive ? 'true' : undefined}
+                      style={
+                        isActive
+                          ? { backgroundColor: 'var(--brand-primary)', borderColor: 'var(--brand-primary)' }
+                          : undefined
+                      }
+                    >
+                      {c.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="px-4 sm:px-6 max-w-6xl mx-auto overflow-visible">
           <div className="space-y-8 scroll-smooth overflow-visible">
             {/* Inline guards rendered inside layout */}
@@ -279,43 +319,6 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
                 </div>
               </div>
             ) : null}
-
-            {/* sticky category chips */}
-            {Array.isArray(categories) && categories.length > 0 && (
-              <div className="sticky z-30" style={{ top: categoryBarTop }}>
-                <div
-                  className={`pt-1 pb-3 bg-white/90 backdrop-blur supports-[backdrop-filter]:backdrop-blur-md border-b border-neutral-100 transition-all duration-400 ease-out will-change-transform will-change-opacity ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'}`}
-                >
-                  <div className="flex items-center gap-2 overflow-x-auto overflow-y-hidden no-scrollbar py-2 md:py-3 px-1">
-                    {categories.map((c: any) => {
-                      const isActive = activeCat === String(c.id);
-                      const baseCls =
-                        'inline-flex items-center rounded-full px-4 sm:px-5 py-2 text-sm font-semibold whitespace-nowrap transition-all duration-200 border';
-                      const activeCls =
-                        'shadow-sm shadow-black/5 text-white';
-                      const inactiveCls =
-                        'bg-white text-neutral-900 border-neutral-200 hover:bg-neutral-50';
-                      return (
-                        <button
-                          key={c.id}
-                          onClick={() => onChipSelect(c)}
-                          className={`${baseCls} ${isActive ? activeCls : inactiveCls}`}
-                          aria-pressed={isActive}
-                          aria-current={isActive ? 'true' : undefined}
-                          style={
-                            isActive
-                              ? { backgroundColor: 'var(--brand-primary)', borderColor: 'var(--brand-primary)' }
-                              : undefined
-                          }
-                        >
-                          {c.name}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            )}
 
             <div className="space-y-8">
               {categories.length === 0 ? (
