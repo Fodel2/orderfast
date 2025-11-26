@@ -1,7 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/router";
-import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/router";
 import { motion } from "framer-motion";
 import { ChevronUp } from "lucide-react";
 import { supabase } from '@/lib/supabaseClient';
