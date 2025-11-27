@@ -36,6 +36,13 @@ function KioskConfirmScreen({ restaurantId }: { restaurantId?: string | null }) 
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const { resetKioskToStart } = useKioskSession();
   const resetTimeoutRef = useRef<number | null>(null);
+  const orderNumber = useMemo(() => {
+    const rawOrderNumber = router.query.orderNumber;
+    const raw = Array.isArray(rawOrderNumber) ? rawOrderNumber[0] : rawOrderNumber;
+    if (!raw) return null;
+    const parsed = Number.parseInt(String(raw), 10);
+    return Number.isFinite(parsed) ? parsed : null;
+  }, [router.query.orderNumber]);
 
   useEffect(() => {
     if (!restaurantId) return;
@@ -112,6 +119,12 @@ function KioskConfirmScreen({ restaurantId }: { restaurantId?: string | null }) 
           <p className="mt-4 text-base leading-relaxed text-neutral-600 sm:text-lg">
             Your order is being prepared. Please wait for the staff to confirm your pickup number on screen.
           </p>
+          {orderNumber ? (
+            <p className="mt-3 text-lg font-semibold text-neutral-900 sm:text-xl">
+              Your order number is{' '}
+              <span className="rounded-full bg-neutral-100 px-3 py-1">#{String(orderNumber).padStart(4, '0')}</span>
+            </p>
+          ) : null}
           {restaurantId ? (
             <div className="mt-8 flex justify-center">
               <KioskActionButton
