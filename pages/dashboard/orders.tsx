@@ -51,6 +51,10 @@ interface Order {
   restaurant_id?: string;
   short_order_number: number | null;
   order_type: 'delivery' | 'collection';
+  is_kiosk?: boolean | null;
+  source?: string | null;
+  origin?: string | null;
+  user_id?: string | null;
   customer_name: string | null;
   phone_number: string | null;
   delivery_address: any;
@@ -86,6 +90,21 @@ export default function OrdersPage() {
       EMPTY_MESSAGES[
         Math.floor(Math.random() * EMPTY_MESSAGES.length)
       ],
+    []
+  );
+
+  const isKioskDevice = useCallback(
+    () => router.pathname.startsWith('/kiosk/'),
+    [router.pathname]
+  );
+
+  const isKioskOrder = useCallback(
+    (order: Partial<Order> & { is_kiosk?: boolean | null; source?: string | null; origin?: string | null; user_id?: string | null }) => {
+      if (typeof order.is_kiosk === 'boolean') return order.is_kiosk;
+      if (typeof order.source === 'string') return order.source === 'kiosk';
+      if (typeof order.origin === 'string') return order.origin === 'kiosk';
+      return order.status === 'preparing' && !order.user_id;
+    },
     []
   );
 
@@ -126,7 +145,7 @@ export default function OrdersPage() {
   }, [startAlertLoop, stopAlertLoop]);
 
   const playKioskTripleBeep = useCallback(async () => {
-    if (isAlertPlayingRef.current || isKioskBeepingRef.current) return;
+    if (isKioskBeepingRef.current) return;
     isKioskBeepingRef.current = true;
     try {
       for (let i = 0; i < 3; i += 1) {
@@ -138,7 +157,7 @@ export default function OrdersPage() {
           console.error('[orders] kiosk alert playback failed', err);
         }
         // eslint-disable-next-line no-await-in-loop
-        await new Promise((resolve) => setTimeout(resolve, 300));
+        await new Promise((resolve) => setTimeout(resolve, 800));
       }
     } finally {
       isKioskBeepingRef.current = false;
@@ -354,14 +373,18 @@ export default function OrdersPage() {
     if (!restaurantId) return;
 
     const handleInsert = async (payload: any) => {
+      if (isKioskDevice()) return;
       const newRow = payload.new as Order;
-      if (newRow.status === 'preparing') {
+      const kioskOrder = isKioskOrder(newRow);
+      if (kioskOrder) {
         pendingOrderIdsRef.current.delete(newRow.id);
         void playKioskTripleBeep();
-      } else if (newRow.status === 'pending') {
-        pendingOrderIdsRef.current.add(newRow.id);
       } else {
-        pendingOrderIdsRef.current.delete(newRow.id);
+        if (newRow.status === 'pending') {
+          pendingOrderIdsRef.current.add(newRow.id);
+        } else {
+          pendingOrderIdsRef.current.delete(newRow.id);
+        }
       }
 
       syncAlertLoop();
@@ -378,6 +401,7 @@ export default function OrdersPage() {
     };
 
     const handleUpdate = (payload: any) => {
+      if (isKioskDevice()) return;
       const updated = payload.new as Order;
       if (updated.status === 'pending') {
         pendingOrderIdsRef.current.add(updated.id);
