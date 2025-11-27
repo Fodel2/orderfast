@@ -10,6 +10,7 @@ import { formatPrice, normalizePriceValue } from '@/lib/orderDisplay';
 import KioskActionButton from '@/components/kiosk/KioskActionButton';
 import { ChevronLeftIcon } from '@heroicons/react/24/outline';
 import KioskLoadingOverlay from '@/components/kiosk/KioskLoadingOverlay';
+import { ORDER_ALERT_AUDIO } from '@/audio/orderAlertBase64';
 
 type Restaurant = {
   id: string;
@@ -191,7 +192,29 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     setPlacingOrder(true);
     setShowLoadingOverlay(true);
 
-    try {
+    let cartCleared = false;
+    const safeClearCart = () => {
+      if (!cartCleared) {
+        clearCart();
+        cartCleared = true;
+      }
+    };
+
+    const playKioskBeep = async () => {
+      for (let i = 0; i < 3; i += 1) {
+        try {
+          const audio = new Audio(ORDER_ALERT_AUDIO);
+          // eslint-disable-next-line no-await-in-loop
+          await audio.play();
+        } catch (err) {
+          console.error('[kiosk] failed to play kiosk alert', err);
+        }
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+    };
+
+    const realOrderPromise = (async () => {
       const shortOrderNumber = await generateShortOrderNumber(restaurantId);
       const { data: order, error } = await supabase
         .from('orders')
@@ -206,6 +229,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
             delivery_fee: 0,
             short_order_number: shortOrderNumber,
             source: 'kiosk',
+            accepted_at: new Date().toISOString(),
           },
         ])
         .select('id, short_order_number')
@@ -253,20 +277,48 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
         return Promise.all(addonInsertions);
       });
 
-      Promise.all([itemsPromise, addonsPromise]).catch((asyncErr) => {
-        console.error('[kiosk] failed to insert order items/add-ons', asyncErr);
-      });
+      await Promise.all([itemsPromise, addonsPromise]);
+      safeClearCart();
+      void playKioskBeep();
 
-      clearCart();
-      setShowConfirmModal(false);
-      router.push(`/kiosk/${restaurantId}/confirm`);
+      return { timedOut: false, orderNumber: order.short_order_number, orderId: order.id };
+    })();
+
+    const timeoutNumber = Math.floor(Math.random() * 9000) + 1000;
+    const timeoutPromise = new Promise<{ timedOut: true; tempOrderNumber: number }>((resolve) => {
+      setTimeout(() => resolve({ timedOut: true, tempOrderNumber: timeoutNumber }), 5000);
+    });
+
+    const startTime = Date.now();
+    let result: { timedOut: true; tempOrderNumber: number } | { timedOut: false; orderNumber: number | null; orderId: string };
+
+    try {
+      result = await Promise.race([realOrderPromise, timeoutPromise]);
     } catch (err) {
-      console.error('[kiosk] failed to place order', err);
-      setNameError('We could not place your order. Please try again.');
-      setShowLoadingOverlay(false);
-    } finally {
-      setPlacingOrder(false);
+      console.error('[kiosk] failed during order race', err);
+      result = { timedOut: true, tempOrderNumber: timeoutNumber };
     }
+
+    const elapsed = Date.now() - startTime;
+    if (elapsed < 800) {
+      await new Promise((resolve) => setTimeout(resolve, 800 - elapsed));
+    }
+
+    const orderNumber = result.timedOut ? result.tempOrderNumber : result.orderNumber ?? timeoutNumber;
+
+    setShowConfirmModal(false);
+    router.push(`/kiosk/${restaurantId}/confirm?orderNumber=${orderNumber}`);
+
+    realOrderPromise
+      .then(() => {
+        safeClearCart();
+      })
+      .catch((err) => {
+        console.error('[kiosk] background order submission failed', err);
+      })
+      .finally(() => {
+        setPlacingOrder(false);
+      });
   }, [cart.items, cart.restaurant_id, clearCart, customerName, restaurantId, router, subtotal]);
 
   const openConfirmModal = () => {

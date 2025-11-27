@@ -80,6 +80,7 @@ export default function OrdersPage() {
   const alertAudioRef = useRef<HTMLAudioElement | null>(null);
   const pendingOrderIdsRef = useRef<Set<string>>(new Set());
   const isAlertPlayingRef = useRef(false);
+  const isKioskBeepingRef = useRef(false);
   const router = useRouter();
   const randomMessage = useMemo(
     () =>
@@ -124,6 +125,26 @@ export default function OrdersPage() {
       stopAlertLoop();
     }
   }, [startAlertLoop, stopAlertLoop]);
+
+  const playKioskTripleBeep = useCallback(async () => {
+    if (isAlertPlayingRef.current || isKioskBeepingRef.current) return;
+    isKioskBeepingRef.current = true;
+    try {
+      for (let i = 0; i < 3; i += 1) {
+        try {
+          const audio = new Audio(ORDER_ALERT_AUDIO);
+          // eslint-disable-next-line no-await-in-loop
+          await audio.play();
+        } catch (err) {
+          console.error('[orders] kiosk alert playback failed', err);
+        }
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+    } finally {
+      isKioskBeepingRef.current = false;
+    }
+  }, []);
 
   const fetchOrderWithItems = useCallback(
     async (orderId: string) => {
@@ -337,12 +358,13 @@ export default function OrdersPage() {
 
     const handleInsert = async (payload: any) => {
       const newRow = payload.new as Order;
-      startAlertLoop();
-
-      if (newRow.source === 'kiosk' || newRow.status === 'preparing') {
+      if (newRow.source === 'kiosk') {
         pendingOrderIdsRef.current.delete(newRow.id);
+        void playKioskTripleBeep();
       } else if (newRow.status === 'pending') {
         pendingOrderIdsRef.current.add(newRow.id);
+      } else if (newRow.status === 'preparing') {
+        pendingOrderIdsRef.current.delete(newRow.id);
       }
 
       syncAlertLoop();
@@ -414,7 +436,7 @@ export default function OrdersPage() {
       pendingOrderIdsRef.current.clear();
       stopAlertLoop();
     };
-  }, [fetchOrderWithItems, restaurantId, startAlertLoop, stopAlertLoop, syncAlertLoop]);
+  }, [fetchOrderWithItems, playKioskTripleBeep, restaurantId, startAlertLoop, stopAlertLoop, syncAlertLoop]);
 
   // Automatically end break when time passes
   useEffect(() => {
