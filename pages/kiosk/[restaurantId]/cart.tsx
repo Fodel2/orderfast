@@ -214,7 +214,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
       }
     };
 
-    const realOrderPromise = (async () => {
+    const realOrderPromise: Promise<KioskOrderRaceResult> = (async () => {
       const shortOrderNumber = await generateShortOrderNumber(restaurantId);
       const { data: order, error } = await supabase
         .from('orders')
@@ -281,19 +281,19 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
       safeClearCart();
       void playKioskBeep();
 
-      return { timedOut: false, orderNumber: order.short_order_number, orderId: order.id };
+      return { timedOut: false as const, orderNumber: order.short_order_number, orderId: order.id };
     })();
 
     const timeoutNumber = Math.floor(Math.random() * 9000) + 1000;
-    const timeoutPromise = new Promise<{ timedOut: true; tempOrderNumber: number }>((resolve) => {
-      setTimeout(() => resolve({ timedOut: true, tempOrderNumber: timeoutNumber }), 5000);
+    const timeoutPromise: Promise<KioskOrderRaceResult> = new Promise((resolve) => {
+      setTimeout(() => resolve({ timedOut: true as const, tempOrderNumber: timeoutNumber }), 5000);
     });
 
     const startTime = Date.now();
-    let result: { timedOut: true; tempOrderNumber: number } | { timedOut: false; orderNumber: number | null; orderId: string };
+    let result: KioskOrderRaceResult;
 
     try {
-      result = await Promise.race([realOrderPromise, timeoutPromise]);
+      result = await Promise.race<KioskOrderRaceResult>([realOrderPromise, timeoutPromise]);
     } catch (err) {
       console.error('[kiosk] failed during order race', err);
       result = { timedOut: true, tempOrderNumber: timeoutNumber };
@@ -499,3 +499,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     </KioskLayout>
   );
 }
+type KioskOrderRaceResult =
+  | { timedOut: true; tempOrderNumber: number }
+  | { timedOut: false; orderNumber: number; orderId: string };
+
