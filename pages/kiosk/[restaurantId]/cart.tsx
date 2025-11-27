@@ -296,7 +296,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
       result = await Promise.race<KioskOrderRaceResult>([realOrderPromise, timeoutPromise]);
     } catch (err) {
       console.error('[kiosk] failed during order race', err);
-      result = { timedOut: true, tempOrderNumber: timeoutNumber };
+      result = { timedOut: true as const, tempOrderNumber: timeoutNumber };
     }
 
     const elapsed = Date.now() - startTime;
