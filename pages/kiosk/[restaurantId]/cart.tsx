@@ -279,19 +279,19 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
       safeClearCart();
       void playKioskBeep();
 
-      return { timedOut: false as const, orderNumber: order.short_order_number, orderId: order.id };
+      return { timedOut: false, orderNumber: order.short_order_number, orderId: order.id };
     })();
 
     const timeoutNumber = Math.floor(Math.random() * 9000) + 1000;
     const timeoutPromise: Promise<KioskOrderRaceResult> = new Promise((resolve) => {
-      setTimeout(() => resolve({ timedOut: true as const, tempOrderNumber: timeoutNumber }), 5000);
+      setTimeout(() => resolve({ timedOut: true, orderNumber: timeoutNumber, orderId: null }), 5000);
     });
 
     const startTime = Date.now();
 
     const result = (await Promise.race([realOrderPromise, timeoutPromise]).catch((err) => {
       console.error('[kiosk] failed during order race', err);
-      return { timedOut: true as const, tempOrderNumber: timeoutNumber };
+      return { timedOut: true, orderNumber: timeoutNumber, orderId: null };
     })) as KioskOrderRaceResult;
 
     const elapsed = Date.now() - startTime;
@@ -299,9 +299,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
       await new Promise((resolve) => setTimeout(resolve, 800 - elapsed));
     }
 
-    const orderNumber = result.timedOut
-      ? result.tempOrderNumber
-      : result.orderNumber;
+    const orderNumber = result.orderNumber;
 
     setShowConfirmModal(false);
     router.push(`/kiosk/${restaurantId}/confirm?orderNumber=${orderNumber}`);
@@ -496,7 +494,9 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     </KioskLayout>
   );
 }
-type KioskOrderRaceResult =
-  | { timedOut: true; tempOrderNumber: number }
-  | { timedOut: false; orderNumber: number; orderId: string };
+type KioskOrderRaceResult = {
+  timedOut: boolean;
+  orderNumber: number;
+  orderId: string | null;
+};
 
