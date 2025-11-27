@@ -31,6 +31,7 @@ export interface Order {
   customer_notes: string | null;
   status: string;
   total_price: number | null;
+  source?: string | null;
   created_at: string;
   order_items: OrderItem[];
 }
@@ -189,7 +190,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateStatus }: Pr
                 </button>
               ) : null;
             })()}
-            {order.status !== 'completed' && order.status !== 'cancelled' && (
+            {order.source !== 'kiosk' && order.status !== 'completed' && order.status !== 'cancelled' && (
               <button
                 type="button"
                 onClick={() => {

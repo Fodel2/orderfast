@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import DashboardLayout from '../../components/DashboardLayout';
 import { supabase } from '../../utils/supabaseClient';
@@ -6,6 +6,7 @@ import { ChefHat } from 'lucide-react';
 import OrderDetailsModal, { Order as OrderType } from '../../components/OrderDetailsModal';
 import BreakModal from '../../components/BreakModal';
 import BreakCountdown from '../../components/BreakCountdown';
+import { ORDER_ALERT_AUDIO } from '@/audio/orderAlertBase64';
 
 const ACTIVE_STATUSES = [
   'pending',
@@ -47,6 +48,7 @@ interface OrderItem {
 
 interface Order {
   id: string;
+  restaurant_id?: string;
   short_order_number: number | null;
   order_type: 'delivery' | 'collection';
   customer_name: string | null;
@@ -56,6 +58,7 @@ interface Order {
   customer_notes: string | null;
   status: string;
   total_price: number | null;
+  source?: string | null;
   created_at: string;
   order_items: OrderItem[];
 }
@@ -74,12 +77,94 @@ export default function OrdersPage() {
     | { open_time: string | null; close_time: string | null; closed: boolean }
     | null
   >(null);
+  const alertAudioRef = useRef<HTMLAudioElement | null>(null);
+  const pendingOrderIdsRef = useRef<Set<string>>(new Set());
+  const isAlertPlayingRef = useRef(false);
   const router = useRouter();
   const randomMessage = useMemo(
     () =>
       EMPTY_MESSAGES[
         Math.floor(Math.random() * EMPTY_MESSAGES.length)
       ],
+    []
+  );
+
+  const stopAlertLoop = useCallback(() => {
+    const audio = alertAudioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.currentTime = 0;
+    }
+    isAlertPlayingRef.current = false;
+  }, []);
+
+  const startAlertLoop = useCallback(() => {
+    let audio = alertAudioRef.current;
+    if (!audio) {
+      audio = new Audio(ORDER_ALERT_AUDIO);
+      audio.loop = true;
+      alertAudioRef.current = audio;
+    }
+
+    if (isAlertPlayingRef.current) return;
+
+    audio.loop = true;
+    audio
+      .play()
+      .then(() => {
+        isAlertPlayingRef.current = true;
+      })
+      .catch((err) => console.error('[orders] audio playback failed', err));
+  }, []);
+
+  const syncAlertLoop = useCallback(() => {
+    if (pendingOrderIdsRef.current.size > 0) {
+      startAlertLoop();
+    } else {
+      stopAlertLoop();
+    }
+  }, [startAlertLoop, stopAlertLoop]);
+
+  const fetchOrderWithItems = useCallback(
+    async (orderId: string) => {
+      const { data, error } = await supabase
+        .from('orders')
+        .select(
+          `
+          id,
+          restaurant_id,
+          short_order_number,
+          order_type,
+          customer_name,
+          phone_number,
+          delivery_address,
+          scheduled_for,
+          customer_notes,
+          status,
+          total_price,
+          source,
+          created_at,
+          order_items(
+            id,
+            item_id,
+            name,
+            price,
+            quantity,
+            notes,
+            order_addons(id,option_id,name,price,quantity)
+          )
+        `
+        )
+        .eq('id', orderId)
+        .single();
+
+      if (error) {
+        console.error('[orders] failed to fetch order', { orderId, error });
+        return null;
+      }
+
+      return data as Order;
+    },
     []
   );
 
@@ -125,6 +210,7 @@ export default function OrdersPage() {
         .select(
           `
           id,
+          restaurant_id,
           short_order_number,
           order_type,
           customer_name,
@@ -134,6 +220,7 @@ export default function OrdersPage() {
           customer_notes,
           status,
           total_price,
+          source,
           created_at,
           order_items(
             id,
@@ -154,6 +241,18 @@ export default function OrdersPage() {
 
       if (!ordersError && ordersData) {
         setOrders(ordersData as Order[]);
+        const pending = new Set<string>();
+        (ordersData as Order[]).forEach((o) => {
+          if (o.status === 'pending' && o.source !== 'kiosk') {
+            pending.add(o.id);
+          }
+        });
+        pendingOrderIdsRef.current = pending;
+        if (pending.size > 0) {
+          startAlertLoop();
+        } else {
+          stopAlertLoop();
+        }
       } else if (ordersError) {
         console.error('Error fetching orders', ordersError);
       }
@@ -186,7 +285,7 @@ export default function OrdersPage() {
     };
 
     load();
-  }, [router]);
+  }, [router, startAlertLoop, stopAlertLoop]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -233,6 +332,90 @@ export default function OrdersPage() {
     };
   }, [restaurantId]);
 
+  useEffect(() => {
+    if (!restaurantId) return;
+
+    const handleInsert = async (payload: any) => {
+      const newRow = payload.new as Order;
+      startAlertLoop();
+
+      if (newRow.source === 'kiosk' || newRow.status === 'preparing') {
+        pendingOrderIdsRef.current.delete(newRow.id);
+      } else if (newRow.status === 'pending') {
+        pendingOrderIdsRef.current.add(newRow.id);
+      }
+
+      syncAlertLoop();
+
+      if (!ACTIVE_STATUSES.includes(newRow.status)) return;
+
+      const hydrated = await fetchOrderWithItems(newRow.id);
+      if (!hydrated) return;
+
+      setOrders((prev) => {
+        const remaining = prev.filter((o) => o.id !== newRow.id);
+        return [hydrated, ...remaining];
+      });
+    };
+
+    const handleUpdate = (payload: any) => {
+      const updated = payload.new as Order;
+      if (updated.status === 'pending' && updated.source !== 'kiosk') {
+        pendingOrderIdsRef.current.add(updated.id);
+      } else {
+        pendingOrderIdsRef.current.delete(updated.id);
+      }
+
+      syncAlertLoop();
+
+      setOrders((prev) => {
+        const mapped = prev
+          .map((o) =>
+            o.id === updated.id
+              ? { ...o, status: updated.status, total_price: updated.total_price, source: updated.source }
+              : o
+          )
+          .filter((o) => ACTIVE_STATUSES.includes(o.status));
+
+        const exists = mapped.some((o) => o.id === updated.id);
+        if (!exists && ACTIVE_STATUSES.includes(updated.status)) {
+          mapped.unshift({ ...(updated as any), order_items: [] as OrderItem[] });
+        }
+        return mapped;
+      });
+    };
+
+    const channel = supabase
+      .channel('orders-' + restaurantId)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'orders',
+          filter: `restaurant_id=eq.${restaurantId}`,
+        },
+        handleInsert
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'orders',
+          filter: `restaurant_id=eq.${restaurantId}`,
+        },
+        handleUpdate
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+      pendingOrderIdsRef.current.clear();
+      stopAlertLoop();
+    };
+  }, [fetchOrderWithItems, restaurantId, startAlertLoop, stopAlertLoop, syncAlertLoop]);
+
   // Automatically end break when time passes
   useEffect(() => {
     if (!breakUntil) return;
@@ -277,6 +460,12 @@ export default function OrdersPage() {
 
   const updateStatus = async (id: string, status: string) => {
     await supabase.from('orders').update({ status }).eq('id', id);
+    if (status === 'pending') {
+      pendingOrderIdsRef.current.add(id);
+    } else {
+      pendingOrderIdsRef.current.delete(id);
+    }
+    syncAlertLoop();
     setOrders((prev) => {
       if (ACTIVE_STATUSES.includes(status)) {
         return prev.map((o) => (o.id === id ? { ...o, status } : o));

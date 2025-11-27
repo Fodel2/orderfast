@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { formatPrice, normalizePriceValue } from '@/lib/orderDisplay';
 import KioskActionButton from '@/components/kiosk/KioskActionButton';
 import { ChevronLeftIcon } from '@heroicons/react/24/outline';
+import KioskLoadingOverlay from '@/components/kiosk/KioskLoadingOverlay';
 
 type Restaurant = {
   id: string;
@@ -57,6 +58,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   const currency = 'GBP';
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [placingOrder, setPlacingOrder] = useState(false);
+  const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
   const placeOrderDisabled = cartCount === 0 || placingOrder;
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [confirmStep, setConfirmStep] = useState<1 | 2>(1);
@@ -181,7 +183,13 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
       return;
     }
 
+    const cartItemsSnapshot = cart.items.map((item) => ({
+      ...item,
+      addons: item.addons ? [...item.addons] : [],
+    }));
+
     setPlacingOrder(true);
+    setShowLoadingOverlay(true);
 
     try {
       const shortOrderNumber = await generateShortOrderNumber(restaurantId);
@@ -192,11 +200,12 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
             restaurant_id: restaurantId,
             customer_name: customerName.trim(),
             order_type: 'collection',
-            status: 'pending',
+            status: 'preparing',
             total_price: subtotal,
             service_fee: 0,
             delivery_fee: 0,
             short_order_number: shortOrderNumber,
+            source: 'kiosk',
           },
         ])
         .select('id, short_order_number')
@@ -204,8 +213,8 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
 
       if (error || !order) throw error || new Error('Failed to insert order');
 
-      for (const item of cart.items) {
-        const { data: orderItem, error: orderItemError } = await supabase
+      const itemInsertions = cartItemsSnapshot.map((item) =>
+        supabase
           .from('order_items')
           .insert([
             {
@@ -218,24 +227,35 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
             },
           ])
           .select('id')
-          .single();
+          .single()
+      );
 
-        if (orderItemError || !orderItem) throw orderItemError || new Error('Failed to insert order item');
+      const itemsPromise = Promise.all(itemInsertions);
 
-        for (const addon of item.addons || []) {
-          const { error: addonError } = await supabase.from('order_addons').insert([
-            {
-              order_item_id: orderItem.id,
-              option_id: addon.option_id,
-              name: addon.name,
-              price: addon.price,
-              quantity: addon.quantity,
-            },
-          ]);
+      const addonsPromise = itemsPromise.then((items) => {
+        const addonInsertions = items.flatMap((res, idx) => {
+          if (res.error || !res.data) throw res.error || new Error('Failed to insert order item');
+          const relatedAddons = cartItemsSnapshot[idx].addons || [];
+          return relatedAddons.map((addon) =>
+            supabase.from('order_addons').insert([
+              {
+                order_item_id: res.data.id,
+                option_id: addon.option_id,
+                name: addon.name,
+                price: addon.price,
+                quantity: addon.quantity,
+              },
+            ])
+          );
+        });
 
-          if (addonError) throw addonError;
-        }
-      }
+        if (!addonInsertions.length) return [] as any[];
+        return Promise.all(addonInsertions);
+      });
+
+      Promise.all([itemsPromise, addonsPromise]).catch((asyncErr) => {
+        console.error('[kiosk] failed to insert order items/add-ons', asyncErr);
+      });
 
       clearCart();
       setShowConfirmModal(false);
@@ -243,10 +263,11 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     } catch (err) {
       console.error('[kiosk] failed to place order', err);
       setNameError('We could not place your order. Please try again.');
+      setShowLoadingOverlay(false);
     } finally {
       setPlacingOrder(false);
     }
-  }, [cart, clearCart, customerName, restaurantId, router, subtotal]);
+  }, [cart.items, cart.restaurant_id, clearCart, customerName, restaurantId, router, subtotal]);
 
   const openConfirmModal = () => {
     registerActivity();
@@ -264,9 +285,9 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     setConfirmStep(2);
   };
 
-  const handlePlaceOrder = async () => {
+  const handlePlaceOrder = () => {
     registerActivity();
-    await placeOrder();
+    void placeOrder();
   };
 
   const handleBackToReview = () => {
@@ -420,6 +441,8 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
           </motion.div>
         ) : null}
       </AnimatePresence>
+
+      <KioskLoadingOverlay visible={showLoadingOverlay} />
 
     </KioskLayout>
   );
