@@ -23,6 +23,20 @@ type Restaurant = {
   menu_header_focal_y?: number | null;
 };
 
+async function generateShortOrderNumber(restaurantId: string): Promise<number> {
+  while (true) {
+    const num = Math.floor(Math.random() * 9000) + 1000;
+    const { data, error } = await supabase
+      .from('orders')
+      .select('id')
+      .eq('restaurant_id', restaurantId)
+      .eq('short_order_number', num)
+      .maybeSingle();
+
+    if (!error && !data) return num;
+  }
+}
+
 export default function KioskCartPage() {
   const router = useRouter();
   const { restaurantId: routeParam } = router.query;
@@ -37,12 +51,13 @@ export default function KioskCartPage() {
 
 function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   const router = useRouter();
-  const { cart, subtotal } = useCart();
+  const { cart, subtotal, clearCart } = useCart();
   const { resetKioskToStart, registerActivity } = useKioskSession();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
   const currency = 'GBP';
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
-  const placeOrderDisabled = cartCount === 0;
+  const [placingOrder, setPlacingOrder] = useState(false);
+  const placeOrderDisabled = cartCount === 0 || placingOrder;
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [confirmStep, setConfirmStep] = useState<1 | 2>(1);
   const [confirmMessage, setConfirmMessage] = useState('');
@@ -153,10 +168,85 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     );
   }, [restaurantId, router]);
 
-  const placeOrder = () => {
+  const placeOrder = useCallback(async () => {
     if (!restaurantId) return;
-    router.push(`/kiosk/${restaurantId}/confirm`);
-  };
+
+    if (!customerName.trim()) {
+      setNameError('We need something to call you!');
+      return;
+    }
+
+    if (!cart.restaurant_id || cart.restaurant_id !== restaurantId || cart.items.length === 0) {
+      setNameError('Your cart looks empty. Please add items before ordering.');
+      return;
+    }
+
+    setPlacingOrder(true);
+
+    try {
+      const shortOrderNumber = await generateShortOrderNumber(restaurantId);
+      const { data: order, error } = await supabase
+        .from('orders')
+        .insert([
+          {
+            restaurant_id: restaurantId,
+            customer_name: customerName.trim(),
+            order_type: 'collection',
+            status: 'pending',
+            total_price: subtotal,
+            service_fee: 0,
+            delivery_fee: 0,
+            short_order_number: shortOrderNumber,
+          },
+        ])
+        .select('id, short_order_number')
+        .single();
+
+      if (error || !order) throw error || new Error('Failed to insert order');
+
+      for (const item of cart.items) {
+        const { data: orderItem, error: orderItemError } = await supabase
+          .from('order_items')
+          .insert([
+            {
+              order_id: order.id,
+              item_id: item.item_id,
+              name: item.name,
+              price: item.price,
+              quantity: item.quantity,
+              notes: item.notes || null,
+            },
+          ])
+          .select('id')
+          .single();
+
+        if (orderItemError || !orderItem) throw orderItemError || new Error('Failed to insert order item');
+
+        for (const addon of item.addons || []) {
+          const { error: addonError } = await supabase.from('order_addons').insert([
+            {
+              order_item_id: orderItem.id,
+              option_id: addon.option_id,
+              name: addon.name,
+              price: addon.price,
+              quantity: addon.quantity,
+            },
+          ]);
+
+          if (addonError) throw addonError;
+        }
+      }
+
+      clearCart();
+      setShowConfirmModal(false);
+      router.push(`/kiosk/${restaurantId}/confirm`);
+    } catch (err) {
+      console.error('[kiosk] failed to place order', err);
+      setNameError('We could not place your order. Please try again.');
+    } finally {
+      setPlacingOrder(false);
+    }
+  }, [cart, clearCart, customerName, restaurantId, router, subtotal]);
 
   const openConfirmModal = () => {
     registerActivity();
@@ -174,15 +264,9 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     setConfirmStep(2);
   };
 
-  const handlePlaceOrder = () => {
+  const handlePlaceOrder = async () => {
     registerActivity();
-    if (!customerName.trim()) {
-      setNameError('We need something to call you!');
-      return;
-    }
-    setNameError('');
-    placeOrder();
-    setShowConfirmModal(false);
+    await placeOrder();
   };
 
   const handleBackToReview = () => {
@@ -216,6 +300,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
             <div className="flex-1 sm:flex-none sm:w-80">
               <KioskActionButton
                 onClick={openConfirmModal}
+                disabled={placeOrderDisabled}
                 aria-disabled={placeOrderDisabled}
                 className={`w-full justify-center rounded-2xl px-6 py-3 text-lg font-bold uppercase tracking-wide shadow-xl shadow-slate-900/15 min-h-[3.25rem] ${
                   placeOrderDisabled ? 'pointer-events-none opacity-50' : ''
@@ -319,9 +404,12 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                         </button>
                         <KioskActionButton
                           onClick={handlePlaceOrder}
-                          className="w-full justify-center rounded-2xl px-4 py-3 text-base font-semibold uppercase tracking-wide shadow-lg shadow-slate-900/15"
+                          disabled={placingOrder}
+                          className={`w-full justify-center rounded-2xl px-4 py-3 text-base font-semibold uppercase tracking-wide shadow-lg shadow-slate-900/15 ${
+                            placingOrder ? 'opacity-70' : ''
+                          }`}
                         >
-                          Place order
+                          {placingOrder ? 'Placing…' : 'Place order'}
                         </KioskActionButton>
                       </div>
                     </motion.div>
