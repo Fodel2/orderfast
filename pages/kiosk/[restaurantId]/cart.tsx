@@ -304,7 +304,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
       await new Promise((resolve) => setTimeout(resolve, 800 - elapsed));
     }
 
-    const orderNumber = result.timedOut ? result.tempOrderNumber : result.orderNumber ?? timeoutNumber;
+    const orderNumber = result.timedOut ? result.tempOrderNumber : result.orderNumber;
 
     setShowConfirmModal(false);
     router.push(`/kiosk/${restaurantId}/confirm?orderNumber=${orderNumber}`);
