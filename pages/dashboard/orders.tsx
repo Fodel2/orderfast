@@ -81,6 +81,7 @@ export default function OrdersPage() {
     | null
   >(null);
   const alertAudioRef = useRef<HTMLAudioElement | null>(null);
+  const kioskBeepAudioRef = useRef<HTMLAudioElement | null>(null);
   const pendingOrderIdsRef = useRef<Set<string>>(new Set());
   const isAlertPlayingRef = useRef(false);
   const isKioskBeepingRef = useRef(false);
@@ -147,17 +148,21 @@ export default function OrdersPage() {
   const playKioskTripleBeep = useCallback(async () => {
     if (isKioskBeepingRef.current) return;
     isKioskBeepingRef.current = true;
+    if (!kioskBeepAudioRef.current) {
+      kioskBeepAudioRef.current = new Audio(ORDER_ALERT_AUDIO);
+    }
+    const audio = kioskBeepAudioRef.current;
     try {
       for (let i = 0; i < 3; i += 1) {
         try {
-          const audio = new Audio(ORDER_ALERT_AUDIO);
           // eslint-disable-next-line no-await-in-loop
+          audio.currentTime = 0;
           await audio.play();
         } catch (err) {
           console.error('[orders] kiosk alert playback failed', err);
         }
         // eslint-disable-next-line no-await-in-loop
-        await new Promise((resolve) => setTimeout(resolve, 800));
+        await new Promise((resolve) => setTimeout(resolve, 900));
       }
     } finally {
       isKioskBeepingRef.current = false;

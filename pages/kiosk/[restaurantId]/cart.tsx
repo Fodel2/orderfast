@@ -10,7 +10,10 @@ import { formatPrice, normalizePriceValue } from '@/lib/orderDisplay';
 import KioskActionButton from '@/components/kiosk/KioskActionButton';
 import { ChevronLeftIcon } from '@heroicons/react/24/outline';
 import KioskLoadingOverlay from '@/components/kiosk/KioskLoadingOverlay';
-import { ORDER_ALERT_AUDIO } from '@/audio/orderAlertBase64';
+
+type KioskOrderTimeoutResult = { timedOut: true; tempOrderNumber: number };
+type KioskOrderSuccessResult = { timedOut: false; orderNumber: number; orderId: string };
+type KioskOrderRaceResult = KioskOrderTimeoutResult | KioskOrderSuccessResult;
 
 type Restaurant = {
   id: string;
@@ -76,6 +79,10 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   const modalCardStyle = {
     maxHeight: 'calc(100dvh - 32px - env(safe-area-inset-bottom))',
   } as const;
+
+  const isSuccessfulRaceResult = (
+    result: KioskOrderRaceResult
+  ): result is KioskOrderSuccessResult => result.timedOut === false;
 
   const confirmMessages = useMemo(
     () => [
@@ -169,7 +176,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
         </button>
       </div>
     );
-  }, [restaurantId, router]);
+  }, [registerActivity, restaurantId, router]);
 
   const placeOrder = useCallback(async () => {
     if (!restaurantId) return;
@@ -200,22 +207,10 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
       }
     };
 
-    const playKioskBeep = async () => {
-      for (let i = 0; i < 3; i += 1) {
-        try {
-          const audio = new Audio(ORDER_ALERT_AUDIO);
-          // eslint-disable-next-line no-await-in-loop
-          await audio.play();
-        } catch (err) {
-          console.error('[kiosk] failed to play kiosk alert', err);
-        }
-        // eslint-disable-next-line no-await-in-loop
-        await new Promise((resolve) => setTimeout(resolve, 300));
-      }
-    };
+    const shortOrderNumberPromise = generateShortOrderNumber(restaurantId);
 
-    const realOrderPromise: Promise<KioskOrderRaceResult> = (async () => {
-      const shortOrderNumber = await generateShortOrderNumber(restaurantId);
+    const submitOrder = async (): Promise<KioskOrderSuccessResult> => {
+      const shortOrderNumber = await shortOrderNumberPromise;
       const { data: order, error } = await supabase
         .from('orders')
         .insert([
@@ -276,40 +271,63 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
       });
 
       await Promise.all([itemsPromise, addonsPromise]);
-      safeClearCart();
-      void playKioskBeep();
 
-      return { timedOut: false, orderNumber: order.short_order_number, orderId: order.id };
-    })();
+      return {
+        timedOut: false,
+        orderNumber: order.short_order_number ?? (await shortOrderNumberPromise),
+        orderId: order.id,
+      };
+    };
 
-    const timeoutNumber = Math.floor(Math.random() * 9000) + 1000;
+    const fallbackOrderNumber = Math.floor(Math.random() * 9000) + 1000;
     const timeoutPromise: Promise<KioskOrderRaceResult> = new Promise((resolve) => {
-      setTimeout(() => resolve({ timedOut: true, orderNumber: timeoutNumber, orderId: null }), 5000);
+      setTimeout(async () => {
+        let tempOrderNumber = fallbackOrderNumber;
+        try {
+          tempOrderNumber = await Promise.race([
+            shortOrderNumberPromise,
+            new Promise<number>((raceResolve) => setTimeout(() => raceResolve(fallbackOrderNumber), 150)),
+          ]);
+        } catch (err) {
+          console.error('[kiosk] failed to resolve order number before timeout', err);
+        }
+        resolve({ timedOut: true, tempOrderNumber });
+      }, 5000);
     });
 
+    const submissionPromise = submitOrder();
     const startTime = Date.now();
 
-    const result = (await Promise.race([realOrderPromise, timeoutPromise]).catch((err) => {
-      console.error('[kiosk] failed during order race', err);
-      return { timedOut: true, orderNumber: timeoutNumber, orderId: null };
-    })) as KioskOrderRaceResult;
+    let raceResult: KioskOrderRaceResult;
+    try {
+      raceResult = await Promise.race([submissionPromise, timeoutPromise]);
+    } catch (err) {
+      console.error('[kiosk] failed during order submission', err);
+      setNameError('We could not place your order. Please try again.');
+      setPlacingOrder(false);
+      setShowLoadingOverlay(false);
+      return;
+    }
 
     const elapsed = Date.now() - startTime;
     if (elapsed < 800) {
       await new Promise((resolve) => setTimeout(resolve, 800 - elapsed));
     }
 
-    const orderNumber = result.orderNumber;
+    const orderNumber = isSuccessfulRaceResult(raceResult)
+      ? raceResult.orderNumber
+      : raceResult.tempOrderNumber;
 
     setShowConfirmModal(false);
     router.push(`/kiosk/${restaurantId}/confirm?orderNumber=${orderNumber}`);
 
-    realOrderPromise
+    submissionPromise
       .then(() => {
         safeClearCart();
       })
       .catch((err) => {
         console.error('[kiosk] background order submission failed', err);
+        setNameError('We had trouble confirming your order. Please speak to the team.');
       })
       .finally(() => {
         setPlacingOrder(false);
@@ -494,9 +512,3 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     </KioskLayout>
   );
 }
-type KioskOrderRaceResult = {
-  timedOut: boolean;
-  orderNumber: number;
-  orderId: string | null;
-};
-
