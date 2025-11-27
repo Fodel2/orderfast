@@ -58,7 +58,6 @@ interface Order {
   customer_notes: string | null;
   status: string;
   total_price: number | null;
-  source?: string | null;
   created_at: string;
   order_items: OrderItem[];
 }
@@ -163,7 +162,6 @@ export default function OrdersPage() {
           customer_notes,
           status,
           total_price,
-          source,
           created_at,
           order_items(
             id,
@@ -241,7 +239,6 @@ export default function OrdersPage() {
           customer_notes,
           status,
           total_price,
-          source,
           created_at,
           order_items(
             id,
@@ -264,7 +261,7 @@ export default function OrdersPage() {
         setOrders(ordersData as Order[]);
         const pending = new Set<string>();
         (ordersData as Order[]).forEach((o) => {
-          if (o.status === 'pending' && o.source !== 'kiosk') {
+          if (o.status === 'pending') {
             pending.add(o.id);
           }
         });
@@ -358,12 +355,12 @@ export default function OrdersPage() {
 
     const handleInsert = async (payload: any) => {
       const newRow = payload.new as Order;
-      if (newRow.source === 'kiosk') {
+      if (newRow.status === 'preparing') {
         pendingOrderIdsRef.current.delete(newRow.id);
         void playKioskTripleBeep();
       } else if (newRow.status === 'pending') {
         pendingOrderIdsRef.current.add(newRow.id);
-      } else if (newRow.status === 'preparing') {
+      } else {
         pendingOrderIdsRef.current.delete(newRow.id);
       }
 
@@ -382,7 +379,7 @@ export default function OrdersPage() {
 
     const handleUpdate = (payload: any) => {
       const updated = payload.new as Order;
-      if (updated.status === 'pending' && updated.source !== 'kiosk') {
+      if (updated.status === 'pending') {
         pendingOrderIdsRef.current.add(updated.id);
       } else {
         pendingOrderIdsRef.current.delete(updated.id);
@@ -394,7 +391,7 @@ export default function OrdersPage() {
         const mapped = prev
           .map((o) =>
             o.id === updated.id
-              ? { ...o, status: updated.status, total_price: updated.total_price, source: updated.source }
+              ? { ...o, status: updated.status, total_price: updated.total_price }
               : o
           )
           .filter((o) => ACTIVE_STATUSES.includes(o.status));

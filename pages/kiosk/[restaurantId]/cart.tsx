@@ -228,8 +228,6 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
             service_fee: 0,
             delivery_fee: 0,
             short_order_number: shortOrderNumber,
-            source: 'kiosk',
-            accepted_at: new Date().toISOString(),
           },
         ])
         .select('id, short_order_number')
@@ -303,7 +301,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
 
     const orderNumber = result.timedOut
       ? result.tempOrderNumber
-      : (result as Extract<KioskOrderRaceResult, { timedOut: false }>).orderNumber;
+      : result.orderNumber;
 
     setShowConfirmModal(false);
     router.push(`/kiosk/${restaurantId}/confirm?orderNumber=${orderNumber}`);
