@@ -290,21 +290,20 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     });
 
     const startTime = Date.now();
-    let result: KioskOrderRaceResult;
 
-    try {
-      result = await Promise.race<KioskOrderRaceResult>([realOrderPromise, timeoutPromise]);
-    } catch (err) {
+    const result = (await Promise.race([realOrderPromise, timeoutPromise]).catch((err) => {
       console.error('[kiosk] failed during order race', err);
-      result = { timedOut: true as const, tempOrderNumber: timeoutNumber };
-    }
+      return { timedOut: true as const, tempOrderNumber: timeoutNumber };
+    })) as KioskOrderRaceResult;
 
     const elapsed = Date.now() - startTime;
     if (elapsed < 800) {
       await new Promise((resolve) => setTimeout(resolve, 800 - elapsed));
     }
 
-    const orderNumber = result.timedOut ? result.tempOrderNumber : result.orderNumber;
+    const orderNumber = result.timedOut
+      ? result.tempOrderNumber
+      : (result as Extract<KioskOrderRaceResult, { timedOut: false }>).orderNumber;
 
     setShowConfirmModal(false);
     router.push(`/kiosk/${restaurantId}/confirm?orderNumber=${orderNumber}`);
