@@ -85,6 +85,7 @@ export default function OrdersPage() {
   const isAlertPlayingRef = useRef(false);
   const isKioskBeepingRef = useRef(false);
   const router = useRouter();
+  const isOrdersPage = router.pathname === '/dashboard/orders';
   const randomMessage = useMemo(
     () =>
       EMPTY_MESSAGES[
@@ -109,15 +110,17 @@ export default function OrdersPage() {
   );
 
   const stopAlertLoop = useCallback(() => {
+    if (!isOrdersPage) return;
     const audio = alertAudioRef.current;
     if (audio) {
       audio.pause();
       audio.currentTime = 0;
     }
     isAlertPlayingRef.current = false;
-  }, []);
+  }, [isOrdersPage]);
 
   const startAlertLoop = useCallback(() => {
+    if (!isOrdersPage) return;
     let audio = alertAudioRef.current;
     if (!audio) {
       audio = new Audio(ORDER_ALERT_AUDIO);
@@ -134,35 +137,49 @@ export default function OrdersPage() {
         isAlertPlayingRef.current = true;
       })
       .catch((err) => console.error('[orders] audio playback failed', err));
-  }, []);
+  }, [isOrdersPage]);
 
   const syncAlertLoop = useCallback(() => {
+    if (!isOrdersPage) return;
     if (pendingOrderIdsRef.current.size > 0) {
       startAlertLoop();
     } else {
       stopAlertLoop();
     }
-  }, [startAlertLoop, stopAlertLoop]);
+  }, [isOrdersPage, startAlertLoop, stopAlertLoop]);
 
   const playKioskTripleBeep = useCallback(async () => {
-    if (isKioskBeepingRef.current) return;
+    if (!isOrdersPage || isKioskBeepingRef.current) return;
     isKioskBeepingRef.current = true;
+    let audio = alertAudioRef.current;
+    if (!audio) {
+      audio = new Audio(ORDER_ALERT_AUDIO);
+      alertAudioRef.current = audio;
+    }
+    const wasLooping = isAlertPlayingRef.current;
+    if (wasLooping) {
+      stopAlertLoop();
+    }
+    audio.loop = false;
     try {
       for (let i = 0; i < 3; i += 1) {
         try {
-          const audio = new Audio(ORDER_ALERT_AUDIO);
           // eslint-disable-next-line no-await-in-loop
+          audio.currentTime = 0;
           await audio.play();
         } catch (err) {
           console.error('[orders] kiosk alert playback failed', err);
         }
         // eslint-disable-next-line no-await-in-loop
-        await new Promise((resolve) => setTimeout(resolve, 800));
+        await new Promise((resolve) => setTimeout(resolve, 850));
       }
     } finally {
       isKioskBeepingRef.current = false;
+      if (pendingOrderIdsRef.current.size > 0) {
+        syncAlertLoop();
+      }
     }
-  }, []);
+  }, [isOrdersPage, startAlertLoop, stopAlertLoop, syncAlertLoop]);
 
   const fetchOrderWithItems = useCallback(
     async (orderId: string) => {
@@ -370,10 +387,10 @@ export default function OrdersPage() {
   }, [restaurantId]);
 
   useEffect(() => {
-    if (!restaurantId) return;
+    if (!restaurantId || !isOrdersPage) return;
 
     const handleInsert = async (payload: any) => {
-      if (isKioskDevice()) return;
+      if (!isOrdersPage || isKioskDevice()) return;
       const newRow = payload.new as Order;
       const kioskOrder = isKioskOrder(newRow);
       if (kioskOrder) {
@@ -401,7 +418,7 @@ export default function OrdersPage() {
     };
 
     const handleUpdate = (payload: any) => {
-      if (isKioskDevice()) return;
+      if (!isOrdersPage || isKioskDevice()) return;
       const updated = payload.new as Order;
       if (updated.status === 'pending') {
         pendingOrderIdsRef.current.add(updated.id);
@@ -429,7 +446,7 @@ export default function OrdersPage() {
     };
 
     const channel = supabase
-      .channel('orders-' + restaurantId)
+      .channel('orders-realtime')
       .on(
         'postgres_changes',
         {
@@ -457,7 +474,7 @@ export default function OrdersPage() {
       pendingOrderIdsRef.current.clear();
       stopAlertLoop();
     };
-  }, [fetchOrderWithItems, playKioskTripleBeep, restaurantId, startAlertLoop, stopAlertLoop, syncAlertLoop]);
+  }, [fetchOrderWithItems, isOrdersPage, playKioskTripleBeep, restaurantId, startAlertLoop, stopAlertLoop, syncAlertLoop]);
 
   // Automatically end break when time passes
   useEffect(() => {
