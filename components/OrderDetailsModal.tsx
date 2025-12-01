@@ -189,7 +189,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateStatus }: Pr
                 </button>
               ) : null;
             })()}
-            {order.status !== 'completed' && order.status !== 'cancelled' && (
+            {order.status === 'pending' && (
               <button
                 type="button"
                 onClick={() => {

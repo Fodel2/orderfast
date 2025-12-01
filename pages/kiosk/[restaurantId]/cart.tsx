@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { AnimatePresence, motion } from 'framer-motion';
 import CartDrawer from '@/components/CartDrawer';
@@ -70,6 +70,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   const [namePromptMessage, setNamePromptMessage] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [nameError, setNameError] = useState('');
+  const submissionInFlightRef = useRef(false);
   const modalOverlayStyle = {
     height: '100dvh',
     paddingTop: 'env(safe-area-inset-top)',
@@ -179,7 +180,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   }, [registerActivity, restaurantId, router]);
 
   const placeOrder = useCallback(async () => {
-    if (!restaurantId || placingOrder) return;
+    if (!restaurantId || placingOrder || submissionInFlightRef.current) return;
 
     if (!customerName.trim()) {
       setNameError('We need something to call you!');
@@ -196,6 +197,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
       addons: item.addons ? [...item.addons] : [],
     }));
 
+    submissionInFlightRef.current = true;
     setPlacingOrder(true);
     setShowLoadingOverlay(true);
 
@@ -222,6 +224,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
               customer_name: customerName.trim(),
               order_type: 'collection',
               status: 'preparing',
+              accepted_at: new Date().toISOString(),
               total_price: subtotal,
               service_fee: 0,
               delivery_fee: 0,
@@ -335,6 +338,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
       })
       .finally(() => {
         setPlacingOrder(false);
+        submissionInFlightRef.current = false;
       });
   }, [cart.items, cart.restaurant_id, clearCart, customerName, placingOrder, restaurantId, router, subtotal]);
 
