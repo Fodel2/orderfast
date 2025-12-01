@@ -161,24 +161,27 @@ export default function OrdersPage() {
       stopAlertLoop();
     }
     audio.loop = false;
-    try {
-      for (let i = 0; i < 3; i += 1) {
-        try {
-          // eslint-disable-next-line no-await-in-loop
-          audio.currentTime = 0;
-          await audio.play();
-        } catch (err) {
-          console.error('[orders] kiosk alert playback failed', err);
-        }
-        // eslint-disable-next-line no-await-in-loop
-        await new Promise((resolve) => setTimeout(resolve, 850));
+    const playBeep = () => {
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+        void audio.play();
+      } catch (err) {
+        console.error('[orders] kiosk alert playback failed', err);
       }
-    } finally {
+    };
+
+    playBeep();
+    setTimeout(() => {
+      playBeep();
+    }, 800);
+    setTimeout(() => {
+      playBeep();
       isKioskBeepingRef.current = false;
       if (pendingOrderIdsRef.current.size > 0) {
         syncAlertLoop();
       }
-    }
+    }, 1600);
   }, [isOrdersPage, startAlertLoop, stopAlertLoop, syncAlertLoop]);
 
   const fetchOrderWithItems = useCallback(
@@ -347,7 +350,7 @@ export default function OrdersPage() {
   }, []);
 
   useEffect(() => {
-    if (!restaurantId) return;
+    if (!restaurantId || !isOrdersPage) return;
 
     const loadHours = async () => {
       const today = new Date().getDay();
@@ -432,7 +435,11 @@ export default function OrdersPage() {
         const mapped = prev
           .map((o) =>
             o.id === updated.id
-              ? { ...o, status: updated.status, total_price: updated.total_price }
+              ? {
+                  ...o,
+                  ...updated,
+                  order_items: o.order_items || [],
+                }
               : o
           )
           .filter((o) => ACTIVE_STATUSES.includes(o.status));
