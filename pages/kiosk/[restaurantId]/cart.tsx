@@ -11,10 +11,6 @@ import KioskActionButton from '@/components/kiosk/KioskActionButton';
 import { ChevronLeftIcon } from '@heroicons/react/24/outline';
 import KioskLoadingOverlay from '@/components/kiosk/KioskLoadingOverlay';
 
-type KioskOrderTimeoutResult = { timedOut: true; tempOrderNumber: number };
-type KioskOrderSuccessResult = { timedOut: false; orderNumber: number; orderId: string };
-type KioskOrderRaceResult = KioskOrderTimeoutResult | KioskOrderSuccessResult;
-
 type Restaurant = {
   id: string;
   name: string;
@@ -70,6 +66,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   const [namePromptMessage, setNamePromptMessage] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [nameError, setNameError] = useState('');
+  const [submissionError, setSubmissionError] = useState('');
   const submissionInFlightRef = useRef(false);
   const modalOverlayStyle = {
     height: '100dvh',
@@ -80,10 +77,6 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   const modalCardStyle = {
     maxHeight: 'calc(100dvh - 32px - env(safe-area-inset-bottom))',
   } as const;
-
-  const isSuccessfulRaceResult = (
-    result: KioskOrderRaceResult
-  ): result is KioskOrderSuccessResult => result.timedOut === false;
 
   const confirmMessages = useMemo(
     () => [
@@ -199,8 +192,11 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
 
     submissionInFlightRef.current = true;
     setPlacingOrder(true);
+    setSubmissionError('');
     setShowLoadingOverlay(true);
 
+    const shortOrderNumber = await generateShortOrderNumber(restaurantId);
+    const startTime = Date.now();
     let cartCleared = false;
     const safeClearCart = () => {
       if (!cartCleared) {
@@ -209,14 +205,11 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
       }
     };
 
-    const shortOrderNumberPromise = generateShortOrderNumber(restaurantId);
-
-    const submitOrderToSupabase = async (): Promise<KioskOrderSuccessResult> => {
-      const shortOrderNumber = await shortOrderNumberPromise;
+    const submitKioskOrder = async (): Promise<{ orderId: string; orderNumber: number }> => {
       let orderId: string | null = null;
 
       try {
-        const { data: order, error } = await supabase
+        const { data: order, error: orderError } = await supabase
           .from('orders')
           .insert([
             {
@@ -234,7 +227,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
           .select('id, short_order_number')
           .single();
 
-        if (error || !order) throw error || new Error('Failed to insert order');
+        if (orderError || !order) throw orderError || new Error('Failed to insert order');
         orderId = order.id;
 
         for (const item of cartItemsSnapshot) {
@@ -271,11 +264,14 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
           }
         }
 
-        return {
-          timedOut: false,
-          orderNumber: order.short_order_number ?? shortOrderNumber,
-          orderId: order.id,
-        };
+        if (process.env.NODE_ENV === 'development') {
+          console.debug('[kiosk] order inserted', {
+            orderId: order.id,
+            orderNumber: order.short_order_number ?? shortOrderNumber,
+          });
+        }
+
+        return { orderId: order.id, orderNumber: order.short_order_number ?? shortOrderNumber };
       } catch (err) {
         console.error('[kiosk] order submission failed', err);
         if (orderId) {
@@ -288,58 +284,54 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
       }
     };
 
-    const fallbackOrderNumber = Math.floor(Math.random() * 9000) + 1000;
-    const timeoutPromise: Promise<KioskOrderRaceResult> = new Promise((resolve) => {
-      setTimeout(async () => {
-        let tempOrderNumber = fallbackOrderNumber;
-        try {
-          tempOrderNumber = await Promise.race([
-            shortOrderNumberPromise,
-            new Promise<number>((raceResolve) => setTimeout(() => raceResolve(fallbackOrderNumber), 150)),
-          ]);
-        } catch (err) {
-          console.error('[kiosk] failed to resolve order number before timeout', err);
-        }
-        resolve({ timedOut: true, tempOrderNumber });
-      }, 5000);
+    const handleSuccess = async (result: { orderId: string; orderNumber: number }) => {
+      safeClearCart();
+
+      const elapsed = Date.now() - startTime;
+      if (elapsed < 800) {
+        await new Promise((resolve) => setTimeout(resolve, 800 - elapsed));
+      }
+
+      setShowConfirmModal(false);
+      router.push(`/kiosk/${restaurantId}/confirm?orderNumber=${result.orderNumber}`);
+      setPlacingOrder(false);
+      submissionInFlightRef.current = false;
+    };
+
+    const handleFailure = (err: unknown) => {
+      console.error('[kiosk] order submission failed', err);
+      setSubmissionError('We could not place your order. Please speak to a member of staff.');
+      setShowLoadingOverlay(false);
+      setPlacingOrder(false);
+      submissionInFlightRef.current = false;
+    };
+
+    const submissionPromise = submitKioskOrder();
+    const timedOutcome = submissionPromise
+      .then((result) => ({ type: 'success' as const, result }))
+      .catch((err) => ({ type: 'error' as const, error: err }));
+
+    const timeoutPromise = new Promise<{ type: 'timeout' }>((resolve) => {
+      setTimeout(() => resolve({ type: 'timeout' }), 5000);
     });
 
-    const submissionPromise = submitOrderToSupabase();
-    const startTime = Date.now();
+    const raceResult = await Promise.race([timedOutcome, timeoutPromise]);
 
-    const submissionResultPromise: Promise<KioskOrderRaceResult> = submissionPromise
-      .then((res) => res)
-      .catch((err) => {
-        console.error('[kiosk] order submission failed', err);
-        return { timedOut: true, tempOrderNumber: fallbackOrderNumber };
-      });
-
-    const raceResult = await Promise.race([submissionResultPromise, timeoutPromise]);
-
-    const elapsed = Date.now() - startTime;
-    if (elapsed < 800) {
-      await new Promise((resolve) => setTimeout(resolve, 800 - elapsed));
+    if (raceResult.type === 'success') {
+      await handleSuccess(raceResult.result);
+      return;
     }
 
-    const orderNumber = isSuccessfulRaceResult(raceResult)
-      ? raceResult.orderNumber
-      : raceResult.tempOrderNumber;
+    if (raceResult.type === 'error') {
+      handleFailure(raceResult.error);
+      return;
+    }
 
-    setShowConfirmModal(false);
-    router.push(`/kiosk/${restaurantId}/confirm?orderNumber=${orderNumber}`);
-
+    setSubmissionError('');
+    setNameError('');
     submissionPromise
-      .then(() => {
-        safeClearCart();
-      })
-      .catch((err) => {
-        console.error('[kiosk] background order submission failed', err);
-        setNameError('We had trouble confirming your order. Please speak to the team.');
-      })
-      .finally(() => {
-        setPlacingOrder(false);
-        submissionInFlightRef.current = false;
-      });
+      .then(handleSuccess)
+      .catch(handleFailure);
   }, [cart.items, cart.restaurant_id, clearCart, customerName, placingOrder, restaurantId, router, subtotal]);
 
   const openConfirmModal = () => {
@@ -349,6 +341,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     setCustomerName('');
     setNameError('');
     setNamePromptMessage('');
+    setSubmissionError('');
     setShowConfirmModal(true);
   };
 
@@ -356,10 +349,13 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     registerActivity();
     setNamePromptMessage(getRandomMessage(nameMessages));
     setConfirmStep(2);
+    setSubmissionError('');
   };
 
   const handlePlaceOrder = () => {
     registerActivity();
+    setNameError('');
+    setSubmissionError('');
     void placeOrder();
   };
 
@@ -367,6 +363,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     registerActivity();
     setConfirmStep(1);
     setNameError('');
+    setSubmissionError('');
   };
 
   return (
@@ -486,6 +483,9 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                         />
                         {nameError ? (
                           <p className="text-sm font-semibold text-rose-600">{nameError}</p>
+                        ) : null}
+                        {submissionError ? (
+                          <p className="text-sm font-semibold text-rose-600">{submissionError}</p>
                         ) : null}
                       </div>
                       <div className="mt-auto grid grid-cols-1 gap-3 sm:grid-cols-2">
