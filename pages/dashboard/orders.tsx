@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import { useRouter } from 'next/router';
 import DashboardLayout from '../../components/DashboardLayout';
 import { supabase } from '../../utils/supabaseClient';
@@ -15,6 +16,9 @@ const ACTIVE_STATUSES = [
   'delivering',
   'ready_to_collect',
 ];
+
+const isActiveStatus = (status: string | null | undefined) =>
+  !!status && ACTIVE_STATUSES.includes(status);
 
 const EMPTY_MESSAGES = [
   'No orders right now… shall we check the cleaning logs?',
@@ -100,6 +104,12 @@ export default function OrdersPage() {
     (order: Pick<Order, 'order_type' | 'source'>) =>
       order.order_type === 'kiosk' || order.source === 'kiosk',
     []
+  );
+
+  const matchesRestaurant = useCallback(
+    (value: string | null | undefined) =>
+      !!value && !!restaurantId && String(value) === String(restaurantId),
+    [restaurantId]
   );
 
   const stopAlertLoop = useCallback(() => {
@@ -219,6 +229,16 @@ export default function OrdersPage() {
       return data as Order;
     },
     []
+  );
+
+  const hydrateOrder = useCallback(
+    async (order: Order) => {
+      if (order.order_items && order.order_items.length > 0) {
+        return order;
+      }
+      return fetchOrderWithItems(order.id);
+    },
+    [fetchOrderWithItems]
   );
 
   useEffect(() => {
@@ -384,46 +404,77 @@ export default function OrdersPage() {
   useEffect(() => {
     if (!restaurantId || !isOrdersPage) return;
 
-    const handleInsert = async (payload: any) => {
-      if (!isOrdersPage || isKioskDevice()) return;
+    const handleInsert = async (
+      payload: RealtimePostgresChangesPayload<Order>
+    ) => {
+      if (!isOrdersPage) return;
       const newRow = payload.new as Order;
+      if (!newRow || !matchesRestaurant(newRow.restaurant_id)) {
+        console.debug('[orders] ignoring insert for different restaurant', {
+          restaurantId,
+          incoming: newRow?.restaurant_id,
+        });
+        return;
+      }
+
       const kioskOrder = isKioskOrder(newRow);
+
       if (kioskOrder) {
         pendingOrderIdsRef.current.delete(newRow.id);
-        await playKioskTripleBeep();
       } else if (newRow.status === 'pending') {
         pendingOrderIdsRef.current.add(newRow.id);
+      } else {
+        pendingOrderIdsRef.current.delete(newRow.id);
+      }
+
+      if (!isActiveStatus(newRow.status)) {
+        syncAlertLoop();
+        return;
+      }
+
+      const hydrated = (await hydrateOrder(newRow)) ?? {
+        ...newRow,
+        order_items: newRow.order_items ?? [],
+      };
+      if (!hydrated) {
+        console.error('[orders] failed to hydrate inserted order', newRow.id);
+        return;
+      }
+
+      setOrders((prev) => {
+        const remaining = prev.filter((o) => o.id !== hydrated.id);
+        return [hydrated, ...remaining];
+      });
+
+      if (kioskOrder) {
+        await playKioskTripleBeep();
       }
 
       syncAlertLoop();
-
-      if (!ACTIVE_STATUSES.includes(newRow.status)) return;
-
-      let hydrated: Order | null = null;
-      if (newRow.order_items && newRow.order_items.length > 0) {
-        hydrated = { ...newRow, order_items: newRow.order_items };
-      } else {
-        hydrated = await fetchOrderWithItems(newRow.id);
-      }
-      if (!hydrated) return;
-
-      setOrders((prev) => {
-        const remaining = prev.filter((o) => o.id !== hydrated!.id);
-        return [hydrated!, ...remaining];
-      });
     };
 
-    const handleUpdate = async (payload: any) => {
-      if (!isOrdersPage || isKioskDevice()) return;
+    const handleUpdate = async (
+      payload: RealtimePostgresChangesPayload<Order>
+    ) => {
+      if (!isOrdersPage) return;
       const updated = payload.new as Order;
+      if (!updated || !matchesRestaurant(updated.restaurant_id)) {
+        console.debug('[orders] ignoring update for different restaurant', {
+          restaurantId,
+          incoming: updated?.restaurant_id,
+        });
+        return;
+      }
+
       const kioskOrder = isKioskOrder(updated);
+
       if (!kioskOrder && updated.status === 'pending') {
         pendingOrderIdsRef.current.add(updated.id);
       } else {
         pendingOrderIdsRef.current.delete(updated.id);
       }
 
-      if (!ACTIVE_STATUSES.includes(updated.status)) {
+      if (!isActiveStatus(updated.status)) {
         setOrders((prev) => prev.filter((o) => o.id !== updated.id));
         syncAlertLoop();
         return;
@@ -439,28 +490,30 @@ export default function OrdersPage() {
               : existing.order_items;
           mergedOrder = { ...existing, ...updated, order_items: mergedItems };
           const others = prev.filter((o) => o.id !== updated.id);
-          return [mergedOrder!, ...others];
+          return [mergedOrder, ...others];
         }
         return prev;
       });
 
       if (!mergedOrder) {
-        const hydrated =
-          updated.order_items && updated.order_items.length > 0
-            ? { ...updated }
-            : await fetchOrderWithItems(updated.id);
+        const hydrated = (await hydrateOrder(updated)) ?? {
+          ...updated,
+          order_items: updated.order_items ?? [],
+        };
         if (hydrated) {
           setOrders((prev) => {
             const remaining = prev.filter((o) => o.id !== hydrated.id);
             return [hydrated, ...remaining];
           });
+        } else {
+          console.error('[orders] failed to hydrate updated order', updated.id);
         }
       }
 
       syncAlertLoop();
     };
 
-    const channelName = `orders-realtime-${restaurantId}`;
+    const channelName = 'orders-realtime';
     const channel = supabase.channel(channelName);
 
     if (!channel) {
@@ -472,22 +525,17 @@ export default function OrdersPage() {
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*',
           schema: 'public',
           table: 'orders',
-          filter: `restaurant_id=eq.${restaurantId}`,
         },
-        handleInsert
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'orders',
-          filter: `restaurant_id=eq.${restaurantId}`,
-        },
-        handleUpdate
+        async (payload) => {
+          if (payload.eventType === 'INSERT') {
+            await handleInsert(payload as RealtimePostgresChangesPayload<Order>);
+          } else if (payload.eventType === 'UPDATE') {
+            await handleUpdate(payload as RealtimePostgresChangesPayload<Order>);
+          }
+        }
       )
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
@@ -511,10 +559,10 @@ export default function OrdersPage() {
       stopAlertLoop();
     };
   }, [
-    fetchOrderWithItems,
-    isKioskDevice,
-    isKioskOrder,
+    hydrateOrder,
     isOrdersPage,
+    isKioskOrder,
+    matchesRestaurant,
     playKioskTripleBeep,
     restaurantId,
     stopAlertLoop,
