@@ -50,6 +50,7 @@ interface Order {
   id: string;
   restaurant_id?: string;
   short_order_number: number | null;
+  source?: string | null;
   order_type: 'delivery' | 'collection' | 'kiosk';
   customer_name: string | null;
   phone_number: string | null;
@@ -95,7 +96,10 @@ export default function OrdersPage() {
     [router.pathname]
   );
 
-  const isKioskOrder = useCallback((order: Pick<Order, 'order_type'>) => order.order_type === 'kiosk', []);
+  const isKioskOrder = useCallback(
+    (order: Pick<Order, 'order_type' | 'source'>) => order.source === 'kiosk' || order.order_type === 'kiosk',
+    []
+  );
 
   const stopAlertLoop = useCallback(() => {
     if (!isOrdersPage) return;
@@ -181,6 +185,7 @@ export default function OrdersPage() {
           id,
           restaurant_id,
           short_order_number,
+          source,
           order_type,
           customer_name,
           phone_number,
@@ -258,6 +263,7 @@ export default function OrdersPage() {
           id,
           restaurant_id,
           short_order_number,
+          source,
           order_type,
           customer_name,
           phone_number,

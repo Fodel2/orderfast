@@ -23,6 +23,7 @@ interface OrderItem {
 export interface Order {
   id: string;
   short_order_number: number | null;
+  source?: string | null;
   order_type: 'delivery' | 'collection' | 'kiosk';
   customer_name: string | null;
   phone_number: string | null;
@@ -67,6 +68,8 @@ export default function OrderDetailsModal({ order, onClose, onUpdateStatus }: Pr
   }, [order]);
 
   if (!order) return null;
+
+  const kioskOrder = order.order_type === 'kiosk' || order.source === 'kiosk';
 
   return (
     <div
@@ -184,7 +187,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateStatus }: Pr
                   ready_to_collect: { next: 'completed', label: 'Complete Order', classes: 'bg-green-600 hover:bg-green-700' },
                 },
               };
-              const t = transitions[order.order_type][order.status];
+              const t = transitions[kioskOrder ? 'kiosk' : order.order_type][order.status];
               return t ? (
                 <button
                   type="button"
@@ -195,7 +198,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateStatus }: Pr
                 </button>
               ) : null;
             })()}
-            {order.order_type !== 'kiosk' && order.status === 'pending' && (
+            {!kioskOrder && order.status === 'pending' && (
               <button
                 type="button"
                 onClick={() => {

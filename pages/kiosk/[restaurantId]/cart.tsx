@@ -227,8 +227,9 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
             {
               restaurant_id: restaurantId,
               customer_name: customerName.trim(),
-              order_type: 'kiosk',
-              status: 'pending',
+              order_type: 'collection',
+              source: 'kiosk',
+              status: 'preparing',
               total_price: subtotal,
               service_fee: 0,
               delivery_fee: 0,
