@@ -51,7 +51,6 @@ interface Order {
   restaurant_id?: string;
   short_order_number: number | null;
   order_type: 'delivery' | 'collection' | 'kiosk' | string;
-  customer_id?: string | null;
   user_name?: string | null;
   customer_name: string | null;
   phone_number: string | null;
@@ -98,8 +97,8 @@ export default function OrdersPage() {
   );
 
   const isKioskOrder = useCallback(
-    (order: Pick<Order, 'order_type' | 'customer_id' | 'user_name'>) =>
-      order.order_type === 'kiosk' || (!order.customer_id && !!order.user_name),
+    (order: Pick<Order, 'order_type' | 'user_name'>) =>
+      order.order_type === 'kiosk' || !!order.user_name,
     []
   );
 
@@ -189,7 +188,6 @@ export default function OrdersPage() {
           restaurant_id,
           short_order_number,
           order_type,
-          customer_id,
           user_name,
           customer_name,
           phone_number,
@@ -268,7 +266,6 @@ export default function OrdersPage() {
           restaurant_id,
           short_order_number,
           order_type,
-          customer_id,
           user_name,
           customer_name,
           phone_number,
