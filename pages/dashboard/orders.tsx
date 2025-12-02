@@ -52,7 +52,6 @@ interface Order {
   short_order_number: number | null;
   source?: string | null;
   order_type: 'delivery' | 'collection' | 'kiosk' | string;
-  user_name?: string | null;
   customer_name: string | null;
   phone_number: string | null;
   delivery_address: any;
@@ -98,8 +97,8 @@ export default function OrdersPage() {
   );
 
   const isKioskOrder = useCallback(
-    (order: Pick<Order, 'order_type' | 'source' | 'user_name'>) =>
-      order.order_type === 'kiosk' || order.source === 'kiosk' || !!order.user_name,
+    (order: Pick<Order, 'order_type' | 'source'>) =>
+      order.order_type === 'kiosk' || order.source === 'kiosk',
     []
   );
 
@@ -190,7 +189,6 @@ export default function OrdersPage() {
           short_order_number,
           source,
           order_type,
-          user_name,
           customer_name,
           phone_number,
           delivery_address,
@@ -269,7 +267,6 @@ export default function OrdersPage() {
           short_order_number,
           source,
           order_type,
-          user_name,
           customer_name,
           phone_number,
           delivery_address,
