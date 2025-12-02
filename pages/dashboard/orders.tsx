@@ -51,7 +51,7 @@ interface Order {
   restaurant_id?: string;
   short_order_number: number | null;
   source?: string | null;
-  order_type: 'delivery' | 'collection' | 'kiosk';
+  order_type: 'delivery' | 'collection' | 'kiosk' | string;
   customer_name: string | null;
   phone_number: string | null;
   delivery_address: any;
@@ -68,7 +68,7 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [now, setNow] = useState(Date.now());
-  const [restaurantId, setRestaurantId] = useState<number | null>(null);
+  const [restaurantId, setRestaurantId] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState<boolean | null>(null);
   const [breakUntil, setBreakUntil] = useState<string | null>(null);
   const [showBreakModal, setShowBreakModal] = useState(false);
@@ -97,22 +97,24 @@ export default function OrdersPage() {
   );
 
   const isKioskOrder = useCallback(
-    (order: Pick<Order, 'order_type' | 'source'>) => order.source === 'kiosk' || order.order_type === 'kiosk',
+    (order: Pick<Order, 'order_type' | 'source'>) =>
+      order.order_type === 'kiosk' || order.source === 'kiosk',
     []
   );
 
   const stopAlertLoop = useCallback(() => {
-    if (!isOrdersPage) return;
+    if (!isOrdersPage || isKioskDevice()) return;
     const audio = alertAudioRef.current;
     if (audio) {
       audio.pause();
       audio.currentTime = 0;
     }
     isAlertPlayingRef.current = false;
-  }, [isOrdersPage]);
+  }, [isKioskDevice, isOrdersPage]);
 
   const startAlertLoop = useCallback(() => {
-    if (!isOrdersPage) return;
+    if (!isOrdersPage || isKioskDevice()) return;
+    if (pendingOrderIdsRef.current.size === 0) return;
     let audio = alertAudioRef.current;
     if (!audio) {
       audio = new Audio(ORDER_ALERT_AUDIO);
@@ -129,19 +131,19 @@ export default function OrdersPage() {
         isAlertPlayingRef.current = true;
       })
       .catch((err) => console.error('[orders] audio playback failed', err));
-  }, [isOrdersPage]);
+  }, [isKioskDevice, isOrdersPage]);
 
   const syncAlertLoop = useCallback(() => {
-    if (!isOrdersPage) return;
+    if (!isOrdersPage || isKioskDevice()) return;
     if (pendingOrderIdsRef.current.size > 0) {
       startAlertLoop();
     } else {
       stopAlertLoop();
     }
-  }, [isOrdersPage, startAlertLoop, stopAlertLoop]);
+  }, [isKioskDevice, isOrdersPage, startAlertLoop, stopAlertLoop]);
 
   const playKioskTripleBeep = useCallback(async () => {
-    if (!isOrdersPage || isKioskBeepingRef.current) return;
+    if (!isOrdersPage || isKioskDevice() || isKioskBeepingRef.current) return;
     isKioskBeepingRef.current = true;
     let audio = alertAudioRef.current;
     if (!audio) {
@@ -174,7 +176,7 @@ export default function OrdersPage() {
         syncAlertLoop();
       }
     }, 1600);
-  }, [isOrdersPage, startAlertLoop, stopAlertLoop, syncAlertLoop]);
+  }, [isKioskDevice, isOrdersPage, startAlertLoop, stopAlertLoop, syncAlertLoop]);
 
   const fetchOrderWithItems = useCallback(
     async (orderId: string) => {
@@ -299,11 +301,7 @@ export default function OrdersPage() {
           }
         });
         pendingOrderIdsRef.current = pending;
-        if (pending.size > 0) {
-          startAlertLoop();
-        } else {
-          stopAlertLoop();
-        }
+        syncAlertLoop();
       } else if (ordersError) {
         console.error('Error fetching orders', ordersError);
       }
@@ -336,7 +334,7 @@ export default function OrdersPage() {
     };
 
     load();
-  }, [isKioskOrder, router, startAlertLoop, stopAlertLoop]);
+  }, [isKioskOrder, router, syncAlertLoop]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -392,29 +390,30 @@ export default function OrdersPage() {
       const kioskOrder = isKioskOrder(newRow);
       if (kioskOrder) {
         pendingOrderIdsRef.current.delete(newRow.id);
-        void playKioskTripleBeep();
-      } else {
-        if (newRow.status === 'pending') {
-          pendingOrderIdsRef.current.add(newRow.id);
-        } else {
-          pendingOrderIdsRef.current.delete(newRow.id);
-        }
+        await playKioskTripleBeep();
+      } else if (newRow.status === 'pending') {
+        pendingOrderIdsRef.current.add(newRow.id);
       }
 
       syncAlertLoop();
 
       if (!ACTIVE_STATUSES.includes(newRow.status)) return;
 
-      const hydrated = await fetchOrderWithItems(newRow.id);
+      let hydrated: Order | null = null;
+      if (newRow.order_items && newRow.order_items.length > 0) {
+        hydrated = { ...newRow, order_items: newRow.order_items };
+      } else {
+        hydrated = await fetchOrderWithItems(newRow.id);
+      }
       if (!hydrated) return;
 
       setOrders((prev) => {
-        const remaining = prev.filter((o) => o.id !== newRow.id);
-        return [hydrated, ...remaining];
+        const remaining = prev.filter((o) => o.id !== hydrated!.id);
+        return [hydrated!, ...remaining];
       });
     };
 
-    const handleUpdate = (payload: any) => {
+    const handleUpdate = async (payload: any) => {
       if (!isOrdersPage || isKioskDevice()) return;
       const updated = payload.new as Order;
       const kioskOrder = isKioskOrder(updated);
@@ -424,31 +423,52 @@ export default function OrdersPage() {
         pendingOrderIdsRef.current.delete(updated.id);
       }
 
-      syncAlertLoop();
+      if (!ACTIVE_STATUSES.includes(updated.status)) {
+        setOrders((prev) => prev.filter((o) => o.id !== updated.id));
+        syncAlertLoop();
+        return;
+      }
 
+      let mergedOrder: Order | null = null;
       setOrders((prev) => {
-        const mapped = prev
-          .map((o) =>
-            o.id === updated.id
-              ? {
-                  ...o,
-                  ...updated,
-                  order_items: o.order_items || [],
-                }
-              : o
-          )
-          .filter((o) => ACTIVE_STATUSES.includes(o.status));
-
-        const exists = mapped.some((o) => o.id === updated.id);
-        if (!exists && ACTIVE_STATUSES.includes(updated.status)) {
-          mapped.unshift({ ...(updated as any), order_items: [] as OrderItem[] });
+        const existing = prev.find((o) => o.id === updated.id);
+        if (existing) {
+          const mergedItems =
+            updated.order_items && updated.order_items.length > 0
+              ? updated.order_items
+              : existing.order_items;
+          mergedOrder = { ...existing, ...updated, order_items: mergedItems };
+          const others = prev.filter((o) => o.id !== updated.id);
+          return [mergedOrder!, ...others];
         }
-        return mapped;
+        return prev;
       });
+
+      if (!mergedOrder) {
+        const hydrated =
+          updated.order_items && updated.order_items.length > 0
+            ? { ...updated }
+            : await fetchOrderWithItems(updated.id);
+        if (hydrated) {
+          setOrders((prev) => {
+            const remaining = prev.filter((o) => o.id !== hydrated.id);
+            return [hydrated, ...remaining];
+          });
+        }
+      }
+
+      syncAlertLoop();
     };
 
-    const channel = supabase
-      .channel('orders-realtime')
+    const channelName = `orders-realtime-${restaurantId}`;
+    const channel = supabase.channel(channelName);
+
+    if (!channel) {
+      console.error('[orders] failed to create realtime channel for orders');
+      return;
+    }
+
+    channel
       .on(
         'postgres_changes',
         {
@@ -469,7 +489,21 @@ export default function OrdersPage() {
         },
         handleUpdate
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.debug(`[orders] realtime subscribed for restaurant ${restaurantId}`);
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error(
+            `[orders] realtime channel error on ${channelName} for restaurant ${restaurantId}. This may be a permissions or schema issue.`
+          );
+        } else if (status === 'TIMED_OUT') {
+          console.error(
+            `[orders] realtime channel timed out on ${channelName}; orders will not update live until reloaded.`
+          );
+        } else if (status === 'CLOSED') {
+          console.warn(`[orders] realtime channel ${channelName} closed unexpectedly.`);
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
@@ -478,11 +512,11 @@ export default function OrdersPage() {
     };
   }, [
     fetchOrderWithItems,
+    isKioskDevice,
     isKioskOrder,
     isOrdersPage,
     playKioskTripleBeep,
     restaurantId,
-    startAlertLoop,
     stopAlertLoop,
     syncAlertLoop,
   ]);
