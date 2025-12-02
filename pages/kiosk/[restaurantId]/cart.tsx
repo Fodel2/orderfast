@@ -351,13 +351,20 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
       return;
     }
 
-    const orderNumber = raceResult.timedOut
-      ? raceResult.tempOrderNumber
-      : raceResult.orderNumber;
+    // --- SAFE UNION NARROWING REQUIRED ---
+    let orderNumber: number;
+    let orderId: string | null = null;
 
     if (raceResult.timedOut === false) {
-      const { orderId, orderNumber } = raceResult;
-      await finalizeSuccess({ orderId, orderNumber });
+      orderNumber = raceResult.orderNumber;
+      orderId = raceResult.orderId;
+    } else {
+      orderNumber = raceResult.tempOrderNumber;
+    }
+    // --------------------------------------
+
+    if (raceResult.timedOut === false) {
+      await finalizeSuccess({ orderId: orderId!, orderNumber });
       return;
     }
 
