@@ -5,6 +5,7 @@ import { KioskSessionProvider, useKioskSession } from '@/context/KioskSessionCon
 import { supabase } from '@/lib/supabaseClient';
 import KioskActionButton from '@/components/kiosk/KioskActionButton';
 import { CheckIcon } from '@heroicons/react/24/outline';
+import { getKioskLastRealOrderNumber, KIOSK_REAL_ORDER_NUMBER_EVENT } from '@/utils/kiosk/orders';
 
 type Restaurant = {
   id: string;
@@ -36,13 +37,14 @@ function KioskConfirmScreen({ restaurantId }: { restaurantId?: string | null }) 
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const { resetKioskToStart } = useKioskSession();
   const resetTimeoutRef = useRef<number | null>(null);
-  const orderNumber = useMemo(() => {
+  const tempOrderNumber = useMemo(() => {
     const rawOrderNumber = router.query.orderNumber;
     const raw = Array.isArray(rawOrderNumber) ? rawOrderNumber[0] : rawOrderNumber;
     if (!raw) return null;
     const parsed = Number.parseInt(String(raw), 10);
     return Number.isFinite(parsed) ? parsed : null;
   }, [router.query.orderNumber]);
+  const [displayOrderNumber, setDisplayOrderNumber] = useState<number | null>(null);
 
   useEffect(() => {
     if (!restaurantId) return;
@@ -73,6 +75,40 @@ function KioskConfirmScreen({ restaurantId }: { restaurantId?: string | null }) 
 
     return () => {
       active = false;
+    };
+  }, [restaurantId]);
+
+  useEffect(() => {
+    setDisplayOrderNumber(tempOrderNumber ?? null);
+  }, [tempOrderNumber]);
+
+  useEffect(() => {
+    const applyStoredNumber = () => {
+      const realNumber = getKioskLastRealOrderNumber(restaurantId);
+      if (realNumber) {
+        setDisplayOrderNumber(realNumber);
+      }
+    };
+
+    applyStoredNumber();
+
+    const handleRealOrderNumber = (event: Event) => {
+      const detail = (event as CustomEvent<{ restaurantId?: string | null; orderNumber?: number }>).detail;
+      if (!detail) return;
+      if (detail.restaurantId !== restaurantId) return;
+      if (typeof detail.orderNumber === 'number') {
+        setDisplayOrderNumber(detail.orderNumber);
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener(KIOSK_REAL_ORDER_NUMBER_EVENT, handleRealOrderNumber as EventListener);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener(KIOSK_REAL_ORDER_NUMBER_EVENT, handleRealOrderNumber as EventListener);
+      }
     };
   }, [restaurantId]);
 
@@ -119,10 +155,10 @@ function KioskConfirmScreen({ restaurantId }: { restaurantId?: string | null }) 
           <p className="mt-4 text-base leading-relaxed text-neutral-600 sm:text-lg">
             Your order is being prepared. Please wait for the staff to confirm your pickup number on screen.
           </p>
-          {orderNumber ? (
+          {displayOrderNumber ? (
             <p className="mt-3 text-lg font-semibold text-neutral-900 sm:text-xl">
               Your order number is{' '}
-              <span className="rounded-full bg-neutral-100 px-3 py-1">#{String(orderNumber).padStart(4, '0')}</span>
+              <span className="rounded-full bg-neutral-100 px-3 py-1">#{String(displayOrderNumber).padStart(4, '0')}</span>
             </p>
           ) : null}
           {restaurantId ? (

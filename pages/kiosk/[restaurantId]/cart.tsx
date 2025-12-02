@@ -10,6 +10,7 @@ import { formatPrice, normalizePriceValue } from '@/lib/orderDisplay';
 import KioskActionButton from '@/components/kiosk/KioskActionButton';
 import { ChevronLeftIcon } from '@heroicons/react/24/outline';
 import KioskLoadingOverlay from '@/components/kiosk/KioskLoadingOverlay';
+import { setKioskLastRealOrderNumber } from '@/utils/kiosk/orders';
 
 type Restaurant = {
   id: string;
@@ -23,6 +24,10 @@ type Restaurant = {
   menu_header_focal_x?: number | null;
   menu_header_focal_y?: number | null;
 };
+
+type KioskOrderRaceResult =
+  | { timedOut: true; tempOrderNumber: number }
+  | { timedOut: false; orderId: string; orderNumber: number };
 
 async function generateShortOrderNumber(restaurantId: string): Promise<number> {
   while (true) {
@@ -68,6 +73,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   const [nameError, setNameError] = useState('');
   const [submissionError, setSubmissionError] = useState('');
   const submissionInFlightRef = useRef(false);
+  const isMountedRef = useRef(true);
   const modalOverlayStyle = {
     height: '100dvh',
     paddingTop: 'env(safe-area-inset-top)',
@@ -120,6 +126,12 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     (list: string[]) => list[Math.floor(Math.random() * list.length)],
     []
   );
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!restaurantId) return;
@@ -216,8 +228,8 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
               restaurant_id: restaurantId,
               customer_name: customerName.trim(),
               order_type: 'collection',
+              source: 'kiosk',
               status: 'preparing',
-              accepted_at: new Date().toISOString(),
               total_price: subtotal,
               service_fee: 0,
               delivery_fee: 0,
@@ -283,56 +295,101 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
         throw err;
       }
     };
+    const handleFailure = (err: unknown) => {
+      console.error('[kiosk] order submission failed', err);
+      submissionInFlightRef.current = false;
+      if (!isMountedRef.current) return;
+      setSubmissionError('We could not place your order. Please speak to a member of staff.');
+      setShowLoadingOverlay(false);
+      setPlacingOrder(false);
+      setShowConfirmModal(false);
+    };
 
-    const handleSuccess = async (result: { orderId: string; orderNumber: number }) => {
+    const finalizeSuccess = async (
+      result: { orderId: string; orderNumber: number },
+      options?: { skipNavigation?: boolean }
+    ) => {
       safeClearCart();
+      setKioskLastRealOrderNumber(restaurantId, result.orderNumber);
 
       const elapsed = Date.now() - startTime;
       if (elapsed < 800) {
         await new Promise((resolve) => setTimeout(resolve, 800 - elapsed));
       }
 
-      setShowConfirmModal(false);
-      router.push(`/kiosk/${restaurantId}/confirm?orderNumber=${result.orderNumber}`);
-      setPlacingOrder(false);
-      submissionInFlightRef.current = false;
-    };
+      if (!options?.skipNavigation) {
+        setShowConfirmModal(false);
+        await router.push(`/kiosk/${restaurantId}/confirm?orderNumber=${result.orderNumber}`);
+      }
 
-    const handleFailure = (err: unknown) => {
-      console.error('[kiosk] order submission failed', err);
-      setSubmissionError('We could not place your order. Please speak to a member of staff.');
-      setShowLoadingOverlay(false);
-      setPlacingOrder(false);
       submissionInFlightRef.current = false;
+      if (isMountedRef.current) {
+        setPlacingOrder(false);
+        setShowLoadingOverlay(false);
+      }
     };
 
     const submissionPromise = submitKioskOrder();
-    const timedOutcome = submissionPromise
-      .then((result) => ({ type: 'success' as const, result }))
-      .catch((err) => ({ type: 'error' as const, error: err }));
+    const submissionOutcome = submissionPromise
+      .then<KioskOrderRaceResult>((result) => ({
+        timedOut: false,
+        orderId: result.orderId,
+        orderNumber: result.orderNumber,
+      }))
+      .catch((err) => {
+        throw err;
+      });
 
-    const timeoutPromise = new Promise<{ type: 'timeout' }>((resolve) => {
-      setTimeout(() => resolve({ type: 'timeout' }), 5000);
+    const timeoutPromise = new Promise<KioskOrderRaceResult>((resolve) => {
+      setTimeout(() => resolve({ timedOut: true, tempOrderNumber: shortOrderNumber }), 5000);
     });
 
-    const raceResult = await Promise.race([timedOutcome, timeoutPromise]);
-
-    if (raceResult.type === 'success') {
-      await handleSuccess(raceResult.result);
+    let raceResult: KioskOrderRaceResult;
+    try {
+      raceResult = await Promise.race([submissionOutcome, timeoutPromise]);
+    } catch (err) {
+      handleFailure(err);
       return;
     }
 
-    if (raceResult.type === 'error') {
-      handleFailure(raceResult.error);
+    // --- SAFE UNION NARROWING REQUIRED ---
+    let orderNumber: number;
+    let orderId: string | null = null;
+
+    if (raceResult.timedOut === false) {
+      orderNumber = raceResult.orderNumber;
+      orderId = raceResult.orderId;
+    } else {
+      orderNumber = raceResult.tempOrderNumber;
+    }
+    // --------------------------------------
+
+    if (raceResult.timedOut === false) {
+      const finalizedOrderId = orderId as string;
+      await finalizeSuccess({ orderId: finalizedOrderId, orderNumber });
       return;
     }
 
     setSubmissionError('');
     setNameError('');
+    setShowConfirmModal(false);
+    void router.push(`/kiosk/${restaurantId}/confirm?orderNumber=${orderNumber}`);
+
     submissionPromise
-      .then(handleSuccess)
+      .then(async (result) => {
+        await finalizeSuccess(result, { skipNavigation: true });
+      })
       .catch(handleFailure);
-  }, [cart.items, cart.restaurant_id, clearCart, customerName, placingOrder, restaurantId, router, subtotal]);
+  }, [
+    cart.items,
+    cart.restaurant_id,
+    clearCart,
+    customerName,
+    placingOrder,
+    restaurantId,
+    router,
+    subtotal,
+  ]);
 
   const openConfirmModal = () => {
     registerActivity();

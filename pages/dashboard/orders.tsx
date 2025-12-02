@@ -50,11 +50,8 @@ interface Order {
   id: string;
   restaurant_id?: string;
   short_order_number: number | null;
-  order_type: 'delivery' | 'collection';
-  is_kiosk?: boolean | null;
   source?: string | null;
-  origin?: string | null;
-  user_id?: string | null;
+  order_type: 'delivery' | 'collection' | 'kiosk';
   customer_name: string | null;
   phone_number: string | null;
   delivery_address: any;
@@ -100,12 +97,7 @@ export default function OrdersPage() {
   );
 
   const isKioskOrder = useCallback(
-    (order: Partial<Order> & { is_kiosk?: boolean | null; source?: string | null; origin?: string | null; user_id?: string | null }) => {
-      if (typeof order.is_kiosk === 'boolean') return order.is_kiosk;
-      if (typeof order.source === 'string') return order.source === 'kiosk';
-      if (typeof order.origin === 'string') return order.origin === 'kiosk';
-      return order.status === 'preparing' && !order.user_id;
-    },
+    (order: Pick<Order, 'order_type' | 'source'>) => order.source === 'kiosk' || order.order_type === 'kiosk',
     []
   );
 
@@ -193,6 +185,7 @@ export default function OrdersPage() {
           id,
           restaurant_id,
           short_order_number,
+          source,
           order_type,
           customer_name,
           phone_number,
@@ -270,6 +263,7 @@ export default function OrdersPage() {
           id,
           restaurant_id,
           short_order_number,
+          source,
           order_type,
           customer_name,
           phone_number,
@@ -300,7 +294,7 @@ export default function OrdersPage() {
         setOrders(ordersData as Order[]);
         const pending = new Set<string>();
         (ordersData as Order[]).forEach((o) => {
-          if (o.status === 'pending') {
+          if (o.status === 'pending' && !isKioskOrder(o)) {
             pending.add(o.id);
           }
         });
@@ -342,7 +336,7 @@ export default function OrdersPage() {
     };
 
     load();
-  }, [router, startAlertLoop, stopAlertLoop]);
+  }, [isKioskOrder, router, startAlertLoop, stopAlertLoop]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -423,7 +417,8 @@ export default function OrdersPage() {
     const handleUpdate = (payload: any) => {
       if (!isOrdersPage || isKioskDevice()) return;
       const updated = payload.new as Order;
-      if (updated.status === 'pending') {
+      const kioskOrder = isKioskOrder(updated);
+      if (!kioskOrder && updated.status === 'pending') {
         pendingOrderIdsRef.current.add(updated.id);
       } else {
         pendingOrderIdsRef.current.delete(updated.id);
@@ -481,7 +476,16 @@ export default function OrdersPage() {
       pendingOrderIdsRef.current.clear();
       stopAlertLoop();
     };
-  }, [fetchOrderWithItems, isOrdersPage, playKioskTripleBeep, restaurantId, startAlertLoop, stopAlertLoop, syncAlertLoop]);
+  }, [
+    fetchOrderWithItems,
+    isKioskOrder,
+    isOrdersPage,
+    playKioskTripleBeep,
+    restaurantId,
+    startAlertLoop,
+    stopAlertLoop,
+    syncAlertLoop,
+  ]);
 
   // Automatically end break when time passes
   useEffect(() => {
@@ -527,7 +531,9 @@ export default function OrdersPage() {
 
   const updateStatus = async (id: string, status: string) => {
     await supabase.from('orders').update({ status }).eq('id', id);
-    if (status === 'pending') {
+    const targetOrder = orders.find((o) => o.id === id);
+    const kioskOrder = targetOrder ? isKioskOrder(targetOrder) : false;
+    if (!kioskOrder && status === 'pending') {
       pendingOrderIdsRef.current.add(id);
     } else {
       pendingOrderIdsRef.current.delete(id);
