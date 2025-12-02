@@ -351,15 +351,20 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
       return;
     }
 
-    if (!raceResult.timedOut) {
-      await finalizeSuccess({ orderId: raceResult.orderId, orderNumber: raceResult.orderNumber });
+    const orderNumber = raceResult.timedOut
+      ? raceResult.tempOrderNumber
+      : raceResult.orderNumber;
+
+    if (raceResult.timedOut === false) {
+      const { orderId, orderNumber } = raceResult;
+      await finalizeSuccess({ orderId, orderNumber });
       return;
     }
 
     setSubmissionError('');
     setNameError('');
     setShowConfirmModal(false);
-    void router.push(`/kiosk/${restaurantId}/confirm?orderNumber=${raceResult.tempOrderNumber}`);
+    void router.push(`/kiosk/${restaurantId}/confirm?orderNumber=${orderNumber}`);
 
     submissionPromise
       .then(async (result) => {
