@@ -364,7 +364,8 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     // --------------------------------------
 
     if (raceResult.timedOut === false) {
-      await finalizeSuccess({ orderId: orderId!, orderNumber });
+      const finalizedOrderId = orderId as string;
+      await finalizeSuccess({ orderId: finalizedOrderId, orderNumber });
       return;
     }
 
