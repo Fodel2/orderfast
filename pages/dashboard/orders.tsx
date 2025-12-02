@@ -78,7 +78,6 @@ export default function OrdersPage() {
     | { open_time: string | null; close_time: string | null; closed: boolean }
     | null
   >(null);
-  const ordersRef = useRef<Order[]>([]);
   const alertAudioRef = useRef<HTMLAudioElement | null>(null);
   const pendingOrderIdsRef = useRef<Set<string>>(new Set());
   const isAlertPlayingRef = useRef(false);
@@ -93,33 +92,23 @@ export default function OrdersPage() {
     []
   );
 
-  useEffect(() => {
-    ordersRef.current = orders;
-  }, [orders]);
-
-  const isKioskDevice = useCallback(
-    () => router.pathname.startsWith('/kiosk/'),
-    [router.pathname]
-  );
-
   const isKioskOrder = useCallback(
-    (order: Pick<Order, 'order_type' | 'customer_id' | 'user_name'>) =>
-      (!order.customer_id && !!order.user_name) || order.order_type === 'kiosk',
+    (order: Pick<Order, 'order_type'>) => order.order_type === 'kiosk',
     []
   );
 
   const stopAlertLoop = useCallback(() => {
-    if (!isOrdersPage || isKioskDevice()) return;
+    if (!isOrdersPage) return;
     const audio = alertAudioRef.current;
     if (audio) {
       audio.pause();
       audio.currentTime = 0;
     }
     isAlertPlayingRef.current = false;
-  }, [isKioskDevice, isOrdersPage]);
+  }, [isOrdersPage]);
 
   const startAlertLoop = useCallback(() => {
-    if (!isOrdersPage || isKioskDevice()) return;
+    if (!isOrdersPage) return;
     let audio = alertAudioRef.current;
     if (!audio) {
       audio = new Audio(ORDER_ALERT_AUDIO);
@@ -136,19 +125,19 @@ export default function OrdersPage() {
         isAlertPlayingRef.current = true;
       })
       .catch((err) => console.error('[orders] audio playback failed', err));
-  }, [isKioskDevice, isOrdersPage]);
+  }, [isOrdersPage]);
 
   const syncAlertLoop = useCallback(() => {
-    if (!isOrdersPage || isKioskDevice()) return;
+    if (!isOrdersPage) return;
     if (pendingOrderIdsRef.current.size > 0) {
       startAlertLoop();
     } else {
       stopAlertLoop();
     }
-  }, [isKioskDevice, isOrdersPage, startAlertLoop, stopAlertLoop]);
+  }, [isOrdersPage, startAlertLoop, stopAlertLoop]);
 
   const playKioskTripleBeep = useCallback(async () => {
-    if (!isOrdersPage || isKioskBeepingRef.current || isKioskDevice()) return;
+    if (!isOrdersPage || isKioskBeepingRef.current) return;
     isKioskBeepingRef.current = true;
     let audio = alertAudioRef.current;
     if (!audio) {
@@ -181,7 +170,7 @@ export default function OrdersPage() {
         syncAlertLoop();
       }
     }, 1600);
-  }, [isKioskDevice, isOrdersPage, startAlertLoop, stopAlertLoop, syncAlertLoop]);
+  }, [isOrdersPage, startAlertLoop, stopAlertLoop, syncAlertLoop]);
 
   const fetchOrderWithItems = useCallback(
     async (orderId: string) => {
@@ -399,17 +388,15 @@ export default function OrdersPage() {
       const newRow = payload.new as Order;
       const kioskOrder = isKioskOrder(newRow);
 
-      if (!isKioskDevice()) {
-        if (kioskOrder) {
-          pendingOrderIdsRef.current.delete(newRow.id);
-          void playKioskTripleBeep();
-        } else if (newRow.status === 'pending') {
-          pendingOrderIdsRef.current.add(newRow.id);
-        } else {
-          pendingOrderIdsRef.current.delete(newRow.id);
-        }
-        syncAlertLoop();
+      if (kioskOrder) {
+        pendingOrderIdsRef.current.delete(newRow.id);
+        void playKioskTripleBeep();
+      } else if (newRow.status === 'pending') {
+        pendingOrderIdsRef.current.add(newRow.id);
+      } else {
+        pendingOrderIdsRef.current.delete(newRow.id);
       }
+      syncAlertLoop();
 
       if (!ACTIVE_STATUSES.includes(newRow.status)) return;
 
@@ -417,8 +404,10 @@ export default function OrdersPage() {
       if (!hydrated) return;
 
       setOrders((prev) => {
-        const remaining = prev.filter((o) => o.id !== newRow.id);
-        return [hydrated, ...remaining];
+        if (prev.some((o) => o.id === hydrated.id)) {
+          return prev.map((o) => (o.id === hydrated.id ? hydrated : o));
+        }
+        return [hydrated, ...prev];
       });
     };
 
@@ -426,57 +415,59 @@ export default function OrdersPage() {
       const updated = payload.new as Order;
       const kioskOrder = isKioskOrder(updated);
 
-      if (!isKioskDevice()) {
-        if (!kioskOrder && updated.status === 'pending') {
-          pendingOrderIdsRef.current.add(updated.id);
-        } else {
-          pendingOrderIdsRef.current.delete(updated.id);
-        }
-        syncAlertLoop();
+      if (!kioskOrder && updated.status === 'pending') {
+        pendingOrderIdsRef.current.add(updated.id);
+      } else {
+        pendingOrderIdsRef.current.delete(updated.id);
       }
+      syncAlertLoop();
 
       setOrders((prev) => {
-        const mapped = prev
-          .map((o) =>
-            o.id === updated.id
-              ? {
-                  ...o,
-                  ...updated,
-                  order_items: updated.order_items?.length
-                    ? updated.order_items
-                    : o.order_items || [],
-                }
-              : o
-          )
-          .filter((o) => ACTIVE_STATUSES.includes(o.status));
-
-        const exists = mapped.some((o) => o.id === updated.id);
-        if (!exists && ACTIVE_STATUSES.includes(updated.status)) {
-          mapped.unshift({ ...(updated as any), order_items: [] as OrderItem[] });
+        const exists = prev.some((o) => o.id === updated.id);
+        if (exists) {
+          return prev
+            .map((o) =>
+              o.id === updated.id
+                ? {
+                    ...o,
+                    ...updated,
+                    order_items: updated.order_items?.length
+                      ? updated.order_items
+                      : o.order_items || [],
+                  }
+                : o
+            )
+            .filter((o) => ACTIVE_STATUSES.includes(o.status));
         }
-        return mapped;
+
+        if (ACTIVE_STATUSES.includes(updated.status)) {
+          return [
+            { ...(updated as any), order_items: updated.order_items || [] },
+            ...prev,
+          ];
+        }
+
+        return prev;
       });
 
-      const existsAfterUpdate = ordersRef.current.some((o) => o.id === updated.id);
-      if (!existsAfterUpdate && ACTIVE_STATUSES.includes(updated.status)) {
+      if (ACTIVE_STATUSES.includes(updated.status)) {
         const hydrated = await fetchOrderWithItems(updated.id);
         if (hydrated) {
           setOrders((prev) => {
             const alreadyPresent = prev.some((o) => o.id === hydrated.id);
-            if (alreadyPresent) return prev;
+            if (alreadyPresent) {
+              return prev.map((o) => (o.id === hydrated.id ? hydrated : o));
+            }
             return [hydrated, ...prev];
           });
         }
+      } else {
+        setOrders((prev) => prev.filter((o) => o.id !== updated.id));
       }
     };
 
-    const channel = supabase.channel(`orders-${restaurantId}`);
-    if (!channel) {
-      console.error('[orders] failed to create realtime channel for orders');
-      return;
-    }
-
-    channel
+    const channel = supabase
+      .channel(`orders-realtime-${restaurantId}`)
       .on(
         'postgres_changes',
         {
@@ -497,19 +488,7 @@ export default function OrdersPage() {
         },
         handleUpdate
       )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          console.log('[orders] realtime subscribed');
-          return;
-        }
-        if (status === 'CHANNEL_ERROR') {
-          console.error('[orders] realtime channel error - check permissions and schema');
-        } else if (status === 'TIMED_OUT') {
-          console.error('[orders] realtime channel timed out for orders');
-        } else if (status === 'CLOSED') {
-          console.warn('[orders] realtime channel closed unexpectedly');
-        }
-      });
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
@@ -518,7 +497,6 @@ export default function OrdersPage() {
     };
   }, [
     fetchOrderWithItems,
-    isKioskDevice,
     isKioskOrder,
     isOrdersPage,
     playKioskTripleBeep,
