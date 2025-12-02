@@ -25,10 +25,6 @@ type Restaurant = {
   menu_header_focal_y?: number | null;
 };
 
-type KioskOrderRaceResult =
-  | { timedOut: true; tempOrderNumber: number }
-  | { timedOut: false; orderId: string; orderNumber: number };
-
 async function generateShortOrderNumber(restaurantId: string): Promise<number> {
   while (true) {
     const num = Math.floor(Math.random() * 9000) + 1000;
@@ -207,179 +203,80 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     setSubmissionError('');
     setShowLoadingOverlay(true);
 
-    const shortOrderNumber = await generateShortOrderNumber(restaurantId);
-    const startTime = Date.now();
-    let cartCleared = false;
-    const safeClearCart = () => {
-      if (!cartCleared) {
-        clearCart();
-        cartCleared = true;
-      }
-    };
+    try {
+      const shortOrderNumber = await generateShortOrderNumber(restaurantId);
+      const { data: order, error: orderError } = await supabase
+        .from('orders')
+        .insert([
+          {
+            restaurant_id: restaurantId,
+            customer_name: customerName.trim(),
+            user_name: customerName.trim(),
+            order_type: 'kiosk',
+            status: 'preparing',
+            total_price: subtotal,
+            service_fee: 0,
+            delivery_fee: 0,
+            short_order_number: shortOrderNumber,
+          },
+        ])
+        .select('id, short_order_number')
+        .single();
 
-    const submitKioskOrder = async (): Promise<{ orderId: string; orderNumber: number }> => {
-      let orderId: string | null = null;
+      if (orderError || !order) throw orderError || new Error('Failed to insert order');
 
-      try {
-        const { data: order, error: orderError } = await supabase
-          .from('orders')
+      for (const item of cartItemsSnapshot) {
+        const { data: orderItem, error: itemError } = await supabase
+          .from('order_items')
           .insert([
             {
-              restaurant_id: restaurantId,
-              customer_name: customerName.trim(),
-              order_type: 'collection',
-              source: 'kiosk',
-              status: 'preparing',
-              total_price: subtotal,
-              service_fee: 0,
-              delivery_fee: 0,
-              short_order_number: shortOrderNumber,
+              order_id: order.id,
+              item_id: item.item_id,
+              name: item.name,
+              price: item.price,
+              quantity: item.quantity,
+              notes: item.notes || null,
             },
           ])
-          .select('id, short_order_number')
+          .select('id')
           .single();
 
-        if (orderError || !order) throw orderError || new Error('Failed to insert order');
-        orderId = order.id;
+        if (itemError || !orderItem) throw itemError || new Error('Failed to insert order item');
 
-        for (const item of cartItemsSnapshot) {
-          const { data: orderItem, error: itemError } = await supabase
-            .from('order_items')
-            .insert([
-              {
-                order_id: order.id,
-                item_id: item.item_id,
-                name: item.name,
-                price: item.price,
-                quantity: item.quantity,
-                notes: item.notes || null,
-              },
-            ])
-            .select('id')
-            .single();
+        const relatedAddons = item.addons || [];
+        for (const addon of relatedAddons) {
+          const { error: addonError } = await supabase.from('order_addons').insert([
+            {
+              order_item_id: orderItem.id,
+              option_id: addon.option_id,
+              name: addon.name,
+              price: addon.price,
+              quantity: addon.quantity,
+            },
+          ]);
 
-          if (itemError || !orderItem) throw itemError || new Error('Failed to insert order item');
-
-          const relatedAddons = item.addons || [];
-          for (const addon of relatedAddons) {
-            const { error: addonError } = await supabase.from('order_addons').insert([
-              {
-                order_item_id: orderItem.id,
-                option_id: addon.option_id,
-                name: addon.name,
-                price: addon.price,
-                quantity: addon.quantity,
-              },
-            ]);
-
-            if (addonError) throw addonError;
-          }
+          if (addonError) throw addonError;
         }
-
-        if (process.env.NODE_ENV === 'development') {
-          console.debug('[kiosk] order inserted', {
-            orderId: order.id,
-            orderNumber: order.short_order_number ?? shortOrderNumber,
-          });
-        }
-
-        return { orderId: order.id, orderNumber: order.short_order_number ?? shortOrderNumber };
-      } catch (err) {
-        console.error('[kiosk] order submission failed', err);
-        if (orderId) {
-          const { error: cleanupError } = await supabase.from('orders').delete().eq('id', orderId);
-          if (cleanupError) {
-            console.error('[kiosk] failed to clean up incomplete order', cleanupError);
-          }
-        }
-        throw err;
       }
-    };
-    const handleFailure = (err: unknown) => {
-      console.error('[kiosk] order submission failed', err);
-      submissionInFlightRef.current = false;
-      if (!isMountedRef.current) return;
-      setSubmissionError('We could not place your order. Please speak to a member of staff.');
-      setShowLoadingOverlay(false);
-      setPlacingOrder(false);
+
+      setKioskLastRealOrderNumber(restaurantId, order.short_order_number ?? shortOrderNumber);
+      clearCart();
       setShowConfirmModal(false);
-    };
-
-    const finalizeSuccess = async (
-      result: { orderId: string; orderNumber: number },
-      options?: { skipNavigation?: boolean }
-    ) => {
-      safeClearCart();
-      setKioskLastRealOrderNumber(restaurantId, result.orderNumber);
-
-      const elapsed = Date.now() - startTime;
-      if (elapsed < 800) {
-        await new Promise((resolve) => setTimeout(resolve, 800 - elapsed));
+      await router.push(
+        `/kiosk/${restaurantId}/confirm?orderNumber=${order.short_order_number ?? shortOrderNumber}`
+      );
+    } catch (err) {
+      console.error('[kiosk] order submission failed', err);
+      if (isMountedRef.current) {
+        setSubmissionError('We could not place your order. Please speak to a member of staff.');
       }
-
-      if (!options?.skipNavigation) {
-        setShowConfirmModal(false);
-        await router.push(`/kiosk/${restaurantId}/confirm?orderNumber=${result.orderNumber}`);
-      }
-
+    } finally {
       submissionInFlightRef.current = false;
       if (isMountedRef.current) {
         setPlacingOrder(false);
         setShowLoadingOverlay(false);
       }
-    };
-
-    const submissionPromise = submitKioskOrder();
-    const submissionOutcome = submissionPromise
-      .then<KioskOrderRaceResult>((result) => ({
-        timedOut: false,
-        orderId: result.orderId,
-        orderNumber: result.orderNumber,
-      }))
-      .catch((err) => {
-        throw err;
-      });
-
-    const timeoutPromise = new Promise<KioskOrderRaceResult>((resolve) => {
-      setTimeout(() => resolve({ timedOut: true, tempOrderNumber: shortOrderNumber }), 5000);
-    });
-
-    let raceResult: KioskOrderRaceResult;
-    try {
-      raceResult = await Promise.race([submissionOutcome, timeoutPromise]);
-    } catch (err) {
-      handleFailure(err);
-      return;
     }
-
-    // --- SAFE UNION NARROWING REQUIRED ---
-    let orderNumber: number;
-    let orderId: string | null = null;
-
-    if (raceResult.timedOut === false) {
-      orderNumber = raceResult.orderNumber;
-      orderId = raceResult.orderId;
-    } else {
-      orderNumber = raceResult.tempOrderNumber;
-    }
-    // --------------------------------------
-
-    if (raceResult.timedOut === false) {
-      const finalizedOrderId = orderId as string;
-      await finalizeSuccess({ orderId: finalizedOrderId, orderNumber });
-      return;
-    }
-
-    setSubmissionError('');
-    setNameError('');
-    setShowConfirmModal(false);
-    void router.push(`/kiosk/${restaurantId}/confirm?orderNumber=${orderNumber}`);
-
-    submissionPromise
-      .then(async (result) => {
-        await finalizeSuccess(result, { skipNavigation: true });
-      })
-      .catch(handleFailure);
   }, [
     cart.items,
     cart.restaurant_id,

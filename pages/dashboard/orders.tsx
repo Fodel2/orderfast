@@ -69,7 +69,7 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [now, setNow] = useState(Date.now());
-  const [restaurantId, setRestaurantId] = useState<number | null>(null);
+  const [restaurantId, setRestaurantId] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState<boolean | null>(null);
   const [breakUntil, setBreakUntil] = useState<string | null>(null);
   const [showBreakModal, setShowBreakModal] = useState(false);
