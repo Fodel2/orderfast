@@ -23,7 +23,7 @@ interface OrderItem {
 export interface Order {
   id: string;
   short_order_number: number | null;
-  order_type: 'delivery' | 'collection';
+  order_type: 'delivery' | 'collection' | 'kiosk';
   customer_name: string | null;
   phone_number: string | null;
   delivery_address: any;
@@ -177,6 +177,12 @@ export default function OrderDetailsModal({ order, onClose, onUpdateStatus }: Pr
                   preparing: { next: 'ready_to_collect', label: 'Mark as Ready for Collection', classes: 'bg-indigo-600 hover:bg-indigo-700' },
                   ready_to_collect: { next: 'completed', label: 'Complete Order', classes: 'bg-green-600 hover:bg-green-700' },
                 },
+                kiosk: {
+                  pending: { next: 'accepted', label: 'Accept Order', classes: 'bg-teal-600 hover:bg-teal-700' },
+                  accepted: { next: 'preparing', label: 'Start Preparing', classes: 'bg-yellow-600 hover:bg-yellow-700' },
+                  preparing: { next: 'ready_to_collect', label: 'Mark as Ready for Collection', classes: 'bg-indigo-600 hover:bg-indigo-700' },
+                  ready_to_collect: { next: 'completed', label: 'Complete Order', classes: 'bg-green-600 hover:bg-green-700' },
+                },
               };
               const t = transitions[order.order_type][order.status];
               return t ? (
@@ -189,7 +195,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateStatus }: Pr
                 </button>
               ) : null;
             })()}
-            {order.status === 'pending' && (
+            {order.order_type !== 'kiosk' && order.status === 'pending' && (
               <button
                 type="button"
                 onClick={() => {
