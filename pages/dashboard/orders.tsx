@@ -17,6 +17,9 @@ const ACTIVE_STATUSES = [
   'ready_to_collect',
 ];
 
+const isActiveStatus = (status: string | null | undefined) =>
+  !!status && ACTIVE_STATUSES.includes(status);
+
 const EMPTY_MESSAGES = [
   'No orders right now… shall we check the cleaning logs?',
   'All quiet on the frying pan front.',
@@ -101,6 +104,12 @@ export default function OrdersPage() {
     (order: Pick<Order, 'order_type' | 'source'>) =>
       order.order_type === 'kiosk' || order.source === 'kiosk',
     []
+  );
+
+  const matchesRestaurant = useCallback(
+    (value: string | null | undefined) =>
+      !!value && !!restaurantId && String(value) === String(restaurantId),
+    [restaurantId]
   );
 
   const stopAlertLoop = useCallback(() => {
@@ -400,7 +409,13 @@ export default function OrdersPage() {
     ) => {
       if (!isOrdersPage) return;
       const newRow = payload.new as Order;
-      if (!newRow || newRow.restaurant_id !== restaurantId) return;
+      if (!newRow || !matchesRestaurant(newRow.restaurant_id)) {
+        console.debug('[orders] ignoring insert for different restaurant', {
+          restaurantId,
+          incoming: newRow?.restaurant_id,
+        });
+        return;
+      }
 
       const kioskOrder = isKioskOrder(newRow);
 
@@ -412,13 +427,19 @@ export default function OrdersPage() {
         pendingOrderIdsRef.current.delete(newRow.id);
       }
 
-      if (!ACTIVE_STATUSES.includes(newRow.status)) {
+      if (!isActiveStatus(newRow.status)) {
         syncAlertLoop();
         return;
       }
 
-      const hydrated = await hydrateOrder(newRow);
-      if (!hydrated) return;
+      const hydrated = (await hydrateOrder(newRow)) ?? {
+        ...newRow,
+        order_items: newRow.order_items ?? [],
+      };
+      if (!hydrated) {
+        console.error('[orders] failed to hydrate inserted order', newRow.id);
+        return;
+      }
 
       setOrders((prev) => {
         const remaining = prev.filter((o) => o.id !== hydrated.id);
@@ -437,7 +458,13 @@ export default function OrdersPage() {
     ) => {
       if (!isOrdersPage) return;
       const updated = payload.new as Order;
-      if (!updated || updated.restaurant_id !== restaurantId) return;
+      if (!updated || !matchesRestaurant(updated.restaurant_id)) {
+        console.debug('[orders] ignoring update for different restaurant', {
+          restaurantId,
+          incoming: updated?.restaurant_id,
+        });
+        return;
+      }
 
       const kioskOrder = isKioskOrder(updated);
 
@@ -447,7 +474,7 @@ export default function OrdersPage() {
         pendingOrderIdsRef.current.delete(updated.id);
       }
 
-      if (!ACTIVE_STATUSES.includes(updated.status)) {
+      if (!isActiveStatus(updated.status)) {
         setOrders((prev) => prev.filter((o) => o.id !== updated.id));
         syncAlertLoop();
         return;
@@ -469,12 +496,17 @@ export default function OrdersPage() {
       });
 
       if (!mergedOrder) {
-        const hydrated = await hydrateOrder(updated);
+        const hydrated = (await hydrateOrder(updated)) ?? {
+          ...updated,
+          order_items: updated.order_items ?? [],
+        };
         if (hydrated) {
           setOrders((prev) => {
             const remaining = prev.filter((o) => o.id !== hydrated.id);
             return [hydrated, ...remaining];
           });
+        } else {
+          console.error('[orders] failed to hydrate updated order', updated.id);
         }
       }
 
@@ -530,6 +562,7 @@ export default function OrdersPage() {
     hydrateOrder,
     isOrdersPage,
     isKioskOrder,
+    matchesRestaurant,
     playKioskTripleBeep,
     restaurantId,
     stopAlertLoop,
