@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/router';
 import { useCart } from '../context/CartContext';
 import { XMarkIcon, ShoppingCartIcon } from '@heroicons/react/24/outline';
 import { Trash2 } from 'lucide-react';
@@ -13,6 +14,7 @@ interface CartDrawerProps {
    */
   inline?: boolean;
   onInteraction?: () => void;
+  mode?: 'customer' | 'kiosk';
 }
 
 function CartContent({
@@ -187,10 +189,13 @@ function CartContent({
   );
 }
 
-export default function CartDrawer({ inline = false, onInteraction }: CartDrawerProps) {
-  const { cart } = useCart();
+export default function CartDrawer({ inline = false, onInteraction, mode = 'customer' }: CartDrawerProps) {
+  const router = useRouter();
+  const { cart, subtotal } = useCart();
   const [emptyMessage] = useState(() => randomEmptyPlateMessage());
   const [open, setOpen] = useState(false);
+  const currency = 'GBP';
+  const isKioskMode = mode === 'kiosk';
 
   const toggle = () => setOpen((o) => !o);
 
@@ -213,6 +218,23 @@ export default function CartDrawer({ inline = false, onInteraction }: CartDrawer
     return (
       <div className="mx-auto w-full max-w-4xl px-2 pb-5 pt-1.5 sm:px-4 sm:pt-5">
         <CartContent emptyMessage={emptyMessage} inline onInteraction={onInteraction} />
+        {!isKioskMode && cart.items.length > 0 ? (
+          <div className="mt-6 space-y-3 sm:space-y-4">
+            <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3 text-slate-700 shadow-inner shadow-slate-100">
+              <span className="text-base font-semibold text-slate-900 sm:text-lg">Subtotal</span>
+              <span className="text-lg font-bold text-slate-900 sm:text-xl">
+                {formatPrice(normalizePriceValue(subtotal), currency)}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => router.push('/checkout')}
+              className="w-full rounded-full bg-teal-600 px-5 py-3 text-center text-lg font-semibold text-white shadow-lg shadow-teal-500/30 transition hover:-translate-y-[1px] hover:shadow-xl hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/60 active:translate-y-[1px]"
+            >
+              Proceed to Checkout
+            </button>
+          </div>
+        ) : null}
       </div>
     );
   }
