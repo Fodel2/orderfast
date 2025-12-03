@@ -443,7 +443,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
           <h1 className="text-2xl font-semibold text-slate-900 sm:text-[26px]">Review your order</h1>
           <p className="text-base leading-relaxed text-slate-600 sm:text-lg">Check your items before placing your order.</p>
         </div>
-        <CartDrawer inline onInteraction={registerActivity} />
+        <CartDrawer inline onInteraction={registerActivity} mode="kiosk" />
       </div>
       {restaurantId ? (
         <div className="fixed bottom-0 left-0 right-0 z-30 bg-white/95 shadow-[0_-8px_40px_rgba(15,23,42,0.14)] backdrop-blur">
