@@ -33,6 +33,7 @@ export interface Order {
   status: string;
   total_price: number | null;
   created_at: string;
+  accepted_at?: string | null;
   order_items: OrderItem[];
 }
 

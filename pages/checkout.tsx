@@ -49,6 +49,20 @@ export default function CheckoutPage() {
 
     setPlacing(true);
 
+    const { data: restaurantSettings, error: settingsError } = await supabase
+      .from('restaurants')
+      .select('auto_accept_app_orders')
+      .eq('id', cart.restaurant_id)
+      .maybeSingle();
+
+    if (settingsError) {
+      console.error('[checkout] failed to load restaurant settings', settingsError);
+    }
+
+    const autoAcceptApp = !!restaurantSettings?.auto_accept_app_orders;
+    const initialStatus = autoAcceptApp ? 'accepted' : 'pending';
+    const acceptedAt = autoAcceptApp ? new Date().toISOString() : null;
+
     const shortOrderNumber = await generateShortOrderNumber(cart.restaurant_id);
 
     const deliveryFee = orderType === 'delivery' ? 300 : 0;
@@ -62,15 +76,17 @@ export default function CheckoutPage() {
           {
             restaurant_id: cart.restaurant_id,
             user_id: session?.user?.id || null,
-            order_type: orderType,
-            delivery_address:
-              orderType === 'delivery'
-                ? { address_line_1: address, address_line_2: null, postcode: null }
-                : null,
-            phone_number: phone,
-            customer_notes: notes || null,
-            scheduled_for: !asap ? scheduledFor || null : null,
-          status: 'pending',
+          order_type: orderType,
+          source: 'app',
+          delivery_address:
+            orderType === 'delivery'
+              ? { address_line_1: address, address_line_2: null, postcode: null }
+              : null,
+          phone_number: phone,
+          customer_notes: notes || null,
+          scheduled_for: !asap ? scheduledFor || null : null,
+          status: initialStatus,
+          accepted_at: acceptedAt,
           total_price: totalPrice,
           service_fee: serviceFee,
           delivery_fee: deliveryFee,
