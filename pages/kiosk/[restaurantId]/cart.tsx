@@ -23,6 +23,9 @@ type Restaurant = {
   menu_header_image_updated_at?: string | null;
   menu_header_focal_x?: number | null;
   menu_header_focal_y?: number | null;
+  auto_accept_kiosk_orders?: boolean | null;
+  auto_accept_app_orders?: boolean | null;
+  auto_accept_pos_orders?: boolean | null;
 };
 
 type KioskOrderRaceResult =
@@ -142,7 +145,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
         const { data, error } = await supabase
           .from('restaurants')
           .select(
-            'id,name,website_title,website_description,logo_url,theme_primary_color,menu_header_image_url,menu_header_image_updated_at,menu_header_focal_x,menu_header_focal_y'
+            'id,name,website_title,website_description,logo_url,theme_primary_color,menu_header_image_url,menu_header_image_updated_at,menu_header_focal_x,menu_header_focal_y,auto_accept_kiosk_orders,auto_accept_app_orders,auto_accept_pos_orders'
           )
           .eq('id', restaurantId)
           .maybeSingle();
@@ -217,6 +220,10 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
       }
     };
 
+    const autoAcceptKiosk = !!restaurant?.auto_accept_kiosk_orders;
+    const initialStatus = autoAcceptKiosk ? 'accepted' : 'pending';
+    const acceptedAt = autoAcceptKiosk ? new Date().toISOString() : null;
+
     const submitKioskOrder = async (): Promise<{ orderId: string; orderNumber: number }> => {
       let orderId: string | null = null;
 
@@ -229,7 +236,8 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
               customer_name: customerName.trim(),
               order_type: 'collection',
               source: 'kiosk',
-              status: 'preparing',
+              status: initialStatus,
+              accepted_at: acceptedAt,
               total_price: subtotal,
               service_fee: 0,
               delivery_fee: 0,

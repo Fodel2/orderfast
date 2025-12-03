@@ -28,6 +28,9 @@ export default function WebsitePage() {
   const [brandSecondary, setBrandSecondary] = useState('#004c4c');
   const [logoShape, setLogoShape] = useState<'square' | 'round' | 'rectangular'>('square');
   const [colorExtracted, setColorExtracted] = useState(false);
+  const [autoAcceptKioskOrders, setAutoAcceptKioskOrders] = useState(false);
+  const [autoAcceptAppOrders, setAutoAcceptAppOrders] = useState(false);
+  const [autoAcceptPosOrders, setAutoAcceptPosOrders] = useState(false);
 
   const [contactEnabled, setContactEnabled] = useState(true);
   const [contactEmail, setContactEmail] = useState('');
@@ -78,6 +81,9 @@ export default function WebsitePage() {
           setBrandSecondary(rest.brand_secondary_color || '#004c4c');
           setLogoShape(rest.logo_shape || 'square');
           setColorExtracted(!!rest.brand_color_extracted);
+          setAutoAcceptKioskOrders(!!rest.auto_accept_kiosk_orders);
+          setAutoAcceptAppOrders(!!rest.auto_accept_app_orders);
+          setAutoAcceptPosOrders(!!rest.auto_accept_pos_orders);
         }
         const { data: contact } = await supabase
           .from('website_contact_settings')
@@ -222,6 +228,9 @@ export default function WebsitePage() {
         address,
         contact_number: contactNumber,
         website_description: description,
+        auto_accept_kiosk_orders: autoAcceptKioskOrders,
+        auto_accept_app_orders: autoAcceptAppOrders,
+        auto_accept_pos_orders: autoAcceptPosOrders,
       })
       .eq('id', restaurantId);
     const { error: contactErr } = await supabase
@@ -381,6 +390,38 @@ export default function WebsitePage() {
                 onChange={(e) => setMenuDescription(e.target.value)}
                 className="mt-1 w-full border border-gray-300 rounded p-2"
               />
+            </div>
+            <div className="border-t pt-4 mt-4">
+              <h2 className="text-xl font-semibold mb-2">Order Handling</h2>
+              <p className="text-sm text-gray-600 mb-3">
+                Configure how new orders are treated when they arrive.
+              </p>
+              <div className="space-y-2">
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={autoAcceptKioskOrders}
+                    onChange={(e) => setAutoAcceptKioskOrders(e.target.checked)}
+                  />
+                  <span className="font-medium">Auto-accept kiosk orders</span>
+                </label>
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={autoAcceptAppOrders}
+                    onChange={(e) => setAutoAcceptAppOrders(e.target.checked)}
+                  />
+                  <span className="font-medium">Auto-accept app orders</span>
+                </label>
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={autoAcceptPosOrders}
+                    onChange={(e) => setAutoAcceptPosOrders(e.target.checked)}
+                  />
+                  <span className="font-medium">Auto-accept POS orders</span>
+                </label>
+              </div>
             </div>
             <div className="border-t pt-4 mt-4">
               <h2 className="text-xl font-semibold mb-2">Contact Form</h2>

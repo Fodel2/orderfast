@@ -64,6 +64,7 @@ interface Order {
   status: string;
   total_price: number | null;
   created_at: string;
+  accepted_at?: string | null;
   order_items: OrderItem[];
 }
 
@@ -84,7 +85,9 @@ export default function OrdersPage() {
   const alertAudioRef = useRef<HTMLAudioElement | null>(null);
   const pendingOrderIdsRef = useRef<Set<string>>(new Set());
   const isAlertPlayingRef = useRef(false);
-  const isKioskBeepingRef = useRef(false);
+  const autoAcceptBeepingRef = useRef(false);
+  const acknowledgedOrderIdsRef = useRef<Set<string>>(new Set());
+  const [flashingOrderIds, setFlashingOrderIds] = useState<Set<string>>(new Set());
   const router = useRouter();
   const isOrdersPage = router.pathname === '/dashboard/orders';
   const randomMessage = useMemo(
@@ -100,9 +103,11 @@ export default function OrdersPage() {
     [router.pathname]
   );
 
-  const isKioskOrder = useCallback(
-    (order: Pick<Order, 'order_type' | 'source'>) =>
-      order.order_type === 'kiosk' || order.source === 'kiosk',
+  const isAutoAcceptedOrder = useCallback(
+    (order: Order) =>
+      !!order.accepted_at &&
+      order.status !== 'pending' &&
+      (order.order_type === 'kiosk' || order.source === 'kiosk' || order.source === 'app'),
     []
   );
 
@@ -152,9 +157,9 @@ export default function OrdersPage() {
     }
   }, [isKioskDevice, isOrdersPage, startAlertLoop, stopAlertLoop]);
 
-  const playKioskTripleBeep = useCallback(async () => {
-    if (!isOrdersPage || isKioskDevice() || isKioskBeepingRef.current) return;
-    isKioskBeepingRef.current = true;
+  const playAutoAcceptBeeps = useCallback(async () => {
+    if (!isOrdersPage || isKioskDevice() || autoAcceptBeepingRef.current) return;
+    autoAcceptBeepingRef.current = true;
     let audio = alertAudioRef.current;
     if (!audio) {
       audio = new Audio(ORDER_ALERT_AUDIO);
@@ -165,28 +170,67 @@ export default function OrdersPage() {
       stopAlertLoop();
     }
     audio.loop = false;
+
     const playBeep = () => {
       try {
         audio.pause();
         audio.currentTime = 0;
         void audio.play();
       } catch (err) {
-        console.error('[orders] kiosk alert playback failed', err);
+        console.error('[orders] auto-accept alert playback failed', err);
       }
     };
 
     playBeep();
-    setTimeout(() => {
-      playBeep();
-    }, 800);
-    setTimeout(() => {
-      playBeep();
-      isKioskBeepingRef.current = false;
-      if (pendingOrderIdsRef.current.size > 0) {
+    for (let i = 1; i < 5; i++) {
+      window.setTimeout(playBeep, i * 1000);
+    }
+
+    window.setTimeout(() => {
+      autoAcceptBeepingRef.current = false;
+      if (wasLooping && pendingOrderIdsRef.current.size > 0) {
         syncAlertLoop();
       }
-    }, 1600);
-  }, [isKioskDevice, isOrdersPage, startAlertLoop, stopAlertLoop, syncAlertLoop]);
+    }, 5000);
+  }, [autoAcceptBeepingRef, isKioskDevice, isOrdersPage, stopAlertLoop, syncAlertLoop]);
+
+  const startAutoFlashForOrder = useCallback((orderId: string) => {
+    setFlashingOrderIds((prev) => {
+      if (prev.has(orderId)) return prev;
+      const next = new Set(prev);
+      next.add(orderId);
+      return next;
+    });
+  }, []);
+
+  const clearFlashForOrder = useCallback((orderId: string) => {
+    setFlashingOrderIds((prev) => {
+      if (!prev.has(orderId)) return prev;
+      const next = new Set(prev);
+      next.delete(orderId);
+      return next;
+    });
+  }, []);
+
+  const trackAutoAcceptedOrder = useCallback(
+    (order: Order) => {
+      if (isAutoAcceptedOrder(order) && !acknowledgedOrderIdsRef.current.has(order.id)) {
+        startAutoFlashForOrder(order.id);
+      } else {
+        clearFlashForOrder(order.id);
+      }
+    },
+    [clearFlashForOrder, isAutoAcceptedOrder, startAutoFlashForOrder]
+  );
+
+  const acknowledgeOrder = useCallback(
+    (orderId: string | null) => {
+      if (!orderId) return;
+      acknowledgedOrderIdsRef.current.add(orderId);
+      clearFlashForOrder(orderId);
+    },
+    [clearFlashForOrder]
+  );
 
   const fetchOrderWithItems = useCallback(
     async (orderId: string) => {
@@ -207,6 +251,7 @@ export default function OrdersPage() {
           status,
           total_price,
           created_at,
+          accepted_at,
           order_items(
             id,
             item_id,
@@ -295,6 +340,7 @@ export default function OrdersPage() {
           status,
           total_price,
           created_at,
+          accepted_at,
           order_items(
             id,
             item_id,
@@ -315,12 +361,17 @@ export default function OrdersPage() {
       if (!ordersError && ordersData) {
         setOrders(ordersData as Order[]);
         const pending = new Set<string>();
+        const flashing = new Set<string>();
         (ordersData as Order[]).forEach((o) => {
-          if (o.status === 'pending' && !isKioskOrder(o)) {
+          if (o.status === 'pending') {
             pending.add(o.id);
+          }
+          if (isAutoAcceptedOrder(o)) {
+            flashing.add(o.id);
           }
         });
         pendingOrderIdsRef.current = pending;
+        setFlashingOrderIds(flashing);
         syncAlertLoop();
       } else if (ordersError) {
         console.error('Error fetching orders', ordersError);
@@ -354,7 +405,7 @@ export default function OrdersPage() {
     };
 
     load();
-  }, [isKioskOrder, router, syncAlertLoop]);
+  }, [isAutoAcceptedOrder, router, syncAlertLoop]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -417,11 +468,7 @@ export default function OrdersPage() {
         return;
       }
 
-      const kioskOrder = isKioskOrder(newRow);
-
-      if (kioskOrder) {
-        pendingOrderIdsRef.current.delete(newRow.id);
-      } else if (newRow.status === 'pending') {
+      if (newRow.status === 'pending') {
         pendingOrderIdsRef.current.add(newRow.id);
       } else {
         pendingOrderIdsRef.current.delete(newRow.id);
@@ -446,8 +493,11 @@ export default function OrdersPage() {
         return [hydrated, ...remaining];
       });
 
-      if (kioskOrder) {
-        await playKioskTripleBeep();
+      if (isAutoAcceptedOrder(hydrated)) {
+        trackAutoAcceptedOrder(hydrated);
+        await playAutoAcceptBeeps();
+      } else {
+        trackAutoAcceptedOrder(hydrated);
       }
 
       syncAlertLoop();
@@ -458,6 +508,7 @@ export default function OrdersPage() {
     ) => {
       if (!isOrdersPage) return;
       const updated = payload.new as Order;
+      const oldStatus = (payload.old as { status?: string } | null)?.status;
       if (!updated || !matchesRestaurant(updated.restaurant_id)) {
         console.debug('[orders] ignoring update for different restaurant', {
           restaurantId,
@@ -466,9 +517,7 @@ export default function OrdersPage() {
         return;
       }
 
-      const kioskOrder = isKioskOrder(updated);
-
-      if (!kioskOrder && updated.status === 'pending') {
+      if (updated.status === 'pending') {
         pendingOrderIdsRef.current.add(updated.id);
       } else {
         pendingOrderIdsRef.current.delete(updated.id);
@@ -476,6 +525,7 @@ export default function OrdersPage() {
 
       if (!isActiveStatus(updated.status)) {
         setOrders((prev) => prev.filter((o) => o.id !== updated.id));
+        clearFlashForOrder(updated.id);
         syncAlertLoop();
         return;
       }
@@ -510,30 +560,51 @@ export default function OrdersPage() {
         }
       }
 
+      const merged = mergedOrder ?? (updated as Order);
+      if (merged) {
+        if (isAutoAcceptedOrder(merged as Order) && oldStatus !== 'pending') {
+          trackAutoAcceptedOrder(merged as Order);
+        } else {
+          clearFlashForOrder(merged.id);
+        }
+      }
+
       syncAlertLoop();
     };
 
-    const channelName = 'orders-realtime';
+    const channelName = `orders-realtime-${restaurantId}`;
     const channel = supabase.channel(channelName);
-
-    if (!channel) {
-      console.error('[orders] failed to create realtime channel for orders');
-      return;
-    }
 
     channel
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'INSERT',
           schema: 'public',
           table: 'orders',
+          filter: `restaurant_id=eq.${restaurantId}`,
         },
         async (payload) => {
-          if (payload.eventType === 'INSERT') {
+          try {
             await handleInsert(payload as RealtimePostgresChangesPayload<Order>);
-          } else if (payload.eventType === 'UPDATE') {
+          } catch (err) {
+            console.error('[orders] failed to handle realtime insert', err, payload);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'orders',
+          filter: `restaurant_id=eq.${restaurantId}`,
+        },
+        async (payload) => {
+          try {
             await handleUpdate(payload as RealtimePostgresChangesPayload<Order>);
+          } catch (err) {
+            console.error('[orders] failed to handle realtime update', err, payload);
           }
         }
       )
@@ -556,14 +627,17 @@ export default function OrdersPage() {
     return () => {
       supabase.removeChannel(channel);
       pendingOrderIdsRef.current.clear();
+      acknowledgedOrderIdsRef.current.clear();
+      setFlashingOrderIds(new Set());
       stopAlertLoop();
     };
   }, [
     hydrateOrder,
     isOrdersPage,
-    isKioskOrder,
     matchesRestaurant,
-    playKioskTripleBeep,
+    playAutoAcceptBeeps,
+    clearFlashForOrder,
+    trackAutoAcceptedOrder,
     restaurantId,
     stopAlertLoop,
     syncAlertLoop,
@@ -612,22 +686,42 @@ export default function OrdersPage() {
 
 
   const updateStatus = async (id: string, status: string) => {
-    await supabase.from('orders').update({ status }).eq('id', id);
     const targetOrder = orders.find((o) => o.id === id);
-    const kioskOrder = targetOrder ? isKioskOrder(targetOrder) : false;
-    if (!kioskOrder && status === 'pending') {
+    const updatePayload: { status: string; accepted_at?: string | null } = { status };
+    if (targetOrder?.accepted_at) {
+      updatePayload.accepted_at = targetOrder.accepted_at;
+    }
+
+    await supabase.from('orders').update(updatePayload).eq('id', id);
+    if (status === 'pending') {
       pendingOrderIdsRef.current.add(id);
     } else {
       pendingOrderIdsRef.current.delete(id);
     }
     syncAlertLoop();
     setOrders((prev) => {
+      const updatedOrders = prev.map((o) =>
+        o.id === id ? { ...o, status, accepted_at: targetOrder?.accepted_at ?? null } : o
+      );
       if (ACTIVE_STATUSES.includes(status)) {
-        return prev.map((o) => (o.id === id ? { ...o, status } : o));
+        return updatedOrders;
       }
-      return prev.filter((o) => o.id !== id);
+      return updatedOrders.filter((o) => o.id !== id);
     });
-    setSelectedOrder((prev) => (prev && prev.id === id ? { ...prev, status } : prev));
+    setSelectedOrder((prev) =>
+      prev && prev.id === id
+        ? { ...prev, status, accepted_at: targetOrder?.accepted_at ?? null }
+        : prev
+    );
+
+    const updatedOrder = targetOrder
+      ? ({ ...targetOrder, status, accepted_at: targetOrder.accepted_at ?? null } as Order)
+      : null;
+    if (updatedOrder) {
+      trackAutoAcceptedOrder(updatedOrder);
+    } else {
+      clearFlashForOrder(id);
+    }
   };
 
   const toggleOpen = async () => {
@@ -756,12 +850,15 @@ export default function OrdersPage() {
         <div className="space-y-4">
           {orders.map((o) => {
             const age = now - new Date(o.created_at).getTime();
+            const shouldFlashAuto = flashingOrderIds.has(o.id);
             const highlight =
               o.status === 'pending'
                 ? age < 120000
                   ? 'bg-red-100 animate-pulse'
                   : 'bg-red-300 animate-pulse'
-                : 'bg-white';
+                : shouldFlashAuto
+                  ? 'bg-red-100 animate-pulse'
+                  : 'bg-white';
             return (
               <div
                 key={o.id}
@@ -800,7 +897,12 @@ export default function OrdersPage() {
       />
       <OrderDetailsModal
         order={selectedOrder as OrderType | null}
-        onClose={() => setSelectedOrder(null)}
+        onClose={() => {
+          if (selectedOrder) {
+            acknowledgeOrder(selectedOrder.id);
+          }
+          setSelectedOrder(null);
+        }}
         onUpdateStatus={updateStatus}
       />
     </DashboardLayout>
