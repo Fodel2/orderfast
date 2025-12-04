@@ -281,16 +281,34 @@ async function handlePost(req: NextApiRequest, res: NextApiResponse) {
   try {
     const categoryMap = new Map<string, { id: string | number; sort_order?: number }>();
     (categories || []).forEach((c) => {
-      if (c?.name) categoryMap.set(c.name.toLowerCase(), c as any);
+      if (c?.name) categoryMap.set(c.name.trim().toLowerCase(), c as any);
     });
     let nextSort = Math.max(0, ...(categories || []).map((c: any) => c.sort_order || 0)) + 1;
 
     const ensureCategory = async (name: string) => {
-      const key = name.toLowerCase();
+      const categoryName = name.trim();
+      const key = categoryName.toLowerCase();
       if (categoryMap.has(key)) return categoryMap.get(key)!.id;
+
+      const { data: existing, error: existingError } = await supaServer
+        .from('menu_categories')
+        .select('id')
+        .eq('restaurant_id', restaurantId)
+        .ilike('name', categoryName)
+        .maybeSingle();
+
+      if (existingError) {
+        throw existingError;
+      }
+
+      if (existing?.id) {
+        categoryMap.set(key, { id: existing.id });
+        return existing.id;
+      }
+
       const insert = await supaServer
         .from('menu_categories')
-        .insert({ name, restaurant_id: restaurantId, sort_order: nextSort++ })
+        .insert({ name: categoryName, restaurant_id: restaurantId, sort_order: nextSort++ })
         .select('id')
         .single();
       if (insert.error) {
