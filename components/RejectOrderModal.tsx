@@ -10,18 +10,15 @@ interface Props {
 }
 
 export default function RejectOrderModal({ order, show, onClose, onRejected }: Props) {
-  const actionLabel = useMemo(() => (order.status === 'accepted' ? 'Cancel' : 'Reject'), [
-    order.status,
-  ]);
   const reasons = useMemo(
-    () =>
-      order.status === 'accepted'
-        ? ['Closing early', 'Problem in the kitchen', 'Other']
-        : ['Item out of stock', 'Closing early', 'Problem in the kitchen', 'Other'],
-    [order.status]
+    () => ['Item out of stock', 'Closing early', 'Problem in the kitchen', 'Other'],
+    []
   );
 
-  const [reason, setReason] = useState(reasons[0] ?? 'Closing early');
+  const isCancel = useMemo(() => order.status !== 'pending', [order.status]);
+  const actionLabel = isCancel ? 'Cancel' : 'Reject';
+
+  const [reason, setReason] = useState(reasons[0]);
   const [message, setMessage] = useState('');
   const [itemIds, setItemIds] = useState<Set<number>>(new Set());
   const [addonIds, setAddonIds] = useState<Set<number>>(new Set());
@@ -29,7 +26,7 @@ export default function RejectOrderModal({ order, show, onClose, onRejected }: P
 
   useEffect(() => {
     if (!show) return;
-    setReason(reasons[0] ?? 'Closing early');
+    setReason(reasons[0]);
     setMessage('');
     setItemIds(new Set());
     setAddonIds(new Set());
@@ -58,17 +55,18 @@ export default function RejectOrderModal({ order, show, onClose, onRejected }: P
     setSaving(true);
     try {
       if (reason === 'Item out of stock') {
-        for (const id of Array.from(itemIds)) {
-          await supabase.from('menu_items').update({ stock_status: 'out' }).eq('id', id);
-        }
-        for (const id of Array.from(addonIds)) {
-          await supabase.from('addon_options').update({ stock_status: 'out' }).eq('id', id);
-        }
+        const itemUpdates = Array.from(itemIds).map((id) =>
+          supabase.from('menu_items').update({ stock_status: 'out' }).eq('id', id)
+        );
+        const addonUpdates = Array.from(addonIds).map((id) =>
+          supabase.from('addon_items').update({ stock_status: 'out' }).eq('id', id)
+        );
+        await Promise.all([...itemUpdates, ...addonUpdates]);
       }
       await supabase
         .from('orders')
         .update({
-          status: 'cancelled',
+          status: isCancel ? 'cancelled' : 'rejected',
           cancel_reason: reason,
           cancel_comment: message || null,
         })

@@ -77,8 +77,9 @@ export default function OrderDetailsModal({ order, onClose, onUpdateStatus }: Pr
   if (!order) return null;
 
   const kioskOrder = order.order_type === 'kiosk' || order.source === 'kiosk';
-  const actionLabel = order.status === 'accepted' ? 'Cancel' : 'Reject';
-  const canRejectOrCancel = !kioskOrder && (order.status === 'pending' || order.status === 'accepted');
+  const actionLabel = order.status === 'pending' ? 'Reject' : 'Cancel';
+  const canRejectOrCancel =
+    !kioskOrder && !['completed', 'cancelled', 'rejected'].includes(order.status);
 
   const handleRejectToggle = () => {
     const now = Date.now();
@@ -227,23 +228,23 @@ export default function OrderDetailsModal({ order, onClose, onUpdateStatus }: Pr
               ) : null;
             })()}
             {canRejectOrCancel && (
-              <button
-                type="button"
-                onClick={handleRejectToggle}
-                onDoubleClick={() => setShowReject(true)}
-                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
-              >
-                {actionLabel}
-              </button>
-            )}
-            {canRejectOrCancel && (
-              <div
-                className={`relative text-xs text-white ${showRejectTip ? 'opacity-100' : 'opacity-0'} transition-opacity duration-200`}
-              >
-                <div className="absolute right-0 -top-2 translate-y-[-100%] bg-gray-900 rounded px-2 py-1 shadow">
-                  Double-tap to {actionLabel.toLowerCase()}
+              <>
+                <button
+                  type="button"
+                  onClick={handleRejectToggle}
+                  onDoubleClick={() => setShowReject(true)}
+                  className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+                >
+                  {actionLabel}
+                </button>
+                <div
+                  className={`relative text-xs text-white ${showRejectTip ? 'opacity-100' : 'opacity-0'} transition-opacity duration-200`}
+                >
+                  <div className="absolute right-0 -top-2 translate-y-[-100%] bg-gray-900 rounded px-2 py-1 shadow">
+                    Double-tap to {actionLabel.toLowerCase()}
+                  </div>
                 </div>
-              </div>
+              </>
             )}
           </div>
         </div>
@@ -252,7 +253,9 @@ export default function OrderDetailsModal({ order, onClose, onUpdateStatus }: Pr
         order={order}
         show={showReject}
         onClose={() => setShowReject(false)}
-        onRejected={() => onUpdateStatus(order.id, 'cancelled')}
+        onRejected={() =>
+          onUpdateStatus(order.id, order.status === 'pending' ? 'rejected' : 'cancelled')
+        }
       />
     </div>
   );
