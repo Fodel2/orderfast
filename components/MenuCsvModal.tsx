@@ -21,7 +21,7 @@ const normalizeTag = (input: string) => {
 const tagLabels: Record<string, string> = {
   vegan: 'Vegan',
   vegetarian: 'Vegetarian',
-  18_plus: '18+',
+  '18_plus': '18+',
 };
 
 const buildTagText = (item: any) => {
