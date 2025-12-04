@@ -27,7 +27,7 @@ import MenuItemCard from '../../components/MenuItemCard';
 import DashboardLayout from '../../components/DashboardLayout';
 import AddonsTab from '../../components/AddonsTab';
 import StockTab, { StockTabProps } from '../../components/StockTab';
-import MenuCsvModal, { triggerSampleCsvDownload } from '../../components/MenuCsvModal';
+import MenuCsvModal from '../../components/MenuCsvModal';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChevronDownIcon,
@@ -601,12 +601,12 @@ export default function MenuBuilder() {
     setLoading(false);
   };
 
-  const handleCsvImported = () => {
+  const handleCsvImported = (message?: string) => {
     if (restaurantId) {
       fetchData(restaurantId);
     }
     setShowCsvModal(false);
-    setToastMessage('CSV import applied');
+    setToastMessage(message || 'CSV import applied');
   };
 
   const handleDeleteItem = async (id: number) => {
@@ -809,13 +809,6 @@ export default function MenuBuilder() {
               className="flex items-center bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700"
             >
               CSV Import / Bulk Update
-            </button>
-            <button
-              type="button"
-              onClick={triggerSampleCsvDownload}
-              className="flex items-center px-3 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
-            >
-              Download Sample CSV
             </button>
           </div>
           <button

@@ -2,68 +2,12 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Papa from 'papaparse';
 import { findBestMatch } from 'string-similarity';
 
-const TAG_MAP: Record<string, 'vegan' | 'vegetarian' | '18_plus'> = {
-  vegan: 'vegan',
-  vegetarian: 'vegetarian',
-  '18_plus': '18_plus',
-  '18+': '18_plus',
-  '18-plus': '18_plus',
-};
-
-const ALLOWED_TAGS = ['vegan', 'vegetarian', '18_plus'];
-
-const normalizeTag = (input: string) => {
-  const lowered = input.trim().toLowerCase();
-  const normalized = lowered.replace(/\s+/g, '_').replace(/-/g, '_');
-  return TAG_MAP[normalized] || TAG_MAP[lowered] || normalized;
-};
-
-const tagLabels: Record<string, string> = {
-  vegan: 'Vegan',
-  vegetarian: 'Vegetarian',
-  '18_plus': '18+',
-};
-
-const buildTagText = (item: any) => {
-  const tags: string[] = [];
-  if (item?.is_vegan) tags.push('vegan');
-  if (item?.is_vegetarian) tags.push('vegetarian');
-  if (item?.is_18_plus) tags.push('18_plus');
-  return tags.join(', ');
-};
-
-const sampleRows = [
-  {
-    name: 'Signature Burger',
-    price: '12.50',
-    category: 'Burgers',
-    description: 'Our classic burger with house sauce',
-    tags: 'vegetarian',
-  },
-  {
-    name: 'Spicy Vegan Bowl',
-    price: '14.00',
-    category: 'Bowls',
-    description: 'Loaded with veggies and protein',
-    tags: 'vegan',
-  },
-];
-
-export function triggerSampleCsvDownload() {
-  const csv = Papa.unparse(sampleRows, { columns: getCsvHeaders(sampleRows) });
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = 'menu-sample.csv';
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
 type CsvMode = 'import' | 'bulk';
 
 type EditableRow = {
   id: string;
+  itemId?: string;
+  externalKey?: string;
   name: string;
   price: string;
   category: string;
@@ -71,7 +15,14 @@ type EditableRow = {
   tags: string;
   errors: Partial<Record<'name' | 'price' | 'category' | 'tags', string>>;
   suggestion?: string | null;
-  matchedItemId?: string | number | null;
+};
+
+type RowError = { rowIndex: number; reason: string };
+
+type BulkPreview = {
+  willCreate: number;
+  willUpdate: number;
+  willArchive: number;
 };
 
 interface MenuCsvModalProps {
@@ -80,8 +31,30 @@ interface MenuCsvModalProps {
   restaurantId: number | null;
   categories: any[];
   items: any[];
-  onImported: () => void;
+  onImported: (message?: string) => void;
 }
+
+const TAG_MAP: Record<string, 'vegan' | 'vegetarian' | '18_plus'> = {
+  vegan: 'vegan',
+  vegetarian: 'vegetarian',
+  '18_plus': '18_plus',
+  '18+': '18_plus',
+  '18-plus': '18_plus',
+};
+
+const tagLabels: Record<string, string> = {
+  vegan: 'Vegan',
+  vegetarian: 'Vegetarian',
+  '18_plus': '18+',
+};
+
+const ALLOWED_TAGS = Object.keys(TAG_MAP);
+
+const normalizeTag = (input: string) => {
+  const lowered = input.trim().toLowerCase();
+  const normalized = lowered.replace(/\s+/g, '_').replace(/-/g, '_');
+  return TAG_MAP[normalized] || TAG_MAP[lowered] || normalized;
+};
 
 function createRowId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -90,96 +63,131 @@ function createRowId() {
   return `${Date.now()}-${Math.random()}`;
 }
 
-function getCsvHeaders(rows: any[]) {
-  const hasDescription = rows.some((r) => r.description);
-  const headers = ['name', 'price', 'category'];
-  if (hasDescription) headers.push('description');
-  headers.push('tags');
-  return headers;
+function extractCsvRows(rawRows: any[], items: any[]): EditableRow[] {
+  return rawRows
+    .filter((r) => Object.values(r || {}).some((v) => v !== undefined && v !== null && `${v}`.trim() !== ''))
+    .map((r) => {
+      const baseName = r.name ?? r.Name ?? '';
+      const matchById = items.find((i) => `${i.id}` === `${r.id ?? r.ID ?? ''}`);
+      const matchByName = items.find(
+        (i) => i.name?.trim().toLowerCase() === String(baseName || '').trim().toLowerCase()
+      );
+      return {
+        id: createRowId(),
+        itemId: r.id ? String(r.id) : r.ID ? String(r.ID) : matchById?.id ? String(matchById.id) : undefined,
+        externalKey: r.external_key || r.externalKey || matchById?.external_key || matchByName?.external_key,
+        name: String(baseName ?? '').trim(),
+        price: r.price !== undefined ? String(r.price) : String(r.Price ?? ''),
+        category: String(r.category ?? r.Category ?? '').trim(),
+        description: r.description ? String(r.description) : String(r.Description ?? ''),
+        tags: r.tags ? String(r.tags) : String(r.Tags ?? ''),
+        errors: {},
+      } as EditableRow;
+    });
+}
+
+function validateRow(row: EditableRow, categories: any[]) {
+  const errors: EditableRow['errors'] = {};
+  const name = row.name?.trim();
+  const priceNum = parseFloat(row.price);
+  const categoryName = row.category?.trim();
+  const normalizedTags = (row.tags || '')
+    .split(/[,|]/)
+    .map((t) => normalizeTag(t))
+    .filter(Boolean);
+
+  if (!name) errors.name = 'Name is required';
+  if (!row.price || Number.isNaN(priceNum) || priceNum <= 0) {
+    errors.price = 'Price must be a number greater than 0';
+  }
+  if (!categoryName) errors.category = 'Category is required';
+  const invalidTags = normalizedTags.filter((t) => !ALLOWED_TAGS.includes(t));
+  if (invalidTags.length) {
+    errors.tags = `Unsupported tags: ${invalidTags.join(', ')}`;
+  }
+
+  let suggestion: string | null = null;
+  const catKey = categoryName?.toLowerCase?.();
+  const categoryNames = categories.map((c) => c.name).filter(Boolean);
+  if (categoryName && !categories.some((c) => c.name?.toLowerCase?.() === catKey) && categoryNames.length) {
+    const match = findBestMatch(categoryName, categoryNames);
+    if (match.bestMatch.rating >= 0.5 && match.bestMatch.target !== categoryName) {
+      suggestion = match.bestMatch.target;
+    }
+  }
+
+  return { ...row, errors, suggestion };
 }
 
 export default function MenuCsvModal({ open, onClose, restaurantId, categories, items, onImported }: MenuCsvModalProps) {
   const [activeTab, setActiveTab] = useState<CsvMode>('import');
   const [rows, setRows] = useState<EditableRow[]>([]);
   const [parseError, setParseError] = useState('');
+  const [apiRowErrors, setApiRowErrors] = useState<RowError[]>([]);
   const [importing, setImporting] = useState(false);
-  const [successMessage, setSuccessMessage] = useState('');
   const [warning, setWarning] = useState('');
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [bulkPreview, setBulkPreview] = useState<BulkPreview | null>(null);
   const [confirmArchive, setConfirmArchive] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!open) {
       setRows([]);
       setParseError('');
+      setApiRowErrors([]);
       setImporting(false);
       setSuccessMessage('');
       setWarning('');
+      setBulkPreview(null);
       setConfirmArchive(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   }, [open]);
 
-  const categoryLookup = useMemo(() => {
-    const map = new Map<string, any>();
-    categories
-      .filter((c) => !c.archived_at)
-      .forEach((cat) => map.set(cat.name?.toLowerCase?.() || '', cat));
-    return map;
-  }, [categories]);
+  const validatedRows = useMemo(
+    () => rows.map((r) => validateRow(r, categories)),
+    [rows, categories]
+  );
 
-  const validateRow = (row: EditableRow): EditableRow => {
-    const errors: EditableRow['errors'] = {};
-    const name = row.name?.trim();
-    const priceNum = parseFloat(row.price);
-    const categoryName = row.category?.trim();
-    const normalizedTags = (row.tags || '')
-      .split(/[,|]/)
-      .map((t) => normalizeTag(t))
-      .filter(Boolean);
+  const hasErrors = validatedRows.some((r) => Object.keys(r.errors).length > 0);
 
-    if (!name) errors.name = 'Name is required';
-    if (!row.price || Number.isNaN(priceNum) || priceNum <= 0) {
-      errors.price = 'Price must be a number greater than 0';
+  const archiveCandidates = useMemo(() => {
+    if (activeTab !== 'bulk' || !validatedRows.length) return [] as any[];
+    const incomingIds = new Set(
+      validatedRows.map((r) => (r.itemId ? String(r.itemId) : r.name.toLowerCase()))
+    );
+    return items.filter((i) => !incomingIds.has(String(i.id)) && !incomingIds.has(String(i.name || '').toLowerCase()));
+  }, [activeTab, validatedRows, items]);
+
+  const readyToSubmit = useMemo(() => {
+    if (importing || !validatedRows.length || hasErrors) return false;
+    if (activeTab === 'bulk' && bulkPreview) {
+      if (bulkPreview.willArchive > 0 && !confirmArchive) return false;
+      return true;
     }
-    if (!categoryName) errors.category = 'Category is required';
-    const invalidTags = normalizedTags.filter((t) => !ALLOWED_TAGS.includes(t));
-    if (invalidTags.length) {
-      errors.tags = `Unsupported tags: ${invalidTags.join(', ')}`;
-    }
-
-    let suggestion: string | null = null;
-    const catKey = categoryName?.toLowerCase?.();
-    if (categoryName && !categoryLookup.has(catKey)) {
-      const names = categories.map((c) => c.name).filter(Boolean);
-      if (names.length) {
-        const match = findBestMatch(categoryName, names);
-        if (match.bestMatch.rating >= 0.5 && match.bestMatch.target !== categoryName) {
-          suggestion = match.bestMatch.target;
-        }
-      }
-    }
-
-    return { ...row, errors, suggestion };
-  };
+    return true;
+  }, [importing, validatedRows, hasErrors, activeTab, bulkPreview, confirmArchive]);
 
   const setRowValue = (id: string, key: keyof EditableRow, value: string) => {
-    setRows((prev) =>
-      prev.map((row) => (row.id === id ? validateRow({ ...row, [key]: value }) : row))
-    );
+    setBulkPreview(null);
+    setConfirmArchive(false);
+    setRows((prev) => prev.map((row) => (row.id === id ? { ...row, [key]: value } : row)));
   };
 
-  const onSuggestionAccept = (id: string, suggestion: string | undefined | null) => {
+  const onSuggestionAccept = (id: string, suggestion?: string | null) => {
     if (!suggestion) return;
-    setRows((prev) =>
-      prev.map((row) => (row.id === id ? validateRow({ ...row, category: suggestion }) : row))
-    );
+    setRowValue(id, 'category', suggestion);
   };
 
   const parseFile = (file: File) => {
     setParseError('');
     setWarning('');
     setSuccessMessage('');
+    setApiRowErrors([]);
+    setBulkPreview(null);
+    setConfirmArchive(false);
+
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
@@ -193,28 +201,10 @@ export default function MenuCsvModal({ open, onClose, restaurantId, categories, 
           setParseError('No rows found in CSV');
           return;
         }
-        const processed: EditableRow[] = rawRows.map((r) => {
-          const row: EditableRow = {
-            id: createRowId(),
-            name: String(r.name ?? '').trim(),
-            price: r.price !== undefined ? String(r.price) : '',
-            category: String(r.category ?? '').trim(),
-            description: r.description ? String(r.description) : '',
-            tags: r.tags ? String(r.tags) : '',
-            errors: {},
-            matchedItemId: null,
-          };
-          const existing = items.find(
-            (i) => i.name?.trim().toLowerCase() === row.name.toLowerCase()
-          );
-          if (existing) {
-            row.matchedItemId = existing.id;
-          }
-          return validateRow(row);
-        });
+        const processed = extractCsvRows(rawRows, items).map((row) => validateRow(row, categories));
         setRows(processed);
         if (activeTab === 'bulk') {
-          setWarning('Remember: items missing from your upload will be archived after confirmation.');
+          setWarning('Preview changes first. Items missing from your upload will be archived after confirmation.');
         }
       },
       error: (err) => {
@@ -229,40 +219,17 @@ export default function MenuCsvModal({ open, onClose, restaurantId, categories, 
     parseFile(file);
   };
 
-  const hasErrors = rows.some((r) => Object.keys(r.errors).length > 0);
-  const archiveCandidates = useMemo(() => {
-    if (activeTab !== 'bulk' || !rows.length) return [] as any[];
-    const incomingNames = new Set(rows.map((r) => r.name.toLowerCase()));
-    return items.filter((i) => !incomingNames.has(String(i.name || '').toLowerCase()));
-  }, [activeTab, rows, items]);
-
-  const readyToSubmit =
-    !importing &&
-    rows.length > 0 &&
-    !hasErrors &&
-    (activeTab !== 'bulk' || archiveCandidates.length === 0 || confirmArchive);
-
-  const downloadSample = () => {
-    triggerSampleCsvDownload();
-  };
-
-  const downloadMenu = () => {
-    const rowsToExport = items.map((item) => {
-      const category = categories.find((c) => c.id === item.category_id);
-      return {
-        name: item.name || '',
-        price: typeof item.price === 'number' ? item.price.toFixed(2) : '',
-        category: category?.name || '',
-        description: item.description || '',
-        tags: buildTagText(item),
-      };
-    });
-    const csv = Papa.unparse(rowsToExport, { columns: getCsvHeaders(rowsToExport) });
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const downloadCsv = async (mode: 'sample' | 'export') => {
+    const res = await fetch(`/api/menu-csv?mode=${mode}`);
+    if (!res.ok) {
+      setParseError('Failed to download CSV');
+      return;
+    }
+    const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'menu-export.csv';
+    link.download = mode === 'sample' ? 'menu-sample.csv' : 'menu-export.csv';
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -270,16 +237,21 @@ export default function MenuCsvModal({ open, onClose, restaurantId, categories, 
   const submit = async () => {
     if (!restaurantId) return;
     setImporting(true);
+    setParseError('');
+    setApiRowErrors([]);
     setSuccessMessage('');
-    setWarning('');
+
     try {
-      const payloadRows = rows.map((r) => ({
+      const payloadRows = validatedRows.map((r) => ({
+        id: r.itemId,
+        external_key: r.externalKey,
         name: r.name.trim(),
         price: r.price,
         category: r.category.trim(),
         description: r.description,
         tags: r.tags,
       }));
+
       const res = await fetch('/api/menu-csv', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -287,16 +259,32 @@ export default function MenuCsvModal({ open, onClose, restaurantId, categories, 
           restaurantId,
           mode: activeTab,
           rows: payloadRows,
-          confirmArchive,
+          confirm: activeTab === 'bulk' ? Boolean(bulkPreview) : true,
         }),
       });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setParseError(json.error || json.details || 'Failed to import CSV');
+      if (!res.ok || !json.ok) {
+        setParseError(json.message || json.error || 'Failed to import CSV');
+        if (Array.isArray(json.rowErrors)) setApiRowErrors(json.rowErrors);
         return;
       }
-      setSuccessMessage(json.message || 'Import completed');
-      onImported();
+
+      if (activeTab === 'bulk' && json.preview) {
+        setBulkPreview(json.preview as BulkPreview);
+        if (json.preview.willArchive > 0) {
+          setWarning('Items missing from your upload will be archived. Confirm before applying.');
+        }
+        return;
+      }
+
+      const summaryParts: string[] = [];
+      if (json.created) summaryParts.push(`${json.created} created`);
+      if (json.updated) summaryParts.push(`${json.updated} updated`);
+      if (json.archived) summaryParts.push(`${json.archived} archived`);
+      const message = summaryParts.length ? summaryParts.join(', ') : 'Import completed';
+      setSuccessMessage(message);
+      onImported(message);
+      onClose();
     } catch (err: any) {
       setParseError(err?.message || 'Failed to import CSV');
     } finally {
@@ -304,26 +292,39 @@ export default function MenuCsvModal({ open, onClose, restaurantId, categories, 
     }
   };
 
+  const errorSummary = useMemo(() => {
+    const localErrors: RowError[] = [];
+    validatedRows.forEach((row, idx) => {
+      Object.values(row.errors).forEach((reason) => {
+        if (reason) localErrors.push({ rowIndex: idx + 1, reason });
+      });
+    });
+    return [...localErrors, ...apiRowErrors].slice(0, 5);
+  }, [validatedRows, apiRowErrors]);
+
   const renderTable = () => {
-    if (!rows.length) return null;
+    if (!validatedRows.length) return null;
     return (
       <div className="mt-4 overflow-auto rounded-lg border border-gray-200">
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-gray-50">
             <tr>
+              {activeTab === 'bulk' && (
+                <th className="px-3 py-2 text-left font-semibold text-gray-700">ID</th>
+              )}
               <th className="px-3 py-2 text-left font-semibold text-gray-700">Name</th>
               <th className="px-3 py-2 text-left font-semibold text-gray-700">Price</th>
               <th className="px-3 py-2 text-left font-semibold text-gray-700">Category</th>
               <th className="px-3 py-2 text-left font-semibold text-gray-700">Description</th>
               <th className="px-3 py-2 text-left font-semibold text-gray-700">Tags</th>
-              {activeTab === 'bulk' && (
-                <th className="px-3 py-2 text-left font-semibold text-gray-700">Action</th>
-              )}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 bg-white">
-            {rows.map((row) => (
+            {validatedRows.map((row, idx) => (
               <tr key={row.id} className="align-top">
+                {activeTab === 'bulk' && (
+                  <td className="px-3 py-2 text-xs text-gray-600 align-middle">{row.itemId || '—'}</td>
+                )}
                 <td className="px-3 py-2">
                   <input
                     value={row.name}
@@ -334,6 +335,11 @@ export default function MenuCsvModal({ open, onClose, restaurantId, categories, 
                   />
                   {row.errors.name && (
                     <p className="mt-1 text-xs text-red-600">{row.errors.name}</p>
+                  )}
+                  {apiRowErrors.find((r) => r.rowIndex === idx + 1) && (
+                    <p className="mt-1 text-xs text-red-600">
+                      {apiRowErrors.find((r) => r.rowIndex === idx + 1)?.reason}
+                    </p>
                   )}
                 </td>
                 <td className="px-3 py-2">
@@ -392,15 +398,7 @@ export default function MenuCsvModal({ open, onClose, restaurantId, categories, 
                   {row.errors.tags && (
                     <p className="mt-1 text-xs text-red-600">{row.errors.tags}</p>
                   )}
-                  {!row.errors.tags && row.tags && (
-                    <p className="mt-1 text-xs text-gray-500">{row.tags}</p>
-                  )}
                 </td>
-                {activeTab === 'bulk' && (
-                  <td className="px-3 py-2 text-xs text-gray-600">
-                    {row.matchedItemId ? 'Update existing' : 'Create new'}
-                  </td>
-                )}
               </tr>
             ))}
           </tbody>
@@ -409,6 +407,9 @@ export default function MenuCsvModal({ open, onClose, restaurantId, categories, 
     );
   };
 
+  const modeTitle = activeTab === 'import' ? 'Import' : 'Bulk Update';
+  const primaryLabel = activeTab === 'import' ? 'Import items' : bulkPreview ? 'Apply changes' : 'Preview changes';
+
   return (
     <div
       className={`fixed inset-0 z-[1100] bg-black/40 ${open ? '' : 'pointer-events-none opacity-0'}`}
@@ -416,7 +417,7 @@ export default function MenuCsvModal({ open, onClose, restaurantId, categories, 
     >
       {open && (
         <div className="flex h-full items-center justify-center p-4">
-          <div className="max-h-[90vh] w-full max-w-6xl overflow-hidden rounded-2xl bg-white shadow-xl">
+          <div className="flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl">
             <div className="flex items-center justify-between border-b px-6 py-4">
               <div>
                 <h2 className="text-xl font-semibold">CSV Import & Bulk Update</h2>
@@ -442,7 +443,11 @@ export default function MenuCsvModal({ open, onClose, restaurantId, categories, 
                       ? 'border-b-2 border-teal-600 text-teal-700'
                       : 'text-gray-500 hover:text-gray-700'
                   }`}
-                  onClick={() => setActiveTab('import')}
+                  onClick={() => {
+                    setActiveTab('import');
+                    setBulkPreview(null);
+                    setConfirmArchive(false);
+                  }}
                 >
                   Import
                 </button>
@@ -452,14 +457,18 @@ export default function MenuCsvModal({ open, onClose, restaurantId, categories, 
                       ? 'border-b-2 border-teal-600 text-teal-700'
                       : 'text-gray-500 hover:text-gray-700'
                   }`}
-                  onClick={() => setActiveTab('bulk')}
+                  onClick={() => {
+                    setActiveTab('bulk');
+                    setBulkPreview(null);
+                    setConfirmArchive(false);
+                  }}
                 >
                   Bulk Update
                 </button>
               </div>
             </div>
 
-            <div className="space-y-4 overflow-y-auto px-6 py-4">
+            <div className="flex-1 overflow-y-auto px-6 py-4">
               <div className="flex flex-wrap items-center gap-3">
                 <input
                   ref={fileInputRef}
@@ -477,7 +486,7 @@ export default function MenuCsvModal({ open, onClose, restaurantId, categories, 
                 </button>
                 <button
                   type="button"
-                  onClick={downloadSample}
+                  onClick={() => downloadCsv('sample')}
                   className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
                 >
                   Download sample CSV
@@ -485,7 +494,7 @@ export default function MenuCsvModal({ open, onClose, restaurantId, categories, 
                 {activeTab === 'bulk' && (
                   <button
                     type="button"
-                    onClick={downloadMenu}
+                    onClick={() => downloadCsv('export')}
                     className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
                   >
                     Download menu CSV
@@ -493,33 +502,64 @@ export default function MenuCsvModal({ open, onClose, restaurantId, categories, 
                 )}
               </div>
 
-              <div className="rounded-lg bg-gray-50 p-3 text-xs text-gray-600">
-                <p className="font-semibold">Expected columns</p>
-                <p>Name (required), Price (required), Category (required), Description (optional), Tags (optional).</p>
-                <p>Allowed tags: {ALLOWED_TAGS.map((t) => tagLabels[t]).join(', ')}.</p>
+              <div className="mt-3 rounded-lg bg-gray-50 p-3 text-xs text-gray-600">
+                <p className="font-semibold">{modeTitle} instructions</p>
+                {activeTab === 'import' ? (
+                  <p>Upload a CSV to import new items. All rows must be valid; imports are all-or-nothing.</p>
+                ) : (
+                  <p>Download your current menu, edit in bulk, and re-upload. Changes are previewed before applying.</p>
+                )}
+                <p className="mt-1">
+                  Expected columns: Name (required), Price (required), Category (required), Description (optional), Tags (optional).
+                  Allowed tags: {ALLOWED_TAGS.map((t) => tagLabels[t]).join(', ')}.
+                </p>
               </div>
 
-              {parseError && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{parseError}</div>}
-              {warning && <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">{warning}</div>}
+              {parseError && <div className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{parseError}</div>}
+              {warning && <div className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">{warning}</div>}
               {successMessage && (
-                <div className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{successMessage}</div>
+                <div className="mt-3 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{successMessage}</div>
               )}
 
-              {activeTab === 'bulk' && archiveCandidates.length > 0 && (
-                <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
-                  {archiveCandidates.length} existing item(s) will be archived because they are missing from the upload.
-                  <div className="mt-2 flex items-center space-x-2">
-                    <input
-                      id="confirm-archive"
-                      type="checkbox"
-                      className="h-4 w-4"
-                      checked={confirmArchive}
-                      onChange={(e) => setConfirmArchive(e.target.checked)}
-                    />
-                    <label htmlFor="confirm-archive" className="text-xs text-red-800">
-                      I understand these items will be archived.
-                    </label>
-                  </div>
+              {errorSummary.length > 0 && (
+                <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                  <p className="font-semibold">Row issues</p>
+                  <ul className="mt-1 list-disc space-y-1 pl-4">
+                    {errorSummary.map((e, idx) => (
+                      <li key={`${e.rowIndex}-${idx}`}>
+                        Row {e.rowIndex}: {e.reason}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {bulkPreview && (
+                <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+                  <p className="font-semibold">Bulk update preview</p>
+                  <p className="mt-1">Creates: {bulkPreview.willCreate || 0}</p>
+                  <p>Updates: {bulkPreview.willUpdate || 0}</p>
+                  <p>Archives: {bulkPreview.willArchive || 0}</p>
+                  {bulkPreview.willArchive > 0 && (
+                    <div className="mt-2 flex items-center space-x-2">
+                      <input
+                        id="confirm-archive"
+                        type="checkbox"
+                        className="h-4 w-4"
+                        checked={confirmArchive}
+                        onChange={(e) => setConfirmArchive(e.target.checked)}
+                      />
+                      <label htmlFor="confirm-archive" className="text-xs text-blue-900">
+                        I understand missing items will be archived.
+                      </label>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'bulk' && archiveCandidates.length > 0 && !bulkPreview && (
+                <div className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+                  {archiveCandidates.length} existing item(s) may be archived if omitted. Preview changes before applying.
                 </div>
               )}
 
@@ -528,7 +568,8 @@ export default function MenuCsvModal({ open, onClose, restaurantId, categories, 
 
             <div className="flex items-center justify-between border-t px-6 py-4">
               <div className="text-sm text-gray-600">
-                {rows.length > 0 && `${rows.length} row(s) ready. Validation must pass before import.`}
+                {validatedRows.length > 0 &&
+                  `${validatedRows.length} row(s) ready. Validation must pass before ${modeTitle.toLowerCase()}.`}
               </div>
               <div className="flex items-center gap-3">
                 <button
@@ -543,12 +584,10 @@ export default function MenuCsvModal({ open, onClose, restaurantId, categories, 
                   disabled={!readyToSubmit}
                   onClick={submit}
                   className={`rounded-lg px-4 py-2 text-sm font-semibold text-white ${
-                    readyToSubmit
-                      ? 'bg-teal-600 hover:bg-teal-700'
-                      : 'cursor-not-allowed bg-gray-400'
+                    readyToSubmit ? 'bg-teal-600 hover:bg-teal-700' : 'cursor-not-allowed bg-gray-400'
                   }`}
                 >
-                  {activeTab === 'import' ? 'Import menu' : 'Apply bulk update'}
+                  {importing ? 'Processing...' : primaryLabel}
                 </button>
               </div>
             </div>
