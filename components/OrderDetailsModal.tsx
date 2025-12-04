@@ -58,8 +58,6 @@ export default function OrderDetailsModal({ order, onClose, onUpdateStatus }: Pr
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const [showReject, setShowReject] = useState(false);
   const lastTap = useRef<number>(0);
-  const [showRejectTip, setShowRejectTip] = useState(false);
-  const tipTimeout = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (!order) return;
@@ -67,39 +65,12 @@ export default function OrderDetailsModal({ order, onClose, onUpdateStatus }: Pr
     document.body.style.overflow = 'hidden';
     return () => {
       document.body.style.overflow = original;
-      if (tipTimeout.current) {
-        clearTimeout(tipTimeout.current);
-        tipTimeout.current = null;
-      }
     };
   }, [order]);
 
   if (!order) return null;
 
   const kioskOrder = order.order_type === 'kiosk' || order.source === 'kiosk';
-  const actionLabel = order.status === 'pending' ? 'Reject' : 'Cancel';
-  const canRejectOrCancel =
-    !kioskOrder && !['completed', 'cancelled', 'rejected'].includes(order.status);
-
-  const handleRejectToggle = () => {
-    const now = Date.now();
-    if (now - lastTap.current < 500) {
-      setShowReject(true);
-      setShowRejectTip(false);
-      if (tipTimeout.current) {
-        clearTimeout(tipTimeout.current);
-        tipTimeout.current = null;
-      }
-    } else {
-      setShowRejectTip(true);
-      if (tipTimeout.current) clearTimeout(tipTimeout.current);
-      tipTimeout.current = setTimeout(() => {
-        setShowRejectTip(false);
-      }, 1500);
-    }
-    lastTap.current = now;
-  };
-
   return (
     <div
       ref={overlayRef}
@@ -227,24 +198,21 @@ export default function OrderDetailsModal({ order, onClose, onUpdateStatus }: Pr
                 </button>
               ) : null;
             })()}
-            {canRejectOrCancel && (
-              <>
-                <button
-                  type="button"
-                  onClick={handleRejectToggle}
-                  onDoubleClick={() => setShowReject(true)}
-                  className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
-                >
-                  {actionLabel}
-                </button>
-                <div
-                  className={`relative text-xs text-white ${showRejectTip ? 'opacity-100' : 'opacity-0'} transition-opacity duration-200`}
-                >
-                  <div className="absolute right-0 -top-2 translate-y-[-100%] bg-gray-900 rounded px-2 py-1 shadow">
-                    Double-tap to {actionLabel.toLowerCase()}
-                  </div>
-                </div>
-              </>
+            {!kioskOrder && order.status === 'pending' && (
+              <button
+                type="button"
+                onClick={() => {
+                  const now = Date.now();
+                  if (now - lastTap.current < 500) {
+                    setShowReject(true);
+                  }
+                  lastTap.current = now;
+                }}
+                onDoubleClick={() => setShowReject(true)}
+                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+              >
+                Reject
+              </button>
             )}
           </div>
         </div>
@@ -253,9 +221,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateStatus }: Pr
         order={order}
         show={showReject}
         onClose={() => setShowReject(false)}
-        onRejected={() =>
-          onUpdateStatus(order.id, order.status === 'pending' ? 'rejected' : 'cancelled')
-        }
+        onRejected={() => onUpdateStatus(order.id, 'cancelled')}
       />
     </div>
   );
