@@ -19,12 +19,14 @@ type ItemUpdate = {
   data: Record<string, any>;
 };
 
-const TAG_FIELDS: Record<string, keyof any> = {
+// Allowed tag fields on menu_items
+type TagFlagField = 'is_vegan' | 'is_vegetarian' | 'is_18_plus';
+
+// CSV tag → field mapping
+const TAG_FIELDS: Record<string, TagFlagField> = {
   vegan: 'is_vegan',
   vegetarian: 'is_vegetarian',
-  '18_plus': 'is_18_plus',
-  '18+': 'is_18_plus',
-  '18-plus': 'is_18_plus',
+  '18_plus': 'is_18_plus'
 };
 
 function normalizeTag(input: string) {
@@ -148,7 +150,11 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
   for (const row of parsed) {
     incomingNames.add(row.name.toLowerCase());
     const categoryId = await ensureCategory(row.category);
-    const tagFlags: Record<string, any> = {};
+    const tagFlags: Record<TagFlagField, boolean> = {
+      is_vegan: false,
+      is_vegetarian: false,
+      is_18_plus: false,
+    };
     row.tags.forEach((t) => {
       const field = TAG_FIELDS[t];
       if (field) tagFlags[field] = true;
