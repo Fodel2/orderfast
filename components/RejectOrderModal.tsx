@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { supabase } from '../utils/supabaseClient';
 import { Order } from './OrderDetailsModal';
 
@@ -6,7 +6,7 @@ interface Props {
   order: Order;
   show: boolean;
   onClose: () => void;
-  onRejected: () => void;
+  onRejected: (status: string) => void;
 }
 
 export default function RejectOrderModal({ order, show, onClose, onRejected }: Props) {
@@ -15,9 +15,6 @@ export default function RejectOrderModal({ order, show, onClose, onRejected }: P
   const [itemIds, setItemIds] = useState<Set<number>>(new Set());
   const [addonIds, setAddonIds] = useState<Set<number>>(new Set());
   const [saving, setSaving] = useState(false);
-  const [clickedOnce, setClickedOnce] = useState(false);
-  const [showTip, setShowTip] = useState(false);
-  const tipTimer = useRef<NodeJS.Timeout | null>(null);
 
   if (!show) return null;
 
@@ -46,35 +43,20 @@ export default function RejectOrderModal({ order, show, onClose, onRejected }: P
           await supabase.from('menu_items').update({ stock_status: 'out' }).eq('id', id);
         }
         for (const id of Array.from(addonIds)) {
-          await supabase.from('addon_items').update({ stock_status: 'out' }).eq('id', id);
+          await supabase.from('addon_options').update({ stock_status: 'out' }).eq('id', id);
         }
       }
-      await supabase.from('orders').update({ status: 'cancelled' }).eq('id', order.id);
+      const nextStatus = order.status === 'pending' ? 'rejected' : 'cancelled';
+      await supabase.from('orders').update({ status: nextStatus }).eq('id', order.id);
       await supabase.from('order_rejections').insert([
         { order_id: order.id, reason, message: message || null },
       ]);
-      onRejected();
+      onRejected(nextStatus);
     } catch (err) {
       console.error('Failed to reject order', err);
     } finally {
       setSaving(false);
       onClose();
-    }
-  };
-
-  const handleRejectClick = () => {
-    if (clickedOnce) {
-      if (tipTimer.current) clearTimeout(tipTimer.current);
-      setShowTip(false);
-      setClickedOnce(false);
-      handleConfirm();
-    } else {
-      setClickedOnce(true);
-      setShowTip(true);
-      tipTimer.current = setTimeout(() => {
-        setClickedOnce(false);
-        setShowTip(false);
-      }, 2500);
     }
   };
 
@@ -87,7 +69,9 @@ export default function RejectOrderModal({ order, show, onClose, onRejected }: P
         className="bg-white rounded-xl shadow-lg w-full max-w-sm sm:max-w-md overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="bg-gray-100 px-4 py-2 font-bold text-center">Reject Order</div>
+        <div className="bg-gray-100 px-4 py-2 font-bold text-center">
+          {order.status === 'pending' ? 'Reject Order' : 'Cancel Order'}
+        </div>
         <div className="p-4 space-y-4 text-sm">
           <div className="space-y-2 bg-gray-50 p-3 rounded">
             <p className="font-medium">Reason for rejecting</p>
@@ -158,21 +142,18 @@ export default function RejectOrderModal({ order, show, onClose, onRejected }: P
             </button>
             <button
               type="button"
-              onClick={handleRejectClick}
+              onClick={handleConfirm}
               className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 w-full sm:w-auto"
               disabled={saving}
             >
-              {saving ? 'Rejecting...' : 'Reject Order'}
+              {saving
+                ? order.status === 'pending'
+                  ? 'Rejecting...'
+                  : 'Cancelling...'
+                : order.status === 'pending'
+                ? 'Reject Order'
+                : 'Cancel Order'}
             </button>
-            <div
-              className={`absolute -top-8 right-0 text-xs transition-opacity duration-300 ${showTip ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-              role="tooltip"
-            >
-              <div className="relative bg-white rounded shadow px-2 py-1">
-                Double click to reject
-                <div className="absolute left-1/2 -bottom-1 w-2 h-2 bg-white rotate-45 shadow -translate-x-1/2"></div>
-              </div>
-            </div>
           </div>
         </div>
       </div>
