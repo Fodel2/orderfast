@@ -27,6 +27,7 @@ import MenuItemCard from '../../components/MenuItemCard';
 import DashboardLayout from '../../components/DashboardLayout';
 import AddonsTab from '../../components/AddonsTab';
 import StockTab, { StockTabProps } from '../../components/StockTab';
+import MenuCsvModal from '../../components/MenuCsvModal';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChevronDownIcon,
@@ -161,6 +162,7 @@ export default function MenuBuilder() {
   const [stockCategories, setStockCategories] = useState<StockTabProps['categories']>([]);
   const [stockAddons, setStockAddons] = useState<StockTabProps['addons']>([]);
   const [stockLoading, setStockLoading] = useState(false);
+  const [showCsvModal, setShowCsvModal] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const saveTimer = useRef<NodeJS.Timeout | null>(null);
   const saveAbort = useRef<AbortController | null>(null);
@@ -599,6 +601,14 @@ export default function MenuBuilder() {
     setLoading(false);
   };
 
+  const handleCsvImported = (message?: string) => {
+    if (restaurantId) {
+      fetchData(restaurantId);
+    }
+    setShowCsvModal(false);
+    setToastMessage(message || 'CSV import applied');
+  };
+
   const handleDeleteItem = async (id: number) => {
     if (!window.confirm('Delete this item?')) return;
     await supabase.from('menu_items').delete().eq('id', id);
@@ -792,6 +802,13 @@ export default function MenuBuilder() {
               className="flex items-center bg-red-600 text-white px-3 py-2 rounded-lg hover:bg-red-700"
             >
               Delete All
+            </button>
+            <button
+              onClick={() => setShowCsvModal(true)}
+              disabled={!restaurantId}
+              className="flex items-center bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700"
+            >
+              CSV Import / Bulk Update
             </button>
           </div>
           <button
@@ -1193,6 +1210,14 @@ export default function MenuBuilder() {
           }}
         />
       )}
+      <MenuCsvModal
+        open={showCsvModal}
+        onClose={() => setShowCsvModal(false)}
+        restaurantId={restaurantId}
+        categories={categories}
+        items={items}
+        onImported={handleCsvImported}
+      />
         {confirmState && (
           <ConfirmModal
             show={true}
