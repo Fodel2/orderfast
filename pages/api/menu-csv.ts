@@ -380,11 +380,23 @@ async function handlePost(req: NextApiRequest, res: NextApiResponse) {
     const summary = { created: 0, updated: 0, archived: 0 };
 
     if (inserts.length) {
-      const insertRes = await supaServer.from('menu_items').insert(inserts);
-      if (insertRes.error) {
-        return res.status(500).json({ ok: false, message: insertRes.error.message, details: insertRes.error.details });
+      for (const payload of inserts) {
+        const { error: upsertError } = await supaServer
+          .from('menu_items')
+          .upsert(payload, { onConflict: 'restaurant_id,external_key', ignoreDuplicates: false })
+          .select('id')
+          .single();
+
+        if (upsertError) {
+          const itemName = payload.name || 'item';
+          return res.status(400).json({
+            ok: false,
+            message: `Failed to upsert item "${itemName}": ${upsertError.message}`,
+            details: upsertError.details,
+          });
+        }
+        summary.created += 1;
       }
-      summary.created = inserts.length;
     }
 
     if (updates.length) {
