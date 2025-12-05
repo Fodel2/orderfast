@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { DndContext, PointerSensor, useSensor, useSensors, closestCenter, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -7,6 +7,90 @@ import { supabase } from '../utils/supabaseClient';
 import ConfirmModal from './ConfirmModal';
 import AddonGroupModal from './AddonGroupModal';
 import AssignAddonGroupModal from './AssignAddonGroupModal';
+
+type AddonOptionRowProps = {
+  groupId: string;
+  option: any;
+  index: number;
+  onSave: (gid: string, id: string, fields: any) => void;
+  onDelete: (gid: string, id: string) => void;
+};
+
+const AddonOptionRow = memo(function AddonOptionRow({
+  groupId,
+  option,
+  index,
+  onSave,
+  onDelete,
+}: AddonOptionRowProps) {
+  const [nameInput, setNameInput] = useState(option?.name || '');
+  const [priceDigits, setPriceDigits] = useState(
+    typeof option?.price === 'number' ? String(option.price) : String(option?.price ?? 0)
+  );
+
+  useEffect(() => {
+    setNameInput(option?.name || '');
+    setPriceDigits(typeof option?.price === 'number' ? String(option.price) : String(option?.price ?? 0));
+  }, [option?.id, option?.name, option?.price]);
+
+  const displayPrice = useMemo(() => {
+    const cents = parseInt(priceDigits || '0', 10);
+    return Number.isNaN(cents) ? '0.00' : (cents / 100).toFixed(2);
+  }, [priceDigits]);
+
+  const handleNameBlur = useCallback(() => {
+    const trimmed = nameInput.trim();
+    if (trimmed === (option?.name || '')) return;
+    onSave(groupId, option.id, { name: trimmed });
+  }, [groupId, nameInput, onSave, option?.id, option?.name]);
+
+  const handlePriceBlur = useCallback(() => {
+    const cents = parseInt(priceDigits || '0', 10) || 0;
+    if (typeof option?.price === 'number' && option.price === cents) return;
+    setPriceDigits(String(cents));
+    onSave(groupId, option.id, { price: cents });
+  }, [groupId, onSave, option?.id, option?.price, priceDigits]);
+
+  return (
+    <div className="flex items-end space-x-2 border-b py-1">
+      <label className="flex-1 text-sm">
+        {index === 0 && <span className="text-xs font-semibold">Addon Name</span>}
+        <input
+          type="text"
+          value={nameInput}
+          onChange={(e) => setNameInput(e.target.value)}
+          onBlur={handleNameBlur}
+          className="w-full border border-gray-300 rounded p-1 text-sm"
+        />
+      </label>
+      <label className="w-24 text-sm">
+        {index === 0 && <span className="text-xs font-semibold">Price</span>}
+        <div className="relative">
+          <span className="absolute left-1 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+          <input
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            value={displayPrice}
+            onChange={(e) => {
+              const digits = e.target.value.replace(/[^0-9]/g, '');
+              setPriceDigits(digits);
+            }}
+            onBlur={handlePriceBlur}
+            className="w-full border border-gray-300 rounded p-1 pl-4 text-sm appearance-none"
+          />
+        </div>
+      </label>
+      <button
+        onClick={() => onDelete(groupId, option.id)}
+        className="p-1 rounded hover:bg-red-100"
+        aria-label="Delete option"
+      >
+        <TrashIcon className="w-4 h-4 text-red-600" />
+      </button>
+    </div>
+  );
+});
 
 function SortableOption({ id, children }: { id: string; children: React.ReactNode }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
@@ -28,7 +112,6 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
   const [groups, setGroups] = useState<any[]>([]);
   const [options, setOptions] = useState<Record<string, any[]>>({});
-  const [priceInputs, setPriceInputs] = useState<Record<string, string>>({});
   const [showModal, setShowModal] = useState(false);
   const [editingGroup, setEditingGroup] = useState<any | null>(null);
   const [confirmDel, setConfirmDel] = useState<any | null>(null);
@@ -82,7 +165,6 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
           console.error('[addons-tab:load:groups]', draftError.message);
           setGroups([]);
           setOptions({});
-          setPriceInputs({});
           setAssignments({});
           return;
         }
@@ -97,7 +179,6 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
           }
           setGroups([]);
           setOptions({});
-          setPriceInputs({});
           setAssignments({});
           return;
         }
@@ -121,7 +202,6 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
           .is('archived_at', null);
 
         const optionsMap: Record<string, any[]> = {};
-        const priceMap: Record<string, string> = {};
         normalizedGroups.forEach((group) => {
           optionsMap[group.id] = [];
         });
@@ -136,12 +216,10 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
               optionsMap[groupId] = [];
             }
             optionsMap[groupId].push(normalizedOption);
-            priceMap[String(opt.id)] = String(opt.price ?? 0);
           });
         }
 
         setOptions(optionsMap);
-        setPriceInputs(priceMap);
 
         const [{ data: links, error: linksError }, { data: itemsData, error: itemsError }, { data: cats, error: catsError }] =
           await Promise.all([
@@ -222,7 +300,6 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
         console.error('[addons-tab:load:error]', error);
         setGroups([]);
         setOptions({});
-        setPriceInputs({});
         setAssignments({});
         setItems([]);
         setCategories([]);
@@ -254,6 +331,24 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
       .filter(Boolean)
       .map((item: any) => item.id);
   }, [assignModalGroup, assignments, itemsByExternalKey]);
+
+  const assignmentSummaries = useMemo(() => {
+    const summaryMap: Record<string, string> = {};
+    groups.forEach((group) => {
+      const assignedKeys = assignments[group.id] || [];
+      const assignedItems = assignedKeys
+        .map((key) => itemsByExternalKey.get(key))
+        .filter(Boolean) as any[];
+      const itemCount = assignedItems.length;
+      const categoryCount = new Set(
+        assignedItems.map((item) => item.category_id || 'uncategorized')
+      ).size;
+      summaryMap[group.id] = itemCount
+        ? `Assigned: ${categoryCount} categories · ${itemCount} items`
+        : 'Not assigned';
+    });
+    return summaryMap;
+  }, [assignments, groups, itemsByExternalKey]);
 
   const handleAssignmentsSaved = (groupId: string, itemIds: string[], externalKeyMap: Record<string, string>) => {
     const keyByItemId: Record<string, string> = {};
@@ -307,7 +402,6 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
       const groupId = String(data.group_id ?? gid);
       const normalized = { ...data, id: optionId, group_id: groupId };
       setOptions((prev) => ({ ...prev, [groupId]: [...(prev[groupId] || []), normalized] }));
-      setPriceInputs((prev) => ({ ...prev, [optionId]: '0' }));
     }
   };
 
@@ -327,9 +421,6 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
       ...prev,
       [gid]: (prev[gid] || []).map((o) => (o.id === id ? { ...o, ...fields } : o)),
     }));
-    if (fields.price !== undefined) {
-      setPriceInputs((p) => ({ ...p, [id]: String(fields.price) }));
-    }
   };
 
   const deleteOption = async (gid: string, id: string) => {
@@ -345,11 +436,6 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
     }
 
     setOptions((prev) => ({ ...prev, [gid]: (prev[gid] || []).filter((o) => o.id !== id) }));
-    setPriceInputs((prev) => {
-      const copy = { ...prev };
-      delete copy[id];
-      return copy;
-    });
   };
 
   const handleDragEnd = (gid: string) => ({ active, over }: DragEndEvent) => {
@@ -445,20 +531,7 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
                 {g.multiple_choice ? 'Multiple Choice' : 'Single Choice'}
                 {g.required ? ' · Required' : ''}
               </p>
-              <p className="text-[11px] font-medium text-gray-600">
-                {(() => {
-                  const assignedKeys = assignments[g.id] || [];
-                  const assignedItems = assignedKeys
-                    .map((key) => itemsByExternalKey.get(key))
-                    .filter(Boolean) as any[];
-                  const itemCount = assignedItems.length;
-                  const categoryCount = new Set(
-                    assignedItems.map((item) => item.category_id || 'uncategorized')
-                  ).size;
-                  if (!itemCount) return 'Not assigned';
-                  return `Assigned: ${categoryCount} categories · ${itemCount} items`;
-                })()}
-              </p>
+              <p className="text-[11px] font-medium text-gray-600">{assignmentSummaries[g.id] || 'Not assigned'}</p>
             </div>
             <div className="flex space-x-2">
               <button
@@ -484,53 +557,13 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
               <SortableContext items={(options[g.id] || []).map((o) => o.id)} strategy={verticalListSortingStrategy}>
                 {(options[g.id] || []).map((o, idx) => (
                   <SortableOption key={o.id} id={o.id}>
-                    <div className="flex items-end space-x-2 border-b py-1">
-                      <label className="flex-1 text-sm">
-                        {idx === 0 && (
-                          <span className="text-xs font-semibold">Addon Name</span>
-                        )}
-                        <input
-                          type="text"
-                          value={o.name}
-                          onChange={(e) =>
-                            updateOption(g.id, o.id, { name: e.target.value })
-                          }
-                          className="w-full border border-gray-300 rounded p-1 text-sm"
-                        />
-                      </label>
-                      <label className="w-24 text-sm">
-                        {idx === 0 && (
-                          <span className="text-xs font-semibold">Price</span>
-                        )}
-                        <div className="relative">
-                          <span className="absolute left-1 top-1/2 -translate-y-1/2 text-gray-500">
-                            $
-                          </span>
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            pattern="[0-9]*"
-                            value={(
-                              parseInt(priceInputs[o.id] ?? String(o.price ?? 0), 10) /
-                              100
-                            ).toFixed(2)}
-                            onChange={(e) => {
-                              const digits = e.target.value.replace(/[^0-9]/g, '');
-                              updateOption(g.id, o.id, { price: parseInt(digits || '0', 10) });
-                              setPriceInputs((prev) => ({ ...prev, [o.id]: digits }));
-                            }}
-                            className="w-full border border-gray-300 rounded p-1 pl-4 text-sm appearance-none"
-                          />
-                        </div>
-                      </label>
-                      <button
-                        onClick={() => deleteOption(g.id, o.id)}
-                        className="p-1 rounded hover:bg-red-100"
-                        aria-label="Delete option"
-                      >
-                        <TrashIcon className="w-4 h-4 text-red-600" />
-                      </button>
-                    </div>
+                    <AddonOptionRow
+                      groupId={g.id}
+                      option={o}
+                      index={idx}
+                      onSave={updateOption}
+                      onDelete={deleteOption}
+                    />
                   </SortableOption>
                 ))}
               </SortableContext>

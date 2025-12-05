@@ -116,7 +116,10 @@ export default function AssignAddonGroupModal({
 
   if (!show) return null;
 
-  const itemsForCategory = activeCategoryId ? groupedItems[activeCategoryId] || [] : [];
+  const itemsForCategory = useMemo(
+    () => (activeCategoryId ? groupedItems[activeCategoryId] || [] : []),
+    [activeCategoryId, groupedItems]
+  );
 
   const toggleCategory = (catId: string, isChecked: boolean) => {
     const updated = new Set(selectedItems);
