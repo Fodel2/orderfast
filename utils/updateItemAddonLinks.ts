@@ -1,6 +1,6 @@
 import { supabase } from './supabaseClient';
 
-async function ensureItemExternalKey(itemId: string) {
+export async function ensureItemExternalKey(itemId: string) {
   const { data, error } = await supabase
     .from('menu_items')
     .select('restaurant_id, external_key')
