@@ -188,10 +188,10 @@ export default function AssignAddonGroupModal({
   return (
     <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/60 px-4 py-8" onClick={onClose}>
       <div
-        className="relative w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-2xl"
+        className="relative flex w-full max-w-5xl max-h-[90vh] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b px-6 py-4">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white px-6 py-4 shadow-sm">
           <div>
             <p className="text-xs uppercase tracking-wide text-gray-400">Assign Add-on Group</p>
             <h3 className="text-xl font-semibold text-gray-900">Choose where this group appears</h3>
@@ -205,70 +205,72 @@ export default function AssignAddonGroupModal({
           </button>
         </div>
 
-        <div className="grid gap-4 px-6 py-5 md:grid-cols-[280px_1fr] md:gap-6">
-          <div className="rounded-2xl border border-gray-100 bg-gray-50 p-3 shadow-inner">
-            <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Categories</p>
-            <div className="divide-y divide-gray-100 overflow-y-auto rounded-xl bg-white shadow-sm max-h-[420px]">
-              {categoryStates.map((cat) => (
-                <CategoryCheckbox
-                  key={cat.id}
-                  id={cat.id}
-                  label={cat.name}
-                  checked={cat.allSelected}
-                  indeterminate={cat.partiallySelected}
-                  onChange={(checked) => toggleCategory(cat.id, checked)}
-                  onClick={() => setActiveCategoryId(cat.id)}
-                />
-              ))}
-              {!categoryStates.length && (
-                <div className="px-4 py-6 text-center text-sm text-gray-500">No categories available</div>
-              )}
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          <div className="grid gap-4 md:grid-cols-[280px_1fr] md:gap-6">
+            <div className="rounded-2xl border border-gray-100 bg-gray-50 p-3 shadow-inner">
+              <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Categories</p>
+              <div className="divide-y divide-gray-100 overflow-y-auto rounded-xl bg-white shadow-sm max-h-[420px]">
+                {categoryStates.map((cat) => (
+                  <CategoryCheckbox
+                    key={cat.id}
+                    id={cat.id}
+                    label={cat.name}
+                    checked={cat.allSelected}
+                    indeterminate={cat.partiallySelected}
+                    onChange={(checked) => toggleCategory(cat.id, checked)}
+                    onClick={() => setActiveCategoryId(cat.id)}
+                  />
+                ))}
+                {!categoryStates.length && (
+                  <div className="px-4 py-6 text-center text-sm text-gray-500">No categories available</div>
+                )}
+              </div>
             </div>
-          </div>
 
-          <div className="flex min-h-[360px] flex-col rounded-2xl border border-gray-100 bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b px-4 py-3">
-              <div>
-                <p className="text-xs uppercase tracking-wide text-gray-400">Items</p>
-                <h4 className="text-sm font-semibold text-gray-900">
-                  {categoriesWithFallback.find((c) => c.id === activeCategoryId)?.name || 'Select a category'}
-                </h4>
-              </div>
-              <div className="flex items-center gap-3 text-sm font-medium text-teal-700">
-                <button type="button" onClick={selectAllItems} className="hover:underline">Select All</button>
-                <span className="text-gray-300">|</span>
-                <button type="button" onClick={deselectAllItems} className="hover:underline">Deselect All</button>
-              </div>
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              {itemsForCategory.length ? (
-                <ul className="divide-y divide-gray-100">
-                  {itemsForCategory.map((item) => (
-                    <li key={item.id} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50">
-                      <div className="flex items-center gap-3">
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
-                          checked={selectedItems.has(item.id)}
-                          onChange={(e) => toggleItem(item.id, e.target.checked)}
-                        />
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">{item.name}</p>
-                        </div>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <div className="flex h-full items-center justify-center px-4 py-6 text-sm text-gray-500">
-                  No items in this category
+            <div className="flex min-h-[360px] flex-col rounded-2xl border border-gray-100 bg-white shadow-sm">
+              <div className="flex items-center justify-between border-b px-4 py-3">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-gray-400">Items</p>
+                  <h4 className="text-sm font-semibold text-gray-900">
+                    {categoriesWithFallback.find((c) => c.id === activeCategoryId)?.name || 'Select a category'}
+                  </h4>
                 </div>
-              )}
+                <div className="flex items-center gap-3 text-sm font-medium text-teal-700">
+                  <button type="button" onClick={selectAllItems} className="hover:underline">Select All</button>
+                  <span className="text-gray-300">|</span>
+                  <button type="button" onClick={deselectAllItems} className="hover:underline">Deselect All</button>
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                {itemsForCategory.length ? (
+                  <ul className="divide-y divide-gray-100">
+                    {itemsForCategory.map((item) => (
+                      <li key={item.id} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50">
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                            checked={selectedItems.has(item.id)}
+                            onChange={(e) => toggleItem(item.id, e.target.checked)}
+                          />
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">{item.name}</p>
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="flex h-full items-center justify-center px-4 py-6 text-sm text-gray-500">
+                    No items in this category
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="sticky bottom-0 flex items-center justify-between gap-3 border-t bg-white px-6 py-4">
+        <div className="sticky bottom-0 z-10 flex items-center justify-between gap-3 border-t bg-white px-6 py-4 shadow-[0_-2px_8px_rgba(0,0,0,0.04)]">
           <button
             type="button"
             onClick={onClose}
