@@ -218,7 +218,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               'id,restaurant_id,name,multiple_choice,required,max_group_select,max_option_quantity,state,archived_at'
             )
             .eq('restaurant_id', restaurantId)
-            .eq('state', 'draft')
             .is('archived_at', null)
             .order('id', { ascending: true })
             .order('name', { ascending: true });
@@ -227,7 +226,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             throw groupsResponse.error;
           }
 
-          const rawGroups = groupsResponse.data ?? [];
+          let rawGroups = groupsResponse.data ?? [];
+
+          if (rawGroups.length === 0) {
+            const liveGroupsResponse = await supabase
+              .from('addon_groups')
+              .select(
+                'id,restaurant_id,name,multiple_choice,required,max_group_select,max_option_quantity,archived_at'
+              )
+              .eq('restaurant_id', restaurantId)
+              .is('archived_at', null)
+              .order('id', { ascending: true })
+              .order('name', { ascending: true });
+
+            if (liveGroupsResponse.error) {
+              throw liveGroupsResponse.error;
+            }
+
+            rawGroups = liveGroupsResponse.data ?? [];
+          }
           const groupIds = rawGroups.map((group) => group.id).filter(Boolean);
           const optionMap = new Map<string, any[]>();
 
@@ -238,14 +255,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at,state,archived_at'
               )
               .in('group_id', groupIds)
-              .eq('state', 'draft')
               .is('archived_at', null);
 
             if (optionsResponse.error) {
               throw optionsResponse.error;
             }
 
-            for (const option of optionsResponse.data ?? []) {
+            let optionRows = optionsResponse.data ?? [];
+
+            if (optionRows.length === 0) {
+              const liveOptionsResponse = await supabase
+                .from('addon_options')
+                .select(
+                  'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at,archived_at'
+                )
+                .in('group_id', groupIds)
+                .is('archived_at', null);
+
+              if (liveOptionsResponse.error) {
+                throw liveOptionsResponse.error;
+              }
+
+              optionRows = liveOptionsResponse.data ?? [];
+            }
+
+            for (const option of optionRows) {
               const groupId = option.group_id ? String(option.group_id) : '';
               if (!groupId) continue;
               if (!optionMap.has(groupId)) optionMap.set(groupId, []);
