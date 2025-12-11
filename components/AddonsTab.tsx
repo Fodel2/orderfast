@@ -2,7 +2,15 @@ import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { DndContext, PointerSensor, useSensor, useSensors, closestCenter, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { TrashIcon, PencilSquareIcon, DocumentDuplicateIcon, PlusCircleIcon, LinkIcon } from '@heroicons/react/24/outline';
+import {
+  TrashIcon,
+  PencilSquareIcon,
+  DocumentDuplicateIcon,
+  PlusCircleIcon,
+  LinkIcon,
+  ChevronUpIcon,
+  ChevronDownIcon,
+} from '@heroicons/react/24/outline';
 import { supabase } from '../utils/supabaseClient';
 import ConfirmModal from './ConfirmModal';
 import AddonGroupModal from './AddonGroupModal';
@@ -14,6 +22,7 @@ type AddonOptionRowProps = {
   index: number;
   onSave: (gid: string, id: string, fields: any) => void;
   onDelete: (gid: string, id: string) => void;
+  dragHandleProps?: { attributes: any; listeners: any };
 };
 
 const AddonOptionRow = memo(function AddonOptionRow({
@@ -22,6 +31,7 @@ const AddonOptionRow = memo(function AddonOptionRow({
   index,
   onSave,
   onDelete,
+  dragHandleProps,
 }: AddonOptionRowProps) {
   const [nameInput, setNameInput] = useState(option?.name || '');
   const [priceDigits, setPriceDigits] = useState(
@@ -53,6 +63,13 @@ const AddonOptionRow = memo(function AddonOptionRow({
 
   return (
     <div className="flex items-end space-x-2 border-b py-1">
+      <span
+        {...(dragHandleProps?.attributes || {})}
+        {...(dragHandleProps?.listeners || {})}
+        className="cursor-grab active:cursor-grabbing select-none touch-none text-gray-400"
+      >
+        ☰
+      </span>
       <label className="flex-1 text-sm">
         {index === 0 && <span className="text-xs font-semibold">Addon Name</span>}
         <input
@@ -99,13 +116,31 @@ function SortableOption({ id, children }: { id: string; children: React.ReactNod
     transition,
     opacity: isDragging ? 0.6 : undefined,
     background: isDragging ? '#f0f0f0' : undefined,
-    cursor: 'grab',
   } as React.CSSProperties;
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      {children}
+    <div ref={setNodeRef} style={style}>
+      {typeof children === 'function'
+        ? (children as any)({ attributes, listeners })
+        : children}
     </div>
   );
+}
+
+function SortableGroup({
+  id,
+  children,
+}: {
+  id: string;
+  children: (args: { attributes: any; listeners: any; setNodeRef: any; style: React.CSSProperties }) => React.ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : undefined,
+    background: isDragging ? '#f0f0f0' : undefined,
+  } as React.CSSProperties;
+  return <>{children({ attributes, listeners, setNodeRef, style })}</>;
 }
 
 export default function AddonsTab({ restaurantId }: { restaurantId: number | string }) {
@@ -119,6 +154,7 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
   const [categories, setCategories] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
   const [assignModalGroup, setAssignModalGroup] = useState<any | null>(null);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   const restaurantKey = String(restaurantId);
 
@@ -153,11 +189,12 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
         const { data: draftGroups, error: draftError } = await supabase
           .from('addon_groups_drafts')
           .select(
-            'id,restaurant_id,name,multiple_choice,required,max_group_select,max_option_quantity,archived_at,state'
+            'id,restaurant_id,name,multiple_choice,required,max_group_select,max_option_quantity,archived_at,state,sort_order'
           )
           .eq('restaurant_id', restaurantKey)
           .eq('state', 'draft')
           .is('archived_at', null)
+          .order('sort_order', { ascending: true, nullsFirst: true })
           .order('id', { ascending: true })
           .order('name', { ascending: true });
 
@@ -188,18 +225,22 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
           id: String(group.id),
         }));
 
-        setGroups(normalizedGroups);
+        const sortedGroups = [...normalizedGroups].sort(
+          (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
+        );
 
         const groupIds = normalizedGroups.map((group) => group.id);
         const { data: draftOptions, error: optionsError } = await supabase
           .from('addon_options_drafts')
           .select(
-            'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at,archived_at,state'
+            'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at,archived_at,state,sort_order'
           )
           .eq('restaurant_id', restaurantKey)
           .in('group_id', groupIds)
           .eq('state', 'draft')
-          .is('archived_at', null);
+          .is('archived_at', null)
+          .order('sort_order', { ascending: true, nullsFirst: true })
+          .order('id', { ascending: true });
 
         const optionsMap: Record<string, any[]> = {};
         normalizedGroups.forEach((group) => {
@@ -219,6 +260,13 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
           });
         }
 
+        Object.keys(optionsMap).forEach((gid) => {
+          optionsMap[gid] = (optionsMap[gid] || []).sort(
+            (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
+          );
+        });
+
+        setGroups(sortedGroups);
         setOptions(optionsMap);
 
         const [{ data: links, error: linksError }, { data: itemsData, error: itemsError }, { data: cats, error: catsError }] =
@@ -313,6 +361,12 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
     load();
   }, [load, restaurantKey]);
 
+  const sortedGroups = useMemo(
+    () =>
+      [...groups].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
+    [groups]
+  );
+
   const itemsByExternalKey = useMemo(() => {
     const map = new Map<string, any>();
     items.forEach((item) => {
@@ -385,10 +439,11 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
           available: true,
           archived_at: null,
           state: 'draft',
+          sort_order: (options[gid]?.length ?? 0),
         },
       ])
       .select(
-        'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at'
+        'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at,sort_order'
       )
       .single();
 
@@ -401,7 +456,12 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
       const optionId = String(data.id);
       const groupId = String(data.group_id ?? gid);
       const normalized = { ...data, id: optionId, group_id: groupId };
-      setOptions((prev) => ({ ...prev, [groupId]: [...(prev[groupId] || []), normalized] }));
+      setOptions((prev) => {
+        const next = [...(prev[groupId] || []), normalized].sort(
+          (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
+        );
+        return { ...prev, [groupId]: next };
+      });
     }
   };
 
@@ -438,15 +498,76 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
     setOptions((prev) => ({ ...prev, [gid]: (prev[gid] || []).filter((o) => o.id !== id) }));
   };
 
+  const persistOptionOrder = useCallback(
+    async (gid: string, opts: any[]) => {
+      await Promise.all(
+        opts.map((opt, idx) =>
+          supabase
+            .from('addon_options_drafts')
+            .update({ sort_order: idx })
+            .eq('id', opt.id)
+            .eq('restaurant_id', restaurantKey)
+        )
+      );
+    },
+    [restaurantKey]
+  );
+
+  const persistGroupOrder = useCallback(
+    async (orderedGroups: any[]) => {
+      await Promise.all(
+        orderedGroups.map((group, idx) =>
+          supabase
+            .from('addon_groups_drafts')
+            .update({ sort_order: idx })
+            .eq('id', group.id)
+            .eq('restaurant_id', restaurantKey)
+        )
+      );
+    },
+    [restaurantKey]
+  );
+
+  const handleGroupDragEnd = ({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id) return;
+    setGroups((prev) => {
+      const oldIndex = prev.findIndex((g) => g.id === active.id);
+      const newIndex = prev.findIndex((g) => g.id === over.id);
+      const reordered = arrayMove(prev, oldIndex, newIndex).map((g, idx) => ({
+        ...g,
+        sort_order: idx,
+      }));
+      persistGroupOrder(reordered);
+      return reordered;
+    });
+  };
+
   const handleDragEnd = (gid: string) => ({ active, over }: DragEndEvent) => {
     if (!over || active.id === over.id) return;
     setOptions((prev) => {
-      const arr = prev[gid] || [];
+      const arr = (prev[gid] || []).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
       const oldIndex = arr.findIndex((o) => o.id === active.id);
       const newIndex = arr.findIndex((o) => o.id === over.id);
-      return { ...prev, [gid]: arrayMove(arr, oldIndex, newIndex) };
+      const reordered = arrayMove(arr, oldIndex, newIndex).map((opt, idx) => ({
+        ...opt,
+        sort_order: idx,
+      }));
+      persistOptionOrder(gid, reordered);
+      return { ...prev, [gid]: reordered };
     });
   };
+
+  const toggleCollapse = useCallback((gid: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(gid)) {
+        next.delete(gid);
+      } else {
+        next.add(gid);
+      }
+      return next;
+    });
+  }, []);
 
   const duplicateGroup = async (g: any) => {
     const { data: newGroup } = await supabase
@@ -470,7 +591,7 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
       const groupOpts = options[String(g.id)] || [];
       if (groupOpts.length) {
         await supabase.from('addon_options_drafts').insert(
-          groupOpts.map((o) => ({
+          groupOpts.map((o, idx) => ({
             name: o.name,
             price: o.price,
             available: o.available,
@@ -482,6 +603,7 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
             restaurant_id: restaurantKey,
             archived_at: null,
             state: 'draft',
+            sort_order: idx,
           }))
         );
       }
@@ -522,58 +644,111 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
           <PlusCircleIcon className="w-5 h-5 mr-1" /> Add Category
         </button>
       </div>
-      {groups.map((g) => (
-        <div key={g.id} className="bg-white rounded-xl shadow mb-4">
-          <div className="flex justify-between p-4">
-            <div className="space-y-1">
-              <h3 className="font-semibold">{g.name}</h3>
-              <p className="text-xs text-gray-500">
-                {g.multiple_choice ? 'Multiple Choice' : 'Single Choice'}
-                {g.required ? ' · Required' : ''}
-              </p>
-              <p className="text-[11px] font-medium text-gray-600">{assignmentSummaries[g.id] || 'Not assigned'}</p>
-            </div>
-            <div className="flex space-x-2">
-              <button
-                onClick={() => setAssignModalGroup(g)}
-                className="p-2 rounded hover:bg-gray-100"
-                aria-label="Assign add-ons"
-              >
-                <LinkIcon className="w-5 h-5" />
-              </button>
-              <button onClick={() => { setEditingGroup(g); setShowModal(true); }} className="p-2 rounded hover:bg-gray-100" aria-label="Edit">
-                <PencilSquareIcon className="w-5 h-5" />
-              </button>
-              <button onClick={() => duplicateGroup(g)} className="p-2 rounded hover:bg-gray-100" aria-label="Duplicate">
-                <DocumentDuplicateIcon className="w-5 h-5" />
-              </button>
-              <button onClick={() => setConfirmDel(g)} className="p-2 rounded hover:bg-gray-100" aria-label="Delete">
-                <TrashIcon className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-          <div className="p-4 pt-0">
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd(g.id)}>
-              <SortableContext items={(options[g.id] || []).map((o) => o.id)} strategy={verticalListSortingStrategy}>
-                {(options[g.id] || []).map((o, idx) => (
-                  <SortableOption key={o.id} id={o.id}>
-                    <AddonOptionRow
-                      groupId={g.id}
-                      option={o}
-                      index={idx}
-                      onSave={updateOption}
-                      onDelete={deleteOption}
-                    />
-                  </SortableOption>
-                ))}
-              </SortableContext>
-            </DndContext>
-            <button onClick={() => addOption(g.id)} className="mt-2 flex items-center text-sm text-teal-600 hover:underline">
-              <PlusCircleIcon className="w-4 h-4 mr-1" /> Add Item
-            </button>
-          </div>
-        </div>
-      ))}
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleGroupDragEnd}>
+        <SortableContext items={sortedGroups.map((g) => g.id)} strategy={verticalListSortingStrategy}>
+          {sortedGroups.map((g) => (
+            <SortableGroup key={g.id} id={g.id}>
+              {({ attributes, listeners, setNodeRef, style }) => (
+                <div ref={setNodeRef} style={style} className="bg-white rounded-xl shadow mb-4">
+                  <div className="flex justify-between p-4">
+                    <div className="flex items-start space-x-3">
+                      <span
+                        {...attributes}
+                        {...listeners}
+                        className="cursor-grab active:cursor-grabbing select-none touch-none text-gray-400"
+                      >
+                        ☰
+                      </span>
+                      <div className="space-y-1">
+                        <h3 className="font-semibold">{g.name}</h3>
+                        <p className="text-xs text-gray-500">
+                          {g.multiple_choice ? 'Multiple Choice' : 'Single Choice'}
+                          {g.required ? ' · Required' : ''}
+                        </p>
+                        <p className="text-[11px] font-medium text-gray-600">{assignmentSummaries[g.id] || 'Not assigned'}</p>
+                      </div>
+                    </div>
+                    <div className="flex space-x-2 items-start">
+                      <button
+                        onClick={() => toggleCollapse(g.id)}
+                        className="p-2 rounded hover:bg-gray-100"
+                        aria-label="Toggle add-ons"
+                        onPointerDown={(e) => e.stopPropagation()}
+                      >
+                        {collapsedGroups.has(g.id) ? (
+                          <ChevronDownIcon className="w-5 h-5" />
+                        ) : (
+                          <ChevronUpIcon className="w-5 h-5" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => setAssignModalGroup(g)}
+                        className="p-2 rounded hover:bg-gray-100"
+                        aria-label="Assign add-ons"
+                        onPointerDown={(e) => e.stopPropagation()}
+                      >
+                        <LinkIcon className="w-5 h-5" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEditingGroup(g);
+                          setShowModal(true);
+                        }}
+                        className="p-2 rounded hover:bg-gray-100"
+                        aria-label="Edit"
+                        onPointerDown={(e) => e.stopPropagation()}
+                      >
+                        <PencilSquareIcon className="w-5 h-5" />
+                      </button>
+                      <button
+                        onClick={() => duplicateGroup(g)}
+                        className="p-2 rounded hover:bg-gray-100"
+                        aria-label="Duplicate"
+                        onPointerDown={(e) => e.stopPropagation()}
+                      >
+                        <DocumentDuplicateIcon className="w-5 h-5" />
+                      </button>
+                      <button
+                        onClick={() => setConfirmDel(g)}
+                        className="p-2 rounded hover:bg-gray-100"
+                        aria-label="Delete"
+                        onPointerDown={(e) => e.stopPropagation()}
+                      >
+                        <TrashIcon className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </div>
+                  {!collapsedGroups.has(g.id) && (
+                    <div className="p-4 pt-0">
+                      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd(g.id)}>
+                        <SortableContext items={(options[g.id] || []).map((o) => o.id)} strategy={verticalListSortingStrategy}>
+                          {(options[g.id] || []).map((o, idx) => (
+                            <SortableOption key={o.id} id={o.id}>
+                              {({ attributes: optAttr, listeners: optListeners }) => (
+                                <AddonOptionRow
+                                  groupId={g.id}
+                                  option={o}
+                                  index={idx}
+                                  onSave={updateOption}
+                                  onDelete={deleteOption}
+                                  dragHandleProps={{ attributes: optAttr, listeners: optListeners }}
+                                />
+                              )}
+                            </SortableOption>
+                          ))}
+                        </SortableContext>
+                      </DndContext>
+                      <button onClick={() => addOption(g.id)} className="mt-2 flex items-center text-sm text-teal-600 hover:underline">
+                        <PlusCircleIcon className="w-4 h-4 mr-1" /> Add Item
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </SortableGroup>
+          ))}
+        </SortableContext>
+      </DndContext>
       {showModal && (
         <AddonGroupModal
           show={showModal}
