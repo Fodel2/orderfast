@@ -9,6 +9,7 @@ import {
   PlusCircleIcon,
   LinkIcon,
   ChevronUpIcon,
+  ChevronDownIcon,
 } from '@heroicons/react/24/outline';
 import { toast } from './ui/toast';
 import { supabase } from '../utils/supabaseClient';
@@ -507,14 +508,21 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
 
   const persistOptionOrder = useCallback(
     async (gid: string, opts: any[], previous: any[]) => {
-      const { error } = await supabase
-        .from('addon_options_drafts')
-        .upsert(
-          opts.map((opt, idx) => ({ id: opt.id, sort_order: idx, restaurant_id: restaurantKey })),
-          { onConflict: 'id' }
-        );
-      if (error) {
-        console.error('[addons-tab:option-order]', error.message);
+      const updates = opts.map((opt, idx) => ({ id: opt.id, sort_order: idx }));
+      const firstError = (
+        await Promise.all(
+          updates.map((row) =>
+            supabase
+              .from('addon_options_drafts')
+              .update({ sort_order: row.sort_order })
+              .eq('id', row.id)
+              .eq('restaurant_id', restaurantKey)
+          )
+        )
+      ).find((res) => res.error)?.error;
+
+      if (firstError) {
+        console.error('[addons-tab:option-order]', firstError.message);
         setOptions((prev) => ({ ...prev, [gid]: previous }));
         toast.error('Could not save add-on item order');
       }
@@ -524,14 +532,21 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
 
   const persistGroupOrder = useCallback(
     async (orderedGroups: any[], previous: any[]) => {
-      const { error } = await supabase
-        .from('addon_groups_drafts')
-        .upsert(
-          orderedGroups.map((group, idx) => ({ id: group.id, sort_order: idx, restaurant_id: restaurantKey })),
-          { onConflict: 'id' }
-        );
-      if (error) {
-        console.error('[addons-tab:group-order]', error.message);
+      const updates = orderedGroups.map((group, idx) => ({ id: group.id, sort_order: idx }));
+      const firstError = (
+        await Promise.all(
+          updates.map((row) =>
+            supabase
+              .from('addon_groups_drafts')
+              .update({ sort_order: row.sort_order })
+              .eq('id', row.id)
+              .eq('restaurant_id', restaurantKey)
+          )
+        )
+      ).find((res) => res.error)?.error;
+
+      if (firstError) {
+        console.error('[addons-tab:group-order]', firstError.message);
         setGroups(previous);
         toast.error('Could not save category order');
       }
@@ -661,18 +676,7 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
             <SortableGroup key={g.id} id={g.id}>
               {({ attributes, listeners, setNodeRef, style }) => (
                 <div ref={setNodeRef} style={style} className="bg-white rounded-xl shadow mb-4">
-                  <div
-                    className="flex justify-between p-4 cursor-pointer select-none"
-                    onClick={() => toggleCollapse(g.id)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        toggleCollapse(g.id);
-                      }
-                    }}
-                  >
+                  <div className="flex justify-between p-4 select-none">
                     <div className="flex items-start space-x-3">
                       <span
                         {...attributes}
@@ -686,11 +690,6 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
                       <div className="space-y-1">
                         <h3 className="font-semibold flex items-center gap-1">
                           <span>{g.name || 'Untitled Category'}</span>
-                          <ChevronUpIcon
-                            className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${
-                              collapsedGroups.has(g.id) ? 'rotate-180' : ''
-                            }`}
-                          />
                         </h3>
                         <p className="text-xs text-gray-500">
                           {g.multiple_choice ? 'Multiple Choice' : 'Single Choice'}
@@ -700,6 +699,18 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
                       </div>
                     </div>
                     <div className="flex space-x-2 items-start" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={() => toggleCollapse(g.id)}
+                        className="p-2 rounded hover:bg-gray-100"
+                        aria-label={collapsedGroups.has(g.id) ? 'Expand category' : 'Collapse category'}
+                        onPointerDown={(e) => e.stopPropagation()}
+                      >
+                        {collapsedGroups.has(g.id) ? (
+                          <ChevronDownIcon className="w-5 h-5" />
+                        ) : (
+                          <ChevronUpIcon className="w-5 h-5" />
+                        )}
+                      </button>
                       <button
                         onClick={() => setAssignModalGroup(g)}
                         className="p-2 rounded hover:bg-gray-100"

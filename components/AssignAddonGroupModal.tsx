@@ -186,9 +186,12 @@ export default function AssignAddonGroupModal({
   }, [categoriesWithFallback, groupedItems, selectedItems]);
 
   return (
-    <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/60 px-4 py-8" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-[1200] flex items-start justify-center bg-black/60 px-4 py-8 overflow-y-auto"
+      onClick={onClose}
+    >
       <div
-        className="relative flex w-full max-w-5xl max-h-[90vh] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+        className="relative mt-4 mb-8 flex w-full max-w-5xl max-h-[calc(100vh-4rem)] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white px-6 py-4 shadow-sm">
