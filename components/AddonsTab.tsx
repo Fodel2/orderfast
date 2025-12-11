@@ -290,6 +290,15 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
           console.error('[addons-tab:load:options]', optionsError.message);
         } else {
           (fetchedOptions || []).forEach((opt) => {
+            if (
+              !opt ||
+              typeof opt !== 'object' ||
+              !('id' in opt) ||
+              !('group_id' in opt)
+            ) {
+              return; // skip invalid rows (e.g., parser errors)
+            }
+
             const groupId = String(opt.group_id);
             const normalizedOption = {
               ...opt,
