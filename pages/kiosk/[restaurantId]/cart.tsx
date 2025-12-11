@@ -6,7 +6,7 @@ import KioskLayout from '@/components/layouts/KioskLayout';
 import { KioskSessionProvider, useKioskSession } from '@/context/KioskSessionContext';
 import { useCart } from '@/context/CartContext';
 import { supabase } from '@/lib/supabaseClient';
-import { formatPrice, normalizePriceValue } from '@/lib/orderDisplay';
+import { formatPrice } from '@/lib/orderDisplay';
 import KioskActionButton from '@/components/kiosk/KioskActionButton';
 import { ChevronLeftIcon } from '@heroicons/react/24/outline';
 import KioskLoadingOverlay from '@/components/kiosk/KioskLoadingOverlay';
@@ -63,7 +63,6 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   const { cart, subtotal, clearCart } = useCart();
   const { resetKioskToStart, registerActivity } = useKioskSession();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
-  const currency = 'GBP';
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [placingOrder, setPlacingOrder] = useState(false);
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
@@ -450,7 +449,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
           <div className="mx-auto flex w-full max-w-5xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:py-3.5">
             <div className="flex flex-1 flex-col gap-1 text-slate-900">
               <span className="text-[11px] uppercase tracking-[0.12em] text-slate-500">Subtotal</span>
-              <span className="text-xl font-semibold sm:text-2xl">{formatPrice(normalizePriceValue(subtotal), currency)}</span>
+              <span className="text-xl font-semibold sm:text-2xl">{formatPrice(subtotal)}</span>
               <span className="text-xs text-slate-500 sm:text-sm">Includes items and add-ons</span>
             </div>
             <div className="flex-1 sm:flex-none sm:w-80">

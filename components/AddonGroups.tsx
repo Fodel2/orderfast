@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import type { AddonGroup } from "../utils/types";
 import { useBrand } from "@/components/branding/BrandProvider";
+import { formatPrice } from "@/lib/orderDisplay";
 import type { ReactNode, CSSProperties } from "react";
 
 export function validateAddonSelections(
@@ -350,7 +351,7 @@ export default function AddonGroups({
                       <div className="font-medium">{option.name}</div>
                       {option.price && option.price > 0 && (
                         <div className="text-sm text-gray-500">
-                          +£{(option.price / 100).toFixed(2)}
+                          +{formatPrice(option.price)}
                         </div>
                       )}
 

@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { calculateCartTotals } from '@/lib/orderDisplay';
 
 export interface CartAddon {
   option_id: string;
@@ -24,6 +25,7 @@ interface CartState {
 interface CartContextValue {
   cart: CartState;
   subtotal: number;
+  totals: ReturnType<typeof calculateCartTotals>;
   addToCart: (restaurantId: string, item: CartItem) => void;
   removeFromCart: (item_id: string) => void;
   updateQuantity: (item_id: string, newQty: number) => void;
@@ -99,17 +101,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }));
   };
 
-  const subtotal = cart.items.reduce((sum, item) => {
-    const addonsTotal = (item.addons || []).reduce(
-      (aSum, a) => aSum + a.price * a.quantity,
-      0
-    );
-    return sum + (item.price * item.quantity + addonsTotal);
-  }, 0);
+  const totals = calculateCartTotals(cart.items);
+  const subtotal = totals.total;
 
   const value: CartContextValue = {
     cart,
     subtotal,
+    totals,
     addToCart,
     removeFromCart,
     updateQuantity,

@@ -132,10 +132,9 @@ export default function ItemModal({ item, restaurantId, onAddToCart }: ItemModal
     }
   }, [groups, item?.id, restaurantId]);
 
-  const currency = 'GBP';
   const price = typeof item?.price === 'number' ? item.price : Number(item?.price || 0);
   const normalizedPrice = normalizePriceValue(price);
-  const formattedPrice = formatPrice(normalizedPrice, currency);
+  const formattedPrice = formatPrice(normalizedPrice);
   const imageUrl = item?.image_url || undefined;
   const focalXRaw = typeof item?.menu_header_focal_x === 'number' ? item.menu_header_focal_x : undefined;
   const focalYRaw = typeof item?.menu_header_focal_y === 'number' ? item.menu_header_focal_y : undefined;

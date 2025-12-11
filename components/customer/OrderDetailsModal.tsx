@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import OrderProgress from '@/components/customer/OrderProgress';
 import { randomCancelledMessage } from '@/lib/uiCopy';
-import { extractCancelReason, displayOrderNo } from '@/lib/orderDisplay';
+import { displayOrderNo, extractCancelReason, formatPrice } from '@/lib/orderDisplay';
 import { useRouter } from 'next/router';
 
 export default function OrderDetailsModal({ order, onClose }: { order: any; onClose: () => void; }) {
@@ -69,7 +69,7 @@ export default function OrderDetailsModal({ order, onClose }: { order: any; onCl
                       {typeof it.quantity === 'number' && <span> × {it.quantity}</span>}
                     </span>
                     {typeof it.price === 'number' && (
-                      <span>£{Number(it.price).toFixed(2)}</span>
+                      <span>{formatPrice(it.price)}</span>
                     )}
                   </div>
                   {it.notes && <div className="text-xs text-gray-500 mt-0.5">Notes: {it.notes}</div>}
@@ -78,7 +78,7 @@ export default function OrderDetailsModal({ order, onClose }: { order: any; onCl
                       {it.addons.map((a: any) => (
                         <li key={a.id} className="flex justify-between text-xs text-gray-700">
                           <span>{a.name ?? 'Addon'}{typeof a.quantity === 'number' && <> × {a.quantity}</>}</span>
-                          {typeof a.price === 'number' && <span>£{Number(a.price).toFixed(2)}</span>}
+                          {typeof a.price === 'number' && <span>{formatPrice(a.price)}</span>}
                         </li>
                       ))}
                     </ul>
@@ -96,25 +96,25 @@ export default function OrderDetailsModal({ order, onClose }: { order: any; onCl
             {typeof order.itemSubtotal === 'number' && (
               <div className="flex justify-between">
                 <span className="text-gray-600">Items subtotal</span>
-                <span className="font-medium">£{order.itemSubtotal.toFixed(2)}</span>
+                <span className="font-medium">{formatPrice(order.itemSubtotal)}</span>
               </div>
             )}
             {typeof order.delivery_fee === 'number' && (
               <div className="flex justify-between">
                 <span className="text-gray-600">Delivery fee</span>
-                <span className="font-medium">£{Number(order.delivery_fee).toFixed(2)}</span>
+                <span className="font-medium">{formatPrice(order.delivery_fee)}</span>
               </div>
             )}
             {typeof order.service_fee === 'number' && (
               <div className="flex justify-between">
                 <span className="text-gray-600">Service fee</span>
-                <span className="font-medium">£{Number(order.service_fee).toFixed(2)}</span>
+                <span className="font-medium">{formatPrice(order.service_fee)}</span>
               </div>
             )}
             {typeof order.total_price === 'number' && (
               <div className="flex justify-between">
                 <span className="text-gray-800">Total</span>
-                <span className="font-semibold">£{Number(order.total_price).toFixed(2)}</span>
+                <span className="font-semibold">{formatPrice(order.total_price)}</span>
               </div>
             )}
           </div>

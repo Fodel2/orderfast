@@ -8,7 +8,7 @@ import { useCart } from '../context/CartContext';
 import { useOrderType, OrderType } from '../context/OrderTypeContext';
 import { supabase } from '../utils/supabaseClient';
 import { useSession } from '@supabase/auth-helpers-react';
-import { formatPrice, normalizePriceValue } from '@/lib/orderDisplay';
+import { formatPrice } from '@/lib/orderDisplay';
 
 // Generate a unique 4-digit order number between 1000-9999
 async function generateShortOrderNumber(restaurantId: string): Promise<number> {
@@ -35,8 +35,7 @@ export default function CheckoutPage() {
   const [location, setLocation] = useState<{ x: number; y: number } | null>(null);
   const [asap, setAsap] = useState(true);
   const router = useRouter();
-  const currency = 'GBP';
-  const formatAmount = (value: number) => formatPrice(normalizePriceValue(value), currency);
+  const formatAmount = (value: number) => formatPrice(value);
 
   const selectClass = (type: OrderType) =>
     `border rounded-lg p-6 flex flex-col items-center justify-center cursor-pointer space-y-2 hover:border-teal-600 ${orderType === type ? 'border-teal-600 bg-teal-50' : 'border-gray-300'}`;

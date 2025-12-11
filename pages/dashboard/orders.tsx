@@ -8,6 +8,7 @@ import OrderDetailsModal, { Order as OrderType } from '../../components/OrderDet
 import BreakModal from '../../components/BreakModal';
 import BreakCountdown from '../../components/BreakCountdown';
 import { ORDER_ALERT_AUDIO } from '@/audio/orderAlertBase64';
+import { formatPrice } from '@/lib/orderDisplay';
 
 const ACTIVE_STATUSES = [
   'pending',
@@ -763,10 +764,6 @@ export default function OrdersPage() {
       setIsOpen(true);
       setBreakUntil(null);
     }
-  };
-
-  const formatPrice = (p: number | null) => {
-    return p ? `£${(p / 100).toFixed(2)}` : '£0.00';
   };
 
   const formatTime = (t: string | null) => {
