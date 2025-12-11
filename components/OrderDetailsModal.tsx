@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import RejectOrderModal from './RejectOrderModal';
+import { formatPrice } from '@/lib/orderDisplay';
 
 interface OrderAddon {
   id: number;
@@ -42,10 +43,6 @@ interface Props {
   onClose: () => void;
   onUpdateStatus: (id: string, status: string) => void;
 }
-
-const formatPrice = (p: number | null) => {
-  return p ? `£${(p / 100).toFixed(2)}` : '£0.00';
-};
 
 const formatAddress = (addr: any) => {
   if (!addr) return '';

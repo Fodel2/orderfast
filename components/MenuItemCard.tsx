@@ -104,9 +104,8 @@ export default function MenuItemCard({
     }
     return source ?? undefined;
   }, [item?.image_url]);
-  const currency = 'GBP';
   const normalizedPrice = normalizePriceValue(price);
-  const formattedPrice = formatPrice(normalizedPrice, currency);
+  const formattedPrice = formatPrice(normalizedPrice);
   const badges = useMemo(() => {
     const list: string[] = [];
     if (item?.is_vegan) list.push('Vegan');
