@@ -200,7 +200,6 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
             'id,restaurant_id,name,multiple_choice,required,max_group_select,max_option_quantity,archived_at,sort_order,state'
           )
           .eq('restaurant_id', restaurantKey)
-          .or('state.is.null,state.eq.draft')
           .is('archived_at', null)
           .order('sort_order', { ascending: true, nullsFirst: true })
           .order('id', { ascending: true })
@@ -245,7 +244,6 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
           )
           .eq('restaurant_id', restaurantKey)
           .in('group_id', groupIds)
-          .or('state.is.null,state.eq.draft')
           .is('archived_at', null)
           .order('sort_order', { ascending: true, nullsFirst: true })
           .order('id', { ascending: true });
@@ -283,7 +281,7 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
               .from('item_addon_links_drafts')
               .select('group_id,item_external_key,item_id,state')
               .eq('restaurant_id', restaurantKey)
-              .or('state.is.null,state.eq.draft'),
+              .is('archived_at', null),
             supabase
               .from('menu_items')
               .select('id,name,category_id,external_key')
