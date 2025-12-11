@@ -194,12 +194,11 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
     async function loadDrafts(retry = false) {
       try {
         const { data: draftGroups, error: draftError } = await supabase
-          .from('addon_groups_drafts')
+          .from('addon_groups')
           .select(
-            'id,restaurant_id,name,multiple_choice,required,max_group_select,max_option_quantity,archived_at,state,sort_order'
+            'id,restaurant_id,name,multiple_choice,required,max_group_select,max_option_quantity,archived_at,sort_order'
           )
           .eq('restaurant_id', restaurantKey)
-          .eq('state', 'draft')
           .is('archived_at', null)
           .order('sort_order', { ascending: true, nullsFirst: true })
           .order('id', { ascending: true })
@@ -238,13 +237,12 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
 
         const groupIds = normalizedGroups.map((group) => group.id);
         const { data: draftOptions, error: optionsError } = await supabase
-          .from('addon_options_drafts')
+          .from('addon_options')
           .select(
-            'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at,archived_at,state,sort_order'
+            'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at,archived_at,sort_order'
           )
           .eq('restaurant_id', restaurantKey)
           .in('group_id', groupIds)
-          .eq('state', 'draft')
           .is('archived_at', null)
           .order('sort_order', { ascending: true, nullsFirst: true })
           .order('id', { ascending: true });
