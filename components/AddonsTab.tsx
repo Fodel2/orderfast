@@ -268,18 +268,28 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
         );
 
         const groupIds = normalizedGroups.map((group) => group.id);
-        const { data: fetchedOptions, error: optionsError } = await supabase
-          .from(useDrafts ? 'addon_options_drafts' : 'addon_options')
-          .select(
-            useDrafts
-              ? 'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at,archived_at,sort_order,state'
-              : 'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at,archived_at,sort_order'
-          )
-          .eq('restaurant_id', restaurantKey)
-          .in('group_id', groupIds)
-          .is('archived_at', null)
-          .order('sort_order', { ascending: true, nullsFirst: true })
-          .order('id', { ascending: true });
+        let fetchedOptions: any[] | null = null;
+        let optionsError = null;
+
+        try {
+          const optionsResponse = await supabase
+            .from(useDrafts ? 'addon_options_drafts' : 'addon_options')
+            .select(
+              useDrafts
+                ? 'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at,archived_at,sort_order,state'
+                : 'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at,archived_at,sort_order'
+            )
+            .eq('restaurant_id', restaurantKey)
+            .in('group_id', groupIds)
+            .is('archived_at', null)
+            .order('sort_order', { ascending: true, nullsFirst: true })
+            .order('id', { ascending: true });
+
+          fetchedOptions = optionsResponse.data;
+          optionsError = optionsResponse.error;
+        } catch (error: any) {
+          optionsError = error;
+        }
 
         const optionsMap: Record<string, any[]> = {};
         normalizedGroups.forEach((group) => {
@@ -287,29 +297,95 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
         });
 
         if (optionsError) {
-          console.error('[addons-tab:load:options]', optionsError.message);
+          console.error('[addons-tab:load:options]', optionsError.message || optionsError);
         } else {
-          (fetchedOptions || []).forEach((opt) => {
-            if (!opt || typeof opt !== 'object') {
-              return; // skip invalid rows (e.g., parser errors)
-            }
-            const safeOpt: any = opt;
-            if (!('id' in safeOpt) || !('group_id' in safeOpt)) {
-              return; // skip invalid rows (e.g., parser errors)
-            }
+          const useFetchedOptions = Array.isArray(fetchedOptions) ? fetchedOptions : [];
 
-            const groupId = String(safeOpt.group_id);
-            const normalizedOption = {
-              ...safeOpt,
-              id: String(safeOpt.id),
-              group_id: groupId,
-              state: safeOpt.state ?? (useDrafts ? 'draft' : 'published'),
-            };
-            if (!optionsMap[groupId]) {
-              optionsMap[groupId] = [];
+          if (useDrafts && useFetchedOptions.length === 0) {
+            const draftGroupsByName = new Map<string, string>();
+            normalizedGroups.forEach((group) => {
+              if (group?.name) {
+                draftGroupsByName.set(group.name, group.id);
+              }
+            });
+
+            const { data: liveGroups, error: liveGroupsError } = await supabase
+              .from('addon_groups')
+              .select('id,name')
+              .eq('restaurant_id', restaurantKey)
+              .is('archived_at', null);
+
+            if (liveGroupsError) {
+              console.error('[addons-tab:load:options:live-groups]', liveGroupsError.message);
+            } else if (liveGroups && liveGroups.length > 0) {
+              const liveGroupIds = liveGroups.map((g) => g.id).filter(Boolean);
+              if (liveGroupIds.length > 0) {
+                const { data: liveOptions, error: liveOptionsError } = await supabase
+                  .from('addon_options')
+                  .select(
+                    'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at,archived_at,sort_order'
+                  )
+                  .eq('restaurant_id', restaurantKey)
+                  .in('group_id', liveGroupIds)
+                  .is('archived_at', null)
+                  .order('sort_order', { ascending: true, nullsFirst: true })
+                  .order('id', { ascending: true });
+
+                if (liveOptionsError) {
+                  console.error('[addons-tab:load:options:live-options]', liveOptionsError.message);
+                } else if (liveOptions && liveOptions.length > 0) {
+                  const liveGroupById = new Map<string, any>();
+                  liveGroups.forEach((g) => {
+                    liveGroupById.set(String(g.id), g);
+                  });
+
+                  liveOptions.forEach((opt) => {
+                    if (!opt || typeof opt !== 'object') return;
+                    const safeOpt: any = opt;
+                    if (!('id' in safeOpt) || !('group_id' in safeOpt)) return;
+
+                    const liveGroupId = String(safeOpt.group_id);
+                    const liveGroup = liveGroupById.get(liveGroupId);
+                    const draftGroupId = liveGroup?.name ? draftGroupsByName.get(liveGroup.name) : undefined;
+                    if (!draftGroupId) return;
+
+                    const normalizedOption = {
+                      ...safeOpt,
+                      id: String(safeOpt.id),
+                      group_id: draftGroupId,
+                      state: 'published',
+                    };
+                    if (!optionsMap[draftGroupId]) {
+                      optionsMap[draftGroupId] = [];
+                    }
+                    optionsMap[draftGroupId].push(normalizedOption);
+                  });
+                }
+              }
             }
-            optionsMap[groupId].push(normalizedOption);
-          });
+          } else {
+            useFetchedOptions.forEach((opt) => {
+              if (!opt || typeof opt !== 'object') {
+                return; // skip invalid rows (e.g., parser errors)
+              }
+              const safeOpt: any = opt;
+              if (!('id' in safeOpt) || !('group_id' in safeOpt)) {
+                return; // skip invalid rows (e.g., parser errors)
+              }
+
+              const groupId = String(safeOpt.group_id);
+              const normalizedOption = {
+                ...safeOpt,
+                id: String(safeOpt.id),
+                group_id: groupId,
+                state: safeOpt.state ?? (useDrafts ? 'draft' : 'published'),
+              };
+              if (!optionsMap[groupId]) {
+                optionsMap[groupId] = [];
+              }
+              optionsMap[groupId].push(normalizedOption);
+            });
+          }
         }
 
         Object.keys(optionsMap).forEach((gid) => {
