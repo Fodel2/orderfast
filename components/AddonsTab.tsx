@@ -109,7 +109,14 @@ const AddonOptionRow = memo(function AddonOptionRow({
   );
 });
 
-function SortableOption({ id, children }: { id: string; children: React.ReactNode }) {
+type SortableOptionProps = {
+  id: string;
+  children:
+    | React.ReactNode
+    | ((args: { attributes: any; listeners: any }) => React.ReactNode);
+};
+
+function SortableOption({ id, children }: SortableOptionProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -117,11 +124,11 @@ function SortableOption({ id, children }: { id: string; children: React.ReactNod
     opacity: isDragging ? 0.6 : undefined,
     background: isDragging ? '#f0f0f0' : undefined,
   } as React.CSSProperties;
+  const renderedChildren =
+    typeof children === 'function' ? children({ attributes, listeners }) : children;
   return (
     <div ref={setNodeRef} style={style}>
-      {typeof children === 'function'
-        ? (children as any)({ attributes, listeners })
-        : children}
+      {renderedChildren}
     </div>
   );
 }
