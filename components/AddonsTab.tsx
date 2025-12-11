@@ -290,21 +290,20 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
           console.error('[addons-tab:load:options]', optionsError.message);
         } else {
           (fetchedOptions || []).forEach((opt) => {
-            if (
-              !opt ||
-              typeof opt !== 'object' ||
-              !('id' in opt) ||
-              !('group_id' in opt)
-            ) {
+            if (!opt || typeof opt !== 'object') {
+              return; // skip invalid rows (e.g., parser errors)
+            }
+            const safeOpt: any = opt;
+            if (!('id' in safeOpt) || !('group_id' in safeOpt)) {
               return; // skip invalid rows (e.g., parser errors)
             }
 
-            const groupId = String(opt.group_id);
+            const groupId = String(safeOpt.group_id);
             const normalizedOption = {
-              ...opt,
-              id: String(opt.id),
+              ...safeOpt,
+              id: String(safeOpt.id),
               group_id: groupId,
-              state: opt.state ?? (useDrafts ? 'draft' : 'published'),
+              state: safeOpt.state ?? (useDrafts ? 'draft' : 'published'),
             };
             if (!optionsMap[groupId]) {
               optionsMap[groupId] = [];
