@@ -243,7 +243,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               throw liveGroupsResponse.error;
             }
 
-            rawGroups = liveGroupsResponse.data ?? [];
+            rawGroups = (liveGroupsResponse.data ?? []).map((group) => ({
+              ...group,
+              state: 'published',
+            }));
           }
           const groupIds = rawGroups.map((group) => group.id).filter(Boolean);
           const optionMap = new Map<string, any[]>();
@@ -276,7 +279,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 throw liveOptionsResponse.error;
               }
 
-              optionRows = liveOptionsResponse.data ?? [];
+              optionRows = (liveOptionsResponse.data ?? []).map((option) => ({
+                ...option,
+                state: 'published',
+              }));
             }
 
             for (const option of optionRows) {
