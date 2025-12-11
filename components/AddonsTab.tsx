@@ -194,6 +194,9 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
   const load = useCallback(
     async function loadDrafts(retry = false) {
       try {
+        let useDrafts = true;
+        let groupRows: any[] | null = null;
+
         const { data: draftGroups, error: draftError } = await supabase
           .from('addon_groups_drafts')
           .select(
@@ -213,7 +216,9 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
           return;
         }
 
-        if (!draftGroups || draftGroups.length === 0) {
+        groupRows = draftGroups ?? [];
+
+        if (!groupRows || groupRows.length === 0) {
           if (!retry) {
             const seeded = await ensureDraftsSeeded();
             if (seeded) {
@@ -221,15 +226,41 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
               return;
             }
           }
+
+          const { data: liveGroups, error: liveError } = await supabase
+            .from('addon_groups')
+            .select(
+              'id,restaurant_id,name,multiple_choice,required,max_group_select,max_option_quantity,archived_at,sort_order'
+            )
+            .eq('restaurant_id', restaurantKey)
+            .is('archived_at', null)
+            .order('sort_order', { ascending: true, nullsFirst: true })
+            .order('id', { ascending: true })
+            .order('name', { ascending: true });
+
+          if (liveError) {
+            console.error('[addons-tab:load:groups:live]', liveError.message);
+            setGroups([]);
+            setOptions({});
+            setAssignments({});
+            return;
+          }
+
+          groupRows = liveGroups ?? [];
+          useDrafts = false;
+        }
+
+        if (!groupRows || groupRows.length === 0) {
           setGroups([]);
           setOptions({});
           setAssignments({});
           return;
         }
 
-        const normalizedGroups = draftGroups.map((group) => ({
+        const normalizedGroups = groupRows.map((group) => ({
           ...group,
           id: String(group.id),
+          state: group.state ?? (useDrafts ? 'draft' : 'published'),
         }));
 
         const sortedGroups = [...normalizedGroups].sort(
@@ -237,10 +268,12 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
         );
 
         const groupIds = normalizedGroups.map((group) => group.id);
-        const { data: draftOptions, error: optionsError } = await supabase
-          .from('addon_options_drafts')
+        const { data: fetchedOptions, error: optionsError } = await supabase
+          .from(useDrafts ? 'addon_options_drafts' : 'addon_options')
           .select(
-            'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at,archived_at,sort_order,state'
+            useDrafts
+              ? 'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at,archived_at,sort_order,state'
+              : 'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at,archived_at,sort_order'
           )
           .eq('restaurant_id', restaurantKey)
           .in('group_id', groupIds)
@@ -256,9 +289,14 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
         if (optionsError) {
           console.error('[addons-tab:load:options]', optionsError.message);
         } else {
-          (draftOptions || []).forEach((opt) => {
+          (fetchedOptions || []).forEach((opt) => {
             const groupId = String(opt.group_id);
-            const normalizedOption = { ...opt, id: String(opt.id), group_id: groupId };
+            const normalizedOption = {
+              ...opt,
+              id: String(opt.id),
+              group_id: groupId,
+              state: opt.state ?? (useDrafts ? 'draft' : 'published'),
+            };
             if (!optionsMap[groupId]) {
               optionsMap[groupId] = [];
             }
