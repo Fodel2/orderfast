@@ -272,18 +272,31 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
           .order('id', { ascending: true })
           .order('name', { ascending: true });
 
+        let draftsAvailable = true;
+
         if (draftError) {
-          console.error('[addons-tab:load:groups]', draftError.message);
-          setGroups([]);
-          setOptions({});
-          setAssignments({});
-          return;
+          const draftStatus = (draftError as any)?.status;
+          const isMissingRelation =
+            draftError?.code === 'PGRST116' ||
+            draftStatus === 404 ||
+            draftError?.message?.toLowerCase?.().includes('does not exist');
+
+          if (isMissingRelation) {
+            draftsAvailable = false;
+            useDrafts = false;
+          } else {
+            console.error('[addons-tab:load:groups]', draftError.message);
+            setGroups([]);
+            setOptions({});
+            setAssignments({});
+            return;
+          }
         }
 
         groupRows = draftGroups ?? [];
 
         if (!groupRows || groupRows.length === 0) {
-          if (!retry) {
+          if (!retry && useDrafts && draftsAvailable) {
             const seeded = await ensureDraftsSeeded();
             if (seeded) {
               await loadDrafts(true);
@@ -291,7 +304,7 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
             }
           }
 
-          const apiFallback = await loadAddonsFromApi();
+          const apiFallback = draftsAvailable ? await loadAddonsFromApi() : null;
 
           if (apiFallback) {
             groupRows = apiFallback.groups;
