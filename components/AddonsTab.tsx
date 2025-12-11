@@ -191,11 +191,75 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
     }
   }, [restaurantKey]);
 
+  const loadAddonsFromApi = useCallback(async () => {
+    try {
+      const response = await fetch(
+        `/api/menu-builder?restaurant_id=${restaurantKey}&withAddons=1&ensureAddonsDrafts=1`
+      );
+      if (!response.ok) {
+        const detail = await response.text().catch(() => '');
+        console.error('[addons-tab:api-fallback]', response.status, detail);
+        return null;
+      }
+
+      const payload = await response.json().catch(() => null);
+      const rawGroups = Array.isArray(payload?.addonGroups) ? payload.addonGroups : [];
+      const apiLinks = Array.isArray(payload?.addonLinks) ? payload.addonLinks : [];
+
+      if (rawGroups.length === 0) {
+        return null;
+      }
+
+      const normalizedGroups = rawGroups.map((group) => ({
+        ...group,
+        id: String(group.id),
+        state: group.state ?? 'draft',
+      }));
+
+      const optionsMap: Record<string, any[]> = {};
+      normalizedGroups.forEach((group) => {
+        optionsMap[group.id] = [];
+      });
+
+      rawGroups.forEach((group) => {
+        const gid = group?.id ? String(group.id) : undefined;
+        if (!gid) return;
+        const optionRows = Array.isArray((group as any).addon_options)
+          ? (group as any).addon_options
+          : [];
+        optionRows.forEach((opt) => {
+          if (!opt || typeof opt !== 'object') return;
+          const safeOpt: any = opt;
+          if (!('id' in safeOpt) || safeOpt.archived_at) return;
+          optionsMap[gid].push({
+            ...safeOpt,
+            id: String(safeOpt.id),
+            group_id: gid,
+            state: safeOpt.state ?? 'draft',
+          });
+        });
+      });
+
+      Object.keys(optionsMap).forEach((gid) => {
+        optionsMap[gid] = (optionsMap[gid] || []).sort(
+          (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
+        );
+      });
+
+      return { groups: normalizedGroups, optionsMap, links: apiLinks };
+    } catch (error) {
+      console.error('[addons-tab:api-fallback]', error);
+      return null;
+    }
+  }, [restaurantKey]);
+
   const load = useCallback(
     async function loadDrafts(retry = false) {
       try {
         let useDrafts = true;
         let groupRows: any[] | null = null;
+        let preloadedOptions: Record<string, any[]> | null = null;
+        let fallbackLinks: any[] | null = null;
 
         const { data: draftGroups, error: draftError } = await supabase
           .from('addon_groups_drafts')
@@ -227,27 +291,35 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
             }
           }
 
-          const { data: liveGroups, error: liveError } = await supabase
-            .from('addon_groups')
-            .select(
-              'id,restaurant_id,name,multiple_choice,required,max_group_select,max_option_quantity,archived_at,sort_order'
-            )
-            .eq('restaurant_id', restaurantKey)
-            .is('archived_at', null)
-            .order('sort_order', { ascending: true, nullsFirst: true })
-            .order('id', { ascending: true })
-            .order('name', { ascending: true });
+          const apiFallback = await loadAddonsFromApi();
 
-          if (liveError) {
-            console.error('[addons-tab:load:groups:live]', liveError.message);
-            setGroups([]);
-            setOptions({});
-            setAssignments({});
-            return;
+          if (apiFallback) {
+            groupRows = apiFallback.groups;
+            preloadedOptions = apiFallback.optionsMap;
+            fallbackLinks = apiFallback.links;
+          } else {
+            const { data: liveGroups, error: liveError } = await supabase
+              .from('addon_groups')
+              .select(
+                'id,restaurant_id,name,multiple_choice,required,max_group_select,max_option_quantity,archived_at,sort_order'
+              )
+              .eq('restaurant_id', restaurantKey)
+              .is('archived_at', null)
+              .order('sort_order', { ascending: true, nullsFirst: true })
+              .order('id', { ascending: true })
+              .order('name', { ascending: true });
+
+            if (liveError) {
+              console.error('[addons-tab:load:groups:live]', liveError.message);
+              setGroups([]);
+              setOptions({});
+              setAssignments({});
+              return;
+            }
+
+            groupRows = liveGroups ?? [];
+            useDrafts = false;
           }
-
-          groupRows = liveGroups ?? [];
-          useDrafts = false;
         }
 
         if (!groupRows || groupRows.length === 0) {
@@ -271,24 +343,26 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
         let fetchedOptions: any[] | null = null;
         let optionsError = null;
 
-        try {
-          const optionsResponse = await supabase
-            .from(useDrafts ? 'addon_options_drafts' : 'addon_options')
-            .select(
-              useDrafts
-                ? 'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at,archived_at,sort_order,state'
-                : 'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at,archived_at,sort_order'
-            )
-            .eq('restaurant_id', restaurantKey)
-            .in('group_id', groupIds)
-            .is('archived_at', null)
-            .order('sort_order', { ascending: true, nullsFirst: true })
-            .order('id', { ascending: true });
+        if (!preloadedOptions) {
+          try {
+            const optionsResponse = await supabase
+              .from(useDrafts ? 'addon_options_drafts' : 'addon_options')
+              .select(
+                useDrafts
+                  ? 'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at,archived_at,sort_order,state'
+                  : 'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at,archived_at,sort_order'
+              )
+              .eq('restaurant_id', restaurantKey)
+              .in('group_id', groupIds)
+              .is('archived_at', null)
+              .order('sort_order', { ascending: true, nullsFirst: true })
+              .order('id', { ascending: true });
 
-          fetchedOptions = optionsResponse.data;
-          optionsError = optionsResponse.error;
-        } catch (error: any) {
-          optionsError = error;
+            fetchedOptions = optionsResponse.data;
+            optionsError = optionsResponse.error;
+          } catch (error: any) {
+            optionsError = error;
+          }
         }
 
         const optionsMap: Record<string, any[]> = {};
@@ -296,7 +370,11 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
           optionsMap[group.id] = [];
         });
 
-        if (optionsError) {
+        if (preloadedOptions) {
+          Object.keys(preloadedOptions).forEach((gid) => {
+            optionsMap[gid] = [...(preloadedOptions?.[gid] || [])];
+          });
+        } else if (optionsError) {
           console.error('[addons-tab:load:options]', optionsError.message || optionsError);
         } else {
           const useFetchedOptions = Array.isArray(fetchedOptions) ? fetchedOptions : [];
@@ -458,7 +536,8 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
         });
 
         const assignMap: Record<string, string[]> = {};
-        (links || []).forEach((link) => {
+        const linkRows = fallbackLinks && fallbackLinks.length ? fallbackLinks : links || [];
+        (linkRows || []).forEach((link) => {
           const groupId = link?.group_id ? String(link.group_id) : undefined;
           if (!groupId) return;
           const externalKey = link?.item_external_key
@@ -481,7 +560,7 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
         setCategories([]);
       }
     },
-    [restaurantKey, ensureDraftsSeeded]
+    [restaurantKey, ensureDraftsSeeded, loadAddonsFromApi]
   );
 
   useEffect(() => {
