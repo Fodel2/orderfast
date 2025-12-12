@@ -164,7 +164,7 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
   const [assignModalGroup, setAssignModalGroup] = useState<any | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
-  const restaurantKey = String(restaurantId);
+  const restaurantKey = restaurantId ? String(restaurantId) : '';
 
   const ensureDraftsSeeded = useCallback(async () => {
     if (!restaurantKey) return false;
