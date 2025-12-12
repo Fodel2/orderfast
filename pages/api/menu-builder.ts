@@ -260,11 +260,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               .in('group_id', groupIds)
               .is('archived_at', null);
 
-            if (optionsResponse.error) {
-              throw optionsResponse.error;
-            }
-
+            const optionsError = optionsResponse.error;
             let optionRows = optionsResponse.data ?? [];
+
+            if (optionsError) {
+              const optStatus = (optionsError as any)?.status;
+              const optMessage = optionsError?.message?.toLowerCase?.() || '';
+              const isUnauthorized =
+                optStatus === 401 ||
+                optStatus === 403 ||
+                optMessage.includes('permission') ||
+                optMessage.includes('not allowed') ||
+                optMessage.includes('rls');
+
+              if (!isUnauthorized) {
+                throw optionsError;
+              }
+            }
 
             if (optionRows.length === 0) {
               const liveOptionsResponse = await supabase

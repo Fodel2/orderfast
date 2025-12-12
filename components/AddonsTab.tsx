@@ -330,14 +330,37 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
               .order('name', { ascending: true });
 
             if (liveError) {
-              console.error('[addons-tab:load:groups:live]', liveError.message);
-              setGroups([]);
-              setOptions({});
-              setAssignments({});
-              return;
+              const liveStatus = (liveError as any)?.status;
+              const liveMessage = liveError?.message?.toLowerCase?.() || '';
+              const isUnauthorized =
+                liveStatus === 401 ||
+                liveStatus === 403 ||
+                liveMessage.includes('permission') ||
+                liveMessage.includes('not allowed') ||
+                liveMessage.includes('rls');
+
+              if (isUnauthorized && draftsAvailable) {
+                const apiFallback = await loadAddonsFromApi();
+                if (apiFallback) {
+                  groupRows = apiFallback.groups;
+                  preloadedOptions = apiFallback.optionsMap;
+                  fallbackLinks = apiFallback.links;
+                  useDrafts = false;
+                }
+              }
+
+              if (!groupRows || groupRows.length === 0) {
+                console.error('[addons-tab:load:groups:live]', liveError.message);
+                setGroups([]);
+                setOptions({});
+                setAssignments({});
+                return;
+              }
             }
 
-            groupRows = liveGroups ?? [];
+            if (!groupRows) {
+              groupRows = liveGroups ?? [];
+            }
             useDrafts = false;
           }
         }
@@ -349,17 +372,17 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
           return;
         }
 
-        const normalizedGroups = groupRows.map((group) => ({
+        let normalizedGroups = groupRows.map((group) => ({
           ...group,
           id: String(group.id),
           state: group.state ?? (useDrafts ? 'draft' : 'published'),
         }));
 
-        const sortedGroups = [...normalizedGroups].sort(
+        let sortedGroups = [...normalizedGroups].sort(
           (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
         );
 
-        const groupIds = normalizedGroups.map((group) => group.id);
+        let groupIds = normalizedGroups.map((group) => group.id);
         let fetchedOptions: any[] | null = null;
         let optionsError = null;
 
@@ -385,7 +408,7 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
           }
         }
 
-        const optionsMap: Record<string, any[]> = {};
+        let optionsMap: Record<string, any[]> = {};
         normalizedGroups.forEach((group) => {
           optionsMap[group.id] = [];
         });
@@ -395,7 +418,46 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
             optionsMap[gid] = [...(preloadedOptions?.[gid] || [])];
           });
         } else if (optionsError) {
-          console.error('[addons-tab:load:options]', optionsError.message || optionsError);
+          const optStatus = (optionsError as any)?.status;
+          const optMessage = optionsError?.message?.toLowerCase?.() || '';
+          const isUnauthorized =
+            optStatus === 401 ||
+            optStatus === 403 ||
+            optMessage.includes('permission') ||
+            optMessage.includes('not allowed') ||
+            optMessage.includes('rls');
+
+          if (isUnauthorized) {
+            const apiFallback = await loadAddonsFromApi();
+            if (apiFallback) {
+              groupRows = apiFallback.groups;
+              preloadedOptions = apiFallback.optionsMap;
+              fallbackLinks = apiFallback.links;
+              useDrafts = false;
+              optionsMap = {};
+              normalizedGroups = groupRows.map((group) => ({
+                ...group,
+                id: String(group.id),
+                state: group.state ?? (useDrafts ? 'draft' : 'published'),
+              }));
+              sortedGroups = [...normalizedGroups].sort(
+                (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
+              );
+              groupIds = normalizedGroups.map((group) => group.id);
+
+              normalizedGroups.forEach((group) => {
+                optionsMap[group.id] = [];
+              });
+
+              Object.keys(preloadedOptions).forEach((gid) => {
+                optionsMap[gid] = [...(preloadedOptions?.[gid] || [])];
+              });
+            }
+          }
+
+          if (!preloadedOptions) {
+            console.error('[addons-tab:load:options]', optionsError.message || optionsError);
+          }
         } else {
           const useFetchedOptions = Array.isArray(fetchedOptions) ? fetchedOptions : [];
 
