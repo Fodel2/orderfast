@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { supaServer } from '@/lib/supaServer';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -33,7 +33,7 @@ function logSupabaseCall(
 }
 
 async function ensureAddonDraftsForRestaurant(
-  supabase: typeof supaServer,
+  supabase: SupabaseClient,
   restaurantId: string
 ) {
   const existingDrafts = await supabase
@@ -132,7 +132,14 @@ function ensureDraftPayload(input: unknown): DraftPayload {
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const supabase = supaServer;
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    return res.status(500).json({ message: 'Missing Supabase server env vars' });
+  }
+
+  const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
   const restaurantId = resolveRestaurantId(req);
   const path = req.url || '/api/menu-builder';
 
@@ -218,16 +225,52 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               'id,restaurant_id,name,multiple_choice,required,max_group_select,max_option_quantity,state,archived_at'
             )
             .eq('restaurant_id', restaurantId)
-            .eq('state', 'draft')
             .is('archived_at', null)
             .order('id', { ascending: true })
             .order('name', { ascending: true });
 
+          let rawGroups = groupsResponse.data ?? [];
+
           if (groupsResponse.error) {
-            throw groupsResponse.error;
+            const gStatus = (groupsResponse.error as any)?.status;
+            const gMessage = groupsResponse.error?.message?.toLowerCase?.() || '';
+            const isUnauthorized =
+              gStatus === 401 ||
+              gStatus === 403 ||
+              gMessage.includes('permission') ||
+              gMessage.includes('not allowed') ||
+              gMessage.includes('rls');
+            const isMissingRelation =
+              (groupsResponse.error as any)?.code === 'PGRST116' ||
+              gStatus === 404 ||
+              gMessage.includes('does not exist');
+
+            if (!isUnauthorized && !isMissingRelation) {
+              throw groupsResponse.error;
+            }
+            rawGroups = [];
           }
 
-          const rawGroups = groupsResponse.data ?? [];
+          if (rawGroups.length === 0) {
+            const liveGroupsResponse = await supabase
+              .from('addon_groups')
+              .select(
+                'id,restaurant_id,name,multiple_choice,required,max_group_select,max_option_quantity,archived_at'
+              )
+              .eq('restaurant_id', restaurantId)
+              .is('archived_at', null)
+              .order('id', { ascending: true })
+              .order('name', { ascending: true });
+
+            if (liveGroupsResponse.error) {
+              throw liveGroupsResponse.error;
+            }
+
+            rawGroups = (liveGroupsResponse.data ?? []).map((group) => ({
+              ...group,
+              state: 'published',
+            }));
+          }
           const groupIds = rawGroups.map((group) => group.id).filter(Boolean);
           const optionMap = new Map<string, any[]>();
 
@@ -238,14 +281,46 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at,state,archived_at'
               )
               .in('group_id', groupIds)
-              .eq('state', 'draft')
               .is('archived_at', null);
 
-            if (optionsResponse.error) {
-              throw optionsResponse.error;
+            const optionsError = optionsResponse.error;
+            let optionRows = optionsResponse.data ?? [];
+
+            if (optionsError) {
+              const optStatus = (optionsError as any)?.status;
+              const optMessage = optionsError?.message?.toLowerCase?.() || '';
+              const isUnauthorized =
+                optStatus === 401 ||
+                optStatus === 403 ||
+                optMessage.includes('permission') ||
+                optMessage.includes('not allowed') ||
+                optMessage.includes('rls');
+
+              if (!isUnauthorized) {
+                throw optionsError;
+              }
             }
 
-            for (const option of optionsResponse.data ?? []) {
+            if (optionRows.length === 0) {
+              const liveOptionsResponse = await supabase
+                .from('addon_options')
+                .select(
+                  'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at,archived_at'
+                )
+                .in('group_id', groupIds)
+                .is('archived_at', null);
+
+              if (liveOptionsResponse.error) {
+                throw liveOptionsResponse.error;
+              }
+
+              optionRows = (liveOptionsResponse.data ?? []).map((option) => ({
+                ...option,
+                state: 'published',
+              }));
+            }
+
+            for (const option of optionRows) {
               const groupId = option.group_id ? String(option.group_id) : '';
               if (!groupId) continue;
               if (!optionMap.has(groupId)) optionMap.set(groupId, []);
