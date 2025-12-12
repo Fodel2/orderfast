@@ -255,6 +255,9 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
 
   const load = useCallback(
     async function loadDrafts(retry = false) {
+      if (!restaurantKey) {
+        return;
+      }
       try {
         let useDrafts = true;
         let groupRows: any[] | null = null;
@@ -382,11 +385,11 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
           (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
         );
 
-        let groupIds = normalizedGroups.map((group) => group.id);
+        let groupIds = normalizedGroups.map((group) => group.id).filter(Boolean);
         let fetchedOptions: any[] | null = null;
         let optionsError = null;
 
-        if (!preloadedOptions) {
+        if (!preloadedOptions && groupIds.length > 0) {
           try {
             const optionsResponse = await supabase
               .from(useDrafts ? 'addon_options_drafts' : 'addon_options')
