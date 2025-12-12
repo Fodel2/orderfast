@@ -222,11 +222,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             .order('id', { ascending: true })
             .order('name', { ascending: true });
 
-          if (groupsResponse.error) {
-            throw groupsResponse.error;
-          }
-
           let rawGroups = groupsResponse.data ?? [];
+
+          if (groupsResponse.error) {
+            const gStatus = (groupsResponse.error as any)?.status;
+            const gMessage = groupsResponse.error?.message?.toLowerCase?.() || '';
+            const isUnauthorized =
+              gStatus === 401 ||
+              gStatus === 403 ||
+              gMessage.includes('permission') ||
+              gMessage.includes('not allowed') ||
+              gMessage.includes('rls');
+            const isMissingRelation =
+              (groupsResponse.error as any)?.code === 'PGRST116' ||
+              gStatus === 404 ||
+              gMessage.includes('does not exist');
+
+            if (!isUnauthorized && !isMissingRelation) {
+              throw groupsResponse.error;
+            }
+            rawGroups = [];
+          }
 
           if (rawGroups.length === 0) {
             const liveGroupsResponse = await supabase
