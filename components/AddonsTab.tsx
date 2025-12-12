@@ -166,31 +166,6 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
 
   const restaurantKey = restaurantId ? String(restaurantId) : '';
 
-  const ensureDraftsSeeded = useCallback(async () => {
-    if (!restaurantKey) return false;
-    try {
-      const response = await fetch(
-        `/api/menu-builder?restaurant_id=${restaurantKey}&withAddons=1&ensureAddonsDrafts=1`
-      );
-      if (!response.ok) {
-        const detail = await response.text().catch(() => '');
-        console.error('[addons-tab:ensure-drafts]', response.status, detail);
-        return false;
-      }
-      const json = await response.json().catch(() => ({}));
-      if (json && typeof json === 'object') {
-        if (json.addonDraftsSeeded === true) return true;
-        if (Array.isArray(json.addonGroups) && json.addonGroups.length > 0) {
-          return true;
-        }
-      }
-      return false;
-    } catch (error) {
-      console.error('[addons-tab:ensure-drafts]', error);
-      return false;
-    }
-  }, [restaurantKey]);
-
   const loadAddonsFromApi = useCallback(async () => {
     try {
       const response = await fetch(
@@ -259,307 +234,23 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
         return;
       }
       try {
-        let useDrafts = true;
-        let groupRows: any[] | null = null;
-        let preloadedOptions: Record<string, any[]> | null = null;
-        let fallbackLinks: any[] | null = null;
+        const apiPayload = await loadAddonsFromApi();
 
-        const { data: draftGroups, error: draftError } = await supabase
-          .from('addon_groups_drafts')
-          .select(
-            'id,restaurant_id,name,multiple_choice,required,max_group_select,max_option_quantity,archived_at,sort_order,state'
-          )
-          .eq('restaurant_id', restaurantKey)
-          .is('archived_at', null)
-          .order('sort_order', { ascending: true, nullsFirst: true })
-          .order('id', { ascending: true })
-          .order('name', { ascending: true });
-
-        let draftsAvailable = true;
-
-        if (draftError) {
-          const draftStatus = (draftError as any)?.status;
-          const draftMessage = draftError?.message?.toLowerCase?.() || '';
-          const isMissingRelation =
-            draftError?.code === 'PGRST116' ||
-            draftStatus === 404 ||
-            draftMessage.includes('does not exist');
-          const isUnauthorized =
-            draftStatus === 401 ||
-            draftStatus === 403 ||
-            draftMessage.includes('permission') ||
-            draftMessage.includes('not allowed') ||
-            draftMessage.includes('rls');
-
-          if (isMissingRelation || isUnauthorized) {
-            useDrafts = false;
-            draftsAvailable = !isMissingRelation;
-          } else {
-            console.error('[addons-tab:load:groups]', draftError.message);
-            setGroups([]);
-            setOptions({});
-            setAssignments({});
-            return;
-          }
-        }
-
-        groupRows = draftGroups ?? [];
-
-        if (!groupRows || groupRows.length === 0) {
-          if (!retry && useDrafts && draftsAvailable) {
-            const seeded = await ensureDraftsSeeded();
-            if (seeded) {
-              await loadDrafts(true);
-              return;
-            }
-          }
-
-          const apiFallback = draftsAvailable ? await loadAddonsFromApi() : null;
-
-          if (apiFallback) {
-            groupRows = apiFallback.groups;
-            preloadedOptions = apiFallback.optionsMap;
-            fallbackLinks = apiFallback.links;
-          } else {
-            const { data: liveGroups, error: liveError } = await supabase
-              .from('addon_groups')
-              .select(
-                'id,restaurant_id,name,multiple_choice,required,max_group_select,max_option_quantity,archived_at,sort_order'
-              )
-              .eq('restaurant_id', restaurantKey)
-              .is('archived_at', null)
-              .order('sort_order', { ascending: true, nullsFirst: true })
-              .order('id', { ascending: true })
-              .order('name', { ascending: true });
-
-            if (liveError) {
-              const liveStatus = (liveError as any)?.status;
-              const liveMessage = liveError?.message?.toLowerCase?.() || '';
-              const isUnauthorized =
-                liveStatus === 401 ||
-                liveStatus === 403 ||
-                liveMessage.includes('permission') ||
-                liveMessage.includes('not allowed') ||
-                liveMessage.includes('rls');
-
-              if (isUnauthorized && draftsAvailable) {
-                const apiFallback = await loadAddonsFromApi();
-                if (apiFallback) {
-                  groupRows = apiFallback.groups;
-                  preloadedOptions = apiFallback.optionsMap;
-                  fallbackLinks = apiFallback.links;
-                  useDrafts = false;
-                }
-              }
-
-              if (!groupRows || groupRows.length === 0) {
-                console.error('[addons-tab:load:groups:live]', liveError.message);
-                setGroups([]);
-                setOptions({});
-                setAssignments({});
-                return;
-              }
-            }
-
-            if (!groupRows) {
-              groupRows = liveGroups ?? [];
-            }
-            useDrafts = false;
-          }
-        }
-
-        if (!groupRows || groupRows.length === 0) {
+        if (!apiPayload || !Array.isArray(apiPayload.groups) || apiPayload.groups.length === 0) {
           setGroups([]);
           setOptions({});
           setAssignments({});
           return;
         }
 
-        let normalizedGroups = groupRows.map((group) => ({
-          ...group,
-          id: String(group.id),
-          state: group.state ?? (useDrafts ? 'draft' : 'published'),
-        }));
-
-        let sortedGroups = [...normalizedGroups].sort(
+        const sortedGroups = [...apiPayload.groups].sort(
           (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
         );
 
-        let groupIds = normalizedGroups.map((group) => group.id).filter(Boolean);
-        let fetchedOptions: any[] | null = null;
-        let optionsError = null;
-
-        if (!preloadedOptions && groupIds.length > 0) {
-          try {
-            const optionsResponse = await supabase
-              .from(useDrafts ? 'addon_options_drafts' : 'addon_options')
-              .select(
-                useDrafts
-                  ? 'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at,archived_at,sort_order,state'
-                  : 'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at,archived_at,sort_order'
-              )
-              .eq('restaurant_id', restaurantKey)
-              .in('group_id', groupIds)
-              .is('archived_at', null)
-              .order('sort_order', { ascending: true, nullsFirst: true })
-              .order('id', { ascending: true });
-
-            fetchedOptions = optionsResponse.data;
-            optionsError = optionsResponse.error;
-          } catch (error: any) {
-            optionsError = error;
-          }
-        }
-
-        let optionsMap: Record<string, any[]> = {};
-        normalizedGroups.forEach((group) => {
-          optionsMap[group.id] = [];
-        });
-
-        if (preloadedOptions) {
-          Object.keys(preloadedOptions).forEach((gid) => {
-            optionsMap[gid] = [...(preloadedOptions?.[gid] || [])];
-          });
-        } else if (optionsError) {
-          const optStatus = (optionsError as any)?.status;
-          const optMessage = optionsError?.message?.toLowerCase?.() || '';
-          const isUnauthorized =
-            optStatus === 401 ||
-            optStatus === 403 ||
-            optMessage.includes('permission') ||
-            optMessage.includes('not allowed') ||
-            optMessage.includes('rls');
-
-          if (isUnauthorized) {
-            const apiFallback = await loadAddonsFromApi();
-            if (apiFallback) {
-              groupRows = apiFallback.groups;
-              preloadedOptions = apiFallback.optionsMap;
-              fallbackLinks = apiFallback.links;
-              useDrafts = false;
-              optionsMap = {};
-              normalizedGroups = groupRows.map((group) => ({
-                ...group,
-                id: String(group.id),
-                state: group.state ?? (useDrafts ? 'draft' : 'published'),
-              }));
-              sortedGroups = [...normalizedGroups].sort(
-                (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
-              );
-              groupIds = normalizedGroups.map((group) => group.id);
-
-              normalizedGroups.forEach((group) => {
-                optionsMap[group.id] = [];
-              });
-
-              Object.keys(preloadedOptions).forEach((gid) => {
-                optionsMap[gid] = [...(preloadedOptions?.[gid] || [])];
-              });
-            }
-          }
-
-          if (!preloadedOptions) {
-            console.error('[addons-tab:load:options]', optionsError.message || optionsError);
-          }
-        } else {
-          const useFetchedOptions = Array.isArray(fetchedOptions) ? fetchedOptions : [];
-
-          if (useDrafts && useFetchedOptions.length === 0) {
-            const draftGroupsByName = new Map<string, string>();
-            normalizedGroups.forEach((group) => {
-              if (group?.name) {
-                draftGroupsByName.set(group.name, group.id);
-              }
-            });
-
-            const { data: liveGroups, error: liveGroupsError } = await supabase
-              .from('addon_groups')
-              .select('id,name')
-              .eq('restaurant_id', restaurantKey)
-              .is('archived_at', null);
-
-            if (liveGroupsError) {
-              console.error('[addons-tab:load:options:live-groups]', liveGroupsError.message);
-            } else if (liveGroups && liveGroups.length > 0) {
-              const liveGroupIds = liveGroups.map((g) => g.id).filter(Boolean);
-              if (liveGroupIds.length > 0) {
-                const { data: liveOptions, error: liveOptionsError } = await supabase
-                  .from('addon_options')
-                  .select(
-                    'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at,archived_at,sort_order'
-                  )
-                  .eq('restaurant_id', restaurantKey)
-                  .in('group_id', liveGroupIds)
-                  .is('archived_at', null)
-                  .order('sort_order', { ascending: true, nullsFirst: true })
-                  .order('id', { ascending: true });
-
-                if (liveOptionsError) {
-                  console.error('[addons-tab:load:options:live-options]', liveOptionsError.message);
-                } else if (liveOptions && liveOptions.length > 0) {
-                  const liveGroupById = new Map<string, any>();
-                  liveGroups.forEach((g) => {
-                    liveGroupById.set(String(g.id), g);
-                  });
-
-                  liveOptions.forEach((opt) => {
-                    if (!opt || typeof opt !== 'object') return;
-                    const safeOpt: any = opt;
-                    if (!('id' in safeOpt) || !('group_id' in safeOpt)) return;
-
-                    const liveGroupId = String(safeOpt.group_id);
-                    const liveGroup = liveGroupById.get(liveGroupId);
-                    const draftGroupId = liveGroup?.name ? draftGroupsByName.get(liveGroup.name) : undefined;
-                    if (!draftGroupId) return;
-
-                    const normalizedOption = {
-                      ...safeOpt,
-                      id: String(safeOpt.id),
-                      group_id: draftGroupId,
-                      state: 'published',
-                    };
-                    if (!optionsMap[draftGroupId]) {
-                      optionsMap[draftGroupId] = [];
-                    }
-                    optionsMap[draftGroupId].push(normalizedOption);
-                  });
-                }
-              }
-            }
-          } else {
-            useFetchedOptions.forEach((opt) => {
-              if (!opt || typeof opt !== 'object') {
-                return; // skip invalid rows (e.g., parser errors)
-              }
-              const safeOpt: any = opt;
-              if (!('id' in safeOpt) || !('group_id' in safeOpt)) {
-                return; // skip invalid rows (e.g., parser errors)
-              }
-
-              const groupId = String(safeOpt.group_id);
-              const normalizedOption = {
-                ...safeOpt,
-                id: String(safeOpt.id),
-                group_id: groupId,
-                state: safeOpt.state ?? (useDrafts ? 'draft' : 'published'),
-              };
-              if (!optionsMap[groupId]) {
-                optionsMap[groupId] = [];
-              }
-              optionsMap[groupId].push(normalizedOption);
-            });
-          }
-        }
-
-        Object.keys(optionsMap).forEach((gid) => {
-          optionsMap[gid] = (optionsMap[gid] || []).sort(
-            (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
-          );
-        });
+        const fallbackLinks = apiPayload.links;
 
         setGroups(sortedGroups);
-        setOptions(optionsMap);
-
+        setOptions(apiPayload.optionsMap || {});
         const [{ data: links, error: linksError }, { data: itemsData, error: itemsError }, { data: cats, error: catsError }] =
           await Promise.all([
             supabase
@@ -645,7 +336,7 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
         setCategories([]);
       }
     },
-    [restaurantKey, ensureDraftsSeeded, loadAddonsFromApi]
+    [restaurantKey, loadAddonsFromApi]
   );
 
   useEffect(() => {
