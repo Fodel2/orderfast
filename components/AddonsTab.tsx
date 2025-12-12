@@ -276,14 +276,21 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
 
         if (draftError) {
           const draftStatus = (draftError as any)?.status;
+          const draftMessage = draftError?.message?.toLowerCase?.() || '';
           const isMissingRelation =
             draftError?.code === 'PGRST116' ||
             draftStatus === 404 ||
-            draftError?.message?.toLowerCase?.().includes('does not exist');
+            draftMessage.includes('does not exist');
+          const isUnauthorized =
+            draftStatus === 401 ||
+            draftStatus === 403 ||
+            draftMessage.includes('permission') ||
+            draftMessage.includes('not allowed') ||
+            draftMessage.includes('rls');
 
-          if (isMissingRelation) {
-            draftsAvailable = false;
+          if (isMissingRelation || isUnauthorized) {
             useDrafts = false;
+            draftsAvailable = !isMissingRelation;
           } else {
             console.error('[addons-tab:load:groups]', draftError.message);
             setGroups([]);
