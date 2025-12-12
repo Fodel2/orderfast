@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { supaServer } from '@/lib/supaServer';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -33,7 +33,7 @@ function logSupabaseCall(
 }
 
 async function ensureAddonDraftsForRestaurant(
-  supabase: typeof supaServer,
+  supabase: SupabaseClient,
   restaurantId: string
 ) {
   const existingDrafts = await supabase
@@ -132,7 +132,14 @@ function ensureDraftPayload(input: unknown): DraftPayload {
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const supabase = supaServer;
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    return res.status(500).json({ message: 'Missing Supabase server env vars' });
+  }
+
+  const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
   const restaurantId = resolveRestaurantId(req);
   const path = req.url || '/api/menu-builder';
 
