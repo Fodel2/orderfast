@@ -5,7 +5,9 @@ import { normalizeSource } from '@/lib/media/placeholders';
 export type KioskRestaurant = {
   id: string;
   name?: string | null;
+  website_title?: string | null;
   logo_url?: string | null;
+  cover_image_url?: string | null;
   kiosk_hero_image_url?: string | null;
   kiosk_hero_image_updated_at?: string | null;
   website_description?: string | null;
@@ -36,10 +38,12 @@ export default function HomeScreen({ restaurant, onStart, fadingOut }: HomeScree
     [restaurant?.kiosk_hero_image_updated_at, restaurant?.kiosk_hero_image_url]
   );
 
+  const coverHero = useMemo(() => formatImageUrl(restaurant?.cover_image_url), [restaurant?.cover_image_url]);
+
   const heroUrl = useMemo(() => {
     const menuHero = formatImageUrl(restaurant?.menu_header_image_url, restaurant?.menu_header_image_updated_at);
-    return kioskHero || menuHero || null;
-  }, [kioskHero, restaurant?.menu_header_image_updated_at, restaurant?.menu_header_image_url]);
+    return coverHero || kioskHero || menuHero || null;
+  }, [coverHero, kioskHero, restaurant?.menu_header_image_updated_at, restaurant?.menu_header_image_url]);
 
   const logoUrl = useMemo(() => normalizeSource(restaurant?.logo_url), [restaurant?.logo_url]);
 
@@ -89,7 +93,7 @@ export default function HomeScreen({ restaurant, onStart, fadingOut }: HomeScree
             </div>
             <div className="space-y-1">
               <h1 className="text-3xl font-semibold leading-tight text-neutral-900 sm:text-4xl">
-                {restaurant?.name || 'Restaurant'}
+                {restaurant?.website_title || restaurant?.name || 'Restaurant'}
               </h1>
               {restaurant?.website_description ? (
                 <p className="text-base text-neutral-600 sm:text-lg">{restaurant.website_description}</p>
