@@ -234,6 +234,29 @@ export default function AddItemModal({
       return;
     }
     const categoryId = selectedCategories[0] ?? null;
+    const fileToDataUrl = (file: File) =>
+      new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error('Failed to read image'));
+        reader.readAsDataURL(file);
+      });
+
+    let imageDataUrl: string | null = null;
+    if (imageFile) {
+      if (imageUrl?.startsWith('data:')) {
+        imageDataUrl = imageUrl;
+      } else {
+        try {
+          imageDataUrl = await fileToDataUrl(imageFile);
+          setImageUrl(imageDataUrl);
+        } catch (err) {
+          console.error('Failed to prepare image for upload', err);
+          alert('Could not prepare image for upload. Please try again.');
+          return;
+        }
+      }
+    }
     const ensureExternalKey = () => {
       if (item?.external_key) return item.external_key;
       if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -280,9 +303,9 @@ export default function AddItemModal({
       categoryIds: selectedCategories,
       addonGroupIds: selectedAddons,
       externalKey,
-      imageDataUrl: imageFile && imageUrl?.startsWith('data:') ? imageUrl : null,
+      imageDataUrl,
       imageName: imageFile?.name ?? null,
-      existingImageUrl: imageFile && imageUrl?.startsWith('data:') ? null : imageUrl,
+      existingImageUrl: imageDataUrl ? null : imageUrl,
     };
 
     const res = await fetch('/api/menu/items', {
