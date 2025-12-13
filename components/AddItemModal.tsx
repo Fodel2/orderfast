@@ -3,10 +3,8 @@ import Cropper, { Area } from 'react-easy-crop';
 import { CloudArrowUpIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { Trash2 } from 'lucide-react';
 import { supabase } from '../utils/supabaseClient';
-import { STORAGE_BUCKET } from '../lib/storage';
 import CategoryMultiSelect from './CategoryMultiSelect';
 import AddonMultiSelect from './AddonMultiSelect';
-import { updateItemAddonLinks } from '../utils/updateItemAddonLinks';
 
 interface AddItemModalProps {
   showModal: boolean;
@@ -236,22 +234,6 @@ export default function AddItemModal({
       return;
     }
     const categoryId = selectedCategories[0] ?? null;
-    let finalImageUrl = imageUrl;
-    if (imageFile && imageUrl && imageUrl.startsWith('data:')) {
-      const path = `menu-images/${Date.now()}-${imageFile.name}`;
-      const { error: uploadError } = await supabase.storage
-        .from(STORAGE_BUCKET)
-        .upload(path, imageFile, { upsert: true });
-      if (uploadError) {
-        const errText = [uploadError.name, uploadError.message]
-          .filter(Boolean)
-          .join(': ');
-        alert('Failed to upload image: ' + errText);
-        return;
-      }
-      finalImageUrl =
-        supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path).data.publicUrl;
-    }
     const ensureExternalKey = () => {
       if (item?.external_key) return item.external_key;
       if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -262,59 +244,58 @@ export default function AddItemModal({
 
     const externalKey = onSaveData ? ensureExternalKey() : item?.external_key;
 
-    const itemData: Record<string, any> = {
-      restaurant_id: restaurantId,
-      name,
-      description,
-      price: parseFloat(price) || 0,
-      is_vegan: isVegan,
-      is_vegetarian: isVegetarian,
-      is_18_plus: is18Plus,
-      image_url: finalImageUrl,
-      category_id: categoryId,
-    };
-
-    if (externalKey) {
-      itemData.external_key = externalKey;
-    }
-
     if (onSaveData) {
+      const itemData: Record<string, any> = {
+        restaurant_id: restaurantId,
+        name,
+        description,
+        price: parseFloat(price) || 0,
+        is_vegan: isVegan,
+        is_vegetarian: isVegetarian,
+        is_18_plus: is18Plus,
+        image_url: imageUrl,
+        category_id: categoryId,
+      };
+
+      if (externalKey) {
+        itemData.external_key = externalKey;
+      }
+
       await onSaveData(itemData, selectedCategories, selectedAddons);
       // Draft items are not persisted yet, so skip saving addon links
       onSaved?.();
       onClose();
       return;
     }
+    const payload = {
+      itemId: item?.id ?? null,
+      restaurantId,
+      name,
+      description,
+      price: parseFloat(price) || 0,
+      isVegan,
+      isVegetarian,
+      is18Plus,
+      categoryId,
+      categoryIds: selectedCategories,
+      addonGroupIds: selectedAddons,
+      externalKey,
+      imageDataUrl: imageFile && imageUrl?.startsWith('data:') ? imageUrl : null,
+      imageName: imageFile?.name ?? null,
+      existingImageUrl: imageFile && imageUrl?.startsWith('data:') ? null : imageUrl,
+    };
 
-    const { data, error } = await (item
-      ? supabase.from('menu_items').update(itemData).eq('id', item.id).select().single()
-      : supabase.from('menu_items').insert([itemData]).select().single());
+    const res = await fetch('/api/menu/items', {
+      method: item ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
 
-    if (error) {
-      alert('Failed to save item: ' + error.message);
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const errMsg = json.error || json.message || 'Failed to save item';
+      alert(errMsg);
       return;
-    }
-
-    if (data?.id) {
-      if (item) {
-        await supabase
-          .from('menu_item_categories')
-          .delete()
-          .eq('item_id', String(data.id));
-      }
-      if (selectedCategories.length) {
-        await supabase.from('menu_item_categories').insert(
-          selectedCategories.map((cid) => ({
-            item_id: String(data.id),
-            category_id: String(cid),
-          }))
-        );
-      }
-      try {
-        await updateItemAddonLinks(String(data.id), selectedAddons);
-      } catch (err: any) {
-        alert('Failed to update addon links: ' + (err?.message || err));
-      }
     }
 
     onSaved?.();
