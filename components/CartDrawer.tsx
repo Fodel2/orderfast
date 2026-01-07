@@ -187,6 +187,8 @@ export default function CartDrawer({ inline = false, onInteraction, mode = 'cust
   const { cart, subtotal } = useCart();
   const [emptyMessage] = useState(() => randomEmptyPlateMessage());
   const [open, setOpen] = useState(false);
+  const brand = useBrand?.();
+  const currencyCode = brand?.currencyCode || 'GBP';
   const isKioskMode = mode === 'kiosk';
 
   const toggle = () => setOpen((o) => !o);
