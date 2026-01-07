@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '../utils/supabaseClient';
 
 interface AddonGroupModalProps {
   show: boolean;
@@ -7,6 +6,7 @@ interface AddonGroupModalProps {
   group?: any;
   onClose: () => void;
   onSaved: () => void;
+  onAutosaveStatus?: (status: 'saving' | 'saved' | 'error', message?: string) => void;
 }
 
 export default function AddonGroupModal({
@@ -15,6 +15,7 @@ export default function AddonGroupModal({
   group,
   onClose,
   onSaved,
+  onAutosaveStatus,
 }: AddonGroupModalProps) {
   const [name, setName] = useState(group?.name || '');
   const [multipleChoice, setMultipleChoice] = useState<boolean>(!!group?.multiple_choice);
@@ -55,7 +56,6 @@ export default function AddonGroupModal({
       alert('Name is required');
       return;
     }
-    let groupId = group?.id;
     const parsedMaxGroup =
       maxGroupSelect === '' ? null : parseInt(maxGroupSelect, 10) || 0;
     const parsedMaxOption =
@@ -63,51 +63,30 @@ export default function AddonGroupModal({
 
     const restaurantKey = String(restaurantId);
 
-    if (group) {
-      const { error } = await supabase
-        .from('addon_groups_drafts')
-        .update({
-          name,
-          multiple_choice: multipleChoice,
-          required,
-          max_group_select: parsedMaxGroup,
-          max_option_quantity: parsedMaxOption,
-        })
-        .eq('id', group.id)
-        .eq('restaurant_id', restaurantKey)
-        .eq('state', 'draft');
-      if (error) {
-        alert('Failed to save: ' + error.message);
-        return;
-      }
-    } else {
-      const payload = {
+    onAutosaveStatus?.('saving');
+    const response = await fetch('/api/menu-builder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        restaurantId: restaurantKey,
+        action: group ? 'update_addon_group' : 'create_addon_group',
+        groupId: group?.id,
         name,
         multiple_choice: multipleChoice,
         required,
-        restaurant_id: restaurantKey,
         max_group_select: parsedMaxGroup,
         max_option_quantity: parsedMaxOption,
-        archived_at: null,
-        state: 'draft',
-      };
+      }),
+    });
 
-      const { data, error: insertError } = await supabase
-        .from('addon_groups_drafts')
-        .insert([payload])
-        .select();
-
-      if (insertError) {
-        console.error('Insert error:', insertError);
-        alert('Insert failed. Check console for details.');
-        return;
-      }
-
-      groupId = data?.[0]?.id;
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      onAutosaveStatus?.('error', json?.message || json?.error || 'Failed to save');
+      alert('Failed to save: ' + (json?.message || json?.error || 'Unknown error'));
+      return;
     }
 
-    if (!groupId) return;
-
+    onAutosaveStatus?.('saved');
     onSaved();
     onClose();
   };

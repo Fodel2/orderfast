@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { TruckIcon, ShoppingBagIcon, MapPinIcon } from '@heroicons/react/24/outline';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -35,13 +35,33 @@ export default function CheckoutPage() {
   const [location, setLocation] = useState<{ x: number; y: number } | null>(null);
   const [asap, setAsap] = useState(true);
   const router = useRouter();
-  const formatAmount = (value: number) => formatPrice(value);
+  const [currencyCode, setCurrencyCode] = useState('GBP');
+  const formatAmount = (value: number) => formatPrice(value, currencyCode);
 
   const selectClass = (type: OrderType) =>
     `border rounded-lg p-6 flex flex-col items-center justify-center cursor-pointer space-y-2 hover:border-teal-600 ${orderType === type ? 'border-teal-600 bg-teal-50' : 'border-gray-300'}`;
 
   const session = useSession();
   const [placing, setPlacing] = useState(false);
+
+  useEffect(() => {
+    if (!cart.restaurant_id) return;
+    let active = true;
+    supabase
+      .from('restaurants')
+      .select('currency_code')
+      .eq('id', cart.restaurant_id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!active) return;
+        if (data?.currency_code) {
+          setCurrencyCode(data.currency_code);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [cart.restaurant_id]);
 
   const placeOrder = async () => {
     if (!cart.restaurant_id || !orderType) return;

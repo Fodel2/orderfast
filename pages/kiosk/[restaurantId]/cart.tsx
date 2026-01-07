@@ -26,6 +26,7 @@ type Restaurant = {
   auto_accept_kiosk_orders?: boolean | null;
   auto_accept_app_orders?: boolean | null;
   auto_accept_pos_orders?: boolean | null;
+  currency_code?: string | null;
 };
 
 type KioskOrderRaceResult =
@@ -64,6 +65,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   const { resetKioskToStart, registerActivity } = useKioskSession();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
+  const currencyCode = restaurant?.currency_code || undefined;
   const [placingOrder, setPlacingOrder] = useState(false);
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
   const placeOrderDisabled = cartCount === 0 || placingOrder;
@@ -144,7 +146,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
         const { data, error } = await supabase
           .from('restaurants')
           .select(
-            'id,name,website_title,website_description,logo_url,theme_primary_color,menu_header_image_url,menu_header_image_updated_at,menu_header_focal_x,menu_header_focal_y,auto_accept_kiosk_orders,auto_accept_app_orders,auto_accept_pos_orders'
+            'id,name,website_title,website_description,logo_url,theme_primary_color,menu_header_image_url,menu_header_image_updated_at,menu_header_focal_x,menu_header_focal_y,auto_accept_kiosk_orders,auto_accept_app_orders,auto_accept_pos_orders,currency_code'
           )
           .eq('id', restaurantId)
           .maybeSingle();
@@ -449,7 +451,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
           <div className="mx-auto flex w-full max-w-5xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:py-3.5">
             <div className="flex flex-1 flex-col gap-1 text-slate-900">
               <span className="text-[11px] uppercase tracking-[0.12em] text-slate-500">Subtotal</span>
-              <span className="text-xl font-semibold sm:text-2xl">{formatPrice(subtotal)}</span>
+              <span className="text-xl font-semibold sm:text-2xl">{formatPrice(subtotal, currencyCode)}</span>
               <span className="text-xs text-slate-500 sm:text-sm">Includes items and add-ons</span>
             </div>
             <div className="flex-1 sm:flex-none sm:w-80">

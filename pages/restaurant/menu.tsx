@@ -35,6 +35,7 @@ interface Restaurant {
   menu_header_focal_x?: number | null;
   menu_header_focal_y?: number | null;
   menu_header_image_updated_at?: string | null;
+  currency_code?: string | null;
 }
 
 interface Category {
@@ -292,6 +293,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
                     item={item}
                     restaurantId={effectiveRestaurantId as string}
                     restaurantLogoUrl={restaurant?.logo_url ?? null}
+                    currencyCode={restaurant?.currency_code ?? undefined}
                   />
                 </div>
               ))}
@@ -428,7 +430,7 @@ export const getServerSideProps: GetServerSideProps = async ctx => {
   if (id) {
     const { data } = await supaServer
       .from('restaurants')
-      .select('id,website_title,name,logo_url,logo_shape,brand_primary_color,brand_secondary_color')
+      .select('id,website_title,name,logo_url,logo_shape,brand_primary_color,brand_secondary_color,currency_code')
       .eq('id', id)
       .maybeSingle();
     initialBrand = data;

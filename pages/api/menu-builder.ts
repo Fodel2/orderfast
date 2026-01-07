@@ -5,6 +5,17 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 const isProd = process.env.NODE_ENV === 'production';
 
 type SupabaseAction = 'select' | 'insert' | 'upsert';
+type AddonAction =
+  | 'create_addon_group'
+  | 'update_addon_group'
+  | 'delete_addon_group'
+  | 'duplicate_addon_group'
+  | 'reorder_addon_groups'
+  | 'create_addon_option'
+  | 'update_addon_option'
+  | 'delete_addon_option'
+  | 'reorder_addon_options'
+  | 'assign_addon_group';
 
 function logSupabaseCall(
   action: SupabaseAction,
@@ -159,6 +170,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         : typeof withAddonsParam === 'string'
         ? withAddonsParam === '' || withAddonsParam === '1' || withAddonsParam.toLowerCase() === 'true'
         : false;
+      const includePublishedAddonsParam = req.query.includePublishedAddons;
+      const includePublishedAddons = Array.isArray(includePublishedAddonsParam)
+        ? includePublishedAddonsParam.some((value) =>
+            value === '' || value === '1' || value?.toLowerCase?.() === 'true'
+          )
+        : typeof includePublishedAddonsParam === 'string'
+        ? includePublishedAddonsParam === '' ||
+          includePublishedAddonsParam === '1' ||
+          includePublishedAddonsParam.toLowerCase() === 'true'
+        : false;
       const ensureAddonsDraftsParam = req.query.ensureAddonsDrafts;
       const ensureAddonsDrafts = Array.isArray(ensureAddonsDraftsParam)
         ? ensureAddonsDraftsParam.some((value) =>
@@ -171,6 +192,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         : false;
       let addonGroups: any[] | undefined;
       let addonLinks: DraftAddonLinkRow[] | undefined;
+      let publishedAddonGroups: any[] | undefined;
       let addonDraftsSeeded = false;
       let addonSeedStats: { groups: number; options: number; links: number } | undefined;
 
@@ -188,15 +210,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(500).json({ error: error?.message, details: error?.details, hint: error?.hint });
       }
 
-      if (withAddons || ensureAddonsDrafts) {
+      if (withAddons || ensureAddonsDrafts || includePublishedAddons) {
         try {
-          const seeded = await ensureAddonDraftsForRestaurant(supabase, restaurantId);
-          addonDraftsSeeded = Boolean(seeded?.seeded);
-          addonSeedStats = {
-            groups: seeded?.groupsSeeded ?? 0,
-            options: seeded?.optionsSeeded ?? 0,
-            links: seeded?.linksSeeded ?? 0,
-          };
+          if (withAddons || ensureAddonsDrafts) {
+            const seeded = await ensureAddonDraftsForRestaurant(supabase, restaurantId);
+            addonDraftsSeeded = Boolean(seeded?.seeded);
+            addonSeedStats = {
+              groups: seeded?.groupsSeeded ?? 0,
+              options: seeded?.optionsSeeded ?? 0,
+              links: seeded?.linksSeeded ?? 0,
+            };
+          }
         } catch (error: any) {
           console.error(
             'Supabase error:',
@@ -213,133 +237,191 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           });
         }
 
-        try {
-          logSupabaseCall(
-            'select',
-            'addon_groups_drafts',
-            'id,name,multiple_choice,required,max_group_select,max_option_quantity,state,archived_at'
-          );
-          const groupsResponse = await supabase
-            .from('addon_groups_drafts')
-            .select(
-              'id,restaurant_id,name,multiple_choice,required,max_group_select,max_option_quantity,state,archived_at'
-            )
-            .eq('restaurant_id', restaurantId)
-            .is('archived_at', null)
-            .order('id', { ascending: true })
-            .order('name', { ascending: true });
-
-          let rawGroups = groupsResponse.data ?? [];
-
-          if (groupsResponse.error) {
-            const gStatus = (groupsResponse.error as any)?.status;
-            const gMessage = groupsResponse.error?.message?.toLowerCase?.() || '';
-            const isUnauthorized =
-              gStatus === 401 ||
-              gStatus === 403 ||
-              gMessage.includes('permission') ||
-              gMessage.includes('not allowed') ||
-              gMessage.includes('rls');
-            const isMissingRelation =
-              (groupsResponse.error as any)?.code === 'PGRST116' ||
-              gStatus === 404 ||
-              gMessage.includes('does not exist');
-
-            if (!isUnauthorized && !isMissingRelation) {
-              throw groupsResponse.error;
-            }
-            rawGroups = [];
-          }
-
-          if (rawGroups.length === 0) {
-            const liveGroupsResponse = await supabase
-              .from('addon_groups')
+        if (withAddons || ensureAddonsDrafts) {
+          try {
+            logSupabaseCall(
+              'select',
+              'addon_groups_drafts',
+              'id,name,multiple_choice,required,max_group_select,max_option_quantity,state,archived_at'
+            );
+            const groupsResponse = await supabase
+              .from('addon_groups_drafts')
               .select(
-                'id,restaurant_id,name,multiple_choice,required,max_group_select,max_option_quantity,archived_at'
+                'id,restaurant_id,name,multiple_choice,required,max_group_select,max_option_quantity,state,archived_at,sort_order'
               )
               .eq('restaurant_id', restaurantId)
               .is('archived_at', null)
-              .order('id', { ascending: true })
+              .order('sort_order', { ascending: true })
+              .order('name', { ascending: true });
+
+            let rawGroups = groupsResponse.data ?? [];
+
+            if (groupsResponse.error) {
+              const gStatus = (groupsResponse.error as any)?.status;
+              const gMessage = groupsResponse.error?.message?.toLowerCase?.() || '';
+              const isUnauthorized =
+                gStatus === 401 ||
+                gStatus === 403 ||
+                gMessage.includes('permission') ||
+                gMessage.includes('not allowed') ||
+                gMessage.includes('rls');
+              const isMissingRelation =
+                (groupsResponse.error as any)?.code === 'PGRST116' ||
+                gStatus === 404 ||
+                gMessage.includes('does not exist');
+
+              if (!isUnauthorized && !isMissingRelation) {
+                throw groupsResponse.error;
+              }
+              rawGroups = [];
+            }
+
+            if (rawGroups.length === 0) {
+              const liveGroupsResponse = await supabase
+                .from('addon_groups')
+                .select(
+                  'id,restaurant_id,name,multiple_choice,required,max_group_select,max_option_quantity,archived_at,sort_order'
+                )
+                .eq('restaurant_id', restaurantId)
+                .is('archived_at', null)
+                .order('sort_order', { ascending: true })
+                .order('name', { ascending: true });
+
+              if (liveGroupsResponse.error) {
+                throw liveGroupsResponse.error;
+              }
+
+              rawGroups = (liveGroupsResponse.data ?? []).map((group) => ({
+                ...group,
+                state: 'published',
+              }));
+            }
+            const groupIds = rawGroups.map((group) => group.id).filter(Boolean);
+            const optionMap = new Map<string, any[]>();
+
+            if (groupIds.length > 0) {
+              const optionsResponse = await supabase
+                .from('addon_options_drafts')
+                .select(
+                  'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at,state,archived_at,sort_order'
+                )
+                .in('group_id', groupIds)
+                .is('archived_at', null);
+
+              const optionsError = optionsResponse.error;
+              let optionRows = optionsResponse.data ?? [];
+
+              if (optionsError) {
+                const optStatus = (optionsError as any)?.status;
+                const optMessage = optionsError?.message?.toLowerCase?.() || '';
+                const isUnauthorized =
+                  optStatus === 401 ||
+                  optStatus === 403 ||
+                  optMessage.includes('permission') ||
+                  optMessage.includes('not allowed') ||
+                  optMessage.includes('rls');
+
+                if (!isUnauthorized) {
+                  throw optionsError;
+                }
+              }
+
+              if (optionRows.length === 0) {
+                const liveOptionsResponse = await supabase
+                  .from('addon_options')
+                  .select(
+                    'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at,archived_at,sort_order'
+                  )
+                  .in('group_id', groupIds)
+                  .is('archived_at', null);
+
+                if (liveOptionsResponse.error) {
+                  throw liveOptionsResponse.error;
+                }
+
+                optionRows = (liveOptionsResponse.data ?? []).map((option) => ({
+                  ...option,
+                  state: 'published',
+                }));
+              }
+
+              for (const option of optionRows) {
+                const groupId = option.group_id ? String(option.group_id) : '';
+                if (!groupId) continue;
+                if (!optionMap.has(groupId)) optionMap.set(groupId, []);
+                optionMap.get(groupId)!.push({
+                  ...option,
+                  id: String(option.id),
+                  group_id: groupId,
+                });
+              }
+            }
+
+            addonGroups = rawGroups.map((group) => ({
+              ...group,
+              id: String(group.id),
+              addon_options: optionMap.get(String(group.id)) || [],
+            }));
+          } catch (error: any) {
+            console.error('Supabase error:', error?.message, error?.details, error?.hint);
+            return res.status(500).json({ error: error?.message, details: error?.details, hint: error?.hint });
+          }
+        }
+
+        if (includePublishedAddons) {
+          try {
+            const liveGroupsResponse = await supabase
+              .from('addon_groups')
+              .select(
+                'id,restaurant_id,name,multiple_choice,required,max_group_select,max_option_quantity,archived_at,sort_order'
+              )
+              .eq('restaurant_id', restaurantId)
+              .is('archived_at', null)
+              .order('sort_order', { ascending: true })
               .order('name', { ascending: true });
 
             if (liveGroupsResponse.error) {
               throw liveGroupsResponse.error;
             }
 
-            rawGroups = (liveGroupsResponse.data ?? []).map((group) => ({
-              ...group,
-              state: 'published',
-            }));
-          }
-          const groupIds = rawGroups.map((group) => group.id).filter(Boolean);
-          const optionMap = new Map<string, any[]>();
+            const liveGroups = liveGroupsResponse.data ?? [];
+            const liveGroupIds = liveGroups.map((group) => group.id).filter(Boolean);
+            const liveOptionMap = new Map<string, any[]>();
 
-          if (groupIds.length > 0) {
-            const optionsResponse = await supabase
-              .from('addon_options_drafts')
-              .select(
-                'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at,state,archived_at'
-              )
-              .in('group_id', groupIds)
-              .is('archived_at', null);
-
-            const optionsError = optionsResponse.error;
-            let optionRows = optionsResponse.data ?? [];
-
-            if (optionsError) {
-              const optStatus = (optionsError as any)?.status;
-              const optMessage = optionsError?.message?.toLowerCase?.() || '';
-              const isUnauthorized =
-                optStatus === 401 ||
-                optStatus === 403 ||
-                optMessage.includes('permission') ||
-                optMessage.includes('not allowed') ||
-                optMessage.includes('rls');
-
-              if (!isUnauthorized) {
-                throw optionsError;
-              }
-            }
-
-            if (optionRows.length === 0) {
+            if (liveGroupIds.length > 0) {
               const liveOptionsResponse = await supabase
                 .from('addon_options')
                 .select(
-                  'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at,archived_at'
+                  'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at,archived_at,sort_order'
                 )
-                .in('group_id', groupIds)
+                .in('group_id', liveGroupIds)
                 .is('archived_at', null);
 
               if (liveOptionsResponse.error) {
                 throw liveOptionsResponse.error;
               }
 
-              optionRows = (liveOptionsResponse.data ?? []).map((option) => ({
-                ...option,
-                state: 'published',
-              }));
+              for (const option of liveOptionsResponse.data ?? []) {
+                const groupId = option.group_id ? String(option.group_id) : '';
+                if (!groupId) continue;
+                if (!liveOptionMap.has(groupId)) liveOptionMap.set(groupId, []);
+                liveOptionMap.get(groupId)!.push({
+                  ...option,
+                  id: String(option.id),
+                  group_id: groupId,
+                });
+              }
             }
 
-            for (const option of optionRows) {
-              const groupId = option.group_id ? String(option.group_id) : '';
-              if (!groupId) continue;
-              if (!optionMap.has(groupId)) optionMap.set(groupId, []);
-              optionMap.get(groupId)!.push({
-                ...option,
-                id: String(option.id),
-                group_id: groupId,
-              });
-            }
+            publishedAddonGroups = liveGroups.map((group) => ({
+              ...group,
+              id: String(group.id),
+              addon_options: liveOptionMap.get(String(group.id)) || [],
+            }));
+          } catch (error: any) {
+            console.error('Supabase error:', error?.message, error?.details, error?.hint);
+            return res.status(500).json({ error: error?.message, details: error?.details, hint: error?.hint });
           }
-
-          addonGroups = rawGroups.map((group) => ({
-            ...group,
-            id: String(group.id),
-            addon_options: optionMap.get(String(group.id)) || [],
-          }));
-        } catch (error: any) {
-          console.error('Supabase error:', error?.message, error?.details, error?.hint);
-          return res.status(500).json({ error: error?.message, details: error?.details, hint: error?.hint });
         }
 
         try {
@@ -426,6 +508,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           updated_at: inserted.updated_at,
           addonGroups: addonGroups ?? [],
           addonLinks: addonLinks ?? [],
+          publishedAddonGroups: publishedAddonGroups ?? [],
           addonDraftsSeeded,
           addonSeedStats,
         });
@@ -436,9 +519,414 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         updated_at: data.updated_at,
         addonGroups: addonGroups ?? [],
         addonLinks: addonLinks ?? [],
+        publishedAddonGroups: publishedAddonGroups ?? [],
         addonDraftsSeeded,
         addonSeedStats,
       });
+    }
+
+    if (req.method === 'POST') {
+      const { action } = req.body as { action?: AddonAction };
+      if (!action) {
+        return res.status(400).json({ message: 'action is required' });
+      }
+
+      await ensureAddonDraftsForRestaurant(supabase, restaurantId);
+
+      if (action === 'create_addon_group') {
+        const {
+          name,
+          multiple_choice,
+          required,
+          max_group_select,
+          max_option_quantity,
+        } = req.body as Record<string, any>;
+        if (!name) return res.status(400).json({ message: 'name is required' });
+
+        const { data: lastGroup } = await supabase
+          .from('addon_groups_drafts')
+          .select('sort_order')
+          .eq('restaurant_id', restaurantId)
+          .order('sort_order', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const sort_order =
+          typeof lastGroup?.sort_order === 'number' ? lastGroup.sort_order + 1 : 0;
+
+        const payload = {
+          restaurant_id: restaurantId,
+          name,
+          multiple_choice: !!multiple_choice,
+          required: !!required,
+          max_group_select: max_group_select ?? null,
+          max_option_quantity: max_option_quantity ?? null,
+          archived_at: null,
+          state: 'draft',
+          sort_order,
+        };
+
+        const { data, error } = await supabase
+          .from('addon_groups_drafts')
+          .insert([payload])
+          .select('*')
+          .single();
+
+        if (error) {
+          return res.status(500).json({ message: error.message });
+        }
+        return res.status(200).json({ group: data });
+      }
+
+      if (action === 'update_addon_group') {
+        const { groupId, name, multiple_choice, required, max_group_select, max_option_quantity } =
+          req.body as Record<string, any>;
+        if (!groupId) return res.status(400).json({ message: 'groupId is required' });
+
+        const { error } = await supabase
+          .from('addon_groups_drafts')
+          .update({
+            name,
+            multiple_choice,
+            required,
+            max_group_select: max_group_select ?? null,
+            max_option_quantity: max_option_quantity ?? null,
+          })
+          .eq('id', groupId)
+          .eq('restaurant_id', restaurantId);
+
+        if (error) {
+          return res.status(500).json({ message: error.message });
+        }
+        return res.status(200).json({ ok: true });
+      }
+
+      if (action === 'delete_addon_group') {
+        const { groupId } = req.body as Record<string, any>;
+        if (!groupId) return res.status(400).json({ message: 'groupId is required' });
+
+        const deletions = await Promise.all([
+          supabase
+            .from('addon_options_drafts')
+            .delete()
+            .eq('group_id', groupId)
+            .eq('restaurant_id', restaurantId),
+          supabase
+            .from('item_addon_links_drafts')
+            .delete()
+            .eq('group_id', groupId)
+            .eq('restaurant_id', restaurantId),
+          supabase
+            .from('addon_groups_drafts')
+            .delete()
+            .eq('id', groupId)
+            .eq('restaurant_id', restaurantId),
+        ]);
+
+        const firstError = deletions.find((res) => res.error)?.error;
+        if (firstError) {
+          return res.status(500).json({ message: firstError.message });
+        }
+        return res.status(200).json({ ok: true });
+      }
+
+      if (action === 'duplicate_addon_group') {
+        const { groupId } = req.body as Record<string, any>;
+        if (!groupId) return res.status(400).json({ message: 'groupId is required' });
+
+        const { data: group, error: groupError } = await supabase
+          .from('addon_groups_drafts')
+          .select('*')
+          .eq('id', groupId)
+          .eq('restaurant_id', restaurantId)
+          .maybeSingle();
+
+        if (groupError || !group) {
+          return res.status(500).json({ message: groupError?.message || 'Group not found' });
+        }
+
+        const { data: lastGroup } = await supabase
+          .from('addon_groups_drafts')
+          .select('sort_order')
+          .eq('restaurant_id', restaurantId)
+          .order('sort_order', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const sort_order =
+          typeof lastGroup?.sort_order === 'number' ? lastGroup.sort_order + 1 : 0;
+
+        const { data: newGroup, error: insertError } = await supabase
+          .from('addon_groups_drafts')
+          .insert([
+            {
+              name: `${group.name} - copy`,
+              multiple_choice: group.multiple_choice,
+              required: group.required,
+              restaurant_id: restaurantId,
+              max_group_select: group.max_group_select,
+              max_option_quantity: group.max_option_quantity,
+              archived_at: null,
+              state: 'draft',
+              sort_order,
+            },
+          ])
+          .select('*')
+          .single();
+
+        if (insertError || !newGroup) {
+          return res.status(500).json({ message: insertError?.message || 'Failed to duplicate' });
+        }
+
+        const { data: options, error: optionError } = await supabase
+          .from('addon_options_drafts')
+          .select('*')
+          .eq('group_id', groupId)
+          .eq('restaurant_id', restaurantId)
+          .is('archived_at', null)
+          .order('sort_order', { ascending: true });
+
+        if (optionError) {
+          return res.status(500).json({ message: optionError.message });
+        }
+
+        if (options?.length) {
+          const rows = options.map((opt, idx) => ({
+            name: opt.name,
+            price: opt.price,
+            available: opt.available,
+            group_id: newGroup.id,
+            out_of_stock_until: opt.out_of_stock_until,
+            stock_status: opt.stock_status,
+            stock_return_date: opt.stock_return_date,
+            stock_last_updated_at: opt.stock_last_updated_at,
+            restaurant_id: restaurantId,
+            archived_at: null,
+            state: 'draft',
+            sort_order: idx,
+          }));
+          const { error: insertOptionsError } = await supabase
+            .from('addon_options_drafts')
+            .insert(rows);
+          if (insertOptionsError) {
+            return res.status(500).json({ message: insertOptionsError.message });
+          }
+        }
+
+        return res.status(200).json({ group: newGroup });
+      }
+
+      if (action === 'reorder_addon_groups') {
+        const { updates } = req.body as { updates?: Array<{ id: string; sort_order: number }> };
+        if (!Array.isArray(updates)) {
+          return res.status(400).json({ message: 'updates is required' });
+        }
+        const results = await Promise.all(
+          updates.map((row) =>
+            supabase
+              .from('addon_groups_drafts')
+              .update({ sort_order: row.sort_order })
+              .eq('id', row.id)
+              .eq('restaurant_id', restaurantId)
+          )
+        );
+        const firstError = results.find((res) => res.error)?.error;
+        if (firstError) {
+          return res.status(500).json({ message: firstError.message });
+        }
+        return res.status(200).json({ ok: true });
+      }
+
+      if (action === 'create_addon_option') {
+        const { groupId, name, price, sortOrder } = req.body as Record<string, any>;
+        if (!groupId) return res.status(400).json({ message: 'groupId is required' });
+        if (name == null) return res.status(400).json({ message: 'name is required' });
+
+        const payload = {
+          restaurant_id: restaurantId,
+          group_id: groupId,
+          name,
+          price: price ?? 0,
+          available: true,
+          archived_at: null,
+          state: 'draft',
+          sort_order: typeof sortOrder === 'number' ? sortOrder : 0,
+        };
+
+        const { data, error } = await supabase
+          .from('addon_options_drafts')
+          .insert([payload])
+          .select(
+            'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at,sort_order'
+          )
+          .single();
+
+        if (error) {
+          return res.status(500).json({ message: error.message });
+        }
+        return res.status(200).json({ option: data });
+      }
+
+      if (action === 'update_addon_option') {
+        const { optionId, groupId, fields } = req.body as Record<string, any>;
+        if (!optionId) return res.status(400).json({ message: 'optionId is required' });
+
+        const { error } = await supabase
+          .from('addon_options_drafts')
+          .update(fields)
+          .eq('id', optionId)
+          .eq('restaurant_id', restaurantId);
+
+        if (error) {
+          return res.status(500).json({ message: error.message });
+        }
+        return res.status(200).json({ ok: true, groupId });
+      }
+
+      if (action === 'delete_addon_option') {
+        const { optionId } = req.body as Record<string, any>;
+        if (!optionId) return res.status(400).json({ message: 'optionId is required' });
+
+        const { error } = await supabase
+          .from('addon_options_drafts')
+          .delete()
+          .eq('id', optionId)
+          .eq('restaurant_id', restaurantId);
+
+        if (error) {
+          return res.status(500).json({ message: error.message });
+        }
+        return res.status(200).json({ ok: true });
+      }
+
+      if (action === 'reorder_addon_options') {
+        const { updates } = req.body as { updates?: Array<{ id: string; sort_order: number }> };
+        if (!Array.isArray(updates)) {
+          return res.status(400).json({ message: 'updates is required' });
+        }
+        const results = await Promise.all(
+          updates.map((row) =>
+            supabase
+              .from('addon_options_drafts')
+              .update({ sort_order: row.sort_order })
+              .eq('id', row.id)
+              .eq('restaurant_id', restaurantId)
+          )
+        );
+        const firstError = results.find((res) => res.error)?.error;
+        if (firstError) {
+          return res.status(500).json({ message: firstError.message });
+        }
+        return res.status(200).json({ ok: true });
+      }
+
+      if (action === 'assign_addon_group') {
+        const { groupId, items } = req.body as {
+          groupId?: string;
+          items?: Array<{ id: string; external_key?: string | null }>;
+        };
+        if (!groupId) return res.status(400).json({ message: 'groupId is required' });
+
+        const uniqueItems = Array.from(
+          new Map((items || []).map((item) => [String(item.id), item])).values()
+        );
+        const itemIds = uniqueItems.map((item) => String(item.id));
+
+        const { data: itemRows, error: itemError } = await supabase
+          .from('menu_items')
+          .select('id,restaurant_id,external_key')
+          .eq('restaurant_id', restaurantId)
+          .in('id', itemIds);
+
+        if (itemError) {
+          return res.status(500).json({ message: itemError.message });
+        }
+
+        const externalKeyMap: Record<string, string> = {};
+        const missingKeys = (itemRows || []).filter((row) => !row.external_key);
+
+        for (const row of itemRows || []) {
+          if (row.external_key) {
+            externalKeyMap[String(row.id)] = String(row.external_key);
+          }
+        }
+
+        for (const row of missingKeys) {
+          const newKey = randomUUID();
+          const { error: updateError } = await supabase
+            .from('menu_items')
+            .update({ external_key: newKey })
+            .eq('id', row.id)
+            .eq('restaurant_id', restaurantId);
+          if (updateError) {
+            return res.status(500).json({ message: updateError.message });
+          }
+          externalKeyMap[String(row.id)] = newKey;
+        }
+
+        await supabase
+          .from('item_addon_links_drafts')
+          .delete()
+          .eq('restaurant_id', restaurantId)
+          .eq('group_id', groupId);
+
+        const rows = uniqueItems.map((item) => ({
+          id: randomUUID(),
+          restaurant_id: restaurantId,
+          item_id: String(item.id),
+          item_external_key: externalKeyMap[String(item.id)],
+          group_id: groupId,
+          state: 'draft',
+        }));
+
+        if (rows.length) {
+          const { error: insertError } = await supabase
+            .from('item_addon_links_drafts')
+            .insert(rows);
+          if (insertError) {
+            return res.status(500).json({ message: insertError.message });
+          }
+        }
+
+        const { data: draftGroup } = await supabase
+          .from('addon_groups_drafts')
+          .select('name')
+          .eq('id', groupId)
+          .eq('restaurant_id', restaurantId)
+          .maybeSingle();
+
+        if (draftGroup?.name && itemIds.length) {
+          const { data: liveGroup } = await supabase
+            .from('addon_groups')
+            .select('id')
+            .eq('restaurant_id', restaurantId)
+            .eq('name', draftGroup.name)
+            .is('archived_at', null)
+            .maybeSingle();
+
+          if (liveGroup?.id) {
+            await supabase
+              .from('item_addon_links')
+              .delete()
+              .eq('group_id', liveGroup.id)
+              .in('item_id', itemIds);
+
+            const liveRows = itemIds.map((itemId) => ({
+              item_id: itemId,
+              group_id: liveGroup.id,
+            }));
+            if (liveRows.length) {
+              await supabase
+                .from('item_addon_links')
+                .upsert(liveRows, { onConflict: 'item_id,group_id' });
+            }
+          }
+        }
+
+        return res.status(200).json({ ok: true, externalKeyMap });
+      }
+
+      return res.status(400).json({ message: 'Unknown action' });
     }
 
     if (req.method === 'PUT') {
@@ -533,7 +1021,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         .json({ draft: data.draft, payload: data.draft, updated_at: data.updated_at });
     }
 
-    res.setHeader('Allow', ['GET', 'PUT']);
+    res.setHeader('Allow', ['GET', 'PUT', 'POST']);
     return res.status(405).end('Method Not Allowed');
   } catch (e: any) {
     console.error('[draft:unhandled]', {
@@ -549,4 +1037,3 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(500).json({ message: e?.message || 'server_error' });
   }
 }
-

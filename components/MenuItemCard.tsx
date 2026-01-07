@@ -42,18 +42,21 @@ export default function MenuItemCard({
   restaurantLogoUrl,
   mode,
   onInteraction,
+  currencyCode,
 }: {
   item: MenuItem;
   restaurantId?: string | number;
   restaurantLogoUrl?: string | null;
   mode?: 'customer' | 'kiosk';
   onInteraction?: () => void;
+  currencyCode?: string | null;
 }) {
   const [showModal, setShowModal] = useState(false);
   const { addToCart } = useCart();
   const brand = useBrand?.();
   const accent =
     typeof brand?.brand === 'string' && brand.brand ? brand.brand : undefined;
+  const resolvedCurrencyCode = currencyCode ?? brand?.currencyCode;
   const sec = 'var(--brand-secondary, var(--brand-primary))';
   const [secText, setSecText] = useState('#fff');
   const [mix, setMix] = useState(false);
@@ -105,7 +108,7 @@ export default function MenuItemCard({
     return source ?? undefined;
   }, [item?.image_url]);
   const normalizedPrice = normalizePriceValue(price);
-  const formattedPrice = formatPrice(normalizedPrice);
+  const formattedPrice = formatPrice(normalizedPrice, resolvedCurrencyCode);
   const badges = useMemo(() => {
     const list: string[] = [];
     if (item?.is_vegan) list.push('Vegan');
@@ -391,4 +394,3 @@ export default function MenuItemCard({
     </>
   );
 }
-

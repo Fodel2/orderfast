@@ -94,11 +94,10 @@ export const getServerSideProps: GetServerSideProps = async ctx => {
   if (id) {
     const { data } = await supaServer
       .from('restaurants')
-      .select('id,website_title,name,logo_url,logo_shape,brand_primary_color,brand_secondary_color')
+      .select('id,website_title,name,logo_url,logo_shape,brand_primary_color,brand_secondary_color,currency_code')
       .eq('id', id)
       .maybeSingle()
     initialBrand = data
   }
   return { props: { initialBrand } }
 }
-

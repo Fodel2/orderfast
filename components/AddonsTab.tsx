@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DndContext, PointerSensor, useSensor, useSensors, closestCenter, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -16,6 +16,7 @@ import { supabase } from '../utils/supabaseClient';
 import ConfirmModal from './ConfirmModal';
 import AddonGroupModal from './AddonGroupModal';
 import AssignAddonGroupModal from './AssignAddonGroupModal';
+import { getCurrencySymbol } from '@/lib/currency';
 
 type AddonOptionRowProps = {
   groupId: string;
@@ -24,6 +25,7 @@ type AddonOptionRowProps = {
   onSave: (gid: string, id: string, fields: any) => void;
   onDelete: (gid: string, id: string) => void;
   dragHandleProps?: { attributes: any; listeners: any };
+  currencySymbol: string;
 };
 
 const AddonOptionRow = memo(function AddonOptionRow({
@@ -33,6 +35,7 @@ const AddonOptionRow = memo(function AddonOptionRow({
   onSave,
   onDelete,
   dragHandleProps,
+  currencySymbol,
 }: AddonOptionRowProps) {
   const [nameInput, setNameInput] = useState(option?.name || '');
   const [priceDigits, setPriceDigits] = useState(
@@ -78,13 +81,20 @@ const AddonOptionRow = memo(function AddonOptionRow({
           value={nameInput}
           onChange={(e) => setNameInput(e.target.value)}
           onBlur={handleNameBlur}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.currentTarget.blur();
+            }
+          }}
           className="w-full border border-gray-300 rounded p-1 text-sm"
         />
       </label>
       <label className="w-24 text-sm">
         {index === 0 && <span className="text-xs font-semibold">Price</span>}
         <div className="relative">
-          <span className="absolute left-1 top-1/2 -translate-y-1/2 text-gray-500">£</span>
+          <span className="absolute left-1 top-1/2 -translate-y-1/2 text-gray-500">
+            {currencySymbol}
+          </span>
           <input
             type="text"
             inputMode="numeric"
@@ -95,6 +105,11 @@ const AddonOptionRow = memo(function AddonOptionRow({
               setPriceDigits(digits);
             }}
             onBlur={handlePriceBlur}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.currentTarget.blur();
+              }
+            }}
             className="w-full border border-gray-300 rounded p-1 pl-4 text-sm appearance-none"
           />
         </div>
@@ -151,7 +166,17 @@ function SortableGroup({
   return <>{children({ attributes, listeners, setNodeRef, style })}</>;
 }
 
-export default function AddonsTab({ restaurantId }: { restaurantId: number | string }) {
+export default function AddonsTab({
+  restaurantId,
+  currencyCode,
+  onToastMessage,
+  onDraftChanged,
+}: {
+  restaurantId: number | string;
+  currencyCode?: string | null;
+  onToastMessage?: (message: string) => void;
+  onDraftChanged?: () => void;
+}) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
   const [groups, setGroups] = useState<any[]>([]);
   const [options, setOptions] = useState<Record<string, any[]>>({});
@@ -163,8 +188,59 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
   const [items, setItems] = useState<any[]>([]);
   const [assignModalGroup, setAssignModalGroup] = useState<any | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [draftOptions, setDraftOptions] = useState<Record<string, { name: string; priceDigits: string }>>({});
+
+  const draftNameRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const draftRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const autosaveTimer = useRef<NodeJS.Timeout | null>(null);
+  const autosaveActive = useRef(false);
 
   const restaurantKey = restaurantId ? String(restaurantId) : '';
+  const currencySymbol = useMemo(() => getCurrencySymbol(currencyCode), [currencyCode]);
+
+  const showAutosaveStatus = useCallback(
+    (status: 'saving' | 'saved' | 'error', message?: string) => {
+      if (!onToastMessage) return;
+      if (autosaveTimer.current) {
+        clearTimeout(autosaveTimer.current);
+        autosaveTimer.current = null;
+      }
+      if (status === 'saving') {
+        if (!autosaveActive.current) {
+          onToastMessage('Saving…');
+          autosaveActive.current = true;
+        }
+        return;
+      }
+      autosaveTimer.current = setTimeout(() => {
+        onToastMessage(status === 'error' ? message || 'Save failed' : 'Saved');
+        autosaveActive.current = false;
+      }, 350);
+    },
+    [onToastMessage]
+  );
+
+  const callMenuBuilderAction = useCallback(
+    async (action: string, payload: Record<string, any>) => {
+      if (!restaurantKey) throw new Error('Missing restaurant');
+      const res = await fetch('/api/menu-builder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          restaurantId: restaurantKey,
+          action,
+          ...payload,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = json?.message || json?.error || 'Request failed';
+        throw new Error(msg);
+      }
+      return json;
+    },
+    [restaurantKey]
+  );
 
   const loadAddonsFromApi = useCallback(async () => {
     try {
@@ -344,6 +420,14 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
     load();
   }, [load, restaurantKey]);
 
+  useEffect(() => {
+    return () => {
+      if (autosaveTimer.current) {
+        clearTimeout(autosaveTimer.current);
+      }
+    };
+  }, []);
+
   const sortedGroups = useMemo(
     () =>
       [...groups].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
@@ -408,125 +492,156 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
     );
 
     setAssignments((prev) => ({ ...prev, [groupId]: updatedKeys }));
+    onDraftChanged?.();
   };
 
-  const addOption = async (gid: string) => {
-    const { data, error } = await supabase
-      .from('addon_options_drafts')
-      .insert([
-        {
-          restaurant_id: restaurantKey,
-          group_id: gid,
-          name: '',
-          price: 0,
-          available: true,
-          archived_at: null,
-          state: 'draft',
-          sort_order: (options[gid]?.length ?? 0),
-        },
-      ])
-      .select(
-        'id,group_id,name,price,available,out_of_stock_until,stock_status,stock_return_date,stock_last_updated_at,sort_order'
-      )
-      .single();
+  const focusDraftName = (gid: string) => {
+    const node = draftNameRefs.current[gid];
+    if (node) {
+      node.focus();
+      node.select();
+    }
+  };
 
-    if (error) {
-      console.error('[addons-tab:add-option]', error.message);
+  const handleDraftBlur = (gid: string, relatedTarget: EventTarget | null) => {
+    const row = draftRowRefs.current[gid];
+    if (row && relatedTarget instanceof Node && row.contains(relatedTarget)) {
       return;
     }
+    commitDraftOption(gid);
+  };
 
-    if (data) {
-      const optionId = String(data.id);
-      const groupId = String(data.group_id ?? gid);
-      const normalized = { ...data, id: optionId, group_id: groupId };
-      setOptions((prev) => {
-        const next = [...(prev[groupId] || []), normalized].sort(
-          (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
-        );
-        return { ...prev, [groupId]: next };
+  const startDraftOption = (gid: string) => {
+    if (draftOptions[gid]) {
+      focusDraftName(gid);
+      return;
+    }
+    setDraftOptions((prev) => ({
+      ...prev,
+      [gid]: { name: '', priceDigits: '' },
+    }));
+    setTimeout(() => focusDraftName(gid), 0);
+  };
+
+  const cancelDraftOption = (gid: string) => {
+    setDraftOptions((prev) => {
+      const next = { ...prev };
+      delete next[gid];
+      return next;
+    });
+  };
+
+  const commitDraftOption = async (gid: string) => {
+    const draft = draftOptions[gid];
+    if (!draft) return;
+    const trimmedName = draft.name.trim();
+    if (!trimmedName) {
+      cancelDraftOption(gid);
+      return;
+    }
+    const cents = parseInt(draft.priceDigits || '0', 10) || 0;
+    showAutosaveStatus('saving');
+    try {
+      const response = await callMenuBuilderAction('create_addon_option', {
+        groupId: gid,
+        name: trimmedName,
+        price: cents,
+        sortOrder: options[gid]?.length ?? 0,
       });
+      const data = response?.option;
+      if (data) {
+        const optionId = String(data.id);
+        const groupId = String(data.group_id ?? gid);
+        const normalized = { ...data, id: optionId, group_id: groupId };
+        setOptions((prev) => {
+          const next = [...(prev[groupId] || []), normalized].sort(
+            (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
+          );
+          return { ...prev, [groupId]: next };
+        });
+      }
+      cancelDraftOption(gid);
+      showAutosaveStatus('saved');
+      onDraftChanged?.();
+    } catch (error: any) {
+      console.error('[addons-tab:add-option]', error?.message || error);
+      showAutosaveStatus('error', 'Could not save add-on item');
     }
   };
 
   const updateOption = async (gid: string, id: string, fields: any) => {
-    const { error } = await supabase
-      .from('addon_options_drafts')
-      .update(fields)
-      .eq('id', id)
-      .eq('restaurant_id', restaurantKey);
-
-    if (error) {
-      console.error('[addons-tab:update-option]', error.message);
-      return;
+    showAutosaveStatus('saving');
+    try {
+      await callMenuBuilderAction('update_addon_option', {
+        groupId: gid,
+        optionId: id,
+        fields,
+      });
+      setOptions((prev) => ({
+        ...prev,
+        [gid]: (prev[gid] || []).map((o) => (o.id === id ? { ...o, ...fields } : o)),
+      }));
+      showAutosaveStatus('saved');
+      onDraftChanged?.();
+    } catch (error: any) {
+      console.error('[addons-tab:update-option]', error?.message || error);
+      showAutosaveStatus('error', 'Could not save add-on item');
     }
-
-    setOptions((prev) => ({
-      ...prev,
-      [gid]: (prev[gid] || []).map((o) => (o.id === id ? { ...o, ...fields } : o)),
-    }));
   };
 
   const deleteOption = async (gid: string, id: string) => {
-    const { error } = await supabase
-      .from('addon_options_drafts')
-      .delete()
-      .eq('id', id)
-      .eq('restaurant_id', restaurantKey);
-
-    if (error) {
-      console.error('[addons-tab:delete-option]', error.message);
-      return;
+    showAutosaveStatus('saving');
+    try {
+      await callMenuBuilderAction('delete_addon_option', {
+        groupId: gid,
+        optionId: id,
+      });
+      setOptions((prev) => ({ ...prev, [gid]: (prev[gid] || []).filter((o) => o.id !== id) }));
+      showAutosaveStatus('saved');
+      onDraftChanged?.();
+    } catch (error: any) {
+      console.error('[addons-tab:delete-option]', error?.message || error);
+      showAutosaveStatus('error', 'Could not delete add-on item');
     }
-
-    setOptions((prev) => ({ ...prev, [gid]: (prev[gid] || []).filter((o) => o.id !== id) }));
   };
 
   const persistOptionOrder = useCallback(
     async (gid: string, opts: any[], previous: any[]) => {
       const updates = opts.map((opt, idx) => ({ id: opt.id, sort_order: idx }));
-      const firstError = (
-        await Promise.all(
-          updates.map((row) =>
-            supabase
-              .from('addon_options_drafts')
-              .update({ sort_order: row.sort_order })
-              .eq('id', row.id)
-              .eq('restaurant_id', restaurantKey)
-          )
-        )
-      ).find((res) => res.error)?.error;
-
-      if (firstError) {
-        console.error('[addons-tab:option-order]', firstError.message);
+      showAutosaveStatus('saving');
+      try {
+        await callMenuBuilderAction('reorder_addon_options', {
+          groupId: gid,
+          updates,
+        });
+        showAutosaveStatus('saved');
+        onDraftChanged?.();
+      } catch (error: any) {
+        console.error('[addons-tab:option-order]', error?.message || error);
         setOptions((prev) => ({ ...prev, [gid]: previous }));
         toast.error('Could not save add-on item order');
+        showAutosaveStatus('error', 'Could not save add-on item order');
       }
     },
-    [restaurantKey]
+    [callMenuBuilderAction, onDraftChanged, showAutosaveStatus]
   );
 
   const persistGroupOrder = useCallback(
     async (orderedGroups: any[], previous: any[]) => {
       const updates = orderedGroups.map((group, idx) => ({ id: group.id, sort_order: idx }));
-      const firstError = (
-        await Promise.all(
-          updates.map((row) =>
-            supabase
-              .from('addon_groups_drafts')
-              .update({ sort_order: row.sort_order })
-              .eq('id', row.id)
-              .eq('restaurant_id', restaurantKey)
-          )
-        )
-      ).find((res) => res.error)?.error;
-
-      if (firstError) {
-        console.error('[addons-tab:group-order]', firstError.message);
+      showAutosaveStatus('saving');
+      try {
+        await callMenuBuilderAction('reorder_addon_groups', { updates });
+        showAutosaveStatus('saved');
+        onDraftChanged?.();
+      } catch (error: any) {
+        console.error('[addons-tab:group-order]', error?.message || error);
         setGroups(previous);
         toast.error('Could not save category order');
+        showAutosaveStatus('error', 'Could not save category order');
       }
     },
-    [restaurantKey]
+    [callMenuBuilderAction, onDraftChanged, showAutosaveStatus]
   );
 
   const handleGroupDragEnd = ({ active, over }: DragEndEvent) => {
@@ -571,56 +686,29 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
   }, []);
 
   const duplicateGroup = async (g: any) => {
-    const { data: newGroup } = await supabase
-      .from('addon_groups_drafts')
-      .insert([
-        {
-          name: `${g.name} - copy`,
-          multiple_choice: g.multiple_choice,
-          required: g.required,
-          restaurant_id: restaurantKey,
-          max_group_select: g.max_group_select,
-          max_option_quantity: g.max_option_quantity,
-          archived_at: null,
-          state: 'draft',
-        },
-      ])
-      .select()
-      .single();
-    if (newGroup) {
-      const newGroupId = String(newGroup.id);
-      const groupOpts = options[String(g.id)] || [];
-      if (groupOpts.length) {
-        await supabase.from('addon_options_drafts').insert(
-          groupOpts.map((o, idx) => ({
-            name: o.name,
-            price: o.price,
-            available: o.available,
-            group_id: newGroupId,
-            out_of_stock_until: o.out_of_stock_until,
-            stock_status: o.stock_status,
-            stock_return_date: o.stock_return_date,
-            stock_last_updated_at: o.stock_last_updated_at,
-            restaurant_id: restaurantKey,
-            archived_at: null,
-            state: 'draft',
-            sort_order: idx,
-          }))
-        );
-      }
-      load();
+    showAutosaveStatus('saving');
+    try {
+      await callMenuBuilderAction('duplicate_addon_group', { groupId: g.id });
+      await load();
+      showAutosaveStatus('saved');
+      onDraftChanged?.();
+    } catch (error: any) {
+      console.error('[addons-tab:duplicate-group]', error?.message || error);
+      showAutosaveStatus('error', 'Could not duplicate add-on category');
     }
   };
 
   const deleteGroup = async (g: any) => {
-    await supabase.from('addon_options_drafts').delete().eq('group_id', g.id).eq('restaurant_id', restaurantKey);
-    await supabase
-      .from('item_addon_links_drafts')
-      .delete()
-      .eq('group_id', g.id)
-      .eq('restaurant_id', restaurantKey);
-    await supabase.from('addon_groups_drafts').delete().eq('id', g.id).eq('restaurant_id', restaurantKey);
-    load();
+    showAutosaveStatus('saving');
+    try {
+      await callMenuBuilderAction('delete_addon_group', { groupId: g.id });
+      await load();
+      showAutosaveStatus('saved');
+      onDraftChanged?.();
+    } catch (error: any) {
+      console.error('[addons-tab:delete-group]', error?.message || error);
+      showAutosaveStatus('error', 'Could not delete add-on category');
+    }
   };
 
   return (
@@ -737,13 +825,100 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
                                   onSave={updateOption}
                                   onDelete={deleteOption}
                                   dragHandleProps={{ attributes: optAttr, listeners: optListeners }}
+                                  currencySymbol={currencySymbol}
                                 />
                               )}
                             </SortableOption>
                           ))}
                         </SortableContext>
                       </DndContext>
-                      <button onClick={() => addOption(g.id)} className="mt-2 flex items-center text-sm text-teal-600 hover:underline">
+                      {draftOptions[g.id] && (
+                        <div
+                          ref={(node) => {
+                            draftRowRefs.current[g.id] = node;
+                          }}
+                          className="flex items-end space-x-2 border-b py-1"
+                        >
+                          <span className="text-gray-300">•</span>
+                          <label className="flex-1 text-sm">
+                            {(options[g.id] || []).length === 0 && (
+                              <span className="text-xs font-semibold">Addon Name</span>
+                            )}
+                            <input
+                              ref={(node) => {
+                                draftNameRefs.current[g.id] = node;
+                              }}
+                              autoFocus
+                              type="text"
+                              value={draftOptions[g.id]?.name || ''}
+                              onChange={(e) =>
+                                setDraftOptions((prev) => ({
+                                  ...prev,
+                                  [g.id]: {
+                                    name: e.target.value,
+                                    priceDigits: prev[g.id]?.priceDigits || '',
+                                  },
+                                }))
+                              }
+                              onBlur={(e) => handleDraftBlur(g.id, e.relatedTarget)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.currentTarget.blur();
+                                }
+                              }}
+                              className="w-full border border-gray-300 rounded p-1 text-sm"
+                            />
+                          </label>
+                          <label className="w-24 text-sm">
+                            {(options[g.id] || []).length === 0 && (
+                              <span className="text-xs font-semibold">Price</span>
+                            )}
+                            <div className="relative">
+                              <span className="absolute left-1 top-1/2 -translate-y-1/2 text-gray-500">
+                                {currencySymbol}
+                              </span>
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                value={(() => {
+                                  const cents = parseInt(
+                                    draftOptions[g.id]?.priceDigits || '0',
+                                    10
+                                  );
+                                  return Number.isNaN(cents) ? '0.00' : (cents / 100).toFixed(2);
+                                })()}
+                                onChange={(e) => {
+                                  const digits = e.target.value.replace(/[^0-9]/g, '');
+                                  setDraftOptions((prev) => ({
+                                    ...prev,
+                                    [g.id]: {
+                                      name: prev[g.id]?.name || '',
+                                      priceDigits: digits,
+                                    },
+                                  }));
+                                }}
+                                onBlur={(e) => handleDraftBlur(g.id, e.relatedTarget)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.currentTarget.blur();
+                                  }
+                                }}
+                                className="w-full border border-gray-300 rounded p-1 pl-4 text-sm appearance-none"
+                              />
+                            </div>
+                          </label>
+                          <button
+                            onClick={() => cancelDraftOption(g.id)}
+                            className="p-1 rounded hover:bg-gray-100 text-xs text-gray-500"
+                            aria-label="Cancel add-on option"
+                            type="button"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      )}
+                      <button onClick={() => startDraftOption(g.id)} className="mt-2 flex items-center text-sm text-teal-600 hover:underline">
                         <PlusCircleIcon className="w-4 h-4 mr-1" /> Add Item
                       </button>
                     </div>
@@ -760,7 +935,11 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
           restaurantId={restaurantId}
           group={editingGroup || undefined}
           onClose={() => setShowModal(false)}
-          onSaved={load}
+          onSaved={() => {
+            load();
+            onDraftChanged?.();
+          }}
+          onAutosaveStatus={showAutosaveStatus}
         />
       )}
       {assignModalGroup && (
@@ -776,6 +955,7 @@ export default function AddonsTab({ restaurantId }: { restaurantId: number | str
             handleAssignmentsSaved(String(assignModalGroup.id), itemIds, externalKeyMap);
             setAssignModalGroup(null);
           }}
+          onAutosaveStatus={showAutosaveStatus}
         />
       )}
       {confirmDel && (

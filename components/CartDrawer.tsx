@@ -6,6 +6,7 @@ import { Trash2 } from 'lucide-react';
 import PlateIcon from '@/components/icons/PlateIcon';
 import { randomEmptyPlateMessage } from '@/lib/uiCopy';
 import { formatPrice } from '@/lib/orderDisplay';
+import { useBrand } from '@/components/branding/BrandProvider';
 
 interface CartDrawerProps {
   /**
@@ -29,6 +30,8 @@ function CartContent({
   onInteraction?: () => void;
 }) {
   const { cart, subtotal, updateQuantity, removeFromCart, clearCart } = useCart();
+  const brand = useBrand?.();
+  const currencyCode = brand?.currencyCode;
 
   const handleRemove = (item_id: string) => {
     onInteraction?.();
@@ -74,8 +77,8 @@ function CartContent({
                 0
               );
               const itemTotal = item.price * item.quantity + addonsTotal;
-              const formattedItemTotal = formatPrice(itemTotal);
-              const formattedItemPrice = formatPrice(item.price);
+              const formattedItemTotal = formatPrice(itemTotal, currencyCode);
+              const formattedItemPrice = formatPrice(item.price, currencyCode);
               return (
                 <div
                   key={item.item_id}
@@ -95,7 +98,7 @@ function CartContent({
                             <li key={addon.option_id} className="flex justify-between gap-3">
                               <span className="flex-1">{addon.name} × {addon.quantity}</span>
                               <span className="font-medium text-slate-700">
-                                {formatPrice(addon.price * addon.quantity)}
+                                {formatPrice(addon.price * addon.quantity, currencyCode)}
                               </span>
                             </li>
                           ))}
@@ -164,7 +167,7 @@ function CartContent({
       ) : (
         <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-slate-600">
           <span className="text-base font-semibold text-slate-900 sm:text-lg">
-            Subtotal: {formatPrice(subtotal)}
+            Subtotal: {formatPrice(subtotal, currencyCode)}
           </span>
           <button
             type="button"
@@ -184,7 +187,6 @@ export default function CartDrawer({ inline = false, onInteraction, mode = 'cust
   const { cart, subtotal } = useCart();
   const [emptyMessage] = useState(() => randomEmptyPlateMessage());
   const [open, setOpen] = useState(false);
-  const currency = 'GBP';
   const isKioskMode = mode === 'kiosk';
 
   const toggle = () => setOpen((o) => !o);
@@ -213,7 +215,7 @@ export default function CartDrawer({ inline = false, onInteraction, mode = 'cust
             <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3 text-slate-700 shadow-inner shadow-slate-100">
               <span className="text-base font-semibold text-slate-900 sm:text-lg">Subtotal</span>
               <span className="text-lg font-bold text-slate-900 sm:text-xl">
-                {formatPrice(subtotal)}
+                {formatPrice(subtotal, currencyCode)}
               </span>
             </div>
             <button

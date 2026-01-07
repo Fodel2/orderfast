@@ -38,6 +38,7 @@ import {
   TrashIcon,
 } from '@heroicons/react/24/outline';
 import ImageEditorModal from '@/components/ImageEditorModal';
+import { formatCurrency } from '@/lib/currency';
 
 const normalizeCats = (arr: any[]) =>
   [...arr]
@@ -63,6 +64,26 @@ const normalizeItems = (arr: any[]) =>
         : [],
     }))
     .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+
+const normalizeAddonGroups = (groups: any[]) =>
+  [...groups]
+    .map((group) => ({
+      name: group?.name || '',
+      multiple_choice: !!group?.multiple_choice,
+      required: !!group?.required,
+      max_group_select: group?.max_group_select ?? null,
+      max_option_quantity: group?.max_option_quantity ?? null,
+      sort_order: group?.sort_order ?? 0,
+      addon_options: [...(group?.addon_options || [])]
+        .map((option) => ({
+          name: option?.name || '',
+          price: typeof option?.price === 'number' ? option.price : Number(option?.price ?? 0),
+          available: option?.available !== false,
+          sort_order: option?.sort_order ?? 0,
+        }))
+        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name)),
+    }))
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name));
 
 const deepEqual = (a: any, b: any) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -163,6 +184,9 @@ export default function MenuBuilder() {
   const [stockAddons, setStockAddons] = useState<StockTabProps['addons']>([]);
   const [stockLoading, setStockLoading] = useState(false);
   const [showCsvModal, setShowCsvModal] = useState(false);
+  const [currencyCode, setCurrencyCode] = useState('GBP');
+  const [addonDraftGroups, setAddonDraftGroups] = useState<any[]>([]);
+  const [addonPublishedGroups, setAddonPublishedGroups] = useState<any[]>([]);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const saveTimer = useRef<NodeJS.Timeout | null>(null);
   const saveAbort = useRef<AbortController | null>(null);
@@ -353,12 +377,20 @@ export default function MenuBuilder() {
     );
   }, [categories, origCategories, items, origItems]);
 
+  const hasAddonChanges = useMemo(() => {
+    return !deepEqual(
+      normalizeAddonGroups(addonDraftGroups),
+      normalizeAddonGroups(addonPublishedGroups)
+    );
+  }, [addonDraftGroups, addonPublishedGroups]);
+
   const hasBuildChanges = useMemo(() => {
     return (
       !deepEqual(normalizeCats(buildCategories), normalizeCats(categories)) ||
-      !deepEqual(normalizeItems(buildItems), normalizeItems(items))
+      !deepEqual(normalizeItems(buildItems), normalizeItems(items)) ||
+      hasAddonChanges
     );
-  }, [buildCategories, categories, buildItems, items]);
+  }, [buildCategories, categories, buildItems, items, hasAddonChanges]);
 
   const toggleCollapse = (id: number) => {
     setCollapsedCats((prev) => {
@@ -528,7 +560,7 @@ export default function MenuBuilder() {
     const { data: rest } = await supabase
       .from('restaurants')
       .select(
-        'menu_header_image_url,menu_header_focal_x,menu_header_focal_y,menu_header_image_updated_at'
+        'menu_header_image_url,menu_header_focal_x,menu_header_focal_y,menu_header_image_updated_at,currency_code'
       )
       .eq('id', rid)
       .maybeSingle();
@@ -539,6 +571,7 @@ export default function MenuBuilder() {
       setHeroImage(
         url ? `${url}${updated ? `?v=${new Date(updated).getTime()}` : ''}` : null
       );
+      setCurrencyCode(rest.currency_code || 'GBP');
       setHeroFocal({
         x: typeof rest.menu_header_focal_x === 'number' ? rest.menu_header_focal_x : 0.5,
         y: typeof rest.menu_header_focal_y === 'number' ? rest.menu_header_focal_y : 0.5,
@@ -564,29 +597,33 @@ export default function MenuBuilder() {
       .order('name', { ascending: true });
 
     let itemsWithAddons = itemsData || [];
-    if (itemsData && itemsData.length) {
-      try {
-        const linkRes = await fetch(
-          `/api/menu-builder?restaurant_id=${rid}&withAddons=1`
-        );
-        if (!linkRes.ok) throw new Error('Failed to fetch addon links');
-          const { addonLinks } = await linkRes.json();
-          const map: Record<string, string[]> = {};
-          (addonLinks || []).forEach((r: any) => {
-            const itemKey = r?.item_id ? String(r.item_id) : r?.item_external_key;
-            if (!itemKey) return;
-            if (!map[itemKey]) map[itemKey] = [];
-            map[itemKey].push(String(r.group_id));
-          });
-          itemsWithAddons = itemsData.map((i) => ({
-            ...i,
-            addons:
-              map[String(i.id)] ||
-              (i.external_key ? map[String(i.external_key)] : []),
-          }));
-      } catch (err) {
-        console.error('Error fetching addon links:', err);
+    try {
+      const linkRes = await fetch(
+        `/api/menu-builder?restaurant_id=${rid}&withAddons=1&includePublishedAddons=1`
+      );
+      if (!linkRes.ok) throw new Error('Failed to fetch addon data');
+      const { addonLinks, addonGroups, publishedAddonGroups } = await linkRes.json();
+      const map: Record<string, string[]> = {};
+      (addonLinks || []).forEach((r: any) => {
+        const itemKey = r?.item_id ? String(r.item_id) : r?.item_external_key;
+        if (!itemKey) return;
+        if (!map[itemKey]) map[itemKey] = [];
+        map[itemKey].push(String(r.group_id));
+      });
+      if (itemsData && itemsData.length) {
+        itemsWithAddons = itemsData.map((i) => ({
+          ...i,
+          addons:
+            map[String(i.id)] ||
+            (i.external_key ? map[String(i.external_key)] : []),
+        }));
       }
+      setAddonDraftGroups(Array.isArray(addonGroups) ? addonGroups : []);
+      setAddonPublishedGroups(Array.isArray(publishedAddonGroups) ? publishedAddonGroups : []);
+    } catch (err) {
+      console.error('Error fetching addon links:', err);
+      setAddonDraftGroups([]);
+      setAddonPublishedGroups([]);
     }
 
     if (catError || itemsError) {
@@ -917,7 +954,12 @@ export default function MenuBuilder() {
                             .filter((item) => item.category_id === cat.id)
                             .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
                             .map((item) => (
-                              <MenuItemCard key={item.id} item={item} restaurantId={restaurantId!} />
+                              <MenuItemCard
+                                key={item.id}
+                                item={item}
+                                restaurantId={restaurantId!}
+                                currencyCode={currencyCode}
+                              />
                             ))}
                         </div>
                       </div>
@@ -936,7 +978,14 @@ export default function MenuBuilder() {
             exit={{ x: -20, opacity: 0 }}
             transition={{ duration: 0.2 }}
           >
-            {restaurantId && <AddonsTab restaurantId={restaurantId} />}
+            {restaurantId && (
+              <AddonsTab
+                restaurantId={restaurantId}
+                currencyCode={currencyCode}
+                onToastMessage={setToastMessage}
+                onDraftChanged={() => restaurantId && fetchData(restaurantId)}
+              />
+            )}
           </motion.div>
         )}
         {activeTab === 'stock' && (
@@ -1104,7 +1153,9 @@ export default function MenuBuilder() {
                                                   </div>
                                                 </div>
                                                 <div className="flex items-center space-x-2">
-                                                  <span className="text-sm font-medium">${item.price.toFixed(2)}</span>
+                                                  <span className="text-sm font-medium">
+                                                    {formatCurrency(item.price ?? 0, currencyCode)}
+                                                  </span>
                                                   {/* Removed item-level delete button; delete now handled in modal */}
                                                 </div>
                                               </div>
@@ -1245,4 +1296,3 @@ export default function MenuBuilder() {
     </DashboardLayout>
   );
 }
-
