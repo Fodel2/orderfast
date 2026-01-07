@@ -1,3 +1,5 @@
+import { DEFAULT_CURRENCY_CODE, formatCurrency } from './currency';
+
 export function displayOrderNo(order: any): string {
   // prefer explicit short/sequence numbers if present
   const n =
@@ -14,16 +16,9 @@ export function displayOrderNo(order: any): string {
   return `#${tail}`;
 }
 
-export function formatPrice(amount: number) {
+export function formatPrice(amount: number, currencyCode: string = DEFAULT_CURRENCY_CODE) {
   const normalized = normalizePriceValue(amount);
-  try {
-    return new Intl.NumberFormat('en-GB', {
-      style: 'currency',
-      currency: 'GBP',
-    }).format(normalized);
-  } catch {
-    return `£${Number(normalized).toFixed(2)}`;
-  }
+  return formatCurrency(normalized, currencyCode);
 }
 
 export function normalizePriceValue(amount: number) {

@@ -23,6 +23,7 @@ type AssignAddonGroupModalProps = {
   initialSelectedItemIds: string[];
   onClose: () => void;
   onSaved: (itemIds: string[], externalKeyMap: Record<string, string>) => void;
+  onAutosaveStatus?: (status: 'saving' | 'saved' | 'error', message?: string) => void;
 };
 
 function CategoryCheckbox({
@@ -76,6 +77,7 @@ export default function AssignAddonGroupModal({
   initialSelectedItemIds,
   onClose,
   onSaved,
+  onAutosaveStatus,
 }: AssignAddonGroupModalProps) {
   const normalizedItems = useMemo(
     () => items.map((it) => ({ ...it, id: String(it.id), category_id: it.category_id ? String(it.category_id) : null })),
@@ -158,6 +160,7 @@ export default function AssignAddonGroupModal({
   const saveAssignments = async () => {
     try {
       setSaving(true);
+      onAutosaveStatus?.('saving');
       const selectedIds = Array.from(selectedItems);
       const selectedItemRecords = normalizedItems.filter((item) => selectedIds.includes(item.id));
       const { externalKeyMap } = await updateAddonGroupAssignments({
@@ -166,9 +169,11 @@ export default function AssignAddonGroupModal({
         items: selectedItemRecords,
       });
       onSaved(selectedIds, externalKeyMap);
+      onAutosaveStatus?.('saved');
       onClose();
     } catch (error) {
       console.error('[assign-addon-group-modal] save failed', error);
+      onAutosaveStatus?.('error', 'Failed to save assignments');
       alert('Failed to save assignments. Please try again.');
     } finally {
       setSaving(false);

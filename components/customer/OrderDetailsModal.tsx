@@ -3,10 +3,13 @@ import OrderProgress from '@/components/customer/OrderProgress';
 import { randomCancelledMessage } from '@/lib/uiCopy';
 import { displayOrderNo, extractCancelReason, formatPrice } from '@/lib/orderDisplay';
 import { useRouter } from 'next/router';
+import { useBrand } from '@/components/branding/BrandProvider';
 
 export default function OrderDetailsModal({ order, onClose }: { order: any; onClose: () => void; }) {
   if (!order) return null;
   const router = useRouter();
+  const brand = useBrand?.();
+  const currencyCode = brand?.currencyCode;
   const qp = router?.query || {};
   const status = String(order?.status || 'pending').toLowerCase();
   const canCancel = !['accepted','ready','completed','cancelled'].includes(status);
@@ -69,7 +72,7 @@ export default function OrderDetailsModal({ order, onClose }: { order: any; onCl
                       {typeof it.quantity === 'number' && <span> × {it.quantity}</span>}
                     </span>
                     {typeof it.price === 'number' && (
-                      <span>{formatPrice(it.price)}</span>
+                      <span>{formatPrice(it.price, currencyCode)}</span>
                     )}
                   </div>
                   {it.notes && <div className="text-xs text-gray-500 mt-0.5">Notes: {it.notes}</div>}
@@ -78,7 +81,7 @@ export default function OrderDetailsModal({ order, onClose }: { order: any; onCl
                       {it.addons.map((a: any) => (
                         <li key={a.id} className="flex justify-between text-xs text-gray-700">
                           <span>{a.name ?? 'Addon'}{typeof a.quantity === 'number' && <> × {a.quantity}</>}</span>
-                          {typeof a.price === 'number' && <span>{formatPrice(a.price)}</span>}
+                          {typeof a.price === 'number' && <span>{formatPrice(a.price, currencyCode)}</span>}
                         </li>
                       ))}
                     </ul>
@@ -96,25 +99,25 @@ export default function OrderDetailsModal({ order, onClose }: { order: any; onCl
             {typeof order.itemSubtotal === 'number' && (
               <div className="flex justify-between">
                 <span className="text-gray-600">Items subtotal</span>
-                <span className="font-medium">{formatPrice(order.itemSubtotal)}</span>
+                <span className="font-medium">{formatPrice(order.itemSubtotal, currencyCode)}</span>
               </div>
             )}
             {typeof order.delivery_fee === 'number' && (
               <div className="flex justify-between">
                 <span className="text-gray-600">Delivery fee</span>
-                <span className="font-medium">{formatPrice(order.delivery_fee)}</span>
+                <span className="font-medium">{formatPrice(order.delivery_fee, currencyCode)}</span>
               </div>
             )}
             {typeof order.service_fee === 'number' && (
               <div className="flex justify-between">
                 <span className="text-gray-600">Service fee</span>
-                <span className="font-medium">{formatPrice(order.service_fee)}</span>
+                <span className="font-medium">{formatPrice(order.service_fee, currencyCode)}</span>
               </div>
             )}
             {typeof order.total_price === 'number' && (
               <div className="flex justify-between">
                 <span className="text-gray-800">Total</span>
-                <span className="font-semibold">{formatPrice(order.total_price)}</span>
+                <span className="font-semibold">{formatPrice(order.total_price, currencyCode)}</span>
               </div>
             )}
           </div>

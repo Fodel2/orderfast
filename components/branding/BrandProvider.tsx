@@ -1,6 +1,7 @@
 // slides/brand: added
 import React, { createContext, useContext, useMemo } from 'react';
 import { useRouter } from 'next/router';
+import { normalizeCurrencyCode } from '@/lib/currency';
 
 type BrandCtx = {
   brand: string;
@@ -10,6 +11,7 @@ type BrandCtx = {
   initials: string;
   logoUrl?: string | null;
   logoShape?: string | null;
+  currencyCode: string;
 };
 const Ctx = createContext<BrandCtx | null>(null);
 
@@ -25,7 +27,13 @@ const hashHSL = (name: string) => {
 
 export const useBrand = (): BrandCtx => {
   // SSR-safe default if provider is missing
-  return React.useContext(Ctx) ?? { ...hashHSL('Restaurant'), name: 'Restaurant', initials: 'R', logoUrl: null };
+  return React.useContext(Ctx) ?? {
+    ...hashHSL('Restaurant'),
+    name: 'Restaurant',
+    initials: 'R',
+    logoUrl: null,
+    currencyCode: normalizeCurrencyCode(),
+  };
 };
 
 export const BrandProvider: React.FC<{
@@ -43,6 +51,7 @@ export const BrandProvider: React.FC<{
     'Restaurant';
   const logoUrl = (source as any)?.logo_url || qp('logo') || null;
   const logoShape = (source as any)?.logo_shape || null;
+  const currencyCode = normalizeCurrencyCode((source as any)?.currency_code || qp('currency'));
   const primary =
     (source as any)?.brand_primary_color ||
     (source as any)?.brand_color ||
@@ -64,8 +73,8 @@ export const BrandProvider: React.FC<{
     .toUpperCase() || 'R';
 
   const value = useMemo(
-    () => ({ ...colors, name, initials, logoUrl, logoShape }),
-    [colors.brand, colors.brand600, colors.brand700, name, initials, logoUrl, logoShape]
+    () => ({ ...colors, name, initials, logoUrl, logoShape, currencyCode }),
+    [colors.brand, colors.brand600, colors.brand700, name, initials, logoUrl, logoShape, currencyCode]
   );
 
   return (
@@ -91,4 +100,3 @@ export const BrandProvider: React.FC<{
 };
 
 export default BrandProvider;
-

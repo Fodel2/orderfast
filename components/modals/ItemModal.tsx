@@ -40,6 +40,7 @@ export default function ItemModal({ item, restaurantId, onAddToCart }: ItemModal
   const [mix, setMix] = useState(false);
   const brand = useBrand?.();
   const accent = typeof brand?.brand === 'string' && brand.brand ? brand.brand : undefined;
+  const currencyCode = brand?.currencyCode;
   const sec = 'var(--brand-secondary, var(--brand-primary))';
 
   useEffect(() => setMounted(true), []);
@@ -134,7 +135,7 @@ export default function ItemModal({ item, restaurantId, onAddToCart }: ItemModal
 
   const price = typeof item?.price === 'number' ? item.price : Number(item?.price || 0);
   const normalizedPrice = normalizePriceValue(price);
-  const formattedPrice = formatPrice(normalizedPrice);
+  const formattedPrice = formatPrice(normalizedPrice, currencyCode);
   const imageUrl = item?.image_url || undefined;
   const focalXRaw = typeof item?.menu_header_focal_x === 'number' ? item.menu_header_focal_x : undefined;
   const focalYRaw = typeof item?.menu_header_focal_y === 'number' ? item.menu_header_focal_y : undefined;

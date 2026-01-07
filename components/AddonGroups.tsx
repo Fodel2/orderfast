@@ -121,6 +121,7 @@ export default function AddonGroups({
   const brand = useBrand?.();
   const accent =
     typeof brand?.brand === 'string' && brand.brand ? brand.brand : '#EB2BB9';
+  const currencyCode = brand?.currencyCode;
 
   useEffect(() => {
     if (process.env.NODE_ENV === 'development') {
@@ -351,7 +352,7 @@ export default function AddonGroups({
                       <div className="font-medium">{option.name}</div>
                       {option.price && option.price > 0 && (
                         <div className="text-sm text-gray-500">
-                          +{formatPrice(option.price)}
+                          +{formatPrice(option.price, currencyCode)}
                         </div>
                       )}
 

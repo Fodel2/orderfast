@@ -27,6 +27,7 @@ export default function WebsitePage() {
   const [brandPrimary, setBrandPrimary] = useState('#008080');
   const [brandSecondary, setBrandSecondary] = useState('#004c4c');
   const [logoShape, setLogoShape] = useState<'square' | 'round' | 'rectangular'>('square');
+  const [currencyCode, setCurrencyCode] = useState('GBP');
   const [colorExtracted, setColorExtracted] = useState(false);
   const [autoAcceptKioskOrders, setAutoAcceptKioskOrders] = useState(false);
   const [autoAcceptAppOrders, setAutoAcceptAppOrders] = useState(false);
@@ -84,6 +85,7 @@ export default function WebsitePage() {
           setAutoAcceptKioskOrders(!!rest.auto_accept_kiosk_orders);
           setAutoAcceptAppOrders(!!rest.auto_accept_app_orders);
           setAutoAcceptPosOrders(!!rest.auto_accept_pos_orders);
+          setCurrencyCode(rest.currency_code || 'GBP');
         }
         const { data: contact } = await supabase
           .from('website_contact_settings')
@@ -231,6 +233,7 @@ export default function WebsitePage() {
         auto_accept_kiosk_orders: autoAcceptKioskOrders,
         auto_accept_app_orders: autoAcceptAppOrders,
         auto_accept_pos_orders: autoAcceptPosOrders,
+        currency_code: currencyCode,
       })
       .eq('id', restaurantId);
     const { error: contactErr } = await supabase
@@ -355,6 +358,18 @@ export default function WebsitePage() {
                 <option value="square">Square</option>
                 <option value="round">Round</option>
                 <option value="rectangular">Rectangular</option>
+              </select>
+            </div>
+            <div>
+              <label className="block font-semibold">Currency</label>
+              <select
+                value={currencyCode}
+                onChange={(e) => setCurrencyCode(e.target.value)}
+                className="mt-1 w-full border border-gray-300 rounded p-2"
+              >
+                <option value="GBP">GBP (£)</option>
+                <option value="EUR">EUR (€)</option>
+                <option value="USD">USD ($)</option>
               </select>
             </div>
             <div>
