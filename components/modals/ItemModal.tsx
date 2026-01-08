@@ -87,7 +87,7 @@ export default function ItemModal({ item, restaurantId, onAddToCart }: ItemModal
       }
       setLoading(true);
       try {
-        const data = await getAddonsForItem(item.id);
+        const data = await getAddonsForItem(item.id, restaurantId);
         const sanitized = Array.isArray(data) ? data : [];
         if (!isActive) return;
         setGroups(sanitized);

@@ -2,6 +2,7 @@ export interface AddonOption {
   id: string;
   group_id?: string;
   name: string;
+  sort_order?: number | null;
   price: number | null;
   available?: boolean | null;
   out_of_stock_until?: string | null;
@@ -20,10 +21,10 @@ export interface AddonGroup {
    */
   group_id?: string;
   name: string;
+  sort_order?: number | null;
   required: boolean | null;
   multiple_choice?: boolean | null;
   max_group_select?: number | null;
   max_option_quantity?: number | null;
   addon_options: AddonOption[];
 }
-

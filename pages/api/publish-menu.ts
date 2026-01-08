@@ -234,6 +234,41 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // 3) Upsert menu items using external key
     let draftMutated = false;
     const itemExternalKeys: string[] = [];
+    const itemsMissingKeys = (draft.items ?? []).filter((item) => item?.id && !item.external_key);
+    if (itemsMissingKeys.length > 0) {
+      const missingIds = itemsMissingKeys.map((item) => String(item.id));
+      const { data: existingItems, error: existingErr } = await supabase
+        .from('menu_items')
+        .select('id,external_key')
+        .eq('restaurant_id', restaurantId)
+        .in('id', missingIds);
+
+      if (existingErr) {
+        logSupabaseError('[publish:fetchExistingItemKeys]', existingErr, { restaurantId });
+        return res.status(500).json({
+          where: 'fetch_existing_item_keys',
+          error: existingErr.message,
+          code: existingErr.code,
+          details: existingErr.details,
+        });
+      }
+
+      const externalKeyById = new Map(
+        (existingItems ?? [])
+          .filter((row) => row?.id && row?.external_key)
+          .map((row) => [String(row.id), String(row.external_key)])
+      );
+
+      (draft.items ?? []).forEach((item) => {
+        if (!item?.id || item.external_key) return;
+        const existingKey = externalKeyById.get(String(item.id));
+        if (existingKey) {
+          item.external_key = existingKey;
+          draftMutated = true;
+        }
+      });
+    }
+
     const itemRecords = (draft.items ?? []).map((item, index) => {
       let externalKey = item.external_key?.trim();
       if (!externalKey) {
@@ -334,12 +369,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
 
-    // 4) Ensure draft links carry an external key for publish mapping
+    // 4) Ensure draft links carry the current external key for publish mapping
     const { data: draftLinksNeedingKey, error: draftLinksErr } = await supabase
       .from('item_addon_links_drafts')
       .select('id,item_id,item_external_key')
       .eq('restaurant_id', restaurantId)
-      .is('item_external_key', null);
+      .not('item_id', 'is', null);
 
     if (draftLinksErr) {
       logSupabaseError('[publish:fetchDraftLinksNeedingKey]', draftLinksErr, { restaurantId });
@@ -391,6 +426,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           if (!link?.id || !link?.item_id) return undefined;
           const externalKey = itemLookup[String(link.item_id)];
           if (!externalKey) return undefined;
+          if (link.item_external_key && String(link.item_external_key) === externalKey) {
+            return undefined;
+          }
           return { id: link.id, item_external_key: externalKey };
         })
         .filter(Boolean) as Array<{ id: string; item_external_key: string }>;
@@ -592,4 +630,3 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(500).json({ where: 'unhandled', error: e?.message || 'server_error' });
   }
 }
-

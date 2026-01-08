@@ -999,13 +999,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
 
       try {
-        await supabase
-          .from('item_addon_links_drafts')
-          .delete()
-          .eq('restaurant_id', restaurantId);
-
         if (linkRows.length > 0) {
-          await supabase.from('item_addon_links_drafts').insert(linkRows);
+          await supabase
+            .from('item_addon_links_drafts')
+            .upsert(linkRows, { onConflict: 'restaurant_id,item_external_key,group_id' });
         }
       } catch (error: any) {
         console.error('[menu-builder:save-draft-links]', error);

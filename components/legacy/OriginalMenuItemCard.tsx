@@ -40,7 +40,7 @@ export default function OriginalMenuItemCard({
   const loadAddons = async () => {
     setLoading(true);
     try {
-      const data = await getAddonsForItem(item.id);
+      const data = await getAddonsForItem(item.id, restaurantId);
       setGroups(data);
     } catch (err) {
       console.error('Failed to load addons', err);
@@ -235,4 +235,3 @@ export default function OriginalMenuItemCard({
     </>
   );
 }
-
