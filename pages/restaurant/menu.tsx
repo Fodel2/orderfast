@@ -138,18 +138,24 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
       }
 
       const addonMap: Record<number, any[]> = {};
+      const sortByOrder = (a: any, b: any) => {
+        const aOrder = a?.sort_order ?? Number.MAX_SAFE_INTEGER;
+        const bOrder = b?.sort_order ?? Number.MAX_SAFE_INTEGER;
+        if (aOrder !== bOrder) return aOrder - bOrder;
+        return String(a?.name ?? '').localeCompare(String(b?.name ?? ''));
+      };
       addonRows.forEach((row) => {
         const arr = addonMap[row.item_id] || [];
         if (row.addon_groups) {
           const group = {
             ...row.addon_groups,
-            addon_options: (row.addon_groups.addon_options || []).filter(
-              (opt: any) => opt?.archived_at == null && opt?.available !== false
-            ),
+            addon_options: (row.addon_groups.addon_options || [])
+              .filter((opt: any) => opt?.archived_at == null && opt?.available !== false)
+              .sort(sortByOrder),
           };
           arr.push(group);
         }
-        addonMap[row.item_id] = arr;
+        addonMap[row.item_id] = arr.sort(sortByOrder);
       });
       const itemsWithAddons = (itemData || []).map((it: any) => ({
         ...it,

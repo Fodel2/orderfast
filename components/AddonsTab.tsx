@@ -28,6 +28,28 @@ type AddonOptionRowProps = {
   currencySymbol: string;
 };
 
+const sanitizePriceInput = (value: string) => {
+  const cleaned = value.replace(/[^0-9.,]/g, '').replace(/,/g, '.');
+  const parts = cleaned.split('.');
+  if (parts.length <= 1) return parts[0];
+  const integer = parts[0];
+  const decimals = parts.slice(1).join('').slice(0, 2);
+  return `${integer}.${decimals}`;
+};
+
+const parsePriceInput = (value: string) => {
+  const normalized = value.replace(/,/g, '.');
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const formatPriceInput = (value: number | string | null | undefined) => {
+  if (value == null || value === '') return '';
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return '';
+  return numeric.toFixed(2);
+};
+
 const AddonOptionRow = memo(function AddonOptionRow({
   groupId,
   option,
@@ -38,19 +60,12 @@ const AddonOptionRow = memo(function AddonOptionRow({
   currencySymbol,
 }: AddonOptionRowProps) {
   const [nameInput, setNameInput] = useState(option?.name || '');
-  const [priceDigits, setPriceDigits] = useState(
-    typeof option?.price === 'number' ? String(option.price) : String(option?.price ?? 0)
-  );
+  const [priceInput, setPriceInput] = useState(formatPriceInput(option?.price));
 
   useEffect(() => {
     setNameInput(option?.name || '');
-    setPriceDigits(typeof option?.price === 'number' ? String(option.price) : String(option?.price ?? 0));
+    setPriceInput(formatPriceInput(option?.price));
   }, [option?.id, option?.name, option?.price]);
-
-  const displayPrice = useMemo(() => {
-    const cents = parseInt(priceDigits || '0', 10);
-    return Number.isNaN(cents) ? '0.00' : (cents / 100).toFixed(2);
-  }, [priceDigits]);
 
   const handleNameBlur = useCallback(() => {
     const trimmed = nameInput.trim();
@@ -59,11 +74,14 @@ const AddonOptionRow = memo(function AddonOptionRow({
   }, [groupId, nameInput, onSave, option?.id, option?.name]);
 
   const handlePriceBlur = useCallback(() => {
-    const cents = parseInt(priceDigits || '0', 10) || 0;
-    if (typeof option?.price === 'number' && option.price === cents) return;
-    setPriceDigits(String(cents));
-    onSave(groupId, option.id, { price: cents });
-  }, [groupId, onSave, option?.id, option?.price, priceDigits]);
+    const parsed = parsePriceInput(priceInput || '0');
+    if (typeof option?.price === 'number' && option.price === parsed) {
+      setPriceInput(formatPriceInput(option?.price));
+      return;
+    }
+    setPriceInput(formatPriceInput(parsed));
+    onSave(groupId, option.id, { price: parsed });
+  }, [groupId, onSave, option?.id, option?.price, priceInput]);
 
   return (
     <div className="flex items-end space-x-2 border-b py-1">
@@ -97,12 +115,11 @@ const AddonOptionRow = memo(function AddonOptionRow({
           </span>
           <input
             type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            value={displayPrice}
+            inputMode="decimal"
+            pattern="[0-9]*[.,]?[0-9]*"
+            value={priceInput}
             onChange={(e) => {
-              const digits = e.target.value.replace(/[^0-9]/g, '');
-              setPriceDigits(digits);
+              setPriceInput(sanitizePriceInput(e.target.value));
             }}
             onBlur={handlePriceBlur}
             onKeyDown={(e) => {
@@ -188,7 +205,7 @@ export default function AddonsTab({
   const [items, setItems] = useState<any[]>([]);
   const [assignModalGroup, setAssignModalGroup] = useState<any | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
-  const [draftOptions, setDraftOptions] = useState<Record<string, { name: string; priceDigits: string }>>({});
+  const [draftOptions, setDraftOptions] = useState<Record<string, { name: string; priceInput: string }>>({});
 
   const draftNameRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const draftRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -550,7 +567,7 @@ export default function AddonsTab({
     }
     setDraftOptions((prev) => ({
       ...prev,
-      [gid]: { name: '', priceDigits: '' },
+      [gid]: { name: '', priceInput: '' },
     }));
     setTimeout(() => focusDraftName(gid), 0);
   };
@@ -571,13 +588,13 @@ export default function AddonsTab({
       cancelDraftOption(gid);
       return;
     }
-    const cents = parseInt(draft.priceDigits || '0', 10) || 0;
+    const parsed = parsePriceInput(draft.priceInput || '0');
     showAutosaveStatus('saving');
     try {
       const response = await callMenuBuilderAction('create_addon_option', {
         groupId: gid,
         name: trimmedName,
-        price: cents,
+        price: parsed,
         sortOrder: options[gid]?.length ?? 0,
       });
       const data = response?.option;
@@ -887,13 +904,13 @@ export default function AddonsTab({
                                 setDraftOptions((prev) => ({
                                   ...prev,
                                   [g.id]: {
-                                    name: e.target.value,
-                                    priceDigits: prev[g.id]?.priceDigits || '',
-                                  },
-                                }))
-                              }
-                              onBlur={(e) => handleDraftBlur(g.id, e.relatedTarget)}
-                              onKeyDown={(e) => {
+                                      name: e.target.value,
+                                      priceInput: prev[g.id]?.priceInput || '',
+                                    },
+                                  }))
+                                }
+                                onBlur={(e) => handleDraftBlur(g.id, e.relatedTarget)}
+                                onKeyDown={(e) => {
                                 if (e.key === 'Enter') {
                                   e.currentTarget.blur();
                                 }
@@ -911,22 +928,16 @@ export default function AddonsTab({
                               </span>
                               <input
                                 type="text"
-                                inputMode="numeric"
-                                pattern="[0-9]*"
-                                value={(() => {
-                                  const cents = parseInt(
-                                    draftOptions[g.id]?.priceDigits || '0',
-                                    10
-                                  );
-                                  return Number.isNaN(cents) ? '0.00' : (cents / 100).toFixed(2);
-                                })()}
+                                inputMode="decimal"
+                                pattern="[0-9]*[.,]?[0-9]*"
+                                value={draftOptions[g.id]?.priceInput || ''}
                                 onChange={(e) => {
-                                  const digits = e.target.value.replace(/[^0-9]/g, '');
+                                  const sanitized = sanitizePriceInput(e.target.value);
                                   setDraftOptions((prev) => ({
                                     ...prev,
                                     [g.id]: {
                                       name: prev[g.id]?.name || '',
-                                      priceDigits: digits,
+                                      priceInput: sanitized,
                                     },
                                   }));
                                 }}

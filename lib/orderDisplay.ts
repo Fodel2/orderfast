@@ -24,7 +24,7 @@ export function formatPrice(amount: number, currencyCode: string = DEFAULT_CURRE
 export function normalizePriceValue(amount: number) {
   const numericAmount = typeof amount === 'number' ? amount : Number(amount || 0);
   if (!Number.isFinite(numericAmount)) return 0;
-  return numericAmount >= 100 ? numericAmount / 100 : numericAmount;
+  return numericAmount;
 }
 
 export function calculateCartTotals(
