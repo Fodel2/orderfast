@@ -367,23 +367,55 @@ export default function AddonsTab({
           id: String(item.id),
           category_id: item.category_id ? String(item.category_id) : null,
           external_key: item.external_key ? String(item.external_key) : null,
+          category_ids: [],
         }));
+
+        let itemCategoryMap = new Map<string, string[]>();
+        const itemIds = normalizedItems.map((item) => item.id);
+        if (itemIds.length > 0) {
+          const { data: linkRows, error: linkError } = await supabase
+            .from('menu_item_categories')
+            .select('item_id,category_id')
+            .in('item_id', itemIds);
+          if (linkError) {
+            console.error('[addons-tab:load:item-categories]', linkError.message);
+          } else {
+            (linkRows || []).forEach((row) => {
+              if (!row?.item_id || !row?.category_id) return;
+              const itemId = String(row.item_id);
+              const categoryId = String(row.category_id);
+              const existing = itemCategoryMap.get(itemId) ?? [];
+              existing.push(categoryId);
+              itemCategoryMap.set(itemId, existing);
+            });
+          }
+        }
+
+        const normalizedItemsWithCategories = normalizedItems.map((item) => {
+          const linkedCategories = itemCategoryMap.get(item.id) ?? [];
+          const allCategories = new Set<string>(linkedCategories);
+          if (item.category_id) allCategories.add(item.category_id);
+          return {
+            ...item,
+            category_ids: Array.from(allCategories),
+          };
+        });
 
         if (catsError) {
           console.error('[addons-tab:load:categories]', catsError.message);
           setAssignments({});
-          setItems(normalizedItems);
+          setItems(normalizedItemsWithCategories);
           setCategories([]);
           return;
         }
 
         const normalizedCats = (cats || []).map((cat) => ({ ...cat, id: String(cat.id) }));
 
-        setItems(normalizedItems);
+        setItems(normalizedItemsWithCategories);
         setCategories(normalizedCats);
 
         const itemsById = new Map<string, any>();
-        normalizedItems.forEach((item) => {
+        normalizedItemsWithCategories.forEach((item) => {
           itemsById.set(item.id, item);
         });
 

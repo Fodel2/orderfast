@@ -11,6 +11,7 @@ type MenuItem = {
   id: string;
   name: string;
   category_id: string | null;
+  category_ids?: string[];
   external_key?: string | null;
 };
 
@@ -87,9 +88,16 @@ export default function AssignAddonGroupModal({
   const groupedItems = useMemo(() => {
     const group: Record<string, MenuItem[]> = {};
     normalizedItems.forEach((item) => {
-      const catId = item.category_id || 'uncategorized';
-      if (!group[catId]) group[catId] = [];
-      group[catId].push(item);
+      const categoryIds = Array.isArray(item.category_ids) && item.category_ids.length > 0
+        ? item.category_ids
+        : item.category_id
+        ? [item.category_id]
+        : [];
+      const resolvedIds = categoryIds.length ? categoryIds : ['uncategorized'];
+      resolvedIds.forEach((catId) => {
+        if (!group[catId]) group[catId] = [];
+        group[catId].push(item);
+      });
     });
     return group;
   }, [normalizedItems]);
