@@ -1,21 +1,45 @@
 import { supabase } from '../lib/supabaseClient';
-import { ITEM_ADDON_LINK_WITH_GROUPS_SELECT } from '../lib/queries/addons';
+import {
+  ITEM_ADDON_LINK_WITH_GROUPS_AND_ITEMS_SELECT,
+  ITEM_ADDON_LINK_WITH_GROUPS_SELECT,
+} from '../lib/queries/addons';
 import type { AddonGroup } from './types';
 
 /**
  * Fetch live addon groups and options for a menu item.
  */
 export async function getAddonsForItem(
-  itemId: number | string
+  itemId: number | string,
+  restaurantId?: string | number | null
 ): Promise<AddonGroup[]> {
   const itemIdStr = String(itemId);
+  const restaurantIdStr =
+    restaurantId != null && restaurantId !== '' ? String(restaurantId) : null;
 
   const linkQuery = supabase
     .from('item_addon_links')
-    .select(ITEM_ADDON_LINK_WITH_GROUPS_SELECT)
+    .select(
+      restaurantIdStr
+        ? ITEM_ADDON_LINK_WITH_GROUPS_AND_ITEMS_SELECT
+        : ITEM_ADDON_LINK_WITH_GROUPS_SELECT
+    )
     .eq('item_id', itemIdStr)
     .is('addon_groups.archived_at', null)
     .is('addon_groups.addon_options.archived_at', null);
+
+  if (restaurantIdStr) {
+    linkQuery.eq('menu_items.restaurant_id', restaurantIdStr);
+  }
+
+  linkQuery
+    .order('sort_order', { ascending: true, nullsFirst: false, foreignTable: 'addon_groups' })
+    .order('name', { ascending: true, foreignTable: 'addon_groups' })
+    .order('sort_order', {
+      ascending: true,
+      nullsFirst: false,
+      foreignTable: 'addon_groups.addon_options',
+    })
+    .order('name', { ascending: true, foreignTable: 'addon_groups.addon_options' });
 
   const requestUrl = (linkQuery as unknown as { url?: URL }).url?.toString();
 
@@ -37,6 +61,7 @@ export async function getAddonsForItem(
         id: gid,
         group_id: gid,
         name: group.name,
+        sort_order: group.sort_order ?? null,
         required: group.required,
         multiple_choice: group.multiple_choice,
         max_group_select: group.max_group_select,
@@ -58,6 +83,7 @@ export async function getAddonsForItem(
         id: String(option.id),
         group_id: gid,
         name: option.name,
+        sort_order: option.sort_order ?? null,
         price:
           typeof option.price === 'number'
             ? option.price
@@ -74,11 +100,26 @@ export async function getAddonsForItem(
   if (process.env.NODE_ENV === 'development') {
     console.debug('[customer:addons:live]', {
       itemId: itemIdStr,
+      restaurantId: restaurantIdStr,
       groups: groupsMap.size,
       requestUrl,
     });
   }
 
-  return Array.from(groupsMap.values());
+  return Array.from(groupsMap.values())
+    .map((group) => ({
+      ...group,
+      addon_options: [...group.addon_options].sort((a, b) => {
+        const aOrder = a.sort_order ?? Number.MAX_SAFE_INTEGER;
+        const bOrder = b.sort_order ?? Number.MAX_SAFE_INTEGER;
+        if (aOrder !== bOrder) return aOrder - bOrder;
+        return a.name.localeCompare(b.name);
+      }),
+    }))
+    .sort((a, b) => {
+      const aOrder = a.sort_order ?? Number.MAX_SAFE_INTEGER;
+      const bOrder = b.sort_order ?? Number.MAX_SAFE_INTEGER;
+      if (aOrder !== bOrder) return aOrder - bOrder;
+      return a.name.localeCompare(b.name);
+    });
 }
-
