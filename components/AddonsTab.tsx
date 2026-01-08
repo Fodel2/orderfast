@@ -696,13 +696,20 @@ export default function AddonsTab({
   const handleGroupDragEnd = ({ active, over }: DragEndEvent) => {
     if (!over || active.id === over.id) return;
     setGroups((prev) => {
-      const oldIndex = prev.findIndex((g) => g.id === active.id);
-      const newIndex = prev.findIndex((g) => g.id === over.id);
-      const reordered = arrayMove(prev, oldIndex, newIndex).map((g, idx) => ({
+      const ordered = [...prev].sort((a, b) => {
+        const aOrder = a.sort_order ?? 0;
+        const bOrder = b.sort_order ?? 0;
+        if (aOrder !== bOrder) return aOrder - bOrder;
+        return String(a.name ?? '').localeCompare(String(b.name ?? ''));
+      });
+      const oldIndex = ordered.findIndex((g) => g.id === active.id);
+      const newIndex = ordered.findIndex((g) => g.id === over.id);
+      if (oldIndex < 0 || newIndex < 0) return prev;
+      const reordered = arrayMove(ordered, oldIndex, newIndex).map((g, idx) => ({
         ...g,
         sort_order: idx,
       }));
-      persistGroupOrder(reordered, prev);
+      persistGroupOrder(reordered, ordered);
       return reordered;
     });
   };
@@ -710,14 +717,20 @@ export default function AddonsTab({
   const handleDragEnd = (gid: string) => ({ active, over }: DragEndEvent) => {
     if (!over || active.id === over.id) return;
     setOptions((prev) => {
-      const arr = (prev[gid] || []).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
-      const oldIndex = arr.findIndex((o) => o.id === active.id);
-      const newIndex = arr.findIndex((o) => o.id === over.id);
-      const reordered = arrayMove(arr, oldIndex, newIndex).map((opt, idx) => ({
+      const ordered = [...(prev[gid] || [])].sort((a, b) => {
+        const aOrder = a.sort_order ?? 0;
+        const bOrder = b.sort_order ?? 0;
+        if (aOrder !== bOrder) return aOrder - bOrder;
+        return String(a.name ?? '').localeCompare(String(b.name ?? ''));
+      });
+      const oldIndex = ordered.findIndex((o) => o.id === active.id);
+      const newIndex = ordered.findIndex((o) => o.id === over.id);
+      if (oldIndex < 0 || newIndex < 0) return prev;
+      const reordered = arrayMove(ordered, oldIndex, newIndex).map((opt, idx) => ({
         ...opt,
         sort_order: idx,
       }));
-      persistOptionOrder(gid, reordered, arr);
+      persistOptionOrder(gid, reordered, ordered);
       return { ...prev, [gid]: reordered };
     });
   };
@@ -863,8 +876,16 @@ export default function AddonsTab({
                   {!collapsedGroups.has(g.id) && (
                     <div className="p-4 pt-0">
                       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd(g.id)}>
-                        <SortableContext items={(options[g.id] || []).map((o) => o.id)} strategy={verticalListSortingStrategy}>
-                          {(options[g.id] || []).map((o, idx) => (
+                        {(() => {
+                          const orderedOptions = [...(options[g.id] || [])].sort((a, b) => {
+                            const aOrder = a.sort_order ?? 0;
+                            const bOrder = b.sort_order ?? 0;
+                            if (aOrder !== bOrder) return aOrder - bOrder;
+                            return String(a.name ?? '').localeCompare(String(b.name ?? ''));
+                          });
+                          return (
+                            <SortableContext items={orderedOptions.map((o) => o.id)} strategy={verticalListSortingStrategy}>
+                              {orderedOptions.map((o, idx) => (
                             <SortableOption key={o.id} id={o.id}>
                               {({ attributes: optAttr, listeners: optListeners }) => (
                                 <AddonOptionRow
@@ -879,7 +900,9 @@ export default function AddonsTab({
                               )}
                             </SortableOption>
                           ))}
-                        </SortableContext>
+                            </SortableContext>
+                          );
+                        })()}
                       </DndContext>
                       {draftOptions[g.id] && (
                         <div

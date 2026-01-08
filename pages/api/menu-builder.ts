@@ -721,8 +721,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if (!Array.isArray(updates)) {
           return res.status(400).json({ message: 'updates is required' });
         }
+        const normalizedUpdates = updates.map((row, index) => ({
+          id: row.id,
+          sort_order: index,
+        }));
         const results = await Promise.all(
-          updates.map((row) =>
+          normalizedUpdates.map((row) =>
             supabase
               .from('addon_groups_drafts')
               .update({ sort_order: row.sort_order })
@@ -804,8 +808,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if (!Array.isArray(updates)) {
           return res.status(400).json({ message: 'updates is required' });
         }
+        const normalizedUpdates = updates.map((row, index) => ({
+          id: row.id,
+          sort_order: index,
+        }));
         const results = await Promise.all(
-          updates.map((row) =>
+          normalizedUpdates.map((row) =>
             supabase
               .from('addon_options_drafts')
               .update({ sort_order: row.sort_order })
