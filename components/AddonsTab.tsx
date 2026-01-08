@@ -656,6 +656,10 @@ export default function AddonsTab({
 
   const persistOptionOrder = useCallback(
     async (gid: string, opts: any[], previous: any[]) => {
+      if (!restaurantKey) {
+        toast.error('Restaurant not loaded yet');
+        return;
+      }
       const updates = opts.map((opt, idx) => ({ id: opt.id, sort_order: idx }));
       showAutosaveStatus('saving');
       try {
@@ -677,6 +681,10 @@ export default function AddonsTab({
 
   const persistGroupOrder = useCallback(
     async (orderedGroups: any[], previous: any[]) => {
+      if (!restaurantKey) {
+        toast.error('Restaurant not loaded yet');
+        return;
+      }
       const updates = orderedGroups.map((group, idx) => ({ id: group.id, sort_order: idx }));
       showAutosaveStatus('saving');
       try {
@@ -695,6 +703,10 @@ export default function AddonsTab({
 
   const handleGroupDragEnd = ({ active, over }: DragEndEvent) => {
     if (!over || active.id === over.id) return;
+    if (!restaurantKey) {
+      toast.error('Restaurant not loaded yet');
+      return;
+    }
     setGroups((prev) => {
       const ordered = [...prev].sort((a, b) => {
         const aOrder = a.sort_order ?? 0;
@@ -716,6 +728,10 @@ export default function AddonsTab({
 
   const handleDragEnd = (gid: string) => ({ active, over }: DragEndEvent) => {
     if (!over || active.id === over.id) return;
+    if (!restaurantKey) {
+      toast.error('Restaurant not loaded yet');
+      return;
+    }
     setOptions((prev) => {
       const ordered = [...(prev[gid] || [])].sort((a, b) => {
         const aOrder = a.sort_order ?? 0;
