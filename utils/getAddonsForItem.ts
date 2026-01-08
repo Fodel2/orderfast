@@ -1,8 +1,5 @@
 import { supabase } from '../lib/supabaseClient';
-import {
-  ITEM_ADDON_LINK_WITH_GROUPS_AND_ITEMS_SELECT,
-  ITEM_ADDON_LINK_WITH_GROUPS_SELECT,
-} from '../lib/queries/addons';
+import { ADDON_GROUP_FIELDS, ADDON_OPTION_FIELDS } from '../lib/queries/addons';
 import type { AddonGroup } from './types';
 
 /**
@@ -18,28 +15,8 @@ export async function getAddonsForItem(
 
   const linkQuery = supabase
     .from('item_addon_links')
-    .select(
-      restaurantIdStr
-        ? ITEM_ADDON_LINK_WITH_GROUPS_AND_ITEMS_SELECT
-        : ITEM_ADDON_LINK_WITH_GROUPS_SELECT
-    )
-    .eq('item_id', itemIdStr)
-    .is('addon_groups.archived_at', null)
-    .is('addon_groups.addon_options.archived_at', null);
-
-  if (restaurantIdStr) {
-    linkQuery.eq('menu_items.restaurant_id', restaurantIdStr);
-  }
-
-  linkQuery
-    .order('sort_order', { ascending: true, nullsFirst: false, foreignTable: 'addon_groups' })
-    .order('name', { ascending: true, foreignTable: 'addon_groups' })
-    .order('sort_order', {
-      ascending: true,
-      nullsFirst: false,
-      foreignTable: 'addon_groups.addon_options',
-    })
-    .order('name', { ascending: true, foreignTable: 'addon_groups.addon_options' });
+    .select('group_id')
+    .eq('item_id', itemIdStr);
 
   const requestUrl = (linkQuery as unknown as { url?: URL }).url?.toString();
 
@@ -47,17 +24,86 @@ export async function getAddonsForItem(
 
   if (linkError) throw linkError;
 
-  const groupsMap = new Map<string, AddonGroup>();
+  const groupIds = Array.from(
+    new Set(
+      (linkRows || [])
+        .map((row: any) => row?.group_id)
+        .filter((id: any) => id != null)
+        .map((id: any) => String(id))
+    )
+  );
 
-  (linkRows || []).forEach((row: any) => {
-    const group = Array.isArray(row.addon_groups)
-      ? row.addon_groups[0]
-      : row.addon_groups;
-    if (!group || group.archived_at) return;
+  if (!groupIds.length) {
+    if (process.env.NODE_ENV === 'development') {
+      console.debug('[customer:addons:live]', {
+        itemId: itemIdStr,
+        restaurantId: restaurantIdStr,
+        groups: 0,
+        requestUrl,
+      });
+    }
+    return [];
+  }
 
-    const gid = String(group.id);
-    if (!groupsMap.has(gid)) {
-      groupsMap.set(gid, {
+  const groupQuery = supabase
+    .from('addon_groups')
+    .select(ADDON_GROUP_FIELDS)
+    .in('id', groupIds)
+    .is('archived_at', null)
+    .order('sort_order', { ascending: true, nullsFirst: false })
+    .order('name', { ascending: true });
+
+  if (restaurantIdStr) {
+    groupQuery.eq('restaurant_id', restaurantIdStr);
+  }
+
+  const optionQuery = supabase
+    .from('addon_options')
+    .select(ADDON_OPTION_FIELDS)
+    .in('group_id', groupIds)
+    .is('archived_at', null)
+    .order('sort_order', { ascending: true, nullsFirst: false })
+    .order('name', { ascending: true });
+
+  const [{ data: groupRows, error: groupError }, { data: optionRows, error: optionError }] =
+    await Promise.all([groupQuery, optionQuery]);
+
+  if (groupError) throw groupError;
+  if (optionError) throw optionError;
+
+  const optionsByGroup = new Map<string, typeof optionRows>();
+  (optionRows || []).forEach((option: any) => {
+    const gid = option?.group_id != null ? String(option.group_id) : null;
+    if (!gid) return;
+    const arr = optionsByGroup.get(gid) ?? [];
+    arr.push(option);
+    optionsByGroup.set(gid, arr);
+  });
+
+  const groups = (groupRows || [])
+    .map((group: any) => {
+      const gid = group?.id != null ? String(group.id) : null;
+      if (!gid) return null;
+      const rawOptions = optionsByGroup.get(gid) ?? [];
+      const addonOptions = rawOptions
+        .filter((option: any) => option && option.archived_at == null)
+        .map((option: any) => ({
+          id: String(option.id),
+          group_id: gid,
+          name: option.name,
+          sort_order: option.sort_order ?? null,
+          price:
+            typeof option.price === 'number'
+              ? option.price
+              : Number(option.price ?? 0),
+          available: option.available !== false,
+          out_of_stock_until: option.out_of_stock_until,
+          stock_status: option.stock_status,
+          stock_return_date: option.stock_return_date,
+          stock_last_updated_at: option.stock_last_updated_at,
+        }));
+
+      return {
         id: gid,
         group_id: gid,
         name: group.name,
@@ -66,47 +112,21 @@ export async function getAddonsForItem(
         multiple_choice: group.multiple_choice,
         max_group_select: group.max_group_select,
         max_option_quantity: group.max_option_quantity,
-        addon_options: [],
-      });
-    }
-
-    const groupRef = groupsMap.get(gid)!;
-    const options = Array.isArray(group.addon_options)
-      ? group.addon_options
-      : group.addon_options
-      ? [group.addon_options]
-      : [];
-
-    for (const option of options) {
-      if (!option || option.archived_at) continue;
-      groupRef.addon_options.push({
-        id: String(option.id),
-        group_id: gid,
-        name: option.name,
-        sort_order: option.sort_order ?? null,
-        price:
-          typeof option.price === 'number'
-            ? option.price
-            : Number(option.price ?? 0),
-        available: option.available !== false,
-        out_of_stock_until: option.out_of_stock_until,
-        stock_status: option.stock_status,
-        stock_return_date: option.stock_return_date,
-        stock_last_updated_at: option.stock_last_updated_at,
-      });
-    }
-  });
+        addon_options: addonOptions,
+      } as AddonGroup;
+    })
+    .filter(Boolean) as AddonGroup[];
 
   if (process.env.NODE_ENV === 'development') {
     console.debug('[customer:addons:live]', {
       itemId: itemIdStr,
       restaurantId: restaurantIdStr,
-      groups: groupsMap.size,
+      groups: groups.length,
       requestUrl,
     });
   }
 
-  return Array.from(groupsMap.values())
+  return groups
     .map((group) => ({
       ...group,
       addon_options: [...group.addon_options].sort((a, b) => {
