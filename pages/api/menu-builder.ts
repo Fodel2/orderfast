@@ -725,18 +725,41 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           id: row.id,
           sort_order: index,
         }));
-        const results = await Promise.all(
+        const draftResults = await Promise.all(
           normalizedUpdates.map((row) =>
             supabase
               .from('addon_groups_drafts')
               .update({ sort_order: row.sort_order })
               .eq('id', row.id)
               .eq('restaurant_id', restaurantId)
+              .select('id')
           )
         );
-        const firstError = results.find((res) => res.error)?.error;
-        if (firstError) {
-          return res.status(500).json({ message: firstError.message });
+        const draftError = draftResults.find((res) => res.error)?.error;
+        if (draftError) {
+          return res.status(500).json({ message: draftError.message });
+        }
+
+        const liveResults = await Promise.all(
+          normalizedUpdates.map((row) =>
+            supabase
+              .from('addon_groups')
+              .update({ sort_order: row.sort_order })
+              .eq('id', row.id)
+              .eq('restaurant_id', restaurantId)
+              .select('id')
+          )
+        );
+        const liveError = liveResults.find((res) => res.error)?.error;
+        if (liveError) {
+          return res.status(500).json({ message: liveError.message });
+        }
+        const liveUpdated = liveResults.reduce(
+          (sum, result) => sum + (result.data?.length ?? 0),
+          0
+        );
+        if (liveUpdated <= 0) {
+          return res.status(400).json({ message: 'No live add-on groups were updated' });
         }
         return res.status(200).json({ ok: true });
       }
@@ -804,26 +827,55 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
 
       if (action === 'reorder_addon_options') {
-        const { updates } = req.body as { updates?: Array<{ id: string; sort_order: number }> };
+        const { updates, groupId } = req.body as {
+          updates?: Array<{ id: string; sort_order: number }>;
+          groupId?: string;
+        };
         if (!Array.isArray(updates)) {
           return res.status(400).json({ message: 'updates is required' });
+        }
+        if (!groupId) {
+          return res.status(400).json({ message: 'groupId is required' });
         }
         const normalizedUpdates = updates.map((row, index) => ({
           id: row.id,
           sort_order: index,
         }));
-        const results = await Promise.all(
+        const draftResults = await Promise.all(
           normalizedUpdates.map((row) =>
             supabase
               .from('addon_options_drafts')
               .update({ sort_order: row.sort_order })
               .eq('id', row.id)
               .eq('restaurant_id', restaurantId)
+              .select('id')
           )
         );
-        const firstError = results.find((res) => res.error)?.error;
-        if (firstError) {
-          return res.status(500).json({ message: firstError.message });
+        const draftError = draftResults.find((res) => res.error)?.error;
+        if (draftError) {
+          return res.status(500).json({ message: draftError.message });
+        }
+
+        const liveResults = await Promise.all(
+          normalizedUpdates.map((row) =>
+            supabase
+              .from('addon_options')
+              .update({ sort_order: row.sort_order })
+              .eq('id', row.id)
+              .eq('group_id', groupId)
+              .select('id')
+          )
+        );
+        const liveError = liveResults.find((res) => res.error)?.error;
+        if (liveError) {
+          return res.status(500).json({ message: liveError.message });
+        }
+        const liveUpdated = liveResults.reduce(
+          (sum, result) => sum + (result.data?.length ?? 0),
+          0
+        );
+        if (liveUpdated <= 0) {
+          return res.status(400).json({ message: 'No live add-on options were updated' });
         }
         return res.status(200).json({ ok: true });
       }
