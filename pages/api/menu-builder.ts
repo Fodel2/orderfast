@@ -725,6 +725,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           id: row.id,
           sort_order: index,
         }));
+        const draftGroupIds = normalizedUpdates.map((row) => String(row.id)).filter(Boolean);
+        if (!draftGroupIds.length) {
+          return res.status(400).json({ message: 'No group ids provided' });
+        }
+        const { data: draftGroups, error: draftGroupsError } = await supabase
+          .from('addon_groups_drafts')
+          .select('id,name')
+          .eq('restaurant_id', restaurantId)
+          .in('id', draftGroupIds)
+          .is('archived_at', null);
+        if (draftGroupsError) {
+          return res.status(500).json({ message: draftGroupsError.message });
+        }
+        const draftGroupNameById = new Map(
+          (draftGroups || [])
+            .filter((group) => group?.id && group?.name)
+            .map((group) => [String(group.id), String(group.name)])
+        );
         const draftResults = await Promise.all(
           normalizedUpdates.map((row) =>
             supabase
@@ -740,15 +758,49 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           return res.status(500).json({ message: draftError.message });
         }
 
+        const liveGroupNames = Array.from(
+          new Set(
+            normalizedUpdates
+              .map((row) => draftGroupNameById.get(String(row.id)))
+              .filter((name): name is string => Boolean(name))
+          )
+        );
+        if (!liveGroupNames.length) {
+          return res.status(400).json({ message: 'No live group names resolved' });
+        }
+        const { data: liveGroups, error: liveGroupsError } = await supabase
+          .from('addon_groups')
+          .select('id,name')
+          .eq('restaurant_id', restaurantId)
+          .in('name', liveGroupNames)
+          .is('archived_at', null);
+        if (liveGroupsError) {
+          return res.status(500).json({ message: liveGroupsError.message });
+        }
+        const liveGroupIdByName = new Map(
+          (liveGroups || [])
+            .filter((group) => group?.id && group?.name)
+            .map((group) => [String(group.name), String(group.id)])
+        );
+
+        const emptyResult = { data: [], error: null } as {
+          data: Array<{ id: string }> | null;
+          error: null | { message?: string };
+        };
         const liveResults = await Promise.all(
-          normalizedUpdates.map((row) =>
-            supabase
+          normalizedUpdates.map((row) => {
+            const groupName = draftGroupNameById.get(String(row.id));
+            const liveGroupId = groupName ? liveGroupIdByName.get(groupName) : null;
+            if (!liveGroupId) {
+              return Promise.resolve(emptyResult);
+            }
+            return supabase
               .from('addon_groups')
               .update({ sort_order: row.sort_order })
-              .eq('id', row.id)
+              .eq('id', liveGroupId)
               .eq('restaurant_id', restaurantId)
-              .select('id')
-          )
+              .select('id');
+          })
         );
         const liveError = liveResults.find((res) => res.error)?.error;
         if (liveError) {
@@ -841,6 +893,37 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           id: row.id,
           sort_order: index,
         }));
+        const draftOptionIds = normalizedUpdates.map((row) => String(row.id)).filter(Boolean);
+        if (!draftOptionIds.length) {
+          return res.status(400).json({ message: 'No option ids provided' });
+        }
+        const { data: draftGroup, error: draftGroupError } = await supabase
+          .from('addon_groups_drafts')
+          .select('id,name')
+          .eq('restaurant_id', restaurantId)
+          .eq('id', groupId)
+          .is('archived_at', null)
+          .maybeSingle();
+        if (draftGroupError) {
+          return res.status(500).json({ message: draftGroupError.message });
+        }
+        if (!draftGroup?.name) {
+          return res.status(400).json({ message: 'Draft group name not found' });
+        }
+        const { data: draftOptions, error: draftOptionsError } = await supabase
+          .from('addon_options_drafts')
+          .select('id,name')
+          .eq('restaurant_id', restaurantId)
+          .in('id', draftOptionIds)
+          .is('archived_at', null);
+        if (draftOptionsError) {
+          return res.status(500).json({ message: draftOptionsError.message });
+        }
+        const draftOptionNameById = new Map(
+          (draftOptions || [])
+            .filter((option) => option?.id && option?.name)
+            .map((option) => [String(option.id), String(option.name)])
+        );
         const draftResults = await Promise.all(
           normalizedUpdates.map((row) =>
             supabase
@@ -856,15 +939,63 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           return res.status(500).json({ message: draftError.message });
         }
 
+        const { data: liveGroup, error: liveGroupError } = await supabase
+          .from('addon_groups')
+          .select('id,name')
+          .eq('restaurant_id', restaurantId)
+          .eq('name', draftGroup.name)
+          .is('archived_at', null)
+          .maybeSingle();
+        if (liveGroupError) {
+          return res.status(500).json({ message: liveGroupError.message });
+        }
+        if (!liveGroup?.id) {
+          return res.status(400).json({ message: 'Live group not found' });
+        }
+
+        const liveOptionNames = Array.from(
+          new Set(
+            normalizedUpdates
+              .map((row) => draftOptionNameById.get(String(row.id)))
+              .filter((name): name is string => Boolean(name))
+          )
+        );
+        if (!liveOptionNames.length) {
+          return res.status(400).json({ message: 'No live option names resolved' });
+        }
+        const { data: liveOptions, error: liveOptionsError } = await supabase
+          .from('addon_options')
+          .select('id,name')
+          .eq('group_id', liveGroup.id)
+          .in('name', liveOptionNames)
+          .is('archived_at', null);
+        if (liveOptionsError) {
+          return res.status(500).json({ message: liveOptionsError.message });
+        }
+        const liveOptionIdByName = new Map(
+          (liveOptions || [])
+            .filter((option) => option?.id && option?.name)
+            .map((option) => [String(option.name), String(option.id)])
+        );
+
+        const emptyOptionResult = { data: [], error: null } as {
+          data: Array<{ id: string }> | null;
+          error: null | { message?: string };
+        };
         const liveResults = await Promise.all(
-          normalizedUpdates.map((row) =>
-            supabase
+          normalizedUpdates.map((row) => {
+            const optionName = draftOptionNameById.get(String(row.id));
+            const liveOptionId = optionName ? liveOptionIdByName.get(optionName) : null;
+            if (!liveOptionId) {
+              return Promise.resolve(emptyOptionResult);
+            }
+            return supabase
               .from('addon_options')
               .update({ sort_order: row.sort_order })
-              .eq('id', row.id)
-              .eq('group_id', groupId)
-              .select('id')
-          )
+              .eq('id', liveOptionId)
+              .eq('group_id', liveGroup.id)
+              .select('id');
+          })
         );
         const liveError = liveResults.find((res) => res.error)?.error;
         if (liveError) {
