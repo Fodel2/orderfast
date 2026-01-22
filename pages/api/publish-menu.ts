@@ -475,6 +475,162 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     stats.addon_groups_inserted = publishAddonResult?.groups_inserted ?? 0;
     stats.addon_options_inserted = publishAddonResult?.options_inserted ?? 0;
 
+    // 5b) Align live add-on sort_order with draft values
+    const { data: draftGroupsForOrder, error: draftGroupsForOrderError } = await supabase
+      .from('addon_groups_drafts')
+      .select('id,name,sort_order')
+      .eq('restaurant_id', restaurantId)
+      .or('state.is.null,state.eq.draft')
+      .is('archived_at', null);
+
+    if (draftGroupsForOrderError) {
+      logSupabaseError('[publish:loadDraftGroupsForOrder]', draftGroupsForOrderError, { restaurantId });
+      return res.status(500).json({
+        where: 'load_draft_groups_for_order',
+        error: draftGroupsForOrderError.message,
+        code: draftGroupsForOrderError.code,
+        details: draftGroupsForOrderError.details,
+      });
+    }
+
+    const { data: liveGroupsForOrder, error: liveGroupsForOrderError } = await supabase
+      .from('addon_groups')
+      .select('id,name')
+      .eq('restaurant_id', restaurantId)
+      .is('archived_at', null);
+
+    if (liveGroupsForOrderError) {
+      logSupabaseError('[publish:loadLiveGroupsForOrder]', liveGroupsForOrderError, { restaurantId });
+      return res.status(500).json({
+        where: 'load_live_groups_for_order',
+        error: liveGroupsForOrderError.message,
+        code: liveGroupsForOrderError.code,
+        details: liveGroupsForOrderError.details,
+      });
+    }
+
+    const liveGroupIdByNameForOrder = new Map(
+      (liveGroupsForOrder || [])
+        .filter((group) => group?.id && group?.name)
+        .map((group) => [String(group.name), String(group.id)])
+    );
+
+    const groupOrderUpdates = (draftGroupsForOrder || [])
+      .map((group) => ({
+        name: group?.name ? String(group.name) : null,
+        sort_order: typeof group?.sort_order === 'number' ? group.sort_order : null,
+      }))
+      .filter((group) => group.name && group.sort_order != null);
+
+    if (groupOrderUpdates.length > 0) {
+      const groupUpdateResults = await Promise.all(
+        groupOrderUpdates.map((group) => {
+          const liveId = liveGroupIdByNameForOrder.get(group.name as string);
+          if (!liveId) return Promise.resolve({ data: [], error: null });
+          return supabase
+            .from('addon_groups')
+            .update({ sort_order: group.sort_order })
+            .eq('id', liveId)
+            .eq('restaurant_id', restaurantId)
+            .select('id');
+        })
+      );
+      const groupUpdateError = groupUpdateResults.find((result) => result.error)?.error;
+      if (groupUpdateError) {
+        logSupabaseError('[publish:updateLiveGroupOrder]', groupUpdateError, { restaurantId });
+        return res.status(500).json({
+          where: 'update_live_group_order',
+          error: groupUpdateError.message,
+          code: groupUpdateError.code,
+          details: groupUpdateError.details,
+        });
+      }
+    }
+
+    const { data: draftOptionsForOrder, error: draftOptionsForOrderError } = await supabase
+      .from('addon_options_drafts')
+      .select('id,group_id,name,sort_order')
+      .eq('restaurant_id', restaurantId)
+      .or('state.is.null,state.eq.draft')
+      .is('archived_at', null);
+
+    if (draftOptionsForOrderError) {
+      logSupabaseError('[publish:loadDraftOptionsForOrder]', draftOptionsForOrderError, { restaurantId });
+      return res.status(500).json({
+        where: 'load_draft_options_for_order',
+        error: draftOptionsForOrderError.message,
+        code: draftOptionsForOrderError.code,
+        details: draftOptionsForOrderError.details,
+      });
+    }
+
+    const draftGroupNameByIdForOrder = new Map(
+      (draftGroupsForOrder || [])
+        .filter((group) => group?.id && group?.name)
+        .map((group) => [String(group.id), String(group.name)])
+    );
+
+    if ((draftOptionsForOrder || []).length > 0) {
+      const optionsGroupedByLiveId = new Map<string, Array<{ name: string; sort_order: number }>>();
+      (draftOptionsForOrder || []).forEach((option) => {
+        const groupName = draftGroupNameByIdForOrder.get(String(option.group_id));
+        const liveGroupId = groupName ? liveGroupIdByNameForOrder.get(groupName) : null;
+        if (!liveGroupId || !option?.name || typeof option.sort_order !== 'number') return;
+        const arr = optionsGroupedByLiveId.get(liveGroupId) ?? [];
+        arr.push({ name: String(option.name), sort_order: option.sort_order });
+        optionsGroupedByLiveId.set(liveGroupId, arr);
+      });
+
+      for (const [liveGroupId, optionUpdates] of optionsGroupedByLiveId.entries()) {
+        const liveOptionNames = optionUpdates.map((opt) => opt.name);
+        const { data: liveOptions, error: liveOptionsError } = await supabase
+          .from('addon_options')
+          .select('id,name')
+          .eq('group_id', liveGroupId)
+          .in('name', liveOptionNames)
+          .is('archived_at', null);
+
+        if (liveOptionsError) {
+          logSupabaseError('[publish:loadLiveOptionsForOrder]', liveOptionsError, { restaurantId });
+          return res.status(500).json({
+            where: 'load_live_options_for_order',
+            error: liveOptionsError.message,
+            code: liveOptionsError.code,
+            details: liveOptionsError.details,
+          });
+        }
+
+        const liveOptionIdByName = new Map(
+          (liveOptions || [])
+            .filter((option) => option?.id && option?.name)
+            .map((option) => [String(option.name), String(option.id)])
+        );
+
+        const optionUpdateResults = await Promise.all(
+          optionUpdates.map((opt) => {
+            const liveOptionId = liveOptionIdByName.get(opt.name);
+            if (!liveOptionId) return Promise.resolve({ data: [], error: null });
+            return supabase
+              .from('addon_options')
+              .update({ sort_order: opt.sort_order })
+              .eq('id', liveOptionId)
+              .eq('group_id', liveGroupId)
+              .select('id');
+          })
+        );
+        const optionUpdateError = optionUpdateResults.find((result) => result.error)?.error;
+        if (optionUpdateError) {
+          logSupabaseError('[publish:updateLiveOptionOrder]', optionUpdateError, { restaurantId });
+          return res.status(500).json({
+            where: 'update_live_option_order',
+            error: optionUpdateError.message,
+            code: optionUpdateError.code,
+            details: optionUpdateError.details,
+          });
+        }
+      }
+    }
+
     // 6) Remap draft item->group links to live equivalents using external keys and group names
     const { data: draftGroups, error: draftGroupsErr } = await supabase
       .from('addon_groups_drafts')
