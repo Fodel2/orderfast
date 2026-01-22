@@ -154,21 +154,36 @@ function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
         }
 
         const addonMap: Record<number, any[]> = {};
+        const sortByOrder = (a: any, b: any) => {
+          const aOrder = a?.sort_order ?? Number.MAX_SAFE_INTEGER;
+          const bOrder = b?.sort_order ?? Number.MAX_SAFE_INTEGER;
+          if (aOrder !== bOrder) return aOrder - bOrder;
+          return String(a?.name ?? '').localeCompare(String(b?.name ?? ''));
+        };
         addonRows.forEach((row) => {
           if (!row?.item_id) return;
           const groups = Array.isArray(row?.addon_groups?.addon_options)
             ? [
                 {
                   ...row.addon_groups,
-                  addon_options: row.addon_groups.addon_options.filter(
-                    (opt: any) => opt?.archived_at == null && opt?.available !== false
-                  ),
+                  addon_options: row.addon_groups.addon_options
+                    .filter((opt: any) => opt?.archived_at == null && opt?.available !== false)
+                    .sort(sortByOrder),
                 },
               ]
             : row?.addon_groups
-            ? [row.addon_groups]
+            ? [
+                {
+                  ...row.addon_groups,
+                  addon_options: (row.addon_groups.addon_options || [])
+                    .filter((opt: any) => opt?.archived_at == null && opt?.available !== false)
+                    .sort(sortByOrder),
+                },
+              ]
             : [];
-          addonMap[row.item_id] = [...(addonMap[row.item_id] || []), ...groups];
+          addonMap[row.item_id] = [...(addonMap[row.item_id] || []), ...groups].sort(
+            sortByOrder
+          );
         });
 
         const itemsWithAddons = liveItems.map((item: any) => ({

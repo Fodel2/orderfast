@@ -350,7 +350,7 @@ export default function AddonGroups({
                       } as CSSProperties}
                     >
                       <div className="font-medium">{option.name}</div>
-                      {option.price && option.price > 0 && (
+                      {Number(option.price) > 0 && (
                         <div className="text-sm text-gray-500">
                           +{formatPrice(option.price, currencyCode)}
                         </div>
