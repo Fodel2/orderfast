@@ -65,6 +65,7 @@ export default function KioskMenuPage() {
 
 function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
+  const [restaurantLoading, setRestaurantLoading] = useState(true);
   const [categories, setCategories] = useState<Category[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [itemLinks, setItemLinks] = useState<ItemLink[]>([]);
@@ -77,6 +78,7 @@ function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
   useEffect(() => {
     if (!restaurantId) {
       setLoading(false);
+      setRestaurantLoading(false);
     }
   }, [restaurantId]);
 
@@ -86,6 +88,7 @@ function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
 
     const load = async () => {
       setLoading(true);
+      setRestaurantLoading(true);
 
       try {
         const restPromise = supabase
@@ -197,7 +200,10 @@ function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
       } catch (error) {
         console.error('[kiosk] failed to load menu', error);
       } finally {
-        if (active) setLoading(false);
+        if (active) {
+          setLoading(false);
+          setRestaurantLoading(false);
+        }
       }
     };
 
@@ -272,6 +278,7 @@ function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
     <KioskLayout
       restaurantId={restaurantId}
       restaurant={restaurant}
+      restaurantLoading={restaurantLoading}
       cartCount={cartCount}
       categoryBar={
         categorizedItems.length ? (

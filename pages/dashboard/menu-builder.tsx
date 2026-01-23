@@ -895,11 +895,11 @@ export default function MenuBuilder() {
             transition={{ duration: 0.2 }}
           >
             <div className="mb-6">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <h2 className="text-2xl font-bold flex items-center gap-2">
                   <span role="img" aria-label="plates">🍽️</span> Live Menu
                 </h2>
-                <div className="flex items-center space-x-3">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                   <button onClick={expandAll} className="p-2 rounded hover:bg-gray-200" aria-label="Expand all">
                     <ChevronDownIcon className="w-5 h-5" />
                   </button>
@@ -922,8 +922,8 @@ export default function MenuBuilder() {
               <div>
                 {categories.map((cat) => (
                   <div key={cat.id} className="bg-white rounded-xl shadow mb-4">
-                    <div className="flex items-start justify-between p-4">
-                      <div>
+                    <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
                         <div className="flex items-center space-x-2">
                           <h2 className="font-semibold text-lg">{cat.name}</h2>
                           <span className="text-xs bg-gray-200 rounded-full px-2">

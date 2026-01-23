@@ -35,6 +35,7 @@ export default function KioskConfirmPage() {
 function KioskConfirmScreen({ restaurantId }: { restaurantId?: string | null }) {
   const router = useRouter();
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
+  const [restaurantLoading, setRestaurantLoading] = useState(true);
   const { resetKioskToStart } = useKioskSession();
   const resetTimeoutRef = useRef<number | null>(null);
   const tempOrderNumber = useMemo(() => {
@@ -47,10 +48,17 @@ function KioskConfirmScreen({ restaurantId }: { restaurantId?: string | null }) 
   const [displayOrderNumber, setDisplayOrderNumber] = useState<number | null>(null);
 
   useEffect(() => {
+    if (!restaurantId) {
+      setRestaurantLoading(false);
+    }
+  }, [restaurantId]);
+
+  useEffect(() => {
     if (!restaurantId) return;
     let active = true;
 
     const load = async () => {
+      setRestaurantLoading(true);
       try {
         const { data, error } = await supabase
           .from('restaurants')
@@ -68,6 +76,8 @@ function KioskConfirmScreen({ restaurantId }: { restaurantId?: string | null }) 
       } catch (err) {
         if (!active) return;
         console.error('[kiosk] failed to load restaurant info', err);
+      } finally {
+        if (active) setRestaurantLoading(false);
       }
     };
 
@@ -145,7 +155,12 @@ function KioskConfirmScreen({ restaurantId }: { restaurantId?: string | null }) 
   }, [resetAfterOrderPlaced]);
 
   return (
-    <KioskLayout restaurantId={restaurantId} restaurant={restaurant} customHeaderContent={minimalHeader}>
+    <KioskLayout
+      restaurantId={restaurantId}
+      restaurant={restaurant}
+      restaurantLoading={restaurantLoading}
+      customHeaderContent={minimalHeader}
+    >
       <div className="mx-auto flex min-h-[70vh] w-full max-w-2xl flex-col items-center justify-center px-4 py-10 sm:py-14">
         <div className="w-full rounded-[32px] border border-neutral-200 bg-white/95 px-7 py-10 text-center shadow-2xl shadow-neutral-300/40 backdrop-blur sm:px-9 sm:py-12">
           <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 shadow-[0_15px_50px_-30px_rgba(16,185,129,0.9)]">

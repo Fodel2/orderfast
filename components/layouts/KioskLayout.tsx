@@ -41,6 +41,7 @@ type BeforeInstallPromptEvent = Event & {
 type KioskLayoutProps = {
   restaurantId?: string | null;
   restaurant?: KioskRestaurant | null;
+  restaurantLoading?: boolean;
   cartCount?: number;
   children: ReactNode;
   forceHome?: boolean;
@@ -51,6 +52,7 @@ type KioskLayoutProps = {
 export default function KioskLayout({
   restaurantId,
   restaurant,
+  restaurantLoading = false,
   cartCount = 0,
   children,
   forceHome = false,
@@ -375,8 +377,9 @@ export default function KioskLayout({
     }
   }, [attemptFullscreen, menuPath, resetIdleTimer, requestWakeLock, restaurantId, router]);
 
-  const headerTitle = restaurant?.name || 'Restaurant';
+  const headerTitle = restaurant?.website_title || restaurant?.name || 'Restaurant';
   const logoUrl = restaurant?.logo_url || null;
+  const showBrandSkeleton = restaurantLoading;
 
   const hasCustomHeader = Boolean(customHeaderContent);
   const expandedHeaderHeight = hasCustomHeader ? 116 : FULL_HEADER_HEIGHT;
@@ -405,22 +408,33 @@ export default function KioskLayout({
           className="flex items-center gap-4"
           style={{ transform: `scale(${brandScale})`, transformOrigin: 'left center' }}
         >
-          {logoUrl ? (
-            <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-full bg-white/90">
-              <div className="relative h-14 w-14 overflow-hidden rounded-full border border-neutral-200 shadow-sm">
-                <Image
-                  src={logoUrl}
-                  alt={`${headerTitle} logo`}
-                  fill
-                  sizes="64px"
-                  className="rounded-full object-cover"
-                />
+          {showBrandSkeleton ? (
+            <>
+              <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-full bg-white/90">
+                <div className="h-14 w-14 rounded-full bg-neutral-200/80 animate-pulse" />
               </div>
-            </div>
-          ) : null}
-          <span className="text-3xl font-semibold leading-tight tracking-tight text-neutral-900">
-            {headerTitle}
-          </span>
+              <div className="h-9 w-52 rounded-full bg-neutral-200/80 animate-pulse sm:w-64" />
+            </>
+          ) : (
+            <>
+              {logoUrl ? (
+                <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-full bg-white/90">
+                  <div className="relative h-14 w-14 overflow-hidden rounded-full border border-neutral-200 shadow-sm">
+                    <Image
+                      src={logoUrl}
+                      alt={`${headerTitle} logo`}
+                      fill
+                      sizes="64px"
+                      className="rounded-full object-cover"
+                    />
+                  </div>
+                </div>
+              ) : null}
+              <span className="text-3xl font-semibold leading-tight tracking-tight text-neutral-900">
+                {headerTitle}
+              </span>
+            </>
+          )}
         </div>
         {restaurantId ? (
           <div
@@ -440,7 +454,17 @@ export default function KioskLayout({
         ) : null}
       </div>
     );
-  }, [brandScale, cartCount, cartScale, customHeaderContent, headerTitle, logoUrl, registerActivity, restaurantId]);
+  }, [
+    brandScale,
+    cartCount,
+    cartScale,
+    customHeaderContent,
+    headerTitle,
+    logoUrl,
+    registerActivity,
+    restaurantId,
+    showBrandSkeleton,
+  ]);
 
   const handleFullscreenPromptClick = useCallback(async () => {
     await Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]);
@@ -502,7 +526,14 @@ export default function KioskLayout({
           {contentVisible ? children : null}
         </div>
       </main>
-      {homeVisible ? <HomeScreen restaurant={restaurant || null} onStart={startOrdering} fadingOut={homeFading} /> : null}
+      {homeVisible ? (
+        <HomeScreen
+          restaurant={restaurant || null}
+          onStart={startOrdering}
+          fadingOut={homeFading}
+          loading={restaurantLoading}
+        />
+      ) : null}
       {deferredPrompt && !isInstalled && !installDismissed ? (
         <div className="pointer-events-none fixed bottom-4 right-4 z-40">
           <button
