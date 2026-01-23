@@ -795,7 +795,7 @@ export default function MenuBuilder() {
 
       {/* Tab bar */}
       <div className="border-b border-gray-200 mb-4">
-        <nav className="flex space-x-4 overflow-x-auto">
+        <nav className="flex flex-wrap gap-2 sm:flex-nowrap sm:gap-4 sm:overflow-x-auto">
           {[
             { key: 'menu', label: 'Menu' },
             { key: 'addons', label: 'Addons' },
