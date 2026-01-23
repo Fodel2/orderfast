@@ -814,7 +814,7 @@ export default function MenuBuilder() {
       </div>
 
       {activeTab === 'build' && (
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-2">
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => {
@@ -851,7 +851,7 @@ export default function MenuBuilder() {
           <button
             onClick={publishLiveMenu}
             disabled={!restaurantId || !hasBuildChanges || publishing}
-            className="flex items-center bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700 disabled:opacity-50"
+            className="flex items-center bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700 disabled:opacity-50 sm:self-auto"
           >
             Publish Changes
           </button>
@@ -859,12 +859,12 @@ export default function MenuBuilder() {
       )}
 
       {activeTab === 'build' && (
-        <div className="mb-6 flex items-center justify-between">
-          <div className="flex items-center text-sm text-gray-500 space-x-2">
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-2 text-sm text-gray-500">
             <ArrowsUpDownIcon className="w-4 h-4" />
             <span>Drag categories and items to reorder</span>
           </div>
-          <div className="flex items-center space-x-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <button onClick={expandAll} className="p-2 rounded hover:bg-gray-200" aria-label="Expand all">
               <ChevronDownIcon className="w-5 h-5" />
             </button>
