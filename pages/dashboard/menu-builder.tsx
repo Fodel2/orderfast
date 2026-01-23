@@ -1037,8 +1037,8 @@ export default function MenuBuilder() {
                     <SortableWrapper key={cat.id} id={cat.id}>
                       {({ setNodeRef, style, attributes, listeners }) => (
                         <div ref={setNodeRef} style={style} className="bg-white rounded-xl shadow mb-4">
-                          <div className="flex items-start justify-between p-4">
-                            <div className="flex items-start space-x-3">
+                          <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="flex items-start gap-3">
                               <span
                                 {...attributes}
                                 {...listeners}
@@ -1047,7 +1047,7 @@ export default function MenuBuilder() {
                                 ☰
                               </span>
                               <div>
-                                <div className="flex items-center space-x-2">
+                                <div className="flex flex-wrap items-center gap-2">
                                   <h2 className="font-semibold text-lg">{cat.name}</h2>
                                   <span className="text-xs bg-gray-200 rounded-full px-2">
                                     {buildItems.filter((i) => i.category_id === cat.id).length}
@@ -1058,7 +1058,7 @@ export default function MenuBuilder() {
                                 )}
                               </div>
                             </div>
-                            <div className="flex items-center space-x-2">
+                            <div className="flex flex-wrap items-center gap-2">
                               <button
                                 onClick={() => toggleCollapse(cat.id)}
                                 className="p-2 rounded hover:bg-gray-100"
@@ -1128,9 +1128,9 @@ export default function MenuBuilder() {
                                             <div ref={setNodeRef} style={style}>
                                               <div
                                                 onClick={() => handleItemClick(item)}
-                                                className="bg-gray-50 rounded-lg p-3 flex items-start justify-between cursor-pointer"
+                                                className="bg-gray-50 rounded-lg p-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between cursor-pointer"
                                               >
-                                                <div className="flex items-start space-x-2 overflow-hidden">
+                                                <div className="flex items-start gap-2 overflow-hidden">
                                                   <span
                                                     {...attributes}
                                                     {...listeners}
@@ -1152,7 +1152,7 @@ export default function MenuBuilder() {
                                                     <p className="text-xs text-gray-500 truncate">{item.description}</p>
                                                   </div>
                                                 </div>
-                                                <div className="flex items-center space-x-2">
+                                                <div className="flex items-center gap-2">
                                                   <span className="text-sm font-medium">
                                                     {formatCurrency(item.price ?? 0, currencyCode)}
                                                   </span>
