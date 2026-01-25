@@ -142,7 +142,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const highlight = 'text-teal-600';
 
   return (
-    <div className="min-h-screen flex bg-gray-100">
+    <div className="min-h-screen bg-gray-100">
       {/* Mobile sidebar overlay */}
       <div
         className={`fixed inset-0 bg-black/40 z-40 md:hidden transition-opacity${open ? ' opacity-100' : ' opacity-0 pointer-events-none'}`}
@@ -300,7 +300,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       </aside>
 
       {/* Main content */}
-      <main className={`flex-1 p-6 transition-all ${collapsed ? 'md:ml-20' : 'md:ml-60'}`}
+      <main className={`w-full flex-1 p-6 transition-all ${collapsed ? 'md:pl-20' : 'md:pl-60'}`}
       >
         {/* Mobile toggle button */}
         <button

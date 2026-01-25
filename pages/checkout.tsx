@@ -281,11 +281,12 @@ export default function CheckoutPage() {
               <h2 className="text-lg font-semibold mb-2">Order Summary</h2>
               <ul className="space-y-4">
                 {cart.items.map((item) => {
+                  const itemQuantity = item.quantity;
                   const addonsTotal = (item.addons || []).reduce(
-                    (sum, a) => sum + a.price * a.quantity,
+                    (sum, a) => sum + a.price * a.quantity * itemQuantity,
                     0
                   );
-                  const total = item.price * item.quantity + addonsTotal;
+                  const total = item.price * itemQuantity + addonsTotal;
                   return (
                     <li key={item.item_id} className="border rounded p-3 text-sm">
                     <div className="flex justify-between">
@@ -296,14 +297,17 @@ export default function CheckoutPage() {
                     </div>
                       {item.addons && item.addons.length > 0 && (
                         <ul className="mt-2 space-y-1 pl-4 text-gray-600">
-                          {item.addons.map((a) => (
-                            <li key={a.option_id} className="flex justify-between">
-                              <span>
-                                {a.name} × {a.quantity}
-                              </span>
-                              <span>{formatAmount(a.price * a.quantity)}</span>
-                            </li>
-                          ))}
+                          {item.addons.map((a) => {
+                            const addonQuantity = a.quantity * itemQuantity;
+                            return (
+                              <li key={a.option_id} className="flex justify-between">
+                                <span>
+                                  {a.name} × {addonQuantity}
+                                </span>
+                                <span>{formatAmount(a.price * addonQuantity)}</span>
+                              </li>
+                            );
+                          })}
                         </ul>
                       )}
                       {item.notes && (

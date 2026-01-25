@@ -22,6 +22,7 @@ interface HomeScreenProps {
   restaurant: KioskRestaurant | null;
   onStart: () => void;
   fadingOut?: boolean;
+  loading?: boolean;
 }
 
 function formatImageUrl(url?: string | null, updatedAt?: string | null) {
@@ -32,7 +33,8 @@ function formatImageUrl(url?: string | null, updatedAt?: string | null) {
   return `${normalized}?v=${ts}`;
 }
 
-export default function HomeScreen({ restaurant, onStart, fadingOut }: HomeScreenProps) {
+export default function HomeScreen({ restaurant, onStart, fadingOut, loading }: HomeScreenProps) {
+  const showSkeleton = Boolean(loading);
   const kioskHero = useMemo(
     () => formatImageUrl(restaurant?.kiosk_hero_image_url, restaurant?.kiosk_hero_image_updated_at),
     [restaurant?.kiosk_hero_image_updated_at, restaurant?.kiosk_hero_image_url]
@@ -47,7 +49,7 @@ export default function HomeScreen({ restaurant, onStart, fadingOut }: HomeScree
 
   const logoUrl = useMemo(() => normalizeSource(restaurant?.logo_url), [restaurant?.logo_url]);
 
-  const backgroundImage = heroUrl;
+  const backgroundImage = showSkeleton ? null : heroUrl;
 
   const focalX = restaurant?.menu_header_focal_x ?? 0.5;
   const focalY = restaurant?.menu_header_focal_y ?? 0.5;
@@ -62,10 +64,10 @@ export default function HomeScreen({ restaurant, onStart, fadingOut }: HomeScree
     >
       <div className="absolute inset-0 overflow-hidden">
         <div
-          className="absolute inset-0"
+          className={`absolute inset-0 ${showSkeleton ? 'animate-pulse' : ''}`}
           style={{
             backgroundImage: backgroundImage ? `url(${backgroundImage})` : undefined,
-            backgroundColor: backgroundImage ? undefined : '#f8fafc',
+            backgroundColor: showSkeleton ? '#e5e7eb' : backgroundImage ? undefined : '#f8fafc',
             backgroundSize: 'cover',
             backgroundPosition: `${focalX * 100}% ${focalY * 100}%`,
           }}
@@ -77,7 +79,9 @@ export default function HomeScreen({ restaurant, onStart, fadingOut }: HomeScree
         <div className="w-full rounded-[32px] border border-neutral-200 bg-white/95 p-8 shadow-2xl shadow-neutral-300/50 backdrop-blur">
           <div className="flex flex-col items-center gap-4">
             <div className="relative h-24 w-24 overflow-hidden rounded-full border border-neutral-200 bg-white shadow-lg shadow-neutral-200">
-              {logoUrl ? (
+              {showSkeleton ? (
+                <div className="h-full w-full rounded-full bg-neutral-200/80 animate-pulse" />
+              ) : logoUrl ? (
                 <Image
                   src={logoUrl}
                   alt={restaurant?.name || 'Restaurant logo'}
@@ -92,12 +96,21 @@ export default function HomeScreen({ restaurant, onStart, fadingOut }: HomeScree
               )}
             </div>
             <div className="space-y-1">
-              <h1 className="text-3xl font-semibold leading-tight text-neutral-900 sm:text-4xl">
-                {restaurant?.website_title || restaurant?.name || 'Restaurant'}
-              </h1>
-              {restaurant?.website_description ? (
-                <p className="text-base text-neutral-600 sm:text-lg">{restaurant.website_description}</p>
-              ) : null}
+              {showSkeleton ? (
+                <div className="flex flex-col items-center gap-2">
+                  <div className="h-8 w-52 rounded-full bg-neutral-200/80 animate-pulse sm:h-9 sm:w-64" />
+                  <div className="h-4 w-40 rounded-full bg-neutral-200/70 animate-pulse sm:w-48" />
+                </div>
+              ) : (
+                <>
+                  <h1 className="text-3xl font-semibold leading-tight text-neutral-900 sm:text-4xl">
+                    {restaurant?.website_title || restaurant?.name || 'Restaurant'}
+                  </h1>
+                  {restaurant?.website_description ? (
+                    <p className="text-base text-neutral-600 sm:text-lg">{restaurant.website_description}</p>
+                  ) : null}
+                </>
+              )}
             </div>
           </div>
 

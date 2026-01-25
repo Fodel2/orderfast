@@ -65,6 +65,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   const { resetKioskToStart, registerActivity } = useKioskSession();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
+  const [restaurantLoading, setRestaurantLoading] = useState(true);
   const currencyCode = restaurant?.currency_code || undefined;
   const [placingOrder, setPlacingOrder] = useState(false);
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
@@ -138,10 +139,17 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   }, []);
 
   useEffect(() => {
+    if (!restaurantId) {
+      setRestaurantLoading(false);
+    }
+  }, [restaurantId]);
+
+  useEffect(() => {
     if (!restaurantId) return;
     let active = true;
 
     const load = async () => {
+      setRestaurantLoading(true);
       try {
         const { data, error } = await supabase
           .from('restaurants')
@@ -159,6 +167,8 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
       } catch (err) {
         if (!active) return;
         console.error('[kiosk] failed to load restaurant info', err);
+      } finally {
+        if (active) setRestaurantLoading(false);
       }
     };
 
@@ -436,6 +446,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     <KioskLayout
       restaurantId={restaurantId}
       restaurant={restaurant}
+      restaurantLoading={restaurantLoading}
       cartCount={cartCount}
       customHeaderContent={headerContent}
     >

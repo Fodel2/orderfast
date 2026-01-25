@@ -72,11 +72,12 @@ function CartContent({
         ) : (
           <div className="space-y-3.5 sm:space-y-4">
             {cart.items.map((item) => {
+              const itemQuantity = item.quantity;
               const addonsTotal = (item.addons || []).reduce(
-                (sum, a) => sum + a.price * a.quantity,
+                (sum, a) => sum + a.price * a.quantity * itemQuantity,
                 0
               );
-              const itemTotal = item.price * item.quantity + addonsTotal;
+              const itemTotal = item.price * itemQuantity + addonsTotal;
               const formattedItemTotal = formatPrice(itemTotal, currencyCode);
               const formattedItemPrice = formatPrice(item.price, currencyCode);
               return (
@@ -94,14 +95,17 @@ function CartContent({
                       </div>
                       {item.addons && item.addons.length > 0 && (
                         <ul className="space-y-0.5 pl-4 text-base text-slate-600 sm:text-lg">
-                          {item.addons.map((addon) => (
-                            <li key={addon.option_id} className="flex justify-between gap-3">
-                              <span className="flex-1">{addon.name} × {addon.quantity}</span>
-                              <span className="font-medium text-slate-700">
-                                {formatPrice(addon.price * addon.quantity, currencyCode)}
-                              </span>
-                            </li>
-                          ))}
+                          {item.addons.map((addon) => {
+                            const addonQuantity = addon.quantity * itemQuantity;
+                            return (
+                              <li key={addon.option_id} className="flex justify-between gap-3">
+                                <span className="flex-1">{addon.name} × {addonQuantity}</span>
+                                <span className="font-medium text-slate-700">
+                                  {formatPrice(addon.price * addonQuantity, currencyCode)}
+                                </span>
+                              </li>
+                            );
+                          })}
                         </ul>
                       )}
                       {item.notes && (

@@ -49,7 +49,7 @@ export function calculateCartTotals(
       for (const addon of item.addons) {
         const addonPrice = Number(addon?.price) || 0;
         const addonQty = Number(addon?.quantity) || 0;
-        addonSubtotal += addonPrice * addonQty;
+        addonSubtotal += addonPrice * addonQty * quantity;
       }
     }
   }

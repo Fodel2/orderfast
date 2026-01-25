@@ -23,12 +23,20 @@ export default function KioskHomePage() {
 
 function KioskHomeScreen({ restaurantId }: { restaurantId?: string | null }) {
   const [restaurant, setRestaurant] = useState<RestaurantRow | null>(null);
+  const [restaurantLoading, setRestaurantLoading] = useState(true);
+
+  useEffect(() => {
+    if (!restaurantId) {
+      setRestaurantLoading(false);
+    }
+  }, [restaurantId]);
 
   useEffect(() => {
     if (!restaurantId) return;
     let active = true;
 
     const load = async () => {
+      setRestaurantLoading(true);
       try {
         const { data, error } = await supabase
           .from('restaurants')
@@ -48,6 +56,8 @@ function KioskHomeScreen({ restaurantId }: { restaurantId?: string | null }) {
       } catch (err) {
         if (!active) return;
         console.error('[kiosk] failed to load restaurant info', err);
+      } finally {
+        if (active) setRestaurantLoading(false);
       }
     };
 
@@ -59,7 +69,12 @@ function KioskHomeScreen({ restaurantId }: { restaurantId?: string | null }) {
   }, [restaurantId]);
 
   return (
-    <KioskLayout restaurantId={restaurantId} restaurant={restaurant} forceHome>
+    <KioskLayout
+      restaurantId={restaurantId}
+      restaurant={restaurant}
+      restaurantLoading={restaurantLoading}
+      forceHome
+    >
       <div className="flex min-h-[50vh] items-center justify-center text-sm text-neutral-500">
         Preparing kiosk experience...
       </div>
