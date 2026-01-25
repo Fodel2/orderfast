@@ -924,7 +924,7 @@ export default function MenuBuilder() {
                   <div key={cat.id} className="bg-white rounded-xl shadow mb-4">
                     <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0">
-                        <div className="flex items-center space-x-2">
+                        <div className="flex min-w-0 items-center space-x-2">
                           <h2 className="font-semibold text-lg">{cat.name}</h2>
                           <span className="text-xs bg-gray-200 rounded-full px-2">
                             {items.filter((i) => i.category_id === cat.id).length}
@@ -949,19 +949,19 @@ export default function MenuBuilder() {
                     </div>
                     {!collapsedCats.has(cat.id) && (
                       <div className="px-4 pb-4">
-                        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                          {items
-                            .filter((item) => item.category_id === cat.id)
-                            .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-                            .map((item) => (
-                              <MenuItemCard
-                                key={item.id}
-                                item={item}
-                                restaurantId={restaurantId!}
-                                currencyCode={currencyCode}
-                              />
-                            ))}
-                        </div>
+                          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {items
+                              .filter((item) => item.category_id === cat.id)
+                              .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+                              .map((item) => (
+                                <MenuItemCard
+                                  key={item.id}
+                                  item={item}
+                                  restaurantId={restaurantId!}
+                                  currencyCode={currencyCode}
+                                />
+                              ))}
+                          </div>
                       </div>
                     )}
                   </div>
@@ -1038,7 +1038,7 @@ export default function MenuBuilder() {
                       {({ setNodeRef, style, attributes, listeners }) => (
                         <div ref={setNodeRef} style={style} className="bg-white rounded-xl shadow mb-4">
                           <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
-                            <div className="flex items-start gap-3">
+                            <div className="flex min-w-0 items-start gap-3">
                               <span
                                 {...attributes}
                                 {...listeners}
@@ -1046,9 +1046,9 @@ export default function MenuBuilder() {
                               >
                                 ☰
                               </span>
-                              <div>
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <h2 className="font-semibold text-lg">{cat.name}</h2>
+                              <div className="min-w-0">
+                                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                                  <h2 className="truncate font-semibold text-lg">{cat.name}</h2>
                                   <span className="text-xs bg-gray-200 rounded-full px-2">
                                     {buildItems.filter((i) => i.category_id === cat.id).length}
                                   </span>
@@ -1130,7 +1130,7 @@ export default function MenuBuilder() {
                                                 onClick={() => handleItemClick(item)}
                                                 className="bg-gray-50 rounded-lg p-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between cursor-pointer"
                                               >
-                                                <div className="flex items-start gap-2 overflow-hidden">
+                                                <div className="flex min-w-0 items-start gap-2 overflow-hidden">
                                                   <span
                                                     {...attributes}
                                                     {...listeners}
@@ -1147,7 +1147,7 @@ export default function MenuBuilder() {
                                                       />
                                                     )}
                                                   </div>
-                                                  <div className="truncate">
+                                                  <div className="min-w-0">
                                                     <p className="font-semibold truncate text-sm">{item.name}</p>
                                                     <p className="text-xs text-gray-500 truncate">{item.description}</p>
                                                   </div>
