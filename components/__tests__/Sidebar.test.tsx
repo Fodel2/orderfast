@@ -24,7 +24,7 @@ describe('DashboardLayout sidebar', () => {
       'Orders',
       'Menu',
       'Promotions',
-      'POS',
+      'Till / POS',
       'KOD',
       'Kiosk',
       'Website',

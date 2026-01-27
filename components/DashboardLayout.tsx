@@ -18,9 +18,12 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
 } from '@heroicons/react/24/outline';
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '@/lib/supabaseClient';
+import PosLaunchModal from '@/components/PosLaunchModal';
+import { POS_APK_DOWNLOAD_URL } from '@/utils/pos/constants';
+import { KIOSK_APK_DOWNLOAD_URL } from '@/utils/kiosk/constants';
 
 type NavChild = {
   href: string;
@@ -50,6 +53,12 @@ type RestaurantContext = {
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [restaurant, setRestaurant] = useState<RestaurantContext | null>(null);
   const router = useRouter();
+  const [showPosModal, setShowPosModal] = useState(false);
+  const [rememberPosChoice, setRememberPosChoice] = useState(false);
+  const [posPreferenceSaved, setPosPreferenceSaved] = useState(false);
+  const [showKioskModal, setShowKioskModal] = useState(false);
+  const [rememberKioskChoice, setRememberKioskChoice] = useState(false);
+  const [kioskPreferenceSaved, setKioskPreferenceSaved] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -103,20 +112,115 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const activeRestaurantId = restaurantIdFromRoute || restaurant?.id || null;
 
   const kioskUrl = activeRestaurantId ? `/kiosk/${activeRestaurantId}` : null;
+  const posUrl = activeRestaurantId ? `/pos/${activeRestaurantId}` : null;
 
   const kioskDisabled = !activeRestaurantId;
+  const posDisabled = !activeRestaurantId;
+
+  const posPreferenceKey = useMemo(
+    () => (activeRestaurantId ? `pos_launch_preference_${activeRestaurantId}` : null),
+    [activeRestaurantId]
+  );
+  const kioskPreferenceKey = useMemo(
+    () => (activeRestaurantId ? `kiosk_launch_preference_${activeRestaurantId}` : null),
+    [activeRestaurantId]
+  );
+
+  useEffect(() => {
+    if (!posPreferenceKey || typeof window === 'undefined') {
+      setPosPreferenceSaved(false);
+      return;
+    }
+
+    const stored = window.localStorage.getItem(posPreferenceKey);
+    setPosPreferenceSaved(stored === 'pwa');
+  }, [posPreferenceKey]);
+
+  useEffect(() => {
+    if (!kioskPreferenceKey || typeof window === 'undefined') {
+      setKioskPreferenceSaved(false);
+      return;
+    }
+
+    const stored = window.localStorage.getItem(kioskPreferenceKey);
+    setKioskPreferenceSaved(stored === 'pwa');
+  }, [kioskPreferenceKey]);
+
+  const handlePosLaunch = () => {
+    if (!posUrl) return;
+    if (rememberPosChoice && posPreferenceKey && typeof window !== 'undefined') {
+      window.localStorage.setItem(posPreferenceKey, 'pwa');
+      setPosPreferenceSaved(true);
+    }
+    setShowPosModal(false);
+    setRememberPosChoice(false);
+    router.push(posUrl).catch(() => undefined);
+  };
+
+  const handlePosEntryClick = () => {
+    if (posDisabled || !posUrl) return;
+    if (posPreferenceSaved) {
+      router.push(posUrl).catch(() => undefined);
+      return;
+    }
+    setShowPosModal(true);
+  };
+
+  const handlePosPreferenceReset = () => {
+    if (posPreferenceKey && typeof window !== 'undefined') {
+      window.localStorage.removeItem(posPreferenceKey);
+    }
+    setPosPreferenceSaved(false);
+    setRememberPosChoice(false);
+    setShowPosModal(true);
+  };
+
+  const handleKioskLaunch = () => {
+    if (!kioskUrl) return;
+    if (rememberKioskChoice && kioskPreferenceKey && typeof window !== 'undefined') {
+      window.localStorage.setItem(kioskPreferenceKey, 'pwa');
+      setKioskPreferenceSaved(true);
+    }
+    setShowKioskModal(false);
+    setRememberKioskChoice(false);
+    router.push(kioskUrl).catch(() => undefined);
+  };
+
+  const handleKioskEntryClick = () => {
+    if (kioskDisabled || !kioskUrl) return;
+    if (kioskPreferenceSaved) {
+      router.push(kioskUrl).catch(() => undefined);
+      return;
+    }
+    setShowKioskModal(true);
+  };
+
+  const handleKioskPreferenceReset = () => {
+    if (kioskPreferenceKey && typeof window !== 'undefined') {
+      window.localStorage.removeItem(kioskPreferenceKey);
+    }
+    setKioskPreferenceSaved(false);
+    setRememberKioskChoice(false);
+    setShowKioskModal(true);
+  };
 
   const nav: NavItem[] = [
     { href: '/dashboard', label: 'Home', icon: HomeIcon },
     { href: '/dashboard/orders', label: 'Orders', icon: TruckIcon },
     { href: '/dashboard/menu-builder', label: 'Menu', icon: ClipboardDocumentListIcon },
     { href: null, label: 'Promotions', icon: MegaphoneIcon },
-    { href: null, label: 'POS', icon: ComputerDesktopIcon },
+    {
+      label: 'Till / POS',
+      icon: ComputerDesktopIcon,
+      onClick: handlePosEntryClick,
+      disabled: posDisabled,
+      tooltip: 'Opens the POS launcher.',
+    },
     { href: null, label: 'KOD', icon: CpuChipIcon },
     {
       label: 'Kiosk',
       icon: DeviceTabletIcon,
-      href: kioskUrl,
+      onClick: handleKioskEntryClick,
       disabled: kioskDisabled || !kioskUrl,
       tooltip: 'Opens in fullscreen kiosk mode.',
     },
@@ -236,6 +340,67 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               );
             }
 
+            const isPosEntry = n.label === 'Till / POS';
+            const isKioskEntry = n.label === 'Kiosk';
+
+            if (isButton && isPosEntry && posPreferenceSaved && !collapsed) {
+              return (
+                <div key={n.label} className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={n.onClick}
+                    disabled={disabled}
+                    className={`${base} flex-1 ${interactive ? 'text-gray-700' : 'text-gray-400'}`}
+                    aria-label={n.label}
+                    title={n.tooltip}
+                  >
+                    <n.icon className={iconClass} aria-hidden="true" />
+                    <span className={labelClass}>{n.label}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handlePosPreferenceReset();
+                    }}
+                    className="text-xs font-semibold text-teal-600 hover:underline"
+                    aria-label="Change POS launch preference"
+                  >
+                    Change
+                  </button>
+                </div>
+              );
+            }
+
+            if (isButton && isKioskEntry && kioskPreferenceSaved && !collapsed) {
+              return (
+                <div key={n.label} className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={n.onClick}
+                    disabled={disabled}
+                    className={`${base} flex-1 ${interactive ? 'text-gray-700' : 'text-gray-400'}`}
+                    aria-label={n.label}
+                    title={n.tooltip}
+                  >
+                    <n.icon className={iconClass} aria-hidden="true" />
+                    <span className={labelClass}>{n.label}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleKioskPreferenceReset();
+                    }}
+                    className="text-xs font-semibold text-teal-600 hover:underline"
+                    aria-label="Change kiosk launch preference"
+                  >
+                    Change
+                  </button>
+                </div>
+              );
+            }
+
             if (isButton) {
               return (
                 <button
@@ -312,6 +477,36 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         </button>
         {children}
       </main>
+      <PosLaunchModal
+        open={showPosModal}
+        title="Launch Till / POS"
+        description="Choose how you want to run the POS experience."
+        launchLabel="Launch POS (PWA)"
+        downloadLabel="Download POS APK"
+        rememberChoice={rememberPosChoice}
+        onRememberChange={setRememberPosChoice}
+        onLaunchPwa={handlePosLaunch}
+        apkUrl={POS_APK_DOWNLOAD_URL}
+        onClose={() => {
+          setShowPosModal(false);
+          setRememberPosChoice(false);
+        }}
+      />
+      <PosLaunchModal
+        open={showKioskModal}
+        title="Launch Kiosk"
+        description="Choose how you want to run the kiosk experience."
+        launchLabel="Launch Kiosk (PWA)"
+        downloadLabel="Download Kiosk APK"
+        rememberChoice={rememberKioskChoice}
+        onRememberChange={setRememberKioskChoice}
+        onLaunchPwa={handleKioskLaunch}
+        apkUrl={KIOSK_APK_DOWNLOAD_URL}
+        onClose={() => {
+          setShowKioskModal(false);
+          setRememberKioskChoice(false);
+        }}
+      />
     </div>
   );
 }
