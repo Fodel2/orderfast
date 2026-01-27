@@ -15,7 +15,7 @@ import ConfirmModal from '@/components/ConfirmModal';
 import { supabase } from '@/lib/supabaseClient';
 import { ITEM_ADDON_LINK_WITH_GROUPS_SELECT } from '@/lib/queries/addons';
 import { calculateCartTotals, formatPrice } from '@/lib/orderDisplay';
-import { toast } from '@/components/ui/toast';
+import Toast from '@/components/Toast';
 
 type OrderType = 'walk-in' | 'collection' | 'delivery';
 type PaymentMethod = 'cash' | 'card';
@@ -110,6 +110,7 @@ export default function PosHomePage() {
   const [cashReceived, setCashReceived] = useState('');
   const [receiptNumber, setReceiptNumber] = useState<string | null>(null);
   const [receiptChoice, setReceiptChoice] = useState<ReceiptChoice | null>(null);
+  const [toastMessage, setToastMessage] = useState('');
 
   useEffect(() => {
     if (!storageKey || typeof window === 'undefined') return;
@@ -960,10 +961,10 @@ export default function PosHomePage() {
                       onClick={() => {
                         setReceiptChoice(choice);
                         if (choice === 'print') {
-                          toast.success('Printing not configured yet.');
+                          setToastMessage('Printing not configured yet.');
                         }
                         if (choice === 'digital') {
-                          toast.success('Digital receipts coming soon.');
+                          setToastMessage('Digital receipts coming soon.');
                         }
                       }}
                       className={`rounded-2xl border px-4 py-3 text-sm font-semibold transition ${
@@ -1020,6 +1021,8 @@ export default function PosHomePage() {
           </div>
         </div>
       ) : null}
+
+      <Toast message={toastMessage} onClose={() => setToastMessage('')} />
 
       <ConfirmModal
         show={showConfirmClear}
