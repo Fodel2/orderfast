@@ -283,13 +283,13 @@ export default function MenuItemCard({
 
   return (
     <>
-      <div className="relative h-full">
+      <div className="relative h-full min-w-0 max-w-full">
         <div
           role="button"
           tabIndex={0}
           onClick={handleClick}
           onKeyDown={handleCardKeyDown}
-          className={`group relative flex h-full flex-col overflow-hidden rounded-[26px] bg-white shadow-[0_8px_32px_rgba(0,0,0,0.06)] transition duration-150 ease-out ${
+          className={`group relative flex h-full max-w-full flex-col overflow-hidden rounded-[26px] bg-white shadow-[0_8px_32px_rgba(0,0,0,0.06)] transition duration-150 ease-out ${
             isKiosk ? 'hover:-translate-y-1 active:scale-[0.98]' : ''
           } focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2`}
           style={{ ['--tw-ring-color' as any]: cardAccent } as CSSProperties}
@@ -330,16 +330,16 @@ export default function MenuItemCard({
 
           <div className="flex flex-1 flex-col">
             <div className="px-4 py-3 sm:px-5 sm:py-4">
-              <div className="flex items-start gap-3">
-                <div className="flex min-w-0 flex-1 flex-col gap-2">
-                  <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 items-start gap-3">
+                <div className="flex min-w-0 w-full flex-1 flex-col gap-2">
+                  <div className="flex min-w-0 items-start justify-between gap-3">
                     <h4 className="truncate text-lg font-semibold text-neutral-900 sm:text-xl">{item.name}</h4>
                     <span className="shrink-0 rounded-full bg-black/5 px-3 py-1 text-sm font-semibold text-neutral-900">
                       {formattedPrice}
                     </span>
                   </div>
                   {item.description ? (
-                    <div className="relative">
+                    <div className="relative pr-4">
                       <p className="line-clamp-2 text-sm leading-snug text-slate-500">
                         {item.description}
                       </p>

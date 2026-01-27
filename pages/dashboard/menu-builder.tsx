@@ -1132,10 +1132,10 @@ export default function MenuBuilder() {
                                       .map((item) => (
                                         <SortableWrapper key={item.id} id={item.id}>
                                           {({ setNodeRef, style, attributes, listeners }) => (
-                                            <div ref={setNodeRef} style={style}>
+                                            <div ref={setNodeRef} style={style} className="min-w-0">
                                               <div
                                                 onClick={() => handleItemClick(item)}
-                                                className="bg-gray-50 rounded-lg cursor-pointer"
+                                                className="bg-gray-50 rounded-lg max-w-full overflow-hidden cursor-pointer"
                                               >
                                                 <div className="flex min-w-0 items-start gap-2 px-4 py-3 sm:items-start sm:justify-between">
                                                   <span
@@ -1154,7 +1154,7 @@ export default function MenuBuilder() {
                                                       />
                                                     )}
                                                   </div>
-                                                  <div className="flex min-w-0 flex-1 flex-col gap-1">
+                                                  <div className="flex min-w-0 w-full flex-1 flex-col gap-1">
                                                     <div className="flex min-w-0 items-start justify-between gap-2">
                                                       <p className="min-w-0 truncate text-sm font-semibold">{item.name}</p>
                                                       <span className="shrink-0 text-sm font-medium">
@@ -1162,11 +1162,11 @@ export default function MenuBuilder() {
                                                       </span>
                                                     </div>
                                                     {item.description ? (
-                                                      <div className="relative">
-                                                        <p className="line-clamp-2 break-words text-xs text-gray-500">
+                                                      <div className="relative pr-4">
+                                                        <p className="line-clamp-2 text-xs leading-snug text-slate-500">
                                                           {item.description}
                                                         </p>
-                                                        <span
+                                                        <div
                                                           aria-hidden
                                                           className="pointer-events-none absolute right-0 top-0 h-full w-10 bg-gradient-to-l from-gray-50 to-transparent"
                                                         />
