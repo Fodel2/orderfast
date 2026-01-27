@@ -745,73 +745,76 @@ export default function MenuBuilder() {
 
   return (
     <DashboardLayout>
-      {/* Top title and hero image */}
-        <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
-          <div>
-            <h1 className="text-3xl font-bold">Menu Manager</h1>
-            <p className="text-sm text-gray-600 mt-1">Build and manage your categories, items, add-ons, and stock in real time.</p>
-          </div>
-          <div className="shrink-0">
-            <div
-              onClick={() => !uploadingHero && fileRef.current?.click()}
-              className="relative w-40 h-24 border-2 border-dashed rounded-lg flex items-center justify-center cursor-pointer overflow-hidden text-gray-400"
-            >
-              {heroImage ? (
-                <>
-                  <img
-                    src={heroImage}
-                    alt="Hero"
-                    className="object-cover w-full h-full"
-                    style={{ objectPosition: `${heroFocal.x * 100}% ${heroFocal.y * 100}%` }}
-                  />
-                  <button
-                    type="button"
-                    onClick={removeHeroImage}
-                    aria-label="Remove image"
-                    className="absolute top-1 right-1 bg-white/70 rounded-full p-1 hover:bg-white"
-                  >
-                    <TrashIcon className="w-4 h-4 text-red-600" />
-                  </button>
-                </>
-              ) : (
-                <span className="text-sm">Upload image</span>
-              )}
-              {uploadingHero && (
-                <div className="absolute inset-0 bg-white/70 flex items-center justify-center text-sm">
-                  {uploadPct ? `${uploadPct}%` : 'Uploading...'}
-                </div>
-              )}
+      <div className="w-full max-w-full overflow-x-hidden">
+        {/* Top title and hero image */}
+          <div className="mb-8 flex min-w-0 flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <h1 className="text-3xl font-bold">Menu Manager</h1>
+              <p className="mt-1 text-sm text-gray-600">
+                Build and manage your categories, items, add-ons, and stock in real time.
+              </p>
             </div>
-            <input
-              type="file"
-              accept="image/*"
-              ref={fileRef}
-              onChange={handleHeroChange}
-              className="hidden"
-              aria-label="Upload hero image"
-            />
+            <div className="shrink-0">
+              <div
+                onClick={() => !uploadingHero && fileRef.current?.click()}
+                className="relative h-24 w-40 overflow-hidden rounded-lg border-2 border-dashed text-gray-400 flex items-center justify-center cursor-pointer"
+              >
+                {heroImage ? (
+                  <>
+                    <img
+                      src={heroImage}
+                      alt="Hero"
+                      className="object-cover w-full h-full"
+                      style={{ objectPosition: `${heroFocal.x * 100}% ${heroFocal.y * 100}%` }}
+                    />
+                    <button
+                      type="button"
+                      onClick={removeHeroImage}
+                      aria-label="Remove image"
+                      className="absolute top-1 right-1 bg-white/70 rounded-full p-1 hover:bg-white"
+                    >
+                      <TrashIcon className="w-4 h-4 text-red-600" />
+                    </button>
+                  </>
+                ) : (
+                  <span className="text-sm">Upload image</span>
+                )}
+                {uploadingHero && (
+                  <div className="absolute inset-0 bg-white/70 flex items-center justify-center text-sm">
+                    {uploadPct ? `${uploadPct}%` : 'Uploading...'}
+                  </div>
+                )}
+              </div>
+              <input
+                type="file"
+                accept="image/*"
+                ref={fileRef}
+                onChange={handleHeroChange}
+                className="hidden"
+                aria-label="Upload hero image"
+              />
+            </div>
           </div>
-        </div>
 
-      {/* Tab bar */}
-      <div className="border-b border-gray-200 mb-4">
-        <nav className="flex flex-wrap gap-2 sm:flex-nowrap sm:gap-4 sm:overflow-x-auto">
-          {[
-            { key: 'menu', label: 'Menu' },
-            { key: 'addons', label: 'Addons' },
-            { key: 'stock', label: 'Stock' },
-            { key: 'build', label: 'Build Menu' },
-          ].map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setActiveTab(t.key as any)}
-              className={`px-3 py-2 whitespace-nowrap font-medium focus:outline-none ${activeTab === t.key ? 'border-b-2 border-teal-600 text-teal-600' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </nav>
-      </div>
+        {/* Tab bar */}
+        <div className="mb-4 max-w-full border-b border-gray-200">
+          <nav className="flex min-w-0 flex-wrap gap-2 sm:flex-nowrap sm:gap-4 sm:overflow-x-auto">
+            {[
+              { key: 'menu', label: 'Menu' },
+              { key: 'addons', label: 'Addons' },
+              { key: 'stock', label: 'Stock' },
+              { key: 'build', label: 'Build Menu' },
+            ].map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setActiveTab(t.key as any)}
+                className={`px-3 py-2 whitespace-nowrap font-medium focus:outline-none ${activeTab === t.key ? 'border-b-2 border-teal-600 text-teal-600' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </nav>
+        </div>
 
       {activeTab === 'build' && (
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
@@ -887,8 +890,9 @@ export default function MenuBuilder() {
 
       <AnimatePresence mode="wait">
         {activeTab === 'menu' && (
-        <motion.div
+          <motion.div
             key="menu"
+            className="w-full max-w-full"
             initial={{ x: 20, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: -20, opacity: 0 }}
@@ -949,7 +953,7 @@ export default function MenuBuilder() {
                     </div>
                     {!collapsedCats.has(cat.id) && (
                       <div className="px-4 pb-4">
-                          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                          <div className="grid max-w-full gap-3 sm:grid-cols-2 lg:grid-cols-3">
                             {items
                               .filter((item) => item.category_id === cat.id)
                               .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
@@ -973,6 +977,7 @@ export default function MenuBuilder() {
         {activeTab === 'addons' && (
           <motion.div
             key="addons"
+            className="w-full max-w-full"
             initial={{ x: 20, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: -20, opacity: 0 }}
@@ -991,6 +996,7 @@ export default function MenuBuilder() {
         {activeTab === 'stock' && (
           <motion.div
             key="stock"
+            className="w-full max-w-full"
             initial={{ x: 20, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: -20, opacity: 0 }}
@@ -1006,6 +1012,7 @@ export default function MenuBuilder() {
         {activeTab === 'build' && (
           <motion.div
             key="build"
+            className="w-full max-w-full"
             initial={{ x: 20, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: -20, opacity: 0 }}
@@ -1118,7 +1125,7 @@ export default function MenuBuilder() {
                                     .map((i) => i.id)}
                                   strategy={verticalListSortingStrategy}
                                 >
-                                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                  <div className="grid max-w-full gap-3 sm:grid-cols-2 lg:grid-cols-3">
                                     {buildItems
                                       .filter((item) => item.category_id === cat.id)
                                       .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
@@ -1178,6 +1185,7 @@ export default function MenuBuilder() {
           </motion.div>
         )}
       </AnimatePresence>
+      </div>
       <AddItemModal
         showModal={showAddModal}
         restaurantId={restaurantId!}

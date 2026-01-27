@@ -790,7 +790,7 @@ export default function AddonsTab({
   };
 
   return (
-    <div>
+    <div className="w-full max-w-full">
       <div className="mb-6">
         <h2 className="text-xl font-semibold flex items-center gap-2">
           <span>🔧</span> Add-On Manager
@@ -799,7 +799,7 @@ export default function AddonsTab({
           Create extra options like toppings, dips, and upgrades that customers can choose before adding their food to the cart.
         </p>
       </div>
-      <div className="flex justify-between mb-4">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-2xl font-bold">Add-on Categories</h2>
         <button
           onClick={() => {
@@ -816,9 +816,9 @@ export default function AddonsTab({
           {sortedGroups.map((g) => (
             <SortableGroup key={g.id} id={g.id}>
               {({ attributes, listeners, setNodeRef, style }) => (
-                <div ref={setNodeRef} style={style} className="bg-white rounded-xl shadow mb-4">
-                  <div className="flex justify-between p-4 select-none">
-                    <div className="flex items-start space-x-3">
+                <div ref={setNodeRef} style={style} className="bg-white rounded-xl shadow mb-4 max-w-full">
+                  <div className="flex min-w-0 justify-between gap-3 p-4 select-none">
+                    <div className="flex min-w-0 items-start space-x-3">
                       <span
                         {...attributes}
                         {...listeners}
@@ -828,15 +828,17 @@ export default function AddonsTab({
                       >
                         ☰
                       </span>
-                      <div className="space-y-1">
-                        <h3 className="font-semibold flex items-center gap-1">
-                          <span>{g.name || 'Untitled Category'}</span>
+                      <div className="min-w-0 space-y-1">
+                        <h3 className="flex min-w-0 items-center gap-1 font-semibold">
+                          <span className="min-w-0 break-words">{g.name || 'Untitled Category'}</span>
                         </h3>
                         <p className="text-xs text-gray-500">
                           {g.multiple_choice ? 'Multiple Choice' : 'Single Choice'}
                           {g.required ? ' · Required' : ''}
                         </p>
-                        <p className="text-[11px] font-medium text-gray-600">{assignmentSummaries[g.id] || 'Not assigned'}</p>
+                        <p className="text-[11px] font-medium text-gray-600 break-words">
+                          {assignmentSummaries[g.id] || 'Not assigned'}
+                        </p>
                       </div>
                     </div>
                     <div className="flex space-x-2 items-start" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>

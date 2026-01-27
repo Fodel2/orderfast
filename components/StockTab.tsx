@@ -112,9 +112,9 @@ export default function StockTab({ categories, addons }: StockTabProps) {
   };
 
   return (
-    <div>
-      <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
+    <div className="w-full max-w-full">
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <h2 className="text-2xl font-bold flex items-center gap-2">
             <span role="img" aria-label="fries">
               🍟
@@ -149,10 +149,12 @@ export default function StockTab({ categories, addons }: StockTabProps) {
               {({ open }) => (
                 <div className="bg-white rounded-lg shadow">
                   <Disclosure.Button
-                    className="w-full flex justify-between items-center px-4 py-3"
+                    className="w-full flex min-w-0 items-center justify-between gap-3 px-4 py-3"
                     onClick={() => toggle(cat.id)}
                   >
-                    <span className="font-semibold text-left">{cat.name}</span>
+                    <span className="min-w-0 flex-1 break-words text-left font-semibold">
+                      {cat.name}
+                    </span>
                     <ChevronUpIcon className={`w-5 h-5 transition-transform ${open ? '' : 'rotate-180'}`} />
                   </Disclosure.Button>
                   <Disclosure.Panel className="px-4 pb-4">
@@ -161,9 +163,12 @@ export default function StockTab({ categories, addons }: StockTabProps) {
                     ) : (
                       <ul className="space-y-2">
                         {cat.items.map((item) => (
-                          <li key={item.id} className="flex justify-between items-center border-b last:border-b-0 pb-1">
-                            <span>{item.name}</span>
-                            <div className="flex items-center space-x-2">
+                          <li
+                            key={item.id}
+                            className="flex min-w-0 items-center justify-between gap-2 border-b pb-1 last:border-b-0"
+                          >
+                            <span className="min-w-0 flex-1 break-words">{item.name}</span>
+                            <div className="shrink-0 flex items-center space-x-2">
                               <StockStatusBadge status={item.stock_status} returnDate={item.stock_return_date} />
                               <Listbox
                                 value={item.stock_status}
@@ -226,9 +231,9 @@ export default function StockTab({ categories, addons }: StockTabProps) {
             {addons.map((addon) => (
               <li
                 key={addon.id}
-                className="flex justify-between items-center bg-white rounded-lg shadow px-4 py-2"
+                className="flex min-w-0 items-center justify-between gap-2 rounded-lg bg-white px-4 py-2 shadow"
               >
-                <span>{addon.name}</span>
+                <span className="min-w-0 flex-1 break-words">{addon.name}</span>
                 <StockStatusBadge
                   status={addon.stock_status}
                   returnDate={addon.stock_return_date}
@@ -241,4 +246,3 @@ export default function StockTab({ categories, addons }: StockTabProps) {
     </div>
   );
 }
-
