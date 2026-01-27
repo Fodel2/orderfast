@@ -338,7 +338,7 @@ export default function MenuItemCard({
                   </span>
                 </div>
                 {item.description ? (
-                  <div className="relative pr-6">
+                  <div className="relative pr-8">
                     <p className="line-clamp-2 break-words text-sm text-neutral-600 sm:text-base">
                       {item.description}
                     </p>

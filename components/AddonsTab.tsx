@@ -818,7 +818,7 @@ export default function AddonsTab({
               {({ attributes, listeners, setNodeRef, style }) => (
                 <div ref={setNodeRef} style={style} className="bg-white rounded-xl shadow mb-4 max-w-full">
                   <div className="flex min-w-0 flex-wrap items-start justify-between gap-3 p-4 select-none">
-                    <div className="flex min-w-0 items-start space-x-3">
+                    <div className="flex min-w-0 flex-1 items-start space-x-3">
                       <span
                         {...attributes}
                         {...listeners}
@@ -828,9 +828,9 @@ export default function AddonsTab({
                       >
                         ☰
                       </span>
-                      <div className="min-w-0 space-y-1">
+                      <div className="min-w-0 flex-1 space-y-1">
                         <h3 className="flex min-w-0 items-center gap-1 font-semibold">
-                          <span className="block min-w-0 truncate sm:whitespace-normal sm:line-clamp-2">
+                          <span className="block min-w-0 line-clamp-2 break-words">
                             {g.name || 'Untitled Category'}
                           </span>
                         </h3>
