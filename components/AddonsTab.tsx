@@ -817,7 +817,7 @@ export default function AddonsTab({
             <SortableGroup key={g.id} id={g.id}>
               {({ attributes, listeners, setNodeRef, style }) => (
                 <div ref={setNodeRef} style={style} className="bg-white rounded-xl shadow mb-4 max-w-full">
-                  <div className="flex min-w-0 justify-between gap-3 p-4 select-none">
+                  <div className="flex min-w-0 flex-wrap items-start justify-between gap-3 p-4 select-none">
                     <div className="flex min-w-0 items-start space-x-3">
                       <span
                         {...attributes}
@@ -830,13 +830,15 @@ export default function AddonsTab({
                       </span>
                       <div className="min-w-0 space-y-1">
                         <h3 className="flex min-w-0 items-center gap-1 font-semibold">
-                          <span className="min-w-0 break-words">{g.name || 'Untitled Category'}</span>
+                          <span className="block min-w-0 truncate sm:whitespace-normal sm:line-clamp-2">
+                            {g.name || 'Untitled Category'}
+                          </span>
                         </h3>
                         <p className="text-xs text-gray-500">
                           {g.multiple_choice ? 'Multiple Choice' : 'Single Choice'}
                           {g.required ? ' · Required' : ''}
                         </p>
-                        <p className="text-[11px] font-medium text-gray-600 break-words">
+                        <p className="text-[11px] font-medium text-gray-600">
                           {assignmentSummaries[g.id] || 'Not assigned'}
                         </p>
                       </div>
