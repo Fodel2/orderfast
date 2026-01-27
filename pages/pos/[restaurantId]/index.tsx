@@ -15,7 +15,7 @@ import ConfirmModal from '@/components/ConfirmModal';
 import { supabase } from '@/lib/supabaseClient';
 import { ITEM_ADDON_LINK_WITH_GROUPS_SELECT } from '@/lib/queries/addons';
 import { calculateCartTotals, formatPrice } from '@/lib/orderDisplay';
-import { toast } from '@/components/ui/toast';
+import Toast from '@/components/Toast';
 
 type OrderType = 'walk-in' | 'collection' | 'delivery';
 type PaymentMethod = 'cash' | 'card';
@@ -110,6 +110,7 @@ export default function PosHomePage() {
   const [cashReceived, setCashReceived] = useState('');
   const [receiptNumber, setReceiptNumber] = useState<string | null>(null);
   const [receiptChoice, setReceiptChoice] = useState<ReceiptChoice | null>(null);
+  const [toastMessage, setToastMessage] = useState('');
 
   useEffect(() => {
     if (!storageKey || typeof window === 'undefined') return;
@@ -708,23 +709,9 @@ export default function PosHomePage() {
         {stage === 'sell' ? (
           <div className="flex flex-1 overflow-hidden md:grid md:grid-cols-[minmax(0,1fr)_360px]">
             <div className="flex flex-1 flex-col bg-white md:border-r md:border-gray-200">
-              <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Category</p>
-                  <p className="text-sm font-semibold text-gray-900">
-                    {orderType ? orderTypeLabel[orderType] : 'Sell'}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowOrderDrawer(true)}
-                  className="rounded-full border border-gray-200 px-4 py-2 text-xs font-semibold text-gray-700 md:hidden"
-                >
-                  View Order ({cartItems.reduce((sum, line) => sum + line.quantity, 0)})
-                </button>
-              </div>
               <div className="border-b border-gray-200 px-6 py-3">
-                <div className="flex gap-2 overflow-x-auto pb-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex gap-2 overflow-x-auto pb-2">
                   {categorizedItems.map((category) => (
                     <button
                       key={category.id}
@@ -739,6 +726,14 @@ export default function PosHomePage() {
                       {category.name}
                     </button>
                   ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowOrderDrawer(true)}
+                    className="rounded-full border border-gray-200 px-4 py-2 text-xs font-semibold text-gray-700 md:hidden"
+                  >
+                    View Order ({cartItems.reduce((sum, line) => sum + line.quantity, 0)})
+                  </button>
                 </div>
               </div>
               <div className="flex-1 overflow-y-auto px-6 py-6">
@@ -960,10 +955,10 @@ export default function PosHomePage() {
                       onClick={() => {
                         setReceiptChoice(choice);
                         if (choice === 'print') {
-                          toast.success('Printing not configured yet.');
+                          setToastMessage('Printing not configured yet.');
                         }
                         if (choice === 'digital') {
-                          toast.success('Digital receipts coming soon.');
+                          setToastMessage('Digital receipts coming soon.');
                         }
                       }}
                       className={`rounded-2xl border px-4 py-3 text-sm font-semibold transition ${
@@ -1020,6 +1015,8 @@ export default function PosHomePage() {
           </div>
         </div>
       ) : null}
+
+      <Toast message={toastMessage} onClose={() => setToastMessage('')} />
 
       <ConfirmModal
         show={showConfirmClear}
