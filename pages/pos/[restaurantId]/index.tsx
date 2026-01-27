@@ -15,8 +15,11 @@ import ConfirmModal from '@/components/ConfirmModal';
 import { supabase } from '@/lib/supabaseClient';
 import { ITEM_ADDON_LINK_WITH_GROUPS_SELECT } from '@/lib/queries/addons';
 import { calculateCartTotals, formatPrice } from '@/lib/orderDisplay';
+import { toast } from '@/components/ui/toast';
 
 type OrderType = 'walk-in' | 'collection' | 'delivery';
+type PaymentMethod = 'cash' | 'card';
+type ReceiptChoice = 'print' | 'digital' | 'none';
 
 type DeliveryDetails = {
   postcode: string;
@@ -87,7 +90,9 @@ export default function PosHomePage() {
     [restaurantId]
   );
 
-  const [stage, setStage] = useState<'orderType' | 'deliveryDetails' | 'sell'>('orderType');
+  const [stage, setStage] = useState<'orderType' | 'deliveryDetails' | 'sell' | 'checkout' | 'paymentComplete'>(
+    'orderType'
+  );
   const [orderType, setOrderType] = useState<OrderType | null>(null);
   const [deliveryDetails, setDeliveryDetails] = useState<DeliveryDetails>(emptyDeliveryDetails);
   const [orderNote, setOrderNote] = useState('');
@@ -101,6 +106,10 @@ export default function PosHomePage() {
   const [expandedLines, setExpandedLines] = useState<Record<string, boolean>>({});
   const [showConfirmClear, setShowConfirmClear] = useState(false);
   const [showOrderDrawer, setShowOrderDrawer] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null);
+  const [cashReceived, setCashReceived] = useState('');
+  const [receiptNumber, setReceiptNumber] = useState<string | null>(null);
+  const [receiptChoice, setReceiptChoice] = useState<ReceiptChoice | null>(null);
 
   useEffect(() => {
     if (!storageKey || typeof window === 'undefined') return;
@@ -365,6 +374,21 @@ export default function PosHomePage() {
     }
   };
 
+  const startNewOrder = () => {
+    clearOrder();
+    setOrderType(null);
+    setDeliveryDetails(emptyDeliveryDetails);
+    setStage('orderType');
+    setPaymentMethod(null);
+    setCashReceived('');
+    setReceiptChoice(null);
+    setReceiptNumber(null);
+    setShowOrderDrawer(false);
+    if (storageKey && typeof window !== 'undefined') {
+      window.localStorage.removeItem(storageKey);
+    }
+  };
+
   const handleSelectOrderType = (selection: OrderType) => {
     setOrderType(selection);
     if (selection === 'delivery') {
@@ -523,9 +547,26 @@ export default function PosHomePage() {
             <span>{formatPrice(totals.total)}</span>
           </div>
         </div>
+        {stage === 'sell' ? (
+          <button
+            type="button"
+            onClick={() => setStage('checkout')}
+            disabled={cartItems.length === 0}
+            className="mt-4 w-full rounded-full bg-teal-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-teal-300"
+          >
+            Checkout
+          </button>
+        ) : null}
       </div>
     </div>
   );
+
+  const headerTitle =
+    stage === 'checkout' || stage === 'paymentComplete' ? 'Checkout' : 'Sell Screen';
+
+  const parsedCashReceived = Number.isNaN(Number(cashReceived)) ? 0 : Number(cashReceived);
+  const cashDelta = parsedCashReceived - totals.total;
+  const cashIsEnough = cashDelta >= 0;
 
   return (
     <FullscreenAppLayout>
@@ -533,7 +574,7 @@ export default function PosHomePage() {
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-white px-6 py-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.3em] text-teal-600">Till / POS</p>
-            <h1 className="text-xl font-semibold text-gray-900">Sell Screen</h1>
+            <h1 className="text-xl font-semibold text-gray-900">{headerTitle}</h1>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {stage === 'sell' ? (
@@ -731,6 +772,222 @@ export default function PosHomePage() {
             <aside className="hidden min-w-[320px] max-w-[400px] shrink-0 flex-col bg-gray-50 md:flex md:w-[360px] md:overflow-y-auto">
               {renderOrderSummary(true)}
             </aside>
+          </div>
+        ) : null}
+
+        {stage === 'checkout' ? (
+          <div className="flex flex-1 flex-col overflow-hidden bg-gray-50 px-6 py-6">
+            <div className="mb-6 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Order type</p>
+                <p className="text-lg font-semibold text-gray-900">
+                  {orderType ? orderTypeLabel[orderType] : 'Order'}
+                </p>
+                {orderType === 'delivery' ? (
+                  <p className="mt-1 text-sm text-gray-500">
+                    {deliveryDetails.postcode}
+                    {deliveryDetails.address1 ? ` · ${deliveryDetails.address1}` : ''}
+                    {deliveryDetails.address2 ? ` · ${deliveryDetails.address2}` : ''}
+                  </p>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setStage('sell');
+                  setPaymentMethod(null);
+                  setCashReceived('');
+                }}
+                className="rounded-full border border-gray-200 bg-white px-4 py-2 text-xs font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50"
+              >
+                Back to Sell Screen
+              </button>
+            </div>
+
+            <div className="grid flex-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+              <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
+                <h2 className="text-lg font-semibold text-gray-900">Order summary</h2>
+                <div className="mt-4 space-y-3">
+                  {cartItems.map((line) => {
+                    const addonTotal = (line.addons || []).reduce(
+                      (sum, addon) => sum + addon.price * addon.quantity * line.quantity,
+                      0
+                    );
+                    const lineTotal = line.price * line.quantity + addonTotal;
+                    return (
+                      <div key={line.lineId} className="border-b border-gray-100 pb-3 last:border-b-0">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-gray-900">
+                              {line.quantity}× {line.name}
+                            </p>
+                            {(line.addons || []).map((addon) => (
+                              <p
+                                key={`${line.lineId}-${addon.option_id}`}
+                                className="ml-4 mt-1 text-xs text-gray-500"
+                              >
+                                + {addon.name} × {addon.quantity * line.quantity}
+                              </p>
+                            ))}
+                          </div>
+                          <p className="text-sm font-semibold text-gray-900">{formatPrice(lineTotal)}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="mt-6 space-y-2 text-sm text-gray-700">
+                  <div className="flex items-center justify-between">
+                    <span>Subtotal</span>
+                    <span className="font-semibold text-gray-900">{formatPrice(totals.total)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-base font-semibold text-gray-900">
+                    <span>Total</span>
+                    <span>{formatPrice(totals.total)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
+                <h2 className="text-lg font-semibold text-gray-900">Payment method</h2>
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('cash')}
+                    className={`rounded-2xl border px-4 py-5 text-center text-sm font-semibold transition ${
+                      paymentMethod === 'cash'
+                        ? 'border-teal-600 bg-teal-50 text-teal-700'
+                        : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                    }`}
+                  >
+                    Cash
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('card')}
+                    className={`rounded-2xl border px-4 py-5 text-center text-sm font-semibold transition ${
+                      paymentMethod === 'card'
+                        ? 'border-teal-600 bg-teal-50 text-teal-700'
+                        : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                    }`}
+                  >
+                    Card
+                  </button>
+                </div>
+
+                {paymentMethod === 'card' ? (
+                  <div className="mt-6 space-y-4">
+                    <p className="text-sm text-gray-600">Use external card reader to take payment.</p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const generated = `${Math.floor(1000 + Math.random() * 9000)}`;
+                        setReceiptNumber(generated);
+                        setReceiptChoice(null);
+                        setStage('paymentComplete');
+                      }}
+                      className="w-full rounded-full bg-teal-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700"
+                    >
+                      Confirm Payment
+                    </button>
+                  </div>
+                ) : null}
+
+                {paymentMethod === 'cash' ? (
+                  <div className="mt-6 space-y-4">
+                    <div>
+                      <label className="text-sm font-semibold text-gray-700">Cash received</label>
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        value={cashReceived}
+                        onChange={(event) => setCashReceived(event.target.value)}
+                        placeholder="0.00"
+                        className="mt-2 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-700 focus:border-gray-400 focus:outline-none"
+                      />
+                    </div>
+                    <div className="rounded-2xl bg-gray-50 px-4 py-3 text-sm text-gray-700">
+                      {cashIsEnough ? (
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-gray-700">Change due</span>
+                          <span className="font-semibold text-gray-900">{formatPrice(cashDelta)}</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-gray-700">Remaining</span>
+                          <span className="font-semibold text-rose-600">
+                            {formatPrice(Math.abs(cashDelta))}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const generated = `${Math.floor(1000 + Math.random() * 9000)}`;
+                        setReceiptNumber(generated);
+                        setReceiptChoice(null);
+                        setStage('paymentComplete');
+                      }}
+                      disabled={!cashIsEnough}
+                      className="w-full rounded-full bg-teal-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-teal-300"
+                    >
+                      Confirm Payment
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {stage === 'paymentComplete' ? (
+          <div className="flex flex-1 flex-col items-center justify-center bg-gray-50 px-6 py-12">
+            <div className="w-full max-w-2xl rounded-3xl border border-gray-200 bg-white p-8 text-center shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-teal-600">Payment</p>
+              <h2 className="mt-2 text-2xl font-semibold text-gray-900">Payment complete</h2>
+              {receiptNumber ? (
+                <p className="mt-2 text-sm text-gray-500">Order #{receiptNumber} (temporary)</p>
+              ) : null}
+
+              <div className="mt-8 rounded-2xl border border-gray-200 bg-gray-50 p-6 text-left">
+                <div className="text-sm font-semibold text-gray-900">Receipt?</div>
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  {(['print', 'digital', 'none'] as ReceiptChoice[]).map((choice) => (
+                    <button
+                      key={choice}
+                      type="button"
+                      onClick={() => {
+                        setReceiptChoice(choice);
+                        if (choice === 'print') {
+                          toast.success('Printing not configured yet.');
+                        }
+                        if (choice === 'digital') {
+                          toast.success('Digital receipts coming soon.');
+                        }
+                      }}
+                      className={`rounded-2xl border px-4 py-3 text-sm font-semibold transition ${
+                        receiptChoice === choice
+                          ? 'border-teal-600 bg-teal-50 text-teal-700'
+                          : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                      }`}
+                    >
+                      {choice === 'print' ? 'Print' : choice === 'digital' ? 'Digital' : 'None'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {receiptChoice ? (
+                <button
+                  type="button"
+                  onClick={startNewOrder}
+                  className="mt-6 w-full rounded-full bg-teal-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700"
+                >
+                  Start new order
+                </button>
+              ) : null}
+            </div>
           </div>
         ) : null}
       </div>
