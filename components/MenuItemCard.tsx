@@ -338,7 +338,9 @@ export default function MenuItemCard({
                   </span>
                 </div>
                 {item.description ? (
-                  <p className="line-clamp-2 text-sm text-neutral-600 sm:text-base">{item.description}</p>
+                  <p className="line-clamp-2 break-words text-sm text-neutral-600 sm:text-base [overflow-wrap:anywhere]">
+                    {item.description}
+                  </p>
                 ) : null}
               </div>
             </div>
