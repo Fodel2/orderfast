@@ -2,6 +2,10 @@ import React from 'react';
 
 interface PosLaunchModalProps {
   open: boolean;
+  title?: string;
+  description?: string;
+  launchLabel?: string;
+  downloadLabel?: string;
   rememberChoice: boolean;
   onRememberChange: (value: boolean) => void;
   onLaunchPwa: () => void;
@@ -11,6 +15,10 @@ interface PosLaunchModalProps {
 
 export default function PosLaunchModal({
   open,
+  title = 'Launch Till / POS',
+  description = 'Choose how you want to run the POS experience.',
+  launchLabel = 'Launch POS (PWA)',
+  downloadLabel = 'Download POS APK',
   rememberChoice,
   onRememberChange,
   onLaunchPwa,
@@ -28,10 +36,8 @@ export default function PosLaunchModal({
         className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
         onClick={(event) => event.stopPropagation()}
       >
-        <h3 className="text-xl font-semibold text-gray-900">Launch Till / POS</h3>
-        <p className="mt-2 text-sm text-gray-600">
-          Choose how you want to run the POS experience.
-        </p>
+        <h3 className="text-xl font-semibold text-gray-900">{title}</h3>
+        <p className="mt-2 text-sm text-gray-600">{description}</p>
 
         <div className="mt-6 space-y-3">
           <button
@@ -39,7 +45,7 @@ export default function PosLaunchModal({
             onClick={onLaunchPwa}
             className="w-full rounded-xl bg-teal-600 px-4 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-teal-700"
           >
-            Launch POS (PWA)
+            {launchLabel}
           </button>
           <a
             href={apkUrl}
@@ -47,7 +53,7 @@ export default function PosLaunchModal({
             rel="noopener noreferrer"
             className="flex w-full items-center justify-center rounded-xl border border-gray-200 bg-white px-4 py-3 text-base font-semibold text-gray-800 shadow-sm transition hover:bg-gray-50"
           >
-            Download POS APK
+            {downloadLabel}
           </a>
         </div>
 

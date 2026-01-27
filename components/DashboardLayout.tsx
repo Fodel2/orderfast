@@ -23,6 +23,7 @@ import { useRouter } from 'next/router';
 import { supabase } from '@/lib/supabaseClient';
 import PosLaunchModal from '@/components/PosLaunchModal';
 import { POS_APK_DOWNLOAD_URL } from '@/utils/pos/constants';
+import { KIOSK_APK_DOWNLOAD_URL } from '@/utils/kiosk/constants';
 
 type NavChild = {
   href: string;
@@ -55,6 +56,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [showPosModal, setShowPosModal] = useState(false);
   const [rememberPosChoice, setRememberPosChoice] = useState(false);
   const [posPreferenceSaved, setPosPreferenceSaved] = useState(false);
+  const [showKioskModal, setShowKioskModal] = useState(false);
+  const [rememberKioskChoice, setRememberKioskChoice] = useState(false);
+  const [kioskPreferenceSaved, setKioskPreferenceSaved] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -117,6 +121,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     () => (activeRestaurantId ? `pos_launch_preference_${activeRestaurantId}` : null),
     [activeRestaurantId]
   );
+  const kioskPreferenceKey = useMemo(
+    () => (activeRestaurantId ? `kiosk_launch_preference_${activeRestaurantId}` : null),
+    [activeRestaurantId]
+  );
 
   useEffect(() => {
     if (!posPreferenceKey || typeof window === 'undefined') {
@@ -127,6 +135,16 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     const stored = window.localStorage.getItem(posPreferenceKey);
     setPosPreferenceSaved(stored === 'pwa');
   }, [posPreferenceKey]);
+
+  useEffect(() => {
+    if (!kioskPreferenceKey || typeof window === 'undefined') {
+      setKioskPreferenceSaved(false);
+      return;
+    }
+
+    const stored = window.localStorage.getItem(kioskPreferenceKey);
+    setKioskPreferenceSaved(stored === 'pwa');
+  }, [kioskPreferenceKey]);
 
   const handlePosLaunch = () => {
     if (!posUrl) return;
@@ -157,6 +175,35 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     setShowPosModal(true);
   };
 
+  const handleKioskLaunch = () => {
+    if (!kioskUrl) return;
+    if (rememberKioskChoice && kioskPreferenceKey && typeof window !== 'undefined') {
+      window.localStorage.setItem(kioskPreferenceKey, 'pwa');
+      setKioskPreferenceSaved(true);
+    }
+    setShowKioskModal(false);
+    setRememberKioskChoice(false);
+    router.push(kioskUrl).catch(() => undefined);
+  };
+
+  const handleKioskEntryClick = () => {
+    if (kioskDisabled || !kioskUrl) return;
+    if (kioskPreferenceSaved) {
+      router.push(kioskUrl).catch(() => undefined);
+      return;
+    }
+    setShowKioskModal(true);
+  };
+
+  const handleKioskPreferenceReset = () => {
+    if (kioskPreferenceKey && typeof window !== 'undefined') {
+      window.localStorage.removeItem(kioskPreferenceKey);
+    }
+    setKioskPreferenceSaved(false);
+    setRememberKioskChoice(false);
+    setShowKioskModal(true);
+  };
+
   const nav: NavItem[] = [
     { href: '/dashboard', label: 'Home', icon: HomeIcon },
     { href: '/dashboard/orders', label: 'Orders', icon: TruckIcon },
@@ -173,7 +220,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     {
       label: 'Kiosk',
       icon: DeviceTabletIcon,
-      href: kioskUrl,
+      onClick: handleKioskEntryClick,
       disabled: kioskDisabled || !kioskUrl,
       tooltip: 'Opens in fullscreen kiosk mode.',
     },
@@ -294,6 +341,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             }
 
             const isPosEntry = n.label === 'Till / POS';
+            const isKioskEntry = n.label === 'Kiosk';
 
             if (isButton && isPosEntry && posPreferenceSaved && !collapsed) {
               return (
@@ -317,6 +365,35 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                     }}
                     className="text-xs font-semibold text-teal-600 hover:underline"
                     aria-label="Change POS launch preference"
+                  >
+                    Change
+                  </button>
+                </div>
+              );
+            }
+
+            if (isButton && isKioskEntry && kioskPreferenceSaved && !collapsed) {
+              return (
+                <div key={n.label} className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={n.onClick}
+                    disabled={disabled}
+                    className={`${base} flex-1 ${interactive ? 'text-gray-700' : 'text-gray-400'}`}
+                    aria-label={n.label}
+                    title={n.tooltip}
+                  >
+                    <n.icon className={iconClass} aria-hidden="true" />
+                    <span className={labelClass}>{n.label}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleKioskPreferenceReset();
+                    }}
+                    className="text-xs font-semibold text-teal-600 hover:underline"
+                    aria-label="Change kiosk launch preference"
                   >
                     Change
                   </button>
@@ -402,6 +479,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       </main>
       <PosLaunchModal
         open={showPosModal}
+        title="Launch Till / POS"
+        description="Choose how you want to run the POS experience."
+        launchLabel="Launch POS (PWA)"
+        downloadLabel="Download POS APK"
         rememberChoice={rememberPosChoice}
         onRememberChange={setRememberPosChoice}
         onLaunchPwa={handlePosLaunch}
@@ -409,6 +490,21 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         onClose={() => {
           setShowPosModal(false);
           setRememberPosChoice(false);
+        }}
+      />
+      <PosLaunchModal
+        open={showKioskModal}
+        title="Launch Kiosk"
+        description="Choose how you want to run the kiosk experience."
+        launchLabel="Launch Kiosk (PWA)"
+        downloadLabel="Download Kiosk APK"
+        rememberChoice={rememberKioskChoice}
+        onRememberChange={setRememberKioskChoice}
+        onLaunchPwa={handleKioskLaunch}
+        apkUrl={KIOSK_APK_DOWNLOAD_URL}
+        onClose={() => {
+          setShowKioskModal(false);
+          setRememberKioskChoice(false);
         }}
       />
     </div>
