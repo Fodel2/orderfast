@@ -328,42 +328,44 @@ export default function MenuItemCard({
             </button>
           </div>
 
-          <div className="flex flex-1 flex-col gap-3 px-4 pb-5 pt-4 sm:px-5 sm:pt-5">
-            <div className="flex items-start gap-3">
-              <div className="flex min-w-0 flex-1 flex-col gap-2">
-                <div className="flex items-start justify-between gap-3">
-                  <h4 className="truncate text-lg font-semibold text-neutral-900 sm:text-xl">{item.name}</h4>
-                  <span className="shrink-0 rounded-full bg-black/5 px-3 py-1 text-sm font-semibold text-neutral-900">
-                    {formattedPrice}
-                  </span>
-                </div>
-                {item.description ? (
-                  <div className="relative">
-                    <p className="line-clamp-2 break-words text-sm text-neutral-600 sm:text-base">
-                      {item.description}
-                    </p>
-                    <span
-                      aria-hidden
-                      className="pointer-events-none absolute right-0 top-0 h-full w-10 bg-gradient-to-l from-white to-transparent"
-                    />
+          <div className="flex flex-1 flex-col">
+            <div className="px-4 py-3 sm:px-5 sm:py-4">
+              <div className="flex items-start gap-3">
+                <div className="flex min-w-0 flex-1 flex-col gap-2">
+                  <div className="flex items-start justify-between gap-3">
+                    <h4 className="truncate text-lg font-semibold text-neutral-900 sm:text-xl">{item.name}</h4>
+                    <span className="shrink-0 rounded-full bg-black/5 px-3 py-1 text-sm font-semibold text-neutral-900">
+                      {formattedPrice}
+                    </span>
                   </div>
-                ) : null}
+                  {item.description ? (
+                    <div className="relative">
+                      <p className="line-clamp-2 text-sm leading-snug text-slate-500">
+                        {item.description}
+                      </p>
+                      <div
+                        aria-hidden
+                        className="pointer-events-none absolute right-0 top-0 h-full w-10 bg-gradient-to-l from-white to-transparent"
+                      />
+                    </div>
+                  ) : null}
+                </div>
               </div>
-            </div>
 
-            {badges.length > 0 ? (
-              <div className="mt-auto flex flex-wrap gap-2">
-                {badges.map((b) => (
-                  <span
-                    key={b}
-                    className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold border"
-                    style={badgeStyles}
-                  >
-                    {b}
-                  </span>
-                ))}
-              </div>
-            ) : null}
+              {badges.length > 0 ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {badges.map((b) => (
+                    <span
+                      key={b}
+                      className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold border"
+                      style={badgeStyles}
+                    >
+                      {b}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
       </div>
