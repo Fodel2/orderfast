@@ -283,13 +283,13 @@ export default function MenuItemCard({
 
   return (
     <>
-      <div className="relative h-full">
+      <div className="relative h-full min-w-0 max-w-full">
         <div
           role="button"
           tabIndex={0}
           onClick={handleClick}
           onKeyDown={handleCardKeyDown}
-          className={`group relative flex h-full flex-col overflow-hidden rounded-[26px] bg-white shadow-[0_8px_32px_rgba(0,0,0,0.06)] transition duration-150 ease-out ${
+          className={`group relative flex h-full max-w-full flex-col overflow-hidden rounded-[26px] bg-white shadow-[0_8px_32px_rgba(0,0,0,0.06)] transition duration-150 ease-out ${
             isKiosk ? 'hover:-translate-y-1 active:scale-[0.98]' : ''
           } focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2`}
           style={{ ['--tw-ring-color' as any]: cardAccent } as CSSProperties}
@@ -328,34 +328,44 @@ export default function MenuItemCard({
             </button>
           </div>
 
-          <div className="flex flex-1 flex-col gap-3 px-4 pb-5 pt-4 sm:px-5 sm:pt-5">
-            <div className="flex items-start gap-3">
-              <div className="flex min-w-0 flex-1 flex-col gap-2">
-                <div className="flex items-start justify-between gap-3">
-                  <h4 className="truncate text-lg font-semibold text-neutral-900 sm:text-xl">{item.name}</h4>
-                  <span className="shrink-0 rounded-full bg-black/5 px-3 py-1 text-sm font-semibold text-neutral-900">
-                    {formattedPrice}
-                  </span>
+          <div className="flex flex-1 flex-col">
+            <div className="px-4 py-3 sm:px-5 sm:py-4">
+              <div className="flex min-w-0 items-start gap-3">
+                <div className="flex min-w-0 w-full flex-1 flex-col gap-2">
+                  <div className="flex min-w-0 items-start justify-between gap-3">
+                    <h4 className="truncate text-lg font-semibold text-neutral-900 sm:text-xl">{item.name}</h4>
+                    <span className="shrink-0 rounded-full bg-black/5 px-3 py-1 text-sm font-semibold text-neutral-900">
+                      {formattedPrice}
+                    </span>
+                  </div>
+                  {item.description ? (
+                    <div className="relative pr-4">
+                      <p className="line-clamp-2 text-sm leading-snug text-slate-500">
+                        {item.description}
+                      </p>
+                      <div
+                        aria-hidden
+                        className="pointer-events-none absolute right-0 top-0 h-full w-10 bg-gradient-to-l from-white to-transparent"
+                      />
+                    </div>
+                  ) : null}
                 </div>
-                {item.description ? (
-                  <p className="line-clamp-2 text-sm text-neutral-600 sm:text-base">{item.description}</p>
-                ) : null}
               </div>
-            </div>
 
-            {badges.length > 0 ? (
-              <div className="mt-auto flex flex-wrap gap-2">
-                {badges.map((b) => (
-                  <span
-                    key={b}
-                    className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold border"
-                    style={badgeStyles}
-                  >
-                    {b}
-                  </span>
-                ))}
-              </div>
-            ) : null}
+              {badges.length > 0 ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {badges.map((b) => (
+                    <span
+                      key={b}
+                      className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold border"
+                      style={badgeStyles}
+                    >
+                      {b}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
       </div>
