@@ -1135,9 +1135,9 @@ export default function MenuBuilder() {
                                             <div ref={setNodeRef} style={style}>
                                               <div
                                                 onClick={() => handleItemClick(item)}
-                                                className="bg-gray-50 rounded-lg p-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between cursor-pointer"
+                                                className="bg-gray-50 rounded-lg cursor-pointer"
                                               >
-                                                <div className="flex min-w-0 items-start gap-2 overflow-hidden">
+                                                <div className="flex min-w-0 items-start gap-2 px-4 py-3 sm:items-start sm:justify-between">
                                                   <span
                                                     {...attributes}
                                                     {...listeners}
@@ -1154,16 +1154,25 @@ export default function MenuBuilder() {
                                                       />
                                                     )}
                                                   </div>
-                                                  <div className="min-w-0">
-                                                    <p className="font-semibold truncate text-sm">{item.name}</p>
-                                                    <p className="text-xs text-gray-500 truncate">{item.description}</p>
+                                                  <div className="flex min-w-0 flex-1 flex-col gap-1">
+                                                    <div className="flex min-w-0 items-start justify-between gap-2">
+                                                      <p className="min-w-0 truncate text-sm font-semibold">{item.name}</p>
+                                                      <span className="shrink-0 text-sm font-medium">
+                                                        {formatCurrency(item.price ?? 0, currencyCode)}
+                                                      </span>
+                                                    </div>
+                                                    {item.description ? (
+                                                      <div className="relative">
+                                                        <p className="line-clamp-2 break-words text-xs text-gray-500">
+                                                          {item.description}
+                                                        </p>
+                                                        <span
+                                                          aria-hidden
+                                                          className="pointer-events-none absolute right-0 top-0 h-full w-10 bg-gradient-to-l from-gray-50 to-transparent"
+                                                        />
+                                                      </div>
+                                                    ) : null}
                                                   </div>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                  <span className="text-sm font-medium">
-                                                    {formatCurrency(item.price ?? 0, currencyCode)}
-                                                  </span>
-                                                  {/* Removed item-level delete button; delete now handled in modal */}
                                                 </div>
                                               </div>
                                             </div>

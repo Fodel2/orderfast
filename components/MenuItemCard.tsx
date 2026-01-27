@@ -338,13 +338,13 @@ export default function MenuItemCard({
                   </span>
                 </div>
                 {item.description ? (
-                  <div className="relative pr-8">
+                  <div className="relative">
                     <p className="line-clamp-2 break-words text-sm text-neutral-600 sm:text-base">
                       {item.description}
                     </p>
                     <span
                       aria-hidden
-                      className="pointer-events-none absolute bottom-0 right-0 h-4 w-10 bg-gradient-to-l from-white to-transparent"
+                      className="pointer-events-none absolute right-0 top-0 h-full w-10 bg-gradient-to-l from-white to-transparent"
                     />
                   </div>
                 ) : null}
