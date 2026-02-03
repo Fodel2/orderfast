@@ -33,20 +33,6 @@ type KioskOrderRaceResult =
   | { timedOut: true; tempOrderNumber: number }
   | { timedOut: false; orderId: string; orderNumber: number };
 
-async function generateShortOrderNumber(restaurantId: string): Promise<number> {
-  while (true) {
-    const num = Math.floor(Math.random() * 9000) + 1000;
-    const { data, error } = await supabase
-      .from('orders')
-      .select('id')
-      .eq('restaurant_id', restaurantId)
-      .eq('short_order_number', num)
-      .maybeSingle();
-
-    if (!error && !data) return num;
-  }
-}
-
 export default function KioskCartPage() {
   const router = useRouter();
   const { restaurantId: routeParam } = router.query;
@@ -221,7 +207,6 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     setSubmissionError('');
     setShowLoadingOverlay(true);
 
-    const shortOrderNumber = await generateShortOrderNumber(restaurantId);
     const startTime = Date.now();
     let cartCleared = false;
     const safeClearCart = () => {
@@ -252,7 +237,6 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
               total_price: subtotal,
               service_fee: 0,
               delivery_fee: 0,
-              short_order_number: shortOrderNumber,
             },
           ])
           .select('id, short_order_number')
@@ -298,11 +282,11 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
         if (process.env.NODE_ENV === 'development') {
           console.debug('[kiosk] order inserted', {
             orderId: order.id,
-            orderNumber: order.short_order_number ?? shortOrderNumber,
+            orderNumber: order.short_order_number ?? 0,
           });
         }
 
-        return { orderId: order.id, orderNumber: order.short_order_number ?? shortOrderNumber };
+        return { orderId: order.id, orderNumber: order.short_order_number ?? 0 };
       } catch (err) {
         console.error('[kiosk] order submission failed', err);
         if (orderId) {
@@ -360,7 +344,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
       });
 
     const timeoutPromise = new Promise<KioskOrderRaceResult>((resolve) => {
-      setTimeout(() => resolve({ timedOut: true, tempOrderNumber: shortOrderNumber }), 5000);
+      setTimeout(() => resolve({ timedOut: true, tempOrderNumber: 0 }), 5000);
     });
 
     let raceResult: KioskOrderRaceResult;

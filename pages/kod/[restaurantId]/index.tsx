@@ -71,13 +71,8 @@ const splitNotesLines = (notes: string) => {
   return lines.length ? lines : [''];
 };
 
-const formatOrderNumber = (order: Order) => {
-  if (order.short_order_number != null) {
-    return order.short_order_number.toString().padStart(4, '0');
-  }
-  const fallback = order.id.slice(-4);
-  return fallback || '----';
-};
+const formatOrderNumber = (order: Order) =>
+  String(order.short_order_number ?? 0).padStart(4, '0');
 
 const buildOrderSegments = (order: Order): OrderSegment[] => {
   const remainingNotes = splitNotesLines(order.customer_notes ?? '').slice();
@@ -307,14 +302,14 @@ export default function KitchenDisplayPage() {
       promptDescription="Kitchen Display works best in fullscreen mode."
     >
       <div className="min-h-screen w-full bg-neutral-950 text-white">
-        <div className="flex min-h-screen flex-col gap-6 px-3 py-6 sm:px-4">
+        <div className="flex min-h-screen flex-col gap-6 px-3 py-6 sm:px-4 lg:px-6">
           <div className="w-full space-y-4">
             {orders.length === 0 && !isFetching ? (
               <p className="text-center text-base text-neutral-400">
                 No active orders yet.
               </p>
             ) : null}
-            <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(300px,1fr))]">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
               {orderSegments.map((segment) => (
                 <div
                   key={`${segment.order.id}-${segment.segmentIndex}`}

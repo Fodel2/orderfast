@@ -10,20 +10,6 @@ import { supabase } from '../utils/supabaseClient';
 import { useSession } from '@supabase/auth-helpers-react';
 import { formatPrice } from '@/lib/orderDisplay';
 
-// Generate a unique 4-digit order number between 1000-9999
-async function generateShortOrderNumber(restaurantId: string): Promise<number> {
-  while (true) {
-    const num = Math.floor(Math.random() * 9000) + 1000;
-    const { data, error } = await supabase
-      .from('orders')
-      .select('id')
-      .eq('restaurant_id', restaurantId)
-      .eq('short_order_number', num)
-      .maybeSingle();
-    if (!error && !data) return num;
-  }
-}
-
 export default function CheckoutPage() {
   const { cart, subtotal, clearCart } = useCart();
   const { orderType, setOrderType } = useOrderType();
@@ -82,8 +68,6 @@ export default function CheckoutPage() {
     const initialStatus = autoAcceptApp ? 'accepted' : 'pending';
     const acceptedAt = autoAcceptApp ? new Date().toISOString() : null;
 
-    const shortOrderNumber = await generateShortOrderNumber(cart.restaurant_id);
-
     const deliveryFee = orderType === 'delivery' ? 300 : 0;
     const serviceFee = Math.round(subtotal * 0.05);
     const totalPrice = subtotal + serviceFee + deliveryFee;
@@ -109,7 +93,6 @@ export default function CheckoutPage() {
           total_price: totalPrice,
           service_fee: serviceFee,
           delivery_fee: deliveryFee,
-          short_order_number: shortOrderNumber,
         },
       ])
         .select('id, short_order_number')
@@ -149,9 +132,8 @@ export default function CheckoutPage() {
       }
 
       clearCart();
-      router.push(
-        `/order-confirmation?order_number=${order.short_order_number}`
-      );
+      const resolvedOrderNumber = order.short_order_number ?? 0;
+      router.push(`/order-confirmation?order_number=${resolvedOrderNumber}`);
     } catch (err) {
       console.error(err);
       alert('Failed to place order');
