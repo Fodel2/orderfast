@@ -244,15 +244,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     setShowKodModal(true);
   };
 
-  const handleKodPreferenceReset = () => {
-    if (kodPreferenceKey && typeof window !== 'undefined') {
-      window.localStorage.removeItem(kodPreferenceKey);
-    }
-    setKodPreferenceSaved(false);
-    setRememberKodChoice(false);
-    setShowKodModal(true);
-  };
-
   const nav: NavItem[] = [
     { href: '/dashboard', label: 'Home', icon: HomeIcon },
     { href: '/dashboard/orders', label: 'Orders', icon: TruckIcon },
@@ -266,7 +257,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       tooltip: 'Opens the POS launcher.',
     },
     {
-      label: 'Kitchen Display (KOD)',
+      label: 'KOD',
       icon: CpuChipIcon,
       onClick: handleKodEntryClick,
       disabled: kodDisabled || !kodUrl,
@@ -397,7 +388,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
             const isPosEntry = n.label === 'Till / POS';
             const isKioskEntry = n.label === 'Kiosk';
-            const isKodEntry = n.label === 'Kitchen Display (KOD)';
 
             if (isButton && isPosEntry && posPreferenceSaved && !collapsed) {
               return (
@@ -450,35 +440,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                     }}
                     className="text-xs font-semibold text-teal-600 hover:underline"
                     aria-label="Change kiosk launch preference"
-                  >
-                    Change
-                  </button>
-                </div>
-              );
-            }
-
-            if (isButton && isKodEntry && kodPreferenceSaved && !collapsed) {
-              return (
-                <div key={n.label} className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={n.onClick}
-                    disabled={disabled}
-                    className={`${base} flex-1 ${interactive ? 'text-gray-700' : 'text-gray-400'}`}
-                    aria-label={n.label}
-                    title={n.tooltip}
-                  >
-                    <n.icon className={iconClass} aria-hidden="true" />
-                    <span className={labelClass}>{n.label}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      handleKodPreferenceReset();
-                    }}
-                    className="text-xs font-semibold text-teal-600 hover:underline"
-                    aria-label="Change kitchen display launch preference"
                   >
                     Change
                   </button>
