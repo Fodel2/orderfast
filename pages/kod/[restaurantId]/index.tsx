@@ -148,38 +148,6 @@ const buildOrderSegments = (order: Order, maxBodyLines: number): OrderSegment[] 
   }));
 };
 
-const getOrderLineEstimate = (order: Order) => {
-  const notesLines = splitNotesLines(order.customer_notes ?? '');
-  const notesHeaderLines = notesLines.length > 0 ? NOTES_HEADER_LINES : 0;
-  let itemLines = 0;
-  (order.order_items ?? []).forEach((item, index) => {
-    itemLines += getItemLineCount(item, index > 0);
-  });
-  return notesLines.length + notesHeaderLines + itemLines;
-};
-
-const buildOrderSegmentsForCapacity = (
-  order: Order,
-  maxBodyLines: number,
-  capacity: number
-) => {
-  if (capacity <= 0) {
-    return buildOrderSegments(order, maxBodyLines);
-  }
-  let segments = buildOrderSegments(order, maxBodyLines);
-  if (segments.length <= capacity) return segments;
-  const totalLines = getOrderLineEstimate(order);
-  let adjustedMaxBodyLines = Math.max(maxBodyLines, Math.ceil(totalLines / capacity));
-  while (segments.length > capacity && adjustedMaxBodyLines <= totalLines + NOTES_HEADER_LINES) {
-    segments = buildOrderSegments(order, adjustedMaxBodyLines);
-    adjustedMaxBodyLines += 1;
-  }
-  if (segments.length > capacity) {
-    segments = buildOrderSegments(order, totalLines + NOTES_HEADER_LINES);
-  }
-  return segments;
-};
-
 export default function KitchenDisplayPage() {
   const router = useRouter();
   const { restaurantId: routeParam } = router.query;
@@ -490,41 +458,23 @@ export default function KitchenDisplayPage() {
   );
 
   const pageSize = Math.max(1, columns * rows);
-  const buildPagedSegments = useCallback(
-    (sourceOrders: Order[], capacity: number) => {
-      const pages: OrderSegment[][] = [];
-      let currentPage: OrderSegment[] = [];
-
-      const flushPage = () => {
-        pages.push(currentPage);
-        currentPage = [];
-      };
-
-      sourceOrders.forEach((order) => {
-        const segments = buildOrderSegmentsForCapacity(order, maxBodyLines, capacity);
-        if (currentPage.length + segments.length > capacity && currentPage.length > 0) {
-          flushPage();
-        }
-        currentPage.push(...segments);
-      });
-
-      if (currentPage.length > 0 || pages.length === 0) {
-        flushPage();
-      }
-
-      return pages;
-    },
-    [maxBodyLines]
-  );
-
-  const pages = useMemo(() => buildPagedSegments(orders, pageSize), [buildPagedSegments, orders, pageSize]);
-  const totalPages = Math.max(1, pages.length);
+  const orderedSegments = useMemo(() => {
+    const segments: OrderSegment[] = [];
+    orders.forEach((order) => {
+      segments.push(...buildOrderSegments(order, maxBodyLines));
+    });
+    return segments;
+  }, [orders, maxBodyLines]);
+  const totalPages = Math.max(1, Math.ceil(orderedSegments.length / pageSize));
 
   useEffect(() => {
     setPageIndex((current) => Math.min(current, totalPages - 1));
   }, [totalPages]);
 
-  const orderSegments = useMemo(() => pages[pageIndex] ?? [], [pages, pageIndex]);
+  const orderSegments = useMemo(
+    () => orderedSegments.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize),
+    [orderedSegments, pageIndex, pageSize]
+  );
   const orderTintIndex = useMemo(() => {
     const map = new Map<string, number>();
     let nextIndex = 0;
@@ -536,11 +486,8 @@ export default function KitchenDisplayPage() {
     });
     return map;
   }, [orderSegments]);
-  const visibleOrderIds = useMemo(
-    () => new Set(orderSegments.map((segment) => segment.order.id)),
-    [orderSegments]
-  );
-  const waitingCount = Math.max(0, orders.length - visibleOrderIds.size);
+  const totalTickets = orderedSegments.length;
+  const waitingCount = Math.max(0, totalTickets - pageSize * (pageIndex + 1));
   const tintClasses = ['bg-neutral-900', 'bg-neutral-800'];
   const getTintClass = (orderId: string) =>
     tintClasses[(orderTintIndex.get(orderId) ?? 0) % tintClasses.length];
