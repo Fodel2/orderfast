@@ -165,6 +165,7 @@ export default function KitchenDisplayPage() {
   const [cardWidth, setCardWidth] = useState(CARD_WIDTH_BASE);
   const [cardHeight, setCardHeight] = useState(480);
   const gridRef = useRef<HTMLDivElement | null>(null);
+  const probeRef = useRef<HTMLDivElement | null>(null);
   const [toastMessage, setToastMessage] = useState('');
   const [cooldowns, setCooldowns] = useState<Record<string, boolean>>({});
   const orderedSegmentsRef = useRef(0);
@@ -301,27 +302,31 @@ export default function KitchenDisplayPage() {
     const updateLayout = () => {
       const width = window.innerWidth;
       let nextCardWidth = CARD_WIDTH_BASE;
-      let nextPagePadding = PAGE_PADDING_BASE;
       if (width >= 1280) {
         nextCardWidth = CARD_WIDTH_LG;
-        nextPagePadding = PAGE_PADDING_LG;
       } else if (width >= 768) {
         nextCardWidth = CARD_WIDTH_SM;
-        nextPagePadding = PAGE_PADDING_SM;
       }
-      const containerWidth = gridRef.current?.clientWidth ?? width - nextPagePadding;
-      const availableWidth = Math.max(0, containerWidth);
+      const containerWidthPx = gridRef.current?.getBoundingClientRect().width ?? 0;
+      const gapValue = gridRef.current
+        ? window.getComputedStyle(gridRef.current).columnGap ||
+          window.getComputedStyle(gridRef.current).gap
+        : `${CARD_GAP}px`;
+      const gapPx = Number.parseFloat(gapValue || '0') || 0;
+      const measuredTicketWidth =
+        probeRef.current?.getBoundingClientRect().width ?? nextCardWidth;
+      const ticketWidthPx = measuredTicketWidth > 0 ? measuredTicketWidth : nextCardWidth;
       const nextColumns = Math.max(
         1,
-        Math.floor((availableWidth + CARD_GAP) / (nextCardWidth + CARD_GAP))
+        Math.floor((containerWidthPx + gapPx) / (ticketWidthPx + gapPx))
       );
       setColumns(nextColumns);
-      setCardWidth(nextCardWidth);
+      setCardWidth(ticketWidthPx);
       if (process.env.NODE_ENV !== 'production') {
         console.log('[kod] layout', {
-          containerWidth,
-          ticketWidthPx: nextCardWidth,
-          gapPx: CARD_GAP,
+          containerWidthPx,
+          ticketWidthPx,
+          gapPx,
           visibleCapacity: nextColumns,
           totalTickets: orderedSegmentsRef.current,
           pageIndex: pageIndexRef.current,
@@ -344,6 +349,9 @@ export default function KitchenDisplayPage() {
     const observer = gridRef.current ? new ResizeObserver(updateLayout) : null;
     if (gridRef.current && observer) {
       observer.observe(gridRef.current);
+    }
+    if (document.fonts?.ready) {
+      document.fonts.ready.then(updateLayout).catch(() => undefined);
     }
 
     return () => {
@@ -503,9 +511,21 @@ export default function KitchenDisplayPage() {
   }, [orders]);
   const totalTickets = orderedSegments.length;
   const waitingCount = Math.max(0, totalTickets - pageSize * (pageIndex + 1));
-  const tintClasses = ['bg-neutral-900', 'bg-neutral-700'];
+  const tintClasses = ['bg-black text-white', 'bg-white text-black'];
   const getTintClass = (orderId: string) =>
     tintClasses[(orderTintIndex.get(orderId) ?? 0) % tintClasses.length];
+  const getPrimaryTextClass = (orderId: string) =>
+    (orderTintIndex.get(orderId) ?? 0) % 2 === 0 ? 'text-white' : 'text-black';
+  const getMutedTextClass = (orderId: string) =>
+    (orderTintIndex.get(orderId) ?? 0) % 2 === 0 ? 'text-neutral-400' : 'text-neutral-600';
+  const getSecondaryTextClass = (orderId: string) =>
+    (orderTintIndex.get(orderId) ?? 0) % 2 === 0 ? 'text-neutral-200' : 'text-neutral-700';
+  const getContinuedTextClass = (orderId: string) =>
+    (orderTintIndex.get(orderId) ?? 0) % 2 === 0 ? 'text-rose-200' : 'text-rose-700';
+  const getNotesHeaderClass = (orderId: string) =>
+    (orderTintIndex.get(orderId) ?? 0) % 2 === 0 ? 'text-amber-200' : 'text-amber-700';
+  const getNotesBodyClass = (orderId: string) =>
+    (orderTintIndex.get(orderId) ?? 0) % 2 === 0 ? 'text-amber-100' : 'text-amber-800';
 
   return (
     <FullscreenAppLayout
@@ -586,6 +606,12 @@ export default function KitchenDisplayPage() {
               </p>
             ) : null}
             <div
+              ref={probeRef}
+              className="pointer-events-none absolute -left-[9999px] top-0 flex min-w-0 flex-col overflow-hidden rounded-2xl border border-white/10 p-5 shadow-lg shadow-black/20"
+              style={{ width: `${cardWidth}px`, height: `${cardHeight}px`, visibility: 'hidden' }}
+              aria-hidden="true"
+            />
+            <div
               ref={gridRef}
               className="flex h-full flex-1 flex-nowrap gap-4 overflow-hidden overscroll-none"
               style={{ height: `${cardHeight}px` }}
@@ -601,21 +627,35 @@ export default function KitchenDisplayPage() {
                   <div className="flex h-[88px] flex-wrap items-center justify-between gap-3">
                     <div>
                       {segment.totalSegments > 1 && segment.segmentIndex > 1 ? (
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-rose-200">
+                        <p
+                          className={`text-[10px] font-semibold uppercase tracking-[0.3em] ${getContinuedTextClass(
+                            segment.order.id
+                          )}`}
+                        >
                           Continued
                         </p>
                       ) : null}
-                      <p className="text-xs uppercase tracking-[0.2em] text-neutral-400">Order</p>
-                      <p className="text-2xl font-semibold text-white">
+                      <p
+                        className={`text-xs uppercase tracking-[0.2em] ${getMutedTextClass(
+                          segment.order.id
+                        )}`}
+                      >
+                        Order
+                      </p>
+                      <p className={`text-2xl font-semibold ${getPrimaryTextClass(segment.order.id)}`}>
                         ORDER {formatOrderNumber(segment.order)} ({segment.segmentIndex}/
                         {segment.totalSegments})
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-xs uppercase tracking-[0.2em] text-neutral-400">
+                      <p
+                        className={`text-xs uppercase tracking-[0.2em] ${getMutedTextClass(
+                          segment.order.id
+                        )}`}
+                      >
                         {segment.order.order_type}
                       </p>
-                      <p className="text-xl font-semibold text-white">
+                      <p className={`text-xl font-semibold ${getPrimaryTextClass(segment.order.id)}`}>
                         {formatElapsed(segment.order.created_at)}
                       </p>
                     </div>
@@ -623,10 +663,18 @@ export default function KitchenDisplayPage() {
                   <div className="mt-4 flex-1 overflow-hidden">
                     {segment.notesLines.length > 0 ? (
                       <div className="rounded-xl border border-amber-400/40 bg-amber-400/10 px-4 py-3">
-                        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-200">
+                        <p
+                          className={`text-xs font-semibold uppercase tracking-[0.3em] ${getNotesHeaderClass(
+                            segment.order.id
+                          )}`}
+                        >
                           Notes
                         </p>
-                        <div className="mt-2 space-y-1 text-sm text-amber-100">
+                        <div
+                          className={`mt-2 space-y-1 text-sm ${getNotesBodyClass(
+                            segment.order.id
+                          )}`}
+                        >
                           {segment.notesLines.map((line, index) => (
                             <p key={`${segment.order.id}-note-${segment.segmentIndex}-${index}`}>
                               {line}
@@ -638,14 +686,24 @@ export default function KitchenDisplayPage() {
                     <div className={`${segment.notesLines.length > 0 ? 'mt-4' : ''} space-y-4`}>
                       {segment.items.map((item) => (
                         <div key={item.id} className="space-y-2">
-                          <p className="text-lg font-semibold text-white">
+                          <p className={`text-lg font-semibold ${getPrimaryTextClass(segment.order.id)}`}>
                             {item.quantity}× {item.name}
                           </p>
                           {item.notes ? (
-                            <p className="pl-4 text-sm italic text-neutral-200">{item.notes}</p>
+                            <p
+                              className={`pl-4 text-sm italic ${getSecondaryTextClass(
+                                segment.order.id
+                              )}`}
+                            >
+                              {item.notes}
+                            </p>
                           ) : null}
                           {item.order_addons?.length ? (
-                            <div className="space-y-1 pl-6 text-sm text-neutral-300">
+                            <div
+                              className={`space-y-1 pl-6 text-sm ${getSecondaryTextClass(
+                                segment.order.id
+                              )}`}
+                            >
                               {item.order_addons.map((addon) => (
                                 <p key={addon.id}>
                                   {addon.quantity}× {addon.name}
