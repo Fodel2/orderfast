@@ -52,7 +52,6 @@ const HEADER_RESERVED_PX = 88;
 const FOOTER_RESERVED_PX = 72;
 const BODY_LINE_HEIGHT = 22;
 const TOP_CONTROLS_HEIGHT = 72;
-const PAGE_VERTICAL_PADDING = 48;
 const PAGE_PADDING_BASE = 24;
 const PAGE_PADDING_SM = 32;
 const PAGE_PADDING_LG = 48;
@@ -315,10 +314,7 @@ export default function KitchenDisplayPage() {
       );
       setColumns(nextColumns);
       setCardWidth(nextCardWidth);
-      const availableHeight =
-        (gridRef.current?.clientHeight ?? window.innerHeight) -
-        TOP_CONTROLS_HEIGHT -
-        PAGE_VERTICAL_PADDING;
+      const availableHeight = gridRef.current?.clientHeight ?? window.innerHeight;
       const nextCardHeight = Math.max(320, availableHeight);
       setCardHeight(nextCardHeight);
       const usableBodyHeight =
@@ -497,10 +493,6 @@ export default function KitchenDisplayPage() {
 
   const pages = useMemo(() => buildPagedSegments(orders, pageSize), [buildPagedSegments, orders, pageSize]);
   const totalPages = Math.max(1, pages.length);
-
-  useEffect(() => {
-    setPageIndex((current) => Math.min(current, totalPages - 1));
-  }, [totalPages]);
 
   const orderSegments = useMemo(() => pages[pageIndex] ?? [], [pages, pageIndex]);
   const orderTintIndex = useMemo(() => {
