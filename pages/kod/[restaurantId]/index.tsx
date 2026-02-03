@@ -16,6 +16,7 @@ type OrderItem = {
   id: number;
   name: string;
   quantity: number;
+  notes?: string | null;
   order_addons: OrderAddon[];
 };
 
@@ -25,7 +26,98 @@ type Order = {
   order_type: string;
   status: string;
   created_at: string;
+  customer_notes?: string | null;
   order_items: OrderItem[];
+};
+
+type OrderSegment = {
+  order: Order;
+  segmentIndex: number;
+  totalSegments: number;
+  notesLines: string[];
+  items: OrderItem[];
+  showContinued: boolean;
+};
+
+const MAX_CONTENT_LINES = 12;
+const NOTE_LINE_LENGTH = 38;
+
+const splitNotesLines = (notes: string) => {
+  if (!notes) return [];
+  const lines = notes
+    .split('\n')
+    .flatMap((line) => {
+      const words = line.trim().split(/\s+/).filter(Boolean);
+      if (words.length === 0) return [''];
+      const chunks: string[] = [];
+      let current = '';
+      words.forEach((word) => {
+        if (!current) {
+          current = word;
+          return;
+        }
+        if ((current + ` ${word}`).length > NOTE_LINE_LENGTH) {
+          chunks.push(current);
+          current = word;
+        } else {
+          current = `${current} ${word}`;
+        }
+      });
+      if (current) chunks.push(current);
+      return chunks;
+    })
+    .filter((line) => line.length > 0);
+
+  return lines.length ? lines : [''];
+};
+
+const formatOrderNumber = (order: Order) =>
+  String(order.short_order_number ?? 0).padStart(4, '0');
+
+const buildOrderSegments = (order: Order): OrderSegment[] => {
+  const remainingNotes = splitNotesLines(order.customer_notes ?? '').slice();
+  const remainingItems = (order.order_items ?? []).slice();
+  const segments: Omit<OrderSegment, 'segmentIndex' | 'totalSegments'>[] = [];
+
+  while (remainingNotes.length > 0 || remainingItems.length > 0) {
+    const notesLines: string[] = [];
+    const items: OrderItem[] = [];
+    let remainingCapacity = MAX_CONTENT_LINES;
+
+    if (remainingNotes.length > 0) {
+      const take = Math.min(remainingNotes.length, remainingCapacity);
+      notesLines.push(...remainingNotes.splice(0, take));
+      remainingCapacity -= take;
+    }
+
+    while (remainingItems.length > 0) {
+      const nextItem = remainingItems[0];
+      const addonCount = nextItem.order_addons?.length ?? 0;
+      const itemLineCount = 1 + addonCount;
+      if (
+        itemLineCount <= remainingCapacity ||
+        (items.length === 0 && notesLines.length === 0)
+      ) {
+        items.push(remainingItems.shift() as OrderItem);
+        remainingCapacity -= itemLineCount;
+      } else {
+        break;
+      }
+    }
+
+    segments.push({
+      order,
+      notesLines,
+      items,
+      showContinued: remainingNotes.length > 0 || remainingItems.length > 0,
+    });
+  }
+
+  return segments.map((segment, index) => ({
+    ...segment,
+    segmentIndex: index + 1,
+    totalSegments: segments.length,
+  }));
 };
 
 export default function KitchenDisplayPage() {
@@ -57,10 +149,12 @@ export default function KitchenDisplayPage() {
         order_type,
         status,
         created_at,
+        customer_notes,
         order_items(
           id,
           name,
           quantity,
+          notes,
           order_addons(
             id,
             name,
@@ -197,55 +291,70 @@ export default function KitchenDisplayPage() {
     return `${minutes}m ${seconds.toString().padStart(2, '0')}s`;
   }, [now]);
 
+  const orderSegments = useMemo(
+    () => orders.flatMap((order) => buildOrderSegments(order)),
+    [orders]
+  );
+
   return (
     <FullscreenAppLayout
       promptTitle="Tap to enter fullscreen"
       promptDescription="Kitchen Display works best in fullscreen mode."
     >
       <div className="min-h-screen w-full bg-neutral-950 text-white">
-        <div className="flex min-h-screen flex-col gap-8 px-6 py-10">
-          <div className="space-y-4 text-center">
-            <p className="text-3xl font-semibold tracking-tight sm:text-5xl">
-              Kitchen Display – Waiting for orders
-            </p>
-            <p className="text-base text-neutral-300 sm:text-lg">
-              This screen stays ready for incoming kitchen tickets.
-            </p>
-          </div>
-          <div className="mx-auto w-full max-w-5xl space-y-6">
+        <div className="flex min-h-screen flex-col gap-6 px-3 py-6 sm:px-4 lg:px-6">
+          <div className="w-full space-y-4">
             {orders.length === 0 && !isFetching ? (
               <p className="text-center text-base text-neutral-400">
                 No active orders yet.
               </p>
             ) : null}
-            <div className="grid gap-6 lg:grid-cols-2">
-              {orders.map((order) => (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {orderSegments.map((segment) => (
                 <div
-                  key={order.id}
-                  className="rounded-2xl border border-white/10 bg-white/5 p-6 shadow-lg shadow-black/20"
+                  key={`${segment.order.id}-${segment.segmentIndex}`}
+                  className="rounded-2xl border border-white/10 bg-white/5 p-5 shadow-lg shadow-black/20"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <p className="text-sm uppercase tracking-[0.2em] text-neutral-400">Order</p>
+                      <p className="text-xs uppercase tracking-[0.2em] text-neutral-400">Order</p>
                       <p className="text-2xl font-semibold text-white">
-                        #{order.short_order_number ?? order.id}
+                        ORDER {formatOrderNumber(segment.order)} ({segment.segmentIndex}/
+                        {segment.totalSegments})
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm uppercase tracking-[0.2em] text-neutral-400">
-                        {order.order_type}
+                      <p className="text-xs uppercase tracking-[0.2em] text-neutral-400">
+                        {segment.order.order_type}
                       </p>
                       <p className="text-xl font-semibold text-white">
-                        {formatElapsed(order.created_at)}
+                        {formatElapsed(segment.order.created_at)}
                       </p>
                     </div>
                   </div>
-                  <div className="mt-5 space-y-4">
-                    {order.order_items?.map((item) => (
+                  {segment.notesLines.length > 0 ? (
+                    <div className="mt-4 rounded-xl border border-amber-400/40 bg-amber-400/10 px-4 py-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-200">
+                        Notes
+                      </p>
+                      <div className="mt-2 space-y-1 text-sm text-amber-100">
+                        {segment.notesLines.map((line, index) => (
+                          <p key={`${segment.order.id}-note-${segment.segmentIndex}-${index}`}>
+                            {line}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="mt-4 space-y-4">
+                    {segment.items.map((item) => (
                       <div key={item.id} className="space-y-2">
                         <p className="text-lg font-semibold text-white">
                           {item.quantity}× {item.name}
                         </p>
+                        {item.notes ? (
+                          <p className="pl-4 text-sm italic text-neutral-200">{item.notes}</p>
+                        ) : null}
                         {item.order_addons?.length ? (
                           <div className="space-y-1 pl-6 text-sm text-neutral-300">
                             {item.order_addons.map((addon) => (
@@ -258,6 +367,11 @@ export default function KitchenDisplayPage() {
                       </div>
                     ))}
                   </div>
+                  {segment.showContinued ? (
+                    <p className="mt-4 text-xs font-semibold uppercase tracking-[0.3em] text-rose-200">
+                      Continued…
+                    </p>
+                  ) : null}
                 </div>
               ))}
             </div>
