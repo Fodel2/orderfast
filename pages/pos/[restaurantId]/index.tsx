@@ -111,6 +111,8 @@ export default function PosHomePage() {
   const [receiptNumber, setReceiptNumber] = useState<string | null>(null);
   const [receiptChoice, setReceiptChoice] = useState<ReceiptChoice | null>(null);
   const [toastMessage, setToastMessage] = useState('');
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (!storageKey || typeof window === 'undefined') return;
@@ -568,6 +570,122 @@ export default function PosHomePage() {
   const parsedCashReceived = Number.isNaN(Number(cashReceived)) ? 0 : Number(cashReceived);
   const cashDelta = parsedCashReceived - totals.total;
   const cashIsEnough = cashDelta >= 0;
+  const canConfirmPayment = cartItems.length > 0 && !!orderType;
+
+  const savePosOrderToSupabase = useCallback(async () => {
+    if (!restaurantId || !orderType) {
+      throw new Error('Missing order context');
+    }
+
+    const { data: authData } = await supabase.auth.getUser();
+    const userId = authData?.user?.id ?? null;
+
+    const orderPayload = {
+      restaurant_id: restaurantId,
+      user_id: userId,
+      order_type: orderType === 'walk-in' ? 'walk_in' : orderType,
+      delivery_address:
+        orderType === 'delivery'
+          ? {
+              address_line_1: deliveryDetails.address1 || null,
+              address_line_2: deliveryDetails.address2 || null,
+              postcode: deliveryDetails.postcode,
+            }
+          : null,
+      phone_number: null,
+      customer_notes: orderNote || null,
+      status: 'pending',
+      total_price: totals.total,
+      service_fee: 0,
+      delivery_fee: 0,
+      customer_name: null,
+      short_order_number: null,
+      source: 'pos',
+      accepted_at: null,
+    };
+
+    const { data: orderRow, error: orderError } = await supabase
+      .from('orders')
+      .insert(orderPayload)
+      .select('id,short_order_number')
+      .single();
+
+    if (orderError || !orderRow) {
+      throw orderError || new Error('Failed to create order');
+    }
+
+    const orderItemsPayload = cartItems.map((line) => ({
+      order_id: orderRow.id,
+      item_id: line.item_id,
+      name: line.name,
+      price: line.price,
+      quantity: line.quantity,
+      notes: line.notes || null,
+    }));
+
+    const { data: orderItemRows, error: orderItemsError } = await supabase
+      .from('order_items')
+      .insert(orderItemsPayload)
+      .select('id');
+
+    if (orderItemsError || !orderItemRows) {
+      throw orderItemsError || new Error('Failed to create order items');
+    }
+
+    const addonPayload: Array<{
+      order_item_id: string;
+      option_id: string | null;
+      name: string;
+      price: number;
+      quantity: number;
+    }> = [];
+
+    cartItems.forEach((line, index) => {
+      const orderItemId = orderItemRows[index]?.id;
+      if (!orderItemId) return;
+      (line.addons || []).forEach((addon) => {
+        addonPayload.push({
+          order_item_id: orderItemId,
+          option_id: addon.option_id || null,
+          name: addon.name,
+          price: addon.price,
+          quantity: addon.quantity || 1,
+        });
+      });
+    });
+
+    if (addonPayload.length > 0) {
+      const { error: addonError } = await supabase.from('order_addons').insert(addonPayload);
+      if (addonError) {
+        throw addonError;
+      }
+    }
+
+    return orderRow;
+  }, [cartItems, deliveryDetails, orderNote, orderType, restaurantId, totals.total]);
+
+  const handleConfirmPayment = useCallback(async () => {
+    if (!canConfirmPayment || isSaving) return;
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      const orderRow = await savePosOrderToSupabase();
+      const resolvedReceiptNumber =
+        orderRow.short_order_number != null && orderRow.short_order_number !== ''
+          ? String(orderRow.short_order_number)
+          : orderRow.id?.slice(0, 8);
+      setReceiptNumber(resolvedReceiptNumber || null);
+      setReceiptChoice(null);
+      setStage('paymentComplete');
+    } catch (error) {
+      console.error('[pos] failed to save order', error);
+      const message = 'Failed to save order. Check connection and try again.';
+      setSaveError(message);
+      setToastMessage(message);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [canConfirmPayment, isSaving, savePosOrderToSupabase]);
 
   return (
     <FullscreenAppLayout>
@@ -792,6 +910,7 @@ export default function PosHomePage() {
                   setStage('sell');
                   setPaymentMethod(null);
                   setCashReceived('');
+                  setSaveError(null);
                 }}
                 className="rounded-full border border-gray-200 bg-white px-4 py-2 text-xs font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50"
               >
@@ -848,7 +967,10 @@ export default function PosHomePage() {
                 <div className="mt-4 grid grid-cols-2 gap-3">
                   <button
                     type="button"
-                    onClick={() => setPaymentMethod('cash')}
+                    onClick={() => {
+                      setPaymentMethod('cash');
+                      setSaveError(null);
+                    }}
                     className={`rounded-2xl border px-4 py-5 text-center text-sm font-semibold transition ${
                       paymentMethod === 'cash'
                         ? 'border-teal-600 bg-teal-50 text-teal-700'
@@ -859,7 +981,10 @@ export default function PosHomePage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setPaymentMethod('card')}
+                    onClick={() => {
+                      setPaymentMethod('card');
+                      setSaveError(null);
+                    }}
                     className={`rounded-2xl border px-4 py-5 text-center text-sm font-semibold transition ${
                       paymentMethod === 'card'
                         ? 'border-teal-600 bg-teal-50 text-teal-700'
@@ -870,20 +995,33 @@ export default function PosHomePage() {
                   </button>
                 </div>
 
+                {saveError ? (
+                  <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                    <p className="font-semibold">Failed to save order.</p>
+                    <p className="mt-1 text-xs text-rose-600">
+                      Check connection and try again. Your cart is still here.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleConfirmPayment}
+                      disabled={isSaving || !paymentMethod || (paymentMethod === 'cash' && !cashIsEnough)}
+                      className="mt-3 inline-flex items-center justify-center rounded-full border border-rose-200 bg-white px-3 py-1 text-xs font-semibold text-rose-600 transition hover:border-rose-300 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isSaving ? 'Saving…' : 'Retry save'}
+                    </button>
+                  </div>
+                ) : null}
+
                 {paymentMethod === 'card' ? (
                   <div className="mt-6 space-y-4">
                     <p className="text-sm text-gray-600">Use external card reader to take payment.</p>
                     <button
                       type="button"
-                      onClick={() => {
-                        const generated = `${Math.floor(1000 + Math.random() * 9000)}`;
-                        setReceiptNumber(generated);
-                        setReceiptChoice(null);
-                        setStage('paymentComplete');
-                      }}
-                      className="w-full rounded-full bg-teal-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700"
+                      onClick={handleConfirmPayment}
+                      disabled={!canConfirmPayment || isSaving}
+                      className="w-full rounded-full bg-teal-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-teal-300"
                     >
-                      Confirm Payment
+                      {isSaving ? 'Saving…' : 'Confirm Payment'}
                     </button>
                   </div>
                 ) : null}
@@ -918,16 +1056,11 @@ export default function PosHomePage() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => {
-                        const generated = `${Math.floor(1000 + Math.random() * 9000)}`;
-                        setReceiptNumber(generated);
-                        setReceiptChoice(null);
-                        setStage('paymentComplete');
-                      }}
-                      disabled={!cashIsEnough}
+                      onClick={handleConfirmPayment}
+                      disabled={!cashIsEnough || !canConfirmPayment || isSaving}
                       className="w-full rounded-full bg-teal-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-teal-300"
                     >
-                      Confirm Payment
+                      {isSaving ? 'Saving…' : 'Confirm Payment'}
                     </button>
                   </div>
                 ) : null}
@@ -942,7 +1075,7 @@ export default function PosHomePage() {
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-teal-600">Payment</p>
               <h2 className="mt-2 text-2xl font-semibold text-gray-900">Payment complete</h2>
               {receiptNumber ? (
-                <p className="mt-2 text-sm text-gray-500">Order #{receiptNumber} (temporary)</p>
+                <p className="mt-2 text-sm text-gray-500">Order #{receiptNumber}</p>
               ) : null}
 
               <div className="mt-8 rounded-2xl border border-gray-200 bg-gray-50 p-6 text-left">
