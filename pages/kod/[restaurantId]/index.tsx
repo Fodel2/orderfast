@@ -50,6 +50,7 @@ type OrderSegment = {
 const MAX_CONTENT_LINES = 12;
 const NOTE_LINE_LENGTH = 38;
 const CARD_ESTIMATED_HEIGHT = 320;
+const FOOTER_RESERVED_LINES = 2;
 const ACTIVE_STATUSES = ['pending', 'accepted', 'preparing', 'delivering', 'ready_to_collect'];
 const TERMINAL_STATUSES = ['completed', 'cancelled'];
 
@@ -93,7 +94,11 @@ const buildOrderSegments = (order: Order): OrderSegment[] => {
   while (remainingNotes.length > 0 || remainingItems.length > 0) {
     const notesLines: string[] = [];
     const items: OrderItem[] = [];
-    let remainingCapacity = MAX_CONTENT_LINES;
+    const isFirstSegment = segments.length === 0;
+    let remainingCapacity = Math.max(
+      1,
+      MAX_CONTENT_LINES - (isFirstSegment ? FOOTER_RESERVED_LINES : 0)
+    );
 
     if (remainingNotes.length > 0) {
       const take = Math.min(remainingNotes.length, remainingCapacity);
@@ -365,14 +370,14 @@ export default function KitchenDisplayPage() {
   );
 
   const updateOrderStatus = useCallback(
-    async (order: Order, nextStatus: string) => {
+    async (order: Order, nextStatus: string, expectedStatus: string) => {
       if (TERMINAL_STATUSES.includes(order.status)) return;
       await acknowledgeOrder(order.id);
       const { data, error } = await supabase
         .from('orders')
         .update({ status: nextStatus })
         .eq('id', order.id)
-        .eq('status', order.status)
+        .eq('status', expectedStatus)
         .select('id');
 
       if (error) {
@@ -382,7 +387,7 @@ export default function KitchenDisplayPage() {
       }
 
       if (!data || data.length === 0) {
-        setToastMessage('Order updated elsewhere');
+        setToastMessage('Updated elsewhere');
         fetchOrders();
         return;
       }
@@ -392,32 +397,18 @@ export default function KitchenDisplayPage() {
     [acknowledgeOrder, fetchOrders]
   );
 
-  const handleAcknowledge = useCallback(
+  const handlePrimaryAction = useCallback(
     async (order: Order) => {
-      const key = `${order.id}-ack`;
+      const key = `${order.id}-primary`;
       if (cooldowns[key]) return;
       startCooldown(key);
-      await acknowledgeOrder(order.id);
-    },
-    [acknowledgeOrder, cooldowns, startCooldown]
-  );
-
-  const handleAccept = useCallback(
-    async (order: Order) => {
-      const key = `${order.id}-accept`;
-      if (cooldowns[key]) return;
-      startCooldown(key);
-      await updateOrderStatus(order, 'accepted');
-    },
-    [cooldowns, startCooldown, updateOrderStatus]
-  );
-
-  const handleComplete = useCallback(
-    async (order: Order) => {
-      const key = `${order.id}-complete`;
-      if (cooldowns[key]) return;
-      startCooldown(key);
-      await updateOrderStatus(order, 'completed');
+      if (order.status === 'pending') {
+        await updateOrderStatus(order, 'accepted', 'pending');
+        return;
+      }
+      if (order.status === 'accepted') {
+        await updateOrderStatus(order, 'completed', 'accepted');
+      }
     },
     [cooldowns, startCooldown, updateOrderStatus]
   );
@@ -518,41 +509,25 @@ export default function KitchenDisplayPage() {
                   </div>
                   {segment.segmentIndex === 1 &&
                   ACTIVE_STATUSES.includes(segment.order.status) ? (
-                    <div className="mt-4 flex flex-wrap gap-2">
+                    <div className="mt-auto flex flex-col gap-2 pt-4">
                       <button
                         type="button"
-                        onClick={() => handleAccept(segment.order)}
+                        onClick={() => handlePrimaryAction(segment.order)}
                         disabled={
-                          segment.order.status !== 'pending' ||
-                          cooldowns[`${segment.order.id}-accept`]
+                          !['pending', 'accepted'].includes(segment.order.status) ||
+                          cooldowns[`${segment.order.id}-primary`]
                         }
                         className="rounded-full bg-teal-500 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-black transition hover:bg-teal-400 disabled:cursor-not-allowed disabled:opacity-40"
                       >
-                        Accept
+                        {segment.order.status === 'pending' ? 'ACCEPT' : 'COMPLETE'}
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => handleAcknowledge(segment.order)}
-                        disabled={cooldowns[`${segment.order.id}-ack`]}
-                        className="rounded-full border border-white/20 bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        Acknowledge
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleComplete(segment.order)}
-                        disabled={
-                          !['accepted', 'preparing', 'delivering', 'ready_to_collect'].includes(
-                            segment.order.status
-                          ) || cooldowns[`${segment.order.id}-complete`]
-                        }
-                        className="rounded-full border border-emerald-300/60 bg-emerald-400/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-100 transition hover:bg-emerald-400/20 disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        Complete
-                      </button>
+                      {segment.showContinued ? (
+                        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-rose-200">
+                          Continued…
+                        </p>
+                      ) : null}
                     </div>
-                  ) : null}
-                  {segment.showContinued ? (
+                  ) : segment.showContinued ? (
                     <p className="mt-4 text-xs font-semibold uppercase tracking-[0.3em] text-rose-200">
                       Continued…
                     </p>
