@@ -48,7 +48,6 @@ type OrderSegment = {
 };
 
 const NOTE_LINE_LENGTH = 38;
-const CARD_ESTIMATED_HEIGHT = 320;
 const CARD_VERTICAL_PADDING = 40;
 const HEADER_RESERVED_PX = 88;
 const FOOTER_RESERVED_PX = 72;
@@ -155,7 +154,7 @@ export default function KitchenDisplayPage() {
   const [now, setNow] = useState(Date.now());
   const [pageIndex, setPageIndex] = useState(0);
   const [columns, setColumns] = useState(1);
-  const [rows, setRows] = useState(1);
+  const rows = 1;
   const [maxBodyLines, setMaxBodyLines] = useState(12);
   const gridRef = useRef<HTMLDivElement | null>(null);
   const [toastMessage, setToastMessage] = useState('');
@@ -301,13 +300,7 @@ export default function KitchenDisplayPage() {
       }
       setColumns(nextColumns);
       const availableHeight = gridRef.current?.clientHeight ?? window.innerHeight;
-      const nextRows = Math.max(1, Math.floor(availableHeight / CARD_ESTIMATED_HEIGHT));
-      const gridStyles = gridRef.current ? window.getComputedStyle(gridRef.current) : null;
-      const rowGap = gridStyles ? parseFloat(gridStyles.rowGap || '0') : 0;
-      const cardHeight =
-        nextRows > 0
-          ? (availableHeight - rowGap * Math.max(0, nextRows - 1)) / nextRows
-          : availableHeight;
+      const cardHeight = availableHeight;
       const usableBodyHeight =
         cardHeight - HEADER_RESERVED_PX - FOOTER_RESERVED_PX - CARD_VERTICAL_PADDING;
       const nextMaxBodyLines = Math.max(
@@ -315,7 +308,6 @@ export default function KitchenDisplayPage() {
         Math.floor(usableBodyHeight / BODY_LINE_HEIGHT)
       );
       setMaxBodyLines(nextMaxBodyLines);
-      setRows(nextRows);
     };
 
     updateLayout();
@@ -520,12 +512,12 @@ export default function KitchenDisplayPage() {
             ) : null}
             <div
               ref={gridRef}
-              className="grid h-full flex-1 auto-rows-fr grid-cols-1 gap-4 overflow-hidden overscroll-none sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+              className="flex h-full flex-1 flex-nowrap gap-4 overflow-hidden overscroll-none"
             >
               {orderSegments.map((segment) => (
                 <div
                   key={`${segment.order.id}-${segment.segmentIndex}`}
-                  className="flex h-full min-h-[280px] flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-5 shadow-lg shadow-black/20"
+                  className="flex h-full min-h-[280px] min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-5 shadow-lg shadow-black/20"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
