@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
+import { ArrowPathIcon, SpeakerWaveIcon, SpeakerXMarkIcon, WifiIcon } from '@heroicons/react/24/outline';
 import FullscreenAppLayout from '@/components/layouts/FullscreenAppLayout';
 import { supabase } from '@/lib/supabaseClient';
 
@@ -33,7 +34,9 @@ export default function KitchenDisplayPage() {
   const restaurantId = Array.isArray(routeParam) ? routeParam[0] : routeParam;
   const audioContextRef = useRef<AudioContext | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
-  const [loadingOrders, setLoadingOrders] = useState(false);
+  const [isFetching, setIsFetching] = useState(false);
+  const [lastFetchFailed, setLastFetchFailed] = useState(false);
+  const [isOnline, setIsOnline] = useState(true);
   const [now, setNow] = useState(Date.now());
 
   const preferenceKey = useMemo(
@@ -44,7 +47,7 @@ export default function KitchenDisplayPage() {
 
   const fetchOrders = useCallback(async () => {
     if (!restaurantId) return;
-    setLoadingOrders(true);
+    setIsFetching(true);
     const { data, error } = await supabase
       .from('orders')
       .select(
@@ -72,25 +75,41 @@ export default function KitchenDisplayPage() {
 
     if (error) {
       console.error('[kod] failed to load orders', error);
-      setLoadingOrders(false);
+      setLastFetchFailed(true);
+      setIsFetching(false);
       return;
     }
 
     setOrders((data as Order[]) ?? []);
-    setLoadingOrders(false);
+    setLastFetchFailed(false);
+    setIsFetching(false);
   }, [restaurantId]);
 
   useEffect(() => {
     if (!restaurantId) return;
     fetchOrders();
-    const interval = window.setInterval(fetchOrders, 3000);
+    let timeoutId: number | undefined;
+    let active = true;
+    const scheduleNext = () => {
+      if (!active) return;
+      const jitter = Math.floor(Math.random() * 600) - 300;
+      timeoutId = window.setTimeout(async () => {
+        await fetchOrders();
+        scheduleNext();
+      }, 5000 + jitter);
+    };
+    scheduleNext();
     return () => {
-      window.clearInterval(interval);
+      active = false;
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+      }
     };
   }, [fetchOrders, restaurantId]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    setIsOnline(window.navigator.onLine);
     const handleFocus = () => {
       fetchOrders();
     };
@@ -100,17 +119,23 @@ export default function KitchenDisplayPage() {
       }
     };
     const handleOnline = () => {
+      setIsOnline(true);
       fetchOrders();
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
     };
 
     window.addEventListener('focus', handleFocus);
     document.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
 
     return () => {
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
     };
   }, [fetchOrders]);
 
@@ -153,6 +178,12 @@ export default function KitchenDisplayPage() {
     setSoundEnabled(true);
   }, [preferenceKey]);
 
+  const handleDisableSound = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(preferenceKey, 'false');
+    setSoundEnabled(false);
+  }, [preferenceKey]);
+
   const formatElapsed = useCallback((createdAt: string) => {
     const createdTime = new Date(createdAt).getTime();
     if (Number.isNaN(createdTime)) return '--';
@@ -182,10 +213,7 @@ export default function KitchenDisplayPage() {
             </p>
           </div>
           <div className="mx-auto w-full max-w-5xl space-y-6">
-            {loadingOrders ? (
-              <p className="text-center text-sm text-neutral-400">Refreshing orders…</p>
-            ) : null}
-            {orders.length === 0 && !loadingOrders ? (
+            {orders.length === 0 && !isFetching ? (
               <p className="text-center text-base text-neutral-400">
                 No active orders yet.
               </p>
@@ -234,18 +262,39 @@ export default function KitchenDisplayPage() {
               ))}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={handleEnableSound}
-            className="mx-auto rounded-full border border-white/40 bg-white/10 px-8 py-4 text-lg font-semibold text-white shadow-lg shadow-black/20 transition hover:bg-white/20"
-          >
-            {soundEnabled ? 'Sound enabled' : 'Tap to enable sound'}
-          </button>
-          {!soundEnabled ? (
-            <p className="text-center text-sm text-neutral-400">
-              Sound must be enabled to play alerts once orders start flowing.
-            </p>
-          ) : null}
+          <div className="fixed right-6 top-6 z-50 flex items-center gap-3 rounded-full border border-white/10 bg-black/40 px-4 py-2 text-xs uppercase tracking-[0.2em] text-neutral-200 shadow-lg shadow-black/40 backdrop-blur">
+            <ArrowPathIcon
+              className={`h-4 w-4 ${isFetching ? 'animate-spin text-teal-300' : 'text-neutral-400'}`}
+            />
+            {!isOnline ? (
+              <span className="flex items-center gap-2 text-rose-300">
+                <WifiIcon className="h-4 w-4" />
+                Offline
+              </span>
+            ) : null}
+            {isOnline && lastFetchFailed ? (
+              <span className="text-amber-300">Sync error</span>
+            ) : null}
+            {soundEnabled ? (
+              <button
+                type="button"
+                onClick={handleDisableSound}
+                className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-white transition hover:bg-white/10"
+              >
+                <SpeakerWaveIcon className="h-4 w-4" />
+                Sound On
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleEnableSound}
+                className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-white transition hover:bg-white/10"
+              >
+                <SpeakerXMarkIcon className="h-4 w-4" />
+                Enable Sound
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </FullscreenAppLayout>
