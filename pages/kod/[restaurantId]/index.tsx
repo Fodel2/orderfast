@@ -52,19 +52,14 @@ const HEADER_RESERVED_PX = 88;
 const FOOTER_RESERVED_PX = 72;
 const BODY_LINE_HEIGHT = 22;
 const TOP_CONTROLS_HEIGHT = 72;
-const PAGE_PADDING_BASE = 24;
-const PAGE_PADDING_SM = 32;
-const PAGE_PADDING_LG = 48;
 const CARD_WIDTH_BASE = 360;
-const CARD_WIDTH_SM = 380;
-const CARD_WIDTH_LG = 420;
 const CARD_GAP = 16;
 const NOTES_HEADER_LINES = 2;
 const ITEM_SPACER_LINES = 1;
 const ACTIVE_STATUSES = ['pending', 'accepted', 'preparing', 'delivering', 'ready_to_collect'];
 const TERMINAL_STATUSES = ['completed', 'cancelled'];
 
-const splitNotesLines = (notes: string) => {
+const splitNotesLines = (notes: string, lineLength: number) => {
   if (!notes) return [];
   const lines = notes
     .split('\n')
@@ -78,7 +73,7 @@ const splitNotesLines = (notes: string) => {
           current = word;
           return;
         }
-        if ((current + ` ${word}`).length > NOTE_LINE_LENGTH) {
+        if ((current + ` ${word}`).length > lineLength) {
           chunks.push(current);
           current = word;
         } else {
@@ -96,14 +91,22 @@ const splitNotesLines = (notes: string) => {
 const formatOrderNumber = (order: Order) =>
   String(order.short_order_number ?? 0).padStart(4, '0');
 
-const getItemLineCount = (item: OrderItem, includeSpacer: boolean) => {
+const getItemLineCount = (
+  item: OrderItem,
+  includeSpacer: boolean,
+  lineLength: number
+) => {
   const addonCount = item.order_addons?.length ?? 0;
-  const notesLines = item.notes ? splitNotesLines(item.notes).length : 0;
+  const notesLines = item.notes ? splitNotesLines(item.notes, lineLength).length : 0;
   return 1 + addonCount + notesLines + (includeSpacer ? ITEM_SPACER_LINES : 0);
 };
 
-const buildOrderSegments = (order: Order, maxBodyLines: number): OrderSegment[] => {
-  const remainingNotes = splitNotesLines(order.customer_notes ?? '').slice();
+const buildOrderSegments = (
+  order: Order,
+  maxBodyLines: number,
+  lineLength: number
+): OrderSegment[] => {
+  const remainingNotes = splitNotesLines(order.customer_notes ?? '', lineLength).slice();
   const remainingItems = (order.order_items ?? []).slice();
   const segments: Omit<OrderSegment, 'segmentIndex' | 'totalSegments'>[] = [];
   const safeBodyLines = Math.max(NOTES_HEADER_LINES + 1, maxBodyLines);
@@ -122,7 +125,7 @@ const buildOrderSegments = (order: Order, maxBodyLines: number): OrderSegment[] 
 
     while (remainingItems.length > 0) {
       const nextItem = remainingItems[0];
-      const itemLineCount = getItemLineCount(nextItem, items.length > 0);
+      const itemLineCount = getItemLineCount(nextItem, items.length > 0, lineLength);
       if (
         itemLineCount <= remainingCapacity ||
         (items.length === 0 && notesLines.length === 0)
@@ -162,10 +165,10 @@ export default function KitchenDisplayPage() {
   const [columns, setColumns] = useState(1);
   const rows = 1;
   const [maxBodyLines, setMaxBodyLines] = useState(12);
+  const [noteLineLength, setNoteLineLength] = useState(NOTE_LINE_LENGTH);
   const [cardWidth, setCardWidth] = useState(CARD_WIDTH_BASE);
   const [cardHeight, setCardHeight] = useState(480);
   const gridRef = useRef<HTMLDivElement | null>(null);
-  const probeRef = useRef<HTMLDivElement | null>(null);
   const [toastMessage, setToastMessage] = useState('');
   const [cooldowns, setCooldowns] = useState<Record<string, boolean>>({});
   const orderedSegmentsRef = useRef(0);
@@ -300,34 +303,31 @@ export default function KitchenDisplayPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const updateLayout = () => {
-      const width = window.innerWidth;
-      let nextCardWidth = CARD_WIDTH_BASE;
-      if (width >= 1280) {
-        nextCardWidth = CARD_WIDTH_LG;
-      } else if (width >= 768) {
-        nextCardWidth = CARD_WIDTH_SM;
-      }
       const containerWidthPx = gridRef.current?.getBoundingClientRect().width ?? 0;
+      const effectiveWidth = containerWidthPx || window.innerWidth;
+      const nextColumns =
+        effectiveWidth >= 1600 ? 4 : effectiveWidth >= 1200 ? 3 : effectiveWidth >= 800 ? 2 : 1;
       const gapValue = gridRef.current
         ? window.getComputedStyle(gridRef.current).columnGap ||
           window.getComputedStyle(gridRef.current).gap
         : `${CARD_GAP}px`;
       const gapPx = Number.parseFloat(gapValue || '0') || 0;
-      const measuredTicketWidth =
-        probeRef.current?.getBoundingClientRect().width ?? nextCardWidth;
-      const ticketWidthPx = measuredTicketWidth > 0 ? measuredTicketWidth : nextCardWidth;
-      const nextColumns = Math.max(
+      const resolvedColumns = Math.max(1, nextColumns);
+      const ticketWidthPx = Math.max(
         1,
-        Math.floor((containerWidthPx + gapPx) / (ticketWidthPx + gapPx))
+        (effectiveWidth - gapPx * (resolvedColumns - 1)) / resolvedColumns
       );
-      setColumns(nextColumns);
+      setColumns(resolvedColumns);
       setCardWidth(ticketWidthPx);
+      setNoteLineLength(
+        Math.max(20, Math.floor((ticketWidthPx / CARD_WIDTH_BASE) * NOTE_LINE_LENGTH))
+      );
       if (process.env.NODE_ENV !== 'production') {
         console.log('[kod] layout', {
           containerWidthPx,
           ticketWidthPx,
           gapPx,
-          visibleCapacity: nextColumns,
+          visibleCapacity: resolvedColumns,
           totalTickets: orderedSegmentsRef.current,
           pageIndex: pageIndexRef.current,
         });
@@ -482,10 +482,10 @@ export default function KitchenDisplayPage() {
   const orderedSegments = useMemo(() => {
     const segments: OrderSegment[] = [];
     orders.forEach((order) => {
-      segments.push(...buildOrderSegments(order, maxBodyLines));
+      segments.push(...buildOrderSegments(order, maxBodyLines, noteLineLength));
     });
     return segments;
-  }, [orders, maxBodyLines]);
+  }, [orders, maxBodyLines, noteLineLength]);
   const totalPages = Math.max(1, Math.ceil(orderedSegments.length / pageSize));
 
   useEffect(() => {
@@ -606,12 +606,6 @@ export default function KitchenDisplayPage() {
               </p>
             ) : null}
             <div
-              ref={probeRef}
-              className="pointer-events-none absolute -left-[9999px] top-0 flex min-w-0 flex-col overflow-hidden rounded-2xl border border-white/10 p-5 shadow-lg shadow-black/20"
-              style={{ width: `${cardWidth}px`, height: `${cardHeight}px`, visibility: 'hidden' }}
-              aria-hidden="true"
-            />
-            <div
               ref={gridRef}
               className="flex h-full flex-1 flex-nowrap gap-4 overflow-hidden overscroll-none"
               style={{ height: `${cardHeight}px` }}
@@ -625,40 +619,56 @@ export default function KitchenDisplayPage() {
                   style={{ width: `${cardWidth}px`, height: `${cardHeight}px` }}
                 >
                   <div className="flex h-[88px] flex-wrap items-center justify-between gap-3">
-                    <div>
-                      {segment.totalSegments > 1 && segment.segmentIndex > 1 ? (
+                    {segment.segmentIndex === 1 ? (
+                      <>
+                        <div>
+                          <p
+                            className={`text-xs uppercase tracking-[0.2em] ${getMutedTextClass(
+                              segment.order.id
+                            )}`}
+                          >
+                            Order
+                          </p>
+                          <p
+                            className={`text-2xl font-semibold ${getPrimaryTextClass(
+                              segment.order.id
+                            )}`}
+                          >
+                            ORDER {formatOrderNumber(segment.order)} ({segment.segmentIndex}/
+                            {segment.totalSegments})
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p
+                            className={`text-xs uppercase tracking-[0.2em] ${getMutedTextClass(
+                              segment.order.id
+                            )}`}
+                          >
+                            {segment.order.order_type}
+                          </p>
+                          <p
+                            className={`text-xl font-semibold ${getPrimaryTextClass(
+                              segment.order.id
+                            )}`}
+                          >
+                            {formatElapsed(segment.order.created_at)}
+                          </p>
+                        </div>
+                      </>
+                    ) : (
+                      <>
                         <p
                           className={`text-[10px] font-semibold uppercase tracking-[0.3em] ${getContinuedTextClass(
                             segment.order.id
                           )}`}
                         >
-                          Continued
+                          Continued ({segment.segmentIndex}/{segment.totalSegments})
                         </p>
-                      ) : null}
-                      <p
-                        className={`text-xs uppercase tracking-[0.2em] ${getMutedTextClass(
-                          segment.order.id
-                        )}`}
-                      >
-                        Order
-                      </p>
-                      <p className={`text-2xl font-semibold ${getPrimaryTextClass(segment.order.id)}`}>
-                        ORDER {formatOrderNumber(segment.order)} ({segment.segmentIndex}/
-                        {segment.totalSegments})
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p
-                        className={`text-xs uppercase tracking-[0.2em] ${getMutedTextClass(
-                          segment.order.id
-                        )}`}
-                      >
-                        {segment.order.order_type}
-                      </p>
-                      <p className={`text-xl font-semibold ${getPrimaryTextClass(segment.order.id)}`}>
-                        {formatElapsed(segment.order.created_at)}
-                      </p>
-                    </div>
+                        <p className={`text-lg font-semibold ${getPrimaryTextClass(segment.order.id)}`}>
+                          {formatElapsed(segment.order.created_at)}
+                        </p>
+                      </>
+                    )}
                   </div>
                   <div className="mt-4 flex-1 overflow-hidden">
                     {segment.notesLines.length > 0 ? (
