@@ -9,6 +9,7 @@ import {
   WifiIcon,
 } from '@heroicons/react/24/outline';
 import FullscreenAppLayout from '@/components/layouts/FullscreenAppLayout';
+import Toast from '@/components/Toast';
 import { supabase } from '@/lib/supabaseClient';
 
 type AudioContextConstructor = typeof AudioContext;
@@ -49,6 +50,8 @@ type OrderSegment = {
 const MAX_CONTENT_LINES = 12;
 const NOTE_LINE_LENGTH = 38;
 const CARD_ESTIMATED_HEIGHT = 320;
+const ACTIVE_STATUSES = ['pending', 'accepted', 'preparing', 'delivering', 'ready_to_collect'];
+const TERMINAL_STATUSES = ['completed', 'cancelled'];
 
 const splitNotesLines = (notes: string) => {
   if (!notes) return [];
@@ -142,6 +145,8 @@ export default function KitchenDisplayPage() {
   const [columns, setColumns] = useState(1);
   const [rows, setRows] = useState(1);
   const gridRef = useRef<HTMLDivElement | null>(null);
+  const [toastMessage, setToastMessage] = useState('');
+  const [cooldowns, setCooldowns] = useState<Record<string, boolean>>({});
 
   const preferenceKey = useMemo(
     () => (restaurantId ? `kod_audio_enabled_${restaurantId}` : 'kod_audio_enabled'),
@@ -336,6 +341,87 @@ export default function KitchenDisplayPage() {
     return `${minutes}m ${seconds.toString().padStart(2, '0')}s`;
   }, [now]);
 
+  const startCooldown = useCallback((key: string) => {
+    setCooldowns((prev) => ({ ...prev, [key]: true }));
+    window.setTimeout(() => {
+      setCooldowns((prev) => ({ ...prev, [key]: false }));
+    }, 1500);
+  }, []);
+
+  const acknowledgeOrder = useCallback(
+    async (orderId: string) => {
+      if (!orderId) return;
+      const payload = restaurantId
+        ? { order_id: orderId, restaurant_id: restaurantId }
+        : { order_id: orderId };
+      const { error } = await supabase
+        .from('order_acknowledgements')
+        .insert(payload);
+      if (error) {
+        console.error('[kod] failed to acknowledge order', error);
+      }
+    },
+    [restaurantId]
+  );
+
+  const updateOrderStatus = useCallback(
+    async (order: Order, nextStatus: string) => {
+      if (TERMINAL_STATUSES.includes(order.status)) return;
+      await acknowledgeOrder(order.id);
+      const { data, error } = await supabase
+        .from('orders')
+        .update({ status: nextStatus })
+        .eq('id', order.id)
+        .eq('status', order.status)
+        .select('id');
+
+      if (error) {
+        console.error('[kod] failed to update order status', error);
+        setToastMessage('Unable to update order');
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        setToastMessage('Order updated elsewhere');
+        fetchOrders();
+        return;
+      }
+
+      fetchOrders();
+    },
+    [acknowledgeOrder, fetchOrders]
+  );
+
+  const handleAcknowledge = useCallback(
+    async (order: Order) => {
+      const key = `${order.id}-ack`;
+      if (cooldowns[key]) return;
+      startCooldown(key);
+      await acknowledgeOrder(order.id);
+    },
+    [acknowledgeOrder, cooldowns, startCooldown]
+  );
+
+  const handleAccept = useCallback(
+    async (order: Order) => {
+      const key = `${order.id}-accept`;
+      if (cooldowns[key]) return;
+      startCooldown(key);
+      await updateOrderStatus(order, 'accepted');
+    },
+    [cooldowns, startCooldown, updateOrderStatus]
+  );
+
+  const handleComplete = useCallback(
+    async (order: Order) => {
+      const key = `${order.id}-complete`;
+      if (cooldowns[key]) return;
+      startCooldown(key);
+      await updateOrderStatus(order, 'completed');
+    },
+    [cooldowns, startCooldown, updateOrderStatus]
+  );
+
   const pageSize = Math.max(1, columns * rows);
   const totalPages = Math.max(1, Math.ceil(orders.length / pageSize));
 
@@ -430,6 +516,42 @@ export default function KitchenDisplayPage() {
                       </div>
                     ))}
                   </div>
+                  {segment.segmentIndex === 1 &&
+                  ACTIVE_STATUSES.includes(segment.order.status) ? (
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleAccept(segment.order)}
+                        disabled={
+                          segment.order.status !== 'pending' ||
+                          cooldowns[`${segment.order.id}-accept`]
+                        }
+                        className="rounded-full bg-teal-500 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-black transition hover:bg-teal-400 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Accept
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleAcknowledge(segment.order)}
+                        disabled={cooldowns[`${segment.order.id}-ack`]}
+                        className="rounded-full border border-white/20 bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Acknowledge
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleComplete(segment.order)}
+                        disabled={
+                          !['accepted', 'preparing', 'delivering', 'ready_to_collect'].includes(
+                            segment.order.status
+                          ) || cooldowns[`${segment.order.id}-complete`]
+                        }
+                        className="rounded-full border border-emerald-300/60 bg-emerald-400/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-100 transition hover:bg-emerald-400/20 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Complete
+                      </button>
+                    </div>
+                  ) : null}
                   {segment.showContinued ? (
                     <p className="mt-4 text-xs font-semibold uppercase tracking-[0.3em] text-rose-200">
                       Continued…
@@ -500,6 +622,7 @@ export default function KitchenDisplayPage() {
             ) : null}
           </div>
         </div>
+        <Toast message={toastMessage} onClose={() => setToastMessage('')} />
       </div>
     </FullscreenAppLayout>
   );
