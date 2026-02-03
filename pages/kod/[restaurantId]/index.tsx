@@ -47,10 +47,14 @@ type OrderSegment = {
   showContinued: boolean;
 };
 
-const MAX_CONTENT_LINES = 12;
 const NOTE_LINE_LENGTH = 38;
 const CARD_ESTIMATED_HEIGHT = 320;
-const FOOTER_RESERVED_LINES = 2;
+const CARD_VERTICAL_PADDING = 40;
+const HEADER_RESERVED_PX = 88;
+const FOOTER_RESERVED_PX = 72;
+const BODY_LINE_HEIGHT = 22;
+const NOTES_HEADER_LINES = 2;
+const ITEM_SPACER_LINES = 1;
 const ACTIVE_STATUSES = ['pending', 'accepted', 'preparing', 'delivering', 'ready_to_collect'];
 const TERMINAL_STATUSES = ['completed', 'cancelled'];
 
@@ -86,30 +90,33 @@ const splitNotesLines = (notes: string) => {
 const formatOrderNumber = (order: Order) =>
   String(order.short_order_number ?? 0).padStart(4, '0');
 
-const buildOrderSegments = (order: Order): OrderSegment[] => {
+const getItemLineCount = (item: OrderItem, includeSpacer: boolean) => {
+  const addonCount = item.order_addons?.length ?? 0;
+  const notesLines = item.notes ? splitNotesLines(item.notes).length : 0;
+  return 1 + addonCount + notesLines + (includeSpacer ? ITEM_SPACER_LINES : 0);
+};
+
+const buildOrderSegments = (order: Order, maxBodyLines: number): OrderSegment[] => {
   const remainingNotes = splitNotesLines(order.customer_notes ?? '').slice();
   const remainingItems = (order.order_items ?? []).slice();
   const segments: Omit<OrderSegment, 'segmentIndex' | 'totalSegments'>[] = [];
+  const safeBodyLines = Math.max(NOTES_HEADER_LINES + 1, maxBodyLines);
 
   while (remainingNotes.length > 0 || remainingItems.length > 0) {
     const notesLines: string[] = [];
     const items: OrderItem[] = [];
-    const isFirstSegment = segments.length === 0;
-    let remainingCapacity = Math.max(
-      1,
-      MAX_CONTENT_LINES - (isFirstSegment ? FOOTER_RESERVED_LINES : 0)
-    );
+    let remainingCapacity = Math.max(1, safeBodyLines);
 
     if (remainingNotes.length > 0) {
-      const take = Math.min(remainingNotes.length, remainingCapacity);
+      const availableForNotes = Math.max(1, remainingCapacity - NOTES_HEADER_LINES);
+      const take = Math.min(remainingNotes.length, availableForNotes);
       notesLines.push(...remainingNotes.splice(0, take));
-      remainingCapacity -= take;
+      remainingCapacity -= take + NOTES_HEADER_LINES;
     }
 
     while (remainingItems.length > 0) {
       const nextItem = remainingItems[0];
-      const addonCount = nextItem.order_addons?.length ?? 0;
-      const itemLineCount = 1 + addonCount;
+      const itemLineCount = getItemLineCount(nextItem, items.length > 0);
       if (
         itemLineCount <= remainingCapacity ||
         (items.length === 0 && notesLines.length === 0)
@@ -149,6 +156,7 @@ export default function KitchenDisplayPage() {
   const [pageIndex, setPageIndex] = useState(0);
   const [columns, setColumns] = useState(1);
   const [rows, setRows] = useState(1);
+  const [maxBodyLines, setMaxBodyLines] = useState(12);
   const gridRef = useRef<HTMLDivElement | null>(null);
   const [toastMessage, setToastMessage] = useState('');
   const [cooldowns, setCooldowns] = useState<Record<string, boolean>>({});
@@ -266,6 +274,21 @@ export default function KitchenDisplayPage() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    const html = document.documentElement;
+    const body = document.body;
+    const previousHtmlOverflow = html.style.overflow;
+    const previousBodyOverflow = body.style.overflow;
+    html.style.overflow = 'hidden';
+    body.style.overflow = 'hidden';
+
+    return () => {
+      html.style.overflow = previousHtmlOverflow;
+      body.style.overflow = previousBodyOverflow;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
     const updateLayout = () => {
       const width = window.innerWidth;
       let nextColumns = 1;
@@ -279,6 +302,19 @@ export default function KitchenDisplayPage() {
       setColumns(nextColumns);
       const availableHeight = gridRef.current?.clientHeight ?? window.innerHeight;
       const nextRows = Math.max(1, Math.floor(availableHeight / CARD_ESTIMATED_HEIGHT));
+      const gridStyles = gridRef.current ? window.getComputedStyle(gridRef.current) : null;
+      const rowGap = gridStyles ? parseFloat(gridStyles.rowGap || '0') : 0;
+      const cardHeight =
+        nextRows > 0
+          ? (availableHeight - rowGap * Math.max(0, nextRows - 1)) / nextRows
+          : availableHeight;
+      const usableBodyHeight =
+        cardHeight - HEADER_RESERVED_PX - FOOTER_RESERVED_PX - CARD_VERTICAL_PADDING;
+      const nextMaxBodyLines = Math.max(
+        NOTES_HEADER_LINES + 1,
+        Math.floor(usableBodyHeight / BODY_LINE_HEIGHT)
+      );
+      setMaxBodyLines(nextMaxBodyLines);
       setRows(nextRows);
     };
 
@@ -414,24 +450,60 @@ export default function KitchenDisplayPage() {
   );
 
   const pageSize = Math.max(1, columns * rows);
-  const totalPages = Math.max(1, Math.ceil(orders.length / pageSize));
+  const buildPagedSegments = useCallback(
+    (sourceOrders: Order[], capacity: number) => {
+      const pages: OrderSegment[][] = [];
+      let currentPage: OrderSegment[] = [];
+
+      const flushPage = () => {
+        if (currentPage.length > 0) {
+          pages.push(currentPage);
+          currentPage = [];
+        }
+      };
+
+      sourceOrders.forEach((order) => {
+        const segments = buildOrderSegments(order, maxBodyLines);
+        if (segments.length <= capacity) {
+          if (currentPage.length + segments.length > capacity) {
+            flushPage();
+          }
+          currentPage.push(...segments);
+          return;
+        }
+
+        let remaining = segments.slice(1);
+        while (remaining.length > 0) {
+          if (currentPage.length > 0) {
+            flushPage();
+          }
+          const sliceCount = Math.max(1, capacity - 1);
+          const chunk = remaining.splice(0, sliceCount);
+          currentPage = [segments[0], ...chunk];
+          flushPage();
+        }
+      });
+
+      flushPage();
+
+      return pages.length ? pages : [[]];
+    },
+    [maxBodyLines]
+  );
+
+  const pages = useMemo(() => buildPagedSegments(orders, pageSize), [buildPagedSegments, orders, pageSize]);
+  const totalPages = Math.max(1, pages.length);
 
   useEffect(() => {
     setPageIndex((current) => Math.min(current, totalPages - 1));
   }, [totalPages]);
 
-  const pagedOrders = useMemo(() => {
-    const start = pageIndex * pageSize;
-    const end = start + pageSize;
-    return orders.slice(start, end);
-  }, [orders, pageIndex, pageSize]);
-
-  const orderSegments = useMemo(
-    () => pagedOrders.flatMap((order) => buildOrderSegments(order)),
-    [pagedOrders]
+  const orderSegments = useMemo(() => pages[pageIndex] ?? [], [pages, pageIndex]);
+  const visibleOrderIds = useMemo(
+    () => new Set(orderSegments.map((segment) => segment.order.id)),
+    [orderSegments]
   );
-
-  const waitingCount = Math.max(0, orders.length - pageSize);
+  const waitingCount = Math.max(0, orders.length - visibleOrderIds.size);
 
   return (
     <FullscreenAppLayout
@@ -448,12 +520,12 @@ export default function KitchenDisplayPage() {
             ) : null}
             <div
               ref={gridRef}
-              className="grid h-full flex-1 grid-cols-1 gap-4 overflow-hidden sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+              className="grid h-full flex-1 auto-rows-fr grid-cols-1 gap-4 overflow-hidden overscroll-none sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
             >
               {orderSegments.map((segment) => (
                 <div
                   key={`${segment.order.id}-${segment.segmentIndex}`}
-                  className="flex min-h-[280px] flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-5 shadow-lg shadow-black/20"
+                  className="flex h-full min-h-[280px] flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-5 shadow-lg shadow-black/20"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
@@ -472,44 +544,45 @@ export default function KitchenDisplayPage() {
                       </p>
                     </div>
                   </div>
-                  {segment.notesLines.length > 0 ? (
-                    <div className="mt-4 rounded-xl border border-amber-400/40 bg-amber-400/10 px-4 py-3">
-                      <p className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-200">
-                        Notes
-                      </p>
-                      <div className="mt-2 space-y-1 text-sm text-amber-100">
-                        {segment.notesLines.map((line, index) => (
-                          <p key={`${segment.order.id}-note-${segment.segmentIndex}-${index}`}>
-                            {line}
-                          </p>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-                  <div className="mt-4 flex-1 space-y-4">
-                    {segment.items.map((item) => (
-                      <div key={item.id} className="space-y-2">
-                        <p className="text-lg font-semibold text-white">
-                          {item.quantity}× {item.name}
+                  <div className="mt-4 flex-1 overflow-hidden">
+                    {segment.notesLines.length > 0 ? (
+                      <div className="rounded-xl border border-amber-400/40 bg-amber-400/10 px-4 py-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-200">
+                          Notes
                         </p>
-                        {item.notes ? (
-                          <p className="pl-4 text-sm italic text-neutral-200">{item.notes}</p>
-                        ) : null}
-                        {item.order_addons?.length ? (
-                          <div className="space-y-1 pl-6 text-sm text-neutral-300">
-                            {item.order_addons.map((addon) => (
-                              <p key={addon.id}>
-                                {addon.quantity}× {addon.name}
-                              </p>
-                            ))}
-                          </div>
-                        ) : null}
+                        <div className="mt-2 space-y-1 text-sm text-amber-100">
+                          {segment.notesLines.map((line, index) => (
+                            <p key={`${segment.order.id}-note-${segment.segmentIndex}-${index}`}>
+                              {line}
+                            </p>
+                          ))}
+                        </div>
                       </div>
-                    ))}
+                    ) : null}
+                    <div className={`${segment.notesLines.length > 0 ? 'mt-4' : ''} space-y-4`}>
+                      {segment.items.map((item) => (
+                        <div key={item.id} className="space-y-2">
+                          <p className="text-lg font-semibold text-white">
+                            {item.quantity}× {item.name}
+                          </p>
+                          {item.notes ? (
+                            <p className="pl-4 text-sm italic text-neutral-200">{item.notes}</p>
+                          ) : null}
+                          {item.order_addons?.length ? (
+                            <div className="space-y-1 pl-6 text-sm text-neutral-300">
+                              {item.order_addons.map((addon) => (
+                                <p key={addon.id}>
+                                  {addon.quantity}× {addon.name}
+                                </p>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  {segment.segmentIndex === 1 &&
-                  ACTIVE_STATUSES.includes(segment.order.status) ? (
-                    <div className="mt-auto flex flex-col gap-2 pt-4">
+                  <div className="flex min-h-[64px] flex-col justify-end gap-2 pt-4">
+                    {segment.segmentIndex === 1 ? (
                       <button
                         type="button"
                         onClick={() => handlePrimaryAction(segment.order)}
@@ -521,17 +594,13 @@ export default function KitchenDisplayPage() {
                       >
                         {segment.order.status === 'pending' ? 'ACCEPT' : 'COMPLETE'}
                       </button>
-                      {segment.showContinued ? (
-                        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-rose-200">
-                          Continued…
-                        </p>
-                      ) : null}
-                    </div>
-                  ) : segment.showContinued ? (
-                    <p className="mt-4 text-xs font-semibold uppercase tracking-[0.3em] text-rose-200">
-                      Continued…
-                    </p>
-                  ) : null}
+                    ) : null}
+                    {segment.showContinued ? (
+                      <p className="text-xs font-semibold uppercase tracking-[0.3em] text-rose-200">
+                        Continued…
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
               ))}
             </div>
