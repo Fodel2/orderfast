@@ -24,6 +24,7 @@ import { supabase } from '@/lib/supabaseClient';
 import PosLaunchModal from '@/components/PosLaunchModal';
 import { POS_APK_DOWNLOAD_URL } from '@/utils/pos/constants';
 import { KIOSK_APK_DOWNLOAD_URL } from '@/utils/kiosk/constants';
+import { KOD_APK_DOWNLOAD_URL } from '@/utils/kod/constants';
 
 type NavChild = {
   href: string;
@@ -59,6 +60,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [showKioskModal, setShowKioskModal] = useState(false);
   const [rememberKioskChoice, setRememberKioskChoice] = useState(false);
   const [kioskPreferenceSaved, setKioskPreferenceSaved] = useState(false);
+  const [showKodModal, setShowKodModal] = useState(false);
+  const [rememberKodChoice, setRememberKodChoice] = useState(false);
+  const [kodPreferenceSaved, setKodPreferenceSaved] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -113,9 +117,11 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
   const kioskUrl = activeRestaurantId ? `/kiosk/${activeRestaurantId}` : null;
   const posUrl = activeRestaurantId ? `/pos/${activeRestaurantId}` : null;
+  const kodUrl = activeRestaurantId ? `/kod/${activeRestaurantId}` : null;
 
   const kioskDisabled = !activeRestaurantId;
   const posDisabled = !activeRestaurantId;
+  const kodDisabled = !activeRestaurantId;
 
   const posPreferenceKey = useMemo(
     () => (activeRestaurantId ? `pos_launch_preference_${activeRestaurantId}` : null),
@@ -123,6 +129,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   );
   const kioskPreferenceKey = useMemo(
     () => (activeRestaurantId ? `kiosk_launch_preference_${activeRestaurantId}` : null),
+    [activeRestaurantId]
+  );
+  const kodPreferenceKey = useMemo(
+    () => (activeRestaurantId ? `kod_launch_preference_${activeRestaurantId}` : null),
     [activeRestaurantId]
   );
 
@@ -145,6 +155,16 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     const stored = window.localStorage.getItem(kioskPreferenceKey);
     setKioskPreferenceSaved(stored === 'pwa');
   }, [kioskPreferenceKey]);
+
+  useEffect(() => {
+    if (!kodPreferenceKey || typeof window === 'undefined') {
+      setKodPreferenceSaved(false);
+      return;
+    }
+
+    const stored = window.localStorage.getItem(kodPreferenceKey);
+    setKodPreferenceSaved(stored === 'pwa');
+  }, [kodPreferenceKey]);
 
   const handlePosLaunch = () => {
     if (!posUrl) return;
@@ -204,6 +224,26 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     setShowKioskModal(true);
   };
 
+  const handleKodLaunch = () => {
+    if (!kodUrl) return;
+    if (rememberKodChoice && kodPreferenceKey && typeof window !== 'undefined') {
+      window.localStorage.setItem(kodPreferenceKey, 'pwa');
+      setKodPreferenceSaved(true);
+    }
+    setShowKodModal(false);
+    setRememberKodChoice(false);
+    router.push(kodUrl).catch(() => undefined);
+  };
+
+  const handleKodEntryClick = () => {
+    if (kodDisabled || !kodUrl) return;
+    if (kodPreferenceSaved) {
+      router.push(kodUrl).catch(() => undefined);
+      return;
+    }
+    setShowKodModal(true);
+  };
+
   const nav: NavItem[] = [
     { href: '/dashboard', label: 'Home', icon: HomeIcon },
     { href: '/dashboard/orders', label: 'Orders', icon: TruckIcon },
@@ -216,7 +256,13 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       disabled: posDisabled,
       tooltip: 'Opens the POS launcher.',
     },
-    { href: null, label: 'KOD', icon: CpuChipIcon },
+    {
+      label: 'KOD',
+      icon: CpuChipIcon,
+      onClick: handleKodEntryClick,
+      disabled: kodDisabled || !kodUrl,
+      tooltip: 'Opens the kitchen display launcher.',
+    },
     {
       label: 'Kiosk',
       icon: DeviceTabletIcon,
@@ -505,6 +551,21 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         onClose={() => {
           setShowKioskModal(false);
           setRememberKioskChoice(false);
+        }}
+      />
+      <PosLaunchModal
+        open={showKodModal}
+        title="Launch Kitchen Display"
+        description="Choose how you want to run the kitchen display experience."
+        launchLabel="Launch Kitchen Display"
+        downloadLabel="Download Kitchen Display APK"
+        rememberChoice={rememberKodChoice}
+        onRememberChange={setRememberKodChoice}
+        onLaunchPwa={handleKodLaunch}
+        apkUrl={KOD_APK_DOWNLOAD_URL}
+        onClose={() => {
+          setShowKodModal(false);
+          setRememberKodChoice(false);
         }}
       />
     </div>
