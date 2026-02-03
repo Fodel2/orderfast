@@ -44,7 +44,6 @@ type OrderSegment = {
   totalSegments: number;
   notesLines: string[];
   items: OrderItem[];
-  showContinued: boolean;
 };
 
 const NOTE_LINE_LENGTH = 38;
@@ -53,20 +52,14 @@ const HEADER_RESERVED_PX = 88;
 const FOOTER_RESERVED_PX = 72;
 const BODY_LINE_HEIGHT = 22;
 const TOP_CONTROLS_HEIGHT = 72;
-const PAGE_VERTICAL_PADDING = 48;
-const PAGE_PADDING_BASE = 24;
-const PAGE_PADDING_SM = 32;
-const PAGE_PADDING_LG = 48;
 const CARD_WIDTH_BASE = 360;
-const CARD_WIDTH_SM = 380;
-const CARD_WIDTH_LG = 420;
 const CARD_GAP = 16;
 const NOTES_HEADER_LINES = 2;
 const ITEM_SPACER_LINES = 1;
 const ACTIVE_STATUSES = ['pending', 'accepted', 'preparing', 'delivering', 'ready_to_collect'];
 const TERMINAL_STATUSES = ['completed', 'cancelled'];
 
-const splitNotesLines = (notes: string) => {
+const splitNotesLines = (notes: string, lineLength: number) => {
   if (!notes) return [];
   const lines = notes
     .split('\n')
@@ -80,7 +73,7 @@ const splitNotesLines = (notes: string) => {
           current = word;
           return;
         }
-        if ((current + ` ${word}`).length > NOTE_LINE_LENGTH) {
+        if ((current + ` ${word}`).length > lineLength) {
           chunks.push(current);
           current = word;
         } else {
@@ -98,14 +91,22 @@ const splitNotesLines = (notes: string) => {
 const formatOrderNumber = (order: Order) =>
   String(order.short_order_number ?? 0).padStart(4, '0');
 
-const getItemLineCount = (item: OrderItem, includeSpacer: boolean) => {
+const getItemLineCount = (
+  item: OrderItem,
+  includeSpacer: boolean,
+  lineLength: number
+) => {
   const addonCount = item.order_addons?.length ?? 0;
-  const notesLines = item.notes ? splitNotesLines(item.notes).length : 0;
+  const notesLines = item.notes ? splitNotesLines(item.notes, lineLength).length : 0;
   return 1 + addonCount + notesLines + (includeSpacer ? ITEM_SPACER_LINES : 0);
 };
 
-const buildOrderSegments = (order: Order, maxBodyLines: number): OrderSegment[] => {
-  const remainingNotes = splitNotesLines(order.customer_notes ?? '').slice();
+const buildOrderSegments = (
+  order: Order,
+  maxBodyLines: number,
+  lineLength: number
+): OrderSegment[] => {
+  const remainingNotes = splitNotesLines(order.customer_notes ?? '', lineLength).slice();
   const remainingItems = (order.order_items ?? []).slice();
   const segments: Omit<OrderSegment, 'segmentIndex' | 'totalSegments'>[] = [];
   const safeBodyLines = Math.max(NOTES_HEADER_LINES + 1, maxBodyLines);
@@ -124,7 +125,7 @@ const buildOrderSegments = (order: Order, maxBodyLines: number): OrderSegment[] 
 
     while (remainingItems.length > 0) {
       const nextItem = remainingItems[0];
-      const itemLineCount = getItemLineCount(nextItem, items.length > 0);
+      const itemLineCount = getItemLineCount(nextItem, items.length > 0, lineLength);
       if (
         itemLineCount <= remainingCapacity ||
         (items.length === 0 && notesLines.length === 0)
@@ -140,7 +141,6 @@ const buildOrderSegments = (order: Order, maxBodyLines: number): OrderSegment[] 
       order,
       notesLines,
       items,
-      showContinued: remainingNotes.length > 0 || remainingItems.length > 0,
     });
   }
 
@@ -165,11 +165,14 @@ export default function KitchenDisplayPage() {
   const [columns, setColumns] = useState(1);
   const rows = 1;
   const [maxBodyLines, setMaxBodyLines] = useState(12);
+  const [noteLineLength, setNoteLineLength] = useState(NOTE_LINE_LENGTH);
   const [cardWidth, setCardWidth] = useState(CARD_WIDTH_BASE);
   const [cardHeight, setCardHeight] = useState(480);
   const gridRef = useRef<HTMLDivElement | null>(null);
   const [toastMessage, setToastMessage] = useState('');
   const [cooldowns, setCooldowns] = useState<Record<string, boolean>>({});
+  const orderedSegmentsRef = useRef(0);
+  const pageIndexRef = useRef(0);
 
   const preferenceKey = useMemo(
     () => (restaurantId ? `kod_audio_enabled_${restaurantId}` : 'kod_audio_enabled'),
@@ -300,27 +303,36 @@ export default function KitchenDisplayPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const updateLayout = () => {
-      const width = window.innerWidth;
-      let nextCardWidth = CARD_WIDTH_BASE;
-      let nextPagePadding = PAGE_PADDING_BASE;
-      if (width >= 1280) {
-        nextCardWidth = CARD_WIDTH_LG;
-        nextPagePadding = PAGE_PADDING_LG;
-      } else if (width >= 768) {
-        nextCardWidth = CARD_WIDTH_SM;
-        nextPagePadding = PAGE_PADDING_SM;
-      }
-      const availableWidth = width - nextPagePadding;
-      const nextColumns = Math.max(
+      const containerWidthPx = gridRef.current?.getBoundingClientRect().width ?? 0;
+      const effectiveWidth = containerWidthPx || window.innerWidth;
+      const nextColumns =
+        effectiveWidth >= 1600 ? 4 : effectiveWidth >= 1200 ? 3 : effectiveWidth >= 800 ? 2 : 1;
+      const gapValue = gridRef.current
+        ? window.getComputedStyle(gridRef.current).columnGap ||
+          window.getComputedStyle(gridRef.current).gap
+        : `${CARD_GAP}px`;
+      const gapPx = Number.parseFloat(gapValue || '0') || 0;
+      const resolvedColumns = Math.max(1, nextColumns);
+      const ticketWidthPx = Math.max(
         1,
-        Math.floor((availableWidth + CARD_GAP) / (nextCardWidth + CARD_GAP))
+        (effectiveWidth - gapPx * (resolvedColumns - 1)) / resolvedColumns
       );
-      setColumns(nextColumns);
-      setCardWidth(nextCardWidth);
-      const availableHeight =
-        (gridRef.current?.clientHeight ?? window.innerHeight) -
-        TOP_CONTROLS_HEIGHT -
-        PAGE_VERTICAL_PADDING;
+      setColumns(resolvedColumns);
+      setCardWidth(ticketWidthPx);
+      setNoteLineLength(
+        Math.max(20, Math.floor((ticketWidthPx / CARD_WIDTH_BASE) * NOTE_LINE_LENGTH))
+      );
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[kod] layout', {
+          containerWidthPx,
+          ticketWidthPx,
+          gapPx,
+          visibleCapacity: resolvedColumns,
+          totalTickets: orderedSegmentsRef.current,
+          pageIndex: pageIndexRef.current,
+        });
+      }
+      const availableHeight = gridRef.current?.clientHeight ?? window.innerHeight;
       const nextCardHeight = Math.max(320, availableHeight);
       setCardHeight(nextCardHeight);
       const usableBodyHeight =
@@ -337,6 +349,9 @@ export default function KitchenDisplayPage() {
     const observer = gridRef.current ? new ResizeObserver(updateLayout) : null;
     if (gridRef.current && observer) {
       observer.observe(gridRef.current);
+    }
+    if (document.fonts?.ready) {
+      document.fonts.ready.then(updateLayout).catch(() => undefined);
     }
 
     return () => {
@@ -464,52 +479,53 @@ export default function KitchenDisplayPage() {
   );
 
   const pageSize = Math.max(1, columns * rows);
-  const buildPagedSegments = useCallback(
-    (sourceOrders: Order[], capacity: number) => {
-      const pages: OrderSegment[][] = [];
-      let currentPage: OrderSegment[] = [];
-      let currentOrderIds = new Set<string>();
-
-      const flushPage = () => {
-        if (currentPage.length > 0) {
-          pages.push(currentPage);
-          currentPage = [];
-          currentOrderIds = new Set<string>();
-        }
-      };
-
-      sourceOrders.forEach((order) => {
-        const segments = buildOrderSegments(order, maxBodyLines);
-        segments.forEach((segment) => {
-          const hasOrder = currentOrderIds.has(order.id);
-          if (currentPage.length >= capacity || hasOrder) {
-            flushPage();
-          }
-          currentPage.push(segment);
-          currentOrderIds.add(order.id);
-        });
-      });
-
-      flushPage();
-
-      return pages.length ? pages : [[]];
-    },
-    [maxBodyLines]
-  );
-
-  const pages = useMemo(() => buildPagedSegments(orders, pageSize), [buildPagedSegments, orders, pageSize]);
-  const totalPages = Math.max(1, pages.length);
+  const orderedSegments = useMemo(() => {
+    const segments: OrderSegment[] = [];
+    orders.forEach((order) => {
+      segments.push(...buildOrderSegments(order, maxBodyLines, noteLineLength));
+    });
+    return segments;
+  }, [orders, maxBodyLines, noteLineLength]);
+  const totalPages = Math.max(1, Math.ceil(orderedSegments.length / pageSize));
 
   useEffect(() => {
     setPageIndex((current) => Math.min(current, totalPages - 1));
   }, [totalPages]);
+  useEffect(() => {
+    orderedSegmentsRef.current = orderedSegments.length;
+  }, [orderedSegments.length]);
+  useEffect(() => {
+    pageIndexRef.current = pageIndex;
+  }, [pageIndex]);
 
-  const orderSegments = useMemo(() => pages[pageIndex] ?? [], [pages, pageIndex]);
-  const visibleOrderIds = useMemo(
-    () => new Set(orderSegments.map((segment) => segment.order.id)),
-    [orderSegments]
+  const orderSegments = useMemo(
+    () => orderedSegments.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize),
+    [orderedSegments, pageIndex, pageSize]
   );
-  const waitingCount = Math.max(0, orders.length - visibleOrderIds.size);
+  const orderTintIndex = useMemo(() => {
+    const map = new Map<string, number>();
+    orders.forEach((order, index) => {
+      map.set(order.id, index);
+    });
+    return map;
+  }, [orders]);
+  const totalTickets = orderedSegments.length;
+  const waitingCount = Math.max(0, totalTickets - pageSize * (pageIndex + 1));
+  const tintClasses = ['bg-black text-white', 'bg-white text-black'];
+  const getTintClass = (orderId: string) =>
+    tintClasses[(orderTintIndex.get(orderId) ?? 0) % tintClasses.length];
+  const getPrimaryTextClass = (orderId: string) =>
+    (orderTintIndex.get(orderId) ?? 0) % 2 === 0 ? 'text-white' : 'text-black';
+  const getMutedTextClass = (orderId: string) =>
+    (orderTintIndex.get(orderId) ?? 0) % 2 === 0 ? 'text-neutral-400' : 'text-neutral-600';
+  const getSecondaryTextClass = (orderId: string) =>
+    (orderTintIndex.get(orderId) ?? 0) % 2 === 0 ? 'text-neutral-200' : 'text-neutral-700';
+  const getContinuedTextClass = (orderId: string) =>
+    (orderTintIndex.get(orderId) ?? 0) % 2 === 0 ? 'text-rose-200' : 'text-rose-700';
+  const getNotesHeaderClass = (orderId: string) =>
+    (orderTintIndex.get(orderId) ?? 0) % 2 === 0 ? 'text-amber-200' : 'text-amber-700';
+  const getNotesBodyClass = (orderId: string) =>
+    (orderTintIndex.get(orderId) ?? 0) % 2 === 0 ? 'text-amber-100' : 'text-amber-800';
 
   return (
     <FullscreenAppLayout
@@ -518,6 +534,71 @@ export default function KitchenDisplayPage() {
     >
       <div className="h-screen w-full overflow-hidden bg-neutral-950 text-white">
         <div className="flex h-full flex-col gap-6 overflow-hidden px-3 py-6 sm:px-4 lg:px-6">
+          <div
+            className="flex w-full flex-none items-center justify-end"
+            style={{ height: `${TOP_CONTROLS_HEIGHT}px` }}
+          >
+            <div className="flex items-center gap-3 rounded-full border border-white/10 bg-black/40 px-4 py-2 text-xs uppercase tracking-[0.2em] text-neutral-200 shadow-lg shadow-black/40 backdrop-blur">
+              <ArrowPathIcon
+                className={`h-4 w-4 ${isFetching ? 'animate-spin text-teal-300' : 'text-neutral-400'}`}
+              />
+              {!isOnline ? (
+                <span className="flex items-center gap-2 text-rose-300">
+                  <WifiIcon className="h-4 w-4" />
+                  Offline
+                </span>
+              ) : null}
+              {isOnline && lastFetchFailed ? (
+                <span className="text-amber-300">Sync error</span>
+              ) : null}
+              {soundEnabled ? (
+                <button
+                  type="button"
+                  onClick={handleDisableSound}
+                  className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-white transition hover:bg-white/10"
+                >
+                  <SpeakerWaveIcon className="h-4 w-4" />
+                  Sound On
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleEnableSound}
+                  className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-white transition hover:bg-white/10"
+                >
+                  <SpeakerXMarkIcon className="h-4 w-4" />
+                  Enable Sound
+                </button>
+              )}
+              {waitingCount > 0 ? (
+                <div className="flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-white">
+                  +{waitingCount} waiting
+                </div>
+              ) : null}
+              {totalPages > 1 ? (
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setPageIndex((current) => Math.max(0, current - 1))}
+                    disabled={pageIndex === 0}
+                    className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                    aria-label="Previous orders"
+                  >
+                    <ChevronLeftIcon className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPageIndex((current) => Math.min(totalPages - 1, current + 1))}
+                    disabled={pageIndex >= totalPages - 1}
+                    className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                    aria-label="Next orders"
+                  >
+                    <ChevronRightIcon className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </div>
           <div className="flex w-full flex-1 flex-col space-y-4 overflow-hidden">
             {orders.length === 0 && !isFetching ? (
               <p className="text-center text-base text-neutral-400">
@@ -532,33 +613,78 @@ export default function KitchenDisplayPage() {
               {orderSegments.map((segment) => (
                 <div
                   key={`${segment.order.id}-${segment.segmentIndex}`}
-                  className="flex min-w-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-5 shadow-lg shadow-black/20"
+                  className={`flex min-w-0 flex-col overflow-hidden rounded-2xl border border-white/10 p-5 shadow-lg shadow-black/20 ${getTintClass(
+                    segment.order.id
+                  )}`}
                   style={{ width: `${cardWidth}px`, height: `${cardHeight}px` }}
                 >
                   <div className="flex h-[88px] flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.2em] text-neutral-400">Order</p>
-                      <p className="text-2xl font-semibold text-white">
-                        ORDER {formatOrderNumber(segment.order)} ({segment.segmentIndex}/
-                        {segment.totalSegments})
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xs uppercase tracking-[0.2em] text-neutral-400">
-                        {segment.order.order_type}
-                      </p>
-                      <p className="text-xl font-semibold text-white">
-                        {formatElapsed(segment.order.created_at)}
-                      </p>
-                    </div>
+                    {segment.segmentIndex === 1 ? (
+                      <>
+                        <div>
+                          <p
+                            className={`text-xs uppercase tracking-[0.2em] ${getMutedTextClass(
+                              segment.order.id
+                            )}`}
+                          >
+                            Order
+                          </p>
+                          <p
+                            className={`text-2xl font-semibold ${getPrimaryTextClass(
+                              segment.order.id
+                            )}`}
+                          >
+                            ORDER {formatOrderNumber(segment.order)} ({segment.segmentIndex}/
+                            {segment.totalSegments})
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p
+                            className={`text-xs uppercase tracking-[0.2em] ${getMutedTextClass(
+                              segment.order.id
+                            )}`}
+                          >
+                            {segment.order.order_type}
+                          </p>
+                          <p
+                            className={`text-xl font-semibold ${getPrimaryTextClass(
+                              segment.order.id
+                            )}`}
+                          >
+                            {formatElapsed(segment.order.created_at)}
+                          </p>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <p
+                          className={`text-[10px] font-semibold uppercase tracking-[0.3em] ${getContinuedTextClass(
+                            segment.order.id
+                          )}`}
+                        >
+                          Continued ({segment.segmentIndex}/{segment.totalSegments})
+                        </p>
+                        <p className={`text-lg font-semibold ${getPrimaryTextClass(segment.order.id)}`}>
+                          {formatElapsed(segment.order.created_at)}
+                        </p>
+                      </>
+                    )}
                   </div>
                   <div className="mt-4 flex-1 overflow-hidden">
                     {segment.notesLines.length > 0 ? (
                       <div className="rounded-xl border border-amber-400/40 bg-amber-400/10 px-4 py-3">
-                        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-200">
+                        <p
+                          className={`text-xs font-semibold uppercase tracking-[0.3em] ${getNotesHeaderClass(
+                            segment.order.id
+                          )}`}
+                        >
                           Notes
                         </p>
-                        <div className="mt-2 space-y-1 text-sm text-amber-100">
+                        <div
+                          className={`mt-2 space-y-1 text-sm ${getNotesBodyClass(
+                            segment.order.id
+                          )}`}
+                        >
                           {segment.notesLines.map((line, index) => (
                             <p key={`${segment.order.id}-note-${segment.segmentIndex}-${index}`}>
                               {line}
@@ -570,14 +696,24 @@ export default function KitchenDisplayPage() {
                     <div className={`${segment.notesLines.length > 0 ? 'mt-4' : ''} space-y-4`}>
                       {segment.items.map((item) => (
                         <div key={item.id} className="space-y-2">
-                          <p className="text-lg font-semibold text-white">
+                          <p className={`text-lg font-semibold ${getPrimaryTextClass(segment.order.id)}`}>
                             {item.quantity}× {item.name}
                           </p>
                           {item.notes ? (
-                            <p className="pl-4 text-sm italic text-neutral-200">{item.notes}</p>
+                            <p
+                              className={`pl-4 text-sm italic ${getSecondaryTextClass(
+                                segment.order.id
+                              )}`}
+                            >
+                              {item.notes}
+                            </p>
                           ) : null}
                           {item.order_addons?.length ? (
-                            <div className="space-y-1 pl-6 text-sm text-neutral-300">
+                            <div
+                              className={`space-y-1 pl-6 text-sm ${getSecondaryTextClass(
+                                segment.order.id
+                              )}`}
+                            >
                               {item.order_addons.map((addon) => (
                                 <p key={addon.id}>
                                   {addon.quantity}× {addon.name}
@@ -590,7 +726,7 @@ export default function KitchenDisplayPage() {
                     </div>
                   </div>
                   <div className="flex h-[72px] flex-col justify-end gap-2 pt-4">
-                    {segment.segmentIndex === 1 ? (
+                    {segment.segmentIndex === segment.totalSegments ? (
                       <button
                         type="button"
                         onClick={() => handlePrimaryAction(segment.order)}
@@ -603,75 +739,10 @@ export default function KitchenDisplayPage() {
                         {segment.order.status === 'pending' ? 'ACCEPT' : 'COMPLETE'}
                       </button>
                     ) : null}
-                    {segment.showContinued ? (
-                      <p className="text-xs font-semibold uppercase tracking-[0.3em] text-rose-200">
-                        Continued…
-                      </p>
-                    ) : null}
                   </div>
                 </div>
               ))}
             </div>
-          </div>
-          <div className="fixed right-6 top-6 z-50 flex items-center gap-3 rounded-full border border-white/10 bg-black/40 px-4 py-2 text-xs uppercase tracking-[0.2em] text-neutral-200 shadow-lg shadow-black/40 backdrop-blur">
-            <ArrowPathIcon
-              className={`h-4 w-4 ${isFetching ? 'animate-spin text-teal-300' : 'text-neutral-400'}`}
-            />
-            {!isOnline ? (
-              <span className="flex items-center gap-2 text-rose-300">
-                <WifiIcon className="h-4 w-4" />
-                Offline
-              </span>
-            ) : null}
-            {isOnline && lastFetchFailed ? (
-              <span className="text-amber-300">Sync error</span>
-            ) : null}
-            {soundEnabled ? (
-              <button
-                type="button"
-                onClick={handleDisableSound}
-                className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-white transition hover:bg-white/10"
-              >
-                <SpeakerWaveIcon className="h-4 w-4" />
-                Sound On
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleEnableSound}
-                className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-white transition hover:bg-white/10"
-              >
-                <SpeakerXMarkIcon className="h-4 w-4" />
-                Enable Sound
-              </button>
-            )}
-            {waitingCount > 0 ? (
-              <div className="flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-white">
-                +{waitingCount} waiting
-              </div>
-            ) : null}
-            {totalPages > 1 ? (
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setPageIndex((current) => Math.max(0, current - 1))}
-                  disabled={pageIndex === 0}
-                  className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
-                  aria-label="Previous orders"
-                >
-                  <ChevronLeftIcon className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPageIndex((current) => Math.min(totalPages - 1, current + 1))}
-                  disabled={pageIndex >= totalPages - 1}
-                  className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
-                  aria-label="Next orders"
-                >
-                  <ChevronRightIcon className="h-4 w-4" />
-                </button>
-              </div>
-            ) : null}
           </div>
         </div>
         <Toast message={toastMessage} onClose={() => setToastMessage('')} />
