@@ -44,7 +44,6 @@ type OrderSegment = {
   totalSegments: number;
   notesLines: string[];
   items: OrderItem[];
-  showContinued: boolean;
 };
 
 const NOTE_LINE_LENGTH = 38;
@@ -140,7 +139,6 @@ const buildOrderSegments = (order: Order, maxBodyLines: number): OrderSegment[] 
       order,
       notesLines,
       items,
-      showContinued: remainingNotes.length > 0 || remainingItems.length > 0,
     });
   }
 
@@ -505,11 +503,25 @@ export default function KitchenDisplayPage() {
   }, [totalPages]);
 
   const orderSegments = useMemo(() => pages[pageIndex] ?? [], [pages, pageIndex]);
+  const orderTintIndex = useMemo(() => {
+    const map = new Map<string, number>();
+    let nextIndex = 0;
+    orderSegments.forEach((segment) => {
+      if (!map.has(segment.order.id)) {
+        map.set(segment.order.id, nextIndex);
+        nextIndex += 1;
+      }
+    });
+    return map;
+  }, [orderSegments]);
   const visibleOrderIds = useMemo(
     () => new Set(orderSegments.map((segment) => segment.order.id)),
     [orderSegments]
   );
   const waitingCount = Math.max(0, orders.length - visibleOrderIds.size);
+  const tintClasses = ['bg-white/5', 'bg-white/10'];
+  const getTintClass = (orderId: string) =>
+    tintClasses[(orderTintIndex.get(orderId) ?? 0) % tintClasses.length];
 
   return (
     <FullscreenAppLayout
@@ -518,6 +530,71 @@ export default function KitchenDisplayPage() {
     >
       <div className="h-screen w-full overflow-hidden bg-neutral-950 text-white">
         <div className="flex h-full flex-col gap-6 overflow-hidden px-3 py-6 sm:px-4 lg:px-6">
+          <div
+            className="flex w-full flex-none items-center justify-end"
+            style={{ height: `${TOP_CONTROLS_HEIGHT}px` }}
+          >
+            <div className="flex items-center gap-3 rounded-full border border-white/10 bg-black/40 px-4 py-2 text-xs uppercase tracking-[0.2em] text-neutral-200 shadow-lg shadow-black/40 backdrop-blur">
+              <ArrowPathIcon
+                className={`h-4 w-4 ${isFetching ? 'animate-spin text-teal-300' : 'text-neutral-400'}`}
+              />
+              {!isOnline ? (
+                <span className="flex items-center gap-2 text-rose-300">
+                  <WifiIcon className="h-4 w-4" />
+                  Offline
+                </span>
+              ) : null}
+              {isOnline && lastFetchFailed ? (
+                <span className="text-amber-300">Sync error</span>
+              ) : null}
+              {soundEnabled ? (
+                <button
+                  type="button"
+                  onClick={handleDisableSound}
+                  className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-white transition hover:bg-white/10"
+                >
+                  <SpeakerWaveIcon className="h-4 w-4" />
+                  Sound On
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleEnableSound}
+                  className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-white transition hover:bg-white/10"
+                >
+                  <SpeakerXMarkIcon className="h-4 w-4" />
+                  Enable Sound
+                </button>
+              )}
+              {waitingCount > 0 ? (
+                <div className="flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-white">
+                  +{waitingCount} waiting
+                </div>
+              ) : null}
+              {totalPages > 1 ? (
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setPageIndex((current) => Math.max(0, current - 1))}
+                    disabled={pageIndex === 0}
+                    className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                    aria-label="Previous orders"
+                  >
+                    <ChevronLeftIcon className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPageIndex((current) => Math.min(totalPages - 1, current + 1))}
+                    disabled={pageIndex >= totalPages - 1}
+                    className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                    aria-label="Next orders"
+                  >
+                    <ChevronRightIcon className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </div>
           <div className="flex w-full flex-1 flex-col space-y-4 overflow-hidden">
             {orders.length === 0 && !isFetching ? (
               <p className="text-center text-base text-neutral-400">
@@ -532,11 +609,18 @@ export default function KitchenDisplayPage() {
               {orderSegments.map((segment) => (
                 <div
                   key={`${segment.order.id}-${segment.segmentIndex}`}
-                  className="flex min-w-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-5 shadow-lg shadow-black/20"
+                  className={`flex min-w-0 flex-col overflow-hidden rounded-2xl border border-white/10 p-5 shadow-lg shadow-black/20 ${getTintClass(
+                    segment.order.id
+                  )}`}
                   style={{ width: `${cardWidth}px`, height: `${cardHeight}px` }}
                 >
                   <div className="flex h-[88px] flex-wrap items-center justify-between gap-3">
                     <div>
+                      {segment.totalSegments > 1 && segment.segmentIndex > 1 ? (
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-rose-200">
+                          Continued
+                        </p>
+                      ) : null}
                       <p className="text-xs uppercase tracking-[0.2em] text-neutral-400">Order</p>
                       <p className="text-2xl font-semibold text-white">
                         ORDER {formatOrderNumber(segment.order)} ({segment.segmentIndex}/
@@ -590,7 +674,7 @@ export default function KitchenDisplayPage() {
                     </div>
                   </div>
                   <div className="flex h-[72px] flex-col justify-end gap-2 pt-4">
-                    {segment.segmentIndex === 1 ? (
+                    {segment.segmentIndex === segment.totalSegments ? (
                       <button
                         type="button"
                         onClick={() => handlePrimaryAction(segment.order)}
@@ -603,75 +687,10 @@ export default function KitchenDisplayPage() {
                         {segment.order.status === 'pending' ? 'ACCEPT' : 'COMPLETE'}
                       </button>
                     ) : null}
-                    {segment.showContinued ? (
-                      <p className="text-xs font-semibold uppercase tracking-[0.3em] text-rose-200">
-                        Continued…
-                      </p>
-                    ) : null}
                   </div>
                 </div>
               ))}
             </div>
-          </div>
-          <div className="fixed right-6 top-6 z-50 flex items-center gap-3 rounded-full border border-white/10 bg-black/40 px-4 py-2 text-xs uppercase tracking-[0.2em] text-neutral-200 shadow-lg shadow-black/40 backdrop-blur">
-            <ArrowPathIcon
-              className={`h-4 w-4 ${isFetching ? 'animate-spin text-teal-300' : 'text-neutral-400'}`}
-            />
-            {!isOnline ? (
-              <span className="flex items-center gap-2 text-rose-300">
-                <WifiIcon className="h-4 w-4" />
-                Offline
-              </span>
-            ) : null}
-            {isOnline && lastFetchFailed ? (
-              <span className="text-amber-300">Sync error</span>
-            ) : null}
-            {soundEnabled ? (
-              <button
-                type="button"
-                onClick={handleDisableSound}
-                className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-white transition hover:bg-white/10"
-              >
-                <SpeakerWaveIcon className="h-4 w-4" />
-                Sound On
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleEnableSound}
-                className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-white transition hover:bg-white/10"
-              >
-                <SpeakerXMarkIcon className="h-4 w-4" />
-                Enable Sound
-              </button>
-            )}
-            {waitingCount > 0 ? (
-              <div className="flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-white">
-                +{waitingCount} waiting
-              </div>
-            ) : null}
-            {totalPages > 1 ? (
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setPageIndex((current) => Math.max(0, current - 1))}
-                  disabled={pageIndex === 0}
-                  className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
-                  aria-label="Previous orders"
-                >
-                  <ChevronLeftIcon className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPageIndex((current) => Math.min(totalPages - 1, current + 1))}
-                  disabled={pageIndex >= totalPages - 1}
-                  className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
-                  aria-label="Next orders"
-                >
-                  <ChevronRightIcon className="h-4 w-4" />
-                </button>
-              </div>
-            ) : null}
           </div>
         </div>
         <Toast message={toastMessage} onClose={() => setToastMessage('')} />
