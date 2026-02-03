@@ -52,6 +52,15 @@ const CARD_VERTICAL_PADDING = 40;
 const HEADER_RESERVED_PX = 88;
 const FOOTER_RESERVED_PX = 72;
 const BODY_LINE_HEIGHT = 22;
+const TOP_CONTROLS_HEIGHT = 72;
+const PAGE_VERTICAL_PADDING = 48;
+const PAGE_PADDING_BASE = 24;
+const PAGE_PADDING_SM = 32;
+const PAGE_PADDING_LG = 48;
+const CARD_WIDTH_BASE = 360;
+const CARD_WIDTH_SM = 380;
+const CARD_WIDTH_LG = 420;
+const CARD_GAP = 16;
 const NOTES_HEADER_LINES = 2;
 const ITEM_SPACER_LINES = 1;
 const ACTIVE_STATUSES = ['pending', 'accepted', 'preparing', 'delivering', 'ready_to_collect'];
@@ -156,6 +165,8 @@ export default function KitchenDisplayPage() {
   const [columns, setColumns] = useState(1);
   const rows = 1;
   const [maxBodyLines, setMaxBodyLines] = useState(12);
+  const [cardWidth, setCardWidth] = useState(CARD_WIDTH_BASE);
+  const [cardHeight, setCardHeight] = useState(480);
   const gridRef = useRef<HTMLDivElement | null>(null);
   const [toastMessage, setToastMessage] = useState('');
   const [cooldowns, setCooldowns] = useState<Record<string, boolean>>({});
@@ -290,19 +301,30 @@ export default function KitchenDisplayPage() {
     if (typeof window === 'undefined') return;
     const updateLayout = () => {
       const width = window.innerWidth;
-      let nextColumns = 1;
+      let nextCardWidth = CARD_WIDTH_BASE;
+      let nextPagePadding = PAGE_PADDING_BASE;
       if (width >= 1280) {
-        nextColumns = 4;
-      } else if (width >= 1024) {
-        nextColumns = 3;
-      } else if (width >= 640) {
-        nextColumns = 2;
+        nextCardWidth = CARD_WIDTH_LG;
+        nextPagePadding = PAGE_PADDING_LG;
+      } else if (width >= 768) {
+        nextCardWidth = CARD_WIDTH_SM;
+        nextPagePadding = PAGE_PADDING_SM;
       }
+      const availableWidth = width - nextPagePadding;
+      const nextColumns = Math.max(
+        1,
+        Math.floor((availableWidth + CARD_GAP) / (nextCardWidth + CARD_GAP))
+      );
       setColumns(nextColumns);
-      const availableHeight = gridRef.current?.clientHeight ?? window.innerHeight;
-      const cardHeight = availableHeight;
+      setCardWidth(nextCardWidth);
+      const availableHeight =
+        (gridRef.current?.clientHeight ?? window.innerHeight) -
+        TOP_CONTROLS_HEIGHT -
+        PAGE_VERTICAL_PADDING;
+      const nextCardHeight = Math.max(320, availableHeight);
+      setCardHeight(nextCardHeight);
       const usableBodyHeight =
-        cardHeight - HEADER_RESERVED_PX - FOOTER_RESERVED_PX - CARD_VERTICAL_PADDING;
+        nextCardHeight - HEADER_RESERVED_PX - FOOTER_RESERVED_PX - CARD_VERTICAL_PADDING;
       const nextMaxBodyLines = Math.max(
         NOTES_HEADER_LINES + 1,
         Math.floor(usableBodyHeight / BODY_LINE_HEIGHT)
@@ -446,34 +468,26 @@ export default function KitchenDisplayPage() {
     (sourceOrders: Order[], capacity: number) => {
       const pages: OrderSegment[][] = [];
       let currentPage: OrderSegment[] = [];
+      let currentOrderIds = new Set<string>();
 
       const flushPage = () => {
         if (currentPage.length > 0) {
           pages.push(currentPage);
           currentPage = [];
+          currentOrderIds = new Set<string>();
         }
       };
 
       sourceOrders.forEach((order) => {
         const segments = buildOrderSegments(order, maxBodyLines);
-        if (segments.length <= capacity) {
-          if (currentPage.length + segments.length > capacity) {
+        segments.forEach((segment) => {
+          const hasOrder = currentOrderIds.has(order.id);
+          if (currentPage.length >= capacity || hasOrder) {
             flushPage();
           }
-          currentPage.push(...segments);
-          return;
-        }
-
-        let remaining = segments.slice(1);
-        while (remaining.length > 0) {
-          if (currentPage.length > 0) {
-            flushPage();
-          }
-          const sliceCount = Math.max(1, capacity - 1);
-          const chunk = remaining.splice(0, sliceCount);
-          currentPage = [segments[0], ...chunk];
-          flushPage();
-        }
+          currentPage.push(segment);
+          currentOrderIds.add(order.id);
+        });
       });
 
       flushPage();
@@ -513,13 +527,15 @@ export default function KitchenDisplayPage() {
             <div
               ref={gridRef}
               className="flex h-full flex-1 flex-nowrap gap-4 overflow-hidden overscroll-none"
+              style={{ height: `${cardHeight}px` }}
             >
               {orderSegments.map((segment) => (
                 <div
                   key={`${segment.order.id}-${segment.segmentIndex}`}
-                  className="flex h-full min-h-[280px] min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-5 shadow-lg shadow-black/20"
+                  className="flex min-w-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-5 shadow-lg shadow-black/20"
+                  style={{ width: `${cardWidth}px`, height: `${cardHeight}px` }}
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex h-[88px] flex-wrap items-center justify-between gap-3">
                     <div>
                       <p className="text-xs uppercase tracking-[0.2em] text-neutral-400">Order</p>
                       <p className="text-2xl font-semibold text-white">
@@ -573,7 +589,7 @@ export default function KitchenDisplayPage() {
                       ))}
                     </div>
                   </div>
-                  <div className="flex min-h-[64px] flex-col justify-end gap-2 pt-4">
+                  <div className="flex h-[72px] flex-col justify-end gap-2 pt-4">
                     {segment.segmentIndex === 1 ? (
                       <button
                         type="button"
