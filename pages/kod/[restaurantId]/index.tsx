@@ -167,6 +167,8 @@ export default function KitchenDisplayPage() {
   const gridRef = useRef<HTMLDivElement | null>(null);
   const [toastMessage, setToastMessage] = useState('');
   const [cooldowns, setCooldowns] = useState<Record<string, boolean>>({});
+  const orderedSegmentsRef = useRef(0);
+  const pageIndexRef = useRef(0);
 
   const preferenceKey = useMemo(
     () => (restaurantId ? `kod_audio_enabled_${restaurantId}` : 'kod_audio_enabled'),
@@ -307,13 +309,24 @@ export default function KitchenDisplayPage() {
         nextCardWidth = CARD_WIDTH_SM;
         nextPagePadding = PAGE_PADDING_SM;
       }
-      const availableWidth = width - nextPagePadding;
+      const containerWidth = gridRef.current?.clientWidth ?? width - nextPagePadding;
+      const availableWidth = Math.max(0, containerWidth);
       const nextColumns = Math.max(
         1,
         Math.floor((availableWidth + CARD_GAP) / (nextCardWidth + CARD_GAP))
       );
       setColumns(nextColumns);
       setCardWidth(nextCardWidth);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[kod] layout', {
+          containerWidth,
+          ticketWidthPx: nextCardWidth,
+          gapPx: CARD_GAP,
+          visibleCapacity: nextColumns,
+          totalTickets: orderedSegmentsRef.current,
+          pageIndex: pageIndexRef.current,
+        });
+      }
       const availableHeight = gridRef.current?.clientHeight ?? window.innerHeight;
       const nextCardHeight = Math.max(320, availableHeight);
       setCardHeight(nextCardHeight);
@@ -470,6 +483,12 @@ export default function KitchenDisplayPage() {
   useEffect(() => {
     setPageIndex((current) => Math.min(current, totalPages - 1));
   }, [totalPages]);
+  useEffect(() => {
+    orderedSegmentsRef.current = orderedSegments.length;
+  }, [orderedSegments.length]);
+  useEffect(() => {
+    pageIndexRef.current = pageIndex;
+  }, [pageIndex]);
 
   const orderSegments = useMemo(
     () => orderedSegments.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize),
@@ -477,18 +496,14 @@ export default function KitchenDisplayPage() {
   );
   const orderTintIndex = useMemo(() => {
     const map = new Map<string, number>();
-    let nextIndex = 0;
-    orderSegments.forEach((segment) => {
-      if (!map.has(segment.order.id)) {
-        map.set(segment.order.id, nextIndex);
-        nextIndex += 1;
-      }
+    orders.forEach((order, index) => {
+      map.set(order.id, index);
     });
     return map;
-  }, [orderSegments]);
+  }, [orders]);
   const totalTickets = orderedSegments.length;
   const waitingCount = Math.max(0, totalTickets - pageSize * (pageIndex + 1));
-  const tintClasses = ['bg-neutral-900', 'bg-neutral-800'];
+  const tintClasses = ['bg-neutral-900', 'bg-neutral-700'];
   const getTintClass = (orderId: string) =>
     tintClasses[(orderTintIndex.get(orderId) ?? 0) % tintClasses.length];
 
