@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import RejectOrderModal from './RejectOrderModal';
 import OrderRejectButton from './OrderRejectButton';
-import { formatPrice } from '@/lib/orderDisplay';
+import { formatPrice, formatShortOrderNumber } from '@/lib/orderDisplay';
 
 interface OrderAddon {
   id: number;
@@ -67,6 +67,19 @@ export default function OrderDetailsModal({ order, onClose, onUpdateStatus }: Pr
 
   if (!order) return null;
 
+  const orderItems = Array.isArray(order.order_items) ? order.order_items : [];
+  const hasInvalidItems = !Array.isArray(order.order_items);
+  const hasInvalidAddons = orderItems.some((item) => !Array.isArray(item.order_addons));
+  const hasIncompleteData = hasInvalidItems || hasInvalidAddons;
+  if (hasIncompleteData && process.env.NODE_ENV !== 'production') {
+    console.warn('[orders] order modal opened with incomplete data', {
+      orderId: order.id,
+      hasInvalidItems,
+      hasInvalidAddons,
+      orderItems: order.order_items,
+    });
+  }
+
   const kioskOrder = order.order_type === 'kiosk' || order.source === 'kiosk';
   return (
     <div
@@ -90,8 +103,13 @@ export default function OrderDetailsModal({ order, onClose, onUpdateStatus }: Pr
         </button>
         <div className="p-6 space-y-4 text-sm">
           <h3 className="text-2xl font-bold">
-            Order #{String(order.short_order_number ?? 0).padStart(4, '0')}
+            Order #{formatShortOrderNumber(order.short_order_number)}
           </h3>
+          {hasIncompleteData && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              Some order details are still loading. Please try again in a moment.
+            </div>
+          )}
           <div className="space-y-1">
             <div className="flex justify-between">
               <span className="text-gray-500 font-medium">Customer</span>
@@ -129,34 +147,43 @@ export default function OrderDetailsModal({ order, onClose, onUpdateStatus }: Pr
             )}
           </div>
           <ul className="space-y-3 text-sm">
-            {(order.order_items ?? []).map((it) => (
+            {orderItems.map((it) => {
+              const itemPrice = Number.isFinite(it.price) ? it.price : 0;
+              const itemQuantity = Number.isFinite(it.quantity) ? it.quantity : 0;
+              const addons = Array.isArray(it.order_addons) ? it.order_addons : [];
+              return (
               <li key={it.id} className="border rounded-lg p-3">
                 <div className="flex justify-between">
                   <span className="font-semibold">
-                    {it.name} × {it.quantity}
+                    {it.name} × {itemQuantity}
                   </span>
                   <span className="font-medium">
-                    {formatPrice(it.price * it.quantity)}
+                    {formatPrice(itemPrice * itemQuantity)}
                   </span>
                 </div>
-                {it.order_addons && it.order_addons.length > 0 && (
+                {addons.length > 0 && (
                   <ul className="mt-1 ml-4 space-y-1 text-gray-600">
-                    {it.order_addons.map((ad) => (
+                    {addons.map((ad) => {
+                      const addonPrice = Number.isFinite(ad.price) ? ad.price : 0;
+                      const addonQuantity = Number.isFinite(ad.quantity) ? ad.quantity : 0;
+                      return (
                       <li key={ad.id} className="flex justify-between">
                         <span>
                           {ad.name}
-                          <span className="text-xs text-gray-500 ml-1">x{ad.quantity}</span>
+                          <span className="text-xs text-gray-500 ml-1">x{addonQuantity}</span>
                         </span>
-                        <span>{formatPrice(ad.price * ad.quantity)}</span>
+                        <span>{formatPrice(addonPrice * addonQuantity)}</span>
                       </li>
-                    ))}
+                      );
+                    })}
                   </ul>
                 )}
                 {it.notes && (
                   <p className="italic text-gray-600 ml-4 mt-1">{it.notes}</p>
                 )}
               </li>
-            ))}
+              );
+            })}
           </ul>
           {order.customer_notes && (
             <p className="italic">{order.customer_notes}</p>

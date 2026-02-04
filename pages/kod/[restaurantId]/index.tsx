@@ -8,12 +8,15 @@ import {
   SpeakerXMarkIcon,
   WifiIcon,
 } from '@heroicons/react/24/outline';
+import { ChefHat } from 'lucide-react';
 import FullscreenAppLayout from '@/components/layouts/FullscreenAppLayout';
 import Toast from '@/components/Toast';
 import BreakModal from '@/components/BreakModal';
 import BreakCountdown from '@/components/BreakCountdown';
 import OrderRejectButton from '@/components/OrderRejectButton';
 import RejectOrderModal, { RejectableOrder } from '@/components/RejectOrderModal';
+import { getRandomOrderEmptyMessage } from '@/lib/orderEmptyState';
+import { formatShortOrderNumber } from '@/lib/orderDisplay';
 import { supabase } from '@/lib/supabaseClient';
 import { useRestaurantAvailability } from '@/hooks/useRestaurantAvailability';
 
@@ -95,7 +98,7 @@ const splitNotesLines = (notes: string, lineLength: number) => {
 };
 
 const formatOrderNumber = (order: Order) =>
-  String(order.short_order_number ?? 0).padStart(4, '0');
+  formatShortOrderNumber(order.short_order_number);
 
 const getItemLineCount = (
   item: OrderItem,
@@ -180,6 +183,7 @@ export default function KitchenDisplayPage() {
   const orderedSegmentsRef = useRef(0);
   const pageIndexRef = useRef(0);
   const [rejectOrder, setRejectOrder] = useState<Order | null>(null);
+  const emptyMessage = useMemo(() => getRandomOrderEmptyMessage(), []);
   const {
     isOpen,
     breakUntil,
@@ -545,6 +549,19 @@ export default function KitchenDisplayPage() {
     (orderTintIndex.get(orderId) ?? 0) % 2 === 0 ? 'text-amber-200' : 'text-amber-700';
   const getNotesBodyClass = (orderId: string) =>
     (orderTintIndex.get(orderId) ?? 0) % 2 === 0 ? 'text-amber-100' : 'text-amber-800';
+  const isLightTicket = (orderId: string) => (orderTintIndex.get(orderId) ?? 0) % 2 !== 0;
+  const getRejectButtonClass = (orderId: string) =>
+    `rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] transition disabled:cursor-not-allowed disabled:opacity-40 ${
+      isLightTicket(orderId)
+        ? 'border-black bg-black text-white hover:bg-neutral-900'
+        : 'border-white bg-white text-black hover:bg-neutral-100'
+    }`;
+  const getRejectTooltipBubbleClass = (orderId: string) =>
+    `shadow-lg shadow-black/50 ${
+      isLightTicket(orderId) ? 'bg-black text-white' : 'bg-neutral-950 text-white'
+    }`;
+  const getRejectTooltipArrowClass = (orderId: string) =>
+    `shadow-lg shadow-black/50 ${isLightTicket(orderId) ? 'bg-black' : 'bg-neutral-950'}`;
   const isKioskOrder = (order: Order) =>
     order.order_type === 'kiosk' || order.source === 'kiosk';
 
@@ -654,9 +671,12 @@ export default function KitchenDisplayPage() {
           </div>
           <div className="flex w-full flex-1 flex-col space-y-4 overflow-hidden">
             {orders.length === 0 && !isFetching ? (
-              <p className="text-center text-base text-neutral-400">
-                No active orders yet.
-              </p>
+              <div className="flex flex-1 items-center justify-center text-center">
+                <div className="flex max-w-md flex-col items-center gap-4 rounded-3xl border border-white/10 bg-neutral-900/80 p-8 shadow-lg shadow-black/40">
+                  <ChefHat className="h-16 w-16 text-neutral-600" />
+                  <p className="text-sm text-neutral-200">{emptyMessage}</p>
+                </div>
+              </div>
             ) : null}
             <div
               ref={gridRef}
@@ -792,10 +812,10 @@ export default function KitchenDisplayPage() {
                           <OrderRejectButton
                             status={segment.order.status}
                             onConfirm={() => setRejectOrder(segment.order)}
-                            buttonClassName="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                            buttonClassName={getRejectButtonClass(segment.order.id)}
                             tooltipClassName="text-[10px]"
-                            tooltipBubbleClassName="bg-neutral-950 text-white border border-white/10 shadow-lg shadow-black/50"
-                            tooltipArrowClassName="bg-neutral-950 border border-white/10 shadow-lg shadow-black/50"
+                            tooltipBubbleClassName={`${getRejectTooltipBubbleClass(segment.order.id)} border border-white/10`}
+                            tooltipArrowClassName={`${getRejectTooltipArrowClass(segment.order.id)} border border-white/10`}
                           />
                         ) : null}
                       </div>
