@@ -613,13 +613,13 @@ export default function KitchenDisplayPage() {
               {orderSegments.map((segment) => (
                 <div
                   key={`${segment.order.id}-${segment.segmentIndex}`}
-                  className={`flex min-w-0 flex-col overflow-hidden rounded-2xl border border-white/10 p-5 shadow-lg shadow-black/20 ${getTintClass(
+                  className={`flex min-w-0 flex-col overflow-hidden rounded-2xl border border-white/10 shadow-lg shadow-black/20 ${getTintClass(
                     segment.order.id
-                  )}`}
+                  )} ${segment.segmentIndex === 1 ? 'p-5' : 'px-5 pb-5 pt-0'}`}
                   style={{ width: `${cardWidth}px`, height: `${cardHeight}px` }}
                 >
-                  <div className="flex h-[88px] flex-wrap items-center justify-between gap-3">
-                    {segment.segmentIndex === 1 ? (
+                  {segment.segmentIndex === 1 ? (
+                    <div className="flex h-[88px] flex-wrap items-center justify-between gap-3">
                       <>
                         <div>
                           <p
@@ -655,22 +655,17 @@ export default function KitchenDisplayPage() {
                           </p>
                         </div>
                       </>
-                    ) : (
-                      <>
-                        <p
-                          className={`text-[10px] font-semibold uppercase tracking-[0.3em] ${getContinuedTextClass(
-                            segment.order.id
-                          )}`}
-                        >
-                          Continued ({segment.segmentIndex}/{segment.totalSegments})
-                        </p>
-                        <p className={`text-lg font-semibold ${getPrimaryTextClass(segment.order.id)}`}>
-                          {formatElapsed(segment.order.created_at)}
-                        </p>
-                      </>
-                    )}
-                  </div>
-                  <div className="mt-4 flex-1 overflow-hidden">
+                    </div>
+                  ) : (
+                    <p
+                      className={`text-[10px] font-semibold uppercase tracking-[0.3em] ${getContinuedTextClass(
+                        segment.order.id
+                      )}`}
+                    >
+                      Continued ({segment.segmentIndex}/{segment.totalSegments})
+                    </p>
+                  )}
+                  <div className={`${segment.segmentIndex === 1 ? 'mt-4' : 'mt-0'} flex-1 overflow-hidden`}>
                     {segment.notesLines.length > 0 ? (
                       <div className="rounded-xl border border-amber-400/40 bg-amber-400/10 px-4 py-3">
                         <p
