@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import RejectOrderModal from './RejectOrderModal';
+import OrderRejectButton from './OrderRejectButton';
 import { formatPrice } from '@/lib/orderDisplay';
 
 interface OrderAddon {
@@ -54,9 +55,6 @@ const formatAddress = (addr: any) => {
 export default function OrderDetailsModal({ order, onClose, onUpdateStatus }: Props) {
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const [showReject, setShowReject] = useState(false);
-  const lastTap = useRef<number>(0);
-  const [showRejectHint, setShowRejectHint] = useState(false);
-  const hintTimer = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (!order) return;
@@ -131,7 +129,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateStatus }: Pr
             )}
           </div>
           <ul className="space-y-3 text-sm">
-            {order.order_items.map((it) => (
+            {(order.order_items ?? []).map((it) => (
               <li key={it.id} className="border rounded-lg p-3">
                 <div className="flex justify-between">
                   <span className="font-semibold">
@@ -198,41 +196,13 @@ export default function OrderDetailsModal({ order, onClose, onUpdateStatus }: Pr
               ) : null;
             })()}
             {!kioskOrder && !['completed', 'cancelled', 'rejected'].includes(order.status) && (
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const now = Date.now();
-                    if (now - lastTap.current < 500) {
-                      if (hintTimer.current) clearTimeout(hintTimer.current);
-                      setShowRejectHint(false);
-                      setShowReject(true);
-                    } else {
-                      lastTap.current = now;
-                      setShowRejectHint(true);
-                      if (hintTimer.current) clearTimeout(hintTimer.current);
-                      hintTimer.current = setTimeout(() => setShowRejectHint(false), 1800);
-                    }
-                  }}
-                  onDoubleClick={() => setShowReject(true)}
-                  className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
-                >
-                  {order.status === 'pending' ? 'Reject' : 'Cancel'}
-                </button>
-                <div
-                  className={`absolute -top-8 right-0 text-xs transition-opacity duration-300 ${
-                    showRejectHint ? 'opacity-100' : 'opacity-0 pointer-events-none'
-                  }`}
-                  role="tooltip"
-                >
-                  <div className="relative bg-white rounded shadow px-2 py-1">
-                    {order.status === 'pending'
-                      ? 'Double tap to reject'
-                      : 'Double tap to cancel'}
-                    <div className="absolute left-1/2 -bottom-1 w-2 h-2 bg-white rotate-45 shadow -translate-x-1/2"></div>
-                  </div>
-                </div>
-              </div>
+              <OrderRejectButton
+                status={order.status}
+                onConfirm={() => setShowReject(true)}
+                buttonClassName="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+                tooltipBubbleClassName="bg-white text-gray-900"
+                tooltipArrowClassName="bg-white shadow"
+              />
             )}
           </div>
         </div>
