@@ -10,29 +10,35 @@ import {
 } from '@heroicons/react/24/outline';
 import FullscreenAppLayout from '@/components/layouts/FullscreenAppLayout';
 import Toast from '@/components/Toast';
+import BreakModal from '@/components/BreakModal';
+import BreakCountdown from '@/components/BreakCountdown';
+import OrderRejectButton from '@/components/OrderRejectButton';
+import RejectOrderModal, { RejectableOrder } from '@/components/RejectOrderModal';
 import { supabase } from '@/lib/supabaseClient';
+import { useRestaurantAvailability } from '@/hooks/useRestaurantAvailability';
 
 type AudioContextConstructor = typeof AudioContext;
 
 type OrderAddon = {
   id: number;
+  option_id: number;
   name: string;
   quantity: number;
 };
 
 type OrderItem = {
   id: number;
+  item_id: number;
   name: string;
   quantity: number;
   notes?: string | null;
   order_addons: OrderAddon[];
 };
 
-type Order = {
-  id: string;
+type Order = RejectableOrder & {
   short_order_number: number | null;
   order_type: string;
-  status: string;
+  source?: string | null;
   created_at: string;
   customer_notes?: string | null;
   order_items: OrderItem[];
@@ -173,6 +179,16 @@ export default function KitchenDisplayPage() {
   const [cooldowns, setCooldowns] = useState<Record<string, boolean>>({});
   const orderedSegmentsRef = useRef(0);
   const pageIndexRef = useRef(0);
+  const [rejectOrder, setRejectOrder] = useState<Order | null>(null);
+  const {
+    isOpen,
+    breakUntil,
+    showBreakModal,
+    setShowBreakModal,
+    toggleOpen,
+    startBreak,
+    endBreak,
+  } = useRestaurantAvailability(restaurantId);
 
   const preferenceKey = useMemo(
     () => (restaurantId ? `kod_audio_enabled_${restaurantId}` : 'kod_audio_enabled'),
@@ -190,16 +206,19 @@ export default function KitchenDisplayPage() {
         id,
         short_order_number,
         order_type,
+        source,
         status,
         created_at,
         customer_notes,
         order_items(
           id,
+          item_id,
           name,
           quantity,
           notes,
           order_addons(
             id,
+            option_id,
             name,
             quantity
           )
@@ -526,6 +545,8 @@ export default function KitchenDisplayPage() {
     (orderTintIndex.get(orderId) ?? 0) % 2 === 0 ? 'text-amber-200' : 'text-amber-700';
   const getNotesBodyClass = (orderId: string) =>
     (orderTintIndex.get(orderId) ?? 0) % 2 === 0 ? 'text-amber-100' : 'text-amber-800';
+  const isKioskOrder = (order: Order) =>
+    order.order_type === 'kiosk' || order.source === 'kiosk';
 
   return (
     <FullscreenAppLayout
@@ -538,7 +559,7 @@ export default function KitchenDisplayPage() {
             className="flex w-full flex-none items-center justify-end"
             style={{ height: `${TOP_CONTROLS_HEIGHT}px` }}
           >
-            <div className="flex items-center gap-3 rounded-full border border-white/10 bg-black/40 px-4 py-2 text-xs uppercase tracking-[0.2em] text-neutral-200 shadow-lg shadow-black/40 backdrop-blur">
+            <div className="flex max-w-full flex-wrap items-center gap-2 rounded-full border border-white/10 bg-black/40 px-4 py-2 text-xs uppercase tracking-[0.2em] text-neutral-200 shadow-lg shadow-black/40 backdrop-blur">
               <ArrowPathIcon
                 className={`h-4 w-4 ${isFetching ? 'animate-spin text-teal-300' : 'text-neutral-400'}`}
               />
@@ -570,6 +591,38 @@ export default function KitchenDisplayPage() {
                   Enable Sound
                 </button>
               )}
+              {breakUntil && new Date(breakUntil).getTime() > now ? (
+                <BreakCountdown
+                  breakUntil={breakUntil}
+                  onEnd={endBreak}
+                  variant="kod"
+                  className="mb-0"
+                />
+              ) : null}
+              {isOpen !== null ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={toggleOpen}
+                    className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] transition ${
+                      isOpen
+                        ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-100 hover:bg-emerald-500/30'
+                        : 'border-rose-400/60 bg-rose-500/20 text-rose-100 hover:bg-rose-500/30'
+                    }`}
+                  >
+                    {isOpen ? 'Close Now' : 'Open Now'}
+                  </button>
+                  {isOpen ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowBreakModal(true)}
+                      className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-white transition hover:bg-white/10"
+                    >
+                      Take a Break
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
               {waitingCount > 0 ? (
                 <div className="flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-white">
                   +{waitingCount} waiting
@@ -722,17 +775,30 @@ export default function KitchenDisplayPage() {
                   </div>
                   <div className="flex h-[72px] flex-col justify-end gap-2 pt-4">
                     {segment.segmentIndex === segment.totalSegments ? (
-                      <button
-                        type="button"
-                        onClick={() => handlePrimaryAction(segment.order)}
-                        disabled={
-                          !['pending', 'accepted'].includes(segment.order.status) ||
-                          cooldowns[`${segment.order.id}-primary`]
-                        }
-                        className="rounded-full bg-teal-500 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-black transition hover:bg-teal-400 disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        {segment.order.status === 'pending' ? 'ACCEPT' : 'COMPLETE'}
-                      </button>
+                      <div className="flex items-center justify-between gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handlePrimaryAction(segment.order)}
+                          disabled={
+                            !['pending', 'accepted'].includes(segment.order.status) ||
+                            cooldowns[`${segment.order.id}-primary`]
+                          }
+                          className="flex-1 rounded-full bg-teal-500 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-black transition hover:bg-teal-400 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          {segment.order.status === 'pending' ? 'ACCEPT' : 'COMPLETE'}
+                        </button>
+                        {!isKioskOrder(segment.order) &&
+                        !['completed', 'cancelled', 'rejected'].includes(segment.order.status) ? (
+                          <OrderRejectButton
+                            status={segment.order.status}
+                            onConfirm={() => setRejectOrder(segment.order)}
+                            buttonClassName="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                            tooltipClassName="text-[10px]"
+                            tooltipBubbleClassName="bg-neutral-950 text-white border border-white/10 shadow-lg shadow-black/50"
+                            tooltipArrowClassName="bg-neutral-950 border border-white/10 shadow-lg shadow-black/50"
+                          />
+                        ) : null}
+                      </div>
                     ) : null}
                   </div>
                 </div>
@@ -740,6 +806,24 @@ export default function KitchenDisplayPage() {
             </div>
           </div>
         </div>
+        <BreakModal
+          show={showBreakModal}
+          onClose={() => setShowBreakModal(false)}
+          onSelect={startBreak}
+          variant="kod"
+        />
+        {rejectOrder ? (
+          <RejectOrderModal
+            order={rejectOrder}
+            show={!!rejectOrder}
+            onClose={() => setRejectOrder(null)}
+            onRejected={() => {
+              setRejectOrder(null);
+              fetchOrders();
+            }}
+            tone="kod"
+          />
+        ) : null}
         <Toast message={toastMessage} onClose={() => setToastMessage('')} />
       </div>
     </FullscreenAppLayout>

@@ -9,6 +9,7 @@ import BreakModal from '../../components/BreakModal';
 import BreakCountdown from '../../components/BreakCountdown';
 import { ORDER_ALERT_AUDIO } from '@/audio/orderAlertBase64';
 import { formatPrice } from '@/lib/orderDisplay';
+import { useRestaurantAvailability } from '@/hooks/useRestaurantAvailability';
 
 const ACTIVE_STATUSES = [
   'pending',
@@ -75,9 +76,6 @@ export default function OrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [now, setNow] = useState(Date.now());
   const [restaurantId, setRestaurantId] = useState<string | null>(null);
-  const [isOpen, setIsOpen] = useState<boolean | null>(null);
-  const [breakUntil, setBreakUntil] = useState<string | null>(null);
-  const [showBreakModal, setShowBreakModal] = useState(false);
   const [outOfStockCount, setOutOfStockCount] = useState(0);
   const [todayHours, setTodayHours] = useState<
     | { open_time: string | null; close_time: string | null; closed: boolean }
@@ -98,6 +96,15 @@ export default function OrdersPage() {
       ],
     []
   );
+  const {
+    isOpen,
+    breakUntil,
+    showBreakModal,
+    setShowBreakModal,
+    toggleOpen,
+    startBreak,
+    endBreak,
+  } = useRestaurantAvailability(restaurantId);
 
   const isKioskDevice = useCallback(
     () => router.pathname.startsWith('/kiosk/'),
@@ -313,16 +320,6 @@ export default function OrdersPage() {
       }
 
       setRestaurantId(ruData.restaurant_id);
-
-      const { data: restData, error: restError } = await supabase
-        .from('restaurants')
-        .select('is_open, break_until')
-        .eq('id', ruData.restaurant_id)
-        .single();
-      if (!restError && restData) {
-        setIsOpen(restData.is_open);
-        setBreakUntil(restData.break_until);
-      }
 
       const { data: ordersData, error: ordersError } = await supabase
         .from('orders')
@@ -644,48 +641,7 @@ export default function OrdersPage() {
     syncAlertLoop,
   ]);
 
-  // Automatically end break when time passes
-  useEffect(() => {
-    if (!breakUntil) return;
-    if (new Date(breakUntil).getTime() <= Date.now()) {
-      endBreak();
-      return;
-    }
-    const timer = setInterval(() => {
-      if (breakUntil && new Date(breakUntil).getTime() <= Date.now()) {
-        endBreak();
-      }
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [breakUntil]);
-
-  useEffect(() => {
-    if (!restaurantId) return;
-
-    const channel = supabase
-      .channel('restaurant-' + restaurantId)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'restaurants',
-          filter: `id=eq.${restaurantId}`,
-        },
-        (payload) => {
-          const newRow: any = payload.new;
-          setIsOpen(newRow.is_open);
-          setBreakUntil(newRow.break_until);
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [restaurantId]);
-
-
+  
   const updateStatus = async (id: string, status: string) => {
     const targetOrder = orders.find((o) => o.id === id);
     const updatePayload: { status: string; accepted_at?: string | null } = { status };
@@ -725,46 +681,13 @@ export default function OrdersPage() {
     }
   };
 
-  const toggleOpen = async () => {
-    if (!restaurantId || isOpen === null) return;
-    if (!isOpen && breakUntil && new Date(breakUntil).getTime() > Date.now()) {
-      await endBreak();
-      return;
-    }
-    const newState = !isOpen;
-    const { error } = await supabase
-      .from('restaurants')
-      .update({ is_open: newState })
-      .eq('id', restaurantId);
-    if (!error) {
-      setIsOpen(newState);
-    }
-  };
-
-  const startBreak = async (mins: number) => {
-    if (!restaurantId) return;
-    const until = new Date(Date.now() + mins * 60000).toISOString();
-    const { error } = await supabase
-      .from('restaurants')
-      .update({ is_open: false, break_until: until })
-      .eq('id', restaurantId);
-    if (!error) {
-      setIsOpen(false);
-      setBreakUntil(until);
-    }
-  };
-
-  const endBreak = async () => {
-    if (!restaurantId) return;
-    const { error } = await supabase
-      .from('restaurants')
-      .update({ is_open: true, break_until: null })
-      .eq('id', restaurantId);
-    if (!error) {
-      setIsOpen(true);
-      setBreakUntil(null);
-    }
-  };
+  const handleOpenOrder = useCallback(
+    async (order: Order) => {
+      const hydrated = await hydrateOrder(order);
+      setSelectedOrder((hydrated ?? order) as Order);
+    },
+    [hydrateOrder]
+  );
 
   const formatTime = (t: string | null) => {
     if (!t) return '';
@@ -860,7 +783,7 @@ export default function OrdersPage() {
               <div
                 key={o.id}
                 className={`${highlight} border rounded-lg shadow-md p-4 cursor-pointer`}
-                onClick={() => setSelectedOrder(o)}
+                onClick={() => handleOpenOrder(o)}
               >
                 <div className="flex justify-between items-center">
                   <div>
