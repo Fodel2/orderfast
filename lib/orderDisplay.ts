@@ -16,6 +16,13 @@ export function displayOrderNo(order: any): string {
   return `#${tail}`;
 }
 
+export function formatShortOrderNumber(value: number | null | undefined) {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return String(Math.trunc(value)).padStart(4, '0');
+  }
+  return '—';
+}
+
 export function formatPrice(amount: number, currencyCode: string = DEFAULT_CURRENCY_CODE) {
   const normalized = normalizePriceValue(amount);
   return formatCurrency(normalized, currencyCode);

@@ -8,7 +8,8 @@ import OrderDetailsModal, { Order as OrderType } from '../../components/OrderDet
 import BreakModal from '../../components/BreakModal';
 import BreakCountdown from '../../components/BreakCountdown';
 import { ORDER_ALERT_AUDIO } from '@/audio/orderAlertBase64';
-import { formatPrice } from '@/lib/orderDisplay';
+import { formatPrice, formatShortOrderNumber } from '@/lib/orderDisplay';
+import { getRandomOrderEmptyMessage } from '@/lib/orderEmptyState';
 import { useRestaurantAvailability } from '@/hooks/useRestaurantAvailability';
 
 const ACTIVE_STATUSES = [
@@ -21,18 +22,6 @@ const ACTIVE_STATUSES = [
 
 const isActiveStatus = (status: string | null | undefined) =>
   !!status && ACTIVE_STATUSES.includes(status);
-
-const EMPTY_MESSAGES = [
-  'No orders right now… shall we check the cleaning logs?',
-  'All quiet on the frying pan front.',
-  'Your ticket printer is sleeping. Shhh...',
-  'Kitchen\u2019s calm—dare we restock the napkins?',
-  'Nothing cooking yet — maybe time for a tea?',
-  'Still no dings. The bell is getting lonely.',
-  'No orders, no chaos. Suspiciously peaceful.',
-  'Perfect time to clean the sauce bottles again!',
-  'No orders… did someone forget to open?',
-];
 
 interface OrderAddon {
   id: number;
@@ -89,13 +78,7 @@ export default function OrdersPage() {
   const [flashingOrderIds, setFlashingOrderIds] = useState<Set<string>>(new Set());
   const router = useRouter();
   const isOrdersPage = router.pathname === '/dashboard/orders';
-  const randomMessage = useMemo(
-    () =>
-      EMPTY_MESSAGES[
-        Math.floor(Math.random() * EMPTY_MESSAGES.length)
-      ],
-    []
-  );
+  const randomMessage = useMemo(() => getRandomOrderEmptyMessage(), []);
   const {
     isOpen,
     breakUntil,
@@ -683,8 +666,28 @@ export default function OrdersPage() {
 
   const handleOpenOrder = useCallback(
     async (order: Order) => {
-      const hydrated = await hydrateOrder(order);
-      setSelectedOrder((hydrated ?? order) as Order);
+      try {
+        const hydrated = await hydrateOrder(order);
+        const fallback = {
+          ...order,
+          order_items: Array.isArray(order.order_items) ? order.order_items : [],
+        };
+        if (!hydrated && process.env.NODE_ENV !== 'production') {
+          console.warn('[orders] unable to hydrate order before opening modal', {
+            orderId: order.id,
+            order_items: order.order_items,
+          });
+        }
+        setSelectedOrder((hydrated ?? fallback) as Order);
+      } catch (error) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.error('[orders] failed to open order modal', error);
+        }
+        setSelectedOrder({
+          ...order,
+          order_items: Array.isArray(order.order_items) ? order.order_items : [],
+        });
+      }
     },
     [hydrateOrder]
   );
@@ -788,7 +791,7 @@ export default function OrdersPage() {
                 <div className="flex justify-between items-center">
                   <div>
                     <h3 className="font-semibold">#
-                      {String(o.short_order_number ?? 0).padStart(4, '0')}
+                      {formatShortOrderNumber(o.short_order_number)}
                     </h3>
                     <p className="text-sm text-gray-500">{o.customer_name || 'Guest'}</p>
                   </div>

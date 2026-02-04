@@ -62,8 +62,8 @@ export default function OrderRejectButton({
         {label}
       </button>
       <div
-        className={`absolute -top-8 right-0 text-xs transition-opacity duration-300 ${
-          showRejectHint ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        className={`pointer-events-none absolute bottom-full right-0 mb-2 text-xs transition-opacity duration-300 ${
+          showRejectHint ? 'opacity-100' : 'opacity-0'
         } ${tooltipClassName}`}
         role="tooltip"
       >

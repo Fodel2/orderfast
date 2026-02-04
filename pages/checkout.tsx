@@ -73,6 +73,9 @@ export default function CheckoutPage() {
     const totalPrice = subtotal + serviceFee + deliveryFee;
 
     try {
+      if (!cart.restaurant_id) {
+        throw new Error('Missing restaurant id for checkout order');
+      }
       const { data: order, error } = await supabase
         .from('orders')
         .insert([
@@ -99,6 +102,25 @@ export default function CheckoutPage() {
         .single();
 
       if (error || !order) throw error || new Error('Failed to insert order');
+
+      if (process.env.NODE_ENV !== 'production') {
+        const { data: verified, error: verifyError } = await supabase
+          .from('orders')
+          .select('short_order_number')
+          .eq('id', order.id)
+          .single();
+        if (verifyError) {
+          console.error('[checkout] failed to verify short_order_number', {
+            orderId: order.id,
+            error: verifyError,
+          });
+        } else if (verified?.short_order_number == null) {
+          console.error('[checkout] short_order_number missing after insert', {
+            orderId: order.id,
+            source: 'app',
+          });
+        }
+      }
 
       for (const item of cart.items) {
         const { data: oi, error: oiErr } = await supabase

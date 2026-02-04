@@ -221,6 +221,9 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     const acceptedAt = autoAcceptKiosk ? new Date().toISOString() : null;
 
     const submitKioskOrder = async (): Promise<{ orderId: string; orderNumber: number }> => {
+      if (!restaurantId) {
+        throw new Error('Missing restaurant id for kiosk order');
+      }
       let orderId: string | null = null;
 
       try {
@@ -244,6 +247,25 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
 
         if (orderError || !order) throw orderError || new Error('Failed to insert order');
         orderId = order.id;
+
+        if (process.env.NODE_ENV !== 'production') {
+          const { data: verified, error: verifyError } = await supabase
+            .from('orders')
+            .select('short_order_number')
+            .eq('id', order.id)
+            .single();
+          if (verifyError) {
+            console.error('[kiosk] failed to verify short_order_number', {
+              orderId: order.id,
+              error: verifyError,
+            });
+          } else if (verified?.short_order_number == null) {
+            console.error('[kiosk] short_order_number missing after insert', {
+              orderId: order.id,
+              source: 'kiosk',
+            });
+          }
+        }
 
         for (const item of cartItemsSnapshot) {
           const { data: orderItem, error: itemError } = await supabase
