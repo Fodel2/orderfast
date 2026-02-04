@@ -599,7 +599,6 @@ export default function PosHomePage() {
       service_fee: 0,
       delivery_fee: 0,
       customer_name: null,
-      short_order_number: null,
       source: 'pos',
       accepted_at: null,
     };
@@ -612,6 +611,25 @@ export default function PosHomePage() {
 
     if (orderError || !orderRow) {
       throw orderError || new Error('Failed to create order');
+    }
+
+    if (process.env.NODE_ENV !== 'production') {
+      const { data: verified, error: verifyError } = await supabase
+        .from('orders')
+        .select('short_order_number')
+        .eq('id', orderRow.id)
+        .single();
+      if (verifyError) {
+        console.error('[pos] failed to verify short_order_number', {
+          orderId: orderRow.id,
+          error: verifyError,
+        });
+      } else if (verified?.short_order_number == null) {
+        console.error('[pos] short_order_number missing after insert', {
+          orderId: orderRow.id,
+          source: 'pos',
+        });
+      }
     }
 
     const orderItemsPayload = cartItems.map((line) => ({
