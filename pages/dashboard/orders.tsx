@@ -8,7 +8,7 @@ import OrderDetailsModal, { Order as OrderType } from '../../components/OrderDet
 import BreakModal from '../../components/BreakModal';
 import BreakCountdown from '../../components/BreakCountdown';
 import { ORDER_ALERT_AUDIO } from '@/audio/orderAlertBase64';
-import { formatPrice, formatShortOrderNumber } from '@/lib/orderDisplay';
+import { formatPrice, formatShortOrderNumber, formatStatusLabel } from '@/lib/orderDisplay';
 import { getRandomOrderEmptyMessage } from '@/lib/orderEmptyState';
 import { useRestaurantAvailability } from '@/hooks/useRestaurantAvailability';
 
@@ -797,7 +797,7 @@ export default function OrdersPage() {
                   </div>
                   <div className="text-right">
                     <p className="font-semibold">{formatPrice(o.total_price)}</p>
-                    <p className="text-sm capitalize">{o.status}</p>
+                    <p className="text-sm">{formatStatusLabel(o.status)}</p>
                   </div>
                 </div>
               </div>

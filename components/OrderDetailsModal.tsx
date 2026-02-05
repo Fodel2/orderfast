@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import RejectOrderModal from './RejectOrderModal';
 import OrderRejectButton from './OrderRejectButton';
-import { formatPrice, formatShortOrderNumber } from '@/lib/orderDisplay';
+import { formatPrice, formatShortOrderNumber, formatStatusLabel } from '@/lib/orderDisplay';
 
 interface OrderAddon {
   id: number;
@@ -127,7 +127,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateStatus }: Pr
                     cancelled: 'bg-red-200 text-red-800',
                   }[order.status] || 'bg-yellow-200 text-yellow-800'}`}
                 >
-                  {order.status}
+                  {formatStatusLabel(order.status)}
                 </span>
               </span>
             </div>
@@ -191,36 +191,25 @@ export default function OrderDetailsModal({ order, onClose, onUpdateStatus }: Pr
           <p className="font-semibold">Total: {formatPrice(order.total_price)}</p>
           <div className="flex justify-end space-x-2 pt-2">
             {(() => {
-              const transitions: Record<string, Record<string, { next: string; label: string; classes: string }>> = {
-                delivery: {
-                  pending: { next: 'accepted', label: 'Accept Order', classes: 'bg-teal-600 hover:bg-teal-700' },
-                  accepted: { next: 'preparing', label: 'Start Preparing', classes: 'bg-yellow-600 hover:bg-yellow-700' },
-                  preparing: { next: 'delivering', label: 'Mark as Out for Delivery', classes: 'bg-indigo-600 hover:bg-indigo-700' },
-                  delivering: { next: 'completed', label: 'Complete Order', classes: 'bg-green-600 hover:bg-green-700' },
-                },
-                collection: {
-                  pending: { next: 'accepted', label: 'Accept Order', classes: 'bg-teal-600 hover:bg-teal-700' },
-                  accepted: { next: 'preparing', label: 'Start Preparing', classes: 'bg-yellow-600 hover:bg-yellow-700' },
-                  preparing: { next: 'ready_to_collect', label: 'Mark as Ready for Collection', classes: 'bg-indigo-600 hover:bg-indigo-700' },
-                  ready_to_collect: { next: 'completed', label: 'Complete Order', classes: 'bg-green-600 hover:bg-green-700' },
-                },
-                kiosk: {
-                  pending: { next: 'accepted', label: 'Accept Order', classes: 'bg-teal-600 hover:bg-teal-700' },
-                  accepted: { next: 'preparing', label: 'Start Preparing', classes: 'bg-yellow-600 hover:bg-yellow-700' },
-                  preparing: { next: 'ready_to_collect', label: 'Mark as Ready for Collection', classes: 'bg-indigo-600 hover:bg-indigo-700' },
-                  ready_to_collect: { next: 'completed', label: 'Complete Order', classes: 'bg-green-600 hover:bg-green-700' },
-                },
-              };
-              const t = transitions[kioskOrder ? 'kiosk' : order.order_type][order.status];
-              return t ? (
+              const shouldAccept = order.status === 'pending';
+              const shouldComplete = ['accepted', 'preparing', 'ready_to_collect', 'delivering'].includes(
+                order.status
+              );
+              if (!shouldAccept && !shouldComplete) return null;
+              const nextStatus = shouldAccept ? 'accepted' : 'completed';
+              const label = shouldAccept ? 'ACCEPT' : 'COMPLETE';
+              const classes = shouldAccept
+                ? 'bg-teal-600 hover:bg-teal-700'
+                : 'bg-green-600 hover:bg-green-700';
+              return (
                 <button
                   type="button"
-                  onClick={() => onUpdateStatus(order.id, t.next)}
-                  className={`px-4 py-2 text-white rounded ${t.classes}`}
+                  onClick={() => onUpdateStatus(order.id, nextStatus)}
+                  className={`px-4 py-2 text-white rounded ${classes}`}
                 >
-                  {t.label}
+                  {label}
                 </button>
-              ) : null;
+              );
             })()}
             {!kioskOrder && !['completed', 'cancelled', 'rejected'].includes(order.status) && (
               <OrderRejectButton

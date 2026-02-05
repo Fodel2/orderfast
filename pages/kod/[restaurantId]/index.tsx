@@ -15,6 +15,7 @@ import BreakModal from '@/components/BreakModal';
 import BreakCountdown from '@/components/BreakCountdown';
 import OrderRejectButton from '@/components/OrderRejectButton';
 import RejectOrderModal, { RejectableOrder } from '@/components/RejectOrderModal';
+import { ORDER_ALERT_AUDIO } from '@/audio/orderAlertBase64';
 import { getRandomOrderEmptyMessage } from '@/lib/orderEmptyState';
 import { formatShortOrderNumber } from '@/lib/orderDisplay';
 import { supabase } from '@/lib/supabaseClient';
@@ -56,11 +57,11 @@ type OrderSegment = {
 };
 
 const NOTE_LINE_LENGTH = 38;
-const CARD_VERTICAL_PADDING = 40;
-const HEADER_RESERVED_PX = 88;
-const FOOTER_RESERVED_PX = 72;
+const CARD_VERTICAL_PADDING = 32;
+const HEADER_RESERVED_PX = 80;
+const FOOTER_RESERVED_PX = 64;
 const BODY_LINE_HEIGHT = 22;
-const TOP_CONTROLS_HEIGHT = 72;
+const TOP_CONTROLS_HEIGHT = 64;
 const CARD_WIDTH_BASE = 360;
 const CARD_GAP = 16;
 const NOTES_HEADER_LINES = 2;
@@ -182,6 +183,9 @@ export default function KitchenDisplayPage() {
   const [cooldowns, setCooldowns] = useState<Record<string, boolean>>({});
   const orderedSegmentsRef = useRef(0);
   const pageIndexRef = useRef(0);
+  const alertAudioRef = useRef<HTMLAudioElement | null>(null);
+  const pendingOrderIdsRef = useRef<Set<string>>(new Set());
+  const isAlertPlayingRef = useRef(false);
   const [rejectOrder, setRejectOrder] = useState<Order | null>(null);
   const emptyMessage = useMemo(() => getRandomOrderEmptyMessage(), []);
   const {
@@ -199,6 +203,48 @@ export default function KitchenDisplayPage() {
     [restaurantId]
   );
   const [soundEnabled, setSoundEnabled] = useState(false);
+
+  const stopAlertLoop = useCallback(() => {
+    const audio = alertAudioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.currentTime = 0;
+    }
+    isAlertPlayingRef.current = false;
+  }, []);
+
+  const startAlertLoop = useCallback(() => {
+    if (!soundEnabled) return;
+    if (pendingOrderIdsRef.current.size === 0) return;
+    let audio = alertAudioRef.current;
+    if (!audio) {
+      audio = new Audio(ORDER_ALERT_AUDIO);
+      audio.loop = true;
+      alertAudioRef.current = audio;
+    }
+
+    if (isAlertPlayingRef.current) return;
+
+    audio.loop = true;
+    audio
+      .play()
+      .then(() => {
+        isAlertPlayingRef.current = true;
+      })
+      .catch((err) => console.error('[kod] audio playback failed', err));
+  }, [soundEnabled]);
+
+  const syncAlertLoop = useCallback(() => {
+    if (!soundEnabled) {
+      stopAlertLoop();
+      return;
+    }
+    if (pendingOrderIdsRef.current.size > 0) {
+      startAlertLoop();
+    } else {
+      stopAlertLoop();
+    }
+  }, [soundEnabled, startAlertLoop, stopAlertLoop]);
 
   const fetchOrders = useCallback(async () => {
     if (!restaurantId) return;
@@ -240,10 +286,15 @@ export default function KitchenDisplayPage() {
       return;
     }
 
-    setOrders((data as Order[]) ?? []);
+    const nextOrders = (data as Order[]) ?? [];
+    setOrders(nextOrders);
+    pendingOrderIdsRef.current = new Set(
+      nextOrders.filter((order) => order.status === 'pending').map((order) => order.id)
+    );
+    syncAlertLoop();
     setLastFetchFailed(false);
     setIsFetching(false);
-  }, [restaurantId]);
+  }, [restaurantId, syncAlertLoop]);
 
   useEffect(() => {
     if (!restaurantId) return;
@@ -355,8 +406,10 @@ export default function KitchenDisplayPage() {
           pageIndex: pageIndexRef.current,
         });
       }
-      const availableHeight = gridRef.current?.clientHeight ?? window.innerHeight;
-      const nextCardHeight = Math.max(320, availableHeight);
+      const availableHeight = gridRef.current?.getBoundingClientRect().height ?? 0;
+      const fallbackHeight =
+        window.innerHeight - TOP_CONTROLS_HEIGHT - CARD_VERTICAL_PADDING * 2 - 48;
+      const nextCardHeight = Math.max(320, availableHeight || fallbackHeight);
       setCardHeight(nextCardHeight);
       const usableBodyHeight =
         nextCardHeight - HEADER_RESERVED_PX - FOOTER_RESERVED_PX - CARD_VERTICAL_PADDING;
@@ -420,6 +473,13 @@ export default function KitchenDisplayPage() {
     window.localStorage.setItem(preferenceKey, 'false');
     setSoundEnabled(false);
   }, [preferenceKey]);
+
+  useEffect(() => {
+    syncAlertLoop();
+    return () => {
+      stopAlertLoop();
+    };
+  }, [soundEnabled, stopAlertLoop, syncAlertLoop]);
 
   const formatElapsed = useCallback((createdAt: string) => {
     const createdTime = new Date(createdAt).getTime();
@@ -571,7 +631,7 @@ export default function KitchenDisplayPage() {
       promptDescription="Kitchen Display works best in fullscreen mode."
     >
       <div className="h-screen w-full overflow-hidden bg-neutral-950 text-white">
-        <div className="flex h-full flex-col gap-6 overflow-hidden px-3 py-6 sm:px-4 lg:px-6">
+        <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden px-3 py-4 sm:px-4 lg:px-6">
           <div
             className="flex w-full flex-none items-center justify-end"
             style={{ height: `${TOP_CONTROLS_HEIGHT}px` }}
@@ -669,7 +729,7 @@ export default function KitchenDisplayPage() {
               ) : null}
             </div>
           </div>
-          <div className="flex w-full flex-1 flex-col space-y-4 overflow-hidden">
+          <div className="flex w-full flex-1 min-h-0 flex-col space-y-4 overflow-hidden">
             {orders.length === 0 && !isFetching ? (
               <div className="flex flex-1 items-center justify-center text-center">
                 <div className="flex max-w-md flex-col items-center gap-4 rounded-3xl border border-white/10 bg-neutral-900/80 p-8 shadow-lg shadow-black/40">
@@ -680,8 +740,7 @@ export default function KitchenDisplayPage() {
             ) : null}
             <div
               ref={gridRef}
-              className="flex h-full flex-1 flex-nowrap gap-4 overflow-hidden overscroll-none"
-              style={{ height: `${cardHeight}px` }}
+              className="flex min-h-0 flex-1 flex-nowrap gap-4 overflow-hidden overscroll-none"
             >
               {orderSegments.map((segment) => (
                 <div
