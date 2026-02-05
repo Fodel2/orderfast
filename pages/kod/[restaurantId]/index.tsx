@@ -16,7 +16,7 @@ import BreakCountdown from '@/components/BreakCountdown';
 import OrderRejectButton from '@/components/OrderRejectButton';
 import RejectOrderModal, { RejectableOrder } from '@/components/RejectOrderModal';
 import { getRandomOrderEmptyMessage } from '@/lib/orderEmptyState';
-import { formatShortOrderNumber } from '@/lib/orderDisplay';
+import { formatOrderNumberDisplay } from '@/lib/orderDisplay';
 import { supabase } from '@/lib/supabaseClient';
 import { useRestaurantAvailability } from '@/hooks/useRestaurantAvailability';
 
@@ -97,8 +97,7 @@ const splitNotesLines = (notes: string, lineLength: number) => {
   return lines.length ? lines : [''];
 };
 
-const formatOrderNumber = (order: Order) =>
-  formatShortOrderNumber(order.short_order_number);
+const formatOrderNumber = (order: Order) => formatOrderNumberDisplay(order.short_order_number);
 
 const getItemLineCount = (
   item: OrderItem,

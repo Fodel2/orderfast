@@ -4,6 +4,7 @@ import KioskLayout from '@/components/layouts/KioskLayout';
 import { KioskSessionProvider, useKioskSession } from '@/context/KioskSessionContext';
 import { supabase } from '@/lib/supabaseClient';
 import KioskActionButton from '@/components/kiosk/KioskActionButton';
+import { formatOrderNumberLabel } from '@/lib/orderDisplay';
 import { CheckIcon } from '@heroicons/react/24/outline';
 import { getKioskLastRealOrderNumber, KIOSK_REAL_ORDER_NUMBER_EVENT } from '@/utils/kiosk/orders';
 
@@ -92,6 +93,11 @@ function KioskConfirmScreen({ restaurantId }: { restaurantId?: string | null }) 
     setDisplayOrderNumber(tempOrderNumber ?? null);
   }, [tempOrderNumber]);
 
+  const orderNumberLabel = useMemo(
+    () => formatOrderNumberLabel(displayOrderNumber),
+    [displayOrderNumber]
+  );
+
   useEffect(() => {
     const applyStoredNumber = () => {
       const realNumber = getKioskLastRealOrderNumber(restaurantId);
@@ -170,12 +176,9 @@ function KioskConfirmScreen({ restaurantId }: { restaurantId?: string | null }) 
           <p className="mt-4 text-base leading-relaxed text-neutral-600 sm:text-lg">
             Your order is being prepared. Please wait for the staff to confirm your pickup number on screen.
           </p>
-          {displayOrderNumber ? (
-            <p className="mt-3 text-lg font-semibold text-neutral-900 sm:text-xl">
-              Your order number is{' '}
-              <span className="rounded-full bg-neutral-100 px-3 py-1">#{String(displayOrderNumber).padStart(4, '0')}</span>
-            </p>
-          ) : null}
+          <p className="mt-3 text-lg font-semibold text-neutral-900 sm:text-xl">
+            {orderNumberLabel}
+          </p>
           {restaurantId ? (
             <div className="mt-8 flex justify-center">
               <KioskActionButton

@@ -30,8 +30,8 @@ type Restaurant = {
 };
 
 type KioskOrderRaceResult =
-  | { timedOut: true; tempOrderNumber: number }
-  | { timedOut: false; orderId: string; orderNumber: number };
+  | { timedOut: true; tempOrderNumber: number | null }
+  | { timedOut: false; orderId: string; orderNumber: number | null };
 
 export default function KioskCartPage() {
   const router = useRouter();
@@ -220,7 +220,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     const initialStatus = autoAcceptKiosk ? 'accepted' : 'pending';
     const acceptedAt = autoAcceptKiosk ? new Date().toISOString() : null;
 
-    const submitKioskOrder = async (): Promise<{ orderId: string; orderNumber: number }> => {
+    const submitKioskOrder = async (): Promise<{ orderId: string; orderNumber: number | null }> => {
       if (!restaurantId) {
         throw new Error('Missing restaurant id for kiosk order');
       }
@@ -301,14 +301,19 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
           }
         }
 
+        const resolvedOrderNumber =
+          typeof order.short_order_number === 'number' && order.short_order_number > 0
+            ? order.short_order_number
+            : null;
+
         if (process.env.NODE_ENV === 'development') {
           console.debug('[kiosk] order inserted', {
             orderId: order.id,
-            orderNumber: order.short_order_number ?? 0,
+            orderNumber: resolvedOrderNumber,
           });
         }
 
-        return { orderId: order.id, orderNumber: order.short_order_number ?? 0 };
+        return { orderId: order.id, orderNumber: resolvedOrderNumber };
       } catch (err) {
         console.error('[kiosk] order submission failed', err);
         if (orderId) {
@@ -331,11 +336,13 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     };
 
     const finalizeSuccess = async (
-      result: { orderId: string; orderNumber: number },
+      result: { orderId: string; orderNumber: number | null },
       options?: { skipNavigation?: boolean }
     ) => {
       safeClearCart();
-      setKioskLastRealOrderNumber(restaurantId, result.orderNumber);
+      if (result.orderNumber != null) {
+        setKioskLastRealOrderNumber(restaurantId, result.orderNumber);
+      }
 
       const elapsed = Date.now() - startTime;
       if (elapsed < 800) {
@@ -344,7 +351,11 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
 
       if (!options?.skipNavigation) {
         setShowConfirmModal(false);
-        await router.push(`/kiosk/${restaurantId}/confirm?orderNumber=${result.orderNumber}`);
+        const confirmPath =
+          result.orderNumber != null
+            ? `/kiosk/${restaurantId}/confirm?orderNumber=${result.orderNumber}`
+            : `/kiosk/${restaurantId}/confirm`;
+        await router.push(confirmPath);
       }
 
       submissionInFlightRef.current = false;
@@ -366,7 +377,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
       });
 
     const timeoutPromise = new Promise<KioskOrderRaceResult>((resolve) => {
-      setTimeout(() => resolve({ timedOut: true, tempOrderNumber: 0 }), 5000);
+      setTimeout(() => resolve({ timedOut: true, tempOrderNumber: null }), 5000);
     });
 
     let raceResult: KioskOrderRaceResult;
@@ -378,7 +389,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     }
 
     // --- SAFE UNION NARROWING REQUIRED ---
-    let orderNumber: number;
+    let orderNumber: number | null;
     let orderId: string | null = null;
 
     if (raceResult.timedOut === false) {
@@ -398,7 +409,11 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     setSubmissionError('');
     setNameError('');
     setShowConfirmModal(false);
-    void router.push(`/kiosk/${restaurantId}/confirm?orderNumber=${orderNumber}`);
+    const confirmPath =
+      orderNumber != null
+        ? `/kiosk/${restaurantId}/confirm?orderNumber=${orderNumber}`
+        : `/kiosk/${restaurantId}/confirm`;
+    void router.push(confirmPath);
 
     submissionPromise
       .then(async (result) => {

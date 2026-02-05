@@ -16,11 +16,20 @@ export function displayOrderNo(order: any): string {
   return `#${tail}`;
 }
 
-export function formatShortOrderNumber(value: number | null | undefined) {
+export function formatShortOrderNumber(value: number | null | undefined): string | null {
   if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
     return String(Math.trunc(value)).padStart(4, '0');
   }
-  return '—';
+  return null;
+}
+
+export function formatOrderNumberDisplay(value: number | null | undefined): string {
+  const formatted = formatShortOrderNumber(value);
+  return formatted ? `#${formatted}` : '—';
+}
+
+export function formatOrderNumberLabel(value: number | null | undefined): string {
+  return `Order ${formatOrderNumberDisplay(value)}`;
 }
 
 export function formatPrice(amount: number, currencyCode: string = DEFAULT_CURRENCY_CODE) {

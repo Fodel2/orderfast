@@ -8,7 +8,7 @@ import OrderDetailsModal, { Order as OrderType } from '../../components/OrderDet
 import BreakModal from '../../components/BreakModal';
 import BreakCountdown from '../../components/BreakCountdown';
 import { ORDER_ALERT_AUDIO } from '@/audio/orderAlertBase64';
-import { formatPrice, formatShortOrderNumber } from '@/lib/orderDisplay';
+import { formatOrderNumberLabel, formatPrice } from '@/lib/orderDisplay';
 import { getRandomOrderEmptyMessage } from '@/lib/orderEmptyState';
 import { useRestaurantAvailability } from '@/hooks/useRestaurantAvailability';
 
@@ -790,9 +790,7 @@ export default function OrdersPage() {
               >
                 <div className="flex justify-between items-center">
                   <div>
-                    <h3 className="font-semibold">#
-                      {formatShortOrderNumber(o.short_order_number)}
-                    </h3>
+                    <h3 className="font-semibold">{formatOrderNumberLabel(o.short_order_number)}</h3>
                     <p className="text-sm text-gray-500">{o.customer_name || 'Guest'}</p>
                   </div>
                   <div className="text-right">

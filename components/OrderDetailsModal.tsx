@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import RejectOrderModal from './RejectOrderModal';
 import OrderRejectButton from './OrderRejectButton';
-import { formatPrice, formatShortOrderNumber } from '@/lib/orderDisplay';
+import { formatOrderNumberLabel, formatPrice } from '@/lib/orderDisplay';
 
 interface OrderAddon {
   id: number;
@@ -102,9 +102,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateStatus }: Pr
           <XMarkIcon className="w-5 h-5" />
         </button>
         <div className="p-6 space-y-4 text-sm">
-          <h3 className="text-2xl font-bold">
-            Order #{formatShortOrderNumber(order.short_order_number)}
-          </h3>
+          <h3 className="text-2xl font-bold">{formatOrderNumberLabel(order.short_order_number)}</h3>
           {hasIncompleteData && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
               Some order details are still loading. Please try again in a moment.

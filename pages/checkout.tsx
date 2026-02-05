@@ -154,8 +154,14 @@ export default function CheckoutPage() {
       }
 
       clearCart();
-      const resolvedOrderNumber = order.short_order_number ?? 0;
-      router.push(`/order-confirmation?order_number=${resolvedOrderNumber}`);
+      const resolvedOrderNumber =
+        typeof order.short_order_number === 'number' && order.short_order_number > 0
+          ? order.short_order_number
+          : null;
+      const confirmationPath = resolvedOrderNumber
+        ? `/order-confirmation?order_number=${resolvedOrderNumber}`
+        : '/order-confirmation';
+      router.push(confirmationPath);
     } catch (err) {
       console.error(err);
       alert('Failed to place order');
