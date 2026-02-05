@@ -198,11 +198,16 @@ export default function KitchenDisplayPage() {
     endBreak,
   } = useRestaurantAvailability(restaurantId);
 
-  const preferenceKey = useMemo(
+  const mutedPreferenceKey = useMemo(
+    () => (restaurantId ? `kod_sound_muted_${restaurantId}` : 'kod_sound_muted'),
+    [restaurantId]
+  );
+  const legacyPreferenceKey = useMemo(
     () => (restaurantId ? `kod_audio_enabled_${restaurantId}` : 'kod_audio_enabled'),
     [restaurantId]
   );
-  const [soundEnabled, setSoundEnabled] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [needsAudioUnlock, setNeedsAudioUnlock] = useState(false);
 
   const stopAlertLoop = useCallback(() => {
     const audio = alertAudioRef.current;
@@ -211,6 +216,31 @@ export default function KitchenDisplayPage() {
       audio.currentTime = 0;
     }
     isAlertPlayingRef.current = false;
+  }, []);
+
+  const ensureAudioContext = useCallback(async () => {
+    if (typeof window === 'undefined') return null;
+    const AudioContextCtor = (window.AudioContext ||
+      (window as Window & { webkitAudioContext?: AudioContextConstructor }).webkitAudioContext) as
+      | AudioContextConstructor
+      | undefined;
+
+    if (!AudioContextCtor) return null;
+
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new AudioContextCtor();
+      }
+      if (audioContextRef.current.state === 'suspended') {
+        setNeedsAudioUnlock(true);
+      } else {
+        setNeedsAudioUnlock(false);
+      }
+      return audioContextRef.current;
+    } catch (err) {
+      console.debug('[kod] unable to initialize audio context', err);
+      return null;
+    }
   }, []);
 
   const startAlertLoop = useCallback(() => {
@@ -230,8 +260,12 @@ export default function KitchenDisplayPage() {
       .play()
       .then(() => {
         isAlertPlayingRef.current = true;
+        setNeedsAudioUnlock(false);
       })
-      .catch((err) => console.error('[kod] audio playback failed', err));
+      .catch((err) => {
+        console.error('[kod] audio playback failed', err);
+        setNeedsAudioUnlock(true);
+      });
   }, [soundEnabled]);
 
   const syncAlertLoop = useCallback(() => {
@@ -440,39 +474,40 @@ export default function KitchenDisplayPage() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const stored = window.localStorage.getItem(preferenceKey);
-    setSoundEnabled(stored === 'true');
-  }, [preferenceKey]);
+    const storedMuted = window.localStorage.getItem(mutedPreferenceKey);
+    let muted = storedMuted === 'true';
+    if (storedMuted === null) {
+      const legacy = window.localStorage.getItem(legacyPreferenceKey);
+      if (legacy === 'false') {
+        muted = true;
+      }
+    }
+    window.localStorage.setItem(mutedPreferenceKey, muted ? 'true' : 'false');
+    setSoundEnabled(!muted);
+  }, [legacyPreferenceKey, mutedPreferenceKey]);
 
   const handleEnableSound = useCallback(async () => {
     if (typeof window === 'undefined') return;
-    const AudioContextCtor = (window.AudioContext ||
-      (window as Window & { webkitAudioContext?: AudioContextConstructor }).webkitAudioContext) as
-      | AudioContextConstructor
-      | undefined;
-
-    if (AudioContextCtor) {
+    const context = await ensureAudioContext();
+    if (context && context.state === 'suspended') {
       try {
-        if (!audioContextRef.current) {
-          audioContextRef.current = new AudioContextCtor();
-        }
-        if (audioContextRef.current.state === 'suspended') {
-          await audioContextRef.current.resume();
-        }
+        await context.resume();
       } catch (err) {
-        console.debug('[kod] unable to initialize audio context', err);
+        console.debug('[kod] unable to resume audio context', err);
       }
     }
 
-    window.localStorage.setItem(preferenceKey, 'true');
+    window.localStorage.setItem(mutedPreferenceKey, 'false');
     setSoundEnabled(true);
-  }, [preferenceKey]);
+    setNeedsAudioUnlock(false);
+  }, [ensureAudioContext, mutedPreferenceKey]);
 
   const handleDisableSound = useCallback(() => {
     if (typeof window === 'undefined') return;
-    window.localStorage.setItem(preferenceKey, 'false');
+    window.localStorage.setItem(mutedPreferenceKey, 'true');
     setSoundEnabled(false);
-  }, [preferenceKey]);
+    setNeedsAudioUnlock(false);
+  }, [mutedPreferenceKey]);
 
   useEffect(() => {
     syncAlertLoop();
@@ -480,6 +515,14 @@ export default function KitchenDisplayPage() {
       stopAlertLoop();
     };
   }, [soundEnabled, stopAlertLoop, syncAlertLoop]);
+
+  useEffect(() => {
+    if (!soundEnabled) {
+      setNeedsAudioUnlock(false);
+      return;
+    }
+    void ensureAudioContext();
+  }, [ensureAudioContext, soundEnabled]);
 
   const formatElapsed = useCallback((createdAt: string) => {
     const createdTime = new Date(createdAt).getTime();
@@ -518,14 +561,14 @@ export default function KitchenDisplayPage() {
   );
 
   const updateOrderStatus = useCallback(
-    async (order: Order, nextStatus: string, expectedStatus: string) => {
+    async (order: Order, nextStatus: string, allowedStatuses: string[]) => {
       if (TERMINAL_STATUSES.includes(order.status)) return;
       await acknowledgeOrder(order.id);
       const { data, error } = await supabase
         .from('orders')
         .update({ status: nextStatus })
         .eq('id', order.id)
-        .eq('status', expectedStatus)
+        .in('status', allowedStatuses)
         .select('id');
 
       if (error) {
@@ -551,11 +594,16 @@ export default function KitchenDisplayPage() {
       if (cooldowns[key]) return;
       startCooldown(key);
       if (order.status === 'pending') {
-        await updateOrderStatus(order, 'accepted', 'pending');
+        await updateOrderStatus(order, 'accepted', ['pending']);
         return;
       }
-      if (order.status === 'accepted') {
-        await updateOrderStatus(order, 'completed', 'accepted');
+      if (['accepted', 'preparing', 'ready_to_collect', 'delivering'].includes(order.status)) {
+        await updateOrderStatus(order, 'completed', [
+          'accepted',
+          'preparing',
+          'ready_to_collect',
+          'delivering',
+        ]);
       }
     },
     [cooldowns, startCooldown, updateOrderStatus]
@@ -648,6 +696,16 @@ export default function KitchenDisplayPage() {
               ) : null}
               {isOnline && lastFetchFailed ? (
                 <span className="text-amber-300">Sync error</span>
+              ) : null}
+              {needsAudioUnlock && soundEnabled ? (
+                <button
+                  type="button"
+                  onClick={handleEnableSound}
+                  className="flex items-center gap-2 rounded-full border border-amber-300/40 bg-amber-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-amber-100 transition hover:bg-amber-500/20"
+                >
+                  <SpeakerWaveIcon className="h-4 w-4" />
+                  Tap to enable sound
+                </button>
               ) : null}
               {soundEnabled ? (
                 <button
@@ -859,8 +917,9 @@ export default function KitchenDisplayPage() {
                           type="button"
                           onClick={() => handlePrimaryAction(segment.order)}
                           disabled={
-                            !['pending', 'accepted'].includes(segment.order.status) ||
-                            cooldowns[`${segment.order.id}-primary`]
+                            !['pending', 'accepted', 'preparing', 'ready_to_collect', 'delivering'].includes(
+                              segment.order.status
+                            ) || cooldowns[`${segment.order.id}-primary`]
                           }
                           className="flex-1 rounded-full bg-teal-500 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-black transition hover:bg-teal-400 disabled:cursor-not-allowed disabled:opacity-40"
                         >
