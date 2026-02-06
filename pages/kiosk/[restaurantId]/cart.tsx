@@ -586,50 +586,66 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                           This is the name we’ll shout when your order is ready.
                         </p>
                       </div>
-                      <div className="space-y-2">
-                        <input
-                          type="text"
-                          inputMode="text"
-                          value={customerName}
-                          onChange={(e) => {
-                            registerActivity();
-                            setCustomerName(e.target.value);
-                          }}
-                          onFocus={() => refreshViewport()}
-                          autoComplete="name"
-                          enterKeyHint="done"
-                          placeholder="Enter your name…"
-                          className={`w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 font-semibold text-neutral-900 shadow-inner shadow-neutral-200/70 outline-none transition focus:border-[var(--kiosk-accent,#111827)]/60 focus:bg-white ${
-                            isCompactModal ? 'py-3 text-[1rem]' : 'py-4 text-[1.1rem]'
-                          }`}
-                        />
-                        {nameError ? (
-                          <p className="text-sm font-semibold text-rose-600">{nameError}</p>
-                        ) : null}
-                        {submissionError ? (
-                          <p className="text-sm font-semibold text-rose-600">{submissionError}</p>
-                        ) : null}
-                      </div>
-                      <div className="mt-auto grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <button
-                          type="button"
-                          onClick={handleBackToReview}
-                          className={`inline-flex items-center justify-center rounded-2xl border border-neutral-200 font-semibold text-neutral-800 transition hover:bg-neutral-50 ${
-                            isCompactModal ? 'px-4 py-2.5 text-[0.95rem]' : 'px-4 py-3 text-base'
-                          }`}
-                        >
-                          Back
-                        </button>
-                        <KioskActionButton
-                          onClick={handlePlaceOrder}
-                          disabled={placingOrder}
-                          className={`w-full justify-center rounded-2xl font-semibold uppercase tracking-wide shadow-lg shadow-slate-900/15 ${
-                            isCompactModal ? 'px-4 py-2.5 text-[0.95rem]' : 'px-4 py-3 text-base'
-                          } ${placingOrder ? 'opacity-70' : ''}`}
-                        >
-                          {placingOrder ? 'Placing…' : 'Place order'}
-                        </KioskActionButton>
-                      </div>
+                      <form
+                        autoComplete="off"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          handlePlaceOrder();
+                        }}
+                        className="flex min-h-0 flex-1 flex-col gap-4"
+                      >
+                        <div className="space-y-2">
+                          <input
+                            type="text"
+                            inputMode="text"
+                            value={customerName}
+                            onChange={(e) => {
+                              registerActivity();
+                              setCustomerName(e.target.value);
+                            }}
+                            onFocus={() => refreshViewport()}
+                            autoComplete="off"
+                            aria-autocomplete="none"
+                            aria-haspopup="false"
+                            spellCheck={false}
+                            autoCorrect="off"
+                            autoCapitalize="words"
+                            enterKeyHint="done"
+                            data-ignore-autofill="true"
+                            placeholder="Enter your name…"
+                            className={`w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 font-semibold text-neutral-900 shadow-inner shadow-neutral-200/70 outline-none transition focus:border-[var(--kiosk-accent,#111827)]/60 focus:bg-white ${
+                              isCompactModal ? 'py-3 text-[1rem]' : 'py-4 text-[1.1rem]'
+                            }`}
+                          />
+                          {nameError ? (
+                            <p className="text-sm font-semibold text-rose-600">{nameError}</p>
+                          ) : null}
+                          {submissionError ? (
+                            <p className="text-sm font-semibold text-rose-600">{submissionError}</p>
+                          ) : null}
+                        </div>
+                        <div className="mt-auto grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <button
+                            type="button"
+                            onClick={handleBackToReview}
+                            className={`inline-flex items-center justify-center rounded-2xl border border-neutral-200 font-semibold text-neutral-800 transition hover:bg-neutral-50 ${
+                              isCompactModal ? 'px-4 py-2.5 text-[0.95rem]' : 'px-4 py-3 text-base'
+                            }`}
+                          >
+                            Back
+                          </button>
+                          <KioskActionButton
+                            type="submit"
+                            onClick={handlePlaceOrder}
+                            disabled={placingOrder}
+                            className={`w-full justify-center rounded-2xl font-semibold uppercase tracking-wide shadow-lg shadow-slate-900/15 ${
+                              isCompactModal ? 'px-4 py-2.5 text-[0.95rem]' : 'px-4 py-3 text-base'
+                            } ${placingOrder ? 'opacity-70' : ''}`}
+                          >
+                            {placingOrder ? 'Placing…' : 'Place order'}
+                          </KioskActionButton>
+                        </div>
+                      </form>
                     </motion.div>
                   )}
                 </AnimatePresence>
