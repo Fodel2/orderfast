@@ -15,13 +15,12 @@ import BreakModal from '@/components/BreakModal';
 import BreakCountdown from '@/components/BreakCountdown';
 import OrderRejectButton from '@/components/OrderRejectButton';
 import RejectOrderModal, { RejectableOrder } from '@/components/RejectOrderModal';
-import { ORDER_ALERT_AUDIO } from '@/audio/orderAlertBase64';
+import { orderAlertSoundController } from '@/utils/orderAlertSoundController';
 import { getRandomOrderEmptyMessage } from '@/lib/orderEmptyState';
 import { formatShortOrderNumber } from '@/lib/orderDisplay';
 import { supabase } from '@/lib/supabaseClient';
 import { useRestaurantAvailability } from '@/hooks/useRestaurantAvailability';
 
-type AudioContextConstructor = typeof AudioContext;
 
 type OrderAddon = {
   id: number;
@@ -165,7 +164,6 @@ export default function KitchenDisplayPage() {
   const router = useRouter();
   const { restaurantId: routeParam } = router.query;
   const restaurantId = Array.isArray(routeParam) ? routeParam[0] : routeParam;
-  const audioContextRef = useRef<AudioContext | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [isFetching, setIsFetching] = useState(false);
   const [lastFetchFailed, setLastFetchFailed] = useState(false);
@@ -183,9 +181,7 @@ export default function KitchenDisplayPage() {
   const [cooldowns, setCooldowns] = useState<Record<string, boolean>>({});
   const orderedSegmentsRef = useRef(0);
   const pageIndexRef = useRef(0);
-  const alertAudioRef = useRef<HTMLAudioElement | null>(null);
   const pendingOrderIdsRef = useRef<Set<string>>(new Set());
-  const isAlertPlayingRef = useRef(false);
   const [rejectOrder, setRejectOrder] = useState<Order | null>(null);
   const emptyMessage = useMemo(() => getRandomOrderEmptyMessage(), []);
   const {
@@ -210,57 +206,31 @@ export default function KitchenDisplayPage() {
   const [needsAudioUnlock, setNeedsAudioUnlock] = useState(false);
 
   const stopAlertLoop = useCallback(() => {
-    const audio = alertAudioRef.current;
-    if (audio) {
-      audio.pause();
-      audio.currentTime = 0;
-    }
-    isAlertPlayingRef.current = false;
+    orderAlertSoundController.stop('KOD');
   }, []);
 
   const ensureAudioContext = useCallback(async () => {
-    if (typeof window === 'undefined') return null;
-    const AudioContextCtor = (window.AudioContext ||
-      (window as Window & { webkitAudioContext?: AudioContextConstructor }).webkitAudioContext) as
-      | AudioContextConstructor
-      | undefined;
-
-    if (!AudioContextCtor) return null;
-
-    try {
-      if (!audioContextRef.current) {
-        audioContextRef.current = new AudioContextCtor();
-      }
-      if (audioContextRef.current.state === 'suspended') {
-        setNeedsAudioUnlock(true);
-      } else {
-        setNeedsAudioUnlock(false);
-      }
-      return audioContextRef.current;
-    } catch (err) {
-      console.debug('[kod] unable to initialize audio context', err);
-      return null;
+    const context = orderAlertSoundController.ensureAudioContext();
+    if (!context) return null;
+    if (context.state === 'suspended') {
+      setNeedsAudioUnlock(true);
+    } else {
+      setNeedsAudioUnlock(false);
     }
+    return context;
   }, []);
 
   const startAlertLoop = useCallback(() => {
     if (!soundEnabled) return;
     if (pendingOrderIdsRef.current.size === 0) return;
-    let audio = alertAudioRef.current;
-    if (!audio) {
-      audio = new Audio(ORDER_ALERT_AUDIO);
-      audio.loop = true;
-      alertAudioRef.current = audio;
-    }
-
-    if (isAlertPlayingRef.current) return;
-
-    audio.loop = true;
-    audio
-      .play()
-      .then(() => {
-        isAlertPlayingRef.current = true;
-        setNeedsAudioUnlock(false);
+    orderAlertSoundController
+      .playLoop('KOD')
+      .then((played) => {
+        if (played) {
+          setNeedsAudioUnlock(false);
+        } else {
+          setNeedsAudioUnlock(true);
+        }
       })
       .catch((err) => {
         console.error('[kod] audio playback failed', err);
@@ -488,14 +458,12 @@ export default function KitchenDisplayPage() {
 
   const handleEnableSound = useCallback(async () => {
     if (typeof window === 'undefined') return;
-    const context = await ensureAudioContext();
-    if (context && context.state === 'suspended') {
-      try {
-        await context.resume();
-      } catch (err) {
-        console.debug('[kod] unable to resume audio context', err);
-      }
+    try {
+      await orderAlertSoundController.resumeAudioContext();
+    } catch (err) {
+      console.debug('[kod] unable to resume audio context', err);
     }
+    void ensureAudioContext();
 
     window.localStorage.setItem(mutedPreferenceKey, 'false');
     setSoundEnabled(true);

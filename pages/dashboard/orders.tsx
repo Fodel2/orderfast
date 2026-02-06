@@ -8,7 +8,7 @@ import OrderDetailsModal, { Order as OrderType } from '../../components/OrderDet
 import BreakModal from '../../components/BreakModal';
 import BreakCountdown from '../../components/BreakCountdown';
 import Toast from '@/components/Toast';
-import { ORDER_ALERT_AUDIO } from '@/audio/orderAlertBase64';
+import { orderAlertSoundController } from '@/utils/orderAlertSoundController';
 import { formatPrice, formatShortOrderNumber, formatStatusLabel } from '@/lib/orderDisplay';
 import { getRandomOrderEmptyMessage } from '@/lib/orderEmptyState';
 import { useRestaurantAvailability } from '@/hooks/useRestaurantAvailability';
@@ -73,7 +73,6 @@ export default function OrdersPage() {
     | null
   >(null);
   const [toastMessage, setToastMessage] = useState('');
-  const alertAudioRef = useRef<HTMLAudioElement | null>(null);
   const pendingOrderIdsRef = useRef<Set<string>>(new Set());
   const isAlertPlayingRef = useRef(false);
   const autoAcceptBeepingRef = useRef(false);
@@ -113,31 +112,18 @@ export default function OrdersPage() {
 
   const stopAlertLoop = useCallback(() => {
     if (!isOrdersPage || isKioskDevice()) return;
-    const audio = alertAudioRef.current;
-    if (audio) {
-      audio.pause();
-      audio.currentTime = 0;
-    }
+    orderAlertSoundController.stop('Orders');
     isAlertPlayingRef.current = false;
   }, [isKioskDevice, isOrdersPage]);
 
   const startAlertLoop = useCallback(() => {
     if (!isOrdersPage || isKioskDevice()) return;
     if (pendingOrderIdsRef.current.size === 0) return;
-    let audio = alertAudioRef.current;
-    if (!audio) {
-      audio = new Audio(ORDER_ALERT_AUDIO);
-      audio.loop = true;
-      alertAudioRef.current = audio;
-    }
-
     if (isAlertPlayingRef.current) return;
-
-    audio.loop = true;
-    audio
-      .play()
-      .then(() => {
-        isAlertPlayingRef.current = true;
+    orderAlertSoundController
+      .playLoop('Orders')
+      .then((played) => {
+        isAlertPlayingRef.current = played;
       })
       .catch((err) => console.error('[orders] audio playback failed', err));
   }, [isKioskDevice, isOrdersPage]);
@@ -154,38 +140,20 @@ export default function OrdersPage() {
   const playAutoAcceptBeeps = useCallback(async () => {
     if (!isOrdersPage || isKioskDevice() || autoAcceptBeepingRef.current) return;
     autoAcceptBeepingRef.current = true;
-    let audio = alertAudioRef.current;
-    if (!audio) {
-      audio = new Audio(ORDER_ALERT_AUDIO);
-      alertAudioRef.current = audio;
-    }
     const wasLooping = isAlertPlayingRef.current;
     if (wasLooping) {
       stopAlertLoop();
     }
-    audio.loop = false;
-
-    const playBeep = () => {
-      try {
-        audio.pause();
-        audio.currentTime = 0;
-        void audio.play();
-      } catch (err) {
-        console.error('[orders] auto-accept alert playback failed', err);
-      }
-    };
-
-    playBeep();
-    for (let i = 1; i < 5; i++) {
-      window.setTimeout(playBeep, i * 1000);
-    }
-
-    window.setTimeout(() => {
-      autoAcceptBeepingRef.current = false;
-      if (wasLooping && pendingOrderIdsRef.current.size > 0) {
-        syncAlertLoop();
-      }
-    }, 5000);
+    orderAlertSoundController.playBeeps('Orders', {
+      count: 5,
+      intervalMs: 1000,
+      onComplete: (wasLoopingBefore) => {
+        autoAcceptBeepingRef.current = false;
+        if (wasLoopingBefore && pendingOrderIdsRef.current.size > 0) {
+          syncAlertLoop();
+        }
+      },
+    });
   }, [autoAcceptBeepingRef, isKioskDevice, isOrdersPage, stopAlertLoop, syncAlertLoop]);
 
   const startAutoFlashForOrder = useCallback((orderId: string) => {
@@ -394,6 +362,12 @@ export default function OrdersPage() {
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      orderAlertSoundController.stop('Orders');
+    };
   }, []);
 
   useEffect(() => {
