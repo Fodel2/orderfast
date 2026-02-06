@@ -68,19 +68,17 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   const [submissionError, setSubmissionError] = useState('');
   const submissionInFlightRef = useRef(false);
   const isMountedRef = useRef(true);
-  const { height: viewportHeight, offsetTop, refresh: refreshViewport } = useKeyboardViewport(showConfirmModal);
+  const { height: viewportHeight, refresh: refreshViewport } = useKeyboardViewport(showConfirmModal);
   const isCompactModal = viewportHeight > 0 ? viewportHeight < 520 : false;
   const modalPadding = isCompactModal ? 12 : 16;
   const modalOverlayStyle = useMemo<CSSProperties>(
     () => ({
-      height: viewportHeight > 0 ? `${viewportHeight}px` : 'var(--vvh, 100dvh)',
-      top: offsetTop ? `${offsetTop}px` : '0px',
-      bottom: 'auto',
+      height: 'var(--vvh, 100dvh)',
       paddingTop: `calc(env(safe-area-inset-top) + ${modalPadding}px)`,
       paddingBottom: `calc(env(safe-area-inset-bottom) + ${modalPadding}px)`,
       overflow: 'hidden',
     }),
-    [modalPadding, offsetTop, viewportHeight]
+    [modalPadding]
   );
   const modalCardStyle = useMemo<CSSProperties>(
     () => ({
@@ -591,12 +589,15 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                       <div className="space-y-2">
                         <input
                           type="text"
+                          inputMode="text"
                           value={customerName}
                           onChange={(e) => {
                             registerActivity();
                             setCustomerName(e.target.value);
                           }}
                           onFocus={() => refreshViewport()}
+                          autoComplete="name"
+                          enterKeyHint="done"
                           placeholder="Enter your name…"
                           className={`w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 font-semibold text-neutral-900 shadow-inner shadow-neutral-200/70 outline-none transition focus:border-[var(--kiosk-accent,#111827)]/60 focus:bg-white ${
                             isCompactModal ? 'py-3 text-[1rem]' : 'py-4 text-[1.1rem]'

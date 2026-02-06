@@ -5,7 +5,7 @@ type KeyboardViewportState = {
   width: number;
   offsetTop: number;
   offsetLeft: number;
-  keyboardHeight: number;
+  obstructionHeight: number;
   hasVisualViewport: boolean;
 };
 
@@ -14,7 +14,7 @@ const defaultState: KeyboardViewportState = {
   width: 0,
   offsetTop: 0,
   offsetLeft: 0,
-  keyboardHeight: 0,
+  obstructionHeight: 0,
   hasVisualViewport: false,
 };
 
@@ -25,14 +25,14 @@ const getKeyboardViewportState = (): KeyboardViewportState => {
   const width = visualViewport?.width ?? window.innerWidth;
   const offsetTop = visualViewport?.offsetTop ?? 0;
   const offsetLeft = visualViewport?.offsetLeft ?? 0;
-  const keyboardHeight = Math.max(0, window.innerHeight - height - offsetTop);
+  const obstructionHeight = Math.max(0, window.innerHeight - height);
 
   return {
     height,
     width,
     offsetTop,
     offsetLeft,
-    keyboardHeight,
+    obstructionHeight,
     hasVisualViewport: Boolean(visualViewport),
   };
 };
@@ -41,8 +41,7 @@ const applyViewportCssVars = (state: KeyboardViewportState) => {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
   root.style.setProperty('--vvh', `${state.height}px`);
-  root.style.setProperty('--vv-offset-top', `${state.offsetTop}px`);
-  root.style.setProperty('--keyboard-height', `${state.keyboardHeight}px`);
+  root.style.setProperty('--obstruction-height', `${state.obstructionHeight}px`);
 };
 
 export const useKeyboardViewport = (enabled = true) => {
