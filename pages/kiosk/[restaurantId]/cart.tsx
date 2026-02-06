@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -11,6 +12,8 @@ import KioskActionButton from '@/components/kiosk/KioskActionButton';
 import { ChevronLeftIcon } from '@heroicons/react/24/outline';
 import KioskLoadingOverlay from '@/components/kiosk/KioskLoadingOverlay';
 import { setKioskLastRealOrderNumber } from '@/utils/kiosk/orders';
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
+import { useKeyboardViewport } from '@/hooks/useKeyboardViewport';
 
 type Restaurant = {
   id: string;
@@ -65,15 +68,27 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   const [submissionError, setSubmissionError] = useState('');
   const submissionInFlightRef = useRef(false);
   const isMountedRef = useRef(true);
-  const modalOverlayStyle = {
-    height: '100dvh',
-    paddingTop: 'env(safe-area-inset-top)',
-    paddingBottom: 'env(safe-area-inset-bottom)',
-    overflow: 'hidden',
-  } as const;
-  const modalCardStyle = {
-    maxHeight: 'calc(100dvh - 32px - env(safe-area-inset-bottom))',
-  } as const;
+  const { height: viewportHeight, offsetTop, refresh: refreshViewport } = useKeyboardViewport(showConfirmModal);
+  const isCompactModal = viewportHeight > 0 ? viewportHeight < 520 : false;
+  const modalPadding = isCompactModal ? 12 : 16;
+  const modalOverlayStyle = useMemo<CSSProperties>(
+    () => ({
+      height: viewportHeight > 0 ? `${viewportHeight}px` : 'var(--vvh, 100dvh)',
+      top: offsetTop ? `${offsetTop}px` : '0px',
+      bottom: 'auto',
+      paddingTop: `calc(env(safe-area-inset-top) + ${modalPadding}px)`,
+      paddingBottom: `calc(env(safe-area-inset-bottom) + ${modalPadding}px)`,
+      overflow: 'hidden',
+    }),
+    [modalPadding, offsetTop, viewportHeight]
+  );
+  const modalCardStyle = useMemo<CSSProperties>(
+    () => ({
+      maxHeight: '100%',
+    }),
+    []
+  );
+  useBodyScrollLock(showConfirmModal);
 
   const confirmMessages = useMemo(
     () => [
@@ -448,6 +463,12 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     setSubmissionError('');
   };
 
+  useEffect(() => {
+    if (showConfirmModal) {
+      refreshViewport();
+    }
+  }, [confirmStep, refreshViewport, showConfirmModal]);
+
   return (
     <KioskLayout
       restaurantId={restaurantId}
@@ -504,7 +525,11 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
               exit={{ opacity: 0, scale: 0.96 }}
               transition={{ duration: 0.18, ease: 'easeOut' }}
             >
-              <div className="modalContent flex-1 overflow-y-auto overscroll-contain px-6 py-6 sm:px-8 sm:py-8">
+              <div
+                className={`modalContent flex min-h-0 flex-1 flex-col px-6 sm:px-8 ${
+                  isCompactModal ? 'py-4' : 'py-6 sm:py-8'
+                }`}
+              >
                 <AnimatePresence mode="wait">
                   {confirmStep === 1 ? (
                     <motion.div
@@ -513,11 +538,15 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -12 }}
                       transition={{ duration: 0.2, ease: 'easeOut' }}
-                      className="flex min-h-[260px] flex-col gap-6"
+                      className={`flex min-h-0 flex-1 flex-col ${isCompactModal ? 'gap-4' : 'gap-6'}`}
                     >
-                      <div className="space-y-2">
-                        <h3 className="text-2xl font-semibold text-neutral-900 sm:text-[26px]">Is everything correct?</h3>
-                        <p className="text-base leading-relaxed text-neutral-600 sm:text-lg">{confirmMessage}</p>
+                      <div className={`${isCompactModal ? 'space-y-1.5' : 'space-y-2'}`}>
+                        <h3 className="text-[clamp(1.35rem,2.8vw,1.625rem)] font-semibold text-neutral-900">
+                          Is everything correct?
+                        </h3>
+                        <p className="text-[clamp(0.95rem,2.1vw,1.125rem)] leading-relaxed text-neutral-600">
+                          {confirmMessage}
+                        </p>
                       </div>
                       <div className="mt-auto grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <button
@@ -526,13 +555,17 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                             registerActivity();
                             setShowConfirmModal(false);
                           }}
-                          className="inline-flex items-center justify-center rounded-2xl border border-neutral-200 px-4 py-3 text-base font-semibold text-neutral-800 transition hover:bg-neutral-50"
+                          className={`inline-flex items-center justify-center rounded-2xl border border-neutral-200 font-semibold text-neutral-800 transition hover:bg-neutral-50 ${
+                            isCompactModal ? 'px-4 py-2.5 text-[0.95rem]' : 'px-4 py-3 text-base'
+                          }`}
                         >
                           Go back
                         </button>
                         <KioskActionButton
                           onClick={goToNameStep}
-                          className="w-full justify-center rounded-2xl px-4 py-3 text-base font-semibold uppercase tracking-wide shadow-lg shadow-slate-900/15"
+                          className={`w-full justify-center rounded-2xl font-semibold uppercase tracking-wide shadow-lg shadow-slate-900/15 ${
+                            isCompactModal ? 'px-4 py-2.5 text-[0.95rem]' : 'px-4 py-3 text-base'
+                          }`}
                         >
                           Looks good!
                         </KioskActionButton>
@@ -545,11 +578,13 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -12 }}
                       transition={{ duration: 0.2, ease: 'easeOut' }}
-                      className="flex min-h-[260px] flex-col gap-5"
+                      className={`flex min-h-0 flex-1 flex-col ${isCompactModal ? 'gap-4' : 'gap-5'}`}
                     >
-                      <div className="space-y-2.5">
-                        <h3 className="text-2xl font-semibold text-neutral-900 sm:text-[26px]">{namePromptMessage}</h3>
-                        <p className="text-base leading-relaxed text-neutral-600 sm:text-lg">
+                      <div className={`${isCompactModal ? 'space-y-1.5' : 'space-y-2.5'}`}>
+                        <h3 className="text-[clamp(1.35rem,2.8vw,1.625rem)] font-semibold text-neutral-900">
+                          {namePromptMessage}
+                        </h3>
+                        <p className="text-[clamp(0.95rem,2.1vw,1.125rem)] leading-relaxed text-neutral-600">
                           This is the name we’ll shout when your order is ready.
                         </p>
                       </div>
@@ -561,8 +596,11 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                             registerActivity();
                             setCustomerName(e.target.value);
                           }}
+                          onFocus={() => refreshViewport()}
                           placeholder="Enter your name…"
-                          className="w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-4 text-lg font-semibold text-neutral-900 shadow-inner shadow-neutral-200/70 outline-none transition focus:border-[var(--kiosk-accent,#111827)]/60 focus:bg-white"
+                          className={`w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 font-semibold text-neutral-900 shadow-inner shadow-neutral-200/70 outline-none transition focus:border-[var(--kiosk-accent,#111827)]/60 focus:bg-white ${
+                            isCompactModal ? 'py-3 text-[1rem]' : 'py-4 text-[1.1rem]'
+                          }`}
                         />
                         {nameError ? (
                           <p className="text-sm font-semibold text-rose-600">{nameError}</p>
@@ -575,16 +613,18 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                         <button
                           type="button"
                           onClick={handleBackToReview}
-                          className="inline-flex items-center justify-center rounded-2xl border border-neutral-200 px-4 py-3 text-base font-semibold text-neutral-800 transition hover:bg-neutral-50"
+                          className={`inline-flex items-center justify-center rounded-2xl border border-neutral-200 font-semibold text-neutral-800 transition hover:bg-neutral-50 ${
+                            isCompactModal ? 'px-4 py-2.5 text-[0.95rem]' : 'px-4 py-3 text-base'
+                          }`}
                         >
                           Back
                         </button>
                         <KioskActionButton
                           onClick={handlePlaceOrder}
                           disabled={placingOrder}
-                          className={`w-full justify-center rounded-2xl px-4 py-3 text-base font-semibold uppercase tracking-wide shadow-lg shadow-slate-900/15 ${
-                            placingOrder ? 'opacity-70' : ''
-                          }`}
+                          className={`w-full justify-center rounded-2xl font-semibold uppercase tracking-wide shadow-lg shadow-slate-900/15 ${
+                            isCompactModal ? 'px-4 py-2.5 text-[0.95rem]' : 'px-4 py-3 text-base'
+                          } ${placingOrder ? 'opacity-70' : ''}`}
                         >
                           {placingOrder ? 'Placing…' : 'Place order'}
                         </KioskActionButton>
