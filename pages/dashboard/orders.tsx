@@ -7,8 +7,9 @@ import { ChefHat } from 'lucide-react';
 import OrderDetailsModal, { Order as OrderType } from '../../components/OrderDetailsModal';
 import BreakModal from '../../components/BreakModal';
 import BreakCountdown from '../../components/BreakCountdown';
+import Toast from '@/components/Toast';
 import { ORDER_ALERT_AUDIO } from '@/audio/orderAlertBase64';
-import { formatPrice, formatShortOrderNumber } from '@/lib/orderDisplay';
+import { formatPrice, formatShortOrderNumber, formatStatusLabel } from '@/lib/orderDisplay';
 import { getRandomOrderEmptyMessage } from '@/lib/orderEmptyState';
 import { useRestaurantAvailability } from '@/hooks/useRestaurantAvailability';
 
@@ -19,6 +20,7 @@ const ACTIVE_STATUSES = [
   'delivering',
   'ready_to_collect',
 ];
+const COMPLETE_ELIGIBLE_STATUSES = ['accepted', 'preparing', 'delivering', 'ready_to_collect'];
 
 const isActiveStatus = (status: string | null | undefined) =>
   !!status && ACTIVE_STATUSES.includes(status);
@@ -70,6 +72,7 @@ export default function OrdersPage() {
     | { open_time: string | null; close_time: string | null; closed: boolean }
     | null
   >(null);
+  const [toastMessage, setToastMessage] = useState('');
   const alertAudioRef = useRef<HTMLAudioElement | null>(null);
   const pendingOrderIdsRef = useRef<Set<string>>(new Set());
   const isAlertPlayingRef = useRef(false);
@@ -625,14 +628,102 @@ export default function OrdersPage() {
   ]);
 
   
+  const refreshOrders = useCallback(
+    async (activeRestaurantId: string) => {
+      const { data: ordersData, error: ordersError } = await supabase
+        .from('orders')
+        .select(
+          `
+          id,
+          restaurant_id,
+          short_order_number,
+          source,
+          order_type,
+          customer_name,
+          phone_number,
+          delivery_address,
+          scheduled_for,
+          customer_notes,
+          status,
+          total_price,
+          created_at,
+          accepted_at,
+          order_items(
+            id,
+            item_id,
+            name,
+            price,
+            quantity,
+            notes,
+            order_addons(id,option_id,name,price,quantity)
+          )
+        `
+        )
+        .eq('restaurant_id', activeRestaurantId)
+        .in('status', ACTIVE_STATUSES)
+        .order('created_at', { ascending: false });
+
+      if (!ordersError && ordersData) {
+        setOrders(ordersData as Order[]);
+        const pending = new Set<string>();
+        const flashing = new Set<string>();
+        (ordersData as Order[]).forEach((o) => {
+          if (o.status === 'pending') {
+            pending.add(o.id);
+          }
+          if (isAutoAcceptedOrder(o)) {
+            flashing.add(o.id);
+          }
+        });
+        pendingOrderIdsRef.current = pending;
+        setFlashingOrderIds(flashing);
+        syncAlertLoop();
+      } else if (ordersError) {
+        console.error('Error fetching orders', ordersError);
+      }
+    },
+    [isAutoAcceptedOrder, syncAlertLoop]
+  );
+
   const updateStatus = async (id: string, status: string) => {
     const targetOrder = orders.find((o) => o.id === id);
+    if (status === 'accepted' && targetOrder?.status === 'accepted') {
+      return;
+    }
     const updatePayload: { status: string; accepted_at?: string | null } = { status };
     if (targetOrder?.accepted_at) {
       updatePayload.accepted_at = targetOrder.accepted_at;
     }
 
-    await supabase.from('orders').update(updatePayload).eq('id', id);
+    const allowedStatuses =
+      status === 'accepted'
+        ? ['pending']
+        : status === 'completed'
+        ? COMPLETE_ELIGIBLE_STATUSES
+        : ACTIVE_STATUSES;
+    const { data, error } = await supabase
+      .from('orders')
+      .update(updatePayload)
+      .eq('id', id)
+      .in('status', allowedStatuses)
+      .select('id');
+
+    if (error) {
+      console.error('[orders] failed to update order status', error);
+      setToastMessage('Unable to update order');
+      return;
+    }
+
+    if (!data || data.length === 0) {
+      setToastMessage('Updated elsewhere');
+      if (restaurantId) {
+        await refreshOrders(restaurantId);
+      }
+      const refreshedOrder = await fetchOrderWithItems(id);
+      setSelectedOrder(refreshedOrder ?? null);
+      return;
+    }
+
     if (status === 'pending') {
       pendingOrderIdsRef.current.add(id);
     } else {
@@ -797,7 +888,7 @@ export default function OrdersPage() {
                   </div>
                   <div className="text-right">
                     <p className="font-semibold">{formatPrice(o.total_price)}</p>
-                    <p className="text-sm capitalize">{o.status}</p>
+                    <p className="text-sm">{formatStatusLabel(o.status)}</p>
                   </div>
                 </div>
               </div>
@@ -828,6 +919,7 @@ export default function OrdersPage() {
         }}
         onUpdateStatus={updateStatus}
       />
+      <Toast message={toastMessage} onClose={() => setToastMessage('')} />
     </DashboardLayout>
   );
 }

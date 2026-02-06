@@ -15,6 +15,7 @@ import BreakModal from '@/components/BreakModal';
 import BreakCountdown from '@/components/BreakCountdown';
 import OrderRejectButton from '@/components/OrderRejectButton';
 import RejectOrderModal, { RejectableOrder } from '@/components/RejectOrderModal';
+import { ORDER_ALERT_AUDIO } from '@/audio/orderAlertBase64';
 import { getRandomOrderEmptyMessage } from '@/lib/orderEmptyState';
 import { formatShortOrderNumber } from '@/lib/orderDisplay';
 import { supabase } from '@/lib/supabaseClient';
@@ -56,11 +57,11 @@ type OrderSegment = {
 };
 
 const NOTE_LINE_LENGTH = 38;
-const CARD_VERTICAL_PADDING = 40;
-const HEADER_RESERVED_PX = 88;
-const FOOTER_RESERVED_PX = 72;
+const CARD_VERTICAL_PADDING = 32;
+const HEADER_RESERVED_PX = 80;
+const FOOTER_RESERVED_PX = 64;
 const BODY_LINE_HEIGHT = 22;
-const TOP_CONTROLS_HEIGHT = 72;
+const TOP_CONTROLS_HEIGHT = 64;
 const CARD_WIDTH_BASE = 360;
 const CARD_GAP = 16;
 const NOTES_HEADER_LINES = 2;
@@ -182,6 +183,9 @@ export default function KitchenDisplayPage() {
   const [cooldowns, setCooldowns] = useState<Record<string, boolean>>({});
   const orderedSegmentsRef = useRef(0);
   const pageIndexRef = useRef(0);
+  const alertAudioRef = useRef<HTMLAudioElement | null>(null);
+  const pendingOrderIdsRef = useRef<Set<string>>(new Set());
+  const isAlertPlayingRef = useRef(false);
   const [rejectOrder, setRejectOrder] = useState<Order | null>(null);
   const emptyMessage = useMemo(() => getRandomOrderEmptyMessage(), []);
   const {
@@ -194,11 +198,87 @@ export default function KitchenDisplayPage() {
     endBreak,
   } = useRestaurantAvailability(restaurantId);
 
-  const preferenceKey = useMemo(
+  const mutedPreferenceKey = useMemo(
+    () => (restaurantId ? `kod_sound_muted_${restaurantId}` : 'kod_sound_muted'),
+    [restaurantId]
+  );
+  const legacyPreferenceKey = useMemo(
     () => (restaurantId ? `kod_audio_enabled_${restaurantId}` : 'kod_audio_enabled'),
     [restaurantId]
   );
-  const [soundEnabled, setSoundEnabled] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [needsAudioUnlock, setNeedsAudioUnlock] = useState(false);
+
+  const stopAlertLoop = useCallback(() => {
+    const audio = alertAudioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.currentTime = 0;
+    }
+    isAlertPlayingRef.current = false;
+  }, []);
+
+  const ensureAudioContext = useCallback(async () => {
+    if (typeof window === 'undefined') return null;
+    const AudioContextCtor = (window.AudioContext ||
+      (window as Window & { webkitAudioContext?: AudioContextConstructor }).webkitAudioContext) as
+      | AudioContextConstructor
+      | undefined;
+
+    if (!AudioContextCtor) return null;
+
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new AudioContextCtor();
+      }
+      if (audioContextRef.current.state === 'suspended') {
+        setNeedsAudioUnlock(true);
+      } else {
+        setNeedsAudioUnlock(false);
+      }
+      return audioContextRef.current;
+    } catch (err) {
+      console.debug('[kod] unable to initialize audio context', err);
+      return null;
+    }
+  }, []);
+
+  const startAlertLoop = useCallback(() => {
+    if (!soundEnabled) return;
+    if (pendingOrderIdsRef.current.size === 0) return;
+    let audio = alertAudioRef.current;
+    if (!audio) {
+      audio = new Audio(ORDER_ALERT_AUDIO);
+      audio.loop = true;
+      alertAudioRef.current = audio;
+    }
+
+    if (isAlertPlayingRef.current) return;
+
+    audio.loop = true;
+    audio
+      .play()
+      .then(() => {
+        isAlertPlayingRef.current = true;
+        setNeedsAudioUnlock(false);
+      })
+      .catch((err) => {
+        console.error('[kod] audio playback failed', err);
+        setNeedsAudioUnlock(true);
+      });
+  }, [soundEnabled]);
+
+  const syncAlertLoop = useCallback(() => {
+    if (!soundEnabled) {
+      stopAlertLoop();
+      return;
+    }
+    if (pendingOrderIdsRef.current.size > 0) {
+      startAlertLoop();
+    } else {
+      stopAlertLoop();
+    }
+  }, [soundEnabled, startAlertLoop, stopAlertLoop]);
 
   const fetchOrders = useCallback(async () => {
     if (!restaurantId) return;
@@ -240,10 +320,15 @@ export default function KitchenDisplayPage() {
       return;
     }
 
-    setOrders((data as Order[]) ?? []);
+    const nextOrders = (data as Order[]) ?? [];
+    setOrders(nextOrders);
+    pendingOrderIdsRef.current = new Set(
+      nextOrders.filter((order) => order.status === 'pending').map((order) => order.id)
+    );
+    syncAlertLoop();
     setLastFetchFailed(false);
     setIsFetching(false);
-  }, [restaurantId]);
+  }, [restaurantId, syncAlertLoop]);
 
   useEffect(() => {
     if (!restaurantId) return;
@@ -355,8 +440,10 @@ export default function KitchenDisplayPage() {
           pageIndex: pageIndexRef.current,
         });
       }
-      const availableHeight = gridRef.current?.clientHeight ?? window.innerHeight;
-      const nextCardHeight = Math.max(320, availableHeight);
+      const availableHeight = gridRef.current?.getBoundingClientRect().height ?? 0;
+      const fallbackHeight =
+        window.innerHeight - TOP_CONTROLS_HEIGHT - CARD_VERTICAL_PADDING * 2 - 48;
+      const nextCardHeight = Math.max(320, availableHeight || fallbackHeight);
       setCardHeight(nextCardHeight);
       const usableBodyHeight =
         nextCardHeight - HEADER_RESERVED_PX - FOOTER_RESERVED_PX - CARD_VERTICAL_PADDING;
@@ -387,39 +474,55 @@ export default function KitchenDisplayPage() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const stored = window.localStorage.getItem(preferenceKey);
-    setSoundEnabled(stored === 'true');
-  }, [preferenceKey]);
+    const storedMuted = window.localStorage.getItem(mutedPreferenceKey);
+    let muted = storedMuted === 'true';
+    if (storedMuted === null) {
+      const legacy = window.localStorage.getItem(legacyPreferenceKey);
+      if (legacy === 'false') {
+        muted = true;
+      }
+    }
+    window.localStorage.setItem(mutedPreferenceKey, muted ? 'true' : 'false');
+    setSoundEnabled(!muted);
+  }, [legacyPreferenceKey, mutedPreferenceKey]);
 
   const handleEnableSound = useCallback(async () => {
     if (typeof window === 'undefined') return;
-    const AudioContextCtor = (window.AudioContext ||
-      (window as Window & { webkitAudioContext?: AudioContextConstructor }).webkitAudioContext) as
-      | AudioContextConstructor
-      | undefined;
-
-    if (AudioContextCtor) {
+    const context = await ensureAudioContext();
+    if (context && context.state === 'suspended') {
       try {
-        if (!audioContextRef.current) {
-          audioContextRef.current = new AudioContextCtor();
-        }
-        if (audioContextRef.current.state === 'suspended') {
-          await audioContextRef.current.resume();
-        }
+        await context.resume();
       } catch (err) {
-        console.debug('[kod] unable to initialize audio context', err);
+        console.debug('[kod] unable to resume audio context', err);
       }
     }
 
-    window.localStorage.setItem(preferenceKey, 'true');
+    window.localStorage.setItem(mutedPreferenceKey, 'false');
     setSoundEnabled(true);
-  }, [preferenceKey]);
+    setNeedsAudioUnlock(false);
+  }, [ensureAudioContext, mutedPreferenceKey]);
 
   const handleDisableSound = useCallback(() => {
     if (typeof window === 'undefined') return;
-    window.localStorage.setItem(preferenceKey, 'false');
+    window.localStorage.setItem(mutedPreferenceKey, 'true');
     setSoundEnabled(false);
-  }, [preferenceKey]);
+    setNeedsAudioUnlock(false);
+  }, [mutedPreferenceKey]);
+
+  useEffect(() => {
+    syncAlertLoop();
+    return () => {
+      stopAlertLoop();
+    };
+  }, [soundEnabled, stopAlertLoop, syncAlertLoop]);
+
+  useEffect(() => {
+    if (!soundEnabled) {
+      setNeedsAudioUnlock(false);
+      return;
+    }
+    void ensureAudioContext();
+  }, [ensureAudioContext, soundEnabled]);
 
   const formatElapsed = useCallback((createdAt: string) => {
     const createdTime = new Date(createdAt).getTime();
@@ -458,14 +561,14 @@ export default function KitchenDisplayPage() {
   );
 
   const updateOrderStatus = useCallback(
-    async (order: Order, nextStatus: string, expectedStatus: string) => {
+    async (order: Order, nextStatus: string, allowedStatuses: string[]) => {
       if (TERMINAL_STATUSES.includes(order.status)) return;
       await acknowledgeOrder(order.id);
       const { data, error } = await supabase
         .from('orders')
         .update({ status: nextStatus })
         .eq('id', order.id)
-        .eq('status', expectedStatus)
+        .in('status', allowedStatuses)
         .select('id');
 
       if (error) {
@@ -491,11 +594,16 @@ export default function KitchenDisplayPage() {
       if (cooldowns[key]) return;
       startCooldown(key);
       if (order.status === 'pending') {
-        await updateOrderStatus(order, 'accepted', 'pending');
+        await updateOrderStatus(order, 'accepted', ['pending']);
         return;
       }
-      if (order.status === 'accepted') {
-        await updateOrderStatus(order, 'completed', 'accepted');
+      if (['accepted', 'preparing', 'ready_to_collect', 'delivering'].includes(order.status)) {
+        await updateOrderStatus(order, 'completed', [
+          'accepted',
+          'preparing',
+          'ready_to_collect',
+          'delivering',
+        ]);
       }
     },
     [cooldowns, startCooldown, updateOrderStatus]
@@ -571,7 +679,7 @@ export default function KitchenDisplayPage() {
       promptDescription="Kitchen Display works best in fullscreen mode."
     >
       <div className="h-screen w-full overflow-hidden bg-neutral-950 text-white">
-        <div className="flex h-full flex-col gap-6 overflow-hidden px-3 py-6 sm:px-4 lg:px-6">
+        <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden px-3 py-4 sm:px-4 lg:px-6">
           <div
             className="flex w-full flex-none items-center justify-end"
             style={{ height: `${TOP_CONTROLS_HEIGHT}px` }}
@@ -588,6 +696,16 @@ export default function KitchenDisplayPage() {
               ) : null}
               {isOnline && lastFetchFailed ? (
                 <span className="text-amber-300">Sync error</span>
+              ) : null}
+              {needsAudioUnlock && soundEnabled ? (
+                <button
+                  type="button"
+                  onClick={handleEnableSound}
+                  className="flex items-center gap-2 rounded-full border border-amber-300/40 bg-amber-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-amber-100 transition hover:bg-amber-500/20"
+                >
+                  <SpeakerWaveIcon className="h-4 w-4" />
+                  Tap to enable sound
+                </button>
               ) : null}
               {soundEnabled ? (
                 <button
@@ -669,7 +787,7 @@ export default function KitchenDisplayPage() {
               ) : null}
             </div>
           </div>
-          <div className="flex w-full flex-1 flex-col space-y-4 overflow-hidden">
+          <div className="flex w-full flex-1 min-h-0 flex-col space-y-4 overflow-hidden">
             {orders.length === 0 && !isFetching ? (
               <div className="flex flex-1 items-center justify-center text-center">
                 <div className="flex max-w-md flex-col items-center gap-4 rounded-3xl border border-white/10 bg-neutral-900/80 p-8 shadow-lg shadow-black/40">
@@ -680,8 +798,7 @@ export default function KitchenDisplayPage() {
             ) : null}
             <div
               ref={gridRef}
-              className="flex h-full flex-1 flex-nowrap gap-4 overflow-hidden overscroll-none"
-              style={{ height: `${cardHeight}px` }}
+              className="flex min-h-0 flex-1 flex-nowrap gap-4 overflow-hidden overscroll-none"
             >
               {orderSegments.map((segment) => (
                 <div
@@ -800,8 +917,9 @@ export default function KitchenDisplayPage() {
                           type="button"
                           onClick={() => handlePrimaryAction(segment.order)}
                           disabled={
-                            !['pending', 'accepted'].includes(segment.order.status) ||
-                            cooldowns[`${segment.order.id}-primary`]
+                            !['pending', 'accepted', 'preparing', 'ready_to_collect', 'delivering'].includes(
+                              segment.order.status
+                            ) || cooldowns[`${segment.order.id}-primary`]
                           }
                           className="flex-1 rounded-full bg-teal-500 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-black transition hover:bg-teal-400 disabled:cursor-not-allowed disabled:opacity-40"
                         >

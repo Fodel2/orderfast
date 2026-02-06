@@ -23,6 +23,18 @@ export function formatShortOrderNumber(value: number | null | undefined) {
   return '—';
 }
 
+export function formatStatusLabel(status: string | null | undefined) {
+  if (!status) return '';
+  return status
+    .split('_')
+    .map((word) => {
+      const lower = word.toLowerCase();
+      return lower ? lower[0].toUpperCase() + lower.slice(1) : '';
+    })
+    .filter(Boolean)
+    .join(' ');
+}
+
 export function formatPrice(amount: number, currencyCode: string = DEFAULT_CURRENCY_CODE) {
   const normalized = normalizePriceValue(amount);
   return formatCurrency(normalized, currencyCode);
