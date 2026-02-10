@@ -13,6 +13,7 @@ import { ITEM_ADDON_LINK_WITH_GROUPS_SELECT } from '@/lib/queries/addons';
 import Skeleton from '@/components/ui/Skeleton';
 import { useCart } from '@/context/CartContext';
 import KioskCategories from '@/components/kiosk/KioskCategories';
+import { isExpressDineInForRestaurant } from '@/utils/express/session';
 
 type Category = {
   id: number;
@@ -71,9 +72,11 @@ function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
   const [itemLinks, setItemLinks] = useState<ItemLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeCategoryId, setActiveCategoryId] = useState<number | null>(null);
+  const router = useRouter();
   const { cart } = useCart();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
   const { registerActivity } = useKioskSession();
+  const [showChangeTable, setShowChangeTable] = useState(false);
 
   useEffect(() => {
     if (!restaurantId) {
@@ -269,10 +272,34 @@ function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
   );
 
   useEffect(() => {
+    if (!restaurantId) return;
+    setShowChangeTable(isExpressDineInForRestaurant(restaurantId));
+  }, [restaurantId]);
+
+  useEffect(() => {
     if (categorizedItems.length === 0) return;
     if (activeCategoryId !== null) return;
     setActiveCategoryId(categorizedItems[0].id);
   }, [activeCategoryId, categorizedItems]);
+
+  const expressHeader = useMemo(() => {
+    if (!restaurantId || !showChangeTable) return null;
+    return (
+      <div className="flex h-full w-full items-center justify-between px-5 sm:px-8">
+        <div className="text-xl font-semibold text-neutral-900">{restaurant?.website_title || restaurant?.name || 'Restaurant'}</div>
+        <button
+          type="button"
+          onClick={() => {
+            registerActivity();
+            router.push(`/express?restaurant_id=${restaurantId}&mode=dine_in`);
+          }}
+          className="rounded-full border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold text-neutral-800 shadow-sm"
+        >
+          Change table
+        </button>
+      </div>
+    );
+  }, [registerActivity, restaurant?.name, restaurant?.website_title, restaurantId, router, showChangeTable]);
 
   return (
     <KioskLayout
@@ -280,6 +307,7 @@ function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
       restaurant={restaurant}
       restaurantLoading={restaurantLoading}
       cartCount={cartCount}
+      customHeaderContent={expressHeader}
       categoryBar={
         categorizedItems.length ? (
           <KioskCategories

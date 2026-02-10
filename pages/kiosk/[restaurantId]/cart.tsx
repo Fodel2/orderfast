@@ -14,6 +14,7 @@ import KioskLoadingOverlay from '@/components/kiosk/KioskLoadingOverlay';
 import { setKioskLastRealOrderNumber } from '@/utils/kiosk/orders';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { useKeyboardViewport } from '@/hooks/useKeyboardViewport';
+import { getExpressSession, isExpressDineInForRestaurant } from '@/utils/express/session';
 
 type Restaurant = {
   id: string;
@@ -66,6 +67,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   const [customerName, setCustomerName] = useState('');
   const [nameError, setNameError] = useState('');
   const [submissionError, setSubmissionError] = useState('');
+  const [showChangeTable, setShowChangeTable] = useState(false);
   const submissionInFlightRef = useRef(false);
   const isMountedRef = useRef(true);
   const { height: viewportHeight, refresh: refreshViewport } = useKeyboardViewport(showConfirmModal);
@@ -145,6 +147,12 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
 
   useEffect(() => {
     if (!restaurantId) return;
+    setShowChangeTable(isExpressDineInForRestaurant(restaurantId));
+  }, [restaurantId]);
+
+
+  useEffect(() => {
+    if (!restaurantId) return;
     let active = true;
 
     const load = async () => {
@@ -181,7 +189,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   const headerContent = useMemo(() => {
     if (!restaurantId) return null;
     return (
-      <div className="mx-auto flex h-full w-full max-w-5xl items-start px-4 pb-3 pt-[calc(env(safe-area-inset-top)+12px)] sm:px-6">
+      <div className="mx-auto flex h-full w-full max-w-5xl items-start justify-between gap-3 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+12px)] sm:px-6">
         <button
           type="button"
           onClick={() => {
@@ -193,9 +201,21 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
           <ChevronLeftIcon className="h-6 w-6" />
           Back
         </button>
+        {showChangeTable ? (
+          <button
+            type="button"
+            onClick={() => {
+              registerActivity();
+              router.push(`/express?restaurant_id=${restaurantId}&mode=dine_in`);
+            }}
+            className="inline-flex min-h-[3rem] items-center rounded-full border border-white/70 bg-white/95 px-4 py-2.5 text-sm font-semibold text-neutral-900 shadow-md shadow-slate-300/70"
+          >
+            Change table
+          </button>
+        ) : null}
       </div>
     );
-  }, [registerActivity, restaurantId, router]);
+  }, [registerActivity, restaurantId, router, showChangeTable]);
 
   const placeOrder = useCallback(async () => {
     if (!restaurantId || placingOrder || submissionInFlightRef.current) return;
@@ -230,6 +250,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     };
 
     const autoAcceptKiosk = !!restaurant?.auto_accept_kiosk_orders;
+    const expressSession = getExpressSession();
     const initialStatus = autoAcceptKiosk ? 'accepted' : 'pending';
     const acceptedAt = autoAcceptKiosk ? new Date().toISOString() : null;
 
@@ -253,6 +274,8 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
               total_price: subtotal,
               service_fee: 0,
               delivery_fee: 0,
+              dine_in_table_number:
+                expressSession?.mode === 'dine_in' ? expressSession.tableNumber ?? null : null,
             },
           ])
           .select('id, short_order_number')

@@ -248,6 +248,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     { href: '/dashboard', label: 'Home', icon: HomeIcon },
     { href: '/dashboard/orders', label: 'Orders', icon: TruckIcon },
     { href: '/dashboard/menu-builder', label: 'Menu', icon: ClipboardDocumentListIcon },
+    { href: '/dashboard/express-order', label: 'Express Order', icon: ClipboardDocumentListIcon },
     { href: null, label: 'Promotions', icon: MegaphoneIcon },
     {
       label: 'Till / POS',
