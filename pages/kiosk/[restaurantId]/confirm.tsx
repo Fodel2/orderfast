@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabaseClient';
 import KioskActionButton from '@/components/kiosk/KioskActionButton';
 import { CheckIcon } from '@heroicons/react/24/outline';
 import { getKioskLastRealOrderNumber, KIOSK_REAL_ORDER_NUMBER_EVENT } from '@/utils/kiosk/orders';
+import { useKeyboardViewport } from '@/hooks/useKeyboardViewport';
 
 type Restaurant = {
   id: string;
@@ -38,6 +39,7 @@ function KioskConfirmScreen({ restaurantId }: { restaurantId?: string | null }) 
   const [restaurantLoading, setRestaurantLoading] = useState(true);
   const { resetKioskToStart } = useKioskSession();
   const resetTimeoutRef = useRef<number | null>(null);
+  useKeyboardViewport(true);
   const tempOrderNumber = useMemo(() => {
     const rawOrderNumber = router.query.orderNumber;
     const raw = Array.isArray(rawOrderNumber) ? rawOrderNumber[0] : rawOrderNumber;
@@ -122,12 +124,7 @@ function KioskConfirmScreen({ restaurantId }: { restaurantId?: string | null }) 
     };
   }, [restaurantId]);
 
-  const minimalHeader = useMemo(
-    () => (
-      <div className="mx-auto w-full max-w-5xl px-4 pt-[calc(env(safe-area-inset-top)+16px)]" aria-hidden />
-    ),
-    []
-  );
+  const minimalHeader = useMemo(() => <div aria-hidden className="h-0" />, []);
 
   const resetAfterOrderPlaced = useCallback(() => {
     resetKioskToStart();
@@ -161,8 +158,15 @@ function KioskConfirmScreen({ restaurantId }: { restaurantId?: string | null }) 
       restaurantLoading={restaurantLoading}
       customHeaderContent={minimalHeader}
     >
-      <div className="mx-auto flex min-h-[70vh] w-full max-w-2xl flex-col items-center justify-center px-4 py-10 sm:py-14">
-        <div className="w-full rounded-[32px] border border-neutral-200 bg-white/95 px-7 py-10 text-center shadow-2xl shadow-neutral-300/40 backdrop-blur sm:px-9 sm:py-12">
+      <div
+        className="fixed inset-0 z-[60] flex w-full items-center justify-center px-4"
+        style={{
+          height: 'var(--vvh, 100dvh)',
+          paddingTop: 'calc(env(safe-area-inset-top) + 16px)',
+          paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)',
+        }}
+      >
+        <div className="w-full max-w-2xl rounded-[32px] border border-neutral-200 bg-white/95 px-7 py-10 text-center shadow-2xl shadow-neutral-300/40 backdrop-blur sm:px-9 sm:py-12">
           <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 shadow-[0_15px_50px_-30px_rgba(16,185,129,0.9)]">
             <CheckIcon className="h-10 w-10" strokeWidth={2.4} />
           </div>
