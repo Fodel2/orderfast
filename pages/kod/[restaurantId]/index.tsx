@@ -179,6 +179,7 @@ export default function KitchenDisplayPage() {
   const gridRef = useRef<HTMLDivElement | null>(null);
   const [toastMessage, setToastMessage] = useState('');
   const [cooldowns, setCooldowns] = useState<Record<string, boolean>>({});
+  const [kitchenDoneOrderIds, setKitchenDoneOrderIds] = useState<Set<string>>(new Set());
   const orderedSegmentsRef = useRef(0);
   const pageIndexRef = useRef(0);
   const pendingOrderIdsRef = useRef<Set<string>>(new Set());
@@ -292,6 +293,20 @@ export default function KitchenDisplayPage() {
 
     const nextOrders = (data as Order[]) ?? [];
     setOrders(nextOrders);
+    setKitchenDoneOrderIds((prev) => {
+      if (prev.size === 0) return prev;
+      const nextOrderIds = new Set(nextOrders.map((order) => order.id));
+      let changed = false;
+      const next = new Set<string>();
+      prev.forEach((id) => {
+        if (nextOrderIds.has(id)) {
+          next.add(id);
+        } else {
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
     pendingOrderIdsRef.current = new Set(
       nextOrders.filter((order) => order.status === 'pending').map((order) => order.id)
     );
@@ -321,6 +336,10 @@ export default function KitchenDisplayPage() {
       }
     };
   }, [fetchOrders, restaurantId]);
+
+  useEffect(() => {
+    setKitchenDoneOrderIds(new Set());
+  }, [restaurantId]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -562,29 +581,41 @@ export default function KitchenDisplayPage() {
       if (cooldowns[key]) return;
       startCooldown(key);
       if (order.status === 'pending') {
+        setKitchenDoneOrderIds((prev) => {
+          if (!prev.has(order.id)) return prev;
+          const next = new Set(prev);
+          next.delete(order.id);
+          return next;
+        });
         await updateOrderStatus(order, 'accepted', ['pending']);
         return;
       }
       if (['accepted', 'preparing', 'ready_to_collect', 'delivering'].includes(order.status)) {
-        await updateOrderStatus(order, 'completed', [
-          'accepted',
-          'preparing',
-          'ready_to_collect',
-          'delivering',
-        ]);
+        await acknowledgeOrder(order.id);
+        setKitchenDoneOrderIds((prev) => {
+          if (prev.has(order.id)) return prev;
+          const next = new Set(prev);
+          next.add(order.id);
+          return next;
+        });
       }
     },
-    [cooldowns, startCooldown, updateOrderStatus]
+    [acknowledgeOrder, cooldowns, startCooldown, updateOrderStatus]
   );
 
   const pageSize = Math.max(1, columns * rows);
+  const visibleOrders = useMemo(
+    () => orders.filter((order) => !kitchenDoneOrderIds.has(order.id)),
+    [kitchenDoneOrderIds, orders]
+  );
+
   const orderedSegments = useMemo(() => {
     const segments: OrderSegment[] = [];
-    orders.forEach((order) => {
+    visibleOrders.forEach((order) => {
       segments.push(...buildOrderSegments(order, maxBodyLines, noteLineLength));
     });
     return segments;
-  }, [orders, maxBodyLines, noteLineLength]);
+  }, [visibleOrders, maxBodyLines, noteLineLength]);
   const totalPages = Math.max(1, Math.ceil(orderedSegments.length / pageSize));
 
   useEffect(() => {
@@ -603,11 +634,11 @@ export default function KitchenDisplayPage() {
   );
   const orderTintIndex = useMemo(() => {
     const map = new Map<string, number>();
-    orders.forEach((order, index) => {
+    visibleOrders.forEach((order, index) => {
       map.set(order.id, index);
     });
     return map;
-  }, [orders]);
+  }, [visibleOrders]);
   const totalTickets = orderedSegments.length;
   const waitingCount = Math.max(0, totalTickets - pageSize * (pageIndex + 1));
   const tintClasses = ['bg-black text-white', 'bg-white text-black'];
@@ -756,7 +787,7 @@ export default function KitchenDisplayPage() {
             </div>
           </div>
           <div className="flex w-full flex-1 min-h-0 flex-col space-y-4 overflow-hidden">
-            {orders.length === 0 && !isFetching ? (
+            {visibleOrders.length === 0 && !isFetching ? (
               <div className="flex flex-1 items-center justify-center text-center">
                 <div className="flex max-w-md flex-col items-center gap-4 rounded-3xl border border-white/10 bg-neutral-900/80 p-8 shadow-lg shadow-black/40">
                   <ChefHat className="h-16 w-16 text-neutral-600" />
@@ -891,7 +922,7 @@ export default function KitchenDisplayPage() {
                           }
                           className="flex-1 rounded-full bg-teal-500 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-black transition hover:bg-teal-400 disabled:cursor-not-allowed disabled:opacity-40"
                         >
-                          {segment.order.status === 'pending' ? 'ACCEPT' : 'COMPLETE'}
+                          {segment.order.status === 'pending' ? 'ACCEPT' : 'DONE'}
                         </button>
                         {!isKioskOrder(segment.order) &&
                         !['completed', 'cancelled', 'rejected'].includes(segment.order.status) ? (
