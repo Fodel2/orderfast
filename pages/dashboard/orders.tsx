@@ -43,6 +43,21 @@ interface OrderItem {
   order_addons: OrderAddon[];
 }
 
+
+interface TableSession {
+  id: string;
+  restaurant_id: string;
+  table_number: number;
+  status: 'open' | 'closed';
+  opened_at: string;
+}
+
+type TableSessionSummary = {
+  session: TableSession;
+  outstandingTotal: number;
+  orderCount: number;
+};
+
 interface Order {
   id: string;
   restaurant_id?: string;
@@ -73,6 +88,10 @@ export default function OrdersPage() {
     | null
   >(null);
   const [toastMessage, setToastMessage] = useState('');
+  const [openTableSessions, setOpenTableSessions] = useState<TableSessionSummary[]>([]);
+  const [selectedTableSession, setSelectedTableSession] = useState<TableSessionSummary | null>(null);
+  const [tableSessionOrders, setTableSessionOrders] = useState<Order[]>([]);
+  const [tableActionLoading, setTableActionLoading] = useState(false);
   const pendingOrderIdsRef = useRef<Set<string>>(new Set());
   const isAlertPlayingRef = useRef(false);
   const autoAcceptBeepingRef = useRef(false);
@@ -238,6 +257,96 @@ export default function OrdersPage() {
     []
   );
 
+
+  const fetchTableSessions = useCallback(async (rid: string) => {
+    const { data: sessionsData, error: sessionsError } = await supabase
+      .from('table_sessions')
+      .select('id,restaurant_id,table_number,status,opened_at')
+      .eq('restaurant_id', rid)
+      .eq('status', 'open')
+      .order('opened_at', { ascending: true });
+
+    if (sessionsError || !sessionsData?.length) {
+      setOpenTableSessions([]);
+      return;
+    }
+
+    const sessionIds = sessionsData.map((session) => session.id);
+    const { data: sessionOrders, error: ordersError } = await supabase
+      .from('orders')
+      .select('id,table_session_id,status,total_price')
+      .in('table_session_id', sessionIds);
+
+    if (ordersError) {
+      console.error('[orders] failed to fetch table session orders', ordersError);
+      setOpenTableSessions(
+        (sessionsData as TableSession[]).map((session) => ({ session, outstandingTotal: 0, orderCount: 0 }))
+      );
+      return;
+    }
+
+    const summaryMap = new Map<string, { outstandingTotal: number; orderCount: number }>();
+    ((sessionOrders || []) as Array<{ table_session_id: string | null; status: string | null; total_price: number | null }>).forEach((order) => {
+      const sessionId = order.table_session_id;
+      if (!sessionId) return;
+      const current = summaryMap.get(sessionId) || { outstandingTotal: 0, orderCount: 0 };
+      current.orderCount += 1;
+      if (order.status !== 'cancelled' && order.status !== 'completed') {
+        current.outstandingTotal += Number(order.total_price || 0);
+      }
+      summaryMap.set(sessionId, current);
+    });
+
+    setOpenTableSessions(
+      (sessionsData as TableSession[]).map((session) => {
+        const summary = summaryMap.get(session.id) || { outstandingTotal: 0, orderCount: 0 };
+        return { session, ...summary };
+      })
+    );
+  }, []);
+
+  const loadTableSessionOrders = useCallback(async (sessionId: string) => {
+    const { data, error } = await supabase
+      .from('orders')
+      .select(
+        `
+        id,
+        restaurant_id,
+        short_order_number,
+        source,
+        order_type,
+        customer_name,
+        phone_number,
+        delivery_address,
+        scheduled_for,
+        customer_notes,
+        status,
+        total_price,
+        created_at,
+        accepted_at,
+        order_items(
+          id,
+          item_id,
+          name,
+          price,
+          quantity,
+          notes,
+          order_addons(id,option_id,name,price,quantity)
+        )
+      `
+      )
+      .eq('table_session_id', sessionId)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error('[orders] failed to load table session details', error);
+      setTableSessionOrders([]);
+      return;
+    }
+
+    setTableSessionOrders((data as Order[]) || []);
+  }, []);
+
   const hydrateOrder = useCallback(
     async (order: Order) => {
       if (order.order_items && order.order_items.length > 0) {
@@ -274,6 +383,7 @@ export default function OrdersPage() {
       }
 
       setRestaurantId(ruData.restaurant_id);
+      await fetchTableSessions(ruData.restaurant_id);
 
       const { data: ordersData, error: ordersError } = await supabase
         .from('orders')
@@ -312,6 +422,7 @@ export default function OrdersPage() {
 
       if (!ordersError && ordersData) {
         setOrders(ordersData as Order[]);
+        await fetchTableSessions(ruData.restaurant_id);
         const pending = new Set<string>();
         const flashing = new Set<string>();
         (ordersData as Order[]).forEach((o) => {
@@ -639,6 +750,7 @@ export default function OrdersPage() {
 
       if (!ordersError && ordersData) {
         setOrders(ordersData as Order[]);
+        await fetchTableSessions(activeRestaurantId);
         const pending = new Set<string>();
         const flashing = new Set<string>();
         (ordersData as Order[]).forEach((o) => {
@@ -656,7 +768,7 @@ export default function OrdersPage() {
         console.error('Error fetching orders', ordersError);
       }
     },
-    [isAutoAcceptedOrder, syncAlertLoop]
+    [fetchTableSessions, isAutoAcceptedOrder, syncAlertLoop]
   );
 
   const updateStatus = async (id: string, status: string) => {
@@ -776,6 +888,101 @@ export default function OrdersPage() {
     return nowDate >= openDate && nowDate <= closeDate;
   };
 
+
+  const handleOpenTableSession = useCallback(
+    async (summary: TableSessionSummary) => {
+      setSelectedTableSession(summary);
+      await loadTableSessionOrders(summary.session.id);
+    },
+    [loadTableSessionOrders]
+  );
+
+  const closeTableSession = useCallback(async () => {
+    if (!selectedTableSession) return;
+    setTableActionLoading(true);
+    const sessionId = selectedTableSession.session.id;
+
+    const { error: ordersError } = await supabase
+      .from('orders')
+      .update({ status: 'completed' })
+      .eq('table_session_id', sessionId)
+      .not('status', 'in', '(completed,cancelled)');
+
+    if (ordersError) {
+      setToastMessage('Failed to complete table orders.');
+      setTableActionLoading(false);
+      return;
+    }
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    const { error: sessionError } = await supabase
+      .from('table_sessions')
+      .update({ status: 'closed', closed_at: new Date().toISOString(), closed_by: session?.user?.id || null })
+      .eq('id', sessionId)
+      .eq('status', 'open');
+
+    setTableActionLoading(false);
+
+    if (sessionError) {
+      setToastMessage('Failed to close table session.');
+      return;
+    }
+
+    setToastMessage('Table closed and orders completed.');
+    setSelectedTableSession(null);
+    setTableSessionOrders([]);
+    if (restaurantId) {
+      await fetchTableSessions(restaurantId);
+      await refreshOrders(restaurantId);
+    }
+  }, [fetchTableSessions, refreshOrders, restaurantId, selectedTableSession]);
+
+  const cancelTableSession = useCallback(async () => {
+    if (!selectedTableSession) return;
+    setTableActionLoading(true);
+    const sessionId = selectedTableSession.session.id;
+
+    const { error: ordersError } = await supabase
+      .from('orders')
+      .update({ status: 'cancelled' })
+      .eq('table_session_id', sessionId)
+      .in('status', ['pending', 'accepted']);
+
+    if (ordersError) {
+      setToastMessage('Failed to cancel active table orders.');
+      setTableActionLoading(false);
+      return;
+    }
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    const { error: sessionError } = await supabase
+      .from('table_sessions')
+      .update({ status: 'closed', closed_at: new Date().toISOString(), closed_by: session?.user?.id || null })
+      .eq('id', sessionId)
+      .eq('status', 'open');
+
+    setTableActionLoading(false);
+
+    if (sessionError) {
+      setToastMessage('Failed to close table session.');
+      return;
+    }
+
+    setToastMessage('Table session cancelled.');
+    setSelectedTableSession(null);
+    setTableSessionOrders([]);
+    if (restaurantId) {
+      await fetchTableSessions(restaurantId);
+      await refreshOrders(restaurantId);
+    }
+  }, [fetchTableSessions, refreshOrders, restaurantId, selectedTableSession]);
+
   if (loading) return <DashboardLayout>Loading...</DashboardLayout>;
 
   return (
@@ -834,6 +1041,30 @@ export default function OrdersPage() {
           </div>
         )}
       </div>
+      <section className="mb-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-gray-900">Open Tables</h2>
+          <span className="text-sm text-gray-500">{openTableSessions.length} open</span>
+        </div>
+        {openTableSessions.length ? (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {openTableSessions.map((summary) => (
+              <button
+                key={summary.session.id}
+                onClick={() => void handleOpenTableSession(summary)}
+                className="rounded-lg border border-gray-200 p-3 text-left hover:bg-gray-50"
+              >
+                <p className="font-semibold text-gray-900">Table {summary.session.table_number}</p>
+                <p className="text-xs text-gray-500">Opened {new Date(summary.session.opened_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                <p className="mt-2 text-sm text-gray-600">Outstanding: {formatPrice(summary.outstandingTotal)}</p>
+                <p className="text-sm text-gray-600">Orders: {summary.orderCount}</p>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-gray-500">No open table sessions.</p>
+        )}
+      </section>
       {orders.length > 0 ? (
         <div className="space-y-4">
           {orders.map((o) => {
@@ -893,6 +1124,53 @@ export default function OrdersPage() {
         }}
         onUpdateStatus={updateStatus}
       />
+      {selectedTableSession ? (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4">
+          <div className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-5">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <h3 className="text-xl font-semibold text-gray-900">Table {selectedTableSession.session.table_number} summary</h3>
+                <p className="text-sm text-gray-500">Opened {new Date(selectedTableSession.session.opened_at).toLocaleString()}</p>
+              </div>
+              <button className="rounded border px-2 py-1 text-sm" onClick={() => { setSelectedTableSession(null); setTableSessionOrders([]); }}>
+                Close
+              </button>
+            </div>
+            <div className="mt-4 space-y-3">
+              {tableSessionOrders.map((order) => (
+                <div key={order.id} className="rounded-lg border border-gray-200 p-3">
+                  <div className="flex items-center justify-between">
+                    <p className="font-semibold">#{formatShortOrderNumber(order.short_order_number)}</p>
+                    <p className="text-sm text-gray-600">{formatStatusLabel(order.status)}</p>
+                  </div>
+                  <p className="text-sm text-gray-600">{(order.order_items || []).map((item) => `${item.quantity}× ${item.name}`).join(', ') || 'No items'}</p>
+                  <p className="mt-1 text-sm font-semibold">{formatPrice(order.total_price)}</p>
+                </div>
+              ))}
+              {!tableSessionOrders.length ? <p className="text-sm text-gray-500">No orders linked to this table session.</p> : null}
+            </div>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <button
+                disabled={tableActionLoading}
+                onClick={() => void closeTableSession()}
+                className="rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                Close & Take Payment
+              </button>
+              <button
+                disabled={tableActionLoading}
+                onClick={() => {
+                  const confirmed = window.confirm('Cancel this table session and cancel pending/accepted orders?');
+                  if (confirmed) void cancelTableSession();
+                }}
+                className="rounded border border-red-300 px-4 py-2 text-sm font-semibold text-red-700 disabled:opacity-60"
+              >
+                Cancel Session
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <Toast message={toastMessage} onClose={() => setToastMessage('')} />
     </DashboardLayout>
   );

@@ -3,6 +3,8 @@ export type ExpressMode = 'takeaway' | 'dine_in';
 export type ExpressSession = {
   mode: ExpressMode;
   tableNumber?: number | null;
+  tableSessionId?: string | null;
+  dineInPaymentMode?: 'immediate_pay' | 'open_tab';
   restaurantId?: string | null;
 };
 
