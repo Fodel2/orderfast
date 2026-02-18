@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
-import { supabase } from '@/lib/supabaseClient';
 import { useRestaurant } from '@/lib/restaurant-context';
 import { setExpressSession } from '@/utils/express/session';
 
@@ -8,6 +7,7 @@ type ExpressSettings = {
   enabled: boolean;
   enable_takeaway: boolean;
   enable_dine_in: boolean;
+  dine_in_payment_mode: 'immediate_pay' | 'open_tab';
   dine_in_security_mode: 'none' | 'table_code';
 };
 
@@ -16,7 +16,6 @@ type RestaurantTable = {
   table_number: number;
   table_name: string | null;
   enabled: boolean;
-  table_code: string | null;
 };
 
 export default function ExpressEntryPage() {
@@ -36,22 +35,17 @@ export default function ExpressEntryPage() {
 
     const load = async () => {
       setLoading(true);
-      const [{ data: settingsData }, { data: tableData }] = await Promise.all([
-        supabase
-          .from('express_order_settings')
-          .select('enabled,enable_takeaway,enable_dine_in,dine_in_security_mode')
-          .eq('restaurant_id', restaurantId)
-          .maybeSingle(),
-        supabase
-          .from('restaurant_tables')
-          .select('id,table_number,table_name,enabled,table_code')
-          .eq('restaurant_id', restaurantId)
-          .eq('enabled', true)
-          .order('table_number', { ascending: true }),
-      ]);
+      const response = await fetch(`/api/express/tables?restaurant_id=${restaurantId}`);
+      const payload = await response.json();
+      if (!response.ok) {
+        setSettings(null);
+        setTables([]);
+        setLoading(false);
+        return;
+      }
 
-      setSettings((settingsData as ExpressSettings) || null);
-      setTables((tableData as RestaurantTable[]) || []);
+      setSettings((payload.settings as ExpressSettings) || null);
+      setTables((payload.tables as RestaurantTable[]) || []);
       setLoading(false);
     };
 
@@ -92,24 +86,38 @@ export default function ExpressEntryPage() {
   };
 
   const continueAfterTable = () => {
-    if (!restaurantId || !selectedTable) return;
-    if (settings?.dine_in_security_mode === 'table_code') {
-      if (!code.trim()) {
-        setCodeError('Please enter your table code.');
-        return;
-      }
-      if ((selectedTable.table_code || '').toUpperCase() !== code.trim().toUpperCase()) {
-        setCodeError('Invalid table code. Please try again.');
-        return;
-      }
+    if (!restaurantId || !selectedTable || !settings) return;
+    if (settings.dine_in_security_mode === 'table_code' && !code.trim()) {
+      setCodeError('Please enter your table code.');
+      return;
     }
 
-    setExpressSession({
-      mode: 'dine_in',
-      tableNumber: selectedTable.table_number,
-      restaurantId,
-    });
-    router.push(`/kiosk/${restaurantId}/menu?express=1&mode=dine_in`);
+    void (async () => {
+      const response = await fetch('/api/express/table-entry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          restaurant_id: restaurantId,
+          table_number: selectedTable.table_number,
+          entered_code: code.trim(),
+          security_mode: settings.dine_in_security_mode,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        setCodeError(payload?.error || 'Unable to start your table session.');
+        return;
+      }
+
+      setExpressSession({
+        mode: 'dine_in',
+        tableNumber: selectedTable.table_number,
+        tableSessionId: payload.table_session_id,
+        dineInPaymentMode: settings.dine_in_payment_mode,
+        restaurantId,
+      });
+      router.push(`/kiosk/${restaurantId}/menu?express=1&mode=dine_in`);
+    })();
   };
 
   if (restaurantLoading || loading) {

@@ -49,6 +49,19 @@ function KioskConfirmScreen({ restaurantId }: { restaurantId?: string | null }) 
   }, [router.query.orderNumber]);
   const [displayOrderNumber, setDisplayOrderNumber] = useState<number | null>(null);
 
+  const isOpenTabConfirmation = useMemo(() => {
+    const raw = router.query.openTab;
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    return value === '1';
+  }, [router.query.openTab]);
+
+  const openTabTableNumber = useMemo(() => {
+    const raw = router.query.tableNumber;
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    const parsed = Number.parseInt(String(value || ''), 10);
+    return Number.isFinite(parsed) ? parsed : null;
+  }, [router.query.tableNumber]);
+
   useEffect(() => {
     if (!restaurantId) {
       setRestaurantLoading(false);
@@ -171,15 +184,26 @@ function KioskConfirmScreen({ restaurantId }: { restaurantId?: string | null }) 
             <CheckIcon className="h-10 w-10" strokeWidth={2.4} />
           </div>
           <h2 className="text-3xl font-semibold tracking-tight text-neutral-900 sm:text-[32px]">Order placed</h2>
-          <p className="mt-4 text-base leading-relaxed text-neutral-600 sm:text-lg">
-            Your order is being prepared. Please wait for the staff to confirm your pickup number on screen.
-          </p>
-          {displayOrderNumber ? (
-            <p className="mt-3 text-lg font-semibold text-neutral-900 sm:text-xl">
-              Your order number is{' '}
-              <span className="rounded-full bg-neutral-100 px-3 py-1">#{String(displayOrderNumber).padStart(4, '0')}</span>
-            </p>
-          ) : null}
+          {isOpenTabConfirmation ? (
+            <>
+              <p className="mt-4 text-base leading-relaxed text-neutral-600 sm:text-lg">Order sent to kitchen.</p>
+              <p className="mt-2 text-base leading-relaxed text-neutral-600 sm:text-lg">
+                You can add more items to Table {openTabTableNumber ?? 'your table'} anytime by scanning again.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="mt-4 text-base leading-relaxed text-neutral-600 sm:text-lg">
+                Your order is being prepared. Please wait for the staff to confirm your pickup number on screen.
+              </p>
+              {displayOrderNumber ? (
+                <p className="mt-3 text-lg font-semibold text-neutral-900 sm:text-xl">
+                  Your order number is{' '}
+                  <span className="rounded-full bg-neutral-100 px-3 py-1">#{String(displayOrderNumber).padStart(4, '0')}</span>
+                </p>
+              ) : null}
+            </>
+          )}
           {restaurantId ? (
             <div className="mt-8 flex justify-center">
               <KioskActionButton
