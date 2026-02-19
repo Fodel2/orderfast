@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { supaServer } from '@/lib/supaServer';
+import { getExpressServiceSupabaseClient } from './_serverClient';
 
 const isUuid = (value: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -13,6 +13,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const restaurantId = String(req.query.restaurant_id || '');
   if (!restaurantId || !isUuid(restaurantId)) {
     return res.status(400).json({ error: 'Invalid restaurant_id' });
+  }
+
+  const supaServer = getExpressServiceSupabaseClient();
+  if (!supaServer) {
+    return res.status(500).json({ error: 'Missing SUPABASE_SERVICE_ROLE_KEY' });
   }
 
   const [{ data: settings, error: settingsError }, { data: tables, error: tableError }] = await Promise.all([

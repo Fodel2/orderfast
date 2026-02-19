@@ -115,12 +115,15 @@ export default function ExpressEntryPage() {
             restaurant_id: restaurantId,
             table_number: selectedTable.table_number,
             entered_code: code.trim(),
-            security_mode: settings.dine_in_security_mode,
+            mode: 'dine_in',
           }),
         });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
-          const message = payload?.error || 'Unable to start your table session.';
+          const message = payload?.error || `Request failed (${response.status})`;
+          if (process.env.NODE_ENV !== 'production') {
+            console.error('Express table-entry failed', { status: response.status, body: payload });
+          }
           setCodeError(message);
           setEntryError(message);
           return;
@@ -129,13 +132,17 @@ export default function ExpressEntryPage() {
         setExpressSession({
           mode: 'dine_in',
           tableNumber: selectedTable.table_number,
-          tableSessionId: payload.table_session_id,
-          dineInPaymentMode: settings.dine_in_payment_mode,
+          tableSessionId: payload.tableSessionId ?? null,
+          dineInPaymentMode: payload.dineInPaymentMode ?? settings.dine_in_payment_mode,
           restaurantId,
         });
         await routeToKioskMenu('dine_in');
-      } catch {
-        setEntryError('Unable to continue right now. Please try again.');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unexpected network error';
+        if (process.env.NODE_ENV !== 'production') {
+          console.error('Express table-entry request error', error);
+        }
+        setEntryError(message);
       } finally {
         setSubmittingTable(false);
       }
