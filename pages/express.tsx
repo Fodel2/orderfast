@@ -243,7 +243,13 @@ export default function ExpressEntryPage() {
       </div>
 
       <div className="relative z-10 flex w-full max-w-xl flex-col items-center gap-6 px-6 text-center">
-        <div className="w-full rounded-[32px] border border-neutral-200 bg-white/95 p-8 shadow-2xl shadow-neutral-300/50 backdrop-blur">
+        <div
+          className="w-full rounded-[32px] border border-white/45 bg-white/24 p-8 shadow-[0_20px_60px_rgba(15,23,42,0.28)] backdrop-blur-xl"
+          style={{
+            backgroundImage:
+              'linear-gradient(140deg, rgba(255,255,255,0.52), rgba(255,255,255,0.18)), linear-gradient(320deg, rgba(15,23,42,0.12), rgba(15,23,42,0.03))',
+          }}
+        >
           <div className="flex flex-col items-center gap-4">
             {logoUrl ? (
               <div className={logoFrameClassName}>
