@@ -62,6 +62,12 @@ function KioskConfirmScreen({ restaurantId }: { restaurantId?: string | null }) 
     return Number.isFinite(parsed) ? parsed : null;
   }, [router.query.tableNumber]);
 
+  const isExpressConfirmation = useMemo(() => {
+    const raw = router.query.express;
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    return value === '1';
+  }, [router.query.express]);
+
   useEffect(() => {
     if (!restaurantId) {
       setRestaurantLoading(false);
@@ -140,8 +146,12 @@ function KioskConfirmScreen({ restaurantId }: { restaurantId?: string | null }) 
   const minimalHeader = useMemo(() => <div aria-hidden className="h-0" />, []);
 
   const resetAfterOrderPlaced = useCallback(() => {
+    if (isExpressConfirmation && restaurantId) {
+      router.push(`/express?restaurant_id=${restaurantId}&mode=entry`).catch(() => undefined);
+      return;
+    }
     resetKioskToStart();
-  }, [resetKioskToStart]);
+  }, [isExpressConfirmation, resetKioskToStart, restaurantId, router]);
 
   const handleStartNewOrder = () => {
     if (resetTimeoutRef.current) {
@@ -152,6 +162,14 @@ function KioskConfirmScreen({ restaurantId }: { restaurantId?: string | null }) 
   };
 
   useEffect(() => {
+    if (isExpressConfirmation) {
+      if (resetTimeoutRef.current) {
+        clearTimeout(resetTimeoutRef.current);
+        resetTimeoutRef.current = null;
+      }
+      return undefined;
+    }
+
     resetTimeoutRef.current = window.setTimeout(() => {
       resetAfterOrderPlaced();
     }, 10000);
@@ -162,7 +180,7 @@ function KioskConfirmScreen({ restaurantId }: { restaurantId?: string | null }) 
         resetTimeoutRef.current = null;
       }
     };
-  }, [resetAfterOrderPlaced]);
+  }, [isExpressConfirmation, resetAfterOrderPlaced]);
 
   return (
     <KioskLayout
@@ -210,7 +228,7 @@ function KioskConfirmScreen({ restaurantId }: { restaurantId?: string | null }) 
                 onClick={handleStartNewOrder}
                 className="px-7 py-3 text-sm font-semibold uppercase tracking-wide sm:text-base"
               >
-                Start a new order
+                Start New Order
               </KioskActionButton>
             </div>
           ) : null}
