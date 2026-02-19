@@ -49,6 +49,17 @@ type KioskLayoutProps = {
   customHeaderContent?: ReactNode;
 };
 
+type FullscreenViewport = 'phone' | 'tablet' | 'desktop';
+
+const PHONE_MAX_WIDTH = 639;
+const TABLET_MAX_WIDTH = 1024;
+
+function resolveFullscreenViewport(width: number): FullscreenViewport {
+  if (width <= PHONE_MAX_WIDTH) return 'phone';
+  if (width <= TABLET_MAX_WIDTH) return 'tablet';
+  return 'desktop';
+}
+
 export default function KioskLayout({
   restaurantId,
   restaurant,
@@ -71,6 +82,7 @@ export default function KioskLayout({
   const [contentVisible, setContentVisible] = useState<boolean>(() =>
     forceHome ? false : restaurantId ? hasSeenHome(restaurantId) : true
   );
+  const [fullscreenViewport, setFullscreenViewport] = useState<FullscreenViewport>('desktop');
   const [shrinkProgress, setShrinkProgress] = useState(0);
   const [showFullscreenPrompt, setShowFullscreenPrompt] = useState(false);
   const autoPromptedRef = useRef(false);
@@ -98,9 +110,29 @@ export default function KioskLayout({
     return Boolean(document.fullscreenElement || anyDoc.webkitFullscreenElement);
   }, []);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleResize = () => {
+      setFullscreenViewport(resolveFullscreenViewport(window.innerWidth));
+    };
+
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
+
+  const shouldAutoFullscreen = fullscreenViewport !== 'phone';
+
   const attemptFullscreen = useCallback(
     async (options: { allowModal?: boolean } = {}) => {
       if (typeof document === 'undefined') return false;
+      if (!shouldAutoFullscreen) {
+        setShowFullscreenPrompt(false);
+        return false;
+      }
       const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> };
       if (!el) return false;
       if (fullscreenRequestInFlight.current) {
@@ -134,7 +166,7 @@ export default function KioskLayout({
       }
       return success;
     },
-    [isFullscreenActive]
+    [isFullscreenActive, shouldAutoFullscreen]
   );
 
   const requestWakeLock = useCallback(async () => {
@@ -207,6 +239,10 @@ export default function KioskLayout({
         setShowFullscreenPrompt(false);
         return;
       }
+      if (!shouldAutoFullscreen) {
+        setShowFullscreenPrompt(false);
+        return;
+      }
       setTimeout(() => {
         attemptFullscreen({ allowModal: true });
       }, 150);
@@ -230,7 +266,7 @@ export default function KioskLayout({
       window.removeEventListener('webkitfullscreenchange', handleFullscreenChange as any);
       media?.removeEventListener?.('change', handleDisplayModeChange);
     };
-  }, [attemptFullscreen, isInstalled, isFullscreenActive]);
+  }, [attemptFullscreen, isInstalled, isFullscreenActive, shouldAutoFullscreen]);
 
   const handleInstallClick = useCallback(async () => {
     if (!deferredPrompt) return;
@@ -280,6 +316,12 @@ export default function KioskLayout({
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
+    if (!shouldAutoFullscreen) {
+      setShowFullscreenPrompt(false);
+      requestWakeLock();
+      return;
+    }
+
     const handleInteraction = async () => {
       await Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]);
     };
@@ -294,7 +336,7 @@ export default function KioskLayout({
       window.removeEventListener('pointerdown', handleInteraction);
       window.removeEventListener('keydown', handleInteraction);
     };
-  }, [attemptFullscreen, requestWakeLock]);
+  }, [attemptFullscreen, requestWakeLock, shouldAutoFullscreen]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
