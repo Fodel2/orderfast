@@ -1,4 +1,3 @@
-import Image from 'next/image';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import { BuildingStorefrontIcon, ShoppingBagIcon } from '@heroicons/react/24/outline';
@@ -19,6 +18,7 @@ type RestaurantBrand = {
   website_title: string | null;
   website_description: string | null;
   logo_url: string | null;
+  cover_image_url: string | null;
   logo_shape: 'square' | 'round' | 'rectangular' | null;
   menu_header_image_url: string | null;
   menu_header_image_updated_at: string | null;
@@ -56,7 +56,7 @@ async function loadExpressPageData(restaurantId: string): Promise<ExpressPageDat
       supabase
         .from('restaurants')
         .select(
-          'name,website_title,website_description,logo_url,logo_shape,menu_header_image_url,menu_header_image_updated_at,menu_header_focal_x,menu_header_focal_y,theme_primary_color'
+          'name,website_title,website_description,logo_url,cover_image_url,logo_shape,menu_header_image_url,menu_header_image_updated_at,menu_header_focal_x,menu_header_focal_y,theme_primary_color'
         )
         .eq('id', restaurantId)
         .maybeSingle<RestaurantBrand>(),
@@ -90,10 +90,11 @@ export default function ExpressEntryPage() {
   const [entryError, setEntryError] = useState('');
 
   const primaryColor = restaurant?.theme_primary_color || '#111827';
-  const heroImage = useMemo(
-    () => formatImageUrl(restaurant?.menu_header_image_url, restaurant?.menu_header_image_updated_at),
-    [restaurant?.menu_header_image_updated_at, restaurant?.menu_header_image_url]
-  );
+  const heroImage = useMemo(() => {
+    const cover = formatImageUrl(restaurant?.cover_image_url);
+    if (cover) return cover;
+    return formatImageUrl(restaurant?.menu_header_image_url, restaurant?.menu_header_image_updated_at);
+  }, [restaurant?.cover_image_url, restaurant?.menu_header_image_updated_at, restaurant?.menu_header_image_url]);
   const logoUrl = useMemo(() => normalizeSource(restaurant?.logo_url), [restaurant?.logo_url]);
   const focalX = restaurant?.menu_header_focal_x ?? 0.5;
   const focalY = restaurant?.menu_header_focal_y ?? 0.5;
@@ -178,7 +179,8 @@ export default function ExpressEntryPage() {
     return 'relative h-24 w-24 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-lg shadow-neutral-200';
   }, [restaurant?.logo_shape]);
 
-  const logoImageClass = restaurant?.logo_shape === 'round' ? 'object-cover' : 'object-contain';
+  const logoImageClass =
+    restaurant?.logo_shape === 'rectangular' ? 'object-contain' : 'object-cover';
 
   if (restaurantLoading || loading) {
     return (
@@ -243,12 +245,10 @@ export default function ExpressEntryPage() {
           <div className="flex flex-col items-center gap-4">
             {logoUrl ? (
               <div className={logoFrameClassName}>
-                <Image
+                <img
                   src={logoUrl}
                   alt={restaurant?.name || 'Restaurant logo'}
-                  fill
-                  sizes={restaurant?.logo_shape === 'rectangular' ? '144px' : '96px'}
-                  className={logoImageClass}
+                  className={`h-full w-full ${logoImageClass}`}
                 />
               </div>
             ) : null}

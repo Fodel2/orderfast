@@ -11,6 +11,7 @@ import {
 import { useRouter } from 'next/router';
 import { useCart } from '@/context/CartContext';
 import { clearHomeSeen, hasSeenHome } from '@/utils/kiosk/session';
+import { getExpressSession } from '@/utils/express/session';
 
 type KioskSessionContextValue = {
   sessionActive: boolean;
@@ -55,6 +56,19 @@ export function KioskSessionProvider({
   const idleCountdownIntervalRef = useRef<number | null>(null);
   const sessionActiveRef = useRef(sessionActiveState);
 
+  const isExpressActive = useCallback(() => {
+    if (router.pathname.startsWith('/express') || router.asPath.startsWith('/express')) {
+      return true;
+    }
+    const queryExpress = router.query.express;
+    if (queryExpress === '1' || (Array.isArray(queryExpress) && queryExpress.includes('1')) || router.asPath.includes('express=1')) {
+      return true;
+    }
+    const session = getExpressSession();
+    const matchesRestaurant = !restaurantId || !session?.restaurantId || session.restaurantId === restaurantId;
+    return Boolean(session?.isExpress && matchesRestaurant);
+  }, [restaurantId, router.asPath, router.pathname, router.query.express]);
+
   const basePath = useMemo(() => (restaurantId ? `/kiosk/${restaurantId}` : '/kiosk'), [restaurantId]);
   const sessionActive = sessionActiveState;
 
@@ -89,6 +103,7 @@ export function KioskSessionProvider({
   const getRandomMessage = useCallback((list: string[]) => list[Math.floor(Math.random() * list.length)], []);
 
   const handleIdleTimeout = useCallback(() => {
+    const expressFlow = isExpressActive();
     setShowIdleModal(false);
     if (idleTimeoutRef.current) {
       clearTimeout(idleTimeoutRef.current);
@@ -104,8 +119,9 @@ export function KioskSessionProvider({
       clearHomeSeen(restaurantId);
     }
     setSessionActive(false);
-    router.push(basePath).catch(() => undefined);
-  }, [basePath, clearCart, restaurantId, router, setSessionActive]);
+    const targetPath = expressFlow && restaurantId ? `/express?restaurant_id=${restaurantId}` : basePath;
+    router.push(targetPath).catch(() => undefined);
+  }, [basePath, clearCart, isExpressActive, restaurantId, router, setSessionActive]);
 
   const startIdleCountdown = useCallback(() => {
     if (idleCountdownIntervalRef.current) {
@@ -158,6 +174,7 @@ export function KioskSessionProvider({
   }, [resetIdleTimer]);
 
   const resetKioskToStart = useCallback(() => {
+    const expressFlow = isExpressActive();
     if (idleTimeoutRef.current) {
       clearTimeout(idleTimeoutRef.current);
       idleTimeoutRef.current = null;
@@ -174,8 +191,9 @@ export function KioskSessionProvider({
       clearHomeSeen(restaurantId);
     }
     setSessionActive(false);
-    router.push(basePath).catch(() => undefined);
-  }, [basePath, clearCart, restaurantId, router, setSessionActive]);
+    const targetPath = expressFlow && restaurantId ? `/express?restaurant_id=${restaurantId}` : basePath;
+    router.push(targetPath).catch(() => undefined);
+  }, [basePath, clearCart, isExpressActive, restaurantId, router, setSessionActive]);
 
   useEffect(() => {
     if (sessionActive) {
