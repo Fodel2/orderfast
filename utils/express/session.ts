@@ -6,6 +6,7 @@ export type ExpressSession = {
   tableSessionId?: string | null;
   dineInPaymentMode?: 'immediate_pay' | 'open_tab';
   restaurantId?: string | null;
+  isExpress?: boolean;
 };
 
 const KEY = 'orderfast_express_session';
@@ -31,12 +32,13 @@ export function clearExpressSession() {
   window.localStorage.removeItem(KEY);
 }
 
-export function isExpressDineInForRestaurant(restaurantId?: string | null) {
+export function getExpressDineInSessionForRestaurant(restaurantId?: string | null): ExpressSession | null {
   const session = getExpressSession();
-  return (
-    !!session &&
-    session.mode === 'dine_in' &&
-    !!session.tableNumber &&
-    (!restaurantId || !session.restaurantId || session.restaurantId === restaurantId)
-  );
+  if (!session || session.mode !== 'dine_in') return null;
+  if (!restaurantId || !session.restaurantId || session.restaurantId === restaurantId) return session;
+  return null;
+}
+
+export function isExpressDineInForRestaurant(restaurantId?: string | null) {
+  return !!getExpressDineInSessionForRestaurant(restaurantId);
 }

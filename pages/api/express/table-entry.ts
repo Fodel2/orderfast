@@ -1,11 +1,14 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { supaServer } from '@/lib/supaServer';
+import { getExpressServiceSupabaseClient } from './_serverClient';
 
 type Body = {
   restaurant_id?: string;
-  table_number?: number;
-  entered_code?: string;
-  security_mode?: 'none' | 'table_code';
+  table_number?: number | null;
+  mode?: 'dine_in' | 'takeaway';
+};
+
+type ExpressOrderSettings = {
+  dine_in_security_mode: 'none' | 'table_code';
 };
 
 const isUuid = (value: string) =>
@@ -17,40 +20,58 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  const supaServer = getExpressServiceSupabaseClient();
+  if (!supaServer) {
+    return res.status(500).json({ error: 'Missing SUPABASE_SERVICE_ROLE_KEY' });
+  }
+
   const body = (req.body || {}) as Body;
   const restaurantId = String(body.restaurant_id || '');
-  const tableNumber = Number(body.table_number);
-  const securityMode = body.security_mode || 'none';
+  const mode = body.mode || 'dine_in';
+  const hasTableNumber = Number.isInteger(body.table_number) && Number(body.table_number) > 0;
+  const tableNumber = hasTableNumber ? Number(body.table_number) : null;
 
-  if (!restaurantId || !isUuid(restaurantId) || !Number.isInteger(tableNumber) || tableNumber <= 0) {
+  if (!restaurantId || !isUuid(restaurantId) || (mode !== 'dine_in' && mode !== 'takeaway')) {
     return res.status(400).json({ error: 'Invalid request' });
   }
 
-  if (securityMode === 'table_code') {
-    const { data: isValid, error: validationError } = await supaServer.rpc('validate_table_code', {
-      p_restaurant_id: restaurantId,
-      p_table_number: tableNumber,
-      p_entered_code: body.entered_code || '',
-    });
+  const { data: settings, error: settingsError } = await supaServer
+    .from('express_order_settings')
+    .select('dine_in_security_mode')
+    .eq('restaurant_id', restaurantId)
+    .maybeSingle<ExpressOrderSettings>();
 
-    if (validationError) {
-      return res.status(500).json({ error: 'Failed to validate table code' });
+  if (settingsError || !settings) {
+    return res.status(500).json({ error: 'Failed to load express settings' });
+  }
+
+  const enableTableNumbers = settings.dine_in_security_mode === 'table_code';
+
+  if (mode === 'dine_in' && enableTableNumbers) {
+    if (!tableNumber) {
+      return res.status(400).json({ error: 'Please select a table' });
     }
 
-    if (!isValid) {
-      return res.status(403).json({ valid: false, error: 'Invalid table code' });
+    const { data: table, error: tableError } = await supaServer
+      .from('restaurant_tables')
+      .select('id')
+      .eq('restaurant_id', restaurantId)
+      .eq('table_number', tableNumber)
+      .eq('enabled', true)
+      .maybeSingle<{ id: string }>();
+
+    if (tableError) {
+      return res.status(500).json({ error: 'Failed to load table details' });
+    }
+
+    if (!table) {
+      return res.status(400).json({ error: 'Invalid table selection' });
     }
   }
 
-  const { data: sessionId, error: sessionError } = await supaServer.rpc('ensure_open_table_session', {
-    p_restaurant_id: restaurantId,
-    p_table_number: tableNumber,
-    p_notes: 'Express open tab session',
+  return res.status(200).json({
+    ok: true,
+    tableSessionId: null,
+    dineInPaymentMode: 'immediate_pay',
   });
-
-  if (sessionError || !sessionId) {
-    return res.status(500).json({ error: 'Failed to start table session' });
-  }
-
-  return res.status(200).json({ valid: true, table_session_id: sessionId });
 }

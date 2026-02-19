@@ -14,7 +14,7 @@ import KioskLoadingOverlay from '@/components/kiosk/KioskLoadingOverlay';
 import { setKioskLastRealOrderNumber } from '@/utils/kiosk/orders';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { useKeyboardViewport } from '@/hooks/useKeyboardViewport';
-import { getExpressSession, isExpressDineInForRestaurant } from '@/utils/express/session';
+import { getExpressDineInSessionForRestaurant, getExpressSession, isExpressDineInForRestaurant } from '@/utils/express/session';
 
 type Restaurant = {
   id: string;
@@ -68,6 +68,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   const [nameError, setNameError] = useState('');
   const [submissionError, setSubmissionError] = useState('');
   const [showChangeTable, setShowChangeTable] = useState(false);
+  const [expressTableNumber, setExpressTableNumber] = useState<number | null>(null);
   const submissionInFlightRef = useRef(false);
   const isMountedRef = useRef(true);
   const { height: viewportHeight, refresh: refreshViewport } = useKeyboardViewport(showConfirmModal);
@@ -147,7 +148,9 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
 
   useEffect(() => {
     if (!restaurantId) return;
+    const expressSession = getExpressDineInSessionForRestaurant(restaurantId);
     setShowChangeTable(isExpressDineInForRestaurant(restaurantId));
+    setExpressTableNumber(expressSession?.tableNumber ?? null);
   }, [restaurantId]);
 
 
@@ -210,12 +213,12 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
             }}
             className="inline-flex min-h-[3rem] items-center rounded-full border border-white/70 bg-white/95 px-4 py-2.5 text-sm font-semibold text-neutral-900 shadow-md shadow-slate-300/70"
           >
-            Change table
+            {expressTableNumber ? `Table ${expressTableNumber}` : 'Select table'}
           </button>
         ) : null}
       </div>
     );
-  }, [registerActivity, restaurantId, router, showChangeTable]);
+  }, [expressTableNumber, registerActivity, restaurantId, router, showChangeTable]);
 
   const placeOrder = useCallback(async () => {
     if (!restaurantId || placingOrder || submissionInFlightRef.current) return;
@@ -251,8 +254,6 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
 
     const autoAcceptKiosk = !!restaurant?.auto_accept_kiosk_orders;
     const expressSession = getExpressSession();
-    const isExpressOpenTabDineIn =
-      expressSession?.mode === 'dine_in' && expressSession?.dineInPaymentMode === 'open_tab';
     const initialStatus = autoAcceptKiosk ? 'accepted' : 'pending';
     const acceptedAt = autoAcceptKiosk ? new Date().toISOString() : null;
 
@@ -263,24 +264,6 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
       let orderId: string | null = null;
 
       try {
-        let tableSessionId = expressSession?.tableSessionId ?? null;
-        if (isExpressOpenTabDineIn && !tableSessionId && expressSession?.tableNumber) {
-          const sessionResponse = await fetch('/api/express/table-entry', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              restaurant_id: restaurantId,
-              table_number: expressSession.tableNumber,
-              security_mode: 'none',
-            }),
-          });
-          const sessionPayload = await sessionResponse.json();
-          if (!sessionResponse.ok || !sessionPayload?.table_session_id) {
-            throw new Error(sessionPayload?.error || 'Could not restore table session');
-          }
-          tableSessionId = sessionPayload.table_session_id;
-        }
-
         const { data: order, error: orderError } = await supabase
           .from('orders')
           .insert([
@@ -296,7 +279,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
               delivery_fee: 0,
               dine_in_table_number:
                 expressSession?.mode === 'dine_in' ? expressSession.tableNumber ?? null : null,
-              table_session_id: isExpressOpenTabDineIn ? tableSessionId : null,
+              table_session_id: null,
             },
           ])
           .select('id, short_order_number')
@@ -401,9 +384,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
 
       if (!options?.skipNavigation) {
         setShowConfirmModal(false);
-        const confirmPath = isExpressOpenTabDineIn
-          ? `/kiosk/${restaurantId}/confirm?openTab=1&tableNumber=${expressSession?.tableNumber ?? ''}`
-          : `/kiosk/${restaurantId}/confirm?orderNumber=${result.orderNumber}`;
+        const confirmPath = `/kiosk/${restaurantId}/confirm?orderNumber=${result.orderNumber}`;
         await router.push(confirmPath);
       }
 
@@ -458,9 +439,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     setSubmissionError('');
     setNameError('');
     setShowConfirmModal(false);
-    const timeoutConfirmPath = isExpressOpenTabDineIn
-      ? `/kiosk/${restaurantId}/confirm?openTab=1&tableNumber=${expressSession?.tableNumber ?? ''}`
-      : `/kiosk/${restaurantId}/confirm?orderNumber=${orderNumber}`;
+    const timeoutConfirmPath = `/kiosk/${restaurantId}/confirm?orderNumber=${orderNumber}`;
     void router.push(timeoutConfirmPath);
 
     submissionPromise

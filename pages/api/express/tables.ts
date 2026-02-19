@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { supaServer } from '@/lib/supaServer';
+import { getExpressServiceSupabaseClient } from './_serverClient';
 
 const isUuid = (value: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -15,10 +15,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ error: 'Invalid restaurant_id' });
   }
 
+  const supaServer = getExpressServiceSupabaseClient();
+  if (!supaServer) {
+    return res.status(500).json({ error: 'Missing SUPABASE_SERVICE_ROLE_KEY' });
+  }
+
   const [{ data: settings, error: settingsError }, { data: tables, error: tableError }] = await Promise.all([
     supaServer
       .from('express_order_settings')
-      .select('enabled,enable_takeaway,enable_dine_in,dine_in_security_mode,dine_in_payment_mode')
+      .select('enabled,enable_takeaway,enable_dine_in,dine_in_security_mode')
       .eq('restaurant_id', restaurantId)
       .maybeSingle(),
     supaServer
@@ -33,8 +38,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(500).json({ error: 'Failed to load express entry data' });
   }
 
+  const normalizedSettings = settings
+    ? {
+        enabled: !!settings.enabled,
+        enable_takeaway: !!settings.enable_takeaway,
+        enable_dine_in: !!settings.enable_dine_in,
+        enable_table_numbers: settings.dine_in_security_mode === 'table_code',
+      }
+    : null;
+
   return res.status(200).json({
-    settings: settings || null,
+    settings: normalizedSettings,
     tables: tables || [],
   });
 }

@@ -14,6 +14,7 @@ import HomeScreen, { type KioskRestaurant } from '@/components/kiosk/HomeScreen'
 import KioskActionButton from '@/components/kiosk/KioskActionButton';
 import { useKioskSession } from '@/context/KioskSessionContext';
 import { hasSeenHome, markHomeSeen } from '@/utils/kiosk/session';
+import { getExpressSession } from '@/utils/express/session';
 
 export const FULL_HEADER_HEIGHT = 136;
 export const COLLAPSED_HEADER_HEIGHT = 88;
@@ -71,6 +72,17 @@ export default function KioskLayout({
   customHeaderContent,
 }: KioskLayoutProps) {
   const router = useRouter();
+  const isExpressRoute = useMemo(
+    () => router.pathname.startsWith('/express') || router.asPath.startsWith('/express'),
+    [router.asPath, router.pathname]
+  );
+  const hasExpressQueryFlag = useMemo(() => {
+    const queryExpress = router.query.express;
+    const queryFlag =
+      queryExpress === '1' || (Array.isArray(queryExpress) && queryExpress.includes('1'));
+    const asPathFlag = router.asPath.includes('express=1');
+    return queryFlag || asPathFlag;
+  }, [router.asPath, router.query.express]);
   const [wakeLock, setWakeLock] = useState<WakeLockSentinel | null>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [installDismissed, setInstallDismissed] = useState(false);
@@ -83,6 +95,7 @@ export default function KioskLayout({
     forceHome ? false : restaurantId ? hasSeenHome(restaurantId) : true
   );
   const [fullscreenViewport, setFullscreenViewport] = useState<FullscreenViewport>('desktop');
+  const [isExpressSession, setIsExpressSession] = useState(false);
   const [shrinkProgress, setShrinkProgress] = useState(0);
   const [showFullscreenPrompt, setShowFullscreenPrompt] = useState(false);
   const autoPromptedRef = useRef(false);
@@ -124,12 +137,34 @@ export default function KioskLayout({
     };
   }, []);
 
-  const shouldAutoFullscreen = fullscreenViewport !== 'phone';
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const syncExpressSession = () => {
+      const session = getExpressSession();
+      const matchesRestaurant =
+        !restaurantId || !session?.restaurantId || session.restaurantId === restaurantId;
+      setIsExpressSession(Boolean(session?.isExpress && matchesRestaurant));
+    };
+
+    syncExpressSession();
+    window.addEventListener('storage', syncExpressSession);
+    window.addEventListener('focus', syncExpressSession);
+
+    return () => {
+      window.removeEventListener('storage', syncExpressSession);
+      window.removeEventListener('focus', syncExpressSession);
+    };
+  }, [restaurantId, router.asPath]);
+
+  const shouldSuppressFullscreen = isExpressRoute || hasExpressQueryFlag || isExpressSession;
+
+  const shouldAutoFullscreen = fullscreenViewport !== 'phone' && !shouldSuppressFullscreen;
 
   const attemptFullscreen = useCallback(
     async (options: { allowModal?: boolean } = {}) => {
       if (typeof document === 'undefined') return false;
-      if (!shouldAutoFullscreen) {
+      if (shouldSuppressFullscreen || !shouldAutoFullscreen) {
         setShowFullscreenPrompt(false);
         return false;
       }
@@ -166,7 +201,7 @@ export default function KioskLayout({
       }
       return success;
     },
-    [isFullscreenActive, shouldAutoFullscreen]
+    [isFullscreenActive, shouldAutoFullscreen, shouldSuppressFullscreen]
   );
 
   const requestWakeLock = useCallback(async () => {
@@ -239,19 +274,23 @@ export default function KioskLayout({
         setShowFullscreenPrompt(false);
         return;
       }
-      if (!shouldAutoFullscreen) {
+      if (shouldSuppressFullscreen || !shouldAutoFullscreen) {
         setShowFullscreenPrompt(false);
         return;
       }
       setTimeout(() => {
-        attemptFullscreen({ allowModal: true });
+        if (!shouldSuppressFullscreen) {
+          attemptFullscreen({ allowModal: true });
+        }
       }, 150);
     };
 
     const media = window.matchMedia?.('(display-mode: standalone)');
 
     evaluateDisplayMode();
-    attemptFullscreen({ allowModal: true });
+    if (!shouldSuppressFullscreen) {
+      attemptFullscreen({ allowModal: true });
+    }
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     window.addEventListener('appinstalled', handleAppInstalled);
@@ -266,7 +305,7 @@ export default function KioskLayout({
       window.removeEventListener('webkitfullscreenchange', handleFullscreenChange as any);
       media?.removeEventListener?.('change', handleDisplayModeChange);
     };
-  }, [attemptFullscreen, isInstalled, isFullscreenActive, shouldAutoFullscreen]);
+  }, [attemptFullscreen, isInstalled, isFullscreenActive, shouldAutoFullscreen, shouldSuppressFullscreen]);
 
   const handleInstallClick = useCallback(async () => {
     if (!deferredPrompt) return;
@@ -316,14 +355,18 @@ export default function KioskLayout({
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    if (!shouldAutoFullscreen) {
+    if (shouldSuppressFullscreen || !shouldAutoFullscreen) {
       setShowFullscreenPrompt(false);
       requestWakeLock();
       return;
     }
 
     const handleInteraction = async () => {
-      await Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]);
+      if (shouldSuppressFullscreen) {
+        await requestWakeLock();
+      } else {
+        await Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]);
+      }
     };
 
     attemptFullscreen({ allowModal: true });
@@ -336,7 +379,7 @@ export default function KioskLayout({
       window.removeEventListener('pointerdown', handleInteraction);
       window.removeEventListener('keydown', handleInteraction);
     };
-  }, [attemptFullscreen, requestWakeLock, shouldAutoFullscreen]);
+  }, [attemptFullscreen, requestWakeLock, shouldAutoFullscreen, shouldSuppressFullscreen]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -413,11 +456,15 @@ export default function KioskLayout({
       setHomeVisible(false);
       setHomeFading(false);
     }, 220);
-    await Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]);
+    if (shouldSuppressFullscreen) {
+      await requestWakeLock();
+    } else {
+      await Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]);
+    }
     if (menuPath && router.asPath !== menuPath) {
       router.push(menuPath).catch(() => undefined);
     }
-  }, [attemptFullscreen, menuPath, resetIdleTimer, requestWakeLock, restaurantId, router]);
+  }, [attemptFullscreen, menuPath, resetIdleTimer, requestWakeLock, restaurantId, router, shouldSuppressFullscreen]);
 
   const headerTitle = restaurant?.website_title || restaurant?.name || 'Restaurant';
   const logoUrl = restaurant?.logo_url || null;
@@ -509,8 +556,12 @@ export default function KioskLayout({
   ]);
 
   const handleFullscreenPromptClick = useCallback(async () => {
-    await Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]);
-  }, [attemptFullscreen, requestWakeLock]);
+    if (shouldSuppressFullscreen) {
+      await requestWakeLock();
+    } else {
+      await Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]);
+    }
+  }, [attemptFullscreen, requestWakeLock, shouldSuppressFullscreen]);
 
   const countdownColor = useMemo(() => {
     if (idleCountdown <= 3) return '#E63946';
@@ -587,7 +638,7 @@ export default function KioskLayout({
           </button>
         </div>
       ) : null}
-      {showFullscreenPrompt ? (
+      {!shouldSuppressFullscreen && showFullscreenPrompt ? (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/20 px-6 text-center">
           <div className="w-full max-w-sm rounded-3xl border border-neutral-200 bg-white p-6 shadow-2xl shadow-black/10">
             <p className="text-lg font-semibold text-neutral-900">Tap to enter kiosk mode</p>
