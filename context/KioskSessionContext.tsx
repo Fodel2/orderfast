@@ -11,7 +11,7 @@ import {
 import { useRouter } from 'next/router';
 import { useCart } from '@/context/CartContext';
 import { clearHomeSeen, hasSeenHome } from '@/utils/kiosk/session';
-import { getExpressSession } from '@/utils/express/session';
+import { getExpressSession, patchExpressSession } from '@/utils/express/session';
 
 type KioskSessionContextValue = {
   sessionActive: boolean;
@@ -61,13 +61,8 @@ export function KioskSessionProvider({
       return true;
     }
     const queryExpress = router.query.express;
-    if (queryExpress === '1' || (Array.isArray(queryExpress) && queryExpress.includes('1')) || router.asPath.includes('express=1')) {
-      return true;
-    }
-    const session = getExpressSession();
-    const matchesRestaurant = !restaurantId || !session?.restaurantId || session.restaurantId === restaurantId;
-    return Boolean(session?.isExpress && matchesRestaurant);
-  }, [restaurantId, router.asPath, router.pathname, router.query.express]);
+    return queryExpress === '1' || (Array.isArray(queryExpress) && queryExpress.includes('1')) || router.asPath.includes('express=1');
+  }, [router.asPath, router.pathname, router.query.express]);
 
   const basePath = useMemo(() => (restaurantId ? `/kiosk/${restaurantId}` : '/kiosk'), [restaurantId]);
   const sessionActive = sessionActiveState;
@@ -98,6 +93,15 @@ export function KioskSessionProvider({
   useEffect(() => {
     setSessionActive(Boolean(restaurantId && hasSeenHome(restaurantId)));
   }, [restaurantId, setSessionActive]);
+
+  useEffect(() => {
+    const explicitExpress = isExpressActive();
+    const isKioskRoute = router.pathname.startsWith('/kiosk') || router.asPath.startsWith('/kiosk');
+    if (explicitExpress || !isKioskRoute) return;
+    const session = getExpressSession();
+    if (!session?.isExpress) return;
+    patchExpressSession({ isExpress: false });
+  }, [isExpressActive, router.asPath, router.pathname]);
 
   const idleMessages = useMemo(
     () => [
