@@ -27,8 +27,18 @@ export default function ExpressEntryPage() {
   const [selectedTable, setSelectedTable] = useState<RestaurantTable | null>(null);
   const [code, setCode] = useState('');
   const [codeError, setCodeError] = useState('');
+  const [entryError, setEntryError] = useState('');
+  const [submittingTable, setSubmittingTable] = useState(false);
   const [step, setStep] = useState<'mode' | 'table'>('mode');
   const modeHint = typeof router.query.mode === 'string' ? router.query.mode : null;
+
+  const routeToKioskMenu = async (mode: 'takeaway' | 'dine_in') => {
+    if (!restaurantId) return;
+    const ok = await router.push(`/kiosk/${restaurantId}/menu?express=1&mode=${mode}`);
+    if (!ok) {
+      setEntryError('Unable to continue right now. Please try again.');
+    }
+  };
 
   useEffect(() => {
     if (restaurantLoading || !restaurantId) return;
@@ -78,10 +88,12 @@ export default function ExpressEntryPage() {
   const continueTakeaway = () => {
     if (!restaurantId) return;
     setExpressSession({ mode: 'takeaway', restaurantId });
-    router.push(`/kiosk/${restaurantId}/menu?express=1&mode=takeaway`);
+    void routeToKioskMenu('takeaway');
   };
 
   const continueDineIn = () => {
+    setEntryError('');
+    setCodeError('');
     setStep('table');
   };
 
@@ -91,32 +103,42 @@ export default function ExpressEntryPage() {
       setCodeError('Please enter your table code.');
       return;
     }
+    setEntryError('');
+    setSubmittingTable(true);
 
     void (async () => {
-      const response = await fetch('/api/express/table-entry', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          restaurant_id: restaurantId,
-          table_number: selectedTable.table_number,
-          entered_code: code.trim(),
-          security_mode: settings.dine_in_security_mode,
-        }),
-      });
-      const payload = await response.json();
-      if (!response.ok) {
-        setCodeError(payload?.error || 'Unable to start your table session.');
-        return;
-      }
+      try {
+        const response = await fetch('/api/express/table-entry', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            restaurant_id: restaurantId,
+            table_number: selectedTable.table_number,
+            entered_code: code.trim(),
+            security_mode: settings.dine_in_security_mode,
+          }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const message = payload?.error || 'Unable to start your table session.';
+          setCodeError(message);
+          setEntryError(message);
+          return;
+        }
 
-      setExpressSession({
-        mode: 'dine_in',
-        tableNumber: selectedTable.table_number,
-        tableSessionId: payload.table_session_id,
-        dineInPaymentMode: settings.dine_in_payment_mode,
-        restaurantId,
-      });
-      router.push(`/kiosk/${restaurantId}/menu?express=1&mode=dine_in`);
+        setExpressSession({
+          mode: 'dine_in',
+          tableNumber: selectedTable.table_number,
+          tableSessionId: payload.table_session_id,
+          dineInPaymentMode: settings.dine_in_payment_mode,
+          restaurantId,
+        });
+        await routeToKioskMenu('dine_in');
+      } catch {
+        setEntryError('Unable to continue right now. Please try again.');
+      } finally {
+        setSubmittingTable(false);
+      }
     })();
   };
 
@@ -190,6 +212,7 @@ export default function ExpressEntryPage() {
                       setSelectedTable(table);
                       setCode('');
                       setCodeError('');
+                      setEntryError('');
                     }}
                     className={`rounded-xl border px-4 py-4 text-left ${
                       selectedTable?.id === table.id
@@ -226,13 +249,14 @@ export default function ExpressEntryPage() {
                 Back
               </button>
               <button
-                disabled={!selectedTable}
+                disabled={!selectedTable || submittingTable}
                 onClick={continueAfterTable}
                 className="rounded-lg bg-teal-600 px-5 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >
-                Continue
+                {submittingTable ? 'Starting…' : 'Continue'}
               </button>
             </div>
+            {entryError ? <p className="mt-3 text-sm text-red-600">{entryError}</p> : null}
           </>
         )}
       </div>
