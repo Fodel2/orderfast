@@ -12,13 +12,6 @@ type ExpressSettings = {
   enable_table_numbers: boolean;
 };
 
-type RestaurantTable = {
-  id: string;
-  table_number: number;
-  table_name: string | null;
-  enabled: boolean;
-};
-
 type RestaurantBrand = {
   name: string | null;
   website_title: string | null;
@@ -33,7 +26,6 @@ type RestaurantBrand = {
 
 type ExpressPageData = {
   settings: ExpressSettings | null;
-  tables: RestaurantTable[];
   restaurant: RestaurantBrand | null;
 };
 
@@ -62,7 +54,6 @@ async function loadExpressPageData(restaurantId: string): Promise<ExpressPageDat
     const payload = await entryRes.json().catch(() => ({}));
     const result: ExpressPageData = {
       settings: entryRes.ok ? ((payload.settings as ExpressSettings) || null) : null,
-      tables: entryRes.ok ? ((payload.tables as RestaurantTable[]) || []) : [],
       restaurant: brandRes.data || null,
     };
 
@@ -83,31 +74,34 @@ export default function ExpressEntryPage() {
   const router = useRouter();
   const { restaurantId, loading: restaurantLoading } = useRestaurant();
   const [loading, setLoading] = useState(true);
+  const [heroReady, setHeroReady] = useState(false);
   const [settings, setSettings] = useState<ExpressSettings | null>(null);
-  const [tables, setTables] = useState<RestaurantTable[]>([]);
   const [restaurant, setRestaurant] = useState<RestaurantBrand | null>(null);
-  const [selectedTable, setSelectedTable] = useState<RestaurantTable | null>(null);
   const [entryError, setEntryError] = useState('');
-  const [submittingTable, setSubmittingTable] = useState(false);
-  const [step, setStep] = useState<'takeaway_start' | 'mode' | 'table'>('mode');
-  const modeHint = typeof router.query.mode === 'string' ? router.query.mode : null;
 
   const primaryColor = restaurant?.theme_primary_color || '#0f766e';
   const heroImage = restaurant?.menu_header_image_url
     ? `${restaurant.menu_header_image_url}${restaurant.menu_header_image_updated_at ? `?v=${encodeURIComponent(restaurant.menu_header_image_updated_at)}` : ''}`
     : null;
 
-  const logoClassName = useMemo(() => {
-    const base = 'h-14 w-14 border border-black/10 bg-white object-contain';
-    if (restaurant?.logo_shape === 'round') return `${base} rounded-full`;
-    if (restaurant?.logo_shape === 'rectangular') return `${base} h-12 w-20 rounded-xl`;
-    return `${base} rounded-2xl`;
+  const logoContainerClassName = useMemo(() => {
+    const base =
+      'flex shrink-0 items-center justify-center border border-black/10 bg-white/95 p-2 shadow-sm';
+    if (restaurant?.logo_shape === 'round') return `${base} h-16 w-16 rounded-full`;
+    if (restaurant?.logo_shape === 'rectangular') return `${base} h-16 w-24 rounded-xl`;
+    return `${base} h-16 w-16 rounded-2xl`;
   }, [restaurant?.logo_shape]);
 
   useEffect(() => {
-    if (!heroImage || typeof window === 'undefined') return;
+    if (!heroImage || typeof window === 'undefined') {
+      setHeroReady(false);
+      return;
+    }
+    setHeroReady(false);
     const image = new window.Image();
     image.decoding = 'async';
+    image.onload = () => setHeroReady(true);
+    image.onerror = () => setHeroReady(true);
     image.src = heroImage;
   }, [heroImage]);
 
@@ -138,7 +132,6 @@ export default function ExpressEntryPage() {
       setLoading(true);
       const data = await loadExpressPageData(restaurantId);
       setSettings(data.settings);
-      setTables(data.tables);
       setRestaurant(data.restaurant);
       setLoading(false);
     };
@@ -157,13 +150,9 @@ export default function ExpressEntryPage() {
   useEffect(() => {
     if (!restaurantId || loading || !settings) return;
 
-    if (modeHint === 'dine_in' && settings.enable_table_numbers) {
-      setStep('table');
-      return;
-    }
-
     if (visibleModes.length === 1 && visibleModes[0] === 'takeaway') {
-      setStep('takeaway_start');
+      setExpressSession({ mode: 'takeaway', tableNumber: null, customerName: null, restaurantId, isExpress: true });
+      void routeToKioskMenu('takeaway', { replace: true });
       return;
     }
 
@@ -172,20 +161,18 @@ export default function ExpressEntryPage() {
         mode: 'dine_in',
         tableNumber: null,
         tableSessionId: null,
+        customerName: null,
         dineInPaymentMode: 'immediate_pay',
         restaurantId,
         isExpress: true,
       });
       void routeToKioskMenu('dine_in', { replace: true });
-      return;
     }
-
-    setStep('mode');
-  }, [loading, modeHint, restaurantId, router, settings, visibleModes]);
+  }, [loading, restaurantId, settings, visibleModes]);
 
   const continueTakeaway = () => {
     if (!restaurantId) return;
-    setExpressSession({ mode: 'takeaway', restaurantId, isExpress: true });
+    setExpressSession({ mode: 'takeaway', tableNumber: null, customerName: null, restaurantId, isExpress: true });
     void routeToKioskMenu('takeaway');
   };
 
@@ -197,6 +184,7 @@ export default function ExpressEntryPage() {
       mode: 'dine_in',
       tableNumber: null,
       tableSessionId: null,
+      customerName: null,
       dineInPaymentMode: 'immediate_pay',
       restaurantId,
       isExpress: true,
@@ -204,62 +192,18 @@ export default function ExpressEntryPage() {
     void routeToKioskMenu('dine_in');
   };
 
-  const continueAfterTable = () => {
-    if (!restaurantId || !selectedTable || !settings) return;
-    setEntryError('');
-    setSubmittingTable(true);
-
-    void (async () => {
-      try {
-        const response = await fetch('/api/express/table-entry', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            restaurant_id: restaurantId,
-            table_number: selectedTable.table_number,
-            mode: 'dine_in',
-          }),
-        });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          const message = payload?.error || `Request failed (${response.status})`;
-          if (process.env.NODE_ENV !== 'production') {
-            console.error('Express table-entry failed', { status: response.status, body: payload });
-          }
-          setEntryError(message);
-          return;
-        }
-
-        setExpressSession({
-          mode: 'dine_in',
-          tableNumber: selectedTable.table_number,
-          tableSessionId: null,
-          dineInPaymentMode: 'immediate_pay',
-          restaurantId,
-          isExpress: true,
-        });
-        await routeToKioskMenu('dine_in');
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unexpected network error';
-        if (process.env.NODE_ENV !== 'production') {
-          console.error('Express table-entry request error', error);
-        }
-        setEntryError(message);
-      } finally {
-        setSubmittingTable(false);
-      }
-    })();
-  };
-
   if (restaurantLoading || loading) {
     return (
-      <div className="min-h-screen bg-[#f7faf9] p-4 sm:p-8">
-        <div className="mx-auto w-full max-w-3xl animate-pulse space-y-4">
-          <div className="h-56 rounded-3xl bg-teal-100/70" />
-          <div className="h-7 w-56 rounded bg-teal-100/70" />
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="h-36 rounded-2xl bg-teal-100/70" />
-            <div className="h-36 rounded-2xl bg-teal-100/70" />
+      <div className="relative min-h-screen overflow-hidden p-4 sm:p-8">
+        <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-teal-50 via-white to-cyan-50" />
+        <div className="relative mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-4xl items-center">
+          <div className="w-full space-y-4 rounded-3xl border border-white/70 bg-white/80 p-6 shadow-xl backdrop-blur">
+            <div className="h-16 w-48 rounded-xl bg-teal-100/70" />
+            <div className="h-7 w-56 rounded bg-teal-100/70" />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="h-36 rounded-2xl bg-teal-100/70" />
+              <div className="h-36 rounded-2xl bg-teal-100/70" />
+            </div>
           </div>
         </div>
       </div>
@@ -272,7 +216,7 @@ export default function ExpressEntryPage() {
 
   if (!settings?.enabled) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#f7faf9] p-6">
+      <div className="flex min-h-screen items-center justify-center p-6">
         <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 text-center shadow-sm">
           <h1 className="text-2xl font-bold text-gray-900">Express Order is unavailable</h1>
           <p className="mt-2 text-gray-600">This restaurant hasn’t enabled Express Order yet.</p>
@@ -286,38 +230,43 @@ export default function ExpressEntryPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f7faf9] text-gray-900">
-      <div className="relative h-52 sm:h-64">
+    <div className="relative min-h-screen overflow-hidden text-gray-900">
+      <div className="absolute inset-0 min-h-screen">
         {heroImage ? (
-          <img
-            src={heroImage}
-            alt="Restaurant cover"
-            className="h-full w-full object-cover"
-            style={{
-              objectPosition: `${(restaurant?.menu_header_focal_x ?? 0.5) * 100}% ${(restaurant?.menu_header_focal_y ?? 0.5) * 100}%`,
-            }}
-          />
+          <>
+            {!heroReady ? (
+              <div
+                className="h-full w-full animate-pulse bg-gradient-to-br from-white/50 via-white/30 to-black/5 backdrop-blur-sm"
+                style={{ backgroundColor: `${primaryColor}22` }}
+              />
+            ) : null}
+            <img
+              src={heroImage}
+              alt="Restaurant cover"
+              className={`h-full w-full object-cover transition-opacity duration-500 ${heroReady ? 'opacity-100' : 'opacity-0'}`}
+              style={{
+                objectPosition: `${(restaurant?.menu_header_focal_x ?? 0.5) * 100}% ${(restaurant?.menu_header_focal_y ?? 0.5) * 100}%`,
+              }}
+            />
+          </>
         ) : (
           <div
             className="h-full w-full"
             style={{
-              background: `linear-gradient(135deg, ${primaryColor}33 0%, ${primaryColor}55 55%, #ffffff 100%)`,
+              background: `linear-gradient(135deg, ${primaryColor}22 0%, ${primaryColor}4a 50%, #ffffff 100%)`,
             }}
           />
         )}
-        <div
-          className="absolute inset-0"
-          style={{
-            background: 'radial-gradient(circle at 20% 20%, rgba(255,255,255,0.55), rgba(255,255,255,0.15) 45%, rgba(255,255,255,0))',
-          }}
-        />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/35 via-black/20 to-white/85" />
       </div>
 
-      <div className="mx-auto -mt-10 w-full max-w-3xl px-5 pb-10">
-        <div className="rounded-3xl border border-white/70 bg-white/95 p-5 shadow-xl shadow-slate-200/70 backdrop-blur">
+      <div className="relative mx-auto flex min-h-screen w-full max-w-4xl items-center px-5 py-8 sm:px-8">
+        <div className="w-full rounded-3xl border border-white/70 bg-white/90 p-6 shadow-2xl shadow-slate-900/15 backdrop-blur">
           <div className="flex items-center gap-3">
             {restaurant?.logo_url ? (
-              <img src={restaurant.logo_url} alt="Restaurant logo" className={logoClassName} />
+              <div className={logoContainerClassName}>
+                <img src={restaurant.logo_url} alt="Restaurant logo" className="h-full w-full object-contain" />
+              </div>
             ) : null}
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">Express order</p>
@@ -325,94 +274,34 @@ export default function ExpressEntryPage() {
             </div>
           </div>
 
-          {step === 'takeaway_start' ? (
-            <div className="mt-6 rounded-3xl border border-teal-100 bg-gradient-to-br from-white to-teal-50/70 p-6">
-              <p className="text-sm text-gray-600">Ready to start?</p>
+          <p className="mt-5 text-sm text-gray-600">Choose how you’d like to order.</p>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            {settings.enable_takeaway ? (
               <button
                 onClick={continueTakeaway}
-                style={{ backgroundColor: primaryColor }}
-                className="mt-4 w-full rounded-2xl px-5 py-4 text-lg font-semibold text-white shadow-sm transition active:scale-[0.99]"
+                className="group rounded-3xl border border-gray-200 bg-white p-6 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-teal-300 hover:shadow-md"
               >
-                Tap to Order
+                <span className="inline-flex rounded-full bg-teal-50 p-2.5 text-teal-700">
+                  <ShoppingBagIcon className="h-6 w-6" />
+                </span>
+                <p className="mt-4 text-xl font-semibold text-gray-900">Takeaway</p>
+                <p className="mt-1 text-sm text-gray-600">Place your order now and pick it up when ready.</p>
               </button>
-            </div>
-          ) : step === 'mode' ? (
-            <>
-              <p className="mt-5 text-sm text-gray-600">Choose how you’d like to order.</p>
-              <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                {settings.enable_takeaway ? (
-                  <button
-                    onClick={continueTakeaway}
-                    className="group rounded-3xl border border-gray-200 bg-white p-6 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-teal-300 hover:shadow-md"
-                  >
-                    <span className="inline-flex rounded-full bg-teal-50 p-2.5 text-teal-700">
-                      <ShoppingBagIcon className="h-6 w-6" />
-                    </span>
-                    <p className="mt-4 text-xl font-semibold text-gray-900">Takeaway</p>
-                    <p className="mt-1 text-sm text-gray-600">Place your order now and pick it up when ready.</p>
-                  </button>
-                ) : null}
+            ) : null}
 
-                {settings.enable_dine_in ? (
-                  <button
-                    onClick={continueDineIn}
-                    className="group rounded-3xl border border-gray-200 bg-white p-6 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-teal-300 hover:shadow-md"
-                  >
-                    <span className="inline-flex rounded-full bg-teal-50 p-2.5 text-teal-700">
-                      <BuildingStorefrontIcon className="h-6 w-6" />
-                    </span>
-                    <p className="mt-4 text-xl font-semibold text-gray-900">Dine-in</p>
-                    <p className="mt-1 text-sm text-gray-600">Start ordering right away and set your table from the menu header.</p>
-                  </button>
-                ) : null}
-              </div>
-            </>
-          ) : (
-            <>
-              <h2 className="mt-5 text-2xl font-bold text-gray-900">Choose your table</h2>
-              <p className="mt-1 text-sm text-gray-600">Select your table number to continue.</p>
-
-              {!tables.length ? (
-                <div className="mt-6 rounded-xl border border-dashed border-gray-300 p-4 text-sm text-gray-600">
-                  No enabled tables are available right now.
-                </div>
-              ) : (
-                <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  {tables.map((table) => (
-                    <button
-                      key={table.id}
-                      onClick={() => {
-                        setSelectedTable(table);
-                        setEntryError('');
-                      }}
-                      className={`rounded-xl border px-4 py-4 text-left transition ${
-                        selectedTable?.id === table.id
-                          ? 'border-teal-500 bg-teal-50 text-teal-800'
-                          : 'border-gray-200 bg-white text-gray-900 hover:border-teal-300'
-                      }`}
-                    >
-                      <p className="text-lg font-semibold">Table {table.table_number}</p>
-                      {table.table_name ? <p className="text-xs text-gray-500">{table.table_name}</p> : null}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              <div className="mt-6 flex gap-3">
-                <button onClick={() => setStep('mode')} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700">
-                  Back
-                </button>
-                <button
-                  disabled={!selectedTable || submittingTable}
-                  onClick={continueAfterTable}
-                  style={{ backgroundColor: primaryColor }}
-                  className="rounded-lg px-5 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                >
-                  {submittingTable ? 'Starting…' : 'Continue'}
-                </button>
-              </div>
-            </>
-          )}
+            {settings.enable_dine_in ? (
+              <button
+                onClick={continueDineIn}
+                className="group rounded-3xl border border-gray-200 bg-white p-6 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-teal-300 hover:shadow-md"
+              >
+                <span className="inline-flex rounded-full bg-teal-50 p-2.5 text-teal-700">
+                  <BuildingStorefrontIcon className="h-6 w-6" />
+                </span>
+                <p className="mt-4 text-xl font-semibold text-gray-900">Dine-in</p>
+                <p className="mt-1 text-sm text-gray-600">Start ordering right away and confirm your table at checkout.</p>
+              </button>
+            ) : null}
+          </div>
 
           {entryError ? <p className="mt-4 text-sm text-red-600">{entryError}</p> : null}
         </div>

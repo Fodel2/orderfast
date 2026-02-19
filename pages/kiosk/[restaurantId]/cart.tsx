@@ -14,7 +14,16 @@ import KioskLoadingOverlay from '@/components/kiosk/KioskLoadingOverlay';
 import { setKioskLastRealOrderNumber } from '@/utils/kiosk/orders';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { useKeyboardViewport } from '@/hooks/useKeyboardViewport';
-import { getExpressDineInSessionForRestaurant, getExpressSession, isExpressDineInForRestaurant } from '@/utils/express/session';
+import { getExpressSession, patchExpressSession } from '@/utils/express/session';
+
+type ExpressCheckoutSettings = {
+  enable_table_numbers: boolean;
+};
+
+type RestaurantTable = {
+  table_number: number;
+  enabled: boolean;
+};
 
 type Restaurant = {
   id: string;
@@ -65,10 +74,14 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   const [confirmMessage, setConfirmMessage] = useState('');
   const [namePromptMessage, setNamePromptMessage] = useState('');
   const [customerName, setCustomerName] = useState('');
+  const [tableNumberInput, setTableNumberInput] = useState('');
   const [nameError, setNameError] = useState('');
+  const [tableError, setTableError] = useState('');
   const [submissionError, setSubmissionError] = useState('');
-  const [showChangeTable, setShowChangeTable] = useState(false);
-  const [expressTableNumber, setExpressTableNumber] = useState<number | null>(null);
+  const [isExpressFlow, setIsExpressFlow] = useState(false);
+  const [expressMode, setExpressMode] = useState<'takeaway' | 'dine_in' | null>(null);
+  const [expressCheckoutSettings, setExpressCheckoutSettings] = useState<ExpressCheckoutSettings | null>(null);
+  const [enabledTableNumbers, setEnabledTableNumbers] = useState<number[]>([]);
   const submissionInFlightRef = useRef(false);
   const isMountedRef = useRef(true);
   const { height: viewportHeight, refresh: refreshViewport } = useKeyboardViewport(showConfirmModal);
@@ -148,10 +161,44 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
 
   useEffect(() => {
     if (!restaurantId) return;
-    const expressSession = getExpressDineInSessionForRestaurant(restaurantId);
-    setShowChangeTable(isExpressDineInForRestaurant(restaurantId));
-    setExpressTableNumber(expressSession?.tableNumber ?? null);
+    const expressSession = getExpressSession();
+    const isRestaurantMatch = !!expressSession?.restaurantId && expressSession.restaurantId === restaurantId;
+    const isExpress = Boolean(expressSession?.isExpress && isRestaurantMatch);
+    setIsExpressFlow(isExpress);
+    setExpressMode(isExpress ? expressSession?.mode || null : null);
+    if (isExpress) {
+      setCustomerName(expressSession?.customerName || '');
+      setTableNumberInput(expressSession?.tableNumber ? String(expressSession.tableNumber) : '');
+    }
   }, [restaurantId]);
+
+  useEffect(() => {
+    if (!restaurantId || !isExpressFlow || expressMode !== 'dine_in') {
+      setExpressCheckoutSettings(null);
+      setEnabledTableNumbers([]);
+      return;
+    }
+
+    let active = true;
+    const loadTableSettings = async () => {
+      const response = await fetch(`/api/express/tables?restaurant_id=${restaurantId}`);
+      const payload = await response.json().catch(() => ({}));
+      if (!active || !response.ok) return;
+      const settings = (payload.settings || null) as ExpressCheckoutSettings | null;
+      const tables = (payload.tables || []) as RestaurantTable[];
+      setExpressCheckoutSettings(settings);
+      setEnabledTableNumbers(
+        tables
+          .filter((table) => table.enabled)
+          .map((table) => table.table_number)
+      );
+    };
+
+    void loadTableSettings();
+    return () => {
+      active = false;
+    };
+  }, [expressMode, isExpressFlow, restaurantId]);
 
 
   useEffect(() => {
@@ -204,33 +251,50 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
           <ChevronLeftIcon className="h-6 w-6" />
           Back
         </button>
-        {showChangeTable ? (
-          <button
-            type="button"
-            onClick={() => {
-              registerActivity();
-              router.push(`/express?restaurant_id=${restaurantId}&mode=dine_in`);
-            }}
-            className="inline-flex min-h-[3rem] items-center rounded-full border border-white/70 bg-white/95 px-4 py-2.5 text-sm font-semibold text-neutral-900 shadow-md shadow-slate-300/70"
-          >
-            {expressTableNumber ? `Table ${expressTableNumber}` : 'Select table'}
-          </button>
-        ) : null}
       </div>
     );
-  }, [expressTableNumber, registerActivity, restaurantId, router, showChangeTable]);
+  }, [registerActivity, restaurantId, router]);
 
   const placeOrder = useCallback(async () => {
     if (!restaurantId || placingOrder || submissionInFlightRef.current) return;
 
-    if (!customerName.trim()) {
+    const trimmedName = customerName.trim();
+    const parsedTableNumber = Number.parseInt(tableNumberInput, 10);
+    const isDineInExpress = isExpressFlow && expressMode === 'dine_in';
+    const isTakeawayExpress = isExpressFlow && expressMode === 'takeaway';
+
+    if (isTakeawayExpress && !trimmedName) {
       setNameError('We need something to call you!');
       return;
+    }
+
+    if (!isExpressFlow && !trimmedName) {
+      setNameError('We need something to call you!');
+      return;
+    }
+
+    if (isDineInExpress) {
+      if (!Number.isInteger(parsedTableNumber) || parsedTableNumber <= 0) {
+        setTableError('Please enter a valid table number.');
+        return;
+      }
+
+      if (expressCheckoutSettings?.enable_table_numbers && !enabledTableNumbers.includes(parsedTableNumber)) {
+        setTableError('This table number is unavailable. Please check and try again.');
+        return;
+      }
     }
 
     if (!cart.restaurant_id || cart.restaurant_id !== restaurantId || cart.items.length === 0) {
       setNameError('Your cart looks empty. Please add items before ordering.');
       return;
+    }
+
+    if (isExpressFlow) {
+      patchExpressSession({
+        customerName: trimmedName || null,
+        tableNumber: isDineInExpress && Number.isInteger(parsedTableNumber) ? parsedTableNumber : null,
+      });
     }
 
     const cartItemsSnapshot = cart.items.map((item) => ({
@@ -254,6 +318,11 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
 
     const autoAcceptKiosk = !!restaurant?.auto_accept_kiosk_orders;
     const expressSession = getExpressSession();
+    const isExpressRestaurantMatch =
+      !!expressSession?.isExpress && expressSession.restaurantId === restaurantId;
+    const isExpressDineIn = isExpressRestaurantMatch && expressSession?.mode === 'dine_in';
+    const isExpressTakeaway = isExpressRestaurantMatch && expressSession?.mode === 'takeaway';
+    const finalTableNumber = isExpressDineIn ? parsedTableNumber : null;
     const initialStatus = autoAcceptKiosk ? 'accepted' : 'pending';
     const acceptedAt = autoAcceptKiosk ? new Date().toISOString() : null;
 
@@ -269,16 +338,15 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
           .insert([
             {
               restaurant_id: restaurantId,
-              customer_name: customerName.trim(),
+              customer_name: isExpressDineIn ? trimmedName || null : trimmedName,
               order_type: 'collection',
-              source: expressSession?.mode === 'dine_in' ? 'express' : 'kiosk',
+              source: isExpressDineIn || isExpressTakeaway ? 'express' : 'kiosk',
               status: initialStatus,
               accepted_at: acceptedAt,
               total_price: subtotal,
               service_fee: 0,
               delivery_fee: 0,
-              dine_in_table_number:
-                expressSession?.mode === 'dine_in' ? expressSession.tableNumber ?? null : null,
+              dine_in_table_number: finalTableNumber,
               table_session_id: null,
             },
           ])
@@ -452,18 +520,28 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     cart.restaurant_id,
     clearCart,
     customerName,
+    enabledTableNumbers,
+    expressCheckoutSettings?.enable_table_numbers,
+    expressMode,
+    isExpressFlow,
     placingOrder,
+    restaurant?.auto_accept_kiosk_orders,
     restaurantId,
     router,
     subtotal,
+    tableNumberInput,
   ]);
 
   const openConfirmModal = () => {
     registerActivity();
     setConfirmStep(1);
     setConfirmMessage(getRandomMessage(confirmMessages));
-    setCustomerName('');
+    if (!isExpressFlow) {
+      setCustomerName('');
+      setTableNumberInput('');
+    }
     setNameError('');
+    setTableError('');
     setNamePromptMessage('');
     setSubmissionError('');
     setShowConfirmModal(true);
@@ -471,7 +549,11 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
 
   const goToNameStep = () => {
     registerActivity();
-    setNamePromptMessage(getRandomMessage(nameMessages));
+    if (isExpressFlow && expressMode === 'dine_in') {
+      setNamePromptMessage('Confirm your table details');
+    } else {
+      setNamePromptMessage(getRandomMessage(nameMessages));
+    }
     setConfirmStep(2);
     setSubmissionError('');
   };
@@ -479,6 +561,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   const handlePlaceOrder = () => {
     registerActivity();
     setNameError('');
+    setTableError('');
     setSubmissionError('');
     void placeOrder();
   };
@@ -487,6 +570,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     registerActivity();
     setConfirmStep(1);
     setNameError('');
+    setTableError('');
     setSubmissionError('');
   };
 
@@ -612,7 +696,9 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                           {namePromptMessage}
                         </h3>
                         <p className="text-[clamp(0.95rem,2.1vw,1.125rem)] leading-relaxed text-neutral-600">
-                          This is the name we’ll shout when your order is ready.
+                          {isExpressFlow && expressMode === 'dine_in'
+                            ? 'Table number is required for dine-in Express orders. Name is optional.'
+                            : 'This is the name we’ll shout when your order is ready.'}
                         </p>
                       </div>
                       <form
@@ -624,28 +710,80 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                         className="flex min-h-0 flex-1 flex-col gap-4"
                       >
                         <div className="space-y-2">
-                          <input
-                            type="text"
-                            inputMode="text"
-                            value={customerName}
-                            onChange={(e) => {
-                              registerActivity();
-                              setCustomerName(e.target.value);
-                            }}
-                            onFocus={() => refreshViewport()}
-                            autoComplete="off"
-                            aria-autocomplete="none"
-                            aria-haspopup="false"
-                            spellCheck={false}
-                            autoCorrect="off"
-                            autoCapitalize="words"
-                            enterKeyHint="done"
-                            data-ignore-autofill="true"
-                            placeholder="Enter your name…"
-                            className={`w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 font-semibold text-neutral-900 shadow-inner shadow-neutral-200/70 outline-none transition focus:border-[var(--kiosk-accent,#111827)]/60 focus:bg-white ${
-                              isCompactModal ? 'py-3 text-[1rem]' : 'py-4 text-[1.1rem]'
-                            }`}
-                          />
+                          {isExpressFlow && expressMode === 'dine_in' ? (
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={tableNumberInput}
+                              onChange={(e) => {
+                                registerActivity();
+                                const numeric = e.target.value.replace(/[^0-9]/g, '');
+                                setTableNumberInput(numeric);
+                                patchExpressSession({ tableNumber: numeric ? Number.parseInt(numeric, 10) : null });
+                              }}
+                              onFocus={() => refreshViewport()}
+                              placeholder="Enter table number…"
+                              className={`w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 font-semibold text-neutral-900 shadow-inner shadow-neutral-200/70 outline-none transition focus:border-[var(--kiosk-accent,#111827)]/60 focus:bg-white ${
+                                isCompactModal ? 'py-3 text-[1rem]' : 'py-4 text-[1.1rem]'
+                              }`}
+                            />
+                          ) : null}
+
+                          {!isExpressFlow || expressMode !== 'dine_in' ? (
+                            <input
+                              type="text"
+                              inputMode="text"
+                              value={customerName}
+                              onChange={(e) => {
+                                registerActivity();
+                                setCustomerName(e.target.value);
+                                if (isExpressFlow) {
+                                  patchExpressSession({ customerName: e.target.value || null });
+                                }
+                              }}
+                              onFocus={() => refreshViewport()}
+                              autoComplete="off"
+                              aria-autocomplete="none"
+                              aria-haspopup="false"
+                              spellCheck={false}
+                              autoCorrect="off"
+                              autoCapitalize="words"
+                              enterKeyHint="done"
+                              data-ignore-autofill="true"
+                              placeholder="Enter your name…"
+                              className={`w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 font-semibold text-neutral-900 shadow-inner shadow-neutral-200/70 outline-none transition focus:border-[var(--kiosk-accent,#111827)]/60 focus:bg-white ${
+                                isCompactModal ? 'py-3 text-[1rem]' : 'py-4 text-[1.1rem]'
+                              }`}
+                            />
+                          ) : (
+                            <input
+                              type="text"
+                              inputMode="text"
+                              value={customerName}
+                              onChange={(e) => {
+                                registerActivity();
+                                setCustomerName(e.target.value);
+                                patchExpressSession({ customerName: e.target.value || null });
+                              }}
+                              onFocus={() => refreshViewport()}
+                              autoComplete="off"
+                              aria-autocomplete="none"
+                              aria-haspopup="false"
+                              spellCheck={false}
+                              autoCorrect="off"
+                              autoCapitalize="words"
+                              enterKeyHint="done"
+                              data-ignore-autofill="true"
+                              placeholder="Name (optional)…"
+                              className={`w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 font-semibold text-neutral-900 shadow-inner shadow-neutral-200/70 outline-none transition focus:border-[var(--kiosk-accent,#111827)]/60 focus:bg-white ${
+                                isCompactModal ? 'py-3 text-[1rem]' : 'py-4 text-[1.1rem]'
+                              }`}
+                            />
+                          )}
+
+                          {tableError ? (
+                            <p className="text-sm font-semibold text-rose-600">{tableError}</p>
+                          ) : null}
                           {nameError ? (
                             <p className="text-sm font-semibold text-rose-600">{nameError}</p>
                           ) : null}

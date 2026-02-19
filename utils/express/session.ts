@@ -4,6 +4,7 @@ export type ExpressSession = {
   mode: ExpressMode;
   tableNumber?: number | null;
   tableSessionId?: string | null;
+  customerName?: string | null;
   dineInPaymentMode?: 'immediate_pay' | 'open_tab';
   restaurantId?: string | null;
   isExpress?: boolean;
@@ -25,6 +26,12 @@ export function getExpressSession(): ExpressSession | null {
 export function setExpressSession(session: ExpressSession) {
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(KEY, JSON.stringify(session));
+}
+
+export function patchExpressSession(partial: Partial<ExpressSession>) {
+  const existing = getExpressSession();
+  if (!existing) return;
+  setExpressSession({ ...existing, ...partial });
 }
 
 export function clearExpressSession() {
