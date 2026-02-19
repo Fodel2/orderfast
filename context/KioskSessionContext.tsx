@@ -11,7 +11,7 @@ import {
 import { useRouter } from 'next/router';
 import { useCart } from '@/context/CartContext';
 import { clearHomeSeen, hasSeenHome } from '@/utils/kiosk/session';
-import { getExpressSession } from '@/utils/express/session';
+import { getExpressSession, patchExpressSession } from '@/utils/express/session';
 
 type KioskSessionContextValue = {
   sessionActive: boolean;
@@ -61,16 +61,25 @@ export function KioskSessionProvider({
       return true;
     }
     const queryExpress = router.query.express;
-    if (queryExpress === '1' || (Array.isArray(queryExpress) && queryExpress.includes('1')) || router.asPath.includes('express=1')) {
-      return true;
-    }
-    const session = getExpressSession();
-    const matchesRestaurant = !restaurantId || !session?.restaurantId || session.restaurantId === restaurantId;
-    return Boolean(session?.isExpress && matchesRestaurant);
-  }, [restaurantId, router.asPath, router.pathname, router.query.express]);
+    return queryExpress === '1' || (Array.isArray(queryExpress) && queryExpress.includes('1')) || router.asPath.includes('express=1');
+  }, [router.asPath, router.pathname, router.query.express]);
 
   const basePath = useMemo(() => (restaurantId ? `/kiosk/${restaurantId}` : '/kiosk'), [restaurantId]);
   const sessionActive = sessionActiveState;
+
+  const clearIdleState = useCallback(() => {
+    if (idleTimeoutRef.current) {
+      clearTimeout(idleTimeoutRef.current);
+      idleTimeoutRef.current = null;
+    }
+    if (idleCountdownIntervalRef.current) {
+      clearInterval(idleCountdownIntervalRef.current);
+      idleCountdownIntervalRef.current = null;
+    }
+    setShowIdleModal(false);
+    setIdleCountdown(10);
+    setIdleMessage('');
+  }, []);
 
   useEffect(() => {
     sessionActiveRef.current = sessionActiveState;
@@ -84,6 +93,15 @@ export function KioskSessionProvider({
   useEffect(() => {
     setSessionActive(Boolean(restaurantId && hasSeenHome(restaurantId)));
   }, [restaurantId, setSessionActive]);
+
+  useEffect(() => {
+    const explicitExpress = isExpressActive();
+    const isKioskRoute = router.pathname.startsWith('/kiosk') || router.asPath.startsWith('/kiosk');
+    if (explicitExpress || !isKioskRoute) return;
+    const session = getExpressSession();
+    if (!session?.isExpress) return;
+    patchExpressSession({ isExpress: false });
+  }, [isExpressActive, router.asPath, router.pathname]);
 
   const idleMessages = useMemo(
     () => [
@@ -104,16 +122,10 @@ export function KioskSessionProvider({
 
   const handleIdleTimeout = useCallback(() => {
     const expressFlow = isExpressActive();
-    setShowIdleModal(false);
-    if (idleTimeoutRef.current) {
-      clearTimeout(idleTimeoutRef.current);
-      idleTimeoutRef.current = null;
+    clearIdleState();
+    if (expressFlow) {
+      return;
     }
-    if (idleCountdownIntervalRef.current) {
-      clearInterval(idleCountdownIntervalRef.current);
-      idleCountdownIntervalRef.current = null;
-    }
-    setIdleCountdown(10);
     clearCart();
     if (restaurantId) {
       clearHomeSeen(restaurantId);
@@ -121,7 +133,7 @@ export function KioskSessionProvider({
     setSessionActive(false);
     const targetPath = expressFlow && restaurantId ? `/express?restaurant_id=${restaurantId}` : basePath;
     router.push(targetPath).catch(() => undefined);
-  }, [basePath, clearCart, isExpressActive, restaurantId, router, setSessionActive]);
+  }, [basePath, clearCart, clearIdleState, isExpressActive, restaurantId, router, setSessionActive]);
 
   const startIdleCountdown = useCallback(() => {
     if (idleCountdownIntervalRef.current) {
@@ -146,6 +158,10 @@ export function KioskSessionProvider({
 
   const resetIdleTimer = useCallback(() => {
     if (!sessionActiveRef.current) return;
+    if (isExpressActive()) {
+      clearIdleState();
+      return;
+    }
     if (idleTimeoutRef.current) {
       clearTimeout(idleTimeoutRef.current);
       idleTimeoutRef.current = null;
@@ -156,7 +172,7 @@ export function KioskSessionProvider({
       setShowIdleModal(true);
       startIdleCountdown();
     }, 30000);
-  }, [getRandomMessage, idleMessages, startIdleCountdown]);
+  }, [clearIdleState, getRandomMessage, idleMessages, isExpressActive, startIdleCountdown]);
 
   const registerActivity = useCallback(() => {
     if (!sessionActiveRef.current) return;
@@ -164,28 +180,16 @@ export function KioskSessionProvider({
   }, [resetIdleTimer]);
 
   const handleIdleStay = useCallback(() => {
-    if (idleCountdownIntervalRef.current) {
-      clearInterval(idleCountdownIntervalRef.current);
-      idleCountdownIntervalRef.current = null;
+    clearIdleState();
+    if (isExpressActive()) {
+      return;
     }
-    setShowIdleModal(false);
-    setIdleCountdown(10);
     resetIdleTimer();
-  }, [resetIdleTimer]);
+  }, [clearIdleState, isExpressActive, resetIdleTimer]);
 
   const resetKioskToStart = useCallback(() => {
     const expressFlow = isExpressActive();
-    if (idleTimeoutRef.current) {
-      clearTimeout(idleTimeoutRef.current);
-      idleTimeoutRef.current = null;
-    }
-    if (idleCountdownIntervalRef.current) {
-      clearInterval(idleCountdownIntervalRef.current);
-      idleCountdownIntervalRef.current = null;
-    }
-    setShowIdleModal(false);
-    setIdleCountdown(10);
-    setIdleMessage('');
+    clearIdleState();
     clearCart();
     if (restaurantId) {
       clearHomeSeen(restaurantId);
@@ -193,29 +197,19 @@ export function KioskSessionProvider({
     setSessionActive(false);
     const targetPath = expressFlow && restaurantId ? `/express?restaurant_id=${restaurantId}` : basePath;
     router.push(targetPath).catch(() => undefined);
-  }, [basePath, clearCart, isExpressActive, restaurantId, router, setSessionActive]);
+  }, [basePath, clearCart, clearIdleState, isExpressActive, restaurantId, router, setSessionActive]);
 
   useEffect(() => {
-    if (sessionActive) {
+    const expressFlow = isExpressActive();
+    if (sessionActive && !expressFlow) {
       resetIdleTimer();
       return () => {
-        if (idleTimeoutRef.current) clearTimeout(idleTimeoutRef.current);
-        if (idleCountdownIntervalRef.current) clearInterval(idleCountdownIntervalRef.current);
+        clearIdleState();
       };
     }
-    if (idleTimeoutRef.current) {
-      clearTimeout(idleTimeoutRef.current);
-      idleTimeoutRef.current = null;
-    }
-    if (idleCountdownIntervalRef.current) {
-      clearInterval(idleCountdownIntervalRef.current);
-      idleCountdownIntervalRef.current = null;
-    }
-    setShowIdleModal(false);
-    setIdleCountdown(10);
-    setIdleMessage('');
+    clearIdleState();
     return undefined;
-  }, [resetIdleTimer, sessionActive]);
+  }, [clearIdleState, isExpressActive, resetIdleTimer, sessionActive]);
 
   const value = useMemo(
     () => ({

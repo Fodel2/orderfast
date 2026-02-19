@@ -20,6 +20,7 @@ export const FULL_HEADER_HEIGHT = 136;
 export const COLLAPSED_HEADER_HEIGHT = 88;
 export const FULL_CAT_HEIGHT = 64;
 export const COLLAPSED_CAT_HEIGHT = 50;
+export const CATEGORY_FADE_HEIGHT = 24;
 
 interface WakeLockSentinel {
   released: boolean;
@@ -615,10 +616,10 @@ export default function KioskLayout({
             className="pointer-events-none fixed left-0 right-0 z-40"
             style={{
               top: headerHeight + categoryHeight - 1,
-              height: 48,
+              height: CATEGORY_FADE_HEIGHT,
               opacity: fadeOverlayOpacity,
               transition: 'opacity 150ms linear',
-              background: 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(255,255,255,0.92) 28%, rgba(255,255,255,0.85) 56%, rgba(255,255,255,0) 100%)',
+              background: 'linear-gradient(180deg, rgba(255,255,255,0.78) 0%, rgba(255,255,255,0.5) 42%, rgba(255,255,255,0) 100%)',
             }}
           />
         ) : null}
