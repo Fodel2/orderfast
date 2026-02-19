@@ -111,9 +111,21 @@ export default function ExpressEntryPage() {
     image.src = heroImage;
   }, [heroImage]);
 
-  const routeToKioskMenu = async (mode: 'takeaway' | 'dine_in') => {
+  const routeToKioskMenu = async (mode: 'takeaway' | 'dine_in', options?: { replace?: boolean }) => {
     if (!restaurantId) return;
-    const ok = await router.push(`/kiosk/${restaurantId}/menu?express=1&mode=${mode}`);
+    const params = new URLSearchParams();
+
+    Object.entries(router.query).forEach(([key, value]) => {
+      if (typeof value === 'string' && value.length > 0) {
+        params.set(key, value);
+      }
+    });
+
+    params.set('express', '1');
+    params.set('mode', mode);
+
+    const href = `/kiosk/${restaurantId}/menu?${params.toString()}`;
+    const ok = options?.replace ? await router.replace(href) : await router.push(href);
     if (!ok) {
       setEntryError('Unable to continue right now. Please try again.');
     }
@@ -162,8 +174,9 @@ export default function ExpressEntryPage() {
         tableSessionId: null,
         dineInPaymentMode: 'immediate_pay',
         restaurantId,
+        isExpress: true,
       });
-      router.replace(`/kiosk/${restaurantId}/menu?express=1&mode=dine_in`);
+      void routeToKioskMenu('dine_in', { replace: true });
       return;
     }
 
@@ -172,7 +185,7 @@ export default function ExpressEntryPage() {
 
   const continueTakeaway = () => {
     if (!restaurantId) return;
-    setExpressSession({ mode: 'takeaway', restaurantId });
+    setExpressSession({ mode: 'takeaway', restaurantId, isExpress: true });
     void routeToKioskMenu('takeaway');
   };
 
@@ -186,6 +199,7 @@ export default function ExpressEntryPage() {
       tableSessionId: null,
       dineInPaymentMode: 'immediate_pay',
       restaurantId,
+      isExpress: true,
     });
     void routeToKioskMenu('dine_in');
   };
@@ -222,6 +236,7 @@ export default function ExpressEntryPage() {
           tableSessionId: null,
           dineInPaymentMode: 'immediate_pay',
           restaurantId,
+          isExpress: true,
         });
         await routeToKioskMenu('dine_in');
       } catch (error) {

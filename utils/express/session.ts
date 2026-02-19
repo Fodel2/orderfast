@@ -6,6 +6,7 @@ export type ExpressSession = {
   tableSessionId?: string | null;
   dineInPaymentMode?: 'immediate_pay' | 'open_tab';
   restaurantId?: string | null;
+  isExpress?: boolean;
 };
 
 const KEY = 'orderfast_express_session';
