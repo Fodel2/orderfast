@@ -13,6 +13,7 @@ import { ITEM_ADDON_LINK_WITH_GROUPS_SELECT } from '@/lib/queries/addons';
 import Skeleton from '@/components/ui/Skeleton';
 import { useCart } from '@/context/CartContext';
 import KioskCategories from '@/components/kiosk/KioskCategories';
+import { scrollElementToTop } from '@/utils/scroll';
 
 type Category = {
   id: number;
@@ -261,10 +262,8 @@ function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
       const el = document.getElementById(`cat-${categoryId}`);
       if (!el || typeof window === 'undefined') return;
       const { headerHeight, categoryHeight } = getCurrentHeaderHeights();
-      window.scrollTo({
-        top: el.offsetTop - (headerHeight + categoryHeight + 12),
-        behavior: 'smooth',
-      });
+      const headerOffset = headerHeight + categoryHeight + 12;
+      scrollElementToTop(el, headerOffset, 'smooth');
     },
     [getCurrentHeaderHeights, registerActivity]
   );

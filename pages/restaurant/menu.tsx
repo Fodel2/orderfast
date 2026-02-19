@@ -10,6 +10,7 @@ import CustomerLayout from "../../components/CustomerLayout";
 import Skeleton from '@/components/ui/Skeleton';
 import MenuHeader from '@/components/customer/menu/MenuHeader';
 import { useRestaurant } from '@/lib/restaurant-context';
+import { scrollElementToTop } from '@/utils/scroll';
 
 function readableText(hex?: string | null) {
   if (!hex) return '#fff';
@@ -200,6 +201,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
     const [activeCat, setActiveCat] = useState<string | undefined>(undefined);
     const sectionsRef = useRef<Record<string, HTMLElement | null>>({});
     const scrollContainerRef = useRef<HTMLElement | null>(null);
+    const stickyCategoryRef = useRef<HTMLDivElement | null>(null);
     const SECTION_SCROLL_MARGIN = 128;
     const headerImg =
       restaurant?.menu_header_image_url
@@ -259,7 +261,10 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
       const id = c?.id ? `cat-${c.id}` : '';
       const el = id ? document.getElementById(id) : null;
       if (c?.id) setActiveCat(String(c.id));
-      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (!el) return;
+      const stickyHeight = stickyCategoryRef.current?.getBoundingClientRect().height ?? 0;
+      const headerOffset = stickyHeight + 8;
+      scrollElementToTop(el, headerOffset, 'smooth');
     }
 
     const renderCategorySections = () => {
@@ -338,6 +343,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
         {/* sticky category chips */}
         {Array.isArray(categories) && categories.length > 0 && (
           <div
+            ref={stickyCategoryRef}
             className="sticky z-30 bg-white/90 backdrop-blur border-b border-neutral-200"
             style={{
               top: 0,
