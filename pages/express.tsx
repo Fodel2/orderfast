@@ -4,6 +4,7 @@ import { BuildingStorefrontIcon, ShoppingBagIcon } from '@heroicons/react/24/out
 import { useRestaurant } from '@/lib/restaurant-context';
 import { supabase } from '@/lib/supabaseClient';
 import { setExpressSession } from '@/utils/express/session';
+import { markHomeSeen } from '@/utils/kiosk/session';
 import { normalizeSource } from '@/lib/media/placeholders';
 
 type ExpressSettings = {
@@ -103,6 +104,7 @@ export default function ExpressEntryPage() {
 
   const routeToKioskMenu = async (mode: 'takeaway' | 'dine_in', options?: { replace?: boolean }) => {
     if (!restaurantId) return;
+    markHomeSeen(restaurantId);
     const params = new URLSearchParams();
 
     Object.entries(router.query).forEach(([key, value]) => {
