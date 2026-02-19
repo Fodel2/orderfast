@@ -71,6 +71,10 @@ export default function KioskLayout({
   customHeaderContent,
 }: KioskLayoutProps) {
   const router = useRouter();
+  const isExpressRoute = useMemo(
+    () => router.pathname.startsWith('/express') || router.asPath.startsWith('/express'),
+    [router.asPath, router.pathname]
+  );
   const [wakeLock, setWakeLock] = useState<WakeLockSentinel | null>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [installDismissed, setInstallDismissed] = useState(false);
@@ -124,12 +128,12 @@ export default function KioskLayout({
     };
   }, []);
 
-  const shouldAutoFullscreen = fullscreenViewport !== 'phone';
+  const shouldAutoFullscreen = fullscreenViewport !== 'phone' && !isExpressRoute;
 
   const attemptFullscreen = useCallback(
     async (options: { allowModal?: boolean } = {}) => {
       if (typeof document === 'undefined') return false;
-      if (!shouldAutoFullscreen) {
+      if (isExpressRoute || !shouldAutoFullscreen) {
         setShowFullscreenPrompt(false);
         return false;
       }
@@ -239,19 +243,23 @@ export default function KioskLayout({
         setShowFullscreenPrompt(false);
         return;
       }
-      if (!shouldAutoFullscreen) {
+      if (isExpressRoute || !shouldAutoFullscreen) {
         setShowFullscreenPrompt(false);
         return;
       }
       setTimeout(() => {
-        attemptFullscreen({ allowModal: true });
+        if (!isExpressRoute) {
+          attemptFullscreen({ allowModal: true });
+        }
       }, 150);
     };
 
     const media = window.matchMedia?.('(display-mode: standalone)');
 
     evaluateDisplayMode();
-    attemptFullscreen({ allowModal: true });
+    if (!isExpressRoute) {
+      attemptFullscreen({ allowModal: true });
+    }
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     window.addEventListener('appinstalled', handleAppInstalled);
@@ -266,7 +274,7 @@ export default function KioskLayout({
       window.removeEventListener('webkitfullscreenchange', handleFullscreenChange as any);
       media?.removeEventListener?.('change', handleDisplayModeChange);
     };
-  }, [attemptFullscreen, isInstalled, isFullscreenActive, shouldAutoFullscreen]);
+  }, [attemptFullscreen, isExpressRoute, isInstalled, isFullscreenActive, shouldAutoFullscreen]);
 
   const handleInstallClick = useCallback(async () => {
     if (!deferredPrompt) return;
@@ -316,14 +324,18 @@ export default function KioskLayout({
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    if (!shouldAutoFullscreen) {
+    if (isExpressRoute || !shouldAutoFullscreen) {
       setShowFullscreenPrompt(false);
       requestWakeLock();
       return;
     }
 
     const handleInteraction = async () => {
+      if (isExpressRoute) {
+      await requestWakeLock();
+    } else {
       await Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]);
+    }
     };
 
     attemptFullscreen({ allowModal: true });
@@ -336,7 +348,7 @@ export default function KioskLayout({
       window.removeEventListener('pointerdown', handleInteraction);
       window.removeEventListener('keydown', handleInteraction);
     };
-  }, [attemptFullscreen, requestWakeLock, shouldAutoFullscreen]);
+  }, [attemptFullscreen, isExpressRoute, requestWakeLock, shouldAutoFullscreen]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -413,11 +425,15 @@ export default function KioskLayout({
       setHomeVisible(false);
       setHomeFading(false);
     }, 220);
-    await Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]);
+    if (isExpressRoute) {
+      await requestWakeLock();
+    } else {
+      await Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]);
+    }
     if (menuPath && router.asPath !== menuPath) {
       router.push(menuPath).catch(() => undefined);
     }
-  }, [attemptFullscreen, menuPath, resetIdleTimer, requestWakeLock, restaurantId, router]);
+  }, [attemptFullscreen, isExpressRoute, menuPath, resetIdleTimer, requestWakeLock, restaurantId, router]);
 
   const headerTitle = restaurant?.website_title || restaurant?.name || 'Restaurant';
   const logoUrl = restaurant?.logo_url || null;
@@ -509,7 +525,11 @@ export default function KioskLayout({
   ]);
 
   const handleFullscreenPromptClick = useCallback(async () => {
-    await Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]);
+    if (isExpressRoute) {
+      await requestWakeLock();
+    } else {
+      await Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]);
+    }
   }, [attemptFullscreen, requestWakeLock]);
 
   const countdownColor = useMemo(() => {
@@ -587,7 +607,7 @@ export default function KioskLayout({
           </button>
         </div>
       ) : null}
-      {showFullscreenPrompt ? (
+      {!isExpressRoute && showFullscreenPrompt ? (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/20 px-6 text-center">
           <div className="w-full max-w-sm rounded-3xl border border-neutral-200 bg-white p-6 shadow-2xl shadow-black/10">
             <p className="text-lg font-semibold text-neutral-900">Tap to enter kiosk mode</p>
