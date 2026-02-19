@@ -6,6 +6,7 @@ import KioskLayout, {
   COLLAPSED_HEADER_HEIGHT,
   FULL_CAT_HEIGHT,
   FULL_HEADER_HEIGHT,
+  CATEGORY_FADE_HEIGHT,
 } from '@/components/layouts/KioskLayout';
 import { KioskSessionProvider, useKioskSession } from '@/context/KioskSessionContext';
 import { supabase } from '@/lib/supabaseClient';
@@ -262,7 +263,7 @@ function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
       const el = document.getElementById(`cat-${categoryId}`);
       if (!el || typeof window === 'undefined') return;
       const { headerHeight, categoryHeight } = getCurrentHeaderHeights();
-      const headerOffset = headerHeight + categoryHeight + 12;
+      const headerOffset = headerHeight + categoryHeight + CATEGORY_FADE_HEIGHT + 8;
       scrollElementToTop(el, headerOffset, 'smooth');
     },
     [getCurrentHeaderHeights, registerActivity]
