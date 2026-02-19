@@ -14,7 +14,7 @@ import KioskLoadingOverlay from '@/components/kiosk/KioskLoadingOverlay';
 import { setKioskLastRealOrderNumber } from '@/utils/kiosk/orders';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { useKeyboardViewport } from '@/hooks/useKeyboardViewport';
-import { getExpressSession, isExpressDineInForRestaurant } from '@/utils/express/session';
+import { getExpressDineInSessionForRestaurant, getExpressSession, isExpressDineInForRestaurant } from '@/utils/express/session';
 
 type Restaurant = {
   id: string;
@@ -68,6 +68,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   const [nameError, setNameError] = useState('');
   const [submissionError, setSubmissionError] = useState('');
   const [showChangeTable, setShowChangeTable] = useState(false);
+  const [expressTableNumber, setExpressTableNumber] = useState<number | null>(null);
   const submissionInFlightRef = useRef(false);
   const isMountedRef = useRef(true);
   const { height: viewportHeight, refresh: refreshViewport } = useKeyboardViewport(showConfirmModal);
@@ -147,7 +148,9 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
 
   useEffect(() => {
     if (!restaurantId) return;
+    const expressSession = getExpressDineInSessionForRestaurant(restaurantId);
     setShowChangeTable(isExpressDineInForRestaurant(restaurantId));
+    setExpressTableNumber(expressSession?.tableNumber ?? null);
   }, [restaurantId]);
 
 
@@ -210,12 +213,12 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
             }}
             className="inline-flex min-h-[3rem] items-center rounded-full border border-white/70 bg-white/95 px-4 py-2.5 text-sm font-semibold text-neutral-900 shadow-md shadow-slate-300/70"
           >
-            Change table
+            {expressTableNumber ? `Table ${expressTableNumber}` : 'Select table'}
           </button>
         ) : null}
       </div>
     );
-  }, [registerActivity, restaurantId, router, showChangeTable]);
+  }, [expressTableNumber, registerActivity, restaurantId, router, showChangeTable]);
 
   const placeOrder = useCallback(async () => {
     if (!restaurantId || placingOrder || submissionInFlightRef.current) return;

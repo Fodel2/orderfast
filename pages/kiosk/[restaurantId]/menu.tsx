@@ -13,7 +13,7 @@ import { ITEM_ADDON_LINK_WITH_GROUPS_SELECT } from '@/lib/queries/addons';
 import Skeleton from '@/components/ui/Skeleton';
 import { useCart } from '@/context/CartContext';
 import KioskCategories from '@/components/kiosk/KioskCategories';
-import { isExpressDineInForRestaurant } from '@/utils/express/session';
+import { getExpressDineInSessionForRestaurant, isExpressDineInForRestaurant } from '@/utils/express/session';
 
 type Category = {
   id: number;
@@ -77,6 +77,7 @@ function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
   const { registerActivity } = useKioskSession();
   const [showChangeTable, setShowChangeTable] = useState(false);
+  const [expressTableNumber, setExpressTableNumber] = useState<number | null>(null);
 
   useEffect(() => {
     if (!restaurantId) {
@@ -273,7 +274,9 @@ function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
 
   useEffect(() => {
     if (!restaurantId) return;
+    const expressSession = getExpressDineInSessionForRestaurant(restaurantId);
     setShowChangeTable(isExpressDineInForRestaurant(restaurantId));
+    setExpressTableNumber(expressSession?.tableNumber ?? null);
   }, [restaurantId]);
 
   useEffect(() => {
@@ -295,11 +298,11 @@ function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
           }}
           className="rounded-full border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold text-neutral-800 shadow-sm"
         >
-          Change table
+          {expressTableNumber ? `Table ${expressTableNumber}` : 'Select table'}
         </button>
       </div>
     );
-  }, [registerActivity, restaurant?.name, restaurant?.website_title, restaurantId, router, showChangeTable]);
+  }, [expressTableNumber, registerActivity, restaurant?.name, restaurant?.website_title, restaurantId, router, showChangeTable]);
 
   return (
     <KioskLayout

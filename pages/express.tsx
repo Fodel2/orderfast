@@ -23,12 +23,61 @@ type RestaurantBrand = {
   name: string | null;
   website_title: string | null;
   logo_url: string | null;
+  logo_shape: 'square' | 'round' | 'rectangular' | null;
   menu_header_image_url: string | null;
   menu_header_image_updated_at: string | null;
   menu_header_focal_x: number | null;
   menu_header_focal_y: number | null;
   theme_primary_color: string | null;
 };
+
+type ExpressPageData = {
+  settings: ExpressSettings | null;
+  tables: RestaurantTable[];
+  restaurant: RestaurantBrand | null;
+};
+
+const pageDataCache = new Map<string, ExpressPageData>();
+const pageDataPromiseCache = new Map<string, Promise<ExpressPageData>>();
+
+async function loadExpressPageData(restaurantId: string): Promise<ExpressPageData> {
+  const cached = pageDataCache.get(restaurantId);
+  if (cached) return cached;
+
+  const inFlight = pageDataPromiseCache.get(restaurantId);
+  if (inFlight) return inFlight;
+
+  const promise = (async () => {
+    const [entryRes, brandRes] = await Promise.all([
+      fetch(`/api/express/tables?restaurant_id=${restaurantId}`),
+      supabase
+        .from('restaurants')
+        .select(
+          'name,website_title,logo_url,logo_shape,menu_header_image_url,menu_header_image_updated_at,menu_header_focal_x,menu_header_focal_y,theme_primary_color'
+        )
+        .eq('id', restaurantId)
+        .maybeSingle<RestaurantBrand>(),
+    ]);
+
+    const payload = await entryRes.json().catch(() => ({}));
+    const result: ExpressPageData = {
+      settings: entryRes.ok ? ((payload.settings as ExpressSettings) || null) : null,
+      tables: entryRes.ok ? ((payload.tables as RestaurantTable[]) || []) : [],
+      restaurant: brandRes.data || null,
+    };
+
+    pageDataCache.set(restaurantId, result);
+    return result;
+  })();
+
+  pageDataPromiseCache.set(restaurantId, promise);
+
+  try {
+    return await promise;
+  } finally {
+    pageDataPromiseCache.delete(restaurantId);
+  }
+}
 
 export default function ExpressEntryPage() {
   const router = useRouter();
@@ -40,13 +89,27 @@ export default function ExpressEntryPage() {
   const [selectedTable, setSelectedTable] = useState<RestaurantTable | null>(null);
   const [entryError, setEntryError] = useState('');
   const [submittingTable, setSubmittingTable] = useState(false);
-  const [step, setStep] = useState<'mode' | 'table'>('mode');
+  const [step, setStep] = useState<'takeaway_start' | 'mode' | 'table'>('mode');
   const modeHint = typeof router.query.mode === 'string' ? router.query.mode : null;
 
   const primaryColor = restaurant?.theme_primary_color || '#0f766e';
   const heroImage = restaurant?.menu_header_image_url
     ? `${restaurant.menu_header_image_url}${restaurant.menu_header_image_updated_at ? `?v=${encodeURIComponent(restaurant.menu_header_image_updated_at)}` : ''}`
     : null;
+
+  const logoClassName = useMemo(() => {
+    const base = 'h-14 w-14 border border-black/10 bg-white object-contain';
+    if (restaurant?.logo_shape === 'round') return `${base} rounded-full`;
+    if (restaurant?.logo_shape === 'rectangular') return `${base} h-12 w-20 rounded-xl`;
+    return `${base} rounded-2xl`;
+  }, [restaurant?.logo_shape]);
+
+  useEffect(() => {
+    if (!heroImage || typeof window === 'undefined') return;
+    const image = new window.Image();
+    image.decoding = 'async';
+    image.src = heroImage;
+  }, [heroImage]);
 
   const routeToKioskMenu = async (mode: 'takeaway' | 'dine_in') => {
     if (!restaurantId) return;
@@ -61,26 +124,10 @@ export default function ExpressEntryPage() {
 
     const load = async () => {
       setLoading(true);
-      const [entryRes, brandRes] = await Promise.all([
-        fetch(`/api/express/tables?restaurant_id=${restaurantId}`),
-        supabase
-          .from('restaurants')
-          .select('name,website_title,logo_url,menu_header_image_url,menu_header_image_updated_at,menu_header_focal_x,menu_header_focal_y,theme_primary_color')
-          .eq('id', restaurantId)
-          .maybeSingle<RestaurantBrand>(),
-      ]);
-
-      const payload = await entryRes.json().catch(() => ({}));
-      if (!entryRes.ok) {
-        setSettings(null);
-        setTables([]);
-        setLoading(false);
-        return;
-      }
-
-      setSettings((payload.settings as ExpressSettings) || null);
-      setTables((payload.tables as RestaurantTable[]) || []);
-      setRestaurant(brandRes.data || null);
+      const data = await loadExpressPageData(restaurantId);
+      setSettings(data.settings);
+      setTables(data.tables);
+      setRestaurant(data.restaurant);
       setLoading(false);
     };
 
@@ -96,32 +143,32 @@ export default function ExpressEntryPage() {
   }, [settings]);
 
   useEffect(() => {
-    if (!restaurantId || loading || visibleModes.length !== 1 || !settings) return;
-    const onlyMode = visibleModes[0];
-    if (onlyMode === 'takeaway') {
-      setExpressSession({ mode: 'takeaway', restaurantId });
-      router.replace(`/kiosk/${restaurantId}/menu?express=1&mode=takeaway`);
-      return;
-    }
+    if (!restaurantId || loading || !settings) return;
 
-    if (settings.enable_table_numbers) {
+    if (modeHint === 'dine_in' && settings.enable_table_numbers) {
       setStep('table');
       return;
     }
 
-    setExpressSession({
-      mode: 'dine_in',
-      tableNumber: null,
-      tableSessionId: null,
-      dineInPaymentMode: 'immediate_pay',
-      restaurantId,
-    });
-    router.replace(`/kiosk/${restaurantId}/menu?express=1&mode=dine_in`);
-  }, [loading, restaurantId, router, settings, visibleModes]);
+    if (visibleModes.length === 1 && visibleModes[0] === 'takeaway') {
+      setStep('takeaway_start');
+      return;
+    }
 
-  useEffect(() => {
-    if (modeHint === 'dine_in' && settings?.enable_table_numbers) setStep('table');
-  }, [modeHint, settings?.enable_table_numbers]);
+    if (visibleModes.length === 1 && visibleModes[0] === 'dine_in') {
+      setExpressSession({
+        mode: 'dine_in',
+        tableNumber: null,
+        tableSessionId: null,
+        dineInPaymentMode: 'immediate_pay',
+        restaurantId,
+      });
+      router.replace(`/kiosk/${restaurantId}/menu?express=1&mode=dine_in`);
+      return;
+    }
+
+    setStep('mode');
+  }, [loading, modeHint, restaurantId, router, settings, visibleModes]);
 
   const continueTakeaway = () => {
     if (!restaurantId) return;
@@ -133,19 +180,14 @@ export default function ExpressEntryPage() {
     if (!restaurantId || !settings) return;
     setEntryError('');
 
-    if (!settings.enable_table_numbers) {
-      setExpressSession({
-        mode: 'dine_in',
-        tableNumber: null,
-        tableSessionId: null,
-        dineInPaymentMode: 'immediate_pay',
-        restaurantId,
-      });
-      void routeToKioskMenu('dine_in');
-      return;
-    }
-
-    setStep('table');
+    setExpressSession({
+      mode: 'dine_in',
+      tableNumber: null,
+      tableSessionId: null,
+      dineInPaymentMode: 'immediate_pay',
+      restaurantId,
+    });
+    void routeToKioskMenu('dine_in');
   };
 
   const continueAfterTable = () => {
@@ -195,7 +237,18 @@ export default function ExpressEntryPage() {
   };
 
   if (restaurantLoading || loading) {
-    return <div className="flex min-h-screen items-center justify-center">Loading…</div>;
+    return (
+      <div className="min-h-screen bg-[#f7faf9] p-4 sm:p-8">
+        <div className="mx-auto w-full max-w-3xl animate-pulse space-y-4">
+          <div className="h-56 rounded-3xl bg-teal-100/70" />
+          <div className="h-7 w-56 rounded bg-teal-100/70" />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="h-36 rounded-2xl bg-teal-100/70" />
+            <div className="h-36 rounded-2xl bg-teal-100/70" />
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (!restaurantId) {
@@ -204,7 +257,7 @@ export default function ExpressEntryPage() {
 
   if (!settings?.enabled) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50 p-6">
+      <div className="flex min-h-screen items-center justify-center bg-[#f7faf9] p-6">
         <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 text-center shadow-sm">
           <h1 className="text-2xl font-bold text-gray-900">Express Order is unavailable</h1>
           <p className="mt-2 text-gray-600">This restaurant hasn’t enabled Express Order yet.</p>
@@ -218,107 +271,136 @@ export default function ExpressEntryPage() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-white">
-      <div className="relative h-48 sm:h-60">
+    <div className="min-h-screen bg-[#f7faf9] text-gray-900">
+      <div className="relative h-52 sm:h-64">
         {heroImage ? (
-          <div
-            className="absolute inset-0 bg-cover bg-center"
+          <img
+            src={heroImage}
+            alt="Restaurant cover"
+            className="h-full w-full object-cover"
             style={{
-              backgroundImage: `url(${heroImage})`,
-              backgroundPosition: `${(restaurant?.menu_header_focal_x ?? 0.5) * 100}% ${(restaurant?.menu_header_focal_y ?? 0.5) * 100}%`,
+              objectPosition: `${(restaurant?.menu_header_focal_x ?? 0.5) * 100}% ${(restaurant?.menu_header_focal_y ?? 0.5) * 100}%`,
             }}
           />
         ) : (
-          <div className="absolute inset-0 bg-gradient-to-br from-neutral-800 via-neutral-900 to-black" />
+          <div
+            className="h-full w-full"
+            style={{
+              background: `linear-gradient(135deg, ${primaryColor}33 0%, ${primaryColor}55 55%, #ffffff 100%)`,
+            }}
+          />
         )}
-        <div className="absolute inset-0 bg-black/45" />
-        <div className="relative mx-auto flex h-full w-full max-w-3xl items-end gap-3 px-5 pb-6">
-          {restaurant?.logo_url ? (
-            <img src={restaurant.logo_url} alt="Restaurant logo" className="h-14 w-14 rounded-2xl border border-white/30 object-cover" />
-          ) : null}
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-white/80">Express order</p>
-            <h1 className="text-3xl font-bold">{restaurant?.website_title || restaurant?.name || 'Restaurant'}</h1>
-          </div>
-        </div>
+        <div
+          className="absolute inset-0"
+          style={{
+            background: 'radial-gradient(circle at 20% 20%, rgba(255,255,255,0.55), rgba(255,255,255,0.15) 45%, rgba(255,255,255,0))',
+          }}
+        />
       </div>
 
-      <div className="mx-auto w-full max-w-3xl px-5 pb-10 pt-6">
-        {step === 'mode' ? (
-          <>
-            <p className="text-base text-white/70">Choose how you’d like to order.</p>
-            <div className="mt-5 grid gap-4 sm:grid-cols-2">
-              {settings.enable_takeaway ? (
-                <button
-                  onClick={continueTakeaway}
-                  className="group rounded-3xl border border-white/15 bg-white/5 p-6 text-left transition hover:-translate-y-0.5 hover:border-white/35 hover:bg-white/10"
-                >
-                  <ShoppingBagIcon className="h-9 w-9 text-white/80" />
-                  <p className="mt-4 text-2xl font-semibold text-white">Takeaway</p>
-                  <p className="mt-1 text-sm text-white/70">Pay by card and collect when ready.</p>
-                </button>
-              ) : null}
-
-              {settings.enable_dine_in ? (
-                <button
-                  onClick={continueDineIn}
-                  className="group rounded-3xl border border-white/15 bg-white/5 p-6 text-left transition hover:-translate-y-0.5 hover:border-white/35 hover:bg-white/10"
-                >
-                  <BuildingStorefrontIcon className="h-9 w-9 text-white/80" />
-                  <p className="mt-4 text-2xl font-semibold text-white">Dine-in</p>
-                  <p className="mt-1 text-sm text-white/70">Order from your table and pay by card.</p>
-                </button>
-              ) : null}
+      <div className="mx-auto -mt-10 w-full max-w-3xl px-5 pb-10">
+        <div className="rounded-3xl border border-white/70 bg-white/95 p-5 shadow-xl shadow-slate-200/70 backdrop-blur">
+          <div className="flex items-center gap-3">
+            {restaurant?.logo_url ? (
+              <img src={restaurant.logo_url} alt="Restaurant logo" className={logoClassName} />
+            ) : null}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">Express order</p>
+              <h1 className="text-2xl font-bold text-gray-900">{restaurant?.website_title || restaurant?.name || 'Restaurant'}</h1>
             </div>
-          </>
-        ) : (
-          <>
-            <h2 className="text-3xl font-bold text-white">Choose your table</h2>
-            <p className="mt-2 text-white/70">Select your table number to continue.</p>
+          </div>
 
-            {!tables.length ? (
-              <div className="mt-6 rounded-xl border border-dashed border-white/25 p-4 text-sm text-white/70">
-                No enabled tables are available right now.
-              </div>
-            ) : (
-              <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                {tables.map((table) => (
-                  <button
-                    key={table.id}
-                    onClick={() => {
-                      setSelectedTable(table);
-                      setEntryError('');
-                    }}
-                    className={`rounded-xl border px-4 py-4 text-left transition ${
-                      selectedTable?.id === table.id
-                        ? 'border-white bg-white text-neutral-900'
-                        : 'border-white/20 bg-white/5 text-white hover:border-white/40'
-                    }`}
-                  >
-                    <p className="text-lg font-semibold">Table {table.table_number}</p>
-                    {table.table_name ? <p className="text-xs opacity-80">{table.table_name}</p> : null}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <div className="mt-6 flex gap-3">
-              <button onClick={() => setStep('mode')} className="rounded-lg border border-white/30 px-4 py-2 text-sm font-semibold text-white">
-                Back
-              </button>
+          {step === 'takeaway_start' ? (
+            <div className="mt-6 rounded-3xl border border-teal-100 bg-gradient-to-br from-white to-teal-50/70 p-6">
+              <p className="text-sm text-gray-600">Ready to start?</p>
               <button
-                disabled={!selectedTable || submittingTable}
-                onClick={continueAfterTable}
+                onClick={continueTakeaway}
                 style={{ backgroundColor: primaryColor }}
-                className="rounded-lg px-5 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                className="mt-4 w-full rounded-2xl px-5 py-4 text-lg font-semibold text-white shadow-sm transition active:scale-[0.99]"
               >
-                {submittingTable ? 'Starting…' : 'Continue'}
+                Tap to Order
               </button>
             </div>
-          </>
-        )}
+          ) : step === 'mode' ? (
+            <>
+              <p className="mt-5 text-sm text-gray-600">Choose how you’d like to order.</p>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                {settings.enable_takeaway ? (
+                  <button
+                    onClick={continueTakeaway}
+                    className="group rounded-3xl border border-gray-200 bg-white p-6 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-teal-300 hover:shadow-md"
+                  >
+                    <span className="inline-flex rounded-full bg-teal-50 p-2.5 text-teal-700">
+                      <ShoppingBagIcon className="h-6 w-6" />
+                    </span>
+                    <p className="mt-4 text-xl font-semibold text-gray-900">Takeaway</p>
+                    <p className="mt-1 text-sm text-gray-600">Place your order now and pick it up when ready.</p>
+                  </button>
+                ) : null}
 
-        {entryError ? <p className="mt-4 text-sm text-red-300">{entryError}</p> : null}
+                {settings.enable_dine_in ? (
+                  <button
+                    onClick={continueDineIn}
+                    className="group rounded-3xl border border-gray-200 bg-white p-6 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-teal-300 hover:shadow-md"
+                  >
+                    <span className="inline-flex rounded-full bg-teal-50 p-2.5 text-teal-700">
+                      <BuildingStorefrontIcon className="h-6 w-6" />
+                    </span>
+                    <p className="mt-4 text-xl font-semibold text-gray-900">Dine-in</p>
+                    <p className="mt-1 text-sm text-gray-600">Start ordering right away and set your table from the menu header.</p>
+                  </button>
+                ) : null}
+              </div>
+            </>
+          ) : (
+            <>
+              <h2 className="mt-5 text-2xl font-bold text-gray-900">Choose your table</h2>
+              <p className="mt-1 text-sm text-gray-600">Select your table number to continue.</p>
+
+              {!tables.length ? (
+                <div className="mt-6 rounded-xl border border-dashed border-gray-300 p-4 text-sm text-gray-600">
+                  No enabled tables are available right now.
+                </div>
+              ) : (
+                <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  {tables.map((table) => (
+                    <button
+                      key={table.id}
+                      onClick={() => {
+                        setSelectedTable(table);
+                        setEntryError('');
+                      }}
+                      className={`rounded-xl border px-4 py-4 text-left transition ${
+                        selectedTable?.id === table.id
+                          ? 'border-teal-500 bg-teal-50 text-teal-800'
+                          : 'border-gray-200 bg-white text-gray-900 hover:border-teal-300'
+                      }`}
+                    >
+                      <p className="text-lg font-semibold">Table {table.table_number}</p>
+                      {table.table_name ? <p className="text-xs text-gray-500">{table.table_name}</p> : null}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className="mt-6 flex gap-3">
+                <button onClick={() => setStep('mode')} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700">
+                  Back
+                </button>
+                <button
+                  disabled={!selectedTable || submittingTable}
+                  onClick={continueAfterTable}
+                  style={{ backgroundColor: primaryColor }}
+                  className="rounded-lg px-5 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {submittingTable ? 'Starting…' : 'Continue'}
+                </button>
+              </div>
+            </>
+          )}
+
+          {entryError ? <p className="mt-4 text-sm text-red-600">{entryError}</p> : null}
+        </div>
       </div>
     </div>
   );

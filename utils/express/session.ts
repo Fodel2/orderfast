@@ -31,12 +31,13 @@ export function clearExpressSession() {
   window.localStorage.removeItem(KEY);
 }
 
-export function isExpressDineInForRestaurant(restaurantId?: string | null) {
+export function getExpressDineInSessionForRestaurant(restaurantId?: string | null): ExpressSession | null {
   const session = getExpressSession();
-  return (
-    !!session &&
-    session.mode === 'dine_in' &&
-    !!session.tableNumber &&
-    (!restaurantId || !session.restaurantId || session.restaurantId === restaurantId)
-  );
+  if (!session || session.mode !== 'dine_in') return null;
+  if (!restaurantId || !session.restaurantId || session.restaurantId === restaurantId) return session;
+  return null;
+}
+
+export function isExpressDineInForRestaurant(restaurantId?: string | null) {
+  return !!getExpressDineInSessionForRestaurant(restaurantId);
 }
