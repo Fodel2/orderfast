@@ -14,6 +14,7 @@ import HomeScreen, { type KioskRestaurant } from '@/components/kiosk/HomeScreen'
 import KioskActionButton from '@/components/kiosk/KioskActionButton';
 import { useKioskSession } from '@/context/KioskSessionContext';
 import { hasSeenHome, markHomeSeen } from '@/utils/kiosk/session';
+import { getExpressSession } from '@/utils/express/session';
 
 export const FULL_HEADER_HEIGHT = 136;
 export const COLLAPSED_HEADER_HEIGHT = 88;
@@ -87,6 +88,7 @@ export default function KioskLayout({
     forceHome ? false : restaurantId ? hasSeenHome(restaurantId) : true
   );
   const [fullscreenViewport, setFullscreenViewport] = useState<FullscreenViewport>('desktop');
+  const [isExpressSession, setIsExpressSession] = useState(false);
   const [shrinkProgress, setShrinkProgress] = useState(0);
   const [showFullscreenPrompt, setShowFullscreenPrompt] = useState(false);
   const autoPromptedRef = useRef(false);
@@ -128,12 +130,32 @@ export default function KioskLayout({
     };
   }, []);
 
-  const shouldAutoFullscreen = fullscreenViewport !== 'phone' && !isExpressRoute;
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const syncExpressSession = () => {
+      const session = getExpressSession();
+      const matchesRestaurant =
+        !restaurantId || !session?.restaurantId || session.restaurantId === restaurantId;
+      setIsExpressSession(Boolean(session && matchesRestaurant));
+    };
+
+    syncExpressSession();
+    window.addEventListener('storage', syncExpressSession);
+    window.addEventListener('focus', syncExpressSession);
+
+    return () => {
+      window.removeEventListener('storage', syncExpressSession);
+      window.removeEventListener('focus', syncExpressSession);
+    };
+  }, [restaurantId, router.asPath]);
+
+  const shouldAutoFullscreen = fullscreenViewport !== 'phone' && !isExpressRoute && !isExpressSession;
 
   const attemptFullscreen = useCallback(
     async (options: { allowModal?: boolean } = {}) => {
       if (typeof document === 'undefined') return false;
-      if (isExpressRoute || !shouldAutoFullscreen) {
+      if (isExpressRoute || isExpressSession || !shouldAutoFullscreen) {
         setShowFullscreenPrompt(false);
         return false;
       }
@@ -170,7 +192,7 @@ export default function KioskLayout({
       }
       return success;
     },
-    [isFullscreenActive, shouldAutoFullscreen]
+    [isExpressSession, isFullscreenActive, shouldAutoFullscreen]
   );
 
   const requestWakeLock = useCallback(async () => {
@@ -243,7 +265,7 @@ export default function KioskLayout({
         setShowFullscreenPrompt(false);
         return;
       }
-      if (isExpressRoute || !shouldAutoFullscreen) {
+      if (isExpressRoute || isExpressSession || !shouldAutoFullscreen) {
         setShowFullscreenPrompt(false);
         return;
       }
@@ -274,7 +296,7 @@ export default function KioskLayout({
       window.removeEventListener('webkitfullscreenchange', handleFullscreenChange as any);
       media?.removeEventListener?.('change', handleDisplayModeChange);
     };
-  }, [attemptFullscreen, isExpressRoute, isInstalled, isFullscreenActive, shouldAutoFullscreen]);
+  }, [attemptFullscreen, isExpressRoute, isExpressSession, isInstalled, isFullscreenActive, shouldAutoFullscreen]);
 
   const handleInstallClick = useCallback(async () => {
     if (!deferredPrompt) return;
@@ -324,14 +346,14 @@ export default function KioskLayout({
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    if (isExpressRoute || !shouldAutoFullscreen) {
+    if (isExpressRoute || isExpressSession || !shouldAutoFullscreen) {
       setShowFullscreenPrompt(false);
       requestWakeLock();
       return;
     }
 
     const handleInteraction = async () => {
-      if (isExpressRoute) {
+      if (isExpressRoute || isExpressSession) {
       await requestWakeLock();
     } else {
       await Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]);
@@ -348,7 +370,7 @@ export default function KioskLayout({
       window.removeEventListener('pointerdown', handleInteraction);
       window.removeEventListener('keydown', handleInteraction);
     };
-  }, [attemptFullscreen, isExpressRoute, requestWakeLock, shouldAutoFullscreen]);
+  }, [attemptFullscreen, isExpressRoute, isExpressSession, requestWakeLock, shouldAutoFullscreen]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -425,7 +447,7 @@ export default function KioskLayout({
       setHomeVisible(false);
       setHomeFading(false);
     }, 220);
-    if (isExpressRoute) {
+    if (isExpressRoute || isExpressSession) {
       await requestWakeLock();
     } else {
       await Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]);
@@ -433,7 +455,7 @@ export default function KioskLayout({
     if (menuPath && router.asPath !== menuPath) {
       router.push(menuPath).catch(() => undefined);
     }
-  }, [attemptFullscreen, isExpressRoute, menuPath, resetIdleTimer, requestWakeLock, restaurantId, router]);
+  }, [attemptFullscreen, isExpressRoute, isExpressSession, menuPath, resetIdleTimer, requestWakeLock, restaurantId, router]);
 
   const headerTitle = restaurant?.website_title || restaurant?.name || 'Restaurant';
   const logoUrl = restaurant?.logo_url || null;
@@ -525,12 +547,12 @@ export default function KioskLayout({
   ]);
 
   const handleFullscreenPromptClick = useCallback(async () => {
-    if (isExpressRoute) {
+    if (isExpressRoute || isExpressSession) {
       await requestWakeLock();
     } else {
       await Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]);
     }
-  }, [attemptFullscreen, requestWakeLock]);
+  }, [attemptFullscreen, isExpressRoute, isExpressSession, requestWakeLock]);
 
   const countdownColor = useMemo(() => {
     if (idleCountdown <= 3) return '#E63946';
@@ -607,7 +629,7 @@ export default function KioskLayout({
           </button>
         </div>
       ) : null}
-      {!isExpressRoute && showFullscreenPrompt ? (
+      {!isExpressRoute && !isExpressSession && showFullscreenPrompt ? (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/20 px-6 text-center">
           <div className="w-full max-w-sm rounded-3xl border border-neutral-200 bg-white p-6 shadow-2xl shadow-black/10">
             <p className="text-lg font-semibold text-neutral-900">Tap to enter kiosk mode</p>
