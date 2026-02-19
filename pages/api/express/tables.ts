@@ -23,7 +23,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const [{ data: settings, error: settingsError }, { data: tables, error: tableError }] = await Promise.all([
     supaServer
       .from('express_order_settings')
-      .select('enabled,enable_takeaway,enable_dine_in,dine_in_security_mode,dine_in_payment_mode')
+      .select('enabled,enable_takeaway,enable_dine_in,dine_in_security_mode')
       .eq('restaurant_id', restaurantId)
       .maybeSingle(),
     supaServer
@@ -38,8 +38,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(500).json({ error: 'Failed to load express entry data' });
   }
 
+  const normalizedSettings = settings
+    ? {
+        enabled: !!settings.enabled,
+        enable_takeaway: !!settings.enable_takeaway,
+        enable_dine_in: !!settings.enable_dine_in,
+        enable_table_numbers: settings.dine_in_security_mode === 'table_code',
+      }
+    : null;
+
   return res.status(200).json({
-    settings: settings || null,
+    settings: normalizedSettings,
     tables: tables || [],
   });
 }

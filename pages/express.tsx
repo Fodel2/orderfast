@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
+import { BuildingStorefrontIcon, ShoppingBagIcon } from '@heroicons/react/24/outline';
 import { useRestaurant } from '@/lib/restaurant-context';
+import { supabase } from '@/lib/supabaseClient';
 import { setExpressSession } from '@/utils/express/session';
 
 type ExpressSettings = {
   enabled: boolean;
   enable_takeaway: boolean;
   enable_dine_in: boolean;
-  dine_in_payment_mode: 'immediate_pay' | 'open_tab';
-  dine_in_security_mode: 'none' | 'table_code';
+  enable_table_numbers: boolean;
 };
 
 type RestaurantTable = {
@@ -18,19 +19,34 @@ type RestaurantTable = {
   enabled: boolean;
 };
 
+type RestaurantBrand = {
+  name: string | null;
+  website_title: string | null;
+  logo_url: string | null;
+  menu_header_image_url: string | null;
+  menu_header_image_updated_at: string | null;
+  menu_header_focal_x: number | null;
+  menu_header_focal_y: number | null;
+  theme_primary_color: string | null;
+};
+
 export default function ExpressEntryPage() {
   const router = useRouter();
   const { restaurantId, loading: restaurantLoading } = useRestaurant();
   const [loading, setLoading] = useState(true);
   const [settings, setSettings] = useState<ExpressSettings | null>(null);
   const [tables, setTables] = useState<RestaurantTable[]>([]);
+  const [restaurant, setRestaurant] = useState<RestaurantBrand | null>(null);
   const [selectedTable, setSelectedTable] = useState<RestaurantTable | null>(null);
-  const [code, setCode] = useState('');
-  const [codeError, setCodeError] = useState('');
   const [entryError, setEntryError] = useState('');
   const [submittingTable, setSubmittingTable] = useState(false);
   const [step, setStep] = useState<'mode' | 'table'>('mode');
   const modeHint = typeof router.query.mode === 'string' ? router.query.mode : null;
+
+  const primaryColor = restaurant?.theme_primary_color || '#0f766e';
+  const heroImage = restaurant?.menu_header_image_url
+    ? `${restaurant.menu_header_image_url}${restaurant.menu_header_image_updated_at ? `?v=${encodeURIComponent(restaurant.menu_header_image_updated_at)}` : ''}`
+    : null;
 
   const routeToKioskMenu = async (mode: 'takeaway' | 'dine_in') => {
     if (!restaurantId) return;
@@ -45,9 +61,17 @@ export default function ExpressEntryPage() {
 
     const load = async () => {
       setLoading(true);
-      const response = await fetch(`/api/express/tables?restaurant_id=${restaurantId}`);
-      const payload = await response.json();
-      if (!response.ok) {
+      const [entryRes, brandRes] = await Promise.all([
+        fetch(`/api/express/tables?restaurant_id=${restaurantId}`),
+        supabase
+          .from('restaurants')
+          .select('name,website_title,logo_url,menu_header_image_url,menu_header_image_updated_at,menu_header_focal_x,menu_header_focal_y,theme_primary_color')
+          .eq('id', restaurantId)
+          .maybeSingle<RestaurantBrand>(),
+      ]);
+
+      const payload = await entryRes.json().catch(() => ({}));
+      if (!entryRes.ok) {
         setSettings(null);
         setTables([]);
         setLoading(false);
@@ -56,10 +80,11 @@ export default function ExpressEntryPage() {
 
       setSettings((payload.settings as ExpressSettings) || null);
       setTables((payload.tables as RestaurantTable[]) || []);
+      setRestaurant(brandRes.data || null);
       setLoading(false);
     };
 
-    load();
+    void load();
   }, [restaurantId, restaurantLoading]);
 
   const visibleModes = useMemo(() => {
@@ -71,19 +96,32 @@ export default function ExpressEntryPage() {
   }, [settings]);
 
   useEffect(() => {
-    if (!restaurantId || loading || visibleModes.length !== 1) return;
+    if (!restaurantId || loading || visibleModes.length !== 1 || !settings) return;
     const onlyMode = visibleModes[0];
     if (onlyMode === 'takeaway') {
       setExpressSession({ mode: 'takeaway', restaurantId });
       router.replace(`/kiosk/${restaurantId}/menu?express=1&mode=takeaway`);
-    } else {
-      setStep('table');
+      return;
     }
-  }, [loading, restaurantId, router, visibleModes]);
+
+    if (settings.enable_table_numbers) {
+      setStep('table');
+      return;
+    }
+
+    setExpressSession({
+      mode: 'dine_in',
+      tableNumber: null,
+      tableSessionId: null,
+      dineInPaymentMode: 'immediate_pay',
+      restaurantId,
+    });
+    router.replace(`/kiosk/${restaurantId}/menu?express=1&mode=dine_in`);
+  }, [loading, restaurantId, router, settings, visibleModes]);
 
   useEffect(() => {
-    if (modeHint === 'dine_in') setStep('table');
-  }, [modeHint]);
+    if (modeHint === 'dine_in' && settings?.enable_table_numbers) setStep('table');
+  }, [modeHint, settings?.enable_table_numbers]);
 
   const continueTakeaway = () => {
     if (!restaurantId) return;
@@ -92,17 +130,26 @@ export default function ExpressEntryPage() {
   };
 
   const continueDineIn = () => {
+    if (!restaurantId || !settings) return;
     setEntryError('');
-    setCodeError('');
+
+    if (!settings.enable_table_numbers) {
+      setExpressSession({
+        mode: 'dine_in',
+        tableNumber: null,
+        tableSessionId: null,
+        dineInPaymentMode: 'immediate_pay',
+        restaurantId,
+      });
+      void routeToKioskMenu('dine_in');
+      return;
+    }
+
     setStep('table');
   };
 
   const continueAfterTable = () => {
     if (!restaurantId || !selectedTable || !settings) return;
-    if (settings.dine_in_security_mode === 'table_code' && !code.trim()) {
-      setCodeError('Please enter your table code.');
-      return;
-    }
     setEntryError('');
     setSubmittingTable(true);
 
@@ -114,7 +161,6 @@ export default function ExpressEntryPage() {
           body: JSON.stringify({
             restaurant_id: restaurantId,
             table_number: selectedTable.table_number,
-            entered_code: code.trim(),
             mode: 'dine_in',
           }),
         });
@@ -124,7 +170,6 @@ export default function ExpressEntryPage() {
           if (process.env.NODE_ENV !== 'production') {
             console.error('Express table-entry failed', { status: response.status, body: payload });
           }
-          setCodeError(message);
           setEntryError(message);
           return;
         }
@@ -132,8 +177,8 @@ export default function ExpressEntryPage() {
         setExpressSession({
           mode: 'dine_in',
           tableNumber: selectedTable.table_number,
-          tableSessionId: payload.tableSessionId ?? null,
-          dineInPaymentMode: payload.dineInPaymentMode ?? settings.dine_in_payment_mode,
+          tableSessionId: null,
+          dineInPaymentMode: 'immediate_pay',
           restaurantId,
         });
         await routeToKioskMenu('dine_in');
@@ -173,41 +218,66 @@ export default function ExpressEntryPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 sm:p-8">
-      <div className="mx-auto w-full max-w-2xl rounded-3xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8">
+    <div className="min-h-screen bg-neutral-950 text-white">
+      <div className="relative h-48 sm:h-60">
+        {heroImage ? (
+          <div
+            className="absolute inset-0 bg-cover bg-center"
+            style={{
+              backgroundImage: `url(${heroImage})`,
+              backgroundPosition: `${(restaurant?.menu_header_focal_x ?? 0.5) * 100}% ${(restaurant?.menu_header_focal_y ?? 0.5) * 100}%`,
+            }}
+          />
+        ) : (
+          <div className="absolute inset-0 bg-gradient-to-br from-neutral-800 via-neutral-900 to-black" />
+        )}
+        <div className="absolute inset-0 bg-black/45" />
+        <div className="relative mx-auto flex h-full w-full max-w-3xl items-end gap-3 px-5 pb-6">
+          {restaurant?.logo_url ? (
+            <img src={restaurant.logo_url} alt="Restaurant logo" className="h-14 w-14 rounded-2xl border border-white/30 object-cover" />
+          ) : null}
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-white/80">Express order</p>
+            <h1 className="text-3xl font-bold">{restaurant?.website_title || restaurant?.name || 'Restaurant'}</h1>
+          </div>
+        </div>
+      </div>
+
+      <div className="mx-auto w-full max-w-3xl px-5 pb-10 pt-6">
         {step === 'mode' ? (
           <>
-            <h1 className="text-3xl font-bold text-gray-900">Start your Express Order</h1>
-            <p className="mt-2 text-gray-600">Choose how you’d like to order.</p>
-            <div className="mt-6 grid gap-4">
+            <p className="text-base text-white/70">Choose how you’d like to order.</p>
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
               {settings.enable_takeaway ? (
                 <button
                   onClick={continueTakeaway}
-                  className="rounded-2xl border border-gray-200 bg-white px-6 py-8 text-left transition hover:border-gray-300 hover:shadow-sm"
+                  className="group rounded-3xl border border-white/15 bg-white/5 p-6 text-left transition hover:-translate-y-0.5 hover:border-white/35 hover:bg-white/10"
                 >
-                  <p className="text-2xl font-semibold text-gray-900">Takeaway</p>
-                  <p className="mt-1 text-sm text-gray-600">Pay now by card and collect when ready.</p>
+                  <ShoppingBagIcon className="h-9 w-9 text-white/80" />
+                  <p className="mt-4 text-2xl font-semibold text-white">Takeaway</p>
+                  <p className="mt-1 text-sm text-white/70">Pay by card and collect when ready.</p>
                 </button>
               ) : null}
 
               {settings.enable_dine_in ? (
                 <button
                   onClick={continueDineIn}
-                  className="rounded-2xl border border-gray-200 bg-white px-6 py-8 text-left transition hover:border-gray-300 hover:shadow-sm"
+                  className="group rounded-3xl border border-white/15 bg-white/5 p-6 text-left transition hover:-translate-y-0.5 hover:border-white/35 hover:bg-white/10"
                 >
-                  <p className="text-2xl font-semibold text-gray-900">Dine-in</p>
-                  <p className="mt-1 text-sm text-gray-600">Select your table and order from your seat.</p>
+                  <BuildingStorefrontIcon className="h-9 w-9 text-white/80" />
+                  <p className="mt-4 text-2xl font-semibold text-white">Dine-in</p>
+                  <p className="mt-1 text-sm text-white/70">Order from your table and pay by card.</p>
                 </button>
               ) : null}
             </div>
           </>
         ) : (
           <>
-            <h1 className="text-3xl font-bold text-gray-900">Choose your table</h1>
-            <p className="mt-2 text-gray-600">Select your table number to continue.</p>
+            <h2 className="text-3xl font-bold text-white">Choose your table</h2>
+            <p className="mt-2 text-white/70">Select your table number to continue.</p>
 
             {!tables.length ? (
-              <div className="mt-6 rounded-xl border border-dashed border-gray-300 p-4 text-sm text-gray-600">
+              <div className="mt-6 rounded-xl border border-dashed border-white/25 p-4 text-sm text-white/70">
                 No enabled tables are available right now.
               </div>
             ) : (
@@ -217,55 +287,38 @@ export default function ExpressEntryPage() {
                     key={table.id}
                     onClick={() => {
                       setSelectedTable(table);
-                      setCode('');
-                      setCodeError('');
                       setEntryError('');
                     }}
-                    className={`rounded-xl border px-4 py-4 text-left ${
+                    className={`rounded-xl border px-4 py-4 text-left transition ${
                       selectedTable?.id === table.id
-                        ? 'border-teal-500 bg-teal-50 text-teal-700'
-                        : 'border-gray-200 bg-white text-gray-900'
+                        ? 'border-white bg-white text-neutral-900'
+                        : 'border-white/20 bg-white/5 text-white hover:border-white/40'
                     }`}
                   >
                     <p className="text-lg font-semibold">Table {table.table_number}</p>
-                    {table.table_name ? <p className="text-xs text-gray-500">{table.table_name}</p> : null}
+                    {table.table_name ? <p className="text-xs opacity-80">{table.table_name}</p> : null}
                   </button>
                 ))}
               </div>
             )}
 
-            {settings.dine_in_security_mode === 'table_code' && selectedTable ? (
-              <div className="mt-5 rounded-xl border border-gray-200 p-4">
-                <p className="text-sm font-medium text-gray-800">Enter table code</p>
-                <input
-                  value={code}
-                  onChange={(e) => {
-                    setCode(e.target.value.toUpperCase());
-                    setCodeError('');
-                  }}
-                  className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-lg tracking-[0.2em]"
-                  maxLength={4}
-                  placeholder="----"
-                />
-                {codeError ? <p className="mt-2 text-sm text-red-600">{codeError}</p> : null}
-              </div>
-            ) : null}
-
             <div className="mt-6 flex gap-3">
-              <button onClick={() => setStep('mode')} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700">
+              <button onClick={() => setStep('mode')} className="rounded-lg border border-white/30 px-4 py-2 text-sm font-semibold text-white">
                 Back
               </button>
               <button
                 disabled={!selectedTable || submittingTable}
                 onClick={continueAfterTable}
-                className="rounded-lg bg-teal-600 px-5 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                style={{ backgroundColor: primaryColor }}
+                className="rounded-lg px-5 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >
                 {submittingTable ? 'Starting…' : 'Continue'}
               </button>
             </div>
-            {entryError ? <p className="mt-3 text-sm text-red-600">{entryError}</p> : null}
           </>
         )}
+
+        {entryError ? <p className="mt-4 text-sm text-red-300">{entryError}</p> : null}
       </div>
     </div>
   );
