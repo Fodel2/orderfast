@@ -332,9 +332,9 @@ export default function MenuItemCard({
             <div className="px-4 py-3 sm:px-5 sm:py-4">
               <div className="flex min-w-0 items-start gap-3">
                 <div className="flex min-w-0 w-full flex-1 flex-col gap-2">
-                  <div className="flex min-w-0 items-start justify-between gap-3">
-                    <h4 className="truncate text-lg font-semibold text-neutral-900 sm:text-xl">{item.name}</h4>
-                    <span className="shrink-0 rounded-full bg-black/5 px-3 py-1 text-sm font-semibold text-neutral-900">
+                  <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
+                    <h4 className="min-w-0 line-clamp-2 text-lg font-semibold text-neutral-900 sm:text-xl">{item.name}</h4>
+                    <span className="w-[96px] shrink-0 text-right rounded-full bg-black/5 px-3 py-1 text-sm font-semibold text-neutral-900">
                       {formattedPrice}
                     </span>
                   </div>
