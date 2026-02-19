@@ -238,13 +238,14 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
 
   const headerContent = useMemo(() => {
     if (!restaurantId) return null;
+    const menuHref = `/kiosk/${restaurantId}/menu${isExpressFlow ? '?express=1' : ''}`;
     return (
       <div className="mx-auto flex h-full w-full max-w-5xl items-start justify-between gap-3 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+12px)] sm:px-6">
         <button
           type="button"
           onClick={() => {
             registerActivity();
-            router.push(`/kiosk/${restaurantId}/menu`);
+            router.push(menuHref);
           }}
           className="inline-flex min-h-[3rem] items-center gap-2 rounded-full bg-white/95 px-4 py-2.5 text-base font-semibold text-neutral-900 shadow-md shadow-slate-300/70 ring-1 ring-slate-200 transition hover:-translate-y-[1px] hover:shadow-lg sm:text-lg"
         >
@@ -253,7 +254,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
         </button>
       </div>
     );
-  }, [registerActivity, restaurantId, router]);
+  }, [isExpressFlow, registerActivity, restaurantId, router]);
 
   const placeOrder = useCallback(async () => {
     if (!restaurantId || placingOrder || submissionInFlightRef.current) return;
@@ -452,7 +453,9 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
 
       if (!options?.skipNavigation) {
         setShowConfirmModal(false);
-        const confirmPath = `/kiosk/${restaurantId}/confirm?orderNumber=${result.orderNumber}`;
+        const params = new URLSearchParams({ orderNumber: String(result.orderNumber) });
+        if (isExpressFlow) params.set('express', '1');
+        const confirmPath = `/kiosk/${restaurantId}/confirm?${params.toString()}`;
         await router.push(confirmPath);
       }
 
@@ -507,7 +510,9 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     setSubmissionError('');
     setNameError('');
     setShowConfirmModal(false);
-    const timeoutConfirmPath = `/kiosk/${restaurantId}/confirm?orderNumber=${orderNumber}`;
+    const timeoutParams = new URLSearchParams({ orderNumber: String(orderNumber) });
+    if (isExpressFlow) timeoutParams.set('express', '1');
+    const timeoutConfirmPath = `/kiosk/${restaurantId}/confirm?${timeoutParams.toString()}`;
     void router.push(timeoutConfirmPath);
 
     submissionPromise

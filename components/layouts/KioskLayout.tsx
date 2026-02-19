@@ -72,6 +72,12 @@ export default function KioskLayout({
   customHeaderContent,
 }: KioskLayoutProps) {
   const router = useRouter();
+  const resolveExpressSessionState = useCallback(() => {
+    if (typeof window === 'undefined') return false;
+    const session = getExpressSession();
+    const matchesRestaurant = !restaurantId || !session?.restaurantId || session.restaurantId === restaurantId;
+    return Boolean(session?.isExpress && matchesRestaurant);
+  }, [restaurantId]);
   const isExpressRoute = useMemo(
     () => router.pathname.startsWith('/express') || router.asPath.startsWith('/express'),
     [router.asPath, router.pathname]
@@ -95,7 +101,7 @@ export default function KioskLayout({
     forceHome ? false : restaurantId ? hasSeenHome(restaurantId) : true
   );
   const [fullscreenViewport, setFullscreenViewport] = useState<FullscreenViewport>('desktop');
-  const [isExpressSession, setIsExpressSession] = useState(false);
+  const [isExpressSession, setIsExpressSession] = useState<boolean>(resolveExpressSessionState);
   const [shrinkProgress, setShrinkProgress] = useState(0);
   const [showFullscreenPrompt, setShowFullscreenPrompt] = useState(false);
   const autoPromptedRef = useRef(false);
@@ -141,10 +147,7 @@ export default function KioskLayout({
     if (typeof window === 'undefined') return;
 
     const syncExpressSession = () => {
-      const session = getExpressSession();
-      const matchesRestaurant =
-        !restaurantId || !session?.restaurantId || session.restaurantId === restaurantId;
-      setIsExpressSession(Boolean(session?.isExpress && matchesRestaurant));
+      setIsExpressSession(resolveExpressSessionState());
     };
 
     syncExpressSession();
@@ -155,9 +158,10 @@ export default function KioskLayout({
       window.removeEventListener('storage', syncExpressSession);
       window.removeEventListener('focus', syncExpressSession);
     };
-  }, [restaurantId, router.asPath]);
+  }, [resolveExpressSessionState, router.asPath]);
 
-  const shouldSuppressFullscreen = isExpressRoute || hasExpressQueryFlag || isExpressSession;
+  const isExpressActive = isExpressRoute || hasExpressQueryFlag || isExpressSession;
+  const shouldSuppressFullscreen = isExpressActive;
 
   const shouldAutoFullscreen = fullscreenViewport !== 'phone' && !shouldSuppressFullscreen;
 
@@ -441,8 +445,10 @@ export default function KioskLayout({
     };
   }, []);
 
-  const basePath = useMemo(() => (restaurantId ? `/kiosk/${restaurantId}` : null), [restaurantId]);
-  const menuPath = useMemo(() => (restaurantId ? `/kiosk/${restaurantId}/menu` : null), [restaurantId]);
+  const menuPath = useMemo(
+    () => (restaurantId ? `/kiosk/${restaurantId}/menu${isExpressActive ? '?express=1' : ''}` : null),
+    [isExpressActive, restaurantId]
+  );
 
   const startOrdering = useCallback(async () => {
     if (restaurantId) {
@@ -531,7 +537,7 @@ export default function KioskLayout({
             className="hidden md:block"
           >
             <KioskActionButton
-              href={`/kiosk/${restaurantId}/cart`}
+              href={`/kiosk/${restaurantId}/cart${isExpressActive ? '?express=1' : ''}`}
               onClick={registerActivity}
               className="px-5 py-3 text-sm font-semibold shadow-lg shadow-black/10"
               data-cart-anchor="desktop"
@@ -552,6 +558,7 @@ export default function KioskLayout({
     logoUrl,
     registerActivity,
     restaurantId,
+    isExpressActive,
     showBrandSkeleton,
   ]);
 
@@ -677,7 +684,7 @@ export default function KioskLayout({
       {restaurantId ? (
         <div className="fixed bottom-4 right-4 z-40 flex items-center justify-end md:hidden">
           <KioskActionButton
-            href={`/kiosk/${restaurantId}/cart`}
+            href={`/kiosk/${restaurantId}/cart${isExpressActive ? '?express=1' : ''}`}
             onClick={registerActivity}
             className="h-14 w-14 rounded-full p-0 text-base shadow-2xl shadow-black/20 transition active:scale-95"
             aria-label={`View cart (${cartCount})`}
