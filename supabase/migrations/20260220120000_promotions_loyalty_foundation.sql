@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS public.promotion_rewards (
 COMMENT ON COLUMN public.promotion_rewards.reward IS
 'JSON reward payload by promotion type (schema-by-convention):
 - basket_discount: {"discount_type":"percent|fixed", "discount_value":10, "max_discount_cap":5}
-- delivery_promo: {"free_delivery_min_subtotal":20, "delivery_fee_cap":3}
+- delivery_promo: {"free_delivery_min_subtotal":20, "delivery_fee_cap":3} where cap is customer payable delivery fee; omit cap for fully free delivery
 - multibuy_bogo: {"required_items":[{"item_id":"uuid","qty":1}], "reward_items":[{"item_id":"uuid","qty":1,"discount_percent":100}], "mode":"bogo_free|bogo_half|buyx_gety_percent"}
 - spend_get_item: {"min_subtotal":25, "reward_item_id":"uuid", "reward_qty":1}
 - bundle_fixed_price: {"pool_items":["uuid"], "pool_categories":["uuid"], "required_qty":3, "bundle_price":15}
@@ -114,12 +114,28 @@ CREATE TABLE IF NOT EXISTS public.promotion_voucher_codes (
   starts_at timestamptz,
   ends_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT promotion_voucher_codes_code_unique UNIQUE (code),
   CONSTRAINT promotion_voucher_codes_code_normalized_unique UNIQUE (code_normalized),
+  CONSTRAINT promotion_voucher_codes_code_not_blank_check CHECK (btrim(code) <> ''),
   CONSTRAINT promotion_voucher_codes_starts_before_ends_check CHECK (
     starts_at IS NULL OR ends_at IS NULL OR starts_at <= ends_at
   )
 );
+
+ALTER TABLE public.promotion_voucher_codes
+  DROP CONSTRAINT IF EXISTS promotion_voucher_codes_code_unique;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'promotion_voucher_codes_code_not_blank_check'
+      AND conrelid = 'public.promotion_voucher_codes'::regclass
+  ) THEN
+    ALTER TABLE public.promotion_voucher_codes
+      ADD CONSTRAINT promotion_voucher_codes_code_not_blank_check CHECK (btrim(code) <> '');
+  END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS promotion_voucher_codes_promotion_id_idx
   ON public.promotion_voucher_codes (promotion_id);
@@ -494,8 +510,16 @@ BEGIN
       AND (pb.max_uses_per_customer IS NULL OR pb.used_by_customer < pb.max_uses_per_customer)
     ) AS is_currently_valid,
     CASE
-      WHEN pb.is_recurring THEN pb.computed_next_available_at
-      WHEN pb.in_time_and_filters THEN NULL
+      WHEN (
+        pb.in_time_and_filters
+        AND (NOT pb.is_recurring OR (
+          EXTRACT(DOW FROM p_now_ts)::integer = ANY(pb.days_of_week)
+          AND p_now_ts::time >= pb.time_window_start
+          AND p_now_ts::time <= pb.time_window_end
+        ))
+        AND (pb.max_uses_total IS NULL OR pb.used_total < pb.max_uses_total)
+        AND (pb.max_uses_per_customer IS NULL OR pb.used_by_customer < pb.max_uses_per_customer)
+      ) THEN NULL
       ELSE pb.computed_next_available_at
     END AS next_available_at,
     CASE
@@ -526,6 +550,7 @@ CREATE OR REPLACE FUNCTION public.validate_promotion_on_checkout(
   p_channel text DEFAULT 'website',
   p_order_type text DEFAULT 'delivery',
   p_basket_subtotal numeric DEFAULT 0,
+  p_delivery_fee numeric DEFAULT 0,
   p_now_ts timestamptz DEFAULT now()
 )
 RETURNS jsonb
@@ -547,6 +572,7 @@ DECLARE
   reward_discount_type text;
   reward_discount_value numeric;
   reward_max_discount_cap numeric;
+  reward_delivery_fee_cap numeric;
 BEGIN
   SELECT *
   INTO promo_row
@@ -707,7 +733,13 @@ BEGIN
       END IF;
     END IF;
 
-    delivery_discount_amount := COALESCE(NULLIF(reward_payload->>'delivery_fee_cap', '')::numeric, 0);
+    reward_delivery_fee_cap := NULLIF(reward_payload->>'delivery_fee_cap', '')::numeric;
+
+    IF reward_delivery_fee_cap IS NOT NULL THEN
+      delivery_discount_amount := GREATEST(0, COALESCE(p_delivery_fee, 0) - reward_delivery_fee_cap);
+    ELSE
+      delivery_discount_amount := GREATEST(0, COALESCE(p_delivery_fee, 0));
+    END IF;
 
     RETURN jsonb_build_object(
       'valid', true,
