@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import { TruckIcon, ShoppingBagIcon, MapPinIcon } from '@heroicons/react/24/outline';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -9,6 +9,14 @@ import { useOrderType, OrderType } from '../context/OrderTypeContext';
 import { supabase } from '../utils/supabaseClient';
 import { useSession } from '@supabase/auth-helpers-react';
 import { formatPrice } from '@/lib/orderDisplay';
+import {
+  describeInvalidReason,
+  getActivePromotionSelection,
+  getStableGuestCustomerId,
+  setActivePromotionSelection,
+  setPromotionCheckoutBlock,
+  validatePromotion,
+} from '@/lib/customerPromotions';
 
 export default function CheckoutPage() {
   const { cart, subtotal, clearCart } = useCart();
@@ -29,6 +37,17 @@ export default function CheckoutPage() {
 
   const session = useSession();
   const [placing, setPlacing] = useState(false);
+  const [customerId, setCustomerId] = useState<string | null>(null);
+  const [activeSelection, setActiveSelection] = useState<ReturnType<typeof getActivePromotionSelection>>(null);
+  const [promoPreview, setPromoPreview] = useState<{ valid: boolean; text: string; savings: number }>({
+    valid: false,
+    text: '',
+    savings: 0,
+  });
+  const [promoLoading, setPromoLoading] = useState(false);
+  const [promoErrorBanner, setPromoErrorBanner] = useState('');
+  const [voucherCodeInput, setVoucherCodeInput] = useState('');
+  const [voucherError, setVoucherError] = useState('');
 
   useEffect(() => {
     if (!cart.restaurant_id) return;
@@ -49,8 +68,134 @@ export default function CheckoutPage() {
     };
   }, [cart.restaurant_id]);
 
+  useEffect(() => {
+    if (!cart.restaurant_id) return;
+    setActiveSelection(getActivePromotionSelection(cart.restaurant_id));
+    setCustomerId(session?.user?.id || getStableGuestCustomerId(cart.restaurant_id));
+  }, [cart.restaurant_id, session?.user?.id]);
+
+  const deliveryFee = orderType === 'delivery' ? 300 : 0; // cents
+  const serviceFee = Math.round(subtotal * 0.05); // 5%
+
+  useEffect(() => {
+    const run = async () => {
+      if (!cart.restaurant_id || !customerId || !activeSelection?.promotion_id || !orderType) {
+        setPromoPreview({ valid: false, text: '', savings: 0 });
+        return;
+      }
+
+      setPromoLoading(true);
+      try {
+        const res = await validatePromotion({
+          restaurantId: cart.restaurant_id,
+          customerId,
+          promotionId: activeSelection.promotion_id,
+          voucherCode: activeSelection.voucher_code,
+          orderType,
+          basketSubtotal: subtotal,
+          deliveryFee,
+        });
+
+        const savings = res.discount_amount + res.delivery_discount_amount;
+        if (res.valid) {
+          setPromoPreview({ valid: true, text: 'Offer ready to apply.', savings });
+        } else if (res.reason === 'min_subtotal_not_met') {
+          setPromoPreview({ valid: false, text: 'Add more items to unlock this offer.', savings: 0 });
+        } else {
+          setPromoPreview({ valid: false, text: describeInvalidReason(res.reason), savings: 0 });
+        }
+      } catch {
+        setPromoPreview({ valid: false, text: 'Unable to validate offer right now.', savings: 0 });
+      } finally {
+        setPromoLoading(false);
+      }
+    };
+
+    run();
+  }, [activeSelection, cart.restaurant_id, customerId, deliveryFee, orderType, subtotal]);
+
+  const finalTotal = Math.max(0, subtotal + serviceFee + deliveryFee - promoPreview.savings);
+
+  const applyVoucherCode = async () => {
+    setVoucherError('');
+    const code = voucherCodeInput.trim();
+    if (!code || !cart.restaurant_id || !customerId || !orderType) {
+      setVoucherError('Enter a voucher code.');
+      return;
+    }
+
+    const { data: voucher, error } = await supabase
+      .from('promotion_voucher_codes')
+      .select('promotion_id')
+      .eq('code_normalized', code.toLowerCase())
+      .maybeSingle();
+
+    if (error || !voucher?.promotion_id) {
+      setVoucherError('Invalid voucher code.');
+      return;
+    }
+
+    try {
+      const validation = await validatePromotion({
+        restaurantId: cart.restaurant_id,
+        customerId,
+        promotionId: voucher.promotion_id,
+        voucherCode: code,
+        orderType,
+        basketSubtotal: subtotal,
+        deliveryFee,
+      });
+
+      if (!validation.valid) {
+        setVoucherError(describeInvalidReason(validation.reason));
+        return;
+      }
+
+      const selection = {
+        promotion_id: voucher.promotion_id,
+        selected_at: new Date().toISOString(),
+        type: 'voucher',
+        voucher_code: code,
+      };
+      setActivePromotionSelection(cart.restaurant_id, selection);
+      setActiveSelection(selection);
+      setVoucherCodeInput('');
+    } catch {
+      setVoucherError('Could not validate this code.');
+    }
+  };
+
   const placeOrder = async () => {
-    if (!cart.restaurant_id || !orderType) return;
+    if (!cart.restaurant_id || !orderType || !customerId) return;
+
+    if (activeSelection?.promotion_id) {
+      try {
+        const validation = await validatePromotion({
+          restaurantId: cart.restaurant_id,
+          customerId,
+          promotionId: activeSelection.promotion_id,
+          voucherCode: activeSelection.voucher_code,
+          orderType,
+          basketSubtotal: subtotal,
+          deliveryFee,
+        });
+
+        if (!validation.valid) {
+          const details = describeInvalidReason(validation.reason);
+          setPromotionCheckoutBlock(cart.restaurant_id, { reason: validation.reason || 'invalid', details });
+          setPromoErrorBanner(details);
+          router.push({ pathname: '/restaurant/cart', query: { restaurant_id: cart.restaurant_id } });
+          return;
+        }
+      } catch {
+        setPromotionCheckoutBlock(cart.restaurant_id, {
+          reason: 'validation_failed',
+          details: 'Unable to validate your offer at checkout.',
+        });
+        router.push({ pathname: '/restaurant/cart', query: { restaurant_id: cart.restaurant_id } });
+        return;
+      }
+    }
 
     setPlacing(true);
 
@@ -67,10 +212,7 @@ export default function CheckoutPage() {
     const autoAcceptApp = !!restaurantSettings?.auto_accept_app_orders;
     const initialStatus = autoAcceptApp ? 'accepted' : 'pending';
     const acceptedAt = autoAcceptApp ? new Date().toISOString() : null;
-
-    const deliveryFee = orderType === 'delivery' ? 300 : 0;
-    const serviceFee = Math.round(subtotal * 0.05);
-    const totalPrice = subtotal + serviceFee + deliveryFee;
+    const totalPrice = finalTotal;
 
     try {
       if (!cart.restaurant_id) {
@@ -82,45 +224,26 @@ export default function CheckoutPage() {
           {
             restaurant_id: cart.restaurant_id,
             user_id: session?.user?.id || null,
-          order_type: orderType,
-          source: 'app',
-          delivery_address:
-            orderType === 'delivery'
-              ? { address_line_1: address, address_line_2: null, postcode: null }
-              : null,
-          phone_number: phone,
-          customer_notes: notes || null,
-          scheduled_for: !asap ? scheduledFor || null : null,
-          status: initialStatus,
-          accepted_at: acceptedAt,
-          total_price: totalPrice,
-          service_fee: serviceFee,
-          delivery_fee: deliveryFee,
-        },
-      ])
+            order_type: orderType,
+            source: 'app',
+            delivery_address:
+              orderType === 'delivery'
+                ? { address_line_1: address, address_line_2: null, postcode: null }
+                : null,
+            phone_number: phone,
+            customer_notes: notes || null,
+            scheduled_for: !asap ? scheduledFor || null : null,
+            status: initialStatus,
+            accepted_at: acceptedAt,
+            total_price: totalPrice,
+            service_fee: serviceFee,
+            delivery_fee: deliveryFee,
+          },
+        ])
         .select('id, short_order_number')
         .single();
 
       if (error || !order) throw error || new Error('Failed to insert order');
-
-      if (process.env.NODE_ENV !== 'production') {
-        const { data: verified, error: verifyError } = await supabase
-          .from('orders')
-          .select('short_order_number')
-          .eq('id', order.id)
-          .single();
-        if (verifyError) {
-          console.error('[checkout] failed to verify short_order_number', {
-            orderId: order.id,
-            error: verifyError,
-          });
-        } else if (verified?.short_order_number == null) {
-          console.error('[checkout] short_order_number missing after insert', {
-            orderId: order.id,
-            source: 'app',
-          });
-        }
-      }
 
       for (const item of cart.items) {
         const { data: oi, error: oiErr } = await supabase
@@ -158,7 +281,7 @@ export default function CheckoutPage() {
       router.push(`/order-confirmation?order_number=${resolvedOrderNumber}`);
     } catch (err) {
       console.error(err);
-      alert('Failed to place order');
+      setPromoErrorBanner('Failed to place order. Please try again.');
     } finally {
       setPlacing(false);
     }
@@ -179,12 +302,12 @@ export default function CheckoutPage() {
     );
   }
 
-  const deliveryFee = orderType === 'delivery' ? 300 : 0; // cents
-  const serviceFee = Math.round(subtotal * 0.05); // 5%
-
   return (
     <div className="min-h-screen flex flex-col p-4">
       <h1 className="text-2xl font-bold mb-4 text-center">Checkout</h1>
+      {promoErrorBanner ? (
+        <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{promoErrorBanner}</div>
+      ) : null}
       <AnimatePresence mode="wait">
         {step === 'select' && (
           <MotionDiv
@@ -237,9 +360,7 @@ export default function CheckoutPage() {
                 ) : (
                   <span className="text-gray-600">Restaurant location</span>
                 )}
-                {location && orderType === 'delivery' && (
-                  <MapPinIcon className="w-6 h-6 text-red-600 absolute" />
-                )}
+                {location && orderType === 'delivery' && <MapPinIcon className="w-6 h-6 text-red-600 absolute" />}
               </div>
               {orderType === 'delivery' && (
                 <div className="mb-4">
@@ -262,6 +383,28 @@ export default function CheckoutPage() {
                   pattern="^[0-9+\- ]+$"
                 />
               </div>
+
+              <div className="mb-4 rounded-xl border border-slate-200 p-3">
+                <label className="block text-sm font-medium mb-1">Voucher code</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    className="w-full border rounded p-2"
+                    value={voucherCodeInput}
+                    onChange={(e) => setVoucherCodeInput(e.target.value)}
+                    placeholder="Enter code"
+                  />
+                  <button
+                    type="button"
+                    onClick={applyVoucherCode}
+                    className="rounded bg-teal-600 px-3 py-2 text-sm font-semibold text-white"
+                  >
+                    Apply code
+                  </button>
+                </div>
+                {voucherError ? <p className="mt-1 text-xs text-rose-600">{voucherError}</p> : null}
+              </div>
+
               <div className="mb-4 space-x-4 flex items-center">
                 <label className="font-medium">Time:</label>
                 <label className="flex items-center space-x-1">
@@ -293,12 +436,12 @@ export default function CheckoutPage() {
                   const total = item.price * itemQuantity + addonsTotal;
                   return (
                     <li key={item.item_id} className="border rounded p-3 text-sm">
-                    <div className="flex justify-between">
-                      <span>
-                        {item.name} × {item.quantity}
-                      </span>
-                      <span>{formatAmount(total)}</span>
-                    </div>
+                      <div className="flex justify-between">
+                        <span>
+                          {item.name} × {item.quantity}
+                        </span>
+                        <span>{formatAmount(total)}</span>
+                      </div>
                       {item.addons && item.addons.length > 0 && (
                         <ul className="mt-2 space-y-1 pl-4 text-gray-600">
                           {item.addons.map((a) => {
@@ -314,9 +457,7 @@ export default function CheckoutPage() {
                           })}
                         </ul>
                       )}
-                      {item.notes && (
-                        <p className="mt-1 italic text-gray-600 pl-4">{item.notes}</p>
-                      )}
+                      {item.notes && <p className="mt-1 italic text-gray-600 pl-4">{item.notes}</p>}
                     </li>
                   );
                 })}
@@ -336,8 +477,14 @@ export default function CheckoutPage() {
           </MotionDiv>
         )}
       </AnimatePresence>
-          {step === 'details' && (
+      {step === 'details' && (
         <div className="mt-6 border-t pt-4">
+          {activeSelection?.promotion_id ? (
+            <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+              <p className="font-semibold text-slate-800">Active promotion</p>
+              <p className="mt-1 text-slate-600">{promoLoading ? 'Checking offer...' : promoPreview.text || 'Offer selected.'}</p>
+            </div>
+          ) : null}
           <div className="flex justify-between mb-2">
             <span>Subtotal</span>
             <span>{formatAmount(subtotal)}</span>
@@ -352,9 +499,15 @@ export default function CheckoutPage() {
             <span>Service Fee</span>
             <span>{formatAmount(serviceFee)}</span>
           </div>
+          {promoPreview.savings > 0 ? (
+            <div className="flex justify-between mb-2 text-emerald-700">
+              <span>Savings</span>
+              <span>-{formatAmount(promoPreview.savings)}</span>
+            </div>
+          ) : null}
           <div className="flex justify-between font-semibold text-lg mb-4">
             <span>Total</span>
-            <span>{formatAmount(subtotal + serviceFee + deliveryFee)}</span>
+            <span>{formatAmount(finalTotal)}</span>
           </div>
           <button
             type="button"

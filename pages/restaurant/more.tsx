@@ -5,7 +5,7 @@ import { useCart } from '../../context/CartContext'
 import { useBrand } from '@/components/branding/BrandProvider'
 import MoreCard from '@/components/customer/more/MoreCard'
 import MoreSection from '@/components/customer/more/MoreSection'
-import { UserIcon, ClipboardDocumentListIcon, InformationCircleIcon, ClockIcon, PhoneIcon } from '@heroicons/react/24/outline'
+import { UserIcon, ClipboardDocumentListIcon, InformationCircleIcon, ClockIcon, PhoneIcon, MegaphoneIcon } from '@heroicons/react/24/outline'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import { useRestaurant } from '@/lib/restaurant-context'
@@ -53,6 +53,7 @@ export default function RestaurantMorePage({ initialBrand }: { initialBrand: any
         <MoreSection title="Your Account">
           <MoreCard index={0} title="Account" description="Manage your details" href="/restaurant/account" icon={<UserIcon className="w-8 h-8 text-gray-500" />} />
           <MoreCard index={1} title="Orders" description="View past orders" href="/restaurant/orders" icon={<ClipboardDocumentListIcon className="w-8 h-8 text-gray-500" />} />
+          <MoreCard index={2} title="Promotions" description="Apply one offer per order" href="/restaurant/promotions" icon={<MegaphoneIcon className="w-8 h-8 text-gray-500" />} />
         </MoreSection>
 
         <MoreSection title="About">
