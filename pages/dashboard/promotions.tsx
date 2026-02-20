@@ -110,6 +110,16 @@ export default function PromotionsPage() {
 
   const isSupportedType = SUPPORTED_TYPES.includes(type);
 
+  const configuredSupabaseProjectRef = useMemo(() => {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    if (!url) return 'unknown';
+    try {
+      const host = new URL(url).hostname;
+      return host.split('.')[0] || 'unknown';
+    } catch {
+      return 'unknown';
+    }
+  }, []);
 
   const isSchemaCacheError = (message: string | undefined | null) => {
     if (!message) return false;
@@ -534,6 +544,7 @@ export default function PromotionsPage() {
             <div>
               <h2 className="text-lg font-semibold text-gray-900">Schema health check</h2>
               <p className="mt-1 text-sm text-gray-600">Validates required promotions tables in this connected Supabase project.</p>
+              <p className="mt-1 text-xs text-gray-500">Configured project ref: <span className="font-mono">{configuredSupabaseProjectRef}</span></p>
             </div>
             <button
               type="button"
