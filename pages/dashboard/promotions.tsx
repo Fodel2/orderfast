@@ -1,0 +1,969 @@
+import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/router';
+import { CheckCircleIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import DashboardLayout from '@/components/DashboardLayout';
+import Toast from '@/components/Toast';
+import PromotionCustomerCardPreview from '@/components/promotions/PromotionCustomerCardPreview';
+import { supabase } from '@/utils/supabaseClient';
+
+type PromotionType =
+  | 'basket_discount'
+  | 'voucher'
+  | 'multibuy_bogo'
+  | 'spend_get_item'
+  | 'bundle_fixed_price'
+  | 'delivery_promo'
+  | 'loyalty_redemption';
+
+type PromotionStatus = 'draft' | 'scheduled' | 'active' | 'paused' | 'expired';
+
+type PromotionRow = {
+  id: string;
+  restaurant_id: string;
+  name: string;
+  type: PromotionType;
+  status: PromotionStatus;
+  priority: number;
+  is_recurring: boolean;
+  starts_at: string | null;
+  ends_at: string | null;
+  days_of_week: number[] | null;
+  time_window_start: string | null;
+  time_window_end: string | null;
+  channels: string[];
+  order_types: string[];
+  min_subtotal: number | null;
+  created_at: string;
+};
+
+type WizardErrors = Record<string, string>;
+
+const DAYS = [
+  { label: 'Sun', value: 0 },
+  { label: 'Mon', value: 1 },
+  { label: 'Tue', value: 2 },
+  { label: 'Wed', value: 3 },
+  { label: 'Thu', value: 4 },
+  { label: 'Fri', value: 5 },
+  { label: 'Sat', value: 6 },
+];
+
+const SUPPORTED_TYPES: PromotionType[] = ['basket_discount', 'delivery_promo', 'voucher'];
+const STEP_TITLES = ['Type', 'Offer', 'Schedule', 'Audience', 'Terms', 'Review'];
+
+export default function PromotionsPage() {
+  const router = useRouter();
+  const [restaurantId, setRestaurantId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [savingTerms, setSavingTerms] = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [promotions, setPromotions] = useState<PromotionRow[]>([]);
+  const [globalTerms, setGlobalTerms] = useState('');
+  const [toastMessage, setToastMessage] = useState('');
+
+  const [showWizard, setShowWizard] = useState(false);
+  const [step, setStep] = useState(0);
+  const [submitting, setSubmitting] = useState(false);
+  const [errors, setErrors] = useState<WizardErrors>({});
+
+  const [type, setType] = useState<PromotionType>('basket_discount');
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [priority, setPriority] = useState('100');
+  const [discountType, setDiscountType] = useState<'percent' | 'fixed'>('percent');
+  const [discountValue, setDiscountValue] = useState('');
+  const [maxDiscountCap, setMaxDiscountCap] = useState('');
+  const [minSubtotal, setMinSubtotal] = useState('');
+  const [freeDeliveryMinSubtotal, setFreeDeliveryMinSubtotal] = useState('');
+  const [deliveryFeeCap, setDeliveryFeeCap] = useState('');
+  const [voucherCodesRaw, setVoucherCodesRaw] = useState('');
+
+  const [startsAt, setStartsAt] = useState('');
+  const [endsAt, setEndsAt] = useState('');
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [daysOfWeek, setDaysOfWeek] = useState<number[]>([]);
+  const [timeWindowStart, setTimeWindowStart] = useState('');
+  const [timeWindowEnd, setTimeWindowEnd] = useState('');
+
+  const [channels, setChannels] = useState<string[]>(['website']);
+  const [orderTypes, setOrderTypes] = useState<string[]>(['delivery', 'collection']);
+
+  const [promoTerms, setPromoTerms] = useState('');
+
+  const voucherCodes = useMemo(
+    () => voucherCodesRaw.split(/\r?\n/).map((v) => v.trim()).filter(Boolean),
+    [voucherCodesRaw]
+  );
+
+  const isSupportedType = SUPPORTED_TYPES.includes(type);
+
+  useEffect(() => {
+    const load = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) {
+        router.replace('/login');
+        return;
+      }
+
+      const { data: membership } = await supabase
+        .from('restaurant_users')
+        .select('restaurant_id')
+        .eq('user_id', session.user.id)
+        .maybeSingle();
+
+      if (!membership?.restaurant_id) {
+        setLoading(false);
+        return;
+      }
+
+      setRestaurantId(membership.restaurant_id);
+      await Promise.all([fetchPromotions(membership.restaurant_id), fetchGlobalTerms(membership.restaurant_id)]);
+      setLoading(false);
+    };
+
+    load();
+  }, [router]);
+
+  const fetchPromotions = async (currentRestaurantId: string) => {
+    const { data, error } = await supabase
+      .from('promotions')
+      .select(
+        'id,restaurant_id,name,type,status,priority,is_recurring,starts_at,ends_at,days_of_week,time_window_start,time_window_end,channels,order_types,min_subtotal,created_at'
+      )
+      .eq('restaurant_id', currentRestaurantId)
+      .order('priority', { ascending: true })
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      setToastMessage(`Failed to load promotions: ${error.message}`);
+      return;
+    }
+
+    setPromotions((data || []) as PromotionRow[]);
+  };
+
+  const fetchGlobalTerms = async (currentRestaurantId: string) => {
+    const { data } = await supabase
+      .from('restaurant_promo_terms')
+      .select('global_terms')
+      .eq('restaurant_id', currentRestaurantId)
+      .maybeSingle();
+
+    setGlobalTerms(data?.global_terms || '');
+  };
+
+  const scheduleSummary = (promotion: PromotionRow) => {
+    if (promotion.is_recurring) {
+      const selected = DAYS.filter((d) => promotion.days_of_week?.includes(d.value)).map((d) => d.label).join(', ');
+      const window = promotion.time_window_start && promotion.time_window_end
+        ? `${promotion.time_window_start.slice(0, 5)}-${promotion.time_window_end.slice(0, 5)}`
+        : 'Any time';
+      return `Recurring • ${selected || 'No days'} • ${window}`;
+    }
+    if (promotion.starts_at || promotion.ends_at) {
+      const start = promotion.starts_at ? new Date(promotion.starts_at).toLocaleString() : 'Now';
+      const end = promotion.ends_at ? new Date(promotion.ends_at).toLocaleString() : 'No end';
+      return `${start} → ${end}`;
+    }
+    return 'Always on';
+  };
+
+  const valueLabel = useMemo(() => {
+    if (type === 'delivery_promo') {
+      if (deliveryFeeCap) return `Delivery capped at £${deliveryFeeCap}`;
+      return 'Free delivery';
+    }
+
+    const base = discountValue || '0';
+    return discountType === 'percent' ? `${base}% off` : `£${base} off`;
+  }, [type, deliveryFeeCap, discountType, discountValue]);
+
+  const previewSchedule = useMemo(() => {
+    if (isRecurring) {
+      const selected = DAYS.filter((d) => daysOfWeek.includes(d.value)).map((d) => d.label).join(', ');
+      const window = timeWindowStart && timeWindowEnd ? `${timeWindowStart}-${timeWindowEnd}` : 'Any time';
+      return `Recurring • ${selected || 'Select days'} • ${window}`;
+    }
+
+    if (startsAt || endsAt) {
+      return `${startsAt ? new Date(startsAt).toLocaleString() : 'Now'} → ${
+        endsAt ? new Date(endsAt).toLocaleString() : 'No end'
+      }`;
+    }
+
+    return 'Always available';
+  }, [isRecurring, daysOfWeek, timeWindowStart, timeWindowEnd, startsAt, endsAt]);
+
+  const minSpendLine = useMemo(() => {
+    if (type === 'delivery_promo' && freeDeliveryMinSubtotal) {
+      return `Minimum spend £${freeDeliveryMinSubtotal}`;
+    }
+    if (minSubtotal) return `Minimum spend £${minSubtotal}`;
+    return null;
+  }, [type, minSubtotal, freeDeliveryMinSubtotal]);
+
+  const resetWizard = () => {
+    setStep(0);
+    setErrors({});
+    setType('basket_discount');
+    setName('');
+    setDescription('');
+    setPriority('100');
+    setDiscountType('percent');
+    setDiscountValue('');
+    setMaxDiscountCap('');
+    setMinSubtotal('');
+    setFreeDeliveryMinSubtotal('');
+    setDeliveryFeeCap('');
+    setVoucherCodesRaw('');
+    setStartsAt('');
+    setEndsAt('');
+    setIsRecurring(false);
+    setDaysOfWeek([]);
+    setTimeWindowStart('');
+    setTimeWindowEnd('');
+    setChannels(['website']);
+    setOrderTypes(['delivery', 'collection']);
+    setPromoTerms('');
+  };
+
+  const toggleChannel = (value: string) => {
+    setChannels((prev) => (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]));
+  };
+
+  const toggleOrderType = (value: string) => {
+    setOrderTypes((prev) => (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]));
+  };
+
+  const toggleDay = (day: number) => {
+    setDaysOfWeek((prev) => (prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort()));
+  };
+
+  const validateStep = (currentStep: number) => {
+    const nextErrors: WizardErrors = {};
+
+    if (currentStep === 0 && !isSupportedType) {
+      nextErrors.type = 'This promotion type is coming soon.';
+    }
+
+    if (currentStep === 1) {
+      if (!name.trim()) nextErrors.name = 'Promotion name is required.';
+
+      if (type === 'basket_discount' || type === 'voucher') {
+        const val = Number(discountValue);
+        if (!discountValue || Number.isNaN(val)) {
+          nextErrors.discountValue = 'Discount value is required.';
+        } else if (discountType === 'percent' && (val < 1 || val > 100)) {
+          nextErrors.discountValue = 'Percent discount must be between 1 and 100.';
+        } else if (discountType === 'fixed' && val <= 0) {
+          nextErrors.discountValue = 'Fixed discount must be greater than 0.';
+        }
+
+        if (maxDiscountCap && Number(maxDiscountCap) < 0) {
+          nextErrors.maxDiscountCap = 'Max cap must be 0 or greater.';
+        }
+      }
+
+      if (type === 'delivery_promo') {
+        if (freeDeliveryMinSubtotal && Number(freeDeliveryMinSubtotal) < 0) {
+          nextErrors.freeDeliveryMinSubtotal = 'Minimum spend must be 0 or greater.';
+        }
+        if (deliveryFeeCap && Number(deliveryFeeCap) < 0) {
+          nextErrors.deliveryFeeCap = 'Delivery fee cap must be 0 or greater.';
+        }
+      }
+
+      if (minSubtotal && Number(minSubtotal) < 0) {
+        nextErrors.minSubtotal = 'Minimum subtotal must be 0 or greater.';
+      }
+    }
+
+    if (currentStep === 2) {
+      if (startsAt && endsAt && new Date(startsAt) > new Date(endsAt)) {
+        nextErrors.endsAt = 'End date must be after start date.';
+      }
+
+      if (isRecurring) {
+        if (daysOfWeek.length === 0) nextErrors.daysOfWeek = 'Pick at least one day.';
+        if (!timeWindowStart || !timeWindowEnd) nextErrors.timeWindow = 'Set a recurring time window.';
+      }
+    }
+
+    if (currentStep === 3) {
+      if (channels.length === 0) nextErrors.channels = 'Pick at least one channel.';
+      if (orderTypes.length === 0) nextErrors.orderTypes = 'Pick at least one order type.';
+    }
+
+    if (currentStep === 4 && type === 'voucher') {
+      if (voucherCodes.length === 0) nextErrors.voucherCodes = 'Add at least one voucher code.';
+    }
+
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
+  const handleNext = () => {
+    if (!validateStep(step)) return;
+    setStep((s) => Math.min(5, s + 1));
+  };
+
+  const handleToggleStatus = async (promotion: PromotionRow) => {
+    if (!restaurantId) return;
+    if (promotion.status === 'scheduled') return;
+
+    const nextStatus: PromotionStatus = promotion.status === 'active' ? 'paused' : 'active';
+    setTogglingId(promotion.id);
+
+    const { error } = await supabase
+      .from('promotions')
+      .update({ status: nextStatus })
+      .eq('id', promotion.id)
+      .eq('restaurant_id', restaurantId);
+
+    setTogglingId(null);
+
+    if (error) {
+      setToastMessage(`Failed to update status: ${error.message}`);
+      return;
+    }
+
+    setPromotions((prev) => prev.map((p) => (p.id === promotion.id ? { ...p, status: nextStatus } : p)));
+    setToastMessage(`Promotion ${nextStatus === 'active' ? 'activated' : 'paused'}.`);
+  };
+
+  const handleSaveTerms = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!restaurantId) return;
+    setSavingTerms(true);
+
+    const { error } = await supabase.from('restaurant_promo_terms').upsert(
+      {
+        restaurant_id: restaurantId,
+        global_terms: globalTerms,
+      },
+      { onConflict: 'restaurant_id' }
+    );
+
+    setSavingTerms(false);
+
+    if (error) {
+      setToastMessage(`Failed to save terms: ${error.message}`);
+      return;
+    }
+
+    setToastMessage('Global promotion terms saved.');
+  };
+
+  const handleCreatePromotion = async () => {
+    if (!restaurantId) return;
+    if (!validateStep(5)) return;
+    setSubmitting(true);
+
+    const now = new Date();
+    const startDate = startsAt ? new Date(startsAt) : null;
+    const promotionStatus: PromotionStatus = startDate && startDate > now ? 'scheduled' : 'active';
+
+    const promotionPayload = {
+      restaurant_id: restaurantId,
+      name: name.trim(),
+      description: description.trim(),
+      type,
+      status: promotionStatus,
+      priority: Number(priority) || 100,
+      is_recurring: isRecurring,
+      starts_at: startsAt || null,
+      ends_at: endsAt || null,
+      days_of_week: isRecurring ? daysOfWeek : null,
+      time_window_start: isRecurring ? timeWindowStart || null : null,
+      time_window_end: isRecurring ? timeWindowEnd || null : null,
+      channels,
+      order_types: orderTypes,
+      min_subtotal: minSubtotal ? Number(minSubtotal) : null,
+      promo_terms: promoTerms,
+    };
+
+    const { data: insertedPromotion, error: insertError } = await supabase
+      .from('promotions')
+      .insert(promotionPayload)
+      .select('id')
+      .single();
+
+    if (insertError || !insertedPromotion?.id) {
+      setSubmitting(false);
+      setToastMessage(`Failed to create promotion: ${insertError?.message || 'unknown error'}`);
+      return;
+    }
+
+    const rewardPayload =
+      type === 'delivery_promo'
+        ? {
+            ...(freeDeliveryMinSubtotal ? { free_delivery_min_subtotal: Number(freeDeliveryMinSubtotal) } : {}),
+            ...(deliveryFeeCap ? { delivery_fee_cap: Number(deliveryFeeCap) } : {}),
+          }
+        : {
+            discount_type: discountType,
+            discount_value: Number(discountValue),
+            ...(maxDiscountCap ? { max_discount_cap: Number(maxDiscountCap) } : {}),
+          };
+
+    const { error: rewardError } = await supabase.from('promotion_rewards').upsert(
+      {
+        promotion_id: insertedPromotion.id,
+        reward: rewardPayload,
+      },
+      { onConflict: 'promotion_id' }
+    );
+
+    if (rewardError) {
+      setSubmitting(false);
+      setToastMessage(`Promotion created but reward failed: ${rewardError.message}`);
+      return;
+    }
+
+    if (type === 'voucher') {
+      const codeRows = voucherCodes.map((code) => ({
+        promotion_id: insertedPromotion.id,
+        code,
+      }));
+
+      const { error: codesError } = await supabase.from('promotion_voucher_codes').insert(codeRows);
+      if (codesError) {
+        setSubmitting(false);
+        setToastMessage(`Promotion created but voucher codes failed: ${codesError.message}`);
+        return;
+      }
+    }
+
+    await fetchPromotions(restaurantId);
+    setSubmitting(false);
+    setShowWizard(false);
+    resetWizard();
+    setToastMessage('Promotion created successfully.');
+  };
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="p-6 md:p-8">Loading promotions…</div>
+      </DashboardLayout>
+    );
+  }
+
+  return (
+    <DashboardLayout>
+      <div className="p-4 md:p-8 space-y-6">
+        <div className="flex flex-col gap-4 rounded-2xl bg-white p-5 shadow-sm md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold text-gray-900 md:text-3xl">Promotions</h1>
+            <p className="mt-1 text-sm text-gray-600">Create and manage offers for your customers.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              resetWizard();
+              setShowWizard(true);
+            }}
+            className="inline-flex items-center justify-center rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-teal-700"
+          >
+            Create promotion
+          </button>
+        </div>
+
+        <section className="rounded-2xl bg-white p-5 shadow-sm">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-900">Active promotion list</h2>
+            <span className="text-sm text-gray-500">{promotions.length} total</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-gray-500">
+                  <th className="py-2 pr-4">Name</th>
+                  <th className="py-2 pr-4">Type</th>
+                  <th className="py-2 pr-4">Status</th>
+                  <th className="py-2 pr-4">Schedule</th>
+                  <th className="py-2 pr-4">Channels</th>
+                  <th className="py-2 pr-4">Order types</th>
+                  <th className="py-2 pr-4">Min subtotal</th>
+                  <th className="py-2">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {promotions.map((promotion) => (
+                  <tr key={promotion.id} className="border-b last:border-b-0">
+                    <td className="py-3 pr-4 font-medium text-gray-900">{promotion.name}</td>
+                    <td className="py-3 pr-4 text-gray-700">{promotion.type}</td>
+                    <td className="py-3 pr-4">
+                      <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-gray-700">
+                        {promotion.status}
+                      </span>
+                    </td>
+                    <td className="py-3 pr-4 text-gray-600">{scheduleSummary(promotion)}</td>
+                    <td className="py-3 pr-4 text-gray-600">{promotion.channels.join(', ')}</td>
+                    <td className="py-3 pr-4 text-gray-600">{promotion.order_types.join(', ')}</td>
+                    <td className="py-3 pr-4 text-gray-600">
+                      {promotion.min_subtotal != null ? `£${promotion.min_subtotal}` : '—'}
+                    </td>
+                    <td className="py-3">
+                      {promotion.status === 'active' || promotion.status === 'paused' ? (
+                        <button
+                          type="button"
+                          onClick={() => handleToggleStatus(promotion)}
+                          disabled={togglingId === promotion.id}
+                          className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
+                        >
+                          {togglingId === promotion.id
+                            ? 'Saving...'
+                            : promotion.status === 'active'
+                              ? 'Pause'
+                              : 'Activate'}
+                        </button>
+                      ) : (
+                        <span className="text-xs text-gray-400">No toggle</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {promotions.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="py-8 text-center text-gray-500">
+                      No promotions yet. Create your first promotion.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="rounded-2xl bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-semibold text-gray-900">Global promotion terms</h2>
+          <p className="mt-1 text-sm text-gray-600">Shown with offers across your customer channels.</p>
+          <form className="mt-4 space-y-3" onSubmit={handleSaveTerms}>
+            <textarea
+              value={globalTerms}
+              onChange={(e) => setGlobalTerms(e.target.value)}
+              rows={5}
+              className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+              placeholder="Add your global promotion terms..."
+            />
+            <div>
+              <button
+                type="submit"
+                disabled={savingTerms}
+                className="rounded-xl bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-black disabled:opacity-50"
+              >
+                {savingTerms ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </form>
+        </section>
+      </div>
+
+      {showWizard ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-3">
+          <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
+            <div className="sticky top-0 z-10 border-b bg-white px-4 py-3 md:px-6">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-gray-900">Create promotion</h3>
+                <button
+                  type="button"
+                  onClick={() => setShowWizard(false)}
+                  className="rounded-md p-1 text-gray-500 hover:bg-gray-100"
+                >
+                  <XMarkIcon className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2 md:grid-cols-6">
+                {STEP_TITLES.map((label, idx) => (
+                  <div key={label} className="flex items-center gap-2 text-xs">
+                    <span
+                      className={`flex h-5 w-5 items-center justify-center rounded-full border ${
+                        idx <= step
+                          ? 'border-teal-600 bg-teal-600 text-white'
+                          : 'border-gray-300 bg-white text-gray-500'
+                      }`}
+                    >
+                      {idx < step ? <CheckCircleIcon className="h-3.5 w-3.5" /> : idx + 1}
+                    </span>
+                    <span className={idx === step ? 'font-semibold text-gray-900' : 'text-gray-500'}>{label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="px-4 py-4 md:px-6 md:py-5">
+              <div className="transition-all duration-200">
+                {step === 0 ? (
+                  <div className="space-y-4">
+                    <h4 className="text-sm font-semibold text-gray-900">Choose promotion type</h4>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {[
+                        'basket_discount',
+                        'delivery_promo',
+                        'voucher',
+                        'multibuy_bogo',
+                        'spend_get_item',
+                        'bundle_fixed_price',
+                        'loyalty_redemption',
+                      ].map((option) => {
+                        const optionType = option as PromotionType;
+                        const supported = SUPPORTED_TYPES.includes(optionType);
+                        return (
+                          <button
+                            key={option}
+                            type="button"
+                            onClick={() => setType(optionType)}
+                            className={`rounded-xl border px-3 py-3 text-left transition ${
+                              type === optionType ? 'border-teal-600 bg-teal-50' : 'border-gray-200 hover:bg-gray-50'
+                            }`}
+                          >
+                            <p className="font-medium text-gray-900">{option}</p>
+                            {!supported ? <p className="text-xs text-amber-600">Coming soon</p> : null}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {errors.type ? <p className="text-sm text-red-600">{errors.type}</p> : null}
+                  </div>
+                ) : null}
+
+                {step === 1 ? (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">Promotion name</label>
+                      <input
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                        placeholder="e.g. Weekend 20% Off"
+                      />
+                      {errors.name ? <p className="mt-1 text-xs text-red-600">{errors.name}</p> : null}
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">Description (optional)</label>
+                      <textarea
+                        value={description}
+                        onChange={(e) => setDescription(e.target.value)}
+                        rows={2}
+                        className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                      />
+                    </div>
+
+                    {(type === 'basket_discount' || type === 'voucher') && (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="mb-1 block text-sm font-medium text-gray-700">Discount type</label>
+                          <select
+                            value={discountType}
+                            onChange={(e) => setDiscountType(e.target.value as 'percent' | 'fixed')}
+                            className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                          >
+                            <option value="percent">Percent</option>
+                            <option value="fixed">Fixed</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-sm font-medium text-gray-700">Discount value</label>
+                          <input
+                            value={discountValue}
+                            onChange={(e) => setDiscountValue(e.target.value)}
+                            type="number"
+                            min="0"
+                            className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                          />
+                          {errors.discountValue ? <p className="mt-1 text-xs text-red-600">{errors.discountValue}</p> : null}
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-sm font-medium text-gray-700">Max discount cap (optional)</label>
+                          <input
+                            value={maxDiscountCap}
+                            onChange={(e) => setMaxDiscountCap(e.target.value)}
+                            type="number"
+                            min="0"
+                            className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                          />
+                          {errors.maxDiscountCap ? <p className="mt-1 text-xs text-red-600">{errors.maxDiscountCap}</p> : null}
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-sm font-medium text-gray-700">Minimum subtotal (optional)</label>
+                          <input
+                            value={minSubtotal}
+                            onChange={(e) => setMinSubtotal(e.target.value)}
+                            type="number"
+                            min="0"
+                            className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                          />
+                          {errors.minSubtotal ? <p className="mt-1 text-xs text-red-600">{errors.minSubtotal}</p> : null}
+                        </div>
+                      </div>
+                    )}
+
+                    {type === 'delivery_promo' && (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="mb-1 block text-sm font-medium text-gray-700">Free delivery min subtotal (optional)</label>
+                          <input
+                            value={freeDeliveryMinSubtotal}
+                            onChange={(e) => setFreeDeliveryMinSubtotal(e.target.value)}
+                            type="number"
+                            min="0"
+                            className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                          />
+                          {errors.freeDeliveryMinSubtotal ? (
+                            <p className="mt-1 text-xs text-red-600">{errors.freeDeliveryMinSubtotal}</p>
+                          ) : null}
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-sm font-medium text-gray-700">Delivery fee cap (optional)</label>
+                          <input
+                            value={deliveryFeeCap}
+                            onChange={(e) => setDeliveryFeeCap(e.target.value)}
+                            type="number"
+                            min="0"
+                            className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                          />
+                          {errors.deliveryFeeCap ? <p className="mt-1 text-xs text-red-600">{errors.deliveryFeeCap}</p> : null}
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-sm font-medium text-gray-700">Minimum subtotal (optional)</label>
+                          <input
+                            value={minSubtotal}
+                            onChange={(e) => setMinSubtotal(e.target.value)}
+                            type="number"
+                            min="0"
+                            className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                          />
+                          {errors.minSubtotal ? <p className="mt-1 text-xs text-red-600">{errors.minSubtotal}</p> : null}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+
+                {step === 2 ? (
+                  <div className="space-y-4">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Starts at (optional)</label>
+                        <input
+                          value={startsAt}
+                          onChange={(e) => setStartsAt(e.target.value)}
+                          type="datetime-local"
+                          className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Ends at (optional)</label>
+                        <input
+                          value={endsAt}
+                          onChange={(e) => setEndsAt(e.target.value)}
+                          type="datetime-local"
+                          className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                        />
+                        {errors.endsAt ? <p className="mt-1 text-xs text-red-600">{errors.endsAt}</p> : null}
+                      </div>
+                    </div>
+
+                    <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                      <input
+                        checked={isRecurring}
+                        onChange={(e) => setIsRecurring(e.target.checked)}
+                        type="checkbox"
+                        className="h-4 w-4"
+                      />
+                      Recurring schedule
+                    </label>
+
+                    {isRecurring ? (
+                      <div className="space-y-3 rounded-xl border border-gray-200 p-3">
+                        <div>
+                          <p className="mb-2 text-sm font-medium text-gray-700">Days of week</p>
+                          <div className="flex flex-wrap gap-2">
+                            {DAYS.map((day) => (
+                              <button
+                                key={day.value}
+                                type="button"
+                                onClick={() => toggleDay(day.value)}
+                                className={`rounded-full border px-3 py-1 text-xs font-medium ${
+                                  daysOfWeek.includes(day.value)
+                                    ? 'border-teal-600 bg-teal-50 text-teal-700'
+                                    : 'border-gray-300 text-gray-600'
+                                }`}
+                              >
+                                {day.label}
+                              </button>
+                            ))}
+                          </div>
+                          {errors.daysOfWeek ? <p className="mt-1 text-xs text-red-600">{errors.daysOfWeek}</p> : null}
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div>
+                            <label className="mb-1 block text-sm font-medium text-gray-700">Time window start</label>
+                            <input
+                              value={timeWindowStart}
+                              onChange={(e) => setTimeWindowStart(e.target.value)}
+                              type="time"
+                              className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="mb-1 block text-sm font-medium text-gray-700">Time window end</label>
+                            <input
+                              value={timeWindowEnd}
+                              onChange={(e) => setTimeWindowEnd(e.target.value)}
+                              type="time"
+                              className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                            />
+                          </div>
+                        </div>
+                        {errors.timeWindow ? <p className="text-xs text-red-600">{errors.timeWindow}</p> : null}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {step === 3 ? (
+                  <div className="space-y-4">
+                    <div>
+                      <p className="mb-2 text-sm font-medium text-gray-700">Channels</p>
+                      <div className="flex flex-wrap gap-2">
+                        {['website', 'kiosk', 'pos'].map((channel) => (
+                          <button
+                            key={channel}
+                            type="button"
+                            onClick={() => toggleChannel(channel)}
+                            className={`rounded-full border px-3 py-1 text-xs font-medium ${
+                              channels.includes(channel)
+                                ? 'border-teal-600 bg-teal-50 text-teal-700'
+                                : 'border-gray-300 text-gray-600'
+                            }`}
+                          >
+                            {channel}
+                          </button>
+                        ))}
+                      </div>
+                      {errors.channels ? <p className="mt-1 text-xs text-red-600">{errors.channels}</p> : null}
+                    </div>
+
+                    <div>
+                      <p className="mb-2 text-sm font-medium text-gray-700">Order types</p>
+                      <div className="flex flex-wrap gap-2">
+                        {['delivery', 'collection', 'dine_in'].map((kind) => (
+                          <button
+                            key={kind}
+                            type="button"
+                            onClick={() => toggleOrderType(kind)}
+                            className={`rounded-full border px-3 py-1 text-xs font-medium ${
+                              orderTypes.includes(kind)
+                                ? 'border-teal-600 bg-teal-50 text-teal-700'
+                                : 'border-gray-300 text-gray-600'
+                            }`}
+                          >
+                            {kind}
+                          </button>
+                        ))}
+                      </div>
+                      {errors.orderTypes ? <p className="mt-1 text-xs text-red-600">{errors.orderTypes}</p> : null}
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">Priority</label>
+                      <input
+                        value={priority}
+                        onChange={(e) => setPriority(e.target.value)}
+                        type="number"
+                        className="w-full max-w-[180px] rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                      />
+                    </div>
+                  </div>
+                ) : null}
+
+                {step === 4 ? (
+                  <div className="space-y-4">
+                    {type === 'voucher' ? (
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Voucher codes (one per line)</label>
+                        <textarea
+                          value={voucherCodesRaw}
+                          onChange={(e) => setVoucherCodesRaw(e.target.value)}
+                          rows={6}
+                          className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                          placeholder={'SAVE10\nWELCOME20'}
+                        />
+                        {errors.voucherCodes ? <p className="mt-1 text-xs text-red-600">{errors.voucherCodes}</p> : null}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-500">No extra configuration required for this promotion type.</p>
+                    )}
+
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">Promotion terms (optional)</label>
+                      <textarea
+                        value={promoTerms}
+                        onChange={(e) => setPromoTerms(e.target.value)}
+                        rows={4}
+                        className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                      />
+                    </div>
+                  </div>
+                ) : null}
+
+                {step === 5 ? (
+                  <div className="space-y-4">
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+                      Review your offer before saving.
+                    </div>
+                    <PromotionCustomerCardPreview
+                      title={name}
+                      valueLabel={valueLabel}
+                      scheduleLine={previewSchedule}
+                      minSpendLine={minSpendLine}
+                    />
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="sticky bottom-0 border-t bg-white px-4 py-3 md:px-6">
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => setStep((s) => Math.max(0, s - 1))}
+                  disabled={step === 0 || submitting}
+                  className="rounded-xl border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-40"
+                >
+                  Back
+                </button>
+                {step < 5 ? (
+                  <button
+                    type="button"
+                    onClick={handleNext}
+                    disabled={!isSupportedType && step === 0}
+                    className="rounded-xl bg-teal-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-700 disabled:opacity-40"
+                  >
+                    Next
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleCreatePromotion}
+                    disabled={submitting}
+                    className="rounded-xl bg-teal-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-700 disabled:opacity-40"
+                  >
+                    {submitting ? 'Creating...' : 'Create promotion'}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <Toast message={toastMessage} onClose={() => setToastMessage('')} />
+    </DashboardLayout>
+  );
+}
