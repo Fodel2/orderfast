@@ -38,6 +38,16 @@ type PromotionRow = {
 
 type WizardErrors = Record<string, string>;
 
+type SchemaHealthRow = {
+  promotions_exists: string | null;
+  promotion_rewards_exists: string | null;
+  promotion_voucher_codes_exists: string | null;
+  restaurant_promo_terms_exists: string | null;
+  promotion_redemptions_exists: string | null;
+  loyalty_config_exists: string | null;
+  loyalty_ledger_exists: string | null;
+};
+
 const DAYS = [
   { label: 'Sun', value: 0 },
   { label: 'Mon', value: 1 },
@@ -60,6 +70,9 @@ export default function PromotionsPage() {
   const [promotions, setPromotions] = useState<PromotionRow[]>([]);
   const [globalTerms, setGlobalTerms] = useState('');
   const [toastMessage, setToastMessage] = useState('');
+  const [schemaHealth, setSchemaHealth] = useState<SchemaHealthRow | null>(null);
+  const [schemaHealthError, setSchemaHealthError] = useState<string | null>(null);
+  const [schemaErrorDetails, setSchemaErrorDetails] = useState<string | null>(null);
 
   const [showWizard, setShowWizard] = useState(false);
   const [step, setStep] = useState(0);
@@ -97,6 +110,51 @@ export default function PromotionsPage() {
 
   const isSupportedType = SUPPORTED_TYPES.includes(type);
 
+
+  const isSchemaCacheError = (message: string | undefined | null) => {
+    if (!message) return false;
+    const normalized = message.toLowerCase();
+    return (
+      normalized.includes('schema cache')
+      || normalized.includes("could not find the table")
+      || normalized.includes('pgrst205')
+    );
+  };
+
+  const setPremiumSchemaError = (rawMessage: string) => {
+    setToastMessage('Database schema missing in this environment. Apply the promotions migration to this Supabase project and reload schema.');
+    setSchemaErrorDetails(rawMessage);
+  };
+
+  const handleSupabaseError = (prefix: string, message: string) => {
+    if (isSchemaCacheError(message)) {
+      setPremiumSchemaError(message);
+      return;
+    }
+    setToastMessage(`${prefix}: ${message}`);
+  };
+
+  const runSchemaHealthCheck = async () => {
+    const { data, error } = await supabase.rpc('promotions_schema_health_check');
+    if (error) {
+      setSchemaHealthError(error.message);
+      return;
+    }
+
+    const row = ((data || [])[0] || null) as SchemaHealthRow | null;
+    setSchemaHealth(row);
+  };
+
+  const copyReloadSql = async () => {
+    const snippet = "NOTIFY pgrst, 'reload schema';";
+    try {
+      await navigator.clipboard.writeText(snippet);
+      setToastMessage('Schema reload SQL copied.');
+    } catch {
+      setToastMessage(`Copy this SQL manually: ${snippet}`);
+    }
+  };
+
   useEffect(() => {
     const load = async () => {
       const {
@@ -119,7 +177,7 @@ export default function PromotionsPage() {
       }
 
       setRestaurantId(membership.restaurant_id);
-      await Promise.all([fetchPromotions(membership.restaurant_id), fetchGlobalTerms(membership.restaurant_id)]);
+      await Promise.all([fetchPromotions(membership.restaurant_id), fetchGlobalTerms(membership.restaurant_id), runSchemaHealthCheck()]);
       setLoading(false);
     };
 
@@ -137,7 +195,7 @@ export default function PromotionsPage() {
       .order('created_at', { ascending: false });
 
     if (error) {
-      setToastMessage(`Failed to load promotions: ${error.message}`);
+      handleSupabaseError('Failed to load promotions', error.message);
       return;
     }
 
@@ -325,7 +383,7 @@ export default function PromotionsPage() {
     setTogglingId(null);
 
     if (error) {
-      setToastMessage(`Failed to update status: ${error.message}`);
+      handleSupabaseError('Failed to update status', error.message);
       return;
     }
 
@@ -349,7 +407,7 @@ export default function PromotionsPage() {
     setSavingTerms(false);
 
     if (error) {
-      setToastMessage(`Failed to save terms: ${error.message}`);
+      handleSupabaseError('Failed to save terms', error.message);
       return;
     }
 
@@ -392,7 +450,7 @@ export default function PromotionsPage() {
 
     if (insertError || !insertedPromotion?.id) {
       setSubmitting(false);
-      setToastMessage(`Failed to create promotion: ${insertError?.message || 'unknown error'}`);
+      handleSupabaseError('Failed to create promotion', insertError?.message || 'unknown error');
       return;
     }
 
@@ -418,7 +476,7 @@ export default function PromotionsPage() {
 
     if (rewardError) {
       setSubmitting(false);
-      setToastMessage(`Promotion created but reward failed: ${rewardError.message}`);
+      handleSupabaseError('Promotion created but reward failed', rewardError.message);
       return;
     }
 
@@ -431,7 +489,7 @@ export default function PromotionsPage() {
       const { error: codesError } = await supabase.from('promotion_voucher_codes').insert(codeRows);
       if (codesError) {
         setSubmitting(false);
-        setToastMessage(`Promotion created but voucher codes failed: ${codesError.message}`);
+        handleSupabaseError('Promotion created but voucher codes failed', codesError.message);
         return;
       }
     }
@@ -470,6 +528,51 @@ export default function PromotionsPage() {
             Create promotion
           </button>
         </div>
+
+        <section className="rounded-2xl bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Schema health check</h2>
+              <p className="mt-1 text-sm text-gray-600">Validates required promotions tables in this connected Supabase project.</p>
+            </div>
+            <button
+              type="button"
+              onClick={copyReloadSql}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 transition hover:bg-gray-50"
+            >
+              Copy: NOTIFY pgrst, 'reload schema';
+            </button>
+          </div>
+
+          {schemaHealthError ? (
+            <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+              Unable to run schema health check: {schemaHealthError}
+            </p>
+          ) : null}
+
+          {schemaHealth ? (
+            (schemaHealth.promotions_exists == null
+              || schemaHealth.promotion_rewards_exists == null
+              || schemaHealth.promotion_voucher_codes_exists == null
+              || schemaHealth.restaurant_promo_terms_exists == null
+              || schemaHealth.promotion_redemptions_exists == null
+              || schemaHealth.loyalty_config_exists == null
+              || schemaHealth.loyalty_ledger_exists == null
+            ) ? (
+              <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3">
+                <p className="text-sm font-semibold text-rose-700">
+                  Promotions DB tables are missing in this Supabase project. Run the promotions migration in this project’s SQL editor.
+                </p>
+              </div>
+            ) : (
+              <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-700">
+                Promotions schema detected in this environment.
+              </div>
+            )
+          ) : (
+            <div className="mt-3 h-10 animate-pulse rounded-lg bg-gray-100" />
+          )}
+        </section>
 
         <section className="rounded-2xl bg-white p-5 shadow-sm">
           <div className="mb-4 flex items-center justify-between">
@@ -963,6 +1066,14 @@ export default function PromotionsPage() {
         </div>
       ) : null}
 
+      {schemaErrorDetails ? (
+        <div className="fixed bottom-20 right-4 z-[1001] w-[min(460px,calc(100vw-2rem))] rounded-xl border border-gray-200 bg-white p-3 shadow-lg">
+          <details>
+            <summary className="cursor-pointer text-sm font-semibold text-gray-800">Details</summary>
+            <p className="mt-2 max-h-40 overflow-auto rounded bg-gray-50 p-2 text-xs text-gray-600">{schemaErrorDetails}</p>
+          </details>
+        </div>
+      ) : null}
       <Toast message={toastMessage} onClose={() => setToastMessage('')} />
     </DashboardLayout>
   );
