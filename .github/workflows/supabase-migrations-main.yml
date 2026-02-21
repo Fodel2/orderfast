@@ -28,13 +28,28 @@ jobs:
           version: latest
 
       - name: Log target project
-        run: echo "Target Supabase project ref: ${SUPABASE_PROJECT_REF}"
+        run: |
+          echo "Target Supabase project ref: ${SUPABASE_PROJECT_REF}"
 
       - name: List migration files
         run: ls -1 supabase/migrations/*.sql
 
       - name: Push migrations
-        run: npm run db:push
+        run: |
+          set -euo pipefail
+          if npm run db:push; then
+            echo "db:push completed"
+          else
+            echo "db:push failed, falling back to direct Supabase CLI push" >&2
+            : "${SUPABASE_ACCESS_TOKEN:?SUPABASE_ACCESS_TOKEN is required}"
+            : "${SUPABASE_PROJECT_REF:?SUPABASE_PROJECT_REF is required}"
+            link_args=(link --project-ref "${SUPABASE_PROJECT_REF}")
+            if [ -n "${SUPABASE_DB_PASSWORD:-}" ]; then
+              link_args+=(--password "${SUPABASE_DB_PASSWORD}")
+            fi
+            supabase "${link_args[@]}"
+            supabase db push --linked --include-all --yes
+          fi
 
       - name: Install psql client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
