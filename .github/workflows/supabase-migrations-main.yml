@@ -1,0 +1,66 @@
+name: Supabase Migrations (main)
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy-migrations:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Log target project
+        run: |
+          echo "Target Supabase project ref: ${SUPABASE_PROJECT_REF}"
+
+      - name: List migration files
+        run: ls -1 supabase/migrations/*.sql
+
+      - name: Push migrations
+        run: |
+          set -euo pipefail
+          if npm run db:push; then
+            echo "db:push completed"
+          else
+            echo "db:push failed, falling back to direct Supabase CLI push" >&2
+            : "${SUPABASE_ACCESS_TOKEN:?SUPABASE_ACCESS_TOKEN is required}"
+            : "${SUPABASE_PROJECT_REF:?SUPABASE_PROJECT_REF is required}"
+            link_args=(link --project-ref "${SUPABASE_PROJECT_REF}")
+            if [ -n "${SUPABASE_DB_PASSWORD:-}" ]; then
+              link_args+=(--password "${SUPABASE_DB_PASSWORD}")
+            fi
+            supabase "${link_args[@]}"
+            supabase db push --linked --include-all --yes
+          fi
+
+      - name: Install psql client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Verify public.promotions exists
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          result=$(psql "host=db.${SUPABASE_PROJECT_REF}.supabase.co port=5432 dbname=postgres user=postgres sslmode=require" -Atc "select case when to_regclass('public.promotions') is not null then 'ok' else 'missing' end;")
+          echo "Verification result: ${result}"
+          if [ "${result}" != "ok" ]; then
+            echo "public.promotions is missing after migration push" >&2
+            exit 1
+          fi

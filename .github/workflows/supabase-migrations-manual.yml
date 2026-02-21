@@ -1,0 +1,100 @@
+name: Supabase Migrations (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Target database
+        required: true
+        default: production
+        type: choice
+        options:
+          - production
+          - preview
+
+jobs:
+  deploy-migrations:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve target env
+        id: resolve
+        env:
+          TARGET: ${{ inputs.target }}
+          PROD_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          PROD_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          PREVIEW_REF: ${{ secrets.SUPABASE_PROJECT_REF_PREVIEW }}
+          PREVIEW_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD_PREVIEW }}
+        run: |
+          if [ "$TARGET" = "preview" ]; then
+            if [ -z "$PREVIEW_REF" ]; then
+              echo "SUPABASE_PROJECT_REF_PREVIEW secret is not set; preview deploy is unavailable." >&2
+              exit 1
+            fi
+            echo "SUPABASE_PROJECT_REF=$PREVIEW_REF" >> "$GITHUB_ENV"
+            if [ -n "$PREVIEW_DB_PASSWORD" ]; then
+              echo "SUPABASE_DB_PASSWORD=$PREVIEW_DB_PASSWORD" >> "$GITHUB_ENV"
+            else
+              echo "SUPABASE_DB_PASSWORD=$PROD_DB_PASSWORD" >> "$GITHUB_ENV"
+            fi
+          else
+            if [ -z "$PROD_REF" ]; then
+              echo "SUPABASE_PROJECT_REF secret is required." >&2
+              exit 1
+            fi
+            echo "SUPABASE_PROJECT_REF=$PROD_REF" >> "$GITHUB_ENV"
+            echo "SUPABASE_DB_PASSWORD=$PROD_DB_PASSWORD" >> "$GITHUB_ENV"
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Log target project
+        run: |
+          echo "Target Supabase project ref: ${SUPABASE_PROJECT_REF}"
+
+      - name: List migration files
+        run: ls -1 supabase/migrations/*.sql
+
+      - name: Push migrations
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          if npm run db:push; then
+            echo "db:push completed"
+          else
+            echo "db:push failed, falling back to direct Supabase CLI push" >&2
+            : "${SUPABASE_ACCESS_TOKEN:?SUPABASE_ACCESS_TOKEN is required}"
+            : "${SUPABASE_PROJECT_REF:?SUPABASE_PROJECT_REF is required}"
+            link_args=(link --project-ref "${SUPABASE_PROJECT_REF}")
+            if [ -n "${SUPABASE_DB_PASSWORD:-}" ]; then
+              link_args+=(--password "${SUPABASE_DB_PASSWORD}")
+            fi
+            supabase "${link_args[@]}"
+            supabase db push --linked --include-all --yes
+          fi
+
+      - name: Install psql client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Verify public.promotions exists
+        env:
+          PGPASSWORD: ${{ env.SUPABASE_DB_PASSWORD }}
+        run: |
+          result=$(psql "host=db.${SUPABASE_PROJECT_REF}.supabase.co port=5432 dbname=postgres user=postgres sslmode=require" -Atc "select case when to_regclass('public.promotions') is not null then 'ok' else 'missing' end;")
+          echo "Verification result: ${result}"
+          if [ "${result}" != "ok" ]; then
+            echo "public.promotions is missing after migration push" >&2
+            exit 1
+          fi
