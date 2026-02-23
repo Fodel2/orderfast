@@ -10,6 +10,7 @@ import { supabase } from '../utils/supabaseClient';
 import { useSession } from '@supabase/auth-helpers-react';
 import { formatPrice } from '@/lib/orderDisplay';
 import {
+  addAppliedPromotionId,
   describeInvalidReason,
   getActivePromotionSelection,
   getStableGuestCustomerId,
@@ -100,7 +101,7 @@ export default function CheckoutPage() {
         if (res.valid) {
           setPromoPreview({ valid: true, text: 'Offer ready to apply.', savings });
         } else if (res.reason === 'min_subtotal_not_met') {
-          setPromoPreview({ valid: false, text: 'Add more items to unlock this offer.', savings: 0 });
+          setPromoPreview({ valid: false, text: 'Add more to your plate to unlock this offer.', savings: 0 });
         } else {
           setPromoPreview({ valid: false, text: describeInvalidReason(res.reason), savings: 0 });
         }
@@ -158,10 +159,11 @@ export default function CheckoutPage() {
         voucher_code: code,
       };
       setActivePromotionSelection(cart.restaurant_id, selection);
+      addAppliedPromotionId(cart.restaurant_id, selection.promotion_id);
       setActiveSelection(selection);
       setVoucherCodeInput('');
     } catch {
-      setVoucherError('Could not validate this code.');
+      setVoucherError('Could not validate this promotion code.');
     }
   };
 
@@ -190,7 +192,7 @@ export default function CheckoutPage() {
       } catch {
         setPromotionCheckoutBlock(cart.restaurant_id, {
           reason: 'validation_failed',
-          details: 'Unable to validate your offer at checkout.',
+          details: 'Unable to validate your promotion at checkout.',
         });
         router.push({ pathname: '/restaurant/cart', query: { restaurant_id: cart.restaurant_id } });
         return;
@@ -482,7 +484,7 @@ export default function CheckoutPage() {
           {activeSelection?.promotion_id ? (
             <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
               <p className="font-semibold text-slate-800">Active promotion</p>
-              <p className="mt-1 text-slate-600">{promoLoading ? 'Checking offer...' : promoPreview.text || 'Offer selected.'}</p>
+              <p className="mt-1 text-slate-600">{promoLoading ? 'Checking promotion...' : promoPreview.text || 'Promotion selected.'}</p>
             </div>
           ) : null}
           <div className="flex justify-between mb-2">

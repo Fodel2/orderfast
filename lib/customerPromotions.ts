@@ -29,6 +29,7 @@ export type PromotionValidationResult = {
 
 const guestKey = (restaurantId: string) => `orderfast_guest_customer_${restaurantId}`;
 const activePromoKey = (restaurantId: string) => `orderfast_active_promotion_${restaurantId}`;
+const appliedPromoKey = (restaurantId: string) => `orderfast_applied_promotions_${restaurantId}`;
 const checkoutBlockKey = (restaurantId: string) => `orderfast_promo_block_${restaurantId}`;
 
 function makeUuid() {
@@ -61,6 +62,35 @@ export function getActivePromotionSelection(restaurantId: string): ActivePromoti
   } catch {
     return null;
   }
+}
+
+export function getAppliedPromotionIds(restaurantId: string): string[] {
+  if (typeof window === 'undefined') return [];
+  const raw = window.localStorage.getItem(appliedPromoKey(restaurantId));
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((id): id is string => typeof id === 'string');
+  } catch {
+    return [];
+  }
+}
+
+export function setAppliedPromotionIds(restaurantId: string, ids: string[]) {
+  if (typeof window === 'undefined') return;
+  const unique = Array.from(new Set(ids.filter(Boolean)));
+  window.localStorage.setItem(appliedPromoKey(restaurantId), JSON.stringify(unique));
+}
+
+export function addAppliedPromotionId(restaurantId: string, promotionId: string) {
+  const next = Array.from(new Set([...getAppliedPromotionIds(restaurantId), promotionId]));
+  setAppliedPromotionIds(restaurantId, next);
+}
+
+export function removeAppliedPromotionId(restaurantId: string, promotionId: string) {
+  const next = getAppliedPromotionIds(restaurantId).filter((id) => id !== promotionId);
+  setAppliedPromotionIds(restaurantId, next);
 }
 
 export function setActivePromotionSelection(restaurantId: string, selection: ActivePromotionSelection) {
@@ -149,7 +179,7 @@ export function describeInvalidReason(reason: string | null) {
   const map: Record<string, string> = {
     not_started: 'Not started yet.',
     expired: 'This offer has expired.',
-    min_subtotal_not_met: 'Increase your basket to unlock this offer.',
+    min_subtotal_not_met: 'Increase your plate total to unlock this offer.',
     outside_recurring_window: 'Valid only in a scheduled time window.',
     channel_not_allowed: 'This offer is not available on website.',
     order_type_not_allowed: 'This offer is not available for this order type.',

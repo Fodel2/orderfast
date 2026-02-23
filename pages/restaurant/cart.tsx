@@ -87,7 +87,7 @@ export default function CartPage() {
       <div className="mx-auto w-full max-w-4xl px-2 pt-3 sm:px-4 sm:pt-5">
         {blockMessage ? (
           <div className="mb-3 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-            <p className="font-semibold">Offer couldn’t be applied at payment.</p>
+            <p className="font-semibold">Promotion couldn’t be applied at payment.</p>
             <p className="mt-1">{blockMessage.details || describeInvalidReason(blockMessage.reason)}</p>
           </div>
         ) : null}
@@ -100,7 +100,7 @@ export default function CartPage() {
           </div>
         ) : (
           <div className="mb-3 rounded-2xl border border-slate-200 bg-white p-3 text-sm text-slate-600">
-            No active promotion selected. You can apply one offer per order.
+            No active promotion selected. You can apply multiple promotions and keep one active for checkout.
           </div>
         )}
       </div>
