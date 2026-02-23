@@ -90,6 +90,13 @@ export default function PromotionsPage() {
   const [freeDeliveryMinSubtotal, setFreeDeliveryMinSubtotal] = useState('');
   const [deliveryFeeCap, setDeliveryFeeCap] = useState('');
   const [voucherCodesRaw, setVoucherCodesRaw] = useState('');
+  const [maxUsesTotal, setMaxUsesTotal] = useState('');
+  const [maxUsesPerCustomer, setMaxUsesPerCustomer] = useState('');
+  const [showCodeGenerator, setShowCodeGenerator] = useState(false);
+  const [generatorQuantity, setGeneratorQuantity] = useState('10');
+  const [generatorLength, setGeneratorLength] = useState('8');
+  const [generatorPrefix, setGeneratorPrefix] = useState('');
+  const [generatorAvoidConfusing, setGeneratorAvoidConfusing] = useState(true);
 
   const [startsAt, setStartsAt] = useState('');
   const [endsAt, setEndsAt] = useState('');
@@ -103,10 +110,25 @@ export default function PromotionsPage() {
 
   const [promoTerms, setPromoTerms] = useState('');
 
-  const voucherCodes = useMemo(
-    () => voucherCodesRaw.split(/\r?\n/).map((v) => v.trim()).filter(Boolean),
-    [voucherCodesRaw]
-  );
+  const parseVoucherCodes = (raw: string) => {
+    const seen = new Set<string>();
+    const lines = raw
+      .split(/\r?\n/)
+      .map((v) => v.trim())
+      .filter(Boolean);
+
+    const unique: string[] = [];
+    for (const line of lines) {
+      const normalized = line.toLowerCase();
+      if (seen.has(normalized)) continue;
+      seen.add(normalized);
+      unique.push(line);
+    }
+    return unique;
+  };
+
+  const voucherCodes = useMemo(() => parseVoucherCodes(voucherCodesRaw), [voucherCodesRaw]);
+
 
   const isSupportedType = SUPPORTED_TYPES.includes(type);
 
@@ -286,6 +308,13 @@ export default function PromotionsPage() {
     setFreeDeliveryMinSubtotal('');
     setDeliveryFeeCap('');
     setVoucherCodesRaw('');
+    setMaxUsesTotal('');
+    setMaxUsesPerCustomer('');
+    setShowCodeGenerator(false);
+    setGeneratorQuantity('10');
+    setGeneratorLength('8');
+    setGeneratorPrefix('');
+    setGeneratorAvoidConfusing(true);
     setStartsAt('');
     setEndsAt('');
     setIsRecurring(false);
@@ -365,6 +394,20 @@ export default function PromotionsPage() {
     if (currentStep === 3) {
       if (channels.length === 0) nextErrors.channels = 'Pick at least one channel.';
       if (orderTypes.length === 0) nextErrors.orderTypes = 'Pick at least one order type.';
+
+      if (maxUsesTotal) {
+        const total = Number(maxUsesTotal);
+        if (!Number.isInteger(total) || total <= 0) {
+          nextErrors.maxUsesTotal = 'Total usage limit must be a whole number greater than 0.';
+        }
+      }
+
+      if (maxUsesPerCustomer) {
+        const perCustomer = Number(maxUsesPerCustomer);
+        if (!Number.isInteger(perCustomer) || perCustomer <= 0) {
+          nextErrors.maxUsesPerCustomer = 'Per-customer limit must be a whole number greater than 0.';
+        }
+      }
     }
 
     if (currentStep === 4 && type === 'voucher') {
@@ -427,6 +470,47 @@ export default function PromotionsPage() {
     setToastMessage('Global promotion terms saved.');
   };
 
+
+  const generateVoucherCodes = (replaceExisting: boolean) => {
+    const quantity = Math.max(1, Math.min(500, Number(generatorQuantity) || 10));
+    const length = Math.max(4, Math.min(24, Number(generatorLength) || 8));
+    const prefix = generatorPrefix.trim().toUpperCase();
+    const charset = generatorAvoidConfusing ? 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' : 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+
+    const generated: string[] = [];
+    const existing = parseVoucherCodes(voucherCodesRaw);
+    const seen = new Set((replaceExisting ? [] : existing).map((code) => code.toLowerCase()));
+
+    while (generated.length < quantity) {
+      let core = '';
+      for (let i = 0; i < length; i += 1) {
+        core += charset[Math.floor(Math.random() * charset.length)];
+      }
+      const fullCode = prefix ? `${prefix}${core}` : core;
+      const normalized = fullCode.toLowerCase();
+      if (seen.has(normalized)) continue;
+      seen.add(normalized);
+      generated.push(fullCode);
+    }
+
+    const nextCodes = replaceExisting ? generated : [...existing, ...generated];
+    setVoucherCodesRaw(nextCodes.join('\n'));
+  };
+
+  const exportVoucherCodesCsv = () => {
+    const rows = ['code', ...voucherCodes];
+    const csv = rows.map((value) => `"${value.replace(/"/g, '""')}"`).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'voucher-codes.csv';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   const handleCreatePromotion = async () => {
     if (!restaurantId) return;
     if (!validateStep(5)) return;
@@ -453,6 +537,8 @@ export default function PromotionsPage() {
       order_types: orderTypes,
       min_subtotal: minSubtotal ? Number(minSubtotal) : null,
       promo_terms: promoTerms,
+      max_uses_total: maxUsesTotal ? Number(maxUsesTotal) : null,
+      max_uses_per_customer: maxUsesPerCustomer ? Number(maxUsesPerCustomer) : null,
     };
 
     const { data: insertedPromotion, error: insertError } = await supabase
@@ -996,22 +1082,132 @@ export default function PromotionsPage() {
                         className="w-full max-w-[180px] rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
                       />
                     </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Max uses total (optional)</label>
+                        <input
+                          value={maxUsesTotal}
+                          onChange={(e) => setMaxUsesTotal(e.target.value)}
+                          type="number"
+                          min="1"
+                          step="1"
+                          className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                        />
+                        {errors.maxUsesTotal ? <p className="mt-1 text-xs text-red-600">{errors.maxUsesTotal}</p> : null}
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Max uses per customer (optional)</label>
+                        <input
+                          value={maxUsesPerCustomer}
+                          onChange={(e) => setMaxUsesPerCustomer(e.target.value)}
+                          type="number"
+                          min="1"
+                          step="1"
+                          className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                        />
+                        {errors.maxUsesPerCustomer ? <p className="mt-1 text-xs text-red-600">{errors.maxUsesPerCustomer}</p> : null}
+                      </div>
+                    </div>
                   </div>
                 ) : null}
 
                 {step === 4 ? (
                   <div className="space-y-4">
                     {type === 'voucher' ? (
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-gray-700">Voucher codes (one per line)</label>
-                        <textarea
-                          value={voucherCodesRaw}
-                          onChange={(e) => setVoucherCodesRaw(e.target.value)}
-                          rows={6}
-                          className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
-                          placeholder={'SAVE10\nWELCOME20'}
-                        />
-                        {errors.voucherCodes ? <p className="mt-1 text-xs text-red-600">{errors.voucherCodes}</p> : null}
+                      <div className="space-y-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setShowCodeGenerator((prev) => !prev)}
+                            className="rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                          >
+                            Generate codes
+                          </button>
+                          <button
+                            type="button"
+                            onClick={exportVoucherCodesCsv}
+                            disabled={voucherCodes.length === 0}
+                            className="rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+                          >
+                            Export CSV
+                          </button>
+                        </div>
+
+                        {showCodeGenerator ? (
+                          <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              <div>
+                                <label className="mb-1 block text-xs font-medium text-gray-700">Quantity</label>
+                                <input
+                                  value={generatorQuantity}
+                                  onChange={(e) => setGeneratorQuantity(e.target.value)}
+                                  type="number"
+                                  min="1"
+                                  max="500"
+                                  className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs"
+                                />
+                              </div>
+                              <div>
+                                <label className="mb-1 block text-xs font-medium text-gray-700">Code length</label>
+                                <input
+                                  value={generatorLength}
+                                  onChange={(e) => setGeneratorLength(e.target.value)}
+                                  type="number"
+                                  min="4"
+                                  max="24"
+                                  className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs"
+                                />
+                              </div>
+                              <div>
+                                <label className="mb-1 block text-xs font-medium text-gray-700">Prefix (optional)</label>
+                                <input
+                                  value={generatorPrefix}
+                                  onChange={(e) => setGeneratorPrefix(e.target.value)}
+                                  type="text"
+                                  className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs uppercase"
+                                />
+                              </div>
+                              <label className="flex items-center gap-2 text-xs text-gray-700 sm:pt-5">
+                                <input
+                                  type="checkbox"
+                                  checked={generatorAvoidConfusing}
+                                  onChange={(e) => setGeneratorAvoidConfusing(e.target.checked)}
+                                />
+                                Avoid confusing chars (0/O, 1/I)
+                              </label>
+                            </div>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => generateVoucherCodes(false)}
+                                className="rounded bg-teal-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-teal-700"
+                              >
+                                Append generated
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => generateVoucherCodes(true)}
+                                className="rounded border border-gray-300 px-2.5 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100"
+                              >
+                                Replace existing
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
+
+                        <div>
+                          <label className="mb-1 block text-sm font-medium text-gray-700">Voucher codes (one per line)</label>
+                          <textarea
+                            value={voucherCodesRaw}
+                            onChange={(e) => setVoucherCodesRaw(e.target.value)}
+                            rows={6}
+                            className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                            placeholder={'SAVE10\nWELCOME20'}
+                          />
+                          <p className="mt-1 text-xs text-gray-500">Duplicates are removed automatically (case-insensitive).</p>
+                          {errors.voucherCodes ? <p className="mt-1 text-xs text-red-600">{errors.voucherCodes}</p> : null}
+                        </div>
                       </div>
                     ) : (
                       <p className="text-sm text-gray-500">No extra configuration required for this promotion type.</p>

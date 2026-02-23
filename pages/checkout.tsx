@@ -204,7 +204,8 @@ export default function CheckoutPage() {
 
       const candidates = remainingIds
         .map((id) => promotions.find((promotion) => promotion.id === id))
-        .filter((promotion): promotion is PromotionListItem => !!promotion);
+        .filter((promotion): promotion is PromotionListItem => !!promotion)
+        .filter((promotion) => promotion.type !== 'voucher');
 
       const evaluated = await Promise.all(
         candidates.map(async (promotion) => {
@@ -485,27 +486,6 @@ export default function CheckoutPage() {
                 />
               </div>
 
-              <div className="mb-4 rounded-xl border border-slate-200 p-3">
-                <label className="block text-sm font-medium mb-1">Voucher code</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    className="w-full border rounded p-2"
-                    value={voucherCodeInput}
-                    onChange={(e) => setVoucherCodeInput(e.target.value)}
-                    placeholder="Enter code"
-                  />
-                  <button
-                    type="button"
-                    onClick={applyVoucherCode}
-                    className="rounded bg-teal-600 px-3 py-2 text-sm font-semibold text-white"
-                  >
-                    Apply code
-                  </button>
-                </div>
-                {voucherError ? <p className="mt-1 text-xs text-rose-600">{voucherError}</p> : null}
-              </div>
-
               <div className="mb-4 space-x-4 flex items-center">
                 <label className="font-medium">Time:</label>
                 <label className="flex items-center space-x-1">
@@ -573,6 +553,28 @@ export default function CheckoutPage() {
                     onChange={(e) => setNotes(e.target.value)}
                   />
                 </div>
+              </div>
+
+
+              <div className="mt-4 rounded-xl border border-slate-200 p-3">
+                <label className="block text-sm font-medium mb-1">Voucher code</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    className="w-full border rounded p-2"
+                    value={voucherCodeInput}
+                    onChange={(e) => setVoucherCodeInput(e.target.value)}
+                    placeholder="Enter code"
+                  />
+                  <button
+                    type="button"
+                    onClick={applyVoucherCode}
+                    className="rounded bg-teal-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-teal-700"
+                  >
+                    Apply code
+                  </button>
+                </div>
+                {voucherError ? <p className="mt-1 text-xs text-rose-600">{voucherError}</p> : null}
               </div>
             </div>
           </MotionDiv>

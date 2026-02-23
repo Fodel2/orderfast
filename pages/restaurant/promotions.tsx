@@ -154,7 +154,8 @@ export default function CustomerPromotionsPage() {
     if (!restaurantId || !customerId) return null;
     const candidatePromotions = candidateIds
       .map((id) => items.find((p) => p.id === id))
-      .filter((p): p is PromotionListItem => !!p);
+      .filter((p): p is PromotionListItem => !!p)
+      .filter((promotion) => promotion.type !== 'voucher');
 
     if (!candidatePromotions.length) return null;
 
