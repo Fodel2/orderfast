@@ -264,7 +264,7 @@ function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
       if (!el || typeof window === 'undefined') return;
       const { headerHeight, categoryHeight } = getCurrentHeaderHeights();
       const headerOffset = headerHeight + categoryHeight + CATEGORY_FADE_HEIGHT + 8;
-      scrollElementToTop(el, headerOffset, 'smooth');
+      scrollElementToTop(el, { headerOffset, behavior: 'smooth' });
     },
     [getCurrentHeaderHeights, registerActivity]
   );

@@ -2,7 +2,30 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { createMiddlewareSupabaseClient } from '@supabase/auth-helpers-nextjs';
 
+const PUBLIC_STATIC_ROUTES = new Set([
+  '/site.webmanifest',
+  '/favicon.ico',
+  '/robots.txt',
+  '/sitemap.xml',
+]);
+
+function isPublicStaticAsset(pathname: string) {
+  return (
+    pathname.startsWith('/_next/') ||
+    pathname.startsWith('/icons/') ||
+    PUBLIC_STATIC_ROUTES.has(pathname)
+  );
+}
+
 export async function middleware(req: NextRequest) {
+  if (isPublicStaticAsset(req.nextUrl.pathname)) {
+    return NextResponse.next();
+  }
+
+  if (!req.nextUrl.pathname.startsWith('/dashboard')) {
+    return NextResponse.next();
+  }
+
   const res = NextResponse.next();
   const supabase = createMiddlewareSupabaseClient({ req, res });
 
@@ -23,6 +46,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*'],
+  matcher: ['/((?!_next/static|_next/image).*)'],
 };
-
