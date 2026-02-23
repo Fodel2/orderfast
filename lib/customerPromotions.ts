@@ -225,7 +225,7 @@ export function describeInvalidReason(reason: string | null) {
     voucher_not_started: 'Voucher code is not active yet.',
     voucher_max_uses_total_reached: 'Voucher usage limit reached.',
     voucher_max_uses_per_customer_reached: 'You have used this voucher maximum times.',
-    not_implemented: 'Offer logic is coming soon.',
+    not_implemented: 'This promotion is not available right now.',
   };
   return map[reason] || 'This offer cannot be applied right now.';
 }

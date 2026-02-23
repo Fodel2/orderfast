@@ -138,7 +138,7 @@ export default function CheckoutPage() {
       });
 
       if (!voucherPromotion?.promotion_id) {
-        setVoucherError('Code not valid.');
+        setVoucherError('Code not recognised.');
         return;
       }
 
