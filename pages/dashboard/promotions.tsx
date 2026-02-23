@@ -329,8 +329,11 @@ export default function PromotionsPage() {
           nextErrors.discountValue = 'Fixed discount must be greater than 0.';
         }
 
-        if (maxDiscountCap && Number(maxDiscountCap) < 0) {
-          nextErrors.maxDiscountCap = 'Max cap must be 0 or greater.';
+        if (maxDiscountCap) {
+          const cap = Number(maxDiscountCap);
+          if (Number.isNaN(cap) || cap <= 0) {
+            nextErrors.maxDiscountCap = 'Max cap must be greater than 0.';
+          }
         }
       }
 
@@ -786,7 +789,7 @@ export default function PromotionsPage() {
                             value={discountValue}
                             onChange={(e) => setDiscountValue(e.target.value)}
                             type="number"
-                            min="0"
+                            min="0.01"
                             className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
                           />
                           {errors.discountValue ? <p className="mt-1 text-xs text-red-600">{errors.discountValue}</p> : null}
@@ -797,7 +800,7 @@ export default function PromotionsPage() {
                             value={maxDiscountCap}
                             onChange={(e) => setMaxDiscountCap(e.target.value)}
                             type="number"
-                            min="0"
+                            min="0.01"
                             className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
                           />
                           {errors.maxDiscountCap ? <p className="mt-1 text-xs text-red-600">{errors.maxDiscountCap}</p> : null}

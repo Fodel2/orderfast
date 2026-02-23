@@ -218,6 +218,7 @@ export function describeInvalidReason(reason: string | null) {
     outside_recurring_window: 'Valid only in a scheduled time window.',
     channel_not_allowed: 'This offer is not available on website.',
     order_type_not_allowed: 'This offer is not available for this order type.',
+    voucher_required: 'Enter a voucher code to use this promotion.',
     max_uses_total_reached: 'This offer has reached its total usage limit.',
     max_uses_per_customer_reached: 'You have reached your usage limit for this offer.',
     voucher_not_found: 'Voucher code not found.',
@@ -225,6 +226,7 @@ export function describeInvalidReason(reason: string | null) {
     voucher_not_started: 'Voucher code is not active yet.',
     voucher_max_uses_total_reached: 'Voucher usage limit reached.',
     voucher_max_uses_per_customer_reached: 'You have used this voucher maximum times.',
+    invalid_reward_payload: 'This promotion is misconfigured. Please try another one.',
     not_implemented: 'This promotion is not available right now.',
   };
   return map[reason] || 'This offer cannot be applied right now.';
