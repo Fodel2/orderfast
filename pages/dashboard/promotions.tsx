@@ -15,7 +15,7 @@ type PromotionType =
   | 'delivery_promo'
   | 'loyalty_redemption';
 
-type PromotionStatus = 'draft' | 'scheduled' | 'active' | 'paused' | 'expired';
+type PromotionStatus = 'draft' | 'scheduled' | 'active' | 'paused' | 'expired' | 'archived';
 
 type PromotionRow = {
   id: string;
@@ -33,6 +33,8 @@ type PromotionRow = {
   channels: string[];
   order_types: string[];
   min_subtotal: number | null;
+  max_uses_total: number | null;
+  max_uses_per_customer: number | null;
   created_at: string;
 };
 
@@ -78,6 +80,9 @@ export default function PromotionsPage() {
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<WizardErrors>({});
+  const [editingPromotionId, setEditingPromotionId] = useState<string | null>(null);
+  const [listFilter, setListFilter] = useState<'active' | 'archived'>('active');
+  const [archivingPromotionId, setArchivingPromotionId] = useState<string | null>(null);
 
   const [type, setType] = useState<PromotionType>('basket_discount');
   const [name, setName] = useState('');
@@ -90,6 +95,13 @@ export default function PromotionsPage() {
   const [freeDeliveryMinSubtotal, setFreeDeliveryMinSubtotal] = useState('');
   const [deliveryFeeCap, setDeliveryFeeCap] = useState('');
   const [voucherCodesRaw, setVoucherCodesRaw] = useState('');
+  const [maxUsesTotal, setMaxUsesTotal] = useState('');
+  const [maxUsesPerCustomer, setMaxUsesPerCustomer] = useState('');
+  const [showCodeGenerator, setShowCodeGenerator] = useState(false);
+  const [generatorQuantity, setGeneratorQuantity] = useState('10');
+  const [generatorLength, setGeneratorLength] = useState('8');
+  const [generatorPrefix, setGeneratorPrefix] = useState('');
+  const [generatorAvoidConfusing, setGeneratorAvoidConfusing] = useState(true);
 
   const [startsAt, setStartsAt] = useState('');
   const [endsAt, setEndsAt] = useState('');
@@ -103,10 +115,25 @@ export default function PromotionsPage() {
 
   const [promoTerms, setPromoTerms] = useState('');
 
-  const voucherCodes = useMemo(
-    () => voucherCodesRaw.split(/\r?\n/).map((v) => v.trim()).filter(Boolean),
-    [voucherCodesRaw]
-  );
+  const parseVoucherCodes = (raw: string) => {
+    const seen = new Set<string>();
+    const lines = raw
+      .split(/\r?\n/)
+      .map((v) => v.trim())
+      .filter(Boolean);
+
+    const unique: string[] = [];
+    for (const line of lines) {
+      const normalized = line.toLowerCase();
+      if (seen.has(normalized)) continue;
+      seen.add(normalized);
+      unique.push(line);
+    }
+    return unique;
+  };
+
+  const voucherCodes = useMemo(() => parseVoucherCodes(voucherCodesRaw), [voucherCodesRaw]);
+
 
   const isSupportedType = SUPPORTED_TYPES.includes(type);
 
@@ -198,7 +225,7 @@ export default function PromotionsPage() {
     const { data, error } = await supabase
       .from('promotions')
       .select(
-        'id,restaurant_id,name,type,status,priority,is_recurring,starts_at,ends_at,days_of_week,time_window_start,time_window_end,channels,order_types,min_subtotal,created_at'
+        'id,restaurant_id,name,type,status,priority,is_recurring,starts_at,ends_at,days_of_week,time_window_start,time_window_end,channels,order_types,min_subtotal,max_uses_total,max_uses_per_customer,created_at'
       )
       .eq('restaurant_id', currentRestaurantId)
       .order('priority', { ascending: true })
@@ -237,6 +264,12 @@ export default function PromotionsPage() {
     }
     return 'Always on';
   };
+
+
+  const displayedPromotions = useMemo(() => {
+    if (listFilter === 'archived') return promotions.filter((promotion) => promotion.status === 'archived');
+    return promotions.filter((promotion) => promotion.status !== 'archived');
+  }, [listFilter, promotions]);
 
   const valueLabel = useMemo(() => {
     if (type === 'delivery_promo') {
@@ -286,6 +319,13 @@ export default function PromotionsPage() {
     setFreeDeliveryMinSubtotal('');
     setDeliveryFeeCap('');
     setVoucherCodesRaw('');
+    setMaxUsesTotal('');
+    setMaxUsesPerCustomer('');
+    setShowCodeGenerator(false);
+    setGeneratorQuantity('10');
+    setGeneratorLength('8');
+    setGeneratorPrefix('');
+    setGeneratorAvoidConfusing(true);
     setStartsAt('');
     setEndsAt('');
     setIsRecurring(false);
@@ -329,8 +369,11 @@ export default function PromotionsPage() {
           nextErrors.discountValue = 'Fixed discount must be greater than 0.';
         }
 
-        if (maxDiscountCap && Number(maxDiscountCap) < 0) {
-          nextErrors.maxDiscountCap = 'Max cap must be 0 or greater.';
+        if (maxDiscountCap) {
+          const cap = Number(maxDiscountCap);
+          if (Number.isNaN(cap) || cap <= 0) {
+            nextErrors.maxDiscountCap = 'Max cap must be greater than 0.';
+          }
         }
       }
 
@@ -362,6 +405,20 @@ export default function PromotionsPage() {
     if (currentStep === 3) {
       if (channels.length === 0) nextErrors.channels = 'Pick at least one channel.';
       if (orderTypes.length === 0) nextErrors.orderTypes = 'Pick at least one order type.';
+
+      if (maxUsesTotal) {
+        const total = Number(maxUsesTotal);
+        if (!Number.isInteger(total) || total <= 0) {
+          nextErrors.maxUsesTotal = 'Total usage limit must be a whole number greater than 0.';
+        }
+      }
+
+      if (maxUsesPerCustomer) {
+        const perCustomer = Number(maxUsesPerCustomer);
+        if (!Number.isInteger(perCustomer) || perCustomer <= 0) {
+          nextErrors.maxUsesPerCustomer = 'Per-customer limit must be a whole number greater than 0.';
+        }
+      }
     }
 
     if (currentStep === 4 && type === 'voucher') {
@@ -424,6 +481,140 @@ export default function PromotionsPage() {
     setToastMessage('Global promotion terms saved.');
   };
 
+
+  const generateVoucherCodes = (replaceExisting: boolean) => {
+    const quantity = Math.max(1, Math.min(500, Number(generatorQuantity) || 10));
+    const length = Math.max(4, Math.min(24, Number(generatorLength) || 8));
+    const prefix = generatorPrefix.trim().toUpperCase();
+    const charset = generatorAvoidConfusing ? 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' : 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+
+    const generated: string[] = [];
+    const existing = parseVoucherCodes(voucherCodesRaw);
+    const seen = new Set((replaceExisting ? [] : existing).map((code) => code.toLowerCase()));
+
+    while (generated.length < quantity) {
+      let core = '';
+      for (let i = 0; i < length; i += 1) {
+        core += charset[Math.floor(Math.random() * charset.length)];
+      }
+      const fullCode = prefix ? `${prefix}${core}` : core;
+      const normalized = fullCode.toLowerCase();
+      if (seen.has(normalized)) continue;
+      seen.add(normalized);
+      generated.push(fullCode);
+    }
+
+    const nextCodes = replaceExisting ? generated : [...existing, ...generated];
+    setVoucherCodesRaw(nextCodes.join('\n'));
+  };
+
+  const exportVoucherCodesCsv = () => {
+    const rows = ['code', ...voucherCodes];
+    const csv = rows.map((value) => `"${value.replace(/"/g, '""')}"`).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'voucher-codes.csv';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const openEditPromotion = async (promotion: PromotionRow) => {
+    if (!restaurantId) return;
+
+    setErrors({});
+    setEditingPromotionId(promotion.id);
+    setShowWizard(true);
+    setStep(1);
+
+    setType(promotion.type);
+    setName(promotion.name || '');
+    setDescription('');
+    setPriority(String(promotion.priority ?? 100));
+    setMinSubtotal(promotion.min_subtotal != null ? String(promotion.min_subtotal) : '');
+    setMaxUsesTotal(promotion.max_uses_total != null ? String(promotion.max_uses_total) : '');
+    setMaxUsesPerCustomer(promotion.max_uses_per_customer != null ? String(promotion.max_uses_per_customer) : '');
+    setStartsAt(promotion.starts_at ? promotion.starts_at.slice(0, 16) : '');
+    setEndsAt(promotion.ends_at ? promotion.ends_at.slice(0, 16) : '');
+    setIsRecurring(!!promotion.is_recurring);
+    setDaysOfWeek(promotion.days_of_week || []);
+    setTimeWindowStart(promotion.time_window_start || '');
+    setTimeWindowEnd(promotion.time_window_end || '');
+    setChannels(promotion.channels || ['website']);
+    setOrderTypes(promotion.order_types || ['delivery', 'collection']);
+
+    const { data: rewardRow } = await supabase
+      .from('promotion_rewards')
+      .select('reward')
+      .eq('promotion_id', promotion.id)
+      .maybeSingle();
+
+    const reward = rewardRow?.reward as Record<string, unknown> | undefined;
+    if (promotion.type === 'delivery_promo') {
+      setFreeDeliveryMinSubtotal(
+        typeof reward?.free_delivery_min_subtotal === 'number' || typeof reward?.free_delivery_min_subtotal === 'string'
+          ? String(reward.free_delivery_min_subtotal)
+          : ''
+      );
+      setDeliveryFeeCap(
+        typeof reward?.delivery_fee_cap === 'number' || typeof reward?.delivery_fee_cap === 'string'
+          ? String(reward.delivery_fee_cap)
+          : ''
+      );
+      setDiscountType('percent');
+      setDiscountValue('');
+      setMaxDiscountCap('');
+    } else {
+      setDiscountType(reward?.discount_type === 'fixed' ? 'fixed' : 'percent');
+      setDiscountValue(
+        typeof reward?.discount_value === 'number' || typeof reward?.discount_value === 'string'
+          ? String(reward.discount_value)
+          : ''
+      );
+      setMaxDiscountCap(
+        typeof reward?.max_discount_cap === 'number' || typeof reward?.max_discount_cap === 'string'
+          ? String(reward.max_discount_cap)
+          : ''
+      );
+      setFreeDeliveryMinSubtotal('');
+      setDeliveryFeeCap('');
+    }
+
+    if (promotion.type === 'voucher') {
+      const { data: codes } = await supabase
+        .from('promotion_voucher_codes')
+        .select('code')
+        .eq('promotion_id', promotion.id)
+        .order('created_at', { ascending: true });
+      setVoucherCodesRaw((codes || []).map((row) => row.code).join('\n'));
+    } else {
+      setVoucherCodesRaw('');
+    }
+  };
+
+  const archivePromotion = async () => {
+    if (!restaurantId || !archivingPromotionId) return;
+    const { error } = await supabase
+      .from('promotions')
+      .update({ status: 'archived' })
+      .eq('id', archivingPromotionId)
+      .eq('restaurant_id', restaurantId);
+
+    if (error) {
+      handleSupabaseError('Failed to archive promotion', error.message);
+      return;
+    }
+
+    setPromotions((prev) => prev.map((promotion) => (
+      promotion.id === archivingPromotionId ? { ...promotion, status: 'archived' } : promotion
+    )));
+    setArchivingPromotionId(null);
+    setToastMessage('Promotion archived.');
+  };
+
   const handleCreatePromotion = async () => {
     if (!restaurantId) return;
     if (!validateStep(5)) return;
@@ -450,17 +641,29 @@ export default function PromotionsPage() {
       order_types: orderTypes,
       min_subtotal: minSubtotal ? Number(minSubtotal) : null,
       promo_terms: promoTerms,
+      max_uses_total: maxUsesTotal ? Number(maxUsesTotal) : null,
+      max_uses_per_customer: maxUsesPerCustomer ? Number(maxUsesPerCustomer) : null,
     };
 
-    const { data: insertedPromotion, error: insertError } = await supabase
-      .from('promotions')
-      .insert(promotionPayload)
-      .select('id')
-      .single();
+    const saveQuery = editingPromotionId
+      ? supabase
+          .from('promotions')
+          .update(promotionPayload)
+          .eq('id', editingPromotionId)
+          .eq('restaurant_id', restaurantId)
+          .select('id')
+          .single()
+      : supabase
+          .from('promotions')
+          .insert(promotionPayload)
+          .select('id')
+          .single();
+
+    const { data: insertedPromotion, error: insertError } = await saveQuery;
 
     if (insertError || !insertedPromotion?.id) {
       setSubmitting(false);
-      handleSupabaseError('Failed to create promotion', insertError?.message || 'unknown error');
+      handleSupabaseError(editingPromotionId ? 'Failed to update promotion' : 'Failed to create promotion', insertError?.message || 'unknown error');
       return;
     }
 
@@ -491,24 +694,63 @@ export default function PromotionsPage() {
     }
 
     if (type === 'voucher') {
-      const codeRows = voucherCodes.map((code) => ({
-        promotion_id: insertedPromotion.id,
-        code,
-      }));
+      const desiredCodes = voucherCodes.map((code) => code.trim()).filter(Boolean);
+      const { data: existingCodes, error: existingCodesError } = await supabase
+        .from('promotion_voucher_codes')
+        .select('id,code')
+        .eq('promotion_id', insertedPromotion.id);
 
-      const { error: codesError } = await supabase.from('promotion_voucher_codes').insert(codeRows);
-      if (codesError) {
+      if (existingCodesError) {
         setSubmitting(false);
-        handleSupabaseError('Promotion created but voucher codes failed', codesError.message);
+        handleSupabaseError('Failed to load voucher codes', existingCodesError.message);
         return;
+      }
+
+      const existingByNormalized = new Map((existingCodes || []).map((row) => [row.code.toLowerCase(), row]));
+      const desiredSet = new Set(desiredCodes.map((code) => code.toLowerCase()));
+
+      const codesToInsert = desiredCodes.filter((code) => !existingByNormalized.has(code.toLowerCase()));
+      if (codesToInsert.length > 0) {
+        const { error: insertCodesError } = await supabase.from('promotion_voucher_codes').insert(
+          codesToInsert.map((code) => ({ promotion_id: insertedPromotion.id, code }))
+        );
+        if (insertCodesError) {
+          setSubmitting(false);
+          handleSupabaseError('Failed to save voucher codes', insertCodesError.message);
+          return;
+        }
+      }
+
+      const removable = (existingCodes || []).filter((row) => !desiredSet.has(row.code.toLowerCase()));
+      if (removable.length > 0) {
+        const removableIds = removable.map((row) => row.id);
+        const { data: redeemedRows } = await supabase
+          .from('promotion_redemptions')
+          .select('voucher_code_id')
+          .in('voucher_code_id', removableIds);
+        const usedIds = new Set((redeemedRows || []).map((row) => row.voucher_code_id));
+        const deletableIds = removableIds.filter((id) => !usedIds.has(id));
+
+        if (deletableIds.length > 0) {
+          const { error: deleteCodesError } = await supabase
+            .from('promotion_voucher_codes')
+            .delete()
+            .in('id', deletableIds);
+          if (deleteCodesError) {
+            setSubmitting(false);
+            handleSupabaseError('Failed to remove voucher codes', deleteCodesError.message);
+            return;
+          }
+        }
       }
     }
 
     await fetchPromotions(restaurantId);
     setSubmitting(false);
     setShowWizard(false);
+    setEditingPromotionId(null);
     resetWizard();
-    setToastMessage('Promotion created successfully.');
+    setToastMessage(editingPromotionId ? 'Promotion updated successfully.' : 'Promotion created successfully.');
   };
 
   if (loading) {
@@ -530,6 +772,7 @@ export default function PromotionsPage() {
           <button
             type="button"
             onClick={() => {
+              setEditingPromotionId(null);
               resetWizard();
               setShowWizard(true);
             }}
@@ -587,8 +830,27 @@ export default function PromotionsPage() {
 
         <section className="rounded-2xl bg-white p-5 shadow-sm">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">Active promotion list</h2>
-            <span className="text-sm text-gray-500">{promotions.length} total</span>
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Promotions</h2>
+              <p className="text-xs text-gray-500">Manage active and archived promotions.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setListFilter('active')}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${listFilter === 'active' ? 'bg-teal-100 text-teal-800' : 'border border-gray-300 text-gray-600 hover:bg-gray-50'}`}
+              >
+                Active
+              </button>
+              <button
+                type="button"
+                onClick={() => setListFilter('archived')}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${listFilter === 'archived' ? 'bg-teal-100 text-teal-800' : 'border border-gray-300 text-gray-600 hover:bg-gray-50'}`}
+              >
+                Archived
+              </button>
+              <span className="text-sm text-gray-500">{displayedPromotions.length} shown</span>
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
@@ -605,7 +867,7 @@ export default function PromotionsPage() {
                 </tr>
               </thead>
               <tbody>
-                {promotions.map((promotion) => (
+                {displayedPromotions.map((promotion) => (
                   <tr key={promotion.id} className="border-b last:border-b-0">
                     <td className="py-3 pr-4 font-medium text-gray-900">{promotion.name}</td>
                     <td className="py-3 pr-4 text-gray-700">{promotion.type}</td>
@@ -621,29 +883,45 @@ export default function PromotionsPage() {
                       {promotion.min_subtotal != null ? `£${promotion.min_subtotal}` : '—'}
                     </td>
                     <td className="py-3">
-                      {promotion.status === 'active' || promotion.status === 'paused' ? (
+                      <div className="flex flex-wrap items-center gap-2">
                         <button
                           type="button"
-                          onClick={() => handleToggleStatus(promotion)}
-                          disabled={togglingId === promotion.id}
-                          className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
+                          onClick={() => openEditPromotion(promotion)}
+                          className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 transition hover:bg-gray-50"
                         >
-                          {togglingId === promotion.id
-                            ? 'Saving...'
-                            : promotion.status === 'active'
-                              ? 'Pause'
-                              : 'Activate'}
+                          Edit
                         </button>
-                      ) : (
-                        <span className="text-xs text-gray-400">No toggle</span>
-                      )}
+                        {promotion.status === 'active' || promotion.status === 'paused' ? (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleStatus(promotion)}
+                            disabled={togglingId === promotion.id}
+                            className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
+                          >
+                            {togglingId === promotion.id
+                              ? 'Saving...'
+                              : promotion.status === 'active'
+                                ? 'Pause'
+                                : 'Activate'}
+                          </button>
+                        ) : null}
+                        {promotion.status !== 'archived' ? (
+                          <button
+                            type="button"
+                            onClick={() => setArchivingPromotionId(promotion.id)}
+                            className="rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50"
+                          >
+                            Delete
+                          </button>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 ))}
-                {promotions.length === 0 ? (
+                {displayedPromotions.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="py-8 text-center text-gray-500">
-                      No promotions yet. Create your first promotion.
+                      No promotions found for this filter.
                     </td>
                   </tr>
                 ) : null}
@@ -676,15 +954,40 @@ export default function PromotionsPage() {
         </section>
       </div>
 
+      {archivingPromotionId ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900">Archive promotion?</h3>
+            <p className="mt-2 text-sm text-gray-600">This will hide the promotion from customers and checkout. Past redemptions remain for reporting.</p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setArchivingPromotionId(null)}
+                className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={archivePromotion}
+                className="rounded-lg bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-rose-700"
+              >
+                Archive
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {showWizard ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-3">
           <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
             <div className="sticky top-0 z-10 border-b bg-white px-4 py-3 md:px-6">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-gray-900">Create promotion</h3>
+                <h3 className="text-lg font-semibold text-gray-900">{editingPromotionId ? 'Edit promotion' : 'Create promotion'}</h3>
                 <button
                   type="button"
-                  onClick={() => setShowWizard(false)}
+                  onClick={() => { setShowWizard(false); setEditingPromotionId(null); resetWizard(); }}
                   className="rounded-md p-1 text-gray-500 hover:bg-gray-100"
                 >
                   <XMarkIcon className="h-5 w-5" />
@@ -786,7 +1089,7 @@ export default function PromotionsPage() {
                             value={discountValue}
                             onChange={(e) => setDiscountValue(e.target.value)}
                             type="number"
-                            min="0"
+                            min="0.01"
                             className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
                           />
                           {errors.discountValue ? <p className="mt-1 text-xs text-red-600">{errors.discountValue}</p> : null}
@@ -797,7 +1100,7 @@ export default function PromotionsPage() {
                             value={maxDiscountCap}
                             onChange={(e) => setMaxDiscountCap(e.target.value)}
                             type="number"
-                            min="0"
+                            min="0.01"
                             className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
                           />
                           {errors.maxDiscountCap ? <p className="mt-1 text-xs text-red-600">{errors.maxDiscountCap}</p> : null}
@@ -993,22 +1296,132 @@ export default function PromotionsPage() {
                         className="w-full max-w-[180px] rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
                       />
                     </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Max uses total (optional)</label>
+                        <input
+                          value={maxUsesTotal}
+                          onChange={(e) => setMaxUsesTotal(e.target.value)}
+                          type="number"
+                          min="1"
+                          step="1"
+                          className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                        />
+                        {errors.maxUsesTotal ? <p className="mt-1 text-xs text-red-600">{errors.maxUsesTotal}</p> : null}
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Max uses per customer (optional)</label>
+                        <input
+                          value={maxUsesPerCustomer}
+                          onChange={(e) => setMaxUsesPerCustomer(e.target.value)}
+                          type="number"
+                          min="1"
+                          step="1"
+                          className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                        />
+                        {errors.maxUsesPerCustomer ? <p className="mt-1 text-xs text-red-600">{errors.maxUsesPerCustomer}</p> : null}
+                      </div>
+                    </div>
                   </div>
                 ) : null}
 
                 {step === 4 ? (
                   <div className="space-y-4">
                     {type === 'voucher' ? (
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-gray-700">Voucher codes (one per line)</label>
-                        <textarea
-                          value={voucherCodesRaw}
-                          onChange={(e) => setVoucherCodesRaw(e.target.value)}
-                          rows={6}
-                          className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
-                          placeholder={'SAVE10\nWELCOME20'}
-                        />
-                        {errors.voucherCodes ? <p className="mt-1 text-xs text-red-600">{errors.voucherCodes}</p> : null}
+                      <div className="space-y-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setShowCodeGenerator((prev) => !prev)}
+                            className="rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                          >
+                            Generate codes
+                          </button>
+                          <button
+                            type="button"
+                            onClick={exportVoucherCodesCsv}
+                            disabled={voucherCodes.length === 0}
+                            className="rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+                          >
+                            Export CSV
+                          </button>
+                        </div>
+
+                        {showCodeGenerator ? (
+                          <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              <div>
+                                <label className="mb-1 block text-xs font-medium text-gray-700">Quantity</label>
+                                <input
+                                  value={generatorQuantity}
+                                  onChange={(e) => setGeneratorQuantity(e.target.value)}
+                                  type="number"
+                                  min="1"
+                                  max="500"
+                                  className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs"
+                                />
+                              </div>
+                              <div>
+                                <label className="mb-1 block text-xs font-medium text-gray-700">Code length</label>
+                                <input
+                                  value={generatorLength}
+                                  onChange={(e) => setGeneratorLength(e.target.value)}
+                                  type="number"
+                                  min="4"
+                                  max="24"
+                                  className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs"
+                                />
+                              </div>
+                              <div>
+                                <label className="mb-1 block text-xs font-medium text-gray-700">Prefix (optional)</label>
+                                <input
+                                  value={generatorPrefix}
+                                  onChange={(e) => setGeneratorPrefix(e.target.value)}
+                                  type="text"
+                                  className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs uppercase"
+                                />
+                              </div>
+                              <label className="flex items-center gap-2 text-xs text-gray-700 sm:pt-5">
+                                <input
+                                  type="checkbox"
+                                  checked={generatorAvoidConfusing}
+                                  onChange={(e) => setGeneratorAvoidConfusing(e.target.checked)}
+                                />
+                                Avoid confusing chars (0/O, 1/I)
+                              </label>
+                            </div>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => generateVoucherCodes(false)}
+                                className="rounded bg-teal-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-teal-700"
+                              >
+                                Append generated
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => generateVoucherCodes(true)}
+                                className="rounded border border-gray-300 px-2.5 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100"
+                              >
+                                Replace existing
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
+
+                        <div>
+                          <label className="mb-1 block text-sm font-medium text-gray-700">Voucher codes (one per line)</label>
+                          <textarea
+                            value={voucherCodesRaw}
+                            onChange={(e) => setVoucherCodesRaw(e.target.value)}
+                            rows={6}
+                            className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                            placeholder={'SAVE10\nWELCOME20'}
+                          />
+                          <p className="mt-1 text-xs text-gray-500">Duplicates are removed automatically (case-insensitive).</p>
+                          {errors.voucherCodes ? <p className="mt-1 text-xs text-red-600">{errors.voucherCodes}</p> : null}
+                        </div>
                       </div>
                     ) : (
                       <p className="text-sm text-gray-500">No extra configuration required for this promotion type.</p>
@@ -1068,7 +1481,7 @@ export default function PromotionsPage() {
                     disabled={submitting}
                     className="rounded-xl bg-teal-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-700 disabled:opacity-40"
                   >
-                    {submitting ? 'Creating...' : 'Create promotion'}
+                    {submitting ? (editingPromotionId ? 'Saving...' : 'Creating...') : (editingPromotionId ? 'Save changes' : 'Create promotion')}
                   </button>
                 )}
               </div>

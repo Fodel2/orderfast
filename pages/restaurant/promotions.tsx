@@ -5,14 +5,19 @@ import { useOrderType } from '@/context/OrderTypeContext';
 import { useSession } from '@supabase/auth-helpers-react';
 import { useRestaurant } from '@/lib/restaurant-context';
 import {
+  addAppliedPromotionId,
   ActivePromotionSelection,
   clearActivePromotionSelection,
   describeInvalidReason,
   fetchCustomerPromotions,
+  getAppliedPromotionIds,
   getActivePromotionSelection,
   getStableGuestCustomerId,
   PromotionListItem,
+  removeAppliedPromotionId,
+  setAppliedPromotionIds,
   setActivePromotionSelection,
+  validatePromotion,
 } from '@/lib/customerPromotions';
 
 export default function CustomerPromotionsPage() {
@@ -25,6 +30,7 @@ export default function CustomerPromotionsPage() {
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<PromotionListItem[]>([]);
   const [activeSelection, setActiveSelection] = useState<ActivePromotionSelection | null>(null);
+  const [appliedPromotionIds, setAppliedPromotionIdsState] = useState<string[]>([]);
   const [confirmReplace, setConfirmReplace] = useState<PromotionListItem | null>(null);
 
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
@@ -35,6 +41,7 @@ export default function CustomerPromotionsPage() {
     const resolved = session?.user?.id || getStableGuestCustomerId(restaurantId);
     setCustomerId(resolved || null);
     setActiveSelection(getActivePromotionSelection(restaurantId));
+    setAppliedPromotionIdsState(getAppliedPromotionIds(restaurantId));
   }, [restaurantId, session?.user?.id]);
 
   const loadPromotions = async () => {
@@ -60,40 +67,158 @@ export default function CustomerPromotionsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId, customerId, currentOrderType, subtotal, cart.items.length]);
 
+  useEffect(() => {
+    if (!restaurantId || !activeSelection?.promotion_id) return;
+    if (appliedPromotionIds.includes(activeSelection.promotion_id)) return;
+    const nextIds = [...appliedPromotionIds, activeSelection.promotion_id];
+    persistApplied(nextIds);
+  }, [restaurantId, activeSelection?.promotion_id, appliedPromotionIds]);
+
   const activePromotion = useMemo(
     () => items.find((p) => p.id === activeSelection?.promotion_id) || null,
     [items, activeSelection]
   );
 
-  const sortedPromotions = useMemo(() => {
-    if (!activeSelection) return items;
-    const selected = items.find((p) => p.id === activeSelection.promotion_id);
-    const rest = items.filter((p) => p.id !== activeSelection.promotion_id);
-    return selected ? [selected, ...rest] : items;
-  }, [items, activeSelection]);
+  const nonVoucherItems = useMemo(() => items.filter((promotion) => promotion.type !== 'voucher'), [items]);
+
+  const appliedPromotions = useMemo(() => {
+    return appliedPromotionIds
+      .map((id) => {
+        const matched = items.find((p) => p.id === id);
+        if (matched) return matched;
+        if (activeSelection?.promotion_id === id && activeSelection.type === 'voucher') {
+          return {
+            id,
+            name: activeSelection.promotion_name || 'Voucher promotion',
+            type: 'voucher',
+            status: 'active',
+            starts_at: null,
+            ends_at: null,
+            min_subtotal: null,
+            is_currently_valid: true,
+            next_available_at: null,
+            invalid_reason: null,
+          } as PromotionListItem;
+        }
+        return null;
+      })
+      .filter((p): p is PromotionListItem => !!p);
+  }, [appliedPromotionIds, items, activeSelection]);
+
+  const availablePromotions = useMemo(
+    () => nonVoucherItems.filter((p) => !appliedPromotionIds.includes(p.id)),
+    [nonVoucherItems, appliedPromotionIds]
+  );
+
+  const persistApplied = (ids: string[]) => {
+    if (!restaurantId) return;
+    setAppliedPromotionIds(restaurantId, ids);
+    setAppliedPromotionIdsState(ids);
+  };
+
+  const setPromotionAsActive = (promotion: PromotionListItem, voucherCode?: string | null) => {
+    if (!restaurantId) return;
+    const next = {
+      promotion_id: promotion.id,
+      selected_at: new Date().toISOString(),
+      type: promotion.type,
+      voucher_code: voucherCode || null,
+      promotion_name: promotion.name,
+    };
+    setActivePromotionSelection(restaurantId, next);
+    setActiveSelection(next);
+  };
 
   const applyPromotion = (promotion: PromotionListItem) => {
-    if (!restaurantId) return;
+    if (!restaurantId || promotion.type === 'voucher') return;
 
     if (activeSelection?.type === 'loyalty_redemption' && activeSelection.promotion_id !== promotion.id) {
       setConfirmReplace(promotion);
       return;
     }
 
-    const next = {
-      promotion_id: promotion.id,
-      selected_at: new Date().toISOString(),
-      type: promotion.type,
-      voucher_code: activeSelection?.promotion_id === promotion.id ? activeSelection.voucher_code || null : null,
-    };
-    setActivePromotionSelection(restaurantId, next);
-    setActiveSelection(next);
+    addAppliedPromotionId(restaurantId, promotion.id);
+    const nextIds = Array.from(new Set([...appliedPromotionIds, promotion.id]));
+    setAppliedPromotionIdsState(nextIds);
+
+    if (!activeSelection) {
+      setPromotionAsActive(promotion);
+    }
   };
 
-  const removeActive = () => {
+  const makeActive = (promotion: PromotionListItem) => {
+    setPromotionAsActive(promotion, activeSelection?.promotion_id === promotion.id ? activeSelection.voucher_code : null);
+  };
+
+  const pickBestActivePromotion = async (candidateIds: string[]) => {
+    if (!restaurantId || !customerId) return null;
+    const candidatePromotions = candidateIds
+      .map((id) => items.find((p) => p.id === id))
+      .filter((p): p is PromotionListItem => !!p)
+      .filter((promotion) => promotion.type !== 'voucher');
+
+    if (!candidatePromotions.length) return null;
+
+    const scored = await Promise.all(
+      candidatePromotions.map(async (promotion) => {
+        try {
+          const result = await validatePromotion({
+            restaurantId,
+            customerId,
+            promotionId: promotion.id,
+            orderType: currentOrderType,
+            basketSubtotal: subtotal,
+            deliveryFee: currentOrderType === 'delivery' ? 300 : 0,
+          });
+          return {
+            promotion,
+            valid: result.valid,
+            savings: result.discount_amount + result.delivery_discount_amount,
+          };
+        } catch {
+          return { promotion, valid: false, savings: 0 };
+        }
+      })
+    );
+
+    scored.sort((a, b) => {
+      const aVoucherPenalty = a.promotion.type === 'voucher' ? 1 : 0;
+      const bVoucherPenalty = b.promotion.type === 'voucher' ? 1 : 0;
+      if (aVoucherPenalty !== bVoucherPenalty) return aVoucherPenalty - bVoucherPenalty;
+      if (a.valid !== b.valid) return a.valid ? -1 : 1;
+      return b.savings - a.savings;
+    });
+
+    return scored[0]?.promotion || null;
+  };
+
+  const removeAppliedPromotion = async (promotionId: string) => {
     if (!restaurantId) return;
-    clearActivePromotionSelection(restaurantId);
-    setActiveSelection(null);
+    removeAppliedPromotionId(restaurantId, promotionId);
+    const remainingIds = appliedPromotionIds.filter((id) => id !== promotionId);
+    setAppliedPromotionIdsState(remainingIds);
+
+    if (activeSelection?.promotion_id !== promotionId) return;
+
+    if (!remainingIds.length) {
+      clearActivePromotionSelection(restaurantId);
+      setActiveSelection(null);
+      return;
+    }
+
+    const bestPromotion = await pickBestActivePromotion(remainingIds);
+    if (!bestPromotion) {
+      clearActivePromotionSelection(restaurantId);
+      setActiveSelection(null);
+      return;
+    }
+
+    setPromotionAsActive(bestPromotion);
+  };
+
+  const removeActive = async () => {
+    if (!activeSelection) return;
+    await removeAppliedPromotion(activeSelection.promotion_id);
   };
 
   const scheduleLabel = (promo: PromotionListItem) => {
@@ -118,7 +243,7 @@ export default function CustomerPromotionsPage() {
     <CustomerLayout cartCount={cartCount}>
       <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-6">
         <h1 className="text-2xl font-semibold text-slate-900">Promotions</h1>
-        <p className="text-sm text-slate-600">One offer per order.</p>
+        <p className="text-sm text-slate-600">Apply promotions to your account and choose one active promotion for checkout.</p>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between">
@@ -135,7 +260,7 @@ export default function CustomerPromotionsPage() {
               <p className="text-lg font-semibold text-slate-800">£—</p>
             </div>
             <div className="rounded-xl bg-slate-50 p-3">
-              <p className="text-xs text-slate-500">Redeem</p>
+                <p className="text-xs text-slate-500">Redeem</p>
               <div className="mt-1 flex items-center gap-2">
                 <input disabled className="w-full rounded-lg border border-slate-200 px-2 py-1 text-sm" placeholder="0.00" />
                 <button disabled className="rounded-lg bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-500">Redeem</button>
@@ -144,24 +269,79 @@ export default function CustomerPromotionsPage() {
           </div>
         </section>
 
-        {activeSelection && activePromotion ? (
-          <section className="rounded-2xl border border-teal-200 bg-teal-50/70 p-4 shadow-sm transition-all">
+        {activeSelection ? (
+          <section className="rounded-2xl border border-teal-200 bg-teal-50/70 p-5 shadow-sm transition-all">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Active promotion</p>
-                <h3 className="mt-1 text-lg font-semibold text-slate-900">{activePromotion.name}</h3>
-                <p className="mt-1 text-sm text-teal-800">{scheduleLabel(activePromotion)}</p>
+                <h3 className="mt-1 text-xl font-semibold text-slate-900">{activePromotion?.name || activeSelection.promotion_name || 'Promotion'}</h3>
+                <p className="mt-1 text-sm text-teal-800">{activePromotion ? scheduleLabel(activePromotion) : 'Applied via code at checkout.'}</p>
               </div>
-              <button
-                type="button"
-                onClick={removeActive}
-                className="rounded-lg border border-teal-300 px-3 py-1.5 text-xs font-semibold text-teal-700 transition hover:bg-white"
-              >
-                Remove
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={removeActive}
+                  className="rounded-lg border border-teal-300 px-3 py-1.5 text-xs font-semibold text-teal-700 transition hover:bg-white"
+                >
+                  Remove
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const firstNonActiveNonVoucher = appliedPromotions.find(
+                      (promotion) => promotion.id !== activeSelection.promotion_id && promotion.type !== 'voucher'
+                    );
+                    if (firstNonActiveNonVoucher) makeActive(firstNonActiveNonVoucher);
+                  }}
+                  className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-teal-700"
+                >
+                  Change active
+                </button>
+              </div>
             </div>
           </section>
-        ) : null}
+        ) : (
+          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Active promotion</p>
+            <p className="mt-1 text-sm text-slate-600">No active promotion selected.</p>
+          </section>
+        )}
+
+        <section className="space-y-3">
+          <h2 className="text-lg font-semibold text-slate-900">Applied promotions</h2>
+          {appliedPromotions.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-5 text-sm text-slate-500">
+              You have not applied any promotions yet.
+            </div>
+          ) : (
+            appliedPromotions.map((promotion) => {
+              const isActive = activeSelection?.promotion_id === promotion.id;
+              return (
+                <article key={promotion.id} className={`rounded-2xl border bg-white p-4 shadow-sm ${isActive ? 'border-teal-300 ring-1 ring-teal-100' : 'border-slate-200'}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-base font-semibold text-slate-900">{promotion.name}</h3>
+                        {isActive ? <span className="rounded-full bg-teal-100 px-2 py-0.5 text-[11px] font-semibold text-teal-700">Active</span> : null}
+                      </div>
+                      <p className="mt-1 text-sm text-slate-600">{scheduleLabel(promotion)}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {!isActive && promotion.type !== 'voucher' ? (
+                        <button type="button" onClick={() => makeActive(promotion)} className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                          Make active
+                        </button>
+                      ) : null}
+                      <button type="button" onClick={() => removeAppliedPromotion(promotion.id)} className="rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50">
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              );
+            })
+          )}
+        </section>
 
         <section className="space-y-3">
           <h2 className="text-lg font-semibold text-slate-900">Available promotions</h2>
@@ -174,19 +354,16 @@ export default function CustomerPromotionsPage() {
                 </div>
               ))}
             </div>
-          ) : sortedPromotions.length === 0 ? (
+          ) : availablePromotions.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">
               No offers available right now.
             </div>
           ) : (
-            sortedPromotions.map((promotion) => {
-              const selected = activeSelection?.promotion_id === promotion.id;
+            availablePromotions.map((promotion) => {
               return (
                 <article
                   key={promotion.id}
-                  className={`rounded-2xl border bg-white p-4 shadow-sm transition-all ${
-                    selected ? 'border-teal-300 ring-2 ring-teal-100' : 'border-slate-200'
-                  }`}
+                  className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all"
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div>
@@ -212,7 +389,7 @@ export default function CustomerPromotionsPage() {
                       onClick={() => applyPromotion(promotion)}
                       className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-teal-700"
                     >
-                      {selected ? 'Selected' : 'Apply'}
+                      Apply
                     </button>
                   </div>
                 </article>
@@ -240,9 +417,12 @@ export default function CustomerPromotionsPage() {
                     selected_at: new Date().toISOString(),
                     type: confirmReplace.type,
                     voucher_code: null,
+                    promotion_name: confirmReplace.name,
                   };
                   setActivePromotionSelection(restaurantId, next);
                   setActiveSelection(next);
+                  const nextIds = Array.from(new Set([...appliedPromotionIds, confirmReplace.id]));
+                  persistApplied(nextIds);
                   setConfirmReplace(null);
                 }}
               >

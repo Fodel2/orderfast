@@ -10,11 +10,18 @@ import { supabase } from '../utils/supabaseClient';
 import { useSession } from '@supabase/auth-helpers-react';
 import { formatPrice } from '@/lib/orderDisplay';
 import {
+  addAppliedPromotionId,
+  clearActivePromotionSelection,
   describeInvalidReason,
+  fetchCustomerPromotions,
+  getAppliedPromotionIds,
   getActivePromotionSelection,
   getStableGuestCustomerId,
   setActivePromotionSelection,
+  setAppliedPromotionIds,
   setPromotionCheckoutBlock,
+  resolveVoucherPromotionByCode,
+  PromotionListItem,
   validatePromotion,
 } from '@/lib/customerPromotions';
 
@@ -98,14 +105,14 @@ export default function CheckoutPage() {
 
         const savings = res.discount_amount + res.delivery_discount_amount;
         if (res.valid) {
-          setPromoPreview({ valid: true, text: 'Offer ready to apply.', savings });
+          setPromoPreview({ valid: true, text: 'Promotion ready to apply.', savings });
         } else if (res.reason === 'min_subtotal_not_met') {
-          setPromoPreview({ valid: false, text: 'Add more items to unlock this offer.', savings: 0 });
+          setPromoPreview({ valid: false, text: 'Add more to your plate to unlock this offer.', savings: 0 });
         } else {
           setPromoPreview({ valid: false, text: describeInvalidReason(res.reason), savings: 0 });
         }
       } catch {
-        setPromoPreview({ valid: false, text: 'Unable to validate offer right now.', savings: 0 });
+        setPromoPreview({ valid: false, text: 'Unable to validate promotion right now.', savings: 0 });
       } finally {
         setPromoLoading(false);
       }
@@ -124,22 +131,21 @@ export default function CheckoutPage() {
       return;
     }
 
-    const { data: voucher, error } = await supabase
-      .from('promotion_voucher_codes')
-      .select('promotion_id')
-      .eq('code_normalized', code.toLowerCase())
-      .maybeSingle();
-
-    if (error || !voucher?.promotion_id) {
-      setVoucherError('Invalid voucher code.');
-      return;
-    }
-
     try {
+      const voucherPromotion = await resolveVoucherPromotionByCode({
+        restaurantId: cart.restaurant_id,
+        code,
+      });
+
+      if (!voucherPromotion?.promotion_id) {
+        setVoucherError('Code not recognised.');
+        return;
+      }
+
       const validation = await validatePromotion({
         restaurantId: cart.restaurant_id,
         customerId,
-        promotionId: voucher.promotion_id,
+        promotionId: voucherPromotion.promotion_id,
         voucherCode: code,
         orderType,
         basketSubtotal: subtotal,
@@ -147,21 +153,117 @@ export default function CheckoutPage() {
       });
 
       if (!validation.valid) {
-        setVoucherError(describeInvalidReason(validation.reason));
+        if (validation.reason === 'voucher_not_found') {
+          setVoucherError('Code not recognised.');
+        } else {
+          setVoucherError(describeInvalidReason(validation.reason));
+        }
         return;
       }
 
+      const savings = validation.discount_amount + validation.delivery_discount_amount;
       const selection = {
-        promotion_id: voucher.promotion_id,
+        promotion_id: voucherPromotion.promotion_id,
         selected_at: new Date().toISOString(),
         type: 'voucher',
         voucher_code: code,
+        promotion_name: voucherPromotion.promotion_name,
       };
       setActivePromotionSelection(cart.restaurant_id, selection);
+      addAppliedPromotionId(cart.restaurant_id, selection.promotion_id);
       setActiveSelection(selection);
+      setPromoPreview({ valid: true, text: 'Promotion code applied.', savings });
       setVoucherCodeInput('');
     } catch {
-      setVoucherError('Could not validate this code.');
+      setVoucherError('Could not validate this promotion code.');
+    }
+  };
+
+
+  const removeActivePromotion = async () => {
+    if (!cart.restaurant_id || !activeSelection?.promotion_id || !customerId || !orderType) return;
+
+    const appliedIds = getAppliedPromotionIds(cart.restaurant_id);
+    const remainingIds = appliedIds.filter((id) => id !== activeSelection.promotion_id);
+    setAppliedPromotionIds(cart.restaurant_id, remainingIds);
+
+    if (!remainingIds.length) {
+      clearActivePromotionSelection(cart.restaurant_id);
+      setActiveSelection(null);
+      setPromoPreview({ valid: false, text: '', savings: 0 });
+      return;
+    }
+
+    try {
+      const promotions = await fetchCustomerPromotions({
+        restaurantId: cart.restaurant_id,
+        customerId,
+        orderType,
+        basketSubtotal: subtotal,
+      });
+
+      const candidates = remainingIds
+        .map((id) => promotions.find((promotion) => promotion.id === id))
+        .filter((promotion): promotion is PromotionListItem => !!promotion)
+        .filter((promotion) => promotion.type !== 'voucher');
+
+      const evaluated = await Promise.all(
+        candidates.map(async (promotion) => {
+          try {
+            const validation = await validatePromotion({
+              restaurantId: cart.restaurant_id as string,
+              customerId,
+              promotionId: promotion.id,
+              orderType,
+              basketSubtotal: subtotal,
+              deliveryFee,
+            });
+            return {
+              promotion,
+              valid: validation.valid,
+              savings: validation.discount_amount + validation.delivery_discount_amount,
+            };
+          } catch {
+            return { promotion, valid: false, savings: 0 };
+          }
+        })
+      );
+
+      evaluated.sort((a, b) => {
+        const aVoucherPenalty = a.promotion.type === 'voucher' ? 1 : 0;
+        const bVoucherPenalty = b.promotion.type === 'voucher' ? 1 : 0;
+        if (aVoucherPenalty !== bVoucherPenalty) return aVoucherPenalty - bVoucherPenalty;
+        if (a.valid !== b.valid) return a.valid ? -1 : 1;
+        return b.savings - a.savings;
+      });
+
+      const bestEvaluation = evaluated[0];
+      const nextActive = bestEvaluation?.promotion;
+      if (!nextActive) {
+        clearActivePromotionSelection(cart.restaurant_id);
+        setActiveSelection(null);
+        setPromoPreview({ valid: false, text: '', savings: 0 });
+        return;
+      }
+
+      const nextSelection = {
+        promotion_id: nextActive.id,
+        selected_at: new Date().toISOString(),
+        type: nextActive.type,
+        voucher_code: null,
+        promotion_name: nextActive.name,
+      };
+      setActivePromotionSelection(cart.restaurant_id, nextSelection);
+      setActiveSelection(nextSelection);
+      setPromoPreview({
+        valid: !!bestEvaluation?.valid,
+        text: bestEvaluation?.valid ? 'Promotion ready to apply.' : 'Promotion selected.',
+        savings: bestEvaluation?.savings || 0,
+      });
+    } catch {
+      clearActivePromotionSelection(cart.restaurant_id);
+      setActiveSelection(null);
+      setPromoPreview({ valid: false, text: '', savings: 0 });
     }
   };
 
@@ -190,7 +292,7 @@ export default function CheckoutPage() {
       } catch {
         setPromotionCheckoutBlock(cart.restaurant_id, {
           reason: 'validation_failed',
-          details: 'Unable to validate your offer at checkout.',
+          details: 'Unable to validate your promotion at checkout.',
         });
         router.push({ pathname: '/restaurant/cart', query: { restaurant_id: cart.restaurant_id } });
         return;
@@ -384,27 +486,6 @@ export default function CheckoutPage() {
                 />
               </div>
 
-              <div className="mb-4 rounded-xl border border-slate-200 p-3">
-                <label className="block text-sm font-medium mb-1">Voucher code</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    className="w-full border rounded p-2"
-                    value={voucherCodeInput}
-                    onChange={(e) => setVoucherCodeInput(e.target.value)}
-                    placeholder="Enter code"
-                  />
-                  <button
-                    type="button"
-                    onClick={applyVoucherCode}
-                    className="rounded bg-teal-600 px-3 py-2 text-sm font-semibold text-white"
-                  >
-                    Apply code
-                  </button>
-                </div>
-                {voucherError ? <p className="mt-1 text-xs text-rose-600">{voucherError}</p> : null}
-              </div>
-
               <div className="mb-4 space-x-4 flex items-center">
                 <label className="font-medium">Time:</label>
                 <label className="flex items-center space-x-1">
@@ -473,6 +554,28 @@ export default function CheckoutPage() {
                   />
                 </div>
               </div>
+
+
+              <div className="mt-4 rounded-xl border border-slate-200 p-3">
+                <label className="block text-sm font-medium mb-1">Voucher code</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    className="w-full border rounded p-2"
+                    value={voucherCodeInput}
+                    onChange={(e) => setVoucherCodeInput(e.target.value)}
+                    placeholder="Enter code"
+                  />
+                  <button
+                    type="button"
+                    onClick={applyVoucherCode}
+                    className="rounded bg-teal-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-teal-700"
+                  >
+                    Apply code
+                  </button>
+                </div>
+                {voucherError ? <p className="mt-1 text-xs text-rose-600">{voucherError}</p> : null}
+              </div>
             </div>
           </MotionDiv>
         )}
@@ -481,8 +584,28 @@ export default function CheckoutPage() {
         <div className="mt-6 border-t pt-4">
           {activeSelection?.promotion_id ? (
             <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
-              <p className="font-semibold text-slate-800">Active promotion</p>
-              <p className="mt-1 text-slate-600">{promoLoading ? 'Checking offer...' : promoPreview.text || 'Offer selected.'}</p>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-semibold text-slate-800">Active promotion{activeSelection.promotion_name ? `: ${activeSelection.promotion_name}` : ''}</p>
+                  <p className="mt-1 text-slate-600">{promoLoading ? 'Checking promotion...' : promoPreview.text || 'Promotion selected.'}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={removeActivePromotion}
+                    className="rounded border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-white"
+                  >
+                    Remove
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => router.push('/restaurant/promotions')}
+                    className="rounded bg-teal-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-teal-700"
+                  >
+                    Change
+                  </button>
+                </div>
+              </div>
             </div>
           ) : null}
           <div className="flex justify-between mb-2">

@@ -16,6 +16,7 @@ export type PromotionListItem = {
 export type ActivePromotionSelection = {
   promotion_id: string;
   type: string;
+  promotion_name?: string | null;
   voucher_code?: string | null;
   selected_at: string;
 };
@@ -27,8 +28,16 @@ export type PromotionValidationResult = {
   delivery_discount_amount: number;
 };
 
+
+export type VoucherPromotionLookup = {
+  promotion_id: string;
+  promotion_name: string | null;
+  promotion_type: string | null;
+};
+
 const guestKey = (restaurantId: string) => `orderfast_guest_customer_${restaurantId}`;
 const activePromoKey = (restaurantId: string) => `orderfast_active_promotion_${restaurantId}`;
+const appliedPromoKey = (restaurantId: string) => `orderfast_applied_promotions_${restaurantId}`;
 const checkoutBlockKey = (restaurantId: string) => `orderfast_promo_block_${restaurantId}`;
 
 function makeUuid() {
@@ -61,6 +70,35 @@ export function getActivePromotionSelection(restaurantId: string): ActivePromoti
   } catch {
     return null;
   }
+}
+
+export function getAppliedPromotionIds(restaurantId: string): string[] {
+  if (typeof window === 'undefined') return [];
+  const raw = window.localStorage.getItem(appliedPromoKey(restaurantId));
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((id): id is string => typeof id === 'string');
+  } catch {
+    return [];
+  }
+}
+
+export function setAppliedPromotionIds(restaurantId: string, ids: string[]) {
+  if (typeof window === 'undefined') return;
+  const unique = Array.from(new Set(ids.filter(Boolean)));
+  window.localStorage.setItem(appliedPromoKey(restaurantId), JSON.stringify(unique));
+}
+
+export function addAppliedPromotionId(restaurantId: string, promotionId: string) {
+  const next = Array.from(new Set([...getAppliedPromotionIds(restaurantId), promotionId]));
+  setAppliedPromotionIds(restaurantId, next);
+}
+
+export function removeAppliedPromotionId(restaurantId: string, promotionId: string) {
+  const next = getAppliedPromotionIds(restaurantId).filter((id) => id !== promotionId);
+  setAppliedPromotionIds(restaurantId, next);
 }
 
 export function setActivePromotionSelection(restaurantId: string, selection: ActivePromotionSelection) {
@@ -113,6 +151,33 @@ export async function fetchCustomerPromotions(params: {
   return (data || []) as PromotionListItem[];
 }
 
+
+export async function resolveVoucherPromotionByCode(params: {
+  restaurantId: string;
+  code: string;
+}) {
+  const normalizedCode = params.code.trim().toLowerCase();
+  if (!normalizedCode) return null;
+
+  const { data, error } = await supabase
+    .from('promotion_voucher_codes')
+    .select('promotion_id,promotions!inner(id,restaurant_id,name,type)')
+    .eq('code_normalized', normalizedCode)
+    .eq('promotions.restaurant_id', params.restaurantId)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data?.promotion_id) return null;
+
+  const promotion = Array.isArray(data.promotions) ? data.promotions[0] : data.promotions;
+
+  return {
+    promotion_id: data.promotion_id,
+    promotion_name: (promotion?.name as string | undefined) || null,
+    promotion_type: (promotion?.type as string | undefined) || null,
+  } as VoucherPromotionLookup;
+}
+
 export async function validatePromotion(params: {
   restaurantId: string;
   customerId: string;
@@ -148,11 +213,14 @@ export function describeInvalidReason(reason: string | null) {
   if (!reason) return 'Ready to apply.';
   const map: Record<string, string> = {
     not_started: 'Not started yet.',
+    archived: 'This promotion is no longer available.',
     expired: 'This offer has expired.',
-    min_subtotal_not_met: 'Increase your basket to unlock this offer.',
+    min_subtotal_not_met: 'Increase your plate total to unlock this offer.',
     outside_recurring_window: 'Valid only in a scheduled time window.',
     channel_not_allowed: 'This offer is not available on website.',
     order_type_not_allowed: 'This offer is not available for this order type.',
+    status_not_active: 'This promotion is not active right now.',
+    voucher_required: 'Enter a voucher code to use this promotion.',
     max_uses_total_reached: 'This offer has reached its total usage limit.',
     max_uses_per_customer_reached: 'You have reached your usage limit for this offer.',
     voucher_not_found: 'Voucher code not found.',
@@ -160,7 +228,8 @@ export function describeInvalidReason(reason: string | null) {
     voucher_not_started: 'Voucher code is not active yet.',
     voucher_max_uses_total_reached: 'Voucher usage limit reached.',
     voucher_max_uses_per_customer_reached: 'You have used this voucher maximum times.',
-    not_implemented: 'Offer logic is coming soon.',
+    invalid_reward_payload: 'This promotion is misconfigured. Please try another one.',
+    not_implemented: 'This promotion is not available right now.',
   };
   return map[reason] || 'This offer cannot be applied right now.';
 }
