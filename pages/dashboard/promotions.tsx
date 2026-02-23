@@ -87,7 +87,7 @@ export default function PromotionsPage() {
   const [type, setType] = useState<PromotionType>('basket_discount');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [priority, setPriority] = useState('100');
+  const [editingPriority, setEditingPriority] = useState(100);
   const [discountType, setDiscountType] = useState<'percent' | 'fixed'>('percent');
   const [discountValue, setDiscountValue] = useState('');
   const [maxDiscountCap, setMaxDiscountCap] = useState('');
@@ -297,6 +297,25 @@ export default function PromotionsPage() {
     return 'Always available';
   }, [isRecurring, daysOfWeek, timeWindowStart, timeWindowEnd, startsAt, endsAt]);
 
+  const recurringPreview = useMemo(() => {
+    if (!isRecurring) return '';
+    const selected = DAYS.filter((day) => daysOfWeek.includes(day.value)).map((day) => day.label).join(', ');
+    const window = timeWindowStart && timeWindowEnd ? `${timeWindowStart}–${timeWindowEnd}` : 'time window pending';
+    return `Active ${selected || 'select days'} ${window}`;
+  }, [isRecurring, daysOfWeek, timeWindowStart, timeWindowEnd]);
+
+  const rewardSummaryPreview = useMemo(() => {
+    if (type === 'delivery_promo') {
+      const threshold = freeDeliveryMinSubtotal ? ` on orders £${freeDeliveryMinSubtotal}+` : '';
+      if (deliveryFeeCap) return `Delivery capped to £${deliveryFeeCap}${threshold}`;
+      return `Free delivery${threshold}`;
+    }
+
+    const amount = discountValue || '0';
+    if (discountType === 'fixed') return `£${amount} off subtotal`;
+    return `${amount}% off subtotal`;
+  }, [type, freeDeliveryMinSubtotal, deliveryFeeCap, discountType, discountValue]);
+
   const minSpendLine = useMemo(() => {
     if (type === 'delivery_promo' && freeDeliveryMinSubtotal) {
       return `Minimum spend £${freeDeliveryMinSubtotal}`;
@@ -311,7 +330,7 @@ export default function PromotionsPage() {
     setType('basket_discount');
     setName('');
     setDescription('');
-    setPriority('100');
+    setEditingPriority(100);
     setDiscountType('percent');
     setDiscountValue('');
     setMaxDiscountCap('');
@@ -321,7 +340,7 @@ export default function PromotionsPage() {
     setVoucherCodesRaw('');
     setMaxUsesTotal('');
     setMaxUsesPerCustomer('');
-    setShowCodeGenerator(false);
+    setShowCodeGenerator(true);
     setGeneratorQuantity('10');
     setGeneratorLength('8');
     setGeneratorPrefix('');
@@ -392,7 +411,7 @@ export default function PromotionsPage() {
     }
 
     if (currentStep === 2) {
-      if (startsAt && endsAt && new Date(startsAt) > new Date(endsAt)) {
+      if (!isRecurring && startsAt && endsAt && new Date(startsAt) > new Date(endsAt)) {
         nextErrors.endsAt = 'End date must be after start date.';
       }
 
@@ -524,6 +543,10 @@ export default function PromotionsPage() {
 
   const openEditPromotion = async (promotion: PromotionRow) => {
     if (!restaurantId) return;
+    if (!SUPPORTED_TYPES.includes(promotion.type)) {
+      setToastMessage('This legacy promotion type can be viewed but not edited in this wizard.');
+      return;
+    }
 
     setErrors({});
     setEditingPromotionId(promotion.id);
@@ -533,7 +556,7 @@ export default function PromotionsPage() {
     setType(promotion.type);
     setName(promotion.name || '');
     setDescription('');
-    setPriority(String(promotion.priority ?? 100));
+    setEditingPriority(promotion.priority ?? 100);
     setMinSubtotal(promotion.min_subtotal != null ? String(promotion.min_subtotal) : '');
     setMaxUsesTotal(promotion.max_uses_total != null ? String(promotion.max_uses_total) : '');
     setMaxUsesPerCustomer(promotion.max_uses_per_customer != null ? String(promotion.max_uses_per_customer) : '');
@@ -589,9 +612,12 @@ export default function PromotionsPage() {
         .select('code')
         .eq('promotion_id', promotion.id)
         .order('created_at', { ascending: true });
-      setVoucherCodesRaw((codes || []).map((row) => row.code).join('\n'));
+      const loadedCodes = (codes || []).map((row) => row.code).join('\n');
+      setVoucherCodesRaw(loadedCodes);
+      setShowCodeGenerator((codes || []).length === 0);
     } else {
       setVoucherCodesRaw('');
+      setShowCodeGenerator(false);
     }
   };
 
@@ -630,7 +656,7 @@ export default function PromotionsPage() {
       description: description.trim(),
       type,
       status: promotionStatus,
-      priority: Number(priority) || 100,
+      priority: editingPromotionId ? editingPriority || 100 : 100,
       is_recurring: isRecurring,
       starts_at: startsAt || null,
       ends_at: endsAt || null,
@@ -1017,17 +1043,8 @@ export default function PromotionsPage() {
                   <div className="space-y-4">
                     <h4 className="text-sm font-semibold text-gray-900">Choose promotion type</h4>
                     <div className="grid gap-2 sm:grid-cols-2">
-                      {[
-                        'basket_discount',
-                        'delivery_promo',
-                        'voucher',
-                        'multibuy_bogo',
-                        'spend_get_item',
-                        'bundle_fixed_price',
-                        'loyalty_redemption',
-                      ].map((option) => {
+                      {['basket_discount', 'delivery_promo', 'voucher'].map((option) => {
                         const optionType = option as PromotionType;
-                        const supported = SUPPORTED_TYPES.includes(optionType);
                         return (
                           <button
                             key={option}
@@ -1038,7 +1055,6 @@ export default function PromotionsPage() {
                             }`}
                           >
                             <p className="font-medium text-gray-900">{option}</p>
-                            {!supported ? <p className="text-xs text-amber-600">Coming soon</p> : null}
                           </button>
                         );
                       })}
@@ -1158,42 +1174,61 @@ export default function PromotionsPage() {
                         </div>
                       </div>
                     )}
+
+                    <p className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                      Reward preview: <span className="font-medium text-gray-900">{rewardSummaryPreview}</span>
+                    </p>
                   </div>
                 ) : null}
 
                 {step === 2 ? (
                   <div className="space-y-4">
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-gray-700">Starts at (optional)</label>
-                        <input
-                          value={startsAt}
-                          onChange={(e) => setStartsAt(e.target.value)}
-                          type="datetime-local"
-                          className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-gray-700">Ends at (optional)</label>
-                        <input
-                          value={endsAt}
-                          onChange={(e) => setEndsAt(e.target.value)}
-                          type="datetime-local"
-                          className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
-                        />
-                        {errors.endsAt ? <p className="mt-1 text-xs text-red-600">{errors.endsAt}</p> : null}
+                    <div>
+                      <p className="mb-2 text-sm font-medium text-gray-700">Schedule mode</p>
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { label: 'One-time', value: false },
+                          { label: 'Recurring', value: true },
+                        ].map((option) => (
+                          <button
+                            key={option.label}
+                            type="button"
+                            onClick={() => setIsRecurring(option.value)}
+                            className={`rounded-full border px-3 py-1 text-xs font-medium ${
+                              isRecurring === option.value
+                                ? 'border-teal-600 bg-teal-50 text-teal-700'
+                                : 'border-gray-300 text-gray-600'
+                            }`}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
                       </div>
                     </div>
 
-                    <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                      <input
-                        checked={isRecurring}
-                        onChange={(e) => setIsRecurring(e.target.checked)}
-                        type="checkbox"
-                        className="h-4 w-4"
-                      />
-                      Recurring schedule
-                    </label>
+                    {!isRecurring ? (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="mb-1 block text-sm font-medium text-gray-700">Starts at (optional)</label>
+                          <input
+                            value={startsAt}
+                            onChange={(e) => setStartsAt(e.target.value)}
+                            type="datetime-local"
+                            className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-sm font-medium text-gray-700">Ends at (optional)</label>
+                          <input
+                            value={endsAt}
+                            onChange={(e) => setEndsAt(e.target.value)}
+                            type="datetime-local"
+                            className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                          />
+                          {errors.endsAt ? <p className="mt-1 text-xs text-red-600">{errors.endsAt}</p> : null}
+                        </div>
+                      </div>
+                    ) : null}
 
                     {isRecurring ? (
                       <div className="space-y-3 rounded-xl border border-gray-200 p-3">
@@ -1238,6 +1273,7 @@ export default function PromotionsPage() {
                           </div>
                         </div>
                         {errors.timeWindow ? <p className="text-xs text-red-600">{errors.timeWindow}</p> : null}
+                        <p className="rounded-lg bg-teal-50 px-2.5 py-1.5 text-xs font-medium text-teal-700">{recurringPreview}</p>
                       </div>
                     ) : null}
                   </div>
@@ -1287,62 +1323,55 @@ export default function PromotionsPage() {
                       {errors.orderTypes ? <p className="mt-1 text-xs text-red-600">{errors.orderTypes}</p> : null}
                     </div>
 
-                    <div>
-                      <label className="mb-1 block text-sm font-medium text-gray-700">Priority</label>
-                      <input
-                        value={priority}
-                        onChange={(e) => setPriority(e.target.value)}
-                        type="number"
-                        className="w-full max-w-[180px] rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
-                      />
-                    </div>
-
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-gray-700">Max uses total (optional)</label>
-                        <input
-                          value={maxUsesTotal}
-                          onChange={(e) => setMaxUsesTotal(e.target.value)}
-                          type="number"
-                          min="1"
-                          step="1"
-                          className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
-                        />
-                        {errors.maxUsesTotal ? <p className="mt-1 text-xs text-red-600">{errors.maxUsesTotal}</p> : null}
+                    <details className="rounded-xl border border-gray-200 bg-gray-50 p-3" open={Boolean(errors.maxUsesTotal || errors.maxUsesPerCustomer)}>
+                      <summary className="cursor-pointer text-sm font-medium text-gray-700">Advanced</summary>
+                      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="mb-1 block text-sm font-medium text-gray-700">Max uses total (optional)</label>
+                          <input
+                            value={maxUsesTotal}
+                            onChange={(e) => setMaxUsesTotal(e.target.value)}
+                            type="number"
+                            min="1"
+                            step="1"
+                            className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                          />
+                          {errors.maxUsesTotal ? <p className="mt-1 text-xs text-red-600">{errors.maxUsesTotal}</p> : null}
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-sm font-medium text-gray-700">Max uses per customer (optional)</label>
+                          <input
+                            value={maxUsesPerCustomer}
+                            onChange={(e) => setMaxUsesPerCustomer(e.target.value)}
+                            type="number"
+                            min="1"
+                            step="1"
+                            className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                          />
+                          {errors.maxUsesPerCustomer ? <p className="mt-1 text-xs text-red-600">{errors.maxUsesPerCustomer}</p> : null}
+                        </div>
                       </div>
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-gray-700">Max uses per customer (optional)</label>
-                        <input
-                          value={maxUsesPerCustomer}
-                          onChange={(e) => setMaxUsesPerCustomer(e.target.value)}
-                          type="number"
-                          min="1"
-                          step="1"
-                          className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
-                        />
-                        {errors.maxUsesPerCustomer ? <p className="mt-1 text-xs text-red-600">{errors.maxUsesPerCustomer}</p> : null}
-                      </div>
-                    </div>
+                    </details>
                   </div>
                 ) : null}
 
                 {step === 4 ? (
                   <div className="space-y-4">
                     {type === 'voucher' ? (
-                      <div className="space-y-3">
-                        <div className="flex flex-wrap items-center gap-2">
+                      <div className="space-y-2.5">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           <button
                             type="button"
                             onClick={() => setShowCodeGenerator((prev) => !prev)}
-                            className="rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                            className="rounded-lg border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
                           >
-                            Generate codes
+                            {showCodeGenerator ? 'Hide generator' : 'Show generator'}
                           </button>
                           <button
                             type="button"
                             onClick={exportVoucherCodesCsv}
                             disabled={voucherCodes.length === 0}
-                            className="rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+                            className="rounded-lg border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40"
                           >
                             Export CSV
                           </button>
