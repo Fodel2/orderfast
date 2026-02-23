@@ -213,11 +213,13 @@ export function describeInvalidReason(reason: string | null) {
   if (!reason) return 'Ready to apply.';
   const map: Record<string, string> = {
     not_started: 'Not started yet.',
+    archived: 'This promotion is no longer available.',
     expired: 'This offer has expired.',
     min_subtotal_not_met: 'Increase your plate total to unlock this offer.',
     outside_recurring_window: 'Valid only in a scheduled time window.',
     channel_not_allowed: 'This offer is not available on website.',
     order_type_not_allowed: 'This offer is not available for this order type.',
+    status_not_active: 'This promotion is not active right now.',
     voucher_required: 'Enter a voucher code to use this promotion.',
     max_uses_total_reached: 'This offer has reached its total usage limit.',
     max_uses_per_customer_reached: 'You have reached your usage limit for this offer.',
