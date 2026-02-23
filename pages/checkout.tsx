@@ -153,7 +153,11 @@ export default function CheckoutPage() {
       });
 
       if (!validation.valid) {
-        setVoucherError(describeInvalidReason(validation.reason));
+        if (validation.reason === 'voucher_not_found') {
+          setVoucherError('Code not recognised.');
+        } else {
+          setVoucherError(describeInvalidReason(validation.reason));
+        }
         return;
       }
 
