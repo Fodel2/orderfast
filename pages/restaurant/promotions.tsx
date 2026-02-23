@@ -79,12 +79,36 @@ export default function CustomerPromotionsPage() {
     [items, activeSelection]
   );
 
-  const appliedPromotions = useMemo(
-    () => appliedPromotionIds.map((id) => items.find((p) => p.id === id)).filter((p): p is PromotionListItem => !!p),
-    [appliedPromotionIds, items]
-  );
+  const nonVoucherItems = useMemo(() => items.filter((promotion) => promotion.type !== 'voucher'), [items]);
 
-  const availablePromotions = useMemo(() => items.filter((p) => !appliedPromotionIds.includes(p.id)), [items, appliedPromotionIds]);
+  const appliedPromotions = useMemo(() => {
+    return appliedPromotionIds
+      .map((id) => {
+        const matched = items.find((p) => p.id === id);
+        if (matched) return matched;
+        if (activeSelection?.promotion_id === id && activeSelection.type === 'voucher') {
+          return {
+            id,
+            name: activeSelection.promotion_name || 'Voucher promotion',
+            type: 'voucher',
+            status: 'active',
+            starts_at: null,
+            ends_at: null,
+            min_subtotal: null,
+            is_currently_valid: true,
+            next_available_at: null,
+            invalid_reason: null,
+          } as PromotionListItem;
+        }
+        return null;
+      })
+      .filter((p): p is PromotionListItem => !!p);
+  }, [appliedPromotionIds, items, activeSelection]);
+
+  const availablePromotions = useMemo(
+    () => nonVoucherItems.filter((p) => !appliedPromotionIds.includes(p.id)),
+    [nonVoucherItems, appliedPromotionIds]
+  );
 
   const persistApplied = (ids: string[]) => {
     if (!restaurantId) return;
@@ -99,13 +123,14 @@ export default function CustomerPromotionsPage() {
       selected_at: new Date().toISOString(),
       type: promotion.type,
       voucher_code: voucherCode || null,
+      promotion_name: promotion.name,
     };
     setActivePromotionSelection(restaurantId, next);
     setActiveSelection(next);
   };
 
   const applyPromotion = (promotion: PromotionListItem) => {
-    if (!restaurantId) return;
+    if (!restaurantId || promotion.type === 'voucher') return;
 
     if (activeSelection?.type === 'loyalty_redemption' && activeSelection.promotion_id !== promotion.id) {
       setConfirmReplace(promotion);
@@ -156,6 +181,9 @@ export default function CustomerPromotionsPage() {
     );
 
     scored.sort((a, b) => {
+      const aVoucherPenalty = a.promotion.type === 'voucher' ? 1 : 0;
+      const bVoucherPenalty = b.promotion.type === 'voucher' ? 1 : 0;
+      if (aVoucherPenalty !== bVoucherPenalty) return aVoucherPenalty - bVoucherPenalty;
       if (a.valid !== b.valid) return a.valid ? -1 : 1;
       return b.savings - a.savings;
     });
@@ -240,13 +268,13 @@ export default function CustomerPromotionsPage() {
           </div>
         </section>
 
-        {activeSelection && activePromotion ? (
+        {activeSelection ? (
           <section className="rounded-2xl border border-teal-200 bg-teal-50/70 p-5 shadow-sm transition-all">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Active promotion</p>
-                <h3 className="mt-1 text-xl font-semibold text-slate-900">{activePromotion.name}</h3>
-                <p className="mt-1 text-sm text-teal-800">{scheduleLabel(activePromotion)}</p>
+                <h3 className="mt-1 text-xl font-semibold text-slate-900">{activePromotion?.name || activeSelection.promotion_name || 'Promotion'}</h3>
+                <p className="mt-1 text-sm text-teal-800">{activePromotion ? scheduleLabel(activePromotion) : 'Applied via code at checkout.'}</p>
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -259,12 +287,14 @@ export default function CustomerPromotionsPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    const firstNonActive = appliedPromotions.find((promotion) => promotion.id !== activeSelection.promotion_id);
-                    if (firstNonActive) makeActive(firstNonActive);
+                    const firstNonActiveNonVoucher = appliedPromotions.find(
+                      (promotion) => promotion.id !== activeSelection.promotion_id && promotion.type !== 'voucher'
+                    );
+                    if (firstNonActiveNonVoucher) makeActive(firstNonActiveNonVoucher);
                   }}
                   className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-teal-700"
                 >
-                  Change
+                  Change active
                 </button>
               </div>
             </div>
@@ -296,7 +326,7 @@ export default function CustomerPromotionsPage() {
                       <p className="mt-1 text-sm text-slate-600">{scheduleLabel(promotion)}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      {!isActive ? (
+                      {!isActive && promotion.type !== 'voucher' ? (
                         <button type="button" onClick={() => makeActive(promotion)} className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
                           Make active
                         </button>
@@ -386,6 +416,7 @@ export default function CustomerPromotionsPage() {
                     selected_at: new Date().toISOString(),
                     type: confirmReplace.type,
                     voucher_code: null,
+                    promotion_name: confirmReplace.name,
                   };
                   setActivePromotionSelection(restaurantId, next);
                   setActiveSelection(next);

@@ -16,6 +16,7 @@ export type PromotionListItem = {
 export type ActivePromotionSelection = {
   promotion_id: string;
   type: string;
+  promotion_name?: string | null;
   voucher_code?: string | null;
   selected_at: string;
 };
@@ -25,6 +26,13 @@ export type PromotionValidationResult = {
   reason: string | null;
   discount_amount: number;
   delivery_discount_amount: number;
+};
+
+
+export type VoucherPromotionLookup = {
+  promotion_id: string;
+  promotion_name: string | null;
+  promotion_type: string | null;
 };
 
 const guestKey = (restaurantId: string) => `orderfast_guest_customer_${restaurantId}`;
@@ -141,6 +149,33 @@ export async function fetchCustomerPromotions(params: {
 
   if (error) throw error;
   return (data || []) as PromotionListItem[];
+}
+
+
+export async function resolveVoucherPromotionByCode(params: {
+  restaurantId: string;
+  code: string;
+}) {
+  const normalizedCode = params.code.trim().toLowerCase();
+  if (!normalizedCode) return null;
+
+  const { data, error } = await supabase
+    .from('promotion_voucher_codes')
+    .select('promotion_id,promotions!inner(id,restaurant_id,name,type)')
+    .eq('code_normalized', normalizedCode)
+    .eq('promotions.restaurant_id', params.restaurantId)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data?.promotion_id) return null;
+
+  const promotion = Array.isArray(data.promotions) ? data.promotions[0] : data.promotions;
+
+  return {
+    promotion_id: data.promotion_id,
+    promotion_name: (promotion?.name as string | undefined) || null,
+    promotion_type: (promotion?.type as string | undefined) || null,
+  } as VoucherPromotionLookup;
 }
 
 export async function validatePromotion(params: {
