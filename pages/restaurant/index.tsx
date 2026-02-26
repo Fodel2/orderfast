@@ -16,11 +16,11 @@ export default function RestaurantHomePage({ initialBrand }: { initialBrand: any
   const [restaurant, setRestaurant] = useState<any | null>(initialBrand);
   const { cart } = useCart();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
-  const [isPastHero, setIsPastHero] = useState(false);
-  const sentinelRef = useRef<HTMLDivElement>(null);
+  const [showChrome, setShowChrome] = useState(false);
   const { restaurantId: contextRestaurantId, loading: ridLoading } = useRestaurant();
   const restaurantId = normalizeRestaurantId(contextRestaurantId || resolveRestaurantId(router, brand, restaurant));
   const didLogMountRef = useRef(false);
+  const bannerVisibleRef = useRef(false);
   const queryRestaurantId = normalizeRestaurantId(router.query?.restaurant_id ?? router.query?.id ?? router.query?.r);
 
   useEffect(() => {
@@ -64,15 +64,41 @@ export default function RestaurantHomePage({ initialBrand }: { initialBrand: any
   const orderHref = rid ? `/restaurant/menu?restaurant_id=${String(rid)}` : '/restaurant/menu';
 
   useEffect(() => {
-    if (!sentinelRef.current) return;
-    const obs = new IntersectionObserver(
-      ([entry]) => {
-        setIsPastHero(entry.isIntersecting);
-      },
-      { threshold: 0.1 }
-    );
-    obs.observe(sentinelRef.current);
-    return () => obs.disconnect();
+    if (typeof window === 'undefined') return;
+
+    const SHOW_THRESHOLD = 24;
+    const HIDE_THRESHOLD = 8;
+    const getScrollTop = () => {
+      const root = document.getElementById('scroll-root');
+      return root ? root.scrollTop : window.scrollY;
+    };
+
+    const updateVisibility = () => {
+      const scrollTop = getScrollTop();
+      const current = bannerVisibleRef.current;
+      const next = current ? scrollTop > HIDE_THRESHOLD : scrollTop >= SHOW_THRESHOLD;
+      if (next === current) return;
+      bannerVisibleRef.current = next;
+      setShowChrome(next);
+      if (process.env.NEXT_PUBLIC_DEBUG === '1') {
+        // eslint-disable-next-line no-console
+        console.debug('[customer:home] banner visibility changed', { visible: next, scrollTop });
+      }
+    };
+
+    const onScroll = () => {
+      updateVisibility();
+    };
+
+    const rafId = window.requestAnimationFrame(updateVisibility);
+    const scrollRoot = document.getElementById('scroll-root');
+    const target: HTMLElement | Window = scrollRoot || window;
+    target.addEventListener('scroll', onScroll, { passive: true });
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      target.removeEventListener('scroll', onScroll);
+    };
   }, []);
 
   if (!ridLoading && !rid) {
@@ -88,8 +114,8 @@ export default function RestaurantHomePage({ initialBrand }: { initialBrand: any
   return (
       <CustomerLayout
         cartCount={cartCount}
-        hideFooter={!isPastHero}
-        hideHeader={!isPastHero}
+        hideFooter={!showChrome}
+        hideHeader={!showChrome}
       >
       {process.env.NEXT_PUBLIC_DEBUG === '1' && <DebugFlag label="HOME-A" />}
       <LandingHero
@@ -101,7 +127,6 @@ export default function RestaurantHomePage({ initialBrand }: { initialBrand: any
           logoUrl={restaurant?.logo_url ?? null}
           logoShape={restaurant?.logo_shape ?? null}
       />
-      <div ref={sentinelRef} style={{ height: 1 }} />
       <SlidesContainer />
       </CustomerLayout>
   );
