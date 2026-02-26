@@ -19,12 +19,15 @@ function isPublicStaticAsset(pathname: string) {
 }
 
 export async function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl;
+
   // Customer routes and static assets must never be auth-gated to avoid flicker/redirect loops.
-  if (isPublicStaticAsset(req.nextUrl.pathname)) {
+  if (isPublicStaticAsset(pathname)) {
     return NextResponse.next();
   }
 
-  if (!req.nextUrl.pathname.startsWith('/dashboard')) {
+  // Developer note: dashboard auth protection is intentionally scoped only to /dashboard.
+  if (!pathname.startsWith('/dashboard')) {
     return NextResponse.next();
   }
 
