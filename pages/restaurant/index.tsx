@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import CustomerLayout from '@/components/CustomerLayout';
 import DebugFlag from '@/components/dev/DebugFlag';
@@ -8,6 +8,7 @@ import { useCart } from '@/context/CartContext';
 import LandingHero from '@/components/customer/home/LandingHero';
 import SlidesContainer from '@/components/customer/home/SlidesContainer';
 import resolveRestaurantId from '@/lib/resolveRestaurantId';
+import { normalizeRestaurantId, useRestaurant } from '@/lib/restaurant-context';
 
 export default function RestaurantHomePage({ initialBrand }: { initialBrand: any | null }) {
   const router = useRouter();
@@ -15,53 +16,106 @@ export default function RestaurantHomePage({ initialBrand }: { initialBrand: any
   const [restaurant, setRestaurant] = useState<any | null>(initialBrand);
   const { cart } = useCart();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
-  const [isPastHero, setIsPastHero] = useState(false);
-  const sentinelRef = useRef<HTMLDivElement>(null);
-  const restaurantId = resolveRestaurantId(router, brand, restaurant);
+  const [showChrome, setShowChrome] = useState(false);
+  const { restaurantId: contextRestaurantId, loading: ridLoading } = useRestaurant();
+  const restaurantId = normalizeRestaurantId(contextRestaurantId || resolveRestaurantId(router, brand, restaurant));
+  const didLogMountRef = useRef(false);
+  const bannerVisibleRef = useRef(false);
+  const queryRestaurantId = normalizeRestaurantId(router.query?.restaurant_id ?? router.query?.id ?? router.query?.r);
 
   useEffect(() => {
-    // dev: prove this file renders in prod
+    if (process.env.NEXT_PUBLIC_DEBUG !== '1' || didLogMountRef.current) return;
+    if (!router.isReady) return;
+    didLogMountRef.current = true;
     // eslint-disable-next-line no-console
-    console.log('[Home] pages/restaurant/index.tsx mounted');
-  }, []);
+    console.debug('[customer:home] mount', { route: router.asPath, restaurantId });
+  }, [router.isReady, router.asPath, restaurantId]);
 
   useEffect(() => {
-    if (!router.isReady || !restaurantId) return;
+    if (!router.isReady || ridLoading || !restaurantId) return;
+
+    let active = true;
     supabase
       .from('restaurants')
       .select('*')
       .eq('id', restaurantId)
       .maybeSingle()
-      .then(({ data }) => setRestaurant(data));
-  }, [router.isReady, restaurantId]);
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (error) {
+          if (process.env.NEXT_PUBLIC_DEBUG === '1') {
+            // eslint-disable-next-line no-console
+            console.warn('[customer:home] restaurant fetch failed', error);
+          }
+          return;
+        }
+        setRestaurant(data ?? null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [router.isReady, ridLoading, restaurantId]);
 
   const coverImg = restaurant?.cover_image_url || '';
 
   // derive restaurant id from query so CTA retains context
-  const rid = (() => {
-    const qp = router?.query ?? {};
-    const v: any = (qp as any).restaurant_id ?? (qp as any).id ?? (qp as any).r;
-    return Array.isArray(v) ? v[0] : v;
-  })();
+  const rid = useMemo(() => queryRestaurantId || restaurantId || null, [queryRestaurantId, restaurantId]);
   const orderHref = rid ? `/restaurant/menu?restaurant_id=${String(rid)}` : '/restaurant/menu';
 
   useEffect(() => {
-    if (!sentinelRef.current) return;
-    const obs = new IntersectionObserver(
-      ([entry]) => {
-        setIsPastHero(entry.isIntersecting);
-      },
-      { threshold: 0.1 }
-    );
-    obs.observe(sentinelRef.current);
-    return () => obs.disconnect();
+    if (typeof window === 'undefined') return;
+
+    const SHOW_THRESHOLD = 24;
+    const HIDE_THRESHOLD = 8;
+    const getScrollTop = () => {
+      const root = document.getElementById('scroll-root');
+      return root ? root.scrollTop : window.scrollY;
+    };
+
+    const updateVisibility = () => {
+      const scrollTop = getScrollTop();
+      const current = bannerVisibleRef.current;
+      const next = current ? scrollTop > HIDE_THRESHOLD : scrollTop >= SHOW_THRESHOLD;
+      if (next === current) return;
+      bannerVisibleRef.current = next;
+      setShowChrome(next);
+      if (process.env.NEXT_PUBLIC_DEBUG === '1') {
+        // eslint-disable-next-line no-console
+        console.debug('[customer:home] banner visibility changed', { visible: next, scrollTop });
+      }
+    };
+
+    const onScroll = () => {
+      updateVisibility();
+    };
+
+    const rafId = window.requestAnimationFrame(updateVisibility);
+    const scrollRoot = document.getElementById('scroll-root');
+    const target: HTMLElement | Window = scrollRoot || window;
+    target.addEventListener('scroll', onScroll, { passive: true });
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      target.removeEventListener('scroll', onScroll);
+    };
   }, []);
+
+  if (!ridLoading && !rid) {
+    return (
+      <CustomerLayout cartCount={cartCount} hideFooter={false} hideHeader={false}>
+        <div className="mx-auto w-full max-w-3xl px-4 py-12 text-center text-sm text-neutral-600">
+          Missing restaurant context. Add <code>?restaurant_id=&lt;id&gt;</code> to continue.
+        </div>
+      </CustomerLayout>
+    );
+  }
 
   return (
       <CustomerLayout
         cartCount={cartCount}
-        hideFooter={!isPastHero}
-        hideHeader={!isPastHero}
+        hideFooter={!showChrome}
+        hideHeader={!showChrome}
       >
       {process.env.NEXT_PUBLIC_DEBUG === '1' && <DebugFlag label="HOME-A" />}
       <LandingHero
@@ -73,7 +127,6 @@ export default function RestaurantHomePage({ initialBrand }: { initialBrand: any
           logoUrl={restaurant?.logo_url ?? null}
           logoShape={restaurant?.logo_shape ?? null}
       />
-      <div ref={sentinelRef} style={{ height: 1 }} />
       <SlidesContainer />
       </CustomerLayout>
   );

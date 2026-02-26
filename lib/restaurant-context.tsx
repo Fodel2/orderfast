@@ -1,42 +1,74 @@
-import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 
 type RestaurantCtx = { restaurantId: string | null; loading: boolean };
 const Ctx = createContext<RestaurantCtx>({ restaurantId: null, loading: true });
 export const useRestaurant = () => useContext(Ctx);
 
+const LAST_RESTAURANT_ID_KEY = 'orderfast:lastRestaurantId';
+
+function normalizeRestaurantId(value: unknown): string | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed === 'undefined' || trimmed === 'null') return null;
+  return trimmed;
+}
+
+function resolveRestaurantIdFromSources({
+  explicitId,
+  query,
+  storedId,
+}: {
+  explicitId?: string | null;
+  query?: Record<string, unknown>;
+  storedId?: string | null;
+}): string | null {
+  return (
+    normalizeRestaurantId(explicitId) ||
+    normalizeRestaurantId(query?.restaurant_id) ||
+    normalizeRestaurantId(query?.rid) ||
+    normalizeRestaurantId(query?.id) ||
+    normalizeRestaurantId(query?.r) ||
+    normalizeRestaurantId(storedId)
+  );
+}
+
 export function RestaurantProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [restaurantId, setRestaurantId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const booted = useRef(false);
+  const qRestaurantId = normalizeRestaurantId(router.query?.restaurant_id);
+  const qRid = normalizeRestaurantId(router.query?.rid);
+  const qId = normalizeRestaurantId(router.query?.id);
+  const qR = normalizeRestaurantId(router.query?.r);
 
   useEffect(() => {
     if (!router.isReady) return;
 
-    // Resolution order:
-    // 1) query param ?restaurant_id=<uuid> (most reliable today)
-    // 2) alternate aliases (?rid, ?id, ?r)
-    // 3) optional demo fallback env
-    const q = router.query;
-    const rid =
-      (q?.restaurant_id as string) ||
-      (q?.rid as string) ||
-      (q?.id as string) ||
-      (q?.r as string) ||
-      null;
+    const storedId = typeof window !== 'undefined' ? localStorage.getItem(LAST_RESTAURANT_ID_KEY) : null;
     const demo = process.env.NEXT_PUBLIC_DEMO_RESTAURANT_ID || null;
+    const resolved = resolveRestaurantIdFromSources({
+      query: {
+        restaurant_id: qRestaurantId,
+        rid: qRid,
+        id: qId,
+        r: qR,
+      },
+      storedId,
+    });
 
-    // Avoid resetting after initial resolution to prevent flashes on navigation.
-    if (!booted.current || rid || demo) {
-      setRestaurantId(rid || demo || null);
-    }
-
-    booted.current = true;
+    setRestaurantId(resolved || normalizeRestaurantId(demo));
     setLoading(false);
-  }, [router.isReady, router.query]);
+  }, [router.isReady, qRestaurantId, qRid, qId, qR]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !restaurantId) return;
+    localStorage.setItem(LAST_RESTAURANT_ID_KEY, restaurantId);
+  }, [restaurantId]);
 
   const value = useMemo(() => ({ restaurantId, loading }), [restaurantId, loading]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
+export { normalizeRestaurantId, resolveRestaurantIdFromSources };

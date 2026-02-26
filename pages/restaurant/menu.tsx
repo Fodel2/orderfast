@@ -87,12 +87,6 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
     if (!routerReady || ridLoading || !effectiveRestaurantId) return;
 
     const load = async () => {
-      console.log(
-        'Loading menu for',
-        effectiveRestaurantId,
-        'subdomain',
-        router.query.subdomain
-      );
       const restRes = await supabase
         .from("restaurants")
         .select("*")
@@ -264,7 +258,11 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
       if (!el) return;
       const stickyHeight = stickyCategoryRef.current?.getBoundingClientRect().height ?? 0;
       const headerOffset = stickyHeight + 8;
-      scrollElementToTop(el, headerOffset, 'smooth');
+      scrollElementToTop(el, {
+        headerOffset,
+        behavior: 'smooth',
+        container: scrollContainerRef.current,
+      });
     }
 
     const renderCategorySections = () => {
@@ -326,7 +324,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
 
     return (
       <div>
-        <div className="hero-wrapper">
+        <div className="w-full">
           {(() => {
             const menuTitle = restaurant?.website_title || restaurant?.name || 'Restaurant';
             return (
@@ -400,7 +398,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
 
           <div className="space-y-8">
             {categories.length === 0 ? (
-              <p className="text-center text-gray-500">This menu is currently empty.</p>
+              <p className="text-center text-neutral-500">This menu is currently empty.</p>
             ) : (
               renderCategorySections()
             )}

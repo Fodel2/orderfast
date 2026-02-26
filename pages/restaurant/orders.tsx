@@ -176,24 +176,24 @@ export default function OrdersPage({ initialBrand }: { initialBrand: any | null 
 
   return (
     <CustomerLayout>
-      <div className="max-w-screen-sm mx-auto px-4 pb-24">
+      <div className="mx-auto w-full max-w-6xl px-4 pb-24 sm:px-6">
         {router.query.debug === '1' && (
           <div className="text-xs text-gray-500 mb-2">
             Using user_id: {qUserId || user?.id || '—'} | restaurant_id: {restaurantId || '—'} | orders: {orders?.length ?? 0}
           </div>
         )}
-        <h1 className="text-xl font-semibold mb-4">Your Orders</h1>
+        <h1 className="mb-4 text-2xl font-semibold tracking-tight text-neutral-900">Your Orders</h1>
         {resolvingUser && (
           <div className="text-xs text-gray-500 mb-2">Loading your orders…</div>
         )}
         {orders.length === 0 ? (
           <p>No orders found.</p>
         ) : (
-          <ul className="space-y-4">
+          <ul className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             {orders.map((order: any) => (
               <li
                 key={order.id}
-                className="rounded-2xl p-4 shadow-sm cursor-pointer hover:shadow md:hover:shadow-md transition"
+                className="cursor-pointer rounded-2xl border border-neutral-200 p-4 shadow-sm transition hover:shadow md:hover:shadow-md"
                 style={{ background: 'var(--card)', color: 'var(--ink)' }}
                 role="button"
                 tabIndex={0}
@@ -214,8 +214,8 @@ export default function OrdersPage({ initialBrand }: { initialBrand: any | null 
                     </span>
                   )}
                 </div>
-                <div className="text-sm text-gray-600">Placed: {order.created_at ? new Date(order.created_at).toLocaleString() : '—'}</div>
-                <div className="text-xs text-gray-400 mt-1">Tap for details</div>
+                <div className="text-sm text-neutral-600">Placed: {order.created_at ? new Date(order.created_at).toLocaleString() : '—'}</div>
+                <div className="mt-1 text-xs text-neutral-500">Tap for details</div>
               </li>
             ))}
           </ul>

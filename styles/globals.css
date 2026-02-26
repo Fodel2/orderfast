@@ -119,11 +119,6 @@ body {
   animation: fade-in-up 0.5s ease-out both;
 }
 
-.hero-wrapper,
-.hero-wrapper img {
-  width: 100%;
-  display: block;
-}
 
 @keyframes glow {
   0% {
