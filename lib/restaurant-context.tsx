@@ -38,6 +38,10 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
   const router = useRouter();
   const [restaurantId, setRestaurantId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const qRestaurantId = normalizeRestaurantId(router.query?.restaurant_id);
+  const qRid = normalizeRestaurantId(router.query?.rid);
+  const qId = normalizeRestaurantId(router.query?.id);
+  const qR = normalizeRestaurantId(router.query?.r);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -45,13 +49,18 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     const storedId = typeof window !== 'undefined' ? localStorage.getItem(LAST_RESTAURANT_ID_KEY) : null;
     const demo = process.env.NEXT_PUBLIC_DEMO_RESTAURANT_ID || null;
     const resolved = resolveRestaurantIdFromSources({
-      query: router.query as Record<string, unknown>,
+      query: {
+        restaurant_id: qRestaurantId,
+        rid: qRid,
+        id: qId,
+        r: qR,
+      },
       storedId,
     });
 
     setRestaurantId(resolved || normalizeRestaurantId(demo));
     setLoading(false);
-  }, [router.isReady, router.query]);
+  }, [router.isReady, qRestaurantId, qRid, qId, qR]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !restaurantId) return;

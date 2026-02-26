@@ -21,6 +21,7 @@ export default function RestaurantHomePage({ initialBrand }: { initialBrand: any
   const { restaurantId: contextRestaurantId, loading: ridLoading } = useRestaurant();
   const restaurantId = normalizeRestaurantId(contextRestaurantId || resolveRestaurantId(router, brand, restaurant));
   const didLogMountRef = useRef(false);
+  const queryRestaurantId = normalizeRestaurantId(router.query?.restaurant_id ?? router.query?.id ?? router.query?.r);
 
   useEffect(() => {
     if (process.env.NEXT_PUBLIC_DEBUG !== '1' || didLogMountRef.current) return;
@@ -59,12 +60,7 @@ export default function RestaurantHomePage({ initialBrand }: { initialBrand: any
   const coverImg = restaurant?.cover_image_url || '';
 
   // derive restaurant id from query so CTA retains context
-  const rid = useMemo(() => {
-    const qp = router?.query ?? {};
-    const v: any = (qp as any).restaurant_id ?? (qp as any).id ?? (qp as any).r;
-    const queryId = Array.isArray(v) ? v[0] : v;
-    return queryId || restaurantId || null;
-  }, [router.query, restaurantId]);
+  const rid = useMemo(() => queryRestaurantId || restaurantId || null, [queryRestaurantId, restaurantId]);
   const orderHref = rid ? `/restaurant/menu?restaurant_id=${String(rid)}` : '/restaurant/menu';
 
   useEffect(() => {
@@ -78,6 +74,16 @@ export default function RestaurantHomePage({ initialBrand }: { initialBrand: any
     obs.observe(sentinelRef.current);
     return () => obs.disconnect();
   }, []);
+
+  if (!ridLoading && !rid) {
+    return (
+      <CustomerLayout cartCount={cartCount} hideFooter={false} hideHeader={false}>
+        <div className="mx-auto w-full max-w-3xl px-4 py-12 text-center text-sm text-neutral-600">
+          Missing restaurant context. Add <code>?restaurant_id=&lt;id&gt;</code> to continue.
+        </div>
+      </CustomerLayout>
+    );
+  }
 
   return (
       <CustomerLayout
@@ -95,11 +101,6 @@ export default function RestaurantHomePage({ initialBrand }: { initialBrand: any
           logoUrl={restaurant?.logo_url ?? null}
           logoShape={restaurant?.logo_shape ?? null}
       />
-      {!rid && !ridLoading ? (
-        <div className="mx-auto w-full max-w-3xl px-4 py-6 text-center text-sm text-neutral-600">
-          Missing restaurant context. Add <code>?restaurant_id=&lt;id&gt;</code> to continue.
-        </div>
-      ) : null}
       <div ref={sentinelRef} style={{ height: 1 }} />
       <SlidesContainer />
       </CustomerLayout>

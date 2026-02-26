@@ -24,6 +24,13 @@ function getRestaurantId(router: any): string | undefined {
   return trimmed;
 }
 
+function navLinkClass(current: string, href: string, disabled: boolean) {
+  const targetPath = href === '/' ? '/restaurant' : `/restaurant/${href}`;
+  return `flex flex-col items-center justify-center text-xs transition-all ${
+    current === targetPath ? 'nav-active' : 'text-[var(--muted)]'
+  } ${disabled ? 'opacity-50 pointer-events-none' : ''}`;
+}
+
 export default function FooterNav({ cartCount = 0, hidden }: Props) {
   const router = useRouter();
   const { restaurantId } = useRestaurant();
@@ -35,22 +42,29 @@ export default function FooterNav({ cartCount = 0, hidden }: Props) {
   // label for the middle action (UI copy only)
   const cartLabel = 'Plate';
 
-  const NavLink = ({ href, Icon, label }: any) => (
-    <Link
-      href={{
-        pathname: href === '/' ? '/restaurant' : `/restaurant/${href}`,
-        query: rid ? { restaurant_id: rid } : {},
-      }}
-      className={`flex flex-col items-center justify-center text-xs transition-all ${
-        current === (href === '/' ? '/restaurant' : `/restaurant/${href}`)
-          ? 'nav-active'
-          : 'text-[var(--muted)]'
-      }`}
-    >
-      <Icon className="w-5 h-5" />
-      <span className="mt-0.5">{label}</span>
-    </Link>
-  );
+  const NavLink = ({ href, Icon, label }: any) => {
+    if (!rid) {
+      return (
+        <button type="button" className={navLinkClass(current, href, true)} disabled aria-disabled="true">
+          <Icon className="w-5 h-5" />
+          <span className="mt-0.5">{label}</span>
+        </button>
+      );
+    }
+
+    return (
+      <Link
+        href={{
+          pathname: href === '/' ? '/restaurant' : `/restaurant/${href}`,
+          query: { restaurant_id: rid },
+        }}
+        className={navLinkClass(current, href, false)}
+      >
+        <Icon className="w-5 h-5" />
+        <span className="mt-0.5">{label}</span>
+      </Link>
+    );
+  };
 
   const style = {
     opacity: hidden ? 0 : 1,
@@ -68,19 +82,32 @@ export default function FooterNav({ cartCount = 0, hidden }: Props) {
         <NavLink href="/" Icon={Home} label="Home" />
         <NavLink href="menu" Icon={Utensils} label="Menu" />
         <div className="absolute -top-6 left-1/2 -translate-x-1/2">
-          <Link
-            href={{ pathname: '/restaurant/cart', query: rid ? { restaurant_id: rid } : {} }}
-            aria-label={cartLabel}
-            title={cartLabel}
-            className="relative w-14 h-14 rounded-full fab flex items-center justify-center shadow-lg"
-          >
-            <PlateLick size={22} />
-            {cartCount > 0 && (
-              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center">
-                {cartCount}
-              </span>
-            )}
-          </Link>
+          {rid ? (
+            <Link
+              href={{ pathname: '/restaurant/cart', query: { restaurant_id: rid } }}
+              aria-label={cartLabel}
+              title={cartLabel}
+              className="relative w-14 h-14 rounded-full fab flex items-center justify-center shadow-lg"
+            >
+              <PlateLick size={22} />
+              {cartCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center">
+                  {cartCount}
+                </span>
+              )}
+            </Link>
+          ) : (
+            <button
+              type="button"
+              aria-label={cartLabel}
+              title={cartLabel}
+              className="relative w-14 h-14 rounded-full fab flex items-center justify-center shadow-lg opacity-50 pointer-events-none"
+              disabled
+              aria-disabled="true"
+            >
+              <PlateLick size={22} />
+            </button>
+          )}
         </div>
         <NavLink href="orders" Icon={ListOrdered} label="Orders" />
         <NavLink href="more" Icon={Menu} label="More" />
