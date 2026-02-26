@@ -35,9 +35,21 @@ export type VoucherPromotionLookup = {
   promotion_type: string | null;
 };
 
+export type LoyaltyConfig = {
+  enabled: boolean;
+  points_per_currency_unit: number;
+  reward_points_required: number;
+  reward_value: number;
+};
+
+export type LoyaltyBalance = {
+  points: number;
+};
+
 const guestKey = (restaurantId: string) => `orderfast_guest_customer_${restaurantId}`;
 const activePromoKey = (restaurantId: string) => `orderfast_active_promotion_${restaurantId}`;
 const appliedPromoKey = (restaurantId: string) => `orderfast_applied_promotions_${restaurantId}`;
+const appliedVoucherCodesKey = (restaurantId: string) => `orderfast_applied_voucher_codes_${restaurantId}`;
 const checkoutBlockKey = (restaurantId: string) => `orderfast_promo_block_${restaurantId}`;
 
 function makeUuid() {
@@ -89,6 +101,38 @@ export function setAppliedPromotionIds(restaurantId: string, ids: string[]) {
   if (typeof window === 'undefined') return;
   const unique = Array.from(new Set(ids.filter(Boolean)));
   window.localStorage.setItem(appliedPromoKey(restaurantId), JSON.stringify(unique));
+}
+
+export function getAppliedVoucherCodes(restaurantId: string): Record<string, string> {
+  if (typeof window === 'undefined') return {};
+  const raw = window.localStorage.getItem(appliedVoucherCodesKey(restaurantId));
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return {};
+    return Object.entries(parsed).reduce((acc, [promotionId, code]) => {
+      if (typeof promotionId === 'string' && typeof code === 'string' && code.trim()) {
+        acc[promotionId] = code;
+      }
+      return acc;
+    }, {} as Record<string, string>);
+  } catch {
+    return {};
+  }
+}
+
+export function setAppliedVoucherCode(restaurantId: string, promotionId: string, voucherCode: string) {
+  if (typeof window === 'undefined') return;
+  const next = getAppliedVoucherCodes(restaurantId);
+  next[promotionId] = voucherCode;
+  window.localStorage.setItem(appliedVoucherCodesKey(restaurantId), JSON.stringify(next));
+}
+
+export function removeAppliedVoucherCode(restaurantId: string, promotionId: string) {
+  if (typeof window === 'undefined') return;
+  const next = getAppliedVoucherCodes(restaurantId);
+  delete next[promotionId];
+  window.localStorage.setItem(appliedVoucherCodesKey(restaurantId), JSON.stringify(next));
 }
 
 export function addAppliedPromotionId(restaurantId: string, promotionId: string) {
@@ -149,6 +193,81 @@ export async function fetchCustomerPromotions(params: {
 
   if (error) throw error;
   return (data || []) as PromotionListItem[];
+}
+
+export async function fetchLoyaltyConfig(restaurantId: string) {
+  const { data, error } = await supabase
+    .from('loyalty_config')
+    .select('enabled,points_per_currency_unit,reward_points_required,reward_value')
+    .eq('restaurant_id', restaurantId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return (data || null) as LoyaltyConfig | null;
+}
+
+export async function upsertLoyaltyConfig(restaurantId: string, config: LoyaltyConfig) {
+  const payload = {
+    restaurant_id: restaurantId,
+    enabled: config.enabled,
+    points_per_currency_unit: config.points_per_currency_unit,
+    reward_points_required: config.reward_points_required,
+    reward_value: config.reward_value,
+  };
+
+  const { data, error } = await supabase
+    .from('loyalty_config')
+    .upsert(payload, { onConflict: 'restaurant_id' })
+    .select('enabled,points_per_currency_unit,reward_points_required,reward_value')
+    .single();
+
+  if (error) throw error;
+  return data as LoyaltyConfig;
+}
+
+export async function fetchLoyaltyPointsBalance(params: { restaurantId: string; customerId: string }) {
+  const rpcResult = await supabase.rpc('get_loyalty_points_balance', {
+    p_restaurant_id: params.restaurantId,
+    p_customer_id: params.customerId,
+  });
+
+  if (!rpcResult.error) {
+    const raw = rpcResult.data;
+    if (typeof raw === 'number') return { points: Math.max(0, Math.floor(raw)) } as LoyaltyBalance;
+    if (Array.isArray(raw) && raw[0] && typeof raw[0].points === 'number') {
+      return { points: Math.max(0, Math.floor(raw[0].points)) } as LoyaltyBalance;
+    }
+    if (raw && typeof raw === 'object' && typeof (raw as { points?: unknown }).points === 'number') {
+      return { points: Math.max(0, Math.floor((raw as { points: number }).points)) } as LoyaltyBalance;
+    }
+  }
+
+  // QA note: fallback query keeps loyalty functional when RPC is unavailable in older environments.
+  const { data, error } = await supabase
+    .from('loyalty_ledger')
+    .select('points,entry_type')
+    .eq('restaurant_id', params.restaurantId)
+    .eq('customer_id', params.customerId);
+
+  if (error) throw error;
+
+  const points = (data || []).reduce((sum, entry) => {
+    const value = Number(entry.points || 0);
+    if (entry.entry_type === 'spend') return sum - Math.abs(value);
+    return sum + value;
+  }, 0);
+
+  return { points: Math.max(0, Math.floor(points)) } as LoyaltyBalance;
+}
+
+export async function redeemLoyaltyPointsToVoucher(params: { restaurantId: string; customerId: string }) {
+  const { data, error } = await supabase.rpc('redeem_loyalty_points_to_voucher', {
+    p_restaurant_id: params.restaurantId,
+    p_customer_id: params.customerId,
+  });
+
+  if (error) throw error;
+  return data;
 }
 
 

@@ -10,15 +10,55 @@ import {
   clearActivePromotionSelection,
   describeInvalidReason,
   fetchCustomerPromotions,
+  fetchLoyaltyConfig,
+  fetchLoyaltyPointsBalance,
   getAppliedPromotionIds,
+  getAppliedVoucherCodes,
   getActivePromotionSelection,
   getStableGuestCustomerId,
+  LoyaltyConfig,
   PromotionListItem,
+  redeemLoyaltyPointsToVoucher,
   removeAppliedPromotionId,
-  setAppliedPromotionIds,
+  removeAppliedVoucherCode,
   setActivePromotionSelection,
+  setAppliedPromotionIds,
+  setAppliedVoucherCode,
   validatePromotion,
 } from '@/lib/customerPromotions';
+
+const LOYALTY_LINES = [
+  'Economics, defeated.',
+  'The system trembles.',
+  'ROI: delicious.',
+  'Inflation fears you.',
+  'Margins? Improved by snacks.',
+  'Accountancy meets appetite.',
+  'Value extracted.',
+  'Fiscal strategy: one more plate.',
+  'This is what efficient spending looks like.',
+  'Procurement: elite.',
+  'Coupons are temporary, aura is forever.',
+  'Your loyalty curve is trending upward.',
+  'Optimisation, now edible.',
+  'Spreadsheet energy, plate edition.',
+  'Monetary policy just got tastier.',
+  'The ledger approves this plate.',
+  'Performance marketing, but crispy.',
+  'Cashflow with extra sauce.',
+  'Cost control through good decisions.',
+  'The value engine is warm.',
+  'Your points portfolio is maturing nicely.',
+  'Budget discipline, gourmet outcomes.',
+  'Tactical dining executed.',
+  'Your loyalty momentum is undeniable.',
+  'Market forces: deliciously contained.',
+  'This plate has strategic upside.',
+  'KPIs are looking seasoned.',
+  'Reward efficiency: online.',
+  'Savings have entered the chat.',
+  'Professional plate economics at work.',
+];
 
 export default function CustomerPromotionsPage() {
   const { cart, subtotal } = useCart();
@@ -32,6 +72,15 @@ export default function CustomerPromotionsPage() {
   const [activeSelection, setActiveSelection] = useState<ActivePromotionSelection | null>(null);
   const [appliedPromotionIds, setAppliedPromotionIdsState] = useState<string[]>([]);
   const [confirmReplace, setConfirmReplace] = useState<PromotionListItem | null>(null);
+  const [voucherCodes, setVoucherCodes] = useState<Record<string, string>>({});
+
+  const [loyaltyConfig, setLoyaltyConfig] = useState<LoyaltyConfig | null>(null);
+  const [loyaltyPoints, setLoyaltyPoints] = useState(0);
+  const [loyaltyLoading, setLoyaltyLoading] = useState(true);
+  const [loyaltyRedeeming, setLoyaltyRedeeming] = useState(false);
+  const [loyaltyBanner, setLoyaltyBanner] = useState('');
+  const [loyaltyError, setLoyaltyError] = useState('');
+  const [loyaltyLineIndex] = useState(() => Math.floor(Math.random() * LOYALTY_LINES.length));
 
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
   const currentOrderType = orderType || 'delivery';
@@ -42,6 +91,7 @@ export default function CustomerPromotionsPage() {
     setCustomerId(resolved || null);
     setActiveSelection(getActivePromotionSelection(restaurantId));
     setAppliedPromotionIdsState(getAppliedPromotionIds(restaurantId));
+    setVoucherCodes(getAppliedVoucherCodes(restaurantId));
   }, [restaurantId, session?.user?.id]);
 
   const loadPromotions = async () => {
@@ -55,15 +105,34 @@ export default function CustomerPromotionsPage() {
         basketSubtotal: cart.items.length ? subtotal : null,
       });
       setItems(data);
-    } catch (e) {
+    } catch {
       setItems([]);
     } finally {
       setLoading(false);
     }
   };
 
+  const loadLoyalty = async () => {
+    if (!restaurantId || !customerId) return;
+    setLoyaltyLoading(true);
+    setLoyaltyError('');
+    try {
+      const [config, balance] = await Promise.all([
+        fetchLoyaltyConfig(restaurantId),
+        fetchLoyaltyPointsBalance({ restaurantId, customerId }),
+      ]);
+      setLoyaltyConfig(config);
+      setLoyaltyPoints(balance.points);
+    } catch {
+      setLoyaltyError('Could not load loyalty details right now.');
+    } finally {
+      setLoyaltyLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadPromotions();
+    loadLoyalty();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId, customerId, currentOrderType, subtotal, cart.items.length]);
 
@@ -147,7 +216,11 @@ export default function CustomerPromotionsPage() {
   };
 
   const makeActive = (promotion: PromotionListItem) => {
-    setPromotionAsActive(promotion, activeSelection?.promotion_id === promotion.id ? activeSelection.voucher_code : null);
+    const voucherCode = promotion.type === 'voucher' ? voucherCodes[promotion.id] || null : null;
+    setPromotionAsActive(
+      promotion,
+      activeSelection?.promotion_id === promotion.id ? activeSelection.voucher_code || voucherCode : voucherCode
+    );
   };
 
   const pickBestActivePromotion = async (candidateIds: string[]) => {
@@ -195,8 +268,10 @@ export default function CustomerPromotionsPage() {
   const removeAppliedPromotion = async (promotionId: string) => {
     if (!restaurantId) return;
     removeAppliedPromotionId(restaurantId, promotionId);
+    removeAppliedVoucherCode(restaurantId, promotionId);
     const remainingIds = appliedPromotionIds.filter((id) => id !== promotionId);
     setAppliedPromotionIdsState(remainingIds);
+    setVoucherCodes(getAppliedVoucherCodes(restaurantId));
 
     if (activeSelection?.promotion_id !== promotionId) return;
 
@@ -221,6 +296,33 @@ export default function CustomerPromotionsPage() {
     await removeAppliedPromotion(activeSelection.promotion_id);
   };
 
+  const redeemLoyalty = async () => {
+    if (!restaurantId || !customerId || !loyaltyConfig?.enabled) return;
+    setLoyaltyRedeeming(true);
+    setLoyaltyError('');
+    try {
+      const result = await redeemLoyaltyPointsToVoucher({ restaurantId, customerId });
+      const payload = (Array.isArray(result) ? result[0] : result) as { promotion_id?: string; voucher_code?: string } | null;
+
+      if (payload?.promotion_id) {
+        addAppliedPromotionId(restaurantId, payload.promotion_id);
+        setAppliedPromotionIdsState(getAppliedPromotionIds(restaurantId));
+      }
+      if (payload?.promotion_id && payload?.voucher_code) {
+        setAppliedVoucherCode(restaurantId, payload.promotion_id, payload.voucher_code);
+        setVoucherCodes(getAppliedVoucherCodes(restaurantId));
+      }
+
+      await Promise.all([loadPromotions(), loadLoyalty()]);
+      setLoyaltyBanner(Math.random() > 0.5 ? 'Voucher minted.' : 'Value extracted.');
+      setTimeout(() => setLoyaltyBanner(''), 2500);
+    } catch {
+      setLoyaltyError('Redemption failed. Try again shortly.');
+    } finally {
+      setLoyaltyRedeeming(false);
+    }
+  };
+
   const scheduleLabel = (promo: PromotionListItem) => {
     if (promo.is_currently_valid) return 'Active now';
     if (promo.next_available_at) {
@@ -230,6 +332,10 @@ export default function CustomerPromotionsPage() {
     }
     return describeInvalidReason(promo.invalid_reason);
   };
+
+  const rewardPointsRequired = loyaltyConfig?.reward_points_required || 0;
+  const loyaltyProgress = rewardPointsRequired > 0 ? Math.min(loyaltyPoints / rewardPointsRequired, 1) : 0;
+  const canRedeem = !!loyaltyConfig?.enabled && rewardPointsRequired > 0 && loyaltyPoints >= rewardPointsRequired;
 
   if (!restaurantLoading && !restaurantId) {
     return (
@@ -246,27 +352,63 @@ export default function CustomerPromotionsPage() {
         <p className="text-sm text-slate-600">Apply promotions to your account and choose one active promotion for checkout.</p>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-900">Loyalty</h2>
-            <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">Coming soon</span>
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">Loyalty</h2>
+              <p className="text-sm text-slate-600">{LOYALTY_LINES[loyaltyLineIndex]}</p>
+            </div>
+            {loyaltyConfig?.enabled ? (
+              <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">Enabled</span>
+            ) : (
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">Unavailable</span>
+            )}
           </div>
-          <div className="mt-3 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-xl bg-slate-50 p-3">
-              <p className="text-xs text-slate-500">Points</p>
-              <p className="text-lg font-semibold text-slate-800">—</p>
-            </div>
-            <div className="rounded-xl bg-slate-50 p-3">
-              <p className="text-xs text-slate-500">Value</p>
-              <p className="text-lg font-semibold text-slate-800">£—</p>
-            </div>
-            <div className="rounded-xl bg-slate-50 p-3">
-                <p className="text-xs text-slate-500">Redeem</p>
-              <div className="mt-1 flex items-center gap-2">
-                <input disabled className="w-full rounded-lg border border-slate-200 px-2 py-1 text-sm" placeholder="0.00" />
-                <button disabled className="rounded-lg bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-500">Redeem</button>
+
+          {loyaltyLoading ? <div className="mt-3 h-20 animate-pulse rounded-xl bg-slate-100" /> : null}
+          {loyaltyError ? <p className="mt-3 text-sm text-rose-600">{loyaltyError}</p> : null}
+
+          {!loyaltyLoading ? (
+            <>
+              <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-xl bg-slate-50 p-3">
+                  <p className="text-xs text-slate-500">Points</p>
+                  <p className="text-lg font-semibold text-slate-800">{loyaltyPoints.toLocaleString()}</p>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-3">
+                  <p className="text-xs text-slate-500">Unlock target</p>
+                  <p className="text-lg font-semibold text-slate-800">{rewardPointsRequired.toLocaleString()} pts</p>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-3">
+                  <p className="text-xs text-slate-500">Voucher value</p>
+                  <p className="text-lg font-semibold text-slate-800">£{Number(loyaltyConfig?.reward_value || 0).toLocaleString()}</p>
+                </div>
               </div>
-            </div>
-          </div>
+
+              <div className="mt-3">
+                <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-teal-500 to-emerald-500 transition-all duration-700"
+                    style={{ width: `${Math.round(loyaltyProgress * 100)}%` }}
+                  />
+                </div>
+                <p className="mt-1 text-xs text-slate-500">{Math.round(loyaltyProgress * 100)}% to your next voucher</p>
+              </div>
+
+              <div className="mt-3 flex items-center justify-between">
+                <p className="text-xs text-slate-500">Redeem points into a voucher and activate it when you want.</p>
+                <button
+                  type="button"
+                  onClick={redeemLoyalty}
+                  disabled={!canRedeem || loyaltyRedeeming}
+                  className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-teal-700 disabled:opacity-50"
+                >
+                  {loyaltyRedeeming ? 'Redeeming...' : 'Redeem'}
+                </button>
+              </div>
+
+              {loyaltyBanner ? <p className="mt-2 text-xs font-semibold text-emerald-700">{loyaltyBanner}</p> : null}
+            </>
+          ) : null}
         </section>
 
         {activeSelection ? (
@@ -327,7 +469,7 @@ export default function CustomerPromotionsPage() {
                       <p className="mt-1 text-sm text-slate-600">{scheduleLabel(promotion)}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      {!isActive && promotion.type !== 'voucher' ? (
+                      {!isActive ? (
                         <button type="button" onClick={() => makeActive(promotion)} className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
                           Make active
                         </button>

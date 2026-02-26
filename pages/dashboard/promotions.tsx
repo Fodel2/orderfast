@@ -4,6 +4,7 @@ import { CheckCircleIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import DashboardLayout from '@/components/DashboardLayout';
 import Toast from '@/components/Toast';
 import PromotionCustomerCardPreview from '@/components/promotions/PromotionCustomerCardPreview';
+import { fetchLoyaltyConfig, LoyaltyConfig, upsertLoyaltyConfig } from '@/lib/customerPromotions';
 import { supabase } from '@/utils/supabaseClient';
 
 type PromotionType =
@@ -114,6 +115,22 @@ export default function PromotionsPage() {
   const [orderTypes, setOrderTypes] = useState<string[]>(['delivery', 'collection']);
 
   const [promoTerms, setPromoTerms] = useState('');
+  const [loyaltyLoading, setLoyaltyLoading] = useState(false);
+  const [loyaltySaving, setLoyaltySaving] = useState(false);
+  const [loyaltyError, setLoyaltyError] = useState<string | null>(null);
+  const [showDisableLoyaltyConfirm, setShowDisableLoyaltyConfirm] = useState(false);
+  const [loyaltyConfig, setLoyaltyConfig] = useState<LoyaltyConfig>({
+    enabled: false,
+    points_per_currency_unit: 1,
+    reward_points_required: 100,
+    reward_value: 5,
+  });
+  const [draftLoyaltyConfig, setDraftLoyaltyConfig] = useState<LoyaltyConfig>({
+    enabled: false,
+    points_per_currency_unit: 1,
+    reward_points_required: 100,
+    reward_value: 5,
+  });
 
   const parseVoucherCodes = (raw: string) => {
     const seen = new Set<string>();
@@ -214,7 +231,12 @@ export default function PromotionsPage() {
       }
 
       setRestaurantId(membership.restaurant_id);
-      await Promise.all([fetchPromotions(membership.restaurant_id), fetchGlobalTerms(membership.restaurant_id), runSchemaHealthCheck()]);
+      await Promise.all([
+        fetchPromotions(membership.restaurant_id),
+        fetchGlobalTerms(membership.restaurant_id),
+        fetchLoyaltySettings(membership.restaurant_id),
+        runSchemaHealthCheck(),
+      ]);
       setLoading(false);
     };
 
@@ -247,6 +269,43 @@ export default function PromotionsPage() {
       .maybeSingle();
 
     setGlobalTerms(data?.global_terms || '');
+  };
+
+  const fetchLoyaltySettings = async (currentRestaurantId: string) => {
+    setLoyaltyLoading(true);
+    setLoyaltyError(null);
+    try {
+      const config = await fetchLoyaltyConfig(currentRestaurantId);
+      if (!config) return;
+      setLoyaltyConfig(config);
+      setDraftLoyaltyConfig(config);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to load loyalty settings.';
+      setLoyaltyError(message);
+    } finally {
+      setLoyaltyLoading(false);
+    }
+  };
+
+  const isLoyaltyDirty = useMemo(() => {
+    return JSON.stringify(loyaltyConfig) !== JSON.stringify(draftLoyaltyConfig);
+  }, [loyaltyConfig, draftLoyaltyConfig]);
+
+  const saveLoyaltySettings = async () => {
+    if (!restaurantId) return;
+    setLoyaltySaving(true);
+    setLoyaltyError(null);
+    try {
+      const saved = await upsertLoyaltyConfig(restaurantId, draftLoyaltyConfig);
+      setLoyaltyConfig(saved);
+      setDraftLoyaltyConfig(saved);
+      setToastMessage('Loyalty settings saved.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to save loyalty settings.';
+      setLoyaltyError(message);
+    } finally {
+      setLoyaltySaving(false);
+    }
   };
 
   const scheduleSummary = (promotion: PromotionRow) => {
@@ -809,6 +868,96 @@ export default function PromotionsPage() {
         </div>
 
         <section className="rounded-2xl bg-white p-5 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Loyalty</h2>
+              <p className="mt-1 text-sm text-gray-600">Reward regulars with points and simple voucher unlocks.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (draftLoyaltyConfig.enabled) {
+                  setShowDisableLoyaltyConfirm(true);
+                  return;
+                }
+                setDraftLoyaltyConfig((prev) => ({ ...prev, enabled: true }));
+              }}
+              className={`relative inline-flex h-7 w-12 items-center rounded-full transition ${draftLoyaltyConfig.enabled ? 'bg-teal-600' : 'bg-gray-300'}`}
+              aria-label="Toggle loyalty"
+            >
+              <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${draftLoyaltyConfig.enabled ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+          </div>
+
+          {loyaltyLoading ? <div className="mt-4 h-24 animate-pulse rounded-xl bg-gray-100" /> : null}
+          {loyaltyError ? <p className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{loyaltyError}</p> : null}
+
+          {!loyaltyLoading ? (
+            <>
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <label className="rounded-xl border border-gray-200 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Points per £1 spent</p>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={draftLoyaltyConfig.points_per_currency_unit}
+                    onChange={(e) => {
+                      const value = Number(e.target.value);
+                      setDraftLoyaltyConfig((prev) => ({ ...prev, points_per_currency_unit: Number.isFinite(value) ? value : prev.points_per_currency_unit }));
+                    }}
+                    className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+                  />
+                </label>
+                <label className="rounded-xl border border-gray-200 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Points needed to unlock voucher</p>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={draftLoyaltyConfig.reward_points_required}
+                    onChange={(e) => {
+                      const value = Math.floor(Number(e.target.value));
+                      setDraftLoyaltyConfig((prev) => ({ ...prev, reward_points_required: Number.isFinite(value) ? value : prev.reward_points_required }));
+                    }}
+                    className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+                  />
+                </label>
+                <label className="rounded-xl border border-gray-200 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Voucher value (£)</p>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={draftLoyaltyConfig.reward_value}
+                    onChange={(e) => {
+                      const value = Number(e.target.value);
+                      setDraftLoyaltyConfig((prev) => ({ ...prev, reward_value: Number.isFinite(value) ? value : prev.reward_value }));
+                    }}
+                    className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+                  />
+                </label>
+              </div>
+
+              <p className="mt-3 text-sm text-gray-600">
+                Customers earn {draftLoyaltyConfig.points_per_currency_unit.toLocaleString()} points per £1. Redeem {draftLoyaltyConfig.reward_points_required.toLocaleString()} points for a £{draftLoyaltyConfig.reward_value.toLocaleString()} voucher.
+              </p>
+
+              <div className="mt-4">
+                <button
+                  type="button"
+                  onClick={saveLoyaltySettings}
+                  disabled={!isLoyaltyDirty || loyaltySaving}
+                  className="rounded-xl bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-black disabled:opacity-50"
+                >
+                  {loyaltySaving ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </>
+          ) : null}
+        </section>
+
+        <section className="rounded-2xl bg-white p-5 shadow-sm">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <h2 className="text-lg font-semibold text-gray-900">Schema health check</h2>
@@ -999,6 +1148,34 @@ export default function PromotionsPage() {
                 className="rounded-lg bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-rose-700"
               >
                 Archive
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showDisableLoyaltyConfirm ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+            <h3 className="text-lg font-semibold text-slate-900">Disable loyalty?</h3>
+            <p className="mt-2 text-sm text-slate-600">Turning off loyalty won’t delete existing customer points or vouchers. Customers can still use vouchers they already have.</p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowDisableLoyaltyConfirm(false)}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDraftLoyaltyConfig((prev) => ({ ...prev, enabled: false }));
+                  setShowDisableLoyaltyConfirm(false);
+                }}
+                className="rounded-lg bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white"
+              >
+                Disable
               </button>
             </div>
           </div>

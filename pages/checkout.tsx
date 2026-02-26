@@ -19,6 +19,7 @@ import {
   getStableGuestCustomerId,
   setActivePromotionSelection,
   setAppliedPromotionIds,
+  setAppliedVoucherCode,
   setPromotionCheckoutBlock,
   resolveVoucherPromotionByCode,
   PromotionListItem,
@@ -171,6 +172,7 @@ export default function CheckoutPage() {
       };
       setActivePromotionSelection(cart.restaurant_id, selection);
       addAppliedPromotionId(cart.restaurant_id, selection.promotion_id);
+      setAppliedVoucherCode(cart.restaurant_id, selection.promotion_id, code);
       setActiveSelection(selection);
       setPromoPreview({ valid: true, text: 'Promotion code applied.', savings });
       setVoucherCodeInput('');
