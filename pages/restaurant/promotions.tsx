@@ -79,6 +79,7 @@ export default function CustomerPromotionsPage() {
   const [loyaltyLoading, setLoyaltyLoading] = useState(true);
   const [loyaltyRedeeming, setLoyaltyRedeeming] = useState(false);
   const [loyaltyBanner, setLoyaltyBanner] = useState('');
+  const [lastRedeemedVoucherCode, setLastRedeemedVoucherCode] = useState<string | null>(null);
   const [loyaltyError, setLoyaltyError] = useState('');
   const [loyaltyLineIndex] = useState(() => Math.floor(Math.random() * LOYALTY_LINES.length));
 
@@ -311,6 +312,7 @@ export default function CustomerPromotionsPage() {
       if (payload?.promotion_id && payload?.voucher_code) {
         setAppliedVoucherCode(restaurantId, payload.promotion_id, payload.voucher_code);
         setVoucherCodes(getAppliedVoucherCodes(restaurantId));
+        setLastRedeemedVoucherCode(payload.voucher_code);
       }
 
       await Promise.all([loadPromotions(), loadLoyalty()]);
@@ -355,7 +357,6 @@ export default function CustomerPromotionsPage() {
           <div className="flex items-start justify-between gap-2">
             <div>
               <h2 className="text-lg font-semibold text-slate-900">Loyalty</h2>
-              <p className="text-sm text-slate-600">{LOYALTY_LINES[loyaltyLineIndex]}</p>
             </div>
             {loyaltyConfig?.enabled ? (
               <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">Enabled</span>
@@ -369,33 +370,34 @@ export default function CustomerPromotionsPage() {
 
           {!loyaltyLoading ? (
             <>
-              <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              <div className="mt-3 grid grid-cols-3 gap-2 md:gap-3">
                 <div className="rounded-xl bg-slate-50 p-3">
+                  <p className="text-xl font-semibold leading-tight text-slate-800 md:text-2xl">{loyaltyPoints.toLocaleString()}</p>
                   <p className="text-xs text-slate-500">Points</p>
-                  <p className="text-lg font-semibold text-slate-800">{loyaltyPoints.toLocaleString()}</p>
                 </div>
                 <div className="rounded-xl bg-slate-50 p-3">
-                  <p className="text-xs text-slate-500">Unlock target</p>
-                  <p className="text-lg font-semibold text-slate-800">{rewardPointsRequired.toLocaleString()} pts</p>
+                  <p className="text-xl font-semibold leading-tight text-slate-800 md:text-2xl">{rewardPointsRequired.toLocaleString()} pts</p>
+                  <p className="text-xs text-slate-500">Target</p>
                 </div>
                 <div className="rounded-xl bg-slate-50 p-3">
-                  <p className="text-xs text-slate-500">Voucher value</p>
-                  <p className="text-lg font-semibold text-slate-800">£{Number(loyaltyConfig?.reward_value || 0).toLocaleString()}</p>
+                  <p className="text-xl font-semibold leading-tight text-slate-800 md:text-2xl">£{Number(loyaltyConfig?.reward_value || 0).toLocaleString()}</p>
+                  <p className="text-xs text-slate-500">Voucher</p>
                 </div>
               </div>
 
               <div className="mt-3">
-                <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
+                <div className="h-3.5 w-full overflow-hidden rounded-full bg-slate-100">
                   <div
                     className="h-full rounded-full bg-gradient-to-r from-teal-500 to-emerald-500 transition-all duration-700"
                     style={{ width: `${Math.round(loyaltyProgress * 100)}%` }}
                   />
                 </div>
-                <p className="mt-1 text-xs text-slate-500">{Math.round(loyaltyProgress * 100)}% to your next voucher</p>
+                <p className="mt-1 text-xs text-slate-500">{loyaltyPoints.toLocaleString()} / {rewardPointsRequired.toLocaleString()} pts</p>
+                <p className="mt-1 text-sm text-slate-600">{LOYALTY_LINES[loyaltyLineIndex]}</p>
               </div>
 
               <div className="mt-3 flex items-center justify-between">
-                <p className="text-xs text-slate-500">Redeem points into a voucher and activate it when you want.</p>
+                <p className="text-xs text-slate-500">{canRedeem ? 'Voucher ready. Mint it, then choose when to activate it.' : 'Redeem points into a voucher and activate it when you want.'}</p>
                 <button
                   type="button"
                   onClick={redeemLoyalty}
@@ -407,6 +409,11 @@ export default function CustomerPromotionsPage() {
               </div>
 
               {loyaltyBanner ? <p className="mt-2 text-xs font-semibold text-emerald-700">{loyaltyBanner}</p> : null}
+              {lastRedeemedVoucherCode ? (
+                <p className="mt-1 text-xs text-slate-600">
+                  Voucher code <span className="font-semibold">{lastRedeemedVoucherCode}</span> saved to your applied promotions list.
+                </p>
+              ) : null}
             </>
           ) : null}
         </section>

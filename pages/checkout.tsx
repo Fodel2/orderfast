@@ -327,7 +327,7 @@ export default function CheckoutPage() {
         .insert([
           {
             restaurant_id: cart.restaurant_id,
-            user_id: session?.user?.id || null,
+            user_id: customerId,
             order_type: orderType,
             source: 'app',
             delivery_address:

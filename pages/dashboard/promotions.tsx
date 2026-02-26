@@ -117,6 +117,7 @@ export default function PromotionsPage() {
   const [promoTerms, setPromoTerms] = useState('');
   const [loyaltyLoading, setLoyaltyLoading] = useState(false);
   const [loyaltySaving, setLoyaltySaving] = useState(false);
+  const [loyaltySaved, setLoyaltySaved] = useState(false);
   const [loyaltyError, setLoyaltyError] = useState<string | null>(null);
   const [showDisableLoyaltyConfirm, setShowDisableLoyaltyConfirm] = useState(false);
   const [loyaltyConfig, setLoyaltyConfig] = useState<LoyaltyConfig>({
@@ -291,15 +292,27 @@ export default function PromotionsPage() {
     return JSON.stringify(loyaltyConfig) !== JSON.stringify(draftLoyaltyConfig);
   }, [loyaltyConfig, draftLoyaltyConfig]);
 
+  const loyaltySpendRequired = useMemo(() => {
+    const perPound = Math.max(1, Math.floor(draftLoyaltyConfig.points_per_currency_unit || 1));
+    return draftLoyaltyConfig.reward_points_required / perPound;
+  }, [draftLoyaltyConfig.points_per_currency_unit, draftLoyaltyConfig.reward_points_required]);
+
+  const loyaltyEffectiveRate = useMemo(() => {
+    if (!loyaltySpendRequired) return 0;
+    return (draftLoyaltyConfig.reward_value / loyaltySpendRequired) * 100;
+  }, [draftLoyaltyConfig.reward_value, loyaltySpendRequired]);
+
   const saveLoyaltySettings = async () => {
     if (!restaurantId) return;
     setLoyaltySaving(true);
+    setLoyaltySaved(false);
     setLoyaltyError(null);
     try {
       const saved = await upsertLoyaltyConfig(restaurantId, draftLoyaltyConfig);
       setLoyaltyConfig(saved);
       setDraftLoyaltyConfig(saved);
-      setToastMessage('Loyalty settings saved.');
+      setLoyaltySaved(true);
+      setTimeout(() => setLoyaltySaved(false), 2200);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to save loyalty settings.';
       setLoyaltyError(message);
@@ -899,12 +912,13 @@ export default function PromotionsPage() {
                   <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Points per £1 spent</p>
                   <input
                     type="number"
-                    min="0"
-                    step="0.01"
+                    min="1"
+                    max="100"
+                    step="1"
                     value={draftLoyaltyConfig.points_per_currency_unit}
                     onChange={(e) => {
-                      const value = Number(e.target.value);
-                      setDraftLoyaltyConfig((prev) => ({ ...prev, points_per_currency_unit: Number.isFinite(value) ? value : prev.points_per_currency_unit }));
+                      const value = Math.max(1, Math.min(100, Math.floor(Number(e.target.value) || 1)));
+                      setDraftLoyaltyConfig((prev) => ({ ...prev, points_per_currency_unit: value }));
                     }}
                     className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
                   />
@@ -917,8 +931,8 @@ export default function PromotionsPage() {
                     step="1"
                     value={draftLoyaltyConfig.reward_points_required}
                     onChange={(e) => {
-                      const value = Math.floor(Number(e.target.value));
-                      setDraftLoyaltyConfig((prev) => ({ ...prev, reward_points_required: Number.isFinite(value) ? value : prev.reward_points_required }));
+                      const value = Math.max(1, Math.floor(Number(e.target.value) || 1));
+                      setDraftLoyaltyConfig((prev) => ({ ...prev, reward_points_required: value }));
                     }}
                     className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
                   />
@@ -931,7 +945,10 @@ export default function PromotionsPage() {
                     step="0.01"
                     value={draftLoyaltyConfig.reward_value}
                     onChange={(e) => {
-                      const value = Number(e.target.value);
+                      const parsed = e.target.value.replace(/[^\d.]/g, '');
+                      const [whole, decimals = ''] = parsed.split('.');
+                      const normalized = `${whole || '0'}${decimals ? `.${decimals.slice(0, 2)}` : ''}`;
+                      const value = Number(normalized);
                       setDraftLoyaltyConfig((prev) => ({ ...prev, reward_value: Number.isFinite(value) ? value : prev.reward_value }));
                     }}
                     className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
@@ -942,16 +959,20 @@ export default function PromotionsPage() {
               <p className="mt-3 text-sm text-gray-600">
                 Customers earn {draftLoyaltyConfig.points_per_currency_unit.toLocaleString()} points per £1. Redeem {draftLoyaltyConfig.reward_points_required.toLocaleString()} points for a £{draftLoyaltyConfig.reward_value.toLocaleString()} voucher.
               </p>
+              <p className="mt-1 text-xs text-gray-500">
+                Customers unlock £{draftLoyaltyConfig.reward_value.toFixed(2)} after ~£{loyaltySpendRequired.toFixed(2)} spend. Effective reward rate: {loyaltyEffectiveRate.toFixed(1)}%.
+              </p>
 
               <div className="mt-4">
                 <button
                   type="button"
                   onClick={saveLoyaltySettings}
                   disabled={!isLoyaltyDirty || loyaltySaving}
-                  className="rounded-xl bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-black disabled:opacity-50"
+                  className={`rounded-xl px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 ${isLoyaltyDirty ? 'bg-teal-600 hover:bg-teal-700' : 'bg-gray-900 hover:bg-black'}`}
                 >
                   {loyaltySaving ? 'Saving...' : 'Save'}
                 </button>
+                {loyaltySaved ? <span className="ml-2 text-xs font-medium text-emerald-700">Saved</span> : null}
               </div>
             </>
           ) : null}
