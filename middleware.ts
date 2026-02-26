@@ -12,12 +12,14 @@ const PUBLIC_STATIC_ROUTES = new Set([
 function isPublicStaticAsset(pathname: string) {
   return (
     pathname.startsWith('/_next/') ||
+    pathname.startsWith('/assets/') ||
     pathname.startsWith('/icons/') ||
     PUBLIC_STATIC_ROUTES.has(pathname)
   );
 }
 
 export async function middleware(req: NextRequest) {
+  // Customer routes and static assets must never be auth-gated to avoid flicker/redirect loops.
   if (isPublicStaticAsset(req.nextUrl.pathname)) {
     return NextResponse.next();
   }
