@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/router';
 import SlidesSection from '@/components/SlidesSection';
-import resolveRestaurantId from '@/lib/resolveRestaurantId';
+import { useRestaurant } from '@/lib/restaurant-context';
 import { supabase } from '@/lib/supabaseClient';
 import type { SlideCfg } from '@/components/SlideModal';
 import { tokens } from '../../../src/ui/tokens';
@@ -23,12 +22,16 @@ export interface SlideRow {
 }
 
 export default function SlidesContainer() {
-  const router = useRouter();
-  const restaurantId = resolveRestaurantId(router, null);
+  const { restaurantId } = useRestaurant();
   const [slides, setSlides] = useState<SlideRow[]>([]);
 
   useEffect(() => {
-    if (!restaurantId) return;
+    if (!restaurantId) {
+      setSlides([]);
+      return;
+    }
+
+    let active = true;
     supabase
       .from('restaurant_slides')
       .select('*')
@@ -39,7 +42,14 @@ export default function SlidesContainer() {
       .neq('type', 'hero')
       .order('sort_order', { ascending: true })
       .order('created_at', { ascending: true })
-      .then(({ data }) => setSlides(data || []));
+      .then(({ data }) => {
+        if (!active) return;
+        setSlides(data || []);
+      });
+
+    return () => {
+      active = false;
+    };
   }, [restaurantId]);
 
   if (!slides.length) return null;

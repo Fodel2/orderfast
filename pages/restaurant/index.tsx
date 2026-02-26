@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import CustomerLayout from '@/components/CustomerLayout';
 import DebugFlag from '@/components/dev/DebugFlag';
@@ -8,6 +8,7 @@ import { useCart } from '@/context/CartContext';
 import LandingHero from '@/components/customer/home/LandingHero';
 import SlidesContainer from '@/components/customer/home/SlidesContainer';
 import resolveRestaurantId from '@/lib/resolveRestaurantId';
+import { useRestaurant } from '@/lib/restaurant-context';
 
 export default function RestaurantHomePage({ initialBrand }: { initialBrand: any | null }) {
   const router = useRouter();
@@ -17,32 +18,38 @@ export default function RestaurantHomePage({ initialBrand }: { initialBrand: any
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
   const [isPastHero, setIsPastHero] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
-  const restaurantId = resolveRestaurantId(router, brand, restaurant);
+  const { restaurantId: contextRestaurantId, loading: ridLoading } = useRestaurant();
+  const restaurantId = contextRestaurantId || resolveRestaurantId(router, brand, restaurant);
+
 
   useEffect(() => {
-    // dev: prove this file renders in prod
-    // eslint-disable-next-line no-console
-    console.log('[Home] pages/restaurant/index.tsx mounted');
-  }, []);
+    if (!router.isReady || ridLoading || !restaurantId) return;
 
-  useEffect(() => {
-    if (!router.isReady || !restaurantId) return;
+    let active = true;
     supabase
       .from('restaurants')
       .select('*')
       .eq('id', restaurantId)
       .maybeSingle()
-      .then(({ data }) => setRestaurant(data));
-  }, [router.isReady, restaurantId]);
+      .then(({ data }) => {
+        if (!active) return;
+        setRestaurant(data ?? null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [router.isReady, ridLoading, restaurantId]);
 
   const coverImg = restaurant?.cover_image_url || '';
 
   // derive restaurant id from query so CTA retains context
-  const rid = (() => {
+  const rid = useMemo(() => {
     const qp = router?.query ?? {};
     const v: any = (qp as any).restaurant_id ?? (qp as any).id ?? (qp as any).r;
-    return Array.isArray(v) ? v[0] : v;
-  })();
+    const queryId = Array.isArray(v) ? v[0] : v;
+    return queryId || restaurantId || null;
+  }, [router.query, restaurantId]);
   const orderHref = rid ? `/restaurant/menu?restaurant_id=${String(rid)}` : '/restaurant/menu';
 
   useEffect(() => {
@@ -73,6 +80,11 @@ export default function RestaurantHomePage({ initialBrand }: { initialBrand: any
           logoUrl={restaurant?.logo_url ?? null}
           logoShape={restaurant?.logo_shape ?? null}
       />
+      {!rid && !ridLoading ? (
+        <div className="mx-auto w-full max-w-3xl px-4 py-6 text-center text-sm text-neutral-600">
+          Missing restaurant context. Add <code>?restaurant_id=&lt;id&gt;</code> to continue.
+        </div>
+      ) : null}
       <div ref={sentinelRef} style={{ height: 1 }} />
       <SlidesContainer />
       </CustomerLayout>

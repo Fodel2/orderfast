@@ -134,20 +134,33 @@ export default function LandingHero({
       ? { width: 72, height: 24 }
       : { width: 72, height: 72 };
 
+  const pick = (v: string | string[] | undefined) => {
+    const raw = Array.isArray(v) ? v[0] : v;
+    return typeof raw === 'string' && raw.trim() ? raw : undefined;
+  };
+  const routeRestaurantId =
+    pick(router.query.restaurant_id as string | string[] | undefined) ||
+    pick(router.query.id as string | string[] | undefined) ||
+    pick(router.query.r as string | string[] | undefined);
+
   useEffect(() => {
-    if (open !== null) return;
-    const pick = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
-    const rid = pick(router.query.restaurant_id as any) || pick(router.query.id as any) || pick(router.query.r as any);
-    if (!rid) return;
+    if (open !== null || !routeRestaurantId) return;
+    let active = true;
+
     supabase
       .from('restaurants')
       .select('is_open')
-      .eq('id', rid)
+      .eq('id', routeRestaurantId)
       .maybeSingle()
       .then(({ data }) => {
+        if (!active) return;
         if (typeof data?.is_open === 'boolean') setOpen(data.is_open);
       });
-  }, [open, router.query]);
+
+    return () => {
+      active = false;
+    };
+  }, [open, routeRestaurantId]);
 
   return (
     <section className="relative w-full min-h-screen overflow-hidden">

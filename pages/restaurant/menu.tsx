@@ -87,12 +87,6 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
     if (!routerReady || ridLoading || !effectiveRestaurantId) return;
 
     const load = async () => {
-      console.log(
-        'Loading menu for',
-        effectiveRestaurantId,
-        'subdomain',
-        router.query.subdomain
-      );
       const restRes = await supabase
         .from("restaurants")
         .select("*")
