@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import { Home, Utensils, ListOrdered, Menu } from 'lucide-react';
 import PlateLick from '@/components/icons/PlateLick';
 import React from 'react';
+import { useRestaurant } from '@/lib/restaurant-context';
 
 interface Props {
   cartCount?: number;
@@ -17,13 +18,17 @@ function getRestaurantId(router: any): string | undefined {
     pick(qp['id']) ||
     pick(qp['r']) ||
     undefined;
-  return typeof raw === 'string' && raw.trim() ? raw : undefined;
+  if (typeof raw !== 'string') return undefined;
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed === 'undefined' || trimmed === 'null') return undefined;
+  return trimmed;
 }
 
 export default function FooterNav({ cartCount = 0, hidden }: Props) {
   const router = useRouter();
+  const { restaurantId } = useRestaurant();
   // capture restaurant id so navigation preserves context
-  const rid = getRestaurantId(router);
+  const rid = restaurantId || getRestaurantId(router);
 
   const current = (router.asPath || '').split('?')[0];
 

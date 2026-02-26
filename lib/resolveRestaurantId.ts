@@ -6,7 +6,10 @@ export default function resolveRestaurantId(
   const qp = (router?.query ?? {}) as Record<string, unknown>;
   const pick = (value: unknown) => {
     const raw = Array.isArray(value) ? value[0] : value;
-    return typeof raw === 'string' && raw.trim() ? raw : undefined;
+    if (typeof raw !== 'string') return undefined;
+    const trimmed = raw.trim();
+    if (!trimmed || trimmed === 'undefined' || trimmed === 'null') return undefined;
+    return trimmed;
   };
 
   const fromQuery =

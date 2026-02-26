@@ -136,7 +136,10 @@ export default function LandingHero({
 
   const pick = (v: string | string[] | undefined) => {
     const raw = Array.isArray(v) ? v[0] : v;
-    return typeof raw === 'string' && raw.trim() ? raw : undefined;
+    if (typeof raw !== 'string') return undefined;
+    const trimmed = raw.trim();
+    if (!trimmed || trimmed === 'undefined' || trimmed === 'null') return undefined;
+    return trimmed;
   };
   const routeRestaurantId =
     pick(router.query.restaurant_id as string | string[] | undefined) ||

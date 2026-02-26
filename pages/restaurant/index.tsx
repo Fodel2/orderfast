@@ -8,7 +8,7 @@ import { useCart } from '@/context/CartContext';
 import LandingHero from '@/components/customer/home/LandingHero';
 import SlidesContainer from '@/components/customer/home/SlidesContainer';
 import resolveRestaurantId from '@/lib/resolveRestaurantId';
-import { useRestaurant } from '@/lib/restaurant-context';
+import { normalizeRestaurantId, useRestaurant } from '@/lib/restaurant-context';
 
 export default function RestaurantHomePage({ initialBrand }: { initialBrand: any | null }) {
   const router = useRouter();
@@ -19,8 +19,16 @@ export default function RestaurantHomePage({ initialBrand }: { initialBrand: any
   const [isPastHero, setIsPastHero] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const { restaurantId: contextRestaurantId, loading: ridLoading } = useRestaurant();
-  const restaurantId = contextRestaurantId || resolveRestaurantId(router, brand, restaurant);
+  const restaurantId = normalizeRestaurantId(contextRestaurantId || resolveRestaurantId(router, brand, restaurant));
+  const didLogMountRef = useRef(false);
 
+  useEffect(() => {
+    if (process.env.NEXT_PUBLIC_DEBUG !== '1' || didLogMountRef.current) return;
+    if (!router.isReady) return;
+    didLogMountRef.current = true;
+    // eslint-disable-next-line no-console
+    console.debug('[customer:home] mount', { route: router.asPath, restaurantId });
+  }, [router.isReady, router.asPath, restaurantId]);
 
   useEffect(() => {
     if (!router.isReady || ridLoading || !restaurantId) return;
@@ -31,8 +39,15 @@ export default function RestaurantHomePage({ initialBrand }: { initialBrand: any
       .select('*')
       .eq('id', restaurantId)
       .maybeSingle()
-      .then(({ data }) => {
+      .then(({ data, error }) => {
         if (!active) return;
+        if (error) {
+          if (process.env.NEXT_PUBLIC_DEBUG === '1') {
+            // eslint-disable-next-line no-console
+            console.warn('[customer:home] restaurant fetch failed', error);
+          }
+          return;
+        }
         setRestaurant(data ?? null);
       });
 
