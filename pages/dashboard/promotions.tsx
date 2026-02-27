@@ -132,6 +132,10 @@ export default function PromotionsPage() {
     reward_points_required: 100,
     reward_value: 5,
   });
+  const [unlockSpend, setUnlockSpend] = useState(50);
+  const [rewardValueOption, setRewardValueOption] = useState<5 | 10>(5);
+
+  const LOYALTY_POINTS_REQUIRED = 500;
 
   const parseVoucherCodes = (raw: string) => {
     const seen = new Set<string>();
@@ -277,9 +281,29 @@ export default function PromotionsPage() {
     setLoyaltyError(null);
     try {
       const config = await fetchLoyaltyConfig(currentRestaurantId);
-      if (!config) return;
-      setLoyaltyConfig(config);
-      setDraftLoyaltyConfig(config);
+      const next = config || {
+        enabled: false,
+        points_per_currency_unit: 10,
+        reward_points_required: LOYALTY_POINTS_REQUIRED,
+        reward_value: 5,
+      };
+
+      const normalizedReward = Number(next.reward_value) >= 10 ? 10 : 5;
+      const pointsPerCurrency = Math.max(1, Math.floor(Number(next.points_per_currency_unit || 1)));
+      const derivedUnlockSpend = Math.max(5, Math.min(500, Math.round(LOYALTY_POINTS_REQUIRED / pointsPerCurrency)));
+
+      setRewardValueOption(normalizedReward);
+      setUnlockSpend(derivedUnlockSpend);
+
+      const computed = {
+        enabled: !!next.enabled,
+        points_per_currency_unit: Math.max(1, Math.round(LOYALTY_POINTS_REQUIRED / derivedUnlockSpend)),
+        reward_points_required: LOYALTY_POINTS_REQUIRED,
+        reward_value: normalizedReward,
+      };
+
+      setLoyaltyConfig(computed);
+      setDraftLoyaltyConfig(computed);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to load loyalty settings.';
       setLoyaltyError(message);
@@ -288,19 +312,54 @@ export default function PromotionsPage() {
     }
   };
 
-  const isLoyaltyDirty = useMemo(() => {
-    return JSON.stringify(loyaltyConfig) !== JSON.stringify(draftLoyaltyConfig);
-  }, [loyaltyConfig, draftLoyaltyConfig]);
+  const normalizedUnlockSpend = useMemo(() => {
+    const value = Math.round(Number(unlockSpend) || 0);
+    return Math.max(5, Math.min(500, value));
+  }, [unlockSpend]);
 
-  const loyaltySpendRequired = useMemo(() => {
-    const perPound = Math.max(1, Math.floor(draftLoyaltyConfig.points_per_currency_unit || 1));
-    return draftLoyaltyConfig.reward_points_required / perPound;
-  }, [draftLoyaltyConfig.points_per_currency_unit, draftLoyaltyConfig.reward_points_required]);
+  const computedPointsPerCurrencyUnit = useMemo(() => {
+    return Math.max(1, Math.round(LOYALTY_POINTS_REQUIRED / normalizedUnlockSpend));
+  }, [LOYALTY_POINTS_REQUIRED, normalizedUnlockSpend]);
+
+  useEffect(() => {
+    setDraftLoyaltyConfig((prev) => ({
+      ...prev,
+      points_per_currency_unit: computedPointsPerCurrencyUnit,
+      reward_points_required: LOYALTY_POINTS_REQUIRED,
+      reward_value: rewardValueOption,
+    }));
+  }, [computedPointsPerCurrencyUnit, LOYALTY_POINTS_REQUIRED, rewardValueOption]);
+
+  const isLoyaltyDirty = useMemo(() => {
+    const computedNext = {
+      ...draftLoyaltyConfig,
+      points_per_currency_unit: computedPointsPerCurrencyUnit,
+      reward_points_required: LOYALTY_POINTS_REQUIRED,
+      reward_value: rewardValueOption,
+    };
+    return JSON.stringify(loyaltyConfig) !== JSON.stringify(computedNext);
+  }, [loyaltyConfig, draftLoyaltyConfig, computedPointsPerCurrencyUnit, LOYALTY_POINTS_REQUIRED, rewardValueOption]);
 
   const loyaltyEffectiveRate = useMemo(() => {
-    if (!loyaltySpendRequired) return 0;
-    return (draftLoyaltyConfig.reward_value / loyaltySpendRequired) * 100;
-  }, [draftLoyaltyConfig.reward_value, loyaltySpendRequired]);
+    if (!normalizedUnlockSpend) return 0;
+    return (rewardValueOption / normalizedUnlockSpend) * 100;
+  }, [rewardValueOption, normalizedUnlockSpend]);
+
+  const effectiveRateLabel = useMemo(() => {
+    const whole = Math.round(loyaltyEffectiveRate);
+    if (Math.abs(loyaltyEffectiveRate - whole) < 0.05) return `${whole}%`;
+    return `${loyaltyEffectiveRate.toFixed(1)}%`;
+  }, [loyaltyEffectiveRate]);
+
+  const guidance = useMemo(() => {
+    if (loyaltyEffectiveRate < 8) return { label: 'Low incentive', hint: loyaltyEffectiveRate < 6 ? 'May feel slow to customers.' : '' };
+    if (loyaltyEffectiveRate < 12) return { label: 'Cost-effective', hint: '' };
+    if (loyaltyEffectiveRate < 18) return { label: 'Balanced', hint: '' };
+    if (loyaltyEffectiveRate <= 22) return { label: 'Strong driver', hint: '' };
+    return { label: 'Very generous', hint: loyaltyEffectiveRate > 25 ? 'Check margin impact.' : '' };
+  }, [loyaltyEffectiveRate]);
+
+  const loyaltyInputValid = normalizedUnlockSpend >= 5 && normalizedUnlockSpend <= 500;
 
   const saveLoyaltySettings = async () => {
     if (!restaurantId) return;
@@ -308,7 +367,13 @@ export default function PromotionsPage() {
     setLoyaltySaved(false);
     setLoyaltyError(null);
     try {
-      const saved = await upsertLoyaltyConfig(restaurantId, draftLoyaltyConfig);
+      const payload = {
+        enabled: draftLoyaltyConfig.enabled,
+        points_per_currency_unit: computedPointsPerCurrencyUnit,
+        reward_points_required: LOYALTY_POINTS_REQUIRED,
+        reward_value: rewardValueOption,
+      };
+      const saved = await upsertLoyaltyConfig(restaurantId, payload);
       setLoyaltyConfig(saved);
       setDraftLoyaltyConfig(saved);
       setLoyaltySaved(true);
@@ -908,66 +973,82 @@ export default function PromotionsPage() {
           {!loyaltyLoading ? (
             <>
               <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <div className="rounded-xl border border-gray-200 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Reward</p>
+                  <div className="mt-2 inline-flex rounded-lg border border-gray-300 bg-gray-50 p-1">
+                    {[5, 10].map((value) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setRewardValueOption(value as 5 | 10)}
+                        className={`rounded-md px-3 py-1.5 text-sm font-semibold transition ${rewardValueOption === value ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                      >
+                        £{value}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <label className="rounded-xl border border-gray-200 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Points per £1 spent</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Unlock after (£)</p>
                   <input
                     type="number"
-                    min="1"
-                    max="100"
+                    min="5"
+                    max="500"
                     step="1"
-                    value={draftLoyaltyConfig.points_per_currency_unit}
+                    value={normalizedUnlockSpend}
                     onChange={(e) => {
-                      const value = Math.max(1, Math.min(100, Math.floor(Number(e.target.value) || 1)));
-                      setDraftLoyaltyConfig((prev) => ({ ...prev, points_per_currency_unit: value }));
+                      const value = Math.max(5, Math.min(500, Math.round(Number(e.target.value) || 5)));
+                      setUnlockSpend(value);
                     }}
                     className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
                   />
-                </label>
-                <label className="rounded-xl border border-gray-200 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Points needed to unlock voucher</p>
                   <input
-                    type="number"
-                    min="1"
+                    type="range"
+                    min="5"
+                    max="500"
                     step="1"
-                    value={draftLoyaltyConfig.reward_points_required}
-                    onChange={(e) => {
-                      const value = Math.max(1, Math.floor(Number(e.target.value) || 1));
-                      setDraftLoyaltyConfig((prev) => ({ ...prev, reward_points_required: value }));
-                    }}
-                    className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+                    value={normalizedUnlockSpend}
+                    onChange={(e) => setUnlockSpend(Number(e.target.value))}
+                    className="mt-3 w-full accent-teal-600"
                   />
                 </label>
-                <label className="rounded-xl border border-gray-200 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Voucher value (£)</p>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={draftLoyaltyConfig.reward_value}
-                    onChange={(e) => {
-                      const parsed = e.target.value.replace(/[^\d.]/g, '');
-                      const [whole, decimals = ''] = parsed.split('.');
-                      const normalized = `${whole || '0'}${decimals ? `.${decimals.slice(0, 2)}` : ''}`;
-                      const value = Number(normalized);
-                      setDraftLoyaltyConfig((prev) => ({ ...prev, reward_value: Number.isFinite(value) ? value : prev.reward_value }));
-                    }}
-                    className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
-                  />
-                </label>
+
+                <div className="rounded-xl border border-gray-200 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Presets</p>
+                  <div className="mt-2 grid grid-cols-3 gap-2">
+                    {[
+                      { rate: 10, hint: 'Cost-effective' },
+                      { rate: 15, hint: 'Balanced' },
+                      { rate: 20, hint: 'Strong driver' },
+                    ].map((preset) => (
+                      <button
+                        key={preset.rate}
+                        type="button"
+                        onClick={() => setUnlockSpend(Math.max(5, Math.round(rewardValueOption / (preset.rate / 100))))}
+                        className="rounded-lg border border-gray-300 px-2 py-1.5 text-center text-xs font-semibold text-gray-700 transition hover:border-teal-300 hover:text-teal-700"
+                      >
+                        <span className="block">{preset.rate}%</span>
+                        <span className="block text-[10px] font-medium text-gray-500">{preset.hint}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               <p className="mt-3 text-sm text-gray-600">
-                Customers earn {draftLoyaltyConfig.points_per_currency_unit.toLocaleString()} points per £1. Redeem {draftLoyaltyConfig.reward_points_required.toLocaleString()} points for a £{draftLoyaltyConfig.reward_value.toLocaleString()} voucher.
+                Customers unlock £{rewardValueOption} after ~£{normalizedUnlockSpend} spend ({effectiveRateLabel} back).
               </p>
-              <p className="mt-1 text-xs text-gray-500">
-                Customers unlock £{draftLoyaltyConfig.reward_value.toFixed(2)} after ~£{loyaltySpendRequired.toFixed(2)} spend. Effective reward rate: {loyaltyEffectiveRate.toFixed(1)}%.
-              </p>
+              <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs text-gray-700">
+                <span className="font-semibold text-gray-900">{guidance.label}</span>
+                {guidance.hint ? <span className="text-gray-500">{guidance.hint}</span> : null}
+              </div>
 
               <div className="mt-4">
                 <button
                   type="button"
                   onClick={saveLoyaltySettings}
-                  disabled={!isLoyaltyDirty || loyaltySaving}
+                  disabled={!isLoyaltyDirty || loyaltySaving || !loyaltyInputValid}
                   className={`rounded-xl px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 ${isLoyaltyDirty ? 'bg-teal-600 hover:bg-teal-700' : 'bg-gray-900 hover:bg-black'}`}
                 >
                   {loyaltySaving ? 'Saving...' : 'Save'}
