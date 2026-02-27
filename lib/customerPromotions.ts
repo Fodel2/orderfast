@@ -11,6 +11,40 @@ export type PromotionListItem = {
   is_currently_valid: boolean;
   next_available_at: string | null;
   invalid_reason: string | null;
+  channels?: string[] | null;
+  order_types?: string[] | null;
+  is_recurring?: boolean | null;
+  days_of_week?: number[] | null;
+  time_window_start?: string | null;
+  time_window_end?: string | null;
+  max_uses_total?: number | null;
+  max_uses_per_customer?: number | null;
+  promo_terms?: string | null;
+};
+
+export type PromotionTermsData = {
+  id: string;
+  type: string;
+  channels: string[] | null;
+  order_types: string[] | null;
+  min_subtotal: number | null;
+  starts_at: string | null;
+  ends_at: string | null;
+  is_recurring: boolean | null;
+  days_of_week: number[] | null;
+  time_window_start: string | null;
+  time_window_end: string | null;
+  new_customer_only: boolean | null;
+  max_uses_total: number | null;
+  max_uses_per_customer: number | null;
+  promo_terms: string | null;
+  reward: {
+    discount_type?: 'percent' | 'fixed' | string | null;
+    discount_value?: number | null;
+    max_discount_cap?: number | null;
+    delivery_fee_cap?: number | null;
+    free_delivery_min_subtotal?: number | null;
+  } | null;
 };
 
 export type ActivePromotionSelection = {
@@ -387,6 +421,47 @@ export async function fetchCustomerPromotions(params: {
 
   if (error) throw error;
   return (data || []) as PromotionListItem[];
+}
+
+export async function fetchPromotionTermsData(restaurantId: string, promotionIds: string[]) {
+  const ids = Array.from(new Set(promotionIds.filter(Boolean)));
+  if (!ids.length) return [] as PromotionTermsData[];
+
+  const { data, error } = await supabase
+    .from('promotions')
+    .select(
+      'id,type,channels,order_types,min_subtotal,starts_at,ends_at,is_recurring,days_of_week,time_window_start,time_window_end,new_customer_only,max_uses_total,max_uses_per_customer,promo_terms,promotion_rewards(reward)'
+    )
+    .eq('restaurant_id', restaurantId)
+    .in('id', ids);
+
+  if (error) throw error;
+
+  return ((data || []) as Array<Record<string, unknown>>).map((row) => {
+    const rewardRows = Array.isArray(row.promotion_rewards) ? row.promotion_rewards : [];
+    const reward = rewardRows[0] && typeof rewardRows[0] === 'object'
+      ? ((rewardRows[0] as { reward?: PromotionTermsData['reward'] }).reward || null)
+      : null;
+
+    return {
+      id: String(row.id || ''),
+      type: String(row.type || ''),
+      channels: (row.channels as string[] | null) || null,
+      order_types: (row.order_types as string[] | null) || null,
+      min_subtotal: (row.min_subtotal as number | null) ?? null,
+      starts_at: (row.starts_at as string | null) ?? null,
+      ends_at: (row.ends_at as string | null) ?? null,
+      is_recurring: (row.is_recurring as boolean | null) ?? null,
+      days_of_week: (row.days_of_week as number[] | null) || null,
+      time_window_start: (row.time_window_start as string | null) ?? null,
+      time_window_end: (row.time_window_end as string | null) ?? null,
+      new_customer_only: (row.new_customer_only as boolean | null) ?? null,
+      max_uses_total: (row.max_uses_total as number | null) ?? null,
+      max_uses_per_customer: (row.max_uses_per_customer as number | null) ?? null,
+      promo_terms: (row.promo_terms as string | null) ?? null,
+      reward,
+    } as PromotionTermsData;
+  });
 }
 
 export async function fetchLoyaltyConfig(restaurantId: string) {

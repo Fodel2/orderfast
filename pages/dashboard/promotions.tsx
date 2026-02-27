@@ -3,7 +3,9 @@ import { useRouter } from 'next/router';
 import { CheckCircleIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import DashboardLayout from '@/components/DashboardLayout';
 import Toast from '@/components/Toast';
+import PromotionTermsModal from '@/components/promotions/PromotionTermsModal';
 import PromotionCustomerCardPreview from '@/components/promotions/PromotionCustomerCardPreview';
+import { buildPromotionTermsPreview } from '@/lib/promotionTerms';
 import { fetchLoyaltyConfig, LoyaltyConfig, upsertLoyaltyConfig } from '@/lib/customerPromotions';
 import { supabase } from '@/utils/supabaseClient';
 
@@ -36,6 +38,7 @@ type PromotionRow = {
   min_subtotal: number | null;
   max_uses_total: number | null;
   max_uses_per_customer: number | null;
+  promo_terms: string | null;
   created_at: string;
 };
 
@@ -115,6 +118,8 @@ export default function PromotionsPage() {
   const [orderTypes, setOrderTypes] = useState<string[]>(['delivery', 'collection']);
 
   const [promoTerms, setPromoTerms] = useState('');
+  const [promotionRewards, setPromotionRewards] = useState<Record<string, Record<string, unknown>>>({});
+  const [termsModalPromotion, setTermsModalPromotion] = useState<PromotionRow | null>(null);
   const [loyaltyLoading, setLoyaltyLoading] = useState(false);
   const [loyaltySaving, setLoyaltySaving] = useState(false);
   const [loyaltySaved, setLoyaltySaved] = useState(false);
@@ -252,7 +257,7 @@ export default function PromotionsPage() {
     const { data, error } = await supabase
       .from('promotions')
       .select(
-        'id,restaurant_id,name,type,status,priority,is_recurring,starts_at,ends_at,days_of_week,time_window_start,time_window_end,channels,order_types,min_subtotal,max_uses_total,max_uses_per_customer,created_at'
+        'id,restaurant_id,name,type,status,priority,is_recurring,starts_at,ends_at,days_of_week,time_window_start,time_window_end,channels,order_types,min_subtotal,max_uses_total,max_uses_per_customer,promo_terms,created_at'
       )
       .eq('restaurant_id', currentRestaurantId)
       .order('priority', { ascending: true })
@@ -263,7 +268,27 @@ export default function PromotionsPage() {
       return;
     }
 
-    setPromotions((data || []) as PromotionRow[]);
+    const rows = (data || []) as PromotionRow[];
+    setPromotions(rows);
+
+    const promotionIds = rows.map((row) => row.id);
+    if (!promotionIds.length) {
+      setPromotionRewards({});
+      return;
+    }
+
+    const { data: rewardsData } = await supabase
+      .from('promotion_rewards')
+      .select('promotion_id,reward')
+      .in('promotion_id', promotionIds);
+
+    const rewardMap = (rewardsData || []).reduce((acc, row) => {
+      const key = String(row.promotion_id || '');
+      if (!key) return acc;
+      acc[key] = (row.reward as Record<string, unknown>) || {};
+      return acc;
+    }, {} as Record<string, Record<string, unknown>>);
+    setPromotionRewards(rewardMap);
   };
 
   const fetchGlobalTerms = async (currentRestaurantId: string) => {
@@ -460,6 +485,51 @@ export default function PromotionsPage() {
     if (minSubtotal) return `Minimum spend £${minSubtotal}`;
     return null;
   }, [type, minSubtotal, freeDeliveryMinSubtotal]);
+
+  const wizardTermsPreview = useMemo(
+    () => buildPromotionTermsPreview(
+      {
+        type,
+        channels,
+        order_types: orderTypes,
+        min_subtotal: minSubtotal ? Number(minSubtotal) : null,
+        starts_at: startsAt || null,
+        ends_at: endsAt || null,
+        is_recurring: isRecurring,
+        days_of_week: daysOfWeek,
+        time_window_start: timeWindowStart || null,
+        time_window_end: timeWindowEnd || null,
+        max_uses_total: maxUsesTotal ? Number(maxUsesTotal) : null,
+        max_uses_per_customer: maxUsesPerCustomer ? Number(maxUsesPerCustomer) : null,
+      },
+      {
+        discount_type: discountType,
+        discount_value: discountValue ? Number(discountValue) : null,
+        max_discount_cap: maxDiscountCap ? Number(maxDiscountCap) : null,
+        delivery_fee_cap: deliveryFeeCap ? Number(deliveryFeeCap) : null,
+        free_delivery_min_subtotal: freeDeliveryMinSubtotal ? Number(freeDeliveryMinSubtotal) : null,
+      }
+    ),
+    [
+      type,
+      channels,
+      orderTypes,
+      minSubtotal,
+      startsAt,
+      endsAt,
+      isRecurring,
+      daysOfWeek,
+      timeWindowStart,
+      timeWindowEnd,
+      maxUsesTotal,
+      maxUsesPerCustomer,
+      discountType,
+      discountValue,
+      maxDiscountCap,
+      deliveryFeeCap,
+      freeDeliveryMinSubtotal,
+    ]
+  );
 
   const resetWizard = () => {
     setStep(0);
@@ -705,6 +775,7 @@ export default function PromotionsPage() {
     setTimeWindowEnd(promotion.time_window_end || '');
     setChannels(promotion.channels || ['website']);
     setOrderTypes(promotion.order_types || ['delivery', 'collection']);
+    setPromoTerms(promotion.promo_terms || '');
 
     const { data: rewardRow } = await supabase
       .from('promotion_rewards')
@@ -1201,6 +1272,13 @@ export default function PromotionsPage() {
                           className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 transition hover:bg-gray-50"
                         >
                           Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTermsModalPromotion(promotion)}
+                          className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 transition hover:bg-gray-50"
+                        >
+                          Terms
                         </button>
                         {promotion.status === 'active' || promotion.status === 'paused' ? (
                           <button
@@ -1769,14 +1847,32 @@ export default function PromotionsPage() {
                       <p className="text-sm text-gray-500">No extra configuration required for this promotion type.</p>
                     )}
 
-                    <div>
-                      <label className="mb-1 block text-sm font-medium text-gray-700">Promotion terms (optional)</label>
-                      <textarea
-                        value={promoTerms}
-                        onChange={(e) => setPromoTerms(e.target.value)}
-                        rows={4}
-                        className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
-                      />
+                    <div className="space-y-4">
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Customer terms preview</label>
+                        <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+                          {wizardTermsPreview.length ? (
+                            <ul className="list-disc space-y-1 pl-5 text-sm text-gray-700">
+                              {wizardTermsPreview.map((term) => (
+                                <li key={term}>{term}</li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="text-sm text-gray-500">Terms will appear as you configure this promotion.</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Add custom note (optional)</label>
+                        <textarea
+                          value={promoTerms}
+                          onChange={(e) => setPromoTerms(e.target.value)}
+                          rows={4}
+                          className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                          placeholder="Add any extra conditions for customers."
+                        />
+                      </div>
                     </div>
                   </div>
                 ) : null}
@@ -1840,6 +1936,15 @@ export default function PromotionsPage() {
           </details>
         </div>
       ) : null}
+
+      <PromotionTermsModal
+        open={!!termsModalPromotion}
+        onClose={() => setTermsModalPromotion(null)}
+        title={termsModalPromotion?.name}
+        offerTerms={termsModalPromotion ? buildPromotionTermsPreview(termsModalPromotion, promotionRewards[termsModalPromotion.id]) : []}
+        restaurantNote={termsModalPromotion?.promo_terms || ''}
+      />
+
       <Toast message={toastMessage} onClose={() => setToastMessage('')} />
     </DashboardLayout>
   );

@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import PromotionTermsModal from '@/components/promotions/PromotionTermsModal';
+import { buildPromotionTermsPreview } from '@/lib/promotionTerms';
 import CustomerLayout from '@/components/CustomerLayout';
 import { useCart } from '@/context/CartContext';
 import { useOrderType } from '@/context/OrderTypeContext';
@@ -11,6 +13,7 @@ import {
   describeInvalidReason,
   fetchCustomerPromotions,
   fetchLoyaltyConfig,
+  fetchPromotionTermsData,
   fetchLoyaltyPointsBalance,
   getAppliedSelections,
   getStoredActiveSelection,
@@ -27,6 +30,7 @@ import {
   upsertOwnedVoucher,
   validatePromotion,
   VoucherReward,
+  PromotionTermsData,
 } from '@/lib/customerPromotions';
 
 const LOYALTY_LINES = [
@@ -65,6 +69,7 @@ const LOYALTY_LINES = [
 const IS_DEV = process.env.NODE_ENV !== 'production';
 
 type DisplayItem = {
+  promotionTerms?: PromotionTermsData | null;
   key: string;
   kind: 'promotion' | 'voucher';
   promotionId: string;
@@ -79,6 +84,7 @@ type DisplayItem = {
   minSubtotal?: number | null;
   code?: string;
   createdAt?: string;
+  reward?: VoucherReward | null;
 };
 
 const formatVoucherTitle = (reward?: VoucherReward | null, fallbackValue?: number | null) => {
@@ -100,6 +106,8 @@ export default function CustomerPromotionsPage() {
   const [appliedSelections, setAppliedSelectionsState] = useState<AppliedSelection[]>([]);
   const [activeSelection, setActiveSelectionState] = useState<AppliedSelection | null>(null);
   const [ownedVouchers, setOwnedVouchersState] = useState<OwnedVoucher[]>([]);
+  const [promotionTermsMap, setPromotionTermsMap] = useState<Record<string, PromotionTermsData>>({});
+  const [termsItem, setTermsItem] = useState<DisplayItem | null>(null);
 
   const [loyaltyConfig, setLoyaltyConfig] = useState<LoyaltyConfig | null>(null);
   const [loyaltyPoints, setLoyaltyPoints] = useState(0);
@@ -145,6 +153,12 @@ export default function CustomerPromotionsPage() {
         basketSubtotal: cart.items.length ? subtotal : null,
       });
       setItems(data);
+      const termRows = await fetchPromotionTermsData(restaurantId, data.map((item) => item.id));
+      const nextTermsMap = termRows.reduce((acc, row) => {
+        acc[row.id] = row;
+        return acc;
+      }, {} as Record<string, PromotionTermsData>);
+      setPromotionTermsMap(nextTermsMap);
     } catch {
       setItems([]);
     } finally {
@@ -187,6 +201,7 @@ export default function CustomerPromotionsPage() {
         return {
           key: `voucher:${voucher.voucherCodeId}`,
           kind: 'voucher',
+          promotionTerms: promotionTermsMap[voucher.promotionId] || null,
           promotionId: voucher.promotionId,
           voucherCodeId: voucher.voucherCodeId,
           name: formatVoucherTitle(voucher.reward, loyaltyConfig?.reward_value ?? null),
@@ -199,9 +214,10 @@ export default function CustomerPromotionsPage() {
           minSubtotal: promotion?.min_subtotal ?? null,
           code: voucher.code,
           createdAt: voucher.createdAt,
+          reward: voucher.reward || null,
         } as DisplayItem;
       });
-  }, [items, ownedVouchers, loyaltyConfig?.reward_value]);
+  }, [items, ownedVouchers, loyaltyConfig?.reward_value, promotionTermsMap]);
 
   const promotionDisplayMap = useMemo(() => {
     const map = new Map<string, DisplayItem>();
@@ -209,6 +225,7 @@ export default function CustomerPromotionsPage() {
       map.set(promotion.id, {
         key: `promotion:${promotion.id}`,
         kind: 'promotion',
+        promotionTerms: promotionTermsMap[promotion.id] || null,
         promotionId: promotion.id,
         name: promotion.name,
         subtitle: '',
@@ -221,7 +238,7 @@ export default function CustomerPromotionsPage() {
       });
     });
     return map;
-  }, [nonVoucherItems]);
+  }, [nonVoucherItems, promotionTermsMap]);
 
   const appliedItems = useMemo<DisplayItem[]>(() => {
     const resolved = appliedSelections
@@ -542,6 +559,9 @@ export default function CustomerPromotionsPage() {
                 <p className="mt-1 text-sm text-teal-800">{scheduleLabel(activeItem)}</p>
               </div>
               <div className="flex items-center justify-end gap-2 min-w-[96px]">
+                <button type="button" onClick={() => setTermsItem(activeItem)} className="text-xs font-semibold text-teal-700 underline underline-offset-2">
+                  View terms
+                </button>
                 <button
                   type="button"
                   onClick={removeActive}
@@ -582,6 +602,9 @@ export default function CustomerPromotionsPage() {
                       <p className="mt-1 text-sm text-slate-600">{scheduleLabel(item)}</p>
                     </div>
                     <div className="flex items-center justify-end gap-2 min-w-[204px]">
+                      <button type="button" onClick={() => setTermsItem(item)} className="text-xs font-semibold text-slate-600 underline underline-offset-2">
+                        View terms
+                      </button>
                       {!isActive ? (
                         <button type="button" onClick={() => makeActive(item)} className={`${tileActionButtonClass} border border-slate-300 text-slate-700 hover:bg-slate-50`}>
                           Activate
@@ -638,13 +661,18 @@ export default function CustomerPromotionsPage() {
                       <p className="mt-1 text-sm text-slate-600">{scheduleLabel(item)}</p>
                       {item.minSubtotal != null ? <p className="mt-1 text-xs text-slate-500">Min spend £{item.minSubtotal}</p> : null}
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => applyItem(item)}
-                      className={`${tileActionButtonClass} bg-teal-600 text-white transition hover:bg-teal-700`}
-                    >
-                      Apply
-                    </button>
+                    <div className="flex flex-col items-end gap-2">
+                      <button type="button" onClick={() => setTermsItem(item)} className="text-xs font-semibold text-slate-600 underline underline-offset-2">
+                        View terms
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => applyItem(item)}
+                        className={`${tileActionButtonClass} bg-teal-600 text-white transition hover:bg-teal-700`}
+                      >
+                        Apply
+                      </button>
+                    </div>
                   </div>
                 </article>
               );
@@ -652,6 +680,14 @@ export default function CustomerPromotionsPage() {
           )}
         </section>
       </div>
+
+      <PromotionTermsModal
+        open={!!termsItem}
+        onClose={() => setTermsItem(null)}
+        title={termsItem?.name}
+        offerTerms={termsItem ? buildPromotionTermsPreview(termsItem.promotionTerms, termsItem.kind === 'voucher' ? (termsItem.reward || termsItem.promotionTerms?.reward || null) : termsItem.promotionTerms?.reward || null) : []}
+        restaurantNote={termsItem?.promotionTerms?.promo_terms || ''}
+      />
     </CustomerLayout>
   );
 }

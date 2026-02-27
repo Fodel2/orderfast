@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import { TruckIcon, ShoppingBagIcon, MapPinIcon } from '@heroicons/react/24/outline';
 import { motion, AnimatePresence } from 'framer-motion';
+import PromotionTermsModal from '@/components/promotions/PromotionTermsModal';
+import { buildPromotionTermsPreview } from '@/lib/promotionTerms';
 
 const MotionDiv = motion.div;
 import { useCart } from '../context/CartContext';
@@ -14,6 +16,7 @@ import {
   clearStoredActiveSelection,
   describeInvalidReason,
   fetchCustomerPromotions,
+  fetchPromotionTermsData,
   getAppliedSelections,
   getOwnedVouchers,
   getStoredActiveSelection,
@@ -25,6 +28,7 @@ import {
   setPromotionCheckoutBlock,
   resolveVoucherPromotionByCode,
   PromotionListItem,
+  PromotionTermsData,
   upsertOwnedVoucher,
   validatePromotion,
 } from '@/lib/customerPromotions';
@@ -59,6 +63,8 @@ export default function CheckoutPage() {
   const [promoErrorBanner, setPromoErrorBanner] = useState('');
   const [voucherCodeInput, setVoucherCodeInput] = useState('');
   const [voucherError, setVoucherError] = useState('');
+  const [activePromotionTerms, setActivePromotionTerms] = useState<PromotionTermsData | null>(null);
+  const [showTermsModal, setShowTermsModal] = useState(false);
 
   useEffect(() => {
     if (!cart.restaurant_id) return;
@@ -84,6 +90,24 @@ export default function CheckoutPage() {
     setActiveSelection(getStoredActiveSelection(cart.restaurant_id));
     setCustomerId(session?.user?.id || getStableGuestCustomerId(cart.restaurant_id));
   }, [cart.restaurant_id, session?.user?.id]);
+
+
+  useEffect(() => {
+    const loadActiveTerms = async () => {
+      if (!cart.restaurant_id || !activeSelection?.promotionId) {
+        setActivePromotionTerms(null);
+        return;
+      }
+      try {
+        const rows = await fetchPromotionTermsData(cart.restaurant_id, [activeSelection.promotionId]);
+        setActivePromotionTerms(rows[0] || null);
+      } catch {
+        setActivePromotionTerms(null);
+      }
+    };
+
+    loadActiveTerms();
+  }, [cart.restaurant_id, activeSelection?.promotionId]);
 
   const deliveryFee = orderType === 'delivery' ? 300 : 0; // cents
   const serviceFee = Math.round(subtotal * 0.05); // 5%
@@ -706,6 +730,13 @@ export default function CheckoutPage() {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
+                    onClick={() => setShowTermsModal(true)}
+                    className="rounded border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-white"
+                  >
+                    View terms
+                  </button>
+                  <button
+                    type="button"
                     onClick={removeActivePromotion}
                     className="rounded border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-white"
                   >
@@ -756,6 +787,13 @@ export default function CheckoutPage() {
           </button>
         </div>
       )}
+      <PromotionTermsModal
+        open={showTermsModal && !!activeSelection}
+        onClose={() => setShowTermsModal(false)}
+        title={activePromotionLabel}
+        offerTerms={buildPromotionTermsPreview(activePromotionTerms, activePromotionTerms?.reward || null)}
+        restaurantNote={activePromotionTerms?.promo_terms || ''}
+      />
     </div>
   );
 }
