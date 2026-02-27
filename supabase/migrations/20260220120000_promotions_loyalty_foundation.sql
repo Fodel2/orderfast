@@ -542,6 +542,148 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION public.redeem_loyalty_points_to_voucher(
+  p_restaurant_id uuid,
+  p_customer_id uuid
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions
+AS $$
+DECLARE
+  loyalty_row RECORD;
+  current_points integer := 0;
+  points_to_spend integer;
+  voucher_currency_value numeric;
+  loyalty_promotion_id uuid;
+  reward_payload jsonb;
+  voucher_code_id uuid;
+  voucher_code text;
+  reward_title text;
+BEGIN
+  SELECT
+    lc.enabled,
+    lc.points_per_currency_unit,
+    lc.reward_points_required,
+    lc.reward_value
+  INTO loyalty_row
+  FROM public.loyalty_config lc
+  WHERE lc.restaurant_id = p_restaurant_id;
+
+  IF loyalty_row IS NULL OR COALESCE(loyalty_row.enabled, false) = false THEN
+    RAISE EXCEPTION 'Loyalty is not enabled for this restaurant';
+  END IF;
+
+  points_to_spend := GREATEST(1, COALESCE(loyalty_row.reward_points_required, 0));
+  voucher_currency_value := GREATEST(0, COALESCE(loyalty_row.reward_value, 0));
+
+  SELECT COALESCE(SUM(
+    CASE
+      WHEN ll.entry_type = 'spend' THEN -ABS(ll.points)
+      ELSE ll.points
+    END
+  ), 0)::integer
+  INTO current_points
+  FROM public.loyalty_ledger ll
+  WHERE ll.restaurant_id = p_restaurant_id
+    AND ll.customer_id = p_customer_id;
+
+  IF current_points < points_to_spend THEN
+    RAISE EXCEPTION 'Insufficient loyalty points';
+  END IF;
+
+  SELECT p.id
+  INTO loyalty_promotion_id
+  FROM public.promotions p
+  WHERE p.restaurant_id = p_restaurant_id
+    AND p.type = 'voucher'
+    AND p.name = 'Loyalty Voucher'
+  ORDER BY p.created_at DESC
+  LIMIT 1;
+
+  IF loyalty_promotion_id IS NULL THEN
+    INSERT INTO public.promotions (
+      restaurant_id,
+      name,
+      type,
+      status,
+      priority,
+      channels,
+      order_types,
+      is_recurring,
+      promo_terms
+    ) VALUES (
+      p_restaurant_id,
+      'Loyalty Voucher',
+      'voucher',
+      'active',
+      100,
+      ARRAY['website']::text[],
+      ARRAY['delivery','collection']::text[],
+      false,
+      'Loyalty voucher generated from points redemption.'
+    )
+    RETURNING id INTO loyalty_promotion_id;
+  END IF;
+
+  reward_payload := jsonb_build_object(
+    'discount_type', 'fixed',
+    'discount_value', voucher_currency_value,
+    'max_discount_cap', NULL
+  );
+
+  INSERT INTO public.promotion_rewards (promotion_id, reward)
+  VALUES (loyalty_promotion_id, reward_payload)
+  ON CONFLICT (promotion_id)
+  DO UPDATE SET reward = EXCLUDED.reward;
+
+  voucher_code := upper(substring(replace(gen_random_uuid()::text, '-', ''), 1, 10));
+
+  INSERT INTO public.promotion_voucher_codes (
+    promotion_id,
+    code,
+    max_uses_total,
+    max_uses_per_customer
+  ) VALUES (
+    loyalty_promotion_id,
+    voucher_code,
+    1,
+    1
+  )
+  RETURNING id INTO voucher_code_id;
+
+  INSERT INTO public.loyalty_ledger (
+    restaurant_id,
+    customer_id,
+    entry_type,
+    points,
+    currency_value,
+    note
+  ) VALUES (
+    p_restaurant_id,
+    p_customer_id,
+    'spend',
+    points_to_spend,
+    voucher_currency_value,
+    'Redeemed for loyalty voucher'
+  );
+
+  reward_title := format('£%s Voucher', trim(to_char(voucher_currency_value, 'FM999999990.##')));
+
+  RETURN jsonb_build_object(
+    'voucher_code_id', voucher_code_id,
+    'code', voucher_code,
+    'code_normalized', lower(voucher_code),
+    'promotion_id', loyalty_promotion_id,
+    'reward', reward_payload,
+    'reward_title', reward_title,
+    'points_spent', points_to_spend,
+    'currency_value', voucher_currency_value
+  );
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.validate_promotion_on_checkout(
   p_restaurant_id uuid,
   p_customer_id uuid,

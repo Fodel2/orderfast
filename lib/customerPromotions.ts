@@ -21,6 +21,29 @@ export type ActivePromotionSelection = {
   selected_at: string;
 };
 
+export type VoucherReward = {
+  discount_type: 'fixed' | 'percent';
+  discount_value: number;
+  max_discount_cap?: number | null;
+};
+
+export type OwnedVoucher = {
+  voucherCodeId: string;
+  promotionId: string;
+  code: string;
+  createdAt?: string;
+  reward?: VoucherReward;
+};
+
+export type AppliedSelection =
+  | { kind: 'promotion'; promotionId: string }
+  | { kind: 'voucher'; voucherCodeId: string; promotionId: string };
+
+export type StoredActiveSelection =
+  | { kind: 'promotion'; promotionId: string }
+  | { kind: 'voucher'; voucherCodeId: string; promotionId: string }
+  | null;
+
 export type PromotionValidationResult = {
   valid: boolean;
   reason: string | null;
@@ -30,14 +53,32 @@ export type PromotionValidationResult = {
 
 
 export type VoucherPromotionLookup = {
+  voucher_code_id: string;
+  voucher_code: string;
   promotion_id: string;
   promotion_name: string | null;
   promotion_type: string | null;
+  reward: VoucherReward | null;
+};
+
+export type LoyaltyConfig = {
+  enabled: boolean;
+  points_per_currency_unit: number;
+  reward_points_required: number;
+  reward_value: number;
+};
+
+export type LoyaltyBalance = {
+  points: number;
 };
 
 const guestKey = (restaurantId: string) => `orderfast_guest_customer_${restaurantId}`;
 const activePromoKey = (restaurantId: string) => `orderfast_active_promotion_${restaurantId}`;
 const appliedPromoKey = (restaurantId: string) => `orderfast_applied_promotions_${restaurantId}`;
+const appliedVoucherCodesKey = (restaurantId: string) => `orderfast_applied_voucher_codes_${restaurantId}`;
+const ownedVouchersKey = (restaurantId: string) => `orderfast_owned_vouchers_${restaurantId}`;
+const appliedSelectionsKey = (restaurantId: string) => `orderfast_applied_selections_${restaurantId}`;
+const activeSelectionV2Key = (restaurantId: string) => `orderfast_active_selection_v2_${restaurantId}`;
 const checkoutBlockKey = (restaurantId: string) => `orderfast_promo_block_${restaurantId}`;
 
 function makeUuid() {
@@ -89,6 +130,203 @@ export function setAppliedPromotionIds(restaurantId: string, ids: string[]) {
   if (typeof window === 'undefined') return;
   const unique = Array.from(new Set(ids.filter(Boolean)));
   window.localStorage.setItem(appliedPromoKey(restaurantId), JSON.stringify(unique));
+}
+
+export function getOwnedVouchers(restaurantId: string): OwnedVoucher[] {
+  if (typeof window === 'undefined') return [];
+  const raw = window.localStorage.getItem(ownedVouchersKey(restaurantId));
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const map = new Map<string, OwnedVoucher>();
+    parsed.forEach((entry) => {
+      if (!entry || typeof entry !== 'object') return;
+      const voucherCodeId = String((entry as { voucherCodeId?: string }).voucherCodeId || '').trim();
+      const promotionId = String((entry as { promotionId?: string }).promotionId || '').trim();
+      const code = String((entry as { code?: string }).code || '').trim();
+      if (!voucherCodeId || !promotionId || !code) return;
+      const rewardRaw = (entry as { reward?: VoucherReward }).reward;
+      const reward = rewardRaw && (rewardRaw.discount_type === 'fixed' || rewardRaw.discount_type === 'percent')
+        ? {
+            discount_type: rewardRaw.discount_type,
+            discount_value: Number(rewardRaw.discount_value || 0),
+            max_discount_cap: rewardRaw.max_discount_cap ?? null,
+          }
+        : undefined;
+      map.set(voucherCodeId, {
+        voucherCodeId,
+        promotionId,
+        code,
+        createdAt: (entry as { createdAt?: string }).createdAt,
+        reward,
+      });
+    });
+    return Array.from(map.values());
+  } catch {
+    return [];
+  }
+}
+
+export function setOwnedVouchers(restaurantId: string, vouchers: OwnedVoucher[]) {
+  if (typeof window === 'undefined') return;
+  const deduped = Array.from(new Map(vouchers.map((voucher) => [voucher.voucherCodeId, voucher])).values());
+  window.localStorage.setItem(ownedVouchersKey(restaurantId), JSON.stringify(deduped));
+}
+
+export function upsertOwnedVoucher(restaurantId: string, voucher: OwnedVoucher) {
+  const existing = getOwnedVouchers(restaurantId);
+  const next = existing.filter((entry) => entry.voucherCodeId !== voucher.voucherCodeId);
+  next.push(voucher);
+  setOwnedVouchers(restaurantId, next.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')));
+}
+
+export function removeOwnedVoucher(restaurantId: string, voucherCodeId: string) {
+  const next = getOwnedVouchers(restaurantId).filter((voucher) => voucher.voucherCodeId !== voucherCodeId);
+  setOwnedVouchers(restaurantId, next);
+}
+
+export function getAppliedSelections(restaurantId: string): AppliedSelection[] {
+  if (typeof window === 'undefined') return [];
+  const raw = window.localStorage.getItem(appliedSelectionsKey(restaurantId));
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((entry) => {
+          if (!entry || typeof entry !== 'object') return false;
+          if ((entry as AppliedSelection).kind === 'promotion') {
+            return typeof (entry as AppliedSelection & { promotionId?: string }).promotionId === 'string';
+          }
+          if ((entry as AppliedSelection).kind === 'voucher') {
+            return (
+              typeof (entry as AppliedSelection & { promotionId?: string }).promotionId === 'string'
+              && typeof (entry as AppliedSelection & { voucherCodeId?: string }).voucherCodeId === 'string'
+            );
+          }
+          return false;
+        }) as AppliedSelection[];
+      }
+    } catch {
+      // ignore and migrate from legacy keys
+    }
+  }
+
+  const legacyPromotionIds = getAppliedPromotionIds(restaurantId);
+  return legacyPromotionIds.map((promotionId) => ({ kind: 'promotion', promotionId } as AppliedSelection));
+}
+
+export function setAppliedSelections(restaurantId: string, selections: AppliedSelection[]) {
+  if (typeof window === 'undefined') return;
+  const seen = new Set<string>();
+  const unique = selections.filter((entry) => {
+    const key = entry.kind === 'promotion'
+      ? `promotion:${entry.promotionId}`
+      : `voucher:${entry.voucherCodeId}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  window.localStorage.setItem(appliedSelectionsKey(restaurantId), JSON.stringify(unique));
+}
+
+export function addAppliedSelection(restaurantId: string, selection: AppliedSelection) {
+  const next = [...getAppliedSelections(restaurantId), selection];
+  setAppliedSelections(restaurantId, next);
+}
+
+export function removeAppliedSelection(restaurantId: string, selection: AppliedSelection) {
+  const next = getAppliedSelections(restaurantId).filter((entry) => {
+    if (selection.kind === 'promotion' && entry.kind === 'promotion') return entry.promotionId !== selection.promotionId;
+    if (selection.kind === 'voucher' && entry.kind === 'voucher') return entry.voucherCodeId !== selection.voucherCodeId;
+    return true;
+  });
+  setAppliedSelections(restaurantId, next);
+}
+
+export function getStoredActiveSelection(restaurantId: string): StoredActiveSelection {
+  if (typeof window === 'undefined') return null;
+  const raw = window.localStorage.getItem(activeSelectionV2Key(restaurantId));
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed?.kind === 'promotion' && typeof parsed.promotionId === 'string') {
+        return { kind: 'promotion', promotionId: parsed.promotionId };
+      }
+      if (
+        parsed?.kind === 'voucher'
+        && typeof parsed.promotionId === 'string'
+        && typeof parsed.voucherCodeId === 'string'
+      ) {
+        return { kind: 'voucher', promotionId: parsed.promotionId, voucherCodeId: parsed.voucherCodeId };
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  const legacy = getActivePromotionSelection(restaurantId);
+  if (!legacy?.promotion_id) return null;
+  return { kind: 'promotion', promotionId: legacy.promotion_id };
+}
+
+export function setStoredActiveSelection(restaurantId: string, selection: StoredActiveSelection) {
+  if (typeof window === 'undefined') return;
+  if (!selection) {
+    window.localStorage.removeItem(activeSelectionV2Key(restaurantId));
+    return;
+  }
+  window.localStorage.setItem(activeSelectionV2Key(restaurantId), JSON.stringify(selection));
+}
+
+export function clearStoredActiveSelection(restaurantId: string) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.removeItem(activeSelectionV2Key(restaurantId));
+}
+
+export function getAppliedVoucherCodes(restaurantId: string): Record<string, string> {
+  if (typeof window === 'undefined') return {};
+  const raw = window.localStorage.getItem(appliedVoucherCodesKey(restaurantId));
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return {};
+    return Object.entries(parsed).reduce((acc, [promotionId, code]) => {
+      if (typeof promotionId === 'string' && typeof code === 'string' && code.trim()) {
+        acc[promotionId] = code;
+      }
+      return acc;
+    }, {} as Record<string, string>);
+  } catch {
+    return {};
+  }
+}
+
+export function setAppliedVoucherCode(restaurantId: string, promotionId: string, voucherCode: string) {
+  if (typeof window === 'undefined') return;
+  const next = getAppliedVoucherCodes(restaurantId);
+  next[promotionId] = voucherCode;
+  window.localStorage.setItem(appliedVoucherCodesKey(restaurantId), JSON.stringify(next));
+}
+
+export function setAppliedVoucherCodeByVoucherId(
+  restaurantId: string,
+  voucherCodeId: string,
+  voucherCode: string,
+  promotionId?: string
+) {
+  if (typeof window === 'undefined') return;
+  const next = getAppliedVoucherCodes(restaurantId);
+  next[voucherCodeId] = voucherCode;
+  if (promotionId) next[promotionId] = voucherCode;
+  window.localStorage.setItem(appliedVoucherCodesKey(restaurantId), JSON.stringify(next));
+}
+
+export function removeAppliedVoucherCode(restaurantId: string, promotionId: string) {
+  if (typeof window === 'undefined') return;
+  const next = getAppliedVoucherCodes(restaurantId);
+  delete next[promotionId];
+  window.localStorage.setItem(appliedVoucherCodesKey(restaurantId), JSON.stringify(next));
 }
 
 export function addAppliedPromotionId(restaurantId: string, promotionId: string) {
@@ -151,6 +389,81 @@ export async function fetchCustomerPromotions(params: {
   return (data || []) as PromotionListItem[];
 }
 
+export async function fetchLoyaltyConfig(restaurantId: string) {
+  const { data, error } = await supabase
+    .from('loyalty_config')
+    .select('enabled,points_per_currency_unit,reward_points_required,reward_value')
+    .eq('restaurant_id', restaurantId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return (data || null) as LoyaltyConfig | null;
+}
+
+export async function upsertLoyaltyConfig(restaurantId: string, config: LoyaltyConfig) {
+  const payload = {
+    restaurant_id: restaurantId,
+    enabled: config.enabled,
+    points_per_currency_unit: config.points_per_currency_unit,
+    reward_points_required: config.reward_points_required,
+    reward_value: config.reward_value,
+  };
+
+  const { data, error } = await supabase
+    .from('loyalty_config')
+    .upsert(payload, { onConflict: 'restaurant_id' })
+    .select('enabled,points_per_currency_unit,reward_points_required,reward_value')
+    .single();
+
+  if (error) throw error;
+  return data as LoyaltyConfig;
+}
+
+export async function fetchLoyaltyPointsBalance(params: { restaurantId: string; customerId: string }) {
+  const rpcResult = await supabase.rpc('get_loyalty_points_balance', {
+    p_restaurant_id: params.restaurantId,
+    p_customer_id: params.customerId,
+  });
+
+  if (!rpcResult.error) {
+    const raw = rpcResult.data;
+    if (typeof raw === 'number') return { points: Math.max(0, Math.floor(raw)) } as LoyaltyBalance;
+    if (Array.isArray(raw) && raw[0] && typeof raw[0].points === 'number') {
+      return { points: Math.max(0, Math.floor(raw[0].points)) } as LoyaltyBalance;
+    }
+    if (raw && typeof raw === 'object' && typeof (raw as { points?: unknown }).points === 'number') {
+      return { points: Math.max(0, Math.floor((raw as { points: number }).points)) } as LoyaltyBalance;
+    }
+  }
+
+  // QA note: fallback query keeps loyalty functional when RPC is unavailable in older environments.
+  const { data, error } = await supabase
+    .from('loyalty_ledger')
+    .select('points,entry_type')
+    .eq('restaurant_id', params.restaurantId)
+    .eq('customer_id', params.customerId);
+
+  if (error) throw error;
+
+  const points = (data || []).reduce((sum, entry) => {
+    const value = Number(entry.points || 0);
+    if (entry.entry_type === 'spend') return sum - Math.abs(value);
+    return sum + value;
+  }, 0);
+
+  return { points: Math.max(0, Math.floor(points)) } as LoyaltyBalance;
+}
+
+export async function redeemLoyaltyPointsToVoucher(params: { restaurantId: string; customerId: string }) {
+  const { data, error } = await supabase.rpc('redeem_loyalty_points_to_voucher', {
+    p_restaurant_id: params.restaurantId,
+    p_customer_id: params.customerId,
+  });
+
+  if (error) throw error;
+  return data;
+}
+
 
 export async function resolveVoucherPromotionByCode(params: {
   restaurantId: string;
@@ -161,7 +474,7 @@ export async function resolveVoucherPromotionByCode(params: {
 
   const { data, error } = await supabase
     .from('promotion_voucher_codes')
-    .select('promotion_id,promotions!inner(id,restaurant_id,name,type)')
+    .select('id,voucher_code_id,code,promotion_id,promotions!inner(id,restaurant_id,name,type),promotion_rewards(discount_type,discount_value,max_discount_cap)')
     .eq('code_normalized', normalizedCode)
     .eq('promotions.restaurant_id', params.restaurantId)
     .maybeSingle();
@@ -170,11 +483,25 @@ export async function resolveVoucherPromotionByCode(params: {
   if (!data?.promotion_id) return null;
 
   const promotion = Array.isArray(data.promotions) ? data.promotions[0] : data.promotions;
+  const reward = Array.isArray((data as { promotion_rewards?: VoucherReward[] }).promotion_rewards)
+    ? (data as { promotion_rewards?: VoucherReward[] }).promotion_rewards?.[0] || null
+    : null;
+  const voucherCodeId = String((data as { voucher_code_id?: string; id?: string }).voucher_code_id || (data as { id?: string }).id || '').trim();
+  const code = String((data as { code?: string }).code || params.code).trim();
 
   return {
+    voucher_code_id: voucherCodeId,
+    voucher_code: code,
     promotion_id: data.promotion_id,
     promotion_name: (promotion?.name as string | undefined) || null,
     promotion_type: (promotion?.type as string | undefined) || null,
+    reward: reward
+      ? {
+          discount_type: reward.discount_type,
+          discount_value: Number(reward.discount_value || 0),
+          max_discount_cap: reward.max_discount_cap ?? null,
+        }
+      : null,
   } as VoucherPromotionLookup;
 }
 

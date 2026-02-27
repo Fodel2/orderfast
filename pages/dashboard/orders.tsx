@@ -61,6 +61,7 @@ type TableSessionSummary = {
 interface Order {
   id: string;
   restaurant_id?: string;
+  user_id?: string | null;
   short_order_number: number | null;
   source?: string | null;
   order_type: 'delivery' | 'collection' | 'kiosk' | string;
@@ -221,6 +222,7 @@ export default function OrdersPage() {
           `
           id,
           restaurant_id,
+          user_id,
           short_order_number,
           source,
           order_type,
@@ -312,6 +314,7 @@ export default function OrdersPage() {
         `
         id,
         restaurant_id,
+        user_id,
         short_order_number,
         source,
         order_type,
@@ -391,6 +394,7 @@ export default function OrdersPage() {
           `
           id,
           restaurant_id,
+          user_id,
           short_order_number,
           source,
           order_type,
@@ -721,6 +725,7 @@ export default function OrdersPage() {
           `
           id,
           restaurant_id,
+          user_id,
           short_order_number,
           source,
           order_type,
@@ -792,7 +797,7 @@ export default function OrdersPage() {
       .update(updatePayload)
       .eq('id', id)
       .in('status', allowedStatuses)
-      .select('id');
+      .select('id,restaurant_id,user_id,total_price');
 
     if (error) {
       console.error('[orders] failed to update order status', error);
@@ -839,7 +844,55 @@ export default function OrdersPage() {
     } else {
       clearFlashForOrder(id);
     }
+
+    if (status === 'completed' && data?.[0]) {
+      await awardLoyaltyPointsForCompletedOrder(data[0] as Pick<Order, 'id' | 'restaurant_id' | 'user_id' | 'total_price'>);
+    }
   };
+
+  const awardLoyaltyPointsForCompletedOrder = useCallback(
+    async (order: Pick<Order, 'id' | 'restaurant_id' | 'user_id' | 'total_price'>) => {
+      if (!order.restaurant_id || !order.user_id || !order.total_price || order.total_price <= 0) return;
+
+      const { data: existingEarn } = await supabase
+        .from('loyalty_ledger')
+        .select('id')
+        .eq('restaurant_id', order.restaurant_id)
+        .eq('ref_order_id', order.id)
+        .eq('entry_type', 'earn')
+        .limit(1);
+
+      if (existingEarn && existingEarn.length > 0) return;
+
+      const { data: config, error: configError } = await supabase
+        .from('loyalty_config')
+        .select('enabled,points_per_currency_unit')
+        .eq('restaurant_id', order.restaurant_id)
+        .maybeSingle();
+
+      if (configError || !config?.enabled) return;
+
+      const pointsPerPound = Math.max(1, Math.floor(Number(config.points_per_currency_unit || 1)));
+      const spendInPounds = Number(order.total_price) / 100;
+      const pointsToAward = Math.floor(spendInPounds * pointsPerPound);
+      if (pointsToAward <= 0) return;
+
+      const { error: insertError } = await supabase.from('loyalty_ledger').insert({
+        restaurant_id: order.restaurant_id,
+        customer_id: order.user_id,
+        entry_type: 'earn',
+        points: pointsToAward,
+        currency_value: spendInPounds,
+        ref_order_id: order.id,
+        note: 'Order completed loyalty points',
+      });
+
+      if (insertError && process.env.NODE_ENV !== 'production') {
+        console.error('[orders] failed to award loyalty points', insertError);
+      }
+    },
+    []
+  );
 
   const handleOpenOrder = useCallback(
     async (order: Order) => {
@@ -902,17 +955,24 @@ export default function OrdersPage() {
     setTableActionLoading(true);
     const sessionId = selectedTableSession.session.id;
 
-    const { error: ordersError } = await supabase
+    const { data: completedOrders, error: ordersError } = await supabase
       .from('orders')
       .update({ status: 'completed' })
       .eq('table_session_id', sessionId)
-      .not('status', 'in', '(completed,cancelled)');
+      .not('status', 'in', '(completed,cancelled)')
+      .select('id,restaurant_id,user_id,total_price');
 
     if (ordersError) {
       setToastMessage('Failed to complete table orders.');
       setTableActionLoading(false);
       return;
     }
+
+    await Promise.all(
+      (completedOrders || []).map((order) =>
+        awardLoyaltyPointsForCompletedOrder(order as Pick<Order, 'id' | 'restaurant_id' | 'user_id' | 'total_price'>)
+      )
+    );
 
     const {
       data: { session },
@@ -938,7 +998,7 @@ export default function OrdersPage() {
       await fetchTableSessions(restaurantId);
       await refreshOrders(restaurantId);
     }
-  }, [fetchTableSessions, refreshOrders, restaurantId, selectedTableSession]);
+  }, [awardLoyaltyPointsForCompletedOrder, fetchTableSessions, refreshOrders, restaurantId, selectedTableSession]);
 
   const cancelTableSession = useCallback(async () => {
     if (!selectedTableSession) return;
@@ -981,7 +1041,7 @@ export default function OrdersPage() {
       await fetchTableSessions(restaurantId);
       await refreshOrders(restaurantId);
     }
-  }, [fetchTableSessions, refreshOrders, restaurantId, selectedTableSession]);
+  }, [awardLoyaltyPointsForCompletedOrder, fetchTableSessions, refreshOrders, restaurantId, selectedTableSession]);
 
   if (loading) return <DashboardLayout>Loading...</DashboardLayout>;
 
