@@ -62,6 +62,8 @@ const LOYALTY_LINES = [
   'Professional plate economics at work.',
 ];
 
+const IS_DEV = process.env.NODE_ENV !== 'production';
+
 type DisplayItem = {
   key: string;
   kind: 'promotion' | 'voucher';
@@ -370,27 +372,37 @@ export default function CustomerPromotionsPage() {
       const payload = (Array.isArray(result) ? result[0] : result) as {
         promotion_id?: string;
         voucher_code?: string;
+        code?: string;
+        code_normalized?: string;
         voucher_code_id?: string;
         id?: string;
+        reward?: VoucherReward;
+        reward_title?: string;
         discount_type?: 'fixed' | 'percent';
         discount_value?: number;
         max_discount_cap?: number;
       } | null;
 
       const voucherCodeId = String(payload?.voucher_code_id || payload?.id || '').trim();
-      if (payload?.promotion_id && payload?.voucher_code && voucherCodeId) {
+      const voucherCode = String(payload?.code || payload?.voucher_code || '').trim();
+
+      if (IS_DEV) {
+        console.debug('[loyalty] redeem response', payload);
+      }
+
+      if (payload?.promotion_id && voucherCode && voucherCodeId) {
         const reward = payload.discount_type
           ? {
               discount_type: payload.discount_type,
               discount_value: Number(payload.discount_value || 0),
               max_discount_cap: payload.max_discount_cap ?? null,
             }
-          : undefined;
+          : (payload.reward || undefined);
 
         upsertOwnedVoucher(restaurantId, {
           voucherCodeId,
           promotionId: payload.promotion_id,
-          code: payload.voucher_code,
+          code: voucherCode,
           createdAt: new Date().toISOString(),
           reward,
         });
@@ -400,8 +412,20 @@ export default function CustomerPromotionsPage() {
         addAppliedSelection(restaurantId, voucherSelection);
         setAppliedSelectionsState(getAppliedSelections(restaurantId));
 
-        setAppliedVoucherCodeByVoucherId(restaurantId, voucherCodeId, payload.voucher_code, payload.promotion_id);
-        setLastRedeemedVoucherCode(payload.voucher_code);
+        if (!activeSelection) {
+          persistActiveSelection(voucherSelection);
+        }
+
+        setAppliedVoucherCodeByVoucherId(restaurantId, voucherCodeId, voucherCode, payload.promotion_id);
+        setLastRedeemedVoucherCode(voucherCode);
+
+        if (IS_DEV) {
+          console.debug('[loyalty] wrote owned voucher', {
+            restaurantId,
+            voucherCodeId,
+            promotionId: payload.promotion_id,
+          });
+        }
       }
 
       await Promise.all([loadPromotions(), loadLoyalty()]);
