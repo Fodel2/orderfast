@@ -18,6 +18,7 @@ import {
   getOwnedVouchers,
   getStoredActiveSelection,
   getStableGuestCustomerId,
+  removeOwnedVoucher,
   setStoredActiveSelection,
   setAppliedSelections,
   setAppliedVoucherCodeByVoucherId,
@@ -299,6 +300,14 @@ export default function CheckoutPage() {
   const placeOrder = async () => {
     if (!cart.restaurant_id || !orderType || !customerId) return;
 
+    const isDev = process.env.NODE_ENV !== 'production';
+    let voucherRedemptionPayload: {
+      promotionId: string;
+      voucherCodeId: string;
+      discountAmount: number;
+      deliveryDiscountAmount: number;
+    } | null = null;
+
     if (activeSelection) {
       try {
         const voucherCode = activeSelection.kind === 'voucher'
@@ -326,6 +335,15 @@ export default function CheckoutPage() {
           setPromoErrorBanner(details);
           router.push({ pathname: '/restaurant/cart', query: { restaurant_id: cart.restaurant_id } });
           return;
+        }
+
+        if (activeSelection.kind === 'voucher') {
+          voucherRedemptionPayload = {
+            promotionId: activeSelection.promotionId,
+            voucherCodeId: activeSelection.voucherCodeId,
+            discountAmount: validation.discount_amount,
+            deliveryDiscountAmount: validation.delivery_discount_amount,
+          };
         }
       } catch {
         setPromotionCheckoutBlock(cart.restaurant_id, {
@@ -413,6 +431,64 @@ export default function CheckoutPage() {
             },
           ]);
           if (oaErr) throw oaErr;
+        }
+      }
+
+      if (voucherRedemptionPayload) {
+        try {
+          const { data: existingRedemption, error: checkError } = await supabase
+            .from('promotion_redemptions')
+            .select('id')
+            .eq('voucher_code_id', voucherRedemptionPayload.voucherCodeId)
+            .eq('order_id', order.id)
+            .limit(1)
+            .maybeSingle();
+
+          if (checkError && isDev) {
+            console.debug('[checkout] voucher redemption idempotency check failed', checkError);
+          }
+
+          if (!existingRedemption) {
+            const { error: redemptionInsertError } = await supabase
+              .from('promotion_redemptions')
+              .insert({
+                restaurant_id: cart.restaurant_id,
+                customer_id: customerId,
+                promotion_id: voucherRedemptionPayload.promotionId,
+                voucher_code_id: voucherRedemptionPayload.voucherCodeId,
+                order_id: order.id,
+                channel: 'website',
+                order_type: orderType,
+                basket_subtotal: subtotal,
+                discount_amount: voucherRedemptionPayload.discountAmount,
+                delivery_discount_amount: voucherRedemptionPayload.deliveryDiscountAmount,
+                points_spent: 0,
+              });
+
+            if (redemptionInsertError && isDev) {
+              console.debug('[checkout] voucher redemption insert failed', redemptionInsertError);
+            }
+          }
+        } catch (redemptionError) {
+          if (isDev) {
+            console.debug('[checkout] voucher redemption tracking threw', redemptionError);
+          }
+        }
+
+        removeOwnedVoucher(cart.restaurant_id, voucherRedemptionPayload.voucherCodeId);
+        const remainingSelections = getAppliedSelections(cart.restaurant_id).filter((entry) => {
+          return !(entry.kind === 'voucher' && entry.voucherCodeId === voucherRedemptionPayload?.voucherCodeId);
+        });
+        setAppliedSelections(cart.restaurant_id, remainingSelections);
+
+        const fallbackPromotion = remainingSelections.find((entry) => entry.kind === 'promotion');
+        if (fallbackPromotion) {
+          const nextActive = { kind: 'promotion' as const, promotionId: fallbackPromotion.promotionId };
+          setStoredActiveSelection(cart.restaurant_id, nextActive);
+          setActiveSelection(nextActive);
+        } else {
+          clearStoredActiveSelection(cart.restaurant_id);
+          setActiveSelection(null);
         }
       }
 
