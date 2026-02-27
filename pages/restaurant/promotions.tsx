@@ -452,6 +452,7 @@ export default function CustomerPromotionsPage() {
   const rewardPointsRequired = loyaltyConfig?.reward_points_required || 0;
   const loyaltyProgress = rewardPointsRequired > 0 ? Math.min(loyaltyPoints / rewardPointsRequired, 1) : 0;
   const canRedeem = !!loyaltyConfig?.enabled && rewardPointsRequired > 0 && loyaltyPoints >= rewardPointsRequired;
+  const tileActionButtonClass = 'inline-flex h-8 min-w-[96px] items-center justify-center whitespace-nowrap rounded-lg px-3 text-xs font-semibold';
 
   if (!restaurantLoading && !restaurantId) {
     return (
@@ -540,11 +541,11 @@ export default function CustomerPromotionsPage() {
                 <h3 className="mt-1 text-xl font-semibold text-slate-900">{activeItem.name}</h3>
                 <p className="mt-1 text-sm text-teal-800">{scheduleLabel(activeItem)}</p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center justify-end gap-2 min-w-[96px]">
                 <button
                   type="button"
                   onClick={removeActive}
-                  className="rounded-lg border border-teal-300 px-3 py-1.5 text-xs font-semibold text-teal-700 transition hover:bg-white"
+                  className={`${tileActionButtonClass} border border-teal-300 text-teal-700 transition hover:bg-white`}
                 >
                   Remove
                 </button>
@@ -580,13 +581,15 @@ export default function CustomerPromotionsPage() {
                       </div>
                       <p className="mt-1 text-sm text-slate-600">{scheduleLabel(item)}</p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center justify-end gap-2 min-w-[204px]">
                       {!isActive ? (
-                        <button type="button" onClick={() => makeActive(item)} className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
-                          Make active
+                        <button type="button" onClick={() => makeActive(item)} className={`${tileActionButtonClass} border border-slate-300 text-slate-700 hover:bg-slate-50`}>
+                          Activate
                         </button>
-                      ) : null}
-                      <button type="button" onClick={() => removeApplied(item)} className="rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50">
+                      ) : (
+                        <span className={`${tileActionButtonClass} invisible border border-transparent`}>Activate</span>
+                      )}
+                      <button type="button" onClick={() => removeApplied(item)} className={`${tileActionButtonClass} border border-rose-200 text-rose-600 hover:bg-rose-50`}>
                         Remove
                       </button>
                     </div>
@@ -638,7 +641,7 @@ export default function CustomerPromotionsPage() {
                     <button
                       type="button"
                       onClick={() => applyItem(item)}
-                      className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-teal-700"
+                      className={`${tileActionButtonClass} bg-teal-600 text-white transition hover:bg-teal-700`}
                     >
                       Apply
                     </button>
