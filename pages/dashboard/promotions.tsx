@@ -6,6 +6,7 @@ import Toast from '@/components/Toast';
 import PromotionTermsModal from '@/components/promotions/PromotionTermsModal';
 import PromotionCustomerCardPreview from '@/components/promotions/PromotionCustomerCardPreview';
 import { buildPromotionTermsPreview } from '@/lib/promotionTerms';
+import { formatPromotionTypeLabel } from '@/lib/promotionTypeLabel';
 import { fetchLoyaltyConfig, LoyaltyConfig, upsertLoyaltyConfig } from '@/lib/customerPromotions';
 import { supabase } from '@/utils/supabaseClient';
 
@@ -1149,16 +1150,23 @@ export default function PromotionsPage() {
               </thead>
               <tbody>
                 {activePromotions.map((promotion) => (
-                  <tr key={promotion.id} className="border-b last:border-b-0">
-                    <td className="py-2.5 pr-4 font-medium text-gray-900">{promotion.name}</td>
-                    <td className="py-2.5 pr-4 text-gray-700">{promotion.type}</td>
+                  <tr key={promotion.id} className={`border-b last:border-b-0 ${promotion.status === 'paused' ? 'opacity-65' : ''}`}>
+                    <td className="py-2.5 pr-4 font-medium text-gray-900">
+                      <div className="inline-flex items-center gap-2">
+                        <span>{promotion.name}</span>
+                        {promotion.status === 'paused' ? (
+                          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-600">Paused</span>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td className="py-2.5 pr-4 text-gray-700">{formatPromotionTypeLabel(promotion.type)}</td>
                     <td className="py-2.5 pr-4 text-gray-600">{scheduleSummary(promotion)}</td>
                     <td className="py-2.5 pr-4 text-gray-600">{promotion.min_subtotal != null ? `£${promotion.min_subtotal}` : '—'}</td>
                     <td className="py-2.5 text-right">
                       <button
                         type="button"
                         onClick={() => setManagingPromotion(promotion)}
-                        className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 transition hover:bg-gray-50"
+                        className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${promotion.status === 'paused' ? 'border-gray-200 text-gray-500 hover:bg-gray-50' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
                       >
                         Manage
                       </button>
@@ -1199,9 +1207,9 @@ export default function PromotionsPage() {
                     </thead>
                     <tbody>
                       {archivedPromotions.map((promotion) => (
-                        <tr key={promotion.id} className="border-b last:border-b-0">
+                        <tr key={promotion.id} className={`border-b last:border-b-0 ${promotion.status === 'paused' ? 'opacity-65' : ''}`}>
                           <td className="py-2 pr-4 font-medium text-gray-900">{promotion.name}</td>
-                          <td className="py-2 pr-4 text-gray-700">{promotion.type}</td>
+                          <td className="py-2 pr-4 text-gray-700">{formatPromotionTypeLabel(promotion.type)}</td>
                           <td className="py-2 pr-4 text-gray-600">{scheduleSummary(promotion)}</td>
                           <td className="py-2 text-gray-500">archived</td>
                         </tr>
@@ -1409,7 +1417,7 @@ export default function PromotionsPage() {
                               type === optionType ? 'border-teal-600 bg-teal-50' : 'border-gray-200 hover:bg-gray-50'
                             }`}
                           >
-                            <p className="font-medium text-gray-900">{option}</p>
+                            <p className="font-medium text-gray-900">{formatPromotionTypeLabel(option)}</p>
                           </button>
                         );
                       })}

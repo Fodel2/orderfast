@@ -570,7 +570,7 @@ export default function CustomerPromotionsPage() {
                 </button>
               </div>
             </div>
-            <div className="mt-3 border-t border-teal-200/80 pt-2 text-right">
+            <div className="mt-2 text-right">
               <button type="button" onClick={() => setTermsItem(activeItem)} className="text-xs font-medium text-slate-500 transition hover:text-slate-700 hover:underline">
                 Terms & details
               </button>
@@ -618,7 +618,7 @@ export default function CustomerPromotionsPage() {
                       </button>
                     </div>
                   </div>
-                  <div className="mt-3 border-t border-slate-100 pt-2 text-right">
+                  <div className="mt-2 text-right">
                     <button type="button" onClick={() => setTermsItem(item)} className="text-xs font-medium text-slate-500 transition hover:text-slate-700 hover:underline">
                       Terms & details
                     </button>
@@ -677,7 +677,7 @@ export default function CustomerPromotionsPage() {
                       </button>
                     </div>
                   </div>
-                  <div className="mt-3 border-t border-slate-100 pt-2 text-right">
+                  <div className="mt-2 text-right">
                     <button type="button" onClick={() => setTermsItem(item)} className="text-xs font-medium text-slate-500 transition hover:text-slate-700 hover:underline">
                       Terms & details
                     </button>
