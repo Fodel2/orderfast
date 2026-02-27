@@ -13,6 +13,7 @@ import {
   describeInvalidReason,
   fetchCustomerPromotions,
   fetchLoyaltyConfig,
+  fetchOwnedVouchersFromDb,
   fetchPromotionTermsData,
   fetchLoyaltyPointsBalance,
   getAppliedSelections,
@@ -26,6 +27,7 @@ import {
   removeAppliedSelection,
   setAppliedSelections,
   setAppliedVoucherCodeByVoucherId,
+  setOwnedVouchers,
   setStoredActiveSelection,
   upsertOwnedVoucher,
   validatePromotion,
@@ -166,6 +168,29 @@ export default function CustomerPromotionsPage() {
     }
   };
 
+  const rehydrateOwnedVouchers = async () => {
+    if (!restaurantId || !customerId) return;
+    const localVouchers = getOwnedVouchers(restaurantId);
+    setOwnedVouchersState(localVouchers);
+
+    try {
+      const dbVouchers = await fetchOwnedVouchersFromDb(restaurantId, customerId);
+      const merged = [...localVouchers];
+      const byId = new Map(merged.map((voucher) => [voucher.voucherCodeId, voucher]));
+      dbVouchers.forEach((voucher) => {
+        const existing = byId.get(voucher.voucherCodeId);
+        byId.set(voucher.voucherCodeId, existing ? { ...existing, ...voucher } : voucher);
+      });
+      const next = Array.from(byId.values()).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+      setOwnedVouchers(restaurantId, next);
+      setOwnedVouchersState(next);
+    } catch {
+      if (IS_DEV) {
+        console.debug('[promotions] voucher rehydrate failed; using local vouchers');
+      }
+    }
+  };
+
   const loadLoyalty = async () => {
     if (!restaurantId || !customerId) return;
     setLoyaltyLoading(true);
@@ -185,6 +210,7 @@ export default function CustomerPromotionsPage() {
   };
 
   useEffect(() => {
+    rehydrateOwnedVouchers();
     loadPromotions();
     loadLoyalty();
     // eslint-disable-next-line react-hooks/exhaustive-deps

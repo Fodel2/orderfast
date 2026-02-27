@@ -464,6 +464,82 @@ export async function fetchPromotionTermsData(restaurantId: string, promotionIds
   });
 }
 
+export async function fetchOwnedVouchersFromDb(restaurantId: string, customerId: string): Promise<OwnedVoucher[]> {
+  const { data: redemptionRows, error: redemptionsError } = await supabase
+    .from('promotion_redemptions')
+    .select('voucher_code_id,order_id,created_at')
+    .eq('restaurant_id', restaurantId)
+    .eq('customer_id', customerId)
+    .not('voucher_code_id', 'is', null)
+    .order('created_at', { ascending: false });
+
+  if (redemptionsError) throw redemptionsError;
+
+  const consumed = new Set<string>();
+  const unconsumedCreatedAt = new Map<string, string | undefined>();
+  (redemptionRows || []).forEach((row) => {
+    const voucherCodeId = String(row.voucher_code_id || '').trim();
+    if (!voucherCodeId) return;
+    if (row.order_id) {
+      consumed.add(voucherCodeId);
+      return;
+    }
+    if (!unconsumedCreatedAt.has(voucherCodeId)) {
+      unconsumedCreatedAt.set(voucherCodeId, row.created_at || undefined);
+    }
+  });
+
+  const voucherIds = Array.from(unconsumedCreatedAt.keys()).filter((voucherCodeId) => !consumed.has(voucherCodeId));
+  if (!voucherIds.length) return [];
+
+  const { data: voucherRows, error: voucherRowsError } = await supabase
+    .from('promotion_voucher_codes')
+    .select('id,code,promotion_id')
+    .in('id', voucherIds);
+
+  if (voucherRowsError) throw voucherRowsError;
+  if (!voucherRows?.length) return [];
+
+  const promotionIds = Array.from(new Set(voucherRows.map((row) => String(row.promotion_id || '').trim()).filter(Boolean)));
+
+  const { data: rewardRows, error: rewardRowsError } = await supabase
+    .from('promotion_rewards')
+    .select('promotion_id,reward')
+    .in('promotion_id', promotionIds);
+
+  if (rewardRowsError) throw rewardRowsError;
+
+  const rewardMap = new Map<string, VoucherReward>();
+  (rewardRows || []).forEach((row) => {
+    const promotionId = String(row.promotion_id || '').trim();
+    if (!promotionId || !row.reward || typeof row.reward !== 'object') return;
+    const rewardRaw = row.reward as VoucherReward;
+    if (rewardRaw.discount_type !== 'fixed' && rewardRaw.discount_type !== 'percent') return;
+    rewardMap.set(promotionId, {
+      discount_type: rewardRaw.discount_type,
+      discount_value: Number(rewardRaw.discount_value || 0),
+      max_discount_cap: rewardRaw.max_discount_cap ?? null,
+    });
+  });
+
+  return voucherRows
+    .map((row) => {
+      const voucherCodeId = String(row.id || '').trim();
+      const promotionId = String(row.promotion_id || '').trim();
+      const code = String(row.code || '').trim();
+      if (!voucherCodeId || !promotionId || !code) return null;
+      return {
+        voucherCodeId,
+        promotionId,
+        code,
+        createdAt: unconsumedCreatedAt.get(voucherCodeId),
+        reward: rewardMap.get(promotionId),
+      } as OwnedVoucher;
+    })
+    .filter((row): row is OwnedVoucher => !!row)
+    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+}
+
 export async function fetchLoyaltyConfig(restaurantId: string) {
   const { data, error } = await supabase
     .from('loyalty_config')
