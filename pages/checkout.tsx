@@ -10,19 +10,21 @@ import { supabase } from '../utils/supabaseClient';
 import { useSession } from '@supabase/auth-helpers-react';
 import { formatPrice } from '@/lib/orderDisplay';
 import {
-  addAppliedPromotionId,
-  clearActivePromotionSelection,
+  addAppliedSelection,
+  clearStoredActiveSelection,
   describeInvalidReason,
   fetchCustomerPromotions,
-  getAppliedPromotionIds,
-  getActivePromotionSelection,
+  getAppliedSelections,
+  getOwnedVouchers,
+  getStoredActiveSelection,
   getStableGuestCustomerId,
-  setActivePromotionSelection,
-  setAppliedPromotionIds,
-  setAppliedVoucherCode,
+  setStoredActiveSelection,
+  setAppliedSelections,
+  setAppliedVoucherCodeByVoucherId,
   setPromotionCheckoutBlock,
   resolveVoucherPromotionByCode,
   PromotionListItem,
+  upsertOwnedVoucher,
   validatePromotion,
 } from '@/lib/customerPromotions';
 
@@ -46,7 +48,7 @@ export default function CheckoutPage() {
   const session = useSession();
   const [placing, setPlacing] = useState(false);
   const [customerId, setCustomerId] = useState<string | null>(null);
-  const [activeSelection, setActiveSelection] = useState<ReturnType<typeof getActivePromotionSelection>>(null);
+  const [activeSelection, setActiveSelection] = useState<ReturnType<typeof getStoredActiveSelection>>(null);
   const [promoPreview, setPromoPreview] = useState<{ valid: boolean; text: string; savings: number }>({
     valid: false,
     text: '',
@@ -78,7 +80,7 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     if (!cart.restaurant_id) return;
-    setActiveSelection(getActivePromotionSelection(cart.restaurant_id));
+    setActiveSelection(getStoredActiveSelection(cart.restaurant_id));
     setCustomerId(session?.user?.id || getStableGuestCustomerId(cart.restaurant_id));
   }, [cart.restaurant_id, session?.user?.id]);
 
@@ -87,8 +89,18 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     const run = async () => {
-      if (!cart.restaurant_id || !customerId || !activeSelection?.promotion_id || !orderType) {
+      if (!cart.restaurant_id || !customerId || !activeSelection || !orderType) {
         setPromoPreview({ valid: false, text: '', savings: 0 });
+        return;
+      }
+
+      const promotionId = activeSelection.promotionId;
+      const voucherCode = activeSelection.kind === 'voucher'
+        ? getOwnedVouchers(cart.restaurant_id).find((voucher) => voucher.voucherCodeId === activeSelection.voucherCodeId)?.code || null
+        : null;
+
+      if (activeSelection.kind === 'voucher' && !voucherCode) {
+        setPromoPreview({ valid: false, text: 'Code not recognised.', savings: 0 });
         return;
       }
 
@@ -97,8 +109,8 @@ export default function CheckoutPage() {
         const res = await validatePromotion({
           restaurantId: cart.restaurant_id,
           customerId,
-          promotionId: activeSelection.promotion_id,
-          voucherCode: activeSelection.voucher_code,
+          promotionId,
+          voucherCode,
           orderType,
           basketSubtotal: subtotal,
           deliveryFee,
@@ -123,6 +135,13 @@ export default function CheckoutPage() {
   }, [activeSelection, cart.restaurant_id, customerId, deliveryFee, orderType, subtotal]);
 
   const finalTotal = Math.max(0, subtotal + serviceFee + deliveryFee - promoPreview.savings);
+
+  const activePromotionLabel = useMemo(() => {
+    if (!activeSelection || !cart.restaurant_id) return 'Active promotion';
+    if (activeSelection.kind === 'promotion') return 'Active promotion';
+    const voucher = getOwnedVouchers(cart.restaurant_id).find((entry) => entry.voucherCodeId === activeSelection.voucherCodeId);
+    return voucher?.code ? `Active voucher: ${voucher.code}` : 'Active voucher';
+  }, [activeSelection, cart.restaurant_id]);
 
   const applyVoucherCode = async () => {
     setVoucherError('');
@@ -163,16 +182,22 @@ export default function CheckoutPage() {
       }
 
       const savings = validation.discount_amount + validation.delivery_discount_amount;
+      const voucherCodeId = voucherPromotion.voucher_code_id;
       const selection = {
-        promotion_id: voucherPromotion.promotion_id,
-        selected_at: new Date().toISOString(),
-        type: 'voucher',
-        voucher_code: code,
-        promotion_name: voucherPromotion.promotion_name,
+        kind: 'voucher' as const,
+        voucherCodeId,
+        promotionId: voucherPromotion.promotion_id,
       };
-      setActivePromotionSelection(cart.restaurant_id, selection);
-      addAppliedPromotionId(cart.restaurant_id, selection.promotion_id);
-      setAppliedVoucherCode(cart.restaurant_id, selection.promotion_id, code);
+      upsertOwnedVoucher(cart.restaurant_id, {
+        voucherCodeId,
+        promotionId: voucherPromotion.promotion_id,
+        code: voucherPromotion.voucher_code || code,
+        createdAt: new Date().toISOString(),
+        reward: voucherPromotion.reward || undefined,
+      });
+      addAppliedSelection(cart.restaurant_id, selection);
+      setStoredActiveSelection(cart.restaurant_id, selection);
+      setAppliedVoucherCodeByVoucherId(cart.restaurant_id, voucherCodeId, code, selection.promotionId);
       setActiveSelection(selection);
       setPromoPreview({ valid: true, text: 'Promotion code applied.', savings });
       setVoucherCodeInput('');
@@ -183,14 +208,18 @@ export default function CheckoutPage() {
 
 
   const removeActivePromotion = async () => {
-    if (!cart.restaurant_id || !activeSelection?.promotion_id || !customerId || !orderType) return;
+    if (!cart.restaurant_id || !activeSelection || !customerId || !orderType) return;
 
-    const appliedIds = getAppliedPromotionIds(cart.restaurant_id);
-    const remainingIds = appliedIds.filter((id) => id !== activeSelection.promotion_id);
-    setAppliedPromotionIds(cart.restaurant_id, remainingIds);
+    const appliedSelections = getAppliedSelections(cart.restaurant_id);
+    const remainingSelections = appliedSelections.filter((entry) => {
+      if (activeSelection.kind === 'promotion' && entry.kind === 'promotion') return entry.promotionId !== activeSelection.promotionId;
+      if (activeSelection.kind === 'voucher' && entry.kind === 'voucher') return entry.voucherCodeId !== activeSelection.voucherCodeId;
+      return true;
+    });
+    setAppliedSelections(cart.restaurant_id, remainingSelections);
 
-    if (!remainingIds.length) {
-      clearActivePromotionSelection(cart.restaurant_id);
+    if (!remainingSelections.length) {
+      clearStoredActiveSelection(cart.restaurant_id);
       setActiveSelection(null);
       setPromoPreview({ valid: false, text: '', savings: 0 });
       return;
@@ -204,8 +233,9 @@ export default function CheckoutPage() {
         basketSubtotal: subtotal,
       });
 
-      const candidates = remainingIds
-        .map((id) => promotions.find((promotion) => promotion.id === id))
+      const candidates = remainingSelections
+        .filter((entry) => entry.kind === 'promotion')
+        .map((entry) => promotions.find((promotion) => promotion.id === entry.promotionId))
         .filter((promotion): promotion is PromotionListItem => !!promotion)
         .filter((promotion) => promotion.type !== 'voucher');
 
@@ -242,20 +272,17 @@ export default function CheckoutPage() {
       const bestEvaluation = evaluated[0];
       const nextActive = bestEvaluation?.promotion;
       if (!nextActive) {
-        clearActivePromotionSelection(cart.restaurant_id);
+        clearStoredActiveSelection(cart.restaurant_id);
         setActiveSelection(null);
         setPromoPreview({ valid: false, text: '', savings: 0 });
         return;
       }
 
       const nextSelection = {
-        promotion_id: nextActive.id,
-        selected_at: new Date().toISOString(),
-        type: nextActive.type,
-        voucher_code: null,
-        promotion_name: nextActive.name,
+        kind: 'promotion' as const,
+        promotionId: nextActive.id,
       };
-      setActivePromotionSelection(cart.restaurant_id, nextSelection);
+      setStoredActiveSelection(cart.restaurant_id, nextSelection);
       setActiveSelection(nextSelection);
       setPromoPreview({
         valid: !!bestEvaluation?.valid,
@@ -263,7 +290,7 @@ export default function CheckoutPage() {
         savings: bestEvaluation?.savings || 0,
       });
     } catch {
-      clearActivePromotionSelection(cart.restaurant_id);
+      clearStoredActiveSelection(cart.restaurant_id);
       setActiveSelection(null);
       setPromoPreview({ valid: false, text: '', savings: 0 });
     }
@@ -272,13 +299,22 @@ export default function CheckoutPage() {
   const placeOrder = async () => {
     if (!cart.restaurant_id || !orderType || !customerId) return;
 
-    if (activeSelection?.promotion_id) {
+    if (activeSelection) {
       try {
+        const voucherCode = activeSelection.kind === 'voucher'
+          ? getOwnedVouchers(cart.restaurant_id).find((voucher) => voucher.voucherCodeId === activeSelection.voucherCodeId)?.code || null
+          : null;
+
+        if (activeSelection.kind === 'voucher' && !voucherCode) {
+          setPromoErrorBanner('Code not recognised.');
+          return;
+        }
+
         const validation = await validatePromotion({
           restaurantId: cart.restaurant_id,
           customerId,
-          promotionId: activeSelection.promotion_id,
-          voucherCode: activeSelection.voucher_code,
+          promotionId: activeSelection.promotionId,
+          voucherCode,
           orderType,
           basketSubtotal: subtotal,
           deliveryFee,
@@ -584,11 +620,11 @@ export default function CheckoutPage() {
       </AnimatePresence>
       {step === 'details' && (
         <div className="mt-6 border-t pt-4">
-          {activeSelection?.promotion_id ? (
+          {activeSelection ? (
             <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="font-semibold text-slate-800">Active promotion{activeSelection.promotion_name ? `: ${activeSelection.promotion_name}` : ''}</p>
+                  <p className="font-semibold text-slate-800">{activePromotionLabel}</p>
                   <p className="mt-1 text-slate-600">{promoLoading ? 'Checking promotion...' : promoPreview.text || 'Promotion selected.'}</p>
                 </div>
                 <div className="flex items-center gap-2">
