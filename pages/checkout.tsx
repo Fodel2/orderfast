@@ -54,10 +54,11 @@ export default function CheckoutPage() {
   const [placing, setPlacing] = useState(false);
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [activeSelection, setActiveSelection] = useState<ReturnType<typeof getStoredActiveSelection>>(null);
-  const [promoPreview, setPromoPreview] = useState<{ valid: boolean; text: string; savings: number }>({
+  const [promoPreview, setPromoPreview] = useState<{ valid: boolean; text: string; savings: number; reason?: string | null }>({
     valid: false,
     text: '',
     savings: 0,
+    reason: null,
   });
   const [promoLoading, setPromoLoading] = useState(false);
   const [promoErrorBanner, setPromoErrorBanner] = useState('');
@@ -109,13 +110,47 @@ export default function CheckoutPage() {
     loadActiveTerms();
   }, [cart.restaurant_id, activeSelection?.promotionId]);
 
+  const getCheckoutInvalidReasonText = (reason: string | null | undefined) => {
+    if (!reason) return "This offer isn't available right now.";
+    if (reason === 'min_subtotal_not_met') {
+      const minSubtotal = Number(activePromotionTerms?.min_subtotal || 0);
+      if (Number.isFinite(minSubtotal) && minSubtotal > 0) {
+        const remaining = Math.max(0, minSubtotal - subtotal);
+        if (remaining > 0) return `Spend ${formatAmount(remaining)} more to use this offer.`;
+      }
+      return 'Minimum spend not met.';
+    }
+
+    const orderTypeLabel = orderType === 'collection' ? 'collection' : 'delivery';
+    const map: Record<string, string> = {
+      outside_recurring_window: 'This offer is only available at certain times.',
+      not_started: "This offer hasn't started yet.",
+      expired: 'This offer has ended.',
+      channel_not_allowed: "This offer isn't available on this order type.",
+      order_type_not_allowed: `This offer isn't available for ${orderTypeLabel}.`,
+      max_uses_per_customer_reached: "You've already used this offer.",
+      max_uses_total_reached: 'This offer has reached its limit.',
+      archived: "This offer isn't available.",
+      status_not_active: "This offer isn't available.",
+      not_implemented: "This offer isn't available.",
+      voucher_required: "This voucher can't be used. Check the code.",
+      voucher_not_found: "This voucher can't be used. Check the code.",
+      voucher_expired: "This voucher can't be used.",
+      voucher_not_started: "This voucher can't be used.",
+      voucher_max_uses_total_reached: "This voucher can't be used.",
+      voucher_max_uses_per_customer_reached: "This voucher can't be used.",
+    };
+
+    return map[reason] || "This offer isn't available right now.";
+  };
+
   const deliveryFee = orderType === 'delivery' ? 300 : 0; // cents
   const serviceFee = Math.round(subtotal * 0.05); // 5%
 
   useEffect(() => {
     const run = async () => {
       if (!cart.restaurant_id || !customerId || !activeSelection || !orderType) {
-        setPromoPreview({ valid: false, text: '', savings: 0 });
+        setPromoPreview({ valid: false, text: '', savings: 0, reason: null });
         return;
       }
 
@@ -125,7 +160,7 @@ export default function CheckoutPage() {
         : null;
 
       if (activeSelection.kind === 'voucher' && !voucherCode) {
-        setPromoPreview({ valid: false, text: 'Code not recognised.', savings: 0 });
+        setPromoPreview({ valid: false, text: 'Code not recognised.', savings: 0, reason: 'voucher_not_found' });
         return;
       }
 
@@ -143,14 +178,14 @@ export default function CheckoutPage() {
 
         const savings = res.discount_amount + res.delivery_discount_amount;
         if (res.valid) {
-          setPromoPreview({ valid: true, text: 'Promotion ready to apply.', savings });
+          setPromoPreview({ valid: true, text: 'Promotion ready to apply.', savings, reason: null });
         } else if (res.reason === 'min_subtotal_not_met') {
-          setPromoPreview({ valid: false, text: 'Add more to your plate to unlock this offer.', savings: 0 });
+          setPromoPreview({ valid: false, text: getCheckoutInvalidReasonText(res.reason), savings: 0, reason: res.reason });
         } else {
-          setPromoPreview({ valid: false, text: describeInvalidReason(res.reason), savings: 0 });
+          setPromoPreview({ valid: false, text: getCheckoutInvalidReasonText(res.reason), savings: 0, reason: res.reason });
         }
       } catch {
-        setPromoPreview({ valid: false, text: 'Unable to validate promotion right now.', savings: 0 });
+        setPromoPreview({ valid: false, text: 'Unable to validate promotion right now.', savings: 0, reason: null });
       } finally {
         setPromoLoading(false);
       }
@@ -246,7 +281,7 @@ export default function CheckoutPage() {
     if (!remainingSelections.length) {
       clearStoredActiveSelection(cart.restaurant_id);
       setActiveSelection(null);
-      setPromoPreview({ valid: false, text: '', savings: 0 });
+      setPromoPreview({ valid: false, text: '', savings: 0, reason: null });
       return;
     }
 
@@ -299,7 +334,7 @@ export default function CheckoutPage() {
       if (!nextActive) {
         clearStoredActiveSelection(cart.restaurant_id);
         setActiveSelection(null);
-        setPromoPreview({ valid: false, text: '', savings: 0 });
+        setPromoPreview({ valid: false, text: '', savings: 0, reason: null });
         return;
       }
 
@@ -317,7 +352,7 @@ export default function CheckoutPage() {
     } catch {
       clearStoredActiveSelection(cart.restaurant_id);
       setActiveSelection(null);
-      setPromoPreview({ valid: false, text: '', savings: 0 });
+      setPromoPreview({ valid: false, text: '', savings: 0, reason: null });
     }
   };
 
@@ -730,13 +765,6 @@ export default function CheckoutPage() {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setShowTermsModal(true)}
-                    className="rounded border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-white"
-                  >
-                    View terms
-                  </button>
-                  <button
-                    type="button"
                     onClick={removeActivePromotion}
                     className="rounded border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-white"
                   >
@@ -750,6 +778,15 @@ export default function CheckoutPage() {
                     Change
                   </button>
                 </div>
+              </div>
+              <div className="mt-3 border-t border-slate-200 pt-2 text-right">
+                <button
+                  type="button"
+                  onClick={() => setShowTermsModal(true)}
+                  className="text-xs font-medium text-slate-500 transition hover:text-slate-700 hover:underline"
+                >
+                  Terms & details
+                </button>
               </div>
             </div>
           ) : null}
@@ -791,6 +828,7 @@ export default function CheckoutPage() {
         open={showTermsModal && !!activeSelection}
         onClose={() => setShowTermsModal(false)}
         title={activePromotionLabel}
+        unavailableReason={!promoPreview.valid ? promoPreview.text : null}
         offerTerms={buildPromotionTermsPreview(activePromotionTerms, activePromotionTerms?.reward || null)}
         restaurantNote={activePromotionTerms?.promo_terms || ''}
       />

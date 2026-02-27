@@ -466,10 +466,12 @@ export default function CustomerPromotionsPage() {
     return describeInvalidReason(promo.invalidReason || null);
   };
 
+  const termsUnavailableReason = (promo: DisplayItem) => (promo.isCurrentlyValid ? null : describeInvalidReason(promo.invalidReason || null));
+
   const rewardPointsRequired = loyaltyConfig?.reward_points_required || 0;
   const loyaltyProgress = rewardPointsRequired > 0 ? Math.min(loyaltyPoints / rewardPointsRequired, 1) : 0;
   const canRedeem = !!loyaltyConfig?.enabled && rewardPointsRequired > 0 && loyaltyPoints >= rewardPointsRequired;
-  const tileActionButtonClass = 'inline-flex h-8 min-w-[96px] items-center justify-center whitespace-nowrap rounded-lg px-3 text-xs font-semibold';
+  const tileActionButtonClass = 'inline-flex h-8 min-w-[108px] items-center justify-center whitespace-nowrap rounded-lg px-3 text-xs font-semibold';
 
   if (!restaurantLoading && !restaurantId) {
     return (
@@ -558,10 +560,7 @@ export default function CustomerPromotionsPage() {
                 <h3 className="mt-1 text-xl font-semibold text-slate-900">{activeItem.name}</h3>
                 <p className="mt-1 text-sm text-teal-800">{scheduleLabel(activeItem)}</p>
               </div>
-              <div className="flex items-center justify-end gap-2 min-w-[96px]">
-                <button type="button" onClick={() => setTermsItem(activeItem)} className="text-xs font-semibold text-teal-700 underline underline-offset-2">
-                  View terms
-                </button>
+              <div className="flex items-center justify-end gap-2 min-w-[108px]">
                 <button
                   type="button"
                   onClick={removeActive}
@@ -570,6 +569,11 @@ export default function CustomerPromotionsPage() {
                   Remove
                 </button>
               </div>
+            </div>
+            <div className="mt-3 border-t border-teal-200/80 pt-2 text-right">
+              <button type="button" onClick={() => setTermsItem(activeItem)} className="text-xs font-medium text-slate-500 transition hover:text-slate-700 hover:underline">
+                Terms & details
+              </button>
             </div>
           </section>
         ) : (
@@ -601,10 +605,7 @@ export default function CustomerPromotionsPage() {
                       </div>
                       <p className="mt-1 text-sm text-slate-600">{scheduleLabel(item)}</p>
                     </div>
-                    <div className="flex items-center justify-end gap-2 min-w-[204px]">
-                      <button type="button" onClick={() => setTermsItem(item)} className="text-xs font-semibold text-slate-600 underline underline-offset-2">
-                        View terms
-                      </button>
+                    <div className="flex items-center justify-end gap-2 min-w-[220px]">
                       {!isActive ? (
                         <button type="button" onClick={() => makeActive(item)} className={`${tileActionButtonClass} border border-slate-300 text-slate-700 hover:bg-slate-50`}>
                           Activate
@@ -616,6 +617,11 @@ export default function CustomerPromotionsPage() {
                         Remove
                       </button>
                     </div>
+                  </div>
+                  <div className="mt-3 border-t border-slate-100 pt-2 text-right">
+                    <button type="button" onClick={() => setTermsItem(item)} className="text-xs font-medium text-slate-500 transition hover:text-slate-700 hover:underline">
+                      Terms & details
+                    </button>
                   </div>
                 </article>
               );
@@ -661,10 +667,7 @@ export default function CustomerPromotionsPage() {
                       <p className="mt-1 text-sm text-slate-600">{scheduleLabel(item)}</p>
                       {item.minSubtotal != null ? <p className="mt-1 text-xs text-slate-500">Min spend £{item.minSubtotal}</p> : null}
                     </div>
-                    <div className="flex flex-col items-end gap-2">
-                      <button type="button" onClick={() => setTermsItem(item)} className="text-xs font-semibold text-slate-600 underline underline-offset-2">
-                        View terms
-                      </button>
+                    <div className="flex items-center justify-end min-w-[108px]">
                       <button
                         type="button"
                         onClick={() => applyItem(item)}
@@ -673,6 +676,11 @@ export default function CustomerPromotionsPage() {
                         Apply
                       </button>
                     </div>
+                  </div>
+                  <div className="mt-3 border-t border-slate-100 pt-2 text-right">
+                    <button type="button" onClick={() => setTermsItem(item)} className="text-xs font-medium text-slate-500 transition hover:text-slate-700 hover:underline">
+                      Terms & details
+                    </button>
                   </div>
                 </article>
               );
@@ -685,6 +693,7 @@ export default function CustomerPromotionsPage() {
         open={!!termsItem}
         onClose={() => setTermsItem(null)}
         title={termsItem?.name}
+        unavailableReason={termsItem ? termsUnavailableReason(termsItem) : null}
         offerTerms={termsItem ? buildPromotionTermsPreview(termsItem.promotionTerms, termsItem.kind === 'voucher' ? (termsItem.reward || termsItem.promotionTerms?.reward || null) : termsItem.promotionTerms?.reward || null) : []}
         restaurantNote={termsItem?.promotionTerms?.promo_terms || ''}
       />
