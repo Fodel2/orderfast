@@ -972,88 +972,122 @@ export default function PromotionsPage() {
 
           {!loyaltyLoading ? (
             <>
-              <div className="mt-4 grid gap-3 md:grid-cols-3">
-                <div className="rounded-xl border border-gray-200 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Reward</p>
-                  <div className="mt-2 inline-flex rounded-lg border border-gray-300 bg-gray-50 p-1">
-                    {[5, 10].map((value) => (
-                      <button
-                        key={value}
-                        type="button"
-                        onClick={() => setRewardValueOption(value as 5 | 10)}
-                        className={`rounded-md px-3 py-1.5 text-sm font-semibold transition ${rewardValueOption === value ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
-                      >
-                        £{value}
-                      </button>
-                    ))}
+              <div className="mt-4 border-t border-gray-100 pt-4">
+                <div className="grid gap-5 md:grid-cols-2 md:gap-4">
+                  <div className="space-y-4">
+                    <div>
+                      <p className="text-xs font-medium text-gray-500">Setup</p>
+                      <div className="mt-2 space-y-4 rounded-2xl bg-gray-50/70 p-3">
+                        <div>
+                          <p className="text-xs font-medium text-gray-600">Reward</p>
+                          <div className="mt-2 inline-flex h-10 rounded-full bg-gray-200/80 p-1">
+                            {[5, 10].map((value) => (
+                              <button
+                                key={value}
+                                type="button"
+                                onClick={() => setRewardValueOption(value as 5 | 10)}
+                                className={`h-8 rounded-full px-4 text-sm font-semibold transition ${rewardValueOption === value ? 'bg-teal-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                              >
+                                £{value}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <label className="block">
+                          <p className="text-xs font-medium text-gray-600">Unlock after</p>
+                          <div className="mt-2 rounded-2xl bg-white px-3 py-3 shadow-sm ring-1 ring-gray-200">
+                            <div className="relative max-w-[110px]">
+                              <span className="pointer-events-none absolute inset-y-0 left-3 inline-flex items-center text-sm text-gray-500">£</span>
+                              <input
+                                type="number"
+                                min="5"
+                                max="500"
+                                step="1"
+                                value={normalizedUnlockSpend}
+                                onChange={(e) => {
+                                  const value = Math.max(5, Math.min(500, Math.round(Number(e.target.value) || 5)));
+                                  setUnlockSpend(value);
+                                }}
+                                className="h-10 w-full rounded-xl border-0 bg-gray-50 pl-8 pr-3 text-sm text-gray-900 outline-none ring-1 ring-gray-200 focus:ring-2 focus:ring-teal-200"
+                              />
+                            </div>
+                            <input
+                              type="range"
+                              min="5"
+                              max="500"
+                              step="1"
+                              value={normalizedUnlockSpend}
+                              onChange={(e) => setUnlockSpend(Number(e.target.value))}
+                              className="mt-3 w-full accent-teal-600"
+                            />
+                            <p className="mt-2 text-[11px] text-gray-500">Controls how long it takes to earn the reward.</p>
+                          </div>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <p className="text-xs font-medium text-gray-500">Presets</p>
+                      <div className="mt-2 grid grid-cols-3 gap-2">
+                        {[
+                          { rate: 10, hint: 'Cost-effective' },
+                          { rate: 15, hint: 'Balanced' },
+                          { rate: 20, hint: 'Strong driver' },
+                        ].map((preset) => {
+                          const isSelected = Math.round(loyaltyEffectiveRate) === preset.rate;
+                          return (
+                            <button
+                              key={preset.rate}
+                              type="button"
+                              onClick={() => setUnlockSpend(Math.max(5, Math.round(rewardValueOption / (preset.rate / 100))))}
+                              className={`h-12 rounded-xl border px-2 text-center transition ${isSelected ? 'border-teal-300 bg-teal-50 text-teal-800' : 'border-gray-200 bg-white text-gray-700 hover:border-teal-200 hover:text-teal-700'}`}
+                            >
+                              <span className="block text-xs font-semibold">{preset.rate}%</span>
+                              <span className="block text-[10px] text-gray-500">{preset.hint}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl bg-gray-50 px-4 py-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-lg font-semibold text-gray-900">£{rewardValueOption} after ~£{normalizedUnlockSpend}</p>
+                          <p className="text-sm text-gray-600">That&apos;s {effectiveRateLabel} back</p>
+                        </div>
+                        <span className="inline-flex rounded-full bg-white px-2.5 py-1 text-xs font-medium text-gray-700 ring-1 ring-gray-200">{guidance.label}</span>
+                      </div>
+                      <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
+                        <div
+                          className="h-full rounded-full bg-teal-500 transition-all"
+                          style={{ width: `${Math.max(0, Math.min(100, (loyaltyEffectiveRate / 25) * 100))}%` }}
+                        />
+                      </div>
+                      {guidance.hint ? <p className="mt-2 text-[11px] text-gray-500">{guidance.hint}</p> : null}
+                    </div>
                   </div>
                 </div>
 
-                <label className="rounded-xl border border-gray-200 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Unlock after (£)</p>
-                  <input
-                    type="number"
-                    min="5"
-                    max="500"
-                    step="1"
-                    value={normalizedUnlockSpend}
-                    onChange={(e) => {
-                      const value = Math.max(5, Math.min(500, Math.round(Number(e.target.value) || 5)));
-                      setUnlockSpend(value);
-                    }}
-                    className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
-                  />
-                  <input
-                    type="range"
-                    min="5"
-                    max="500"
-                    step="1"
-                    value={normalizedUnlockSpend}
-                    onChange={(e) => setUnlockSpend(Number(e.target.value))}
-                    className="mt-3 w-full accent-teal-600"
-                  />
-                </label>
-
-                <div className="rounded-xl border border-gray-200 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Presets</p>
-                  <div className="mt-2 grid grid-cols-3 gap-2">
-                    {[
-                      { rate: 10, hint: 'Cost-effective' },
-                      { rate: 15, hint: 'Balanced' },
-                      { rate: 20, hint: 'Strong driver' },
-                    ].map((preset) => (
-                      <button
-                        key={preset.rate}
-                        type="button"
-                        onClick={() => setUnlockSpend(Math.max(5, Math.round(rewardValueOption / (preset.rate / 100))))}
-                        className="rounded-lg border border-gray-300 px-2 py-1.5 text-center text-xs font-semibold text-gray-700 transition hover:border-teal-300 hover:text-teal-700"
-                      >
-                        <span className="block">{preset.rate}%</span>
-                        <span className="block text-[10px] font-medium text-gray-500">{preset.hint}</span>
-                      </button>
-                    ))}
+                <div className="mt-4 flex flex-col gap-3 border-t border-gray-100 pt-3 md:flex-row md:items-center md:justify-between">
+                  <p className="text-sm text-gray-600">
+                    Customers unlock £{rewardValueOption} after ~£{normalizedUnlockSpend} spend ({effectiveRateLabel} back).
+                  </p>
+                  <div className="flex items-center gap-2 self-end md:self-auto">
+                    {loyaltySaved ? <span className="text-xs font-medium text-emerald-700">Saved</span> : null}
+                    <button
+                      type="button"
+                      onClick={saveLoyaltySettings}
+                      disabled={!isLoyaltyDirty || loyaltySaving || !loyaltyInputValid}
+                      className={`rounded-xl px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${isLoyaltyDirty ? 'bg-teal-600 text-white hover:bg-teal-700' : 'bg-gray-100 text-gray-500'}`}
+                    >
+                      {loyaltySaving ? 'Saving...' : 'Save'}
+                    </button>
                   </div>
                 </div>
-              </div>
-
-              <p className="mt-3 text-sm text-gray-600">
-                Customers unlock £{rewardValueOption} after ~£{normalizedUnlockSpend} spend ({effectiveRateLabel} back).
-              </p>
-              <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs text-gray-700">
-                <span className="font-semibold text-gray-900">{guidance.label}</span>
-                {guidance.hint ? <span className="text-gray-500">{guidance.hint}</span> : null}
-              </div>
-
-              <div className="mt-4">
-                <button
-                  type="button"
-                  onClick={saveLoyaltySettings}
-                  disabled={!isLoyaltyDirty || loyaltySaving || !loyaltyInputValid}
-                  className={`rounded-xl px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 ${isLoyaltyDirty ? 'bg-teal-600 hover:bg-teal-700' : 'bg-gray-900 hover:bg-black'}`}
-                >
-                  {loyaltySaving ? 'Saving...' : 'Save'}
-                </button>
-                {loyaltySaved ? <span className="ml-2 text-xs font-medium text-emerald-700">Saved</span> : null}
               </div>
             </>
           ) : null}
