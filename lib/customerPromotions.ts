@@ -11,6 +11,40 @@ export type PromotionListItem = {
   is_currently_valid: boolean;
   next_available_at: string | null;
   invalid_reason: string | null;
+  channels?: string[] | null;
+  order_types?: string[] | null;
+  is_recurring?: boolean | null;
+  days_of_week?: number[] | null;
+  time_window_start?: string | null;
+  time_window_end?: string | null;
+  max_uses_total?: number | null;
+  max_uses_per_customer?: number | null;
+  promo_terms?: string | null;
+};
+
+export type PromotionTermsData = {
+  id: string;
+  type: string;
+  channels: string[] | null;
+  order_types: string[] | null;
+  min_subtotal: number | null;
+  starts_at: string | null;
+  ends_at: string | null;
+  is_recurring: boolean | null;
+  days_of_week: number[] | null;
+  time_window_start: string | null;
+  time_window_end: string | null;
+  new_customer_only: boolean | null;
+  max_uses_total: number | null;
+  max_uses_per_customer: number | null;
+  promo_terms: string | null;
+  reward: {
+    discount_type?: 'percent' | 'fixed' | string | null;
+    discount_value?: number | null;
+    max_discount_cap?: number | null;
+    delivery_fee_cap?: number | null;
+    free_delivery_min_subtotal?: number | null;
+  } | null;
 };
 
 export type ActivePromotionSelection = {
@@ -388,6 +422,146 @@ export async function fetchCustomerPromotions(params: {
   if (error) throw error;
   return (data || []) as PromotionListItem[];
 }
+
+export async function fetchPromotionTermsData(restaurantId: string, promotionIds: string[]) {
+  const ids = Array.from(new Set(promotionIds.filter(Boolean)));
+  if (!ids.length) return [] as PromotionTermsData[];
+
+  const { data, error } = await supabase
+    .from('promotions')
+    .select(
+      'id,type,channels,order_types,min_subtotal,starts_at,ends_at,is_recurring,days_of_week,time_window_start,time_window_end,new_customer_only,max_uses_total,max_uses_per_customer,promo_terms,promotion_rewards(reward)'
+    )
+    .eq('restaurant_id', restaurantId)
+    .in('id', ids);
+
+  if (error) throw error;
+
+  return ((data || []) as Array<Record<string, unknown>>).map((row) => {
+    const rewardRows = Array.isArray(row.promotion_rewards) ? row.promotion_rewards : [];
+    const reward = rewardRows[0] && typeof rewardRows[0] === 'object'
+      ? ((rewardRows[0] as { reward?: PromotionTermsData['reward'] }).reward || null)
+      : null;
+
+    return {
+      id: String(row.id || ''),
+      type: String(row.type || ''),
+      channels: (row.channels as string[] | null) || null,
+      order_types: (row.order_types as string[] | null) || null,
+      min_subtotal: (row.min_subtotal as number | null) ?? null,
+      starts_at: (row.starts_at as string | null) ?? null,
+      ends_at: (row.ends_at as string | null) ?? null,
+      is_recurring: (row.is_recurring as boolean | null) ?? null,
+      days_of_week: (row.days_of_week as number[] | null) || null,
+      time_window_start: (row.time_window_start as string | null) ?? null,
+      time_window_end: (row.time_window_end as string | null) ?? null,
+      new_customer_only: (row.new_customer_only as boolean | null) ?? null,
+      max_uses_total: (row.max_uses_total as number | null) ?? null,
+      max_uses_per_customer: (row.max_uses_per_customer as number | null) ?? null,
+      promo_terms: (row.promo_terms as string | null) ?? null,
+      reward,
+    } as PromotionTermsData;
+  });
+}
+
+export async function fetchOwnedVouchersFromDb(restaurantId: string, customerId: string): Promise<OwnedVoucher[]> {
+  const { data: ledgerRows, error: ledgerError } = await supabase
+    .from('loyalty_ledger')
+    .select('note,created_at')
+    .eq('restaurant_id', restaurantId)
+    .eq('customer_id', customerId)
+    .eq('entry_type', 'spend')
+    .ilike('note', 'Redeemed for voucher %')
+    .order('created_at', { ascending: false });
+
+  if (ledgerError) throw ledgerError;
+
+  const mintedByCode = new Map<string, string | undefined>();
+  (ledgerRows || []).forEach((row) => {
+    const note = String(row.note || '').trim();
+    if (!note.toLowerCase().startsWith('redeemed for voucher ')) return;
+    const code = note.slice('Redeemed for voucher '.length).trim();
+    const normalizedCode = code.toLowerCase();
+    if (!normalizedCode) return;
+    if (!mintedByCode.has(normalizedCode)) {
+      mintedByCode.set(normalizedCode, row.created_at || undefined);
+    }
+  });
+
+  const normalizedCodes = Array.from(mintedByCode.keys());
+  if (!normalizedCodes.length) return [];
+
+  const { data: voucherRows, error: voucherRowsError } = await supabase
+    .from('promotion_voucher_codes')
+    .select('id,promotion_id,code,code_normalized,starts_at,ends_at,max_uses_total,max_uses_per_customer,created_at')
+    .in('code_normalized', normalizedCodes);
+
+  if (voucherRowsError) throw voucherRowsError;
+  if (!voucherRows?.length) return [];
+
+  const voucherIds = voucherRows
+    .map((row) => String(row.id || '').trim())
+    .filter(Boolean);
+
+  if (!voucherIds.length) return [];
+
+  const { data: consumedRows, error: consumedRowsError } = await supabase
+    .from('promotion_redemptions')
+    .select('voucher_code_id')
+    .in('voucher_code_id', voucherIds)
+    .not('order_id', 'is', null);
+
+  if (consumedRowsError) throw consumedRowsError;
+
+  const consumedVoucherIds = new Set(
+    (consumedRows || [])
+      .map((row) => String(row.voucher_code_id || '').trim())
+      .filter(Boolean)
+  );
+
+  const promotionIds = Array.from(new Set(voucherRows.map((row) => String(row.promotion_id || '').trim()).filter(Boolean)));
+
+  const { data: rewardRows, error: rewardRowsError } = await supabase
+    .from('promotion_rewards')
+    .select('promotion_id,reward')
+    .in('promotion_id', promotionIds);
+
+  if (rewardRowsError) throw rewardRowsError;
+
+  const rewardMap = new Map<string, VoucherReward>();
+  (rewardRows || []).forEach((row) => {
+    const promotionId = String(row.promotion_id || '').trim();
+    if (!promotionId || !row.reward || typeof row.reward !== 'object') return;
+    const rewardRaw = row.reward as VoucherReward;
+    if (rewardRaw.discount_type !== 'fixed' && rewardRaw.discount_type !== 'percent') return;
+    rewardMap.set(promotionId, {
+      discount_type: rewardRaw.discount_type,
+      discount_value: Number(rewardRaw.discount_value || 0),
+      max_discount_cap: rewardRaw.max_discount_cap ?? null,
+    });
+  });
+
+  return voucherRows
+    .map((row) => {
+      const voucherCodeId = String(row.id || '').trim();
+      if (!voucherCodeId || consumedVoucherIds.has(voucherCodeId)) return null;
+      const promotionId = String(row.promotion_id || '').trim();
+      const code = String(row.code || '').trim();
+      const codeNormalized = String(row.code_normalized || code.toLowerCase()).trim();
+      if (!promotionId || !code) return null;
+
+      return {
+        voucherCodeId,
+        promotionId,
+        code,
+        createdAt: mintedByCode.get(codeNormalized) || row.created_at || undefined,
+        reward: rewardMap.get(promotionId),
+      } as OwnedVoucher;
+    })
+    .filter((row): row is OwnedVoucher => !!row)
+    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+}
+
 
 export async function fetchLoyaltyConfig(restaurantId: string) {
   const { data, error } = await supabase

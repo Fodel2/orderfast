@@ -3,7 +3,10 @@ import { useRouter } from 'next/router';
 import { CheckCircleIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import DashboardLayout from '@/components/DashboardLayout';
 import Toast from '@/components/Toast';
+import PromotionTermsModal from '@/components/promotions/PromotionTermsModal';
 import PromotionCustomerCardPreview from '@/components/promotions/PromotionCustomerCardPreview';
+import { buildPromotionTermsPreview } from '@/lib/promotionTerms';
+import { formatPromotionTypeLabel } from '@/lib/promotionTypeLabel';
 import { fetchLoyaltyConfig, LoyaltyConfig, upsertLoyaltyConfig } from '@/lib/customerPromotions';
 import { supabase } from '@/utils/supabaseClient';
 
@@ -36,20 +39,12 @@ type PromotionRow = {
   min_subtotal: number | null;
   max_uses_total: number | null;
   max_uses_per_customer: number | null;
+  promo_terms: string | null;
   created_at: string;
 };
 
 type WizardErrors = Record<string, string>;
 
-type SchemaHealthRow = {
-  promotions_exists: string | null;
-  promotion_rewards_exists: string | null;
-  promotion_voucher_codes_exists: string | null;
-  restaurant_promo_terms_exists: string | null;
-  promotion_redemptions_exists: string | null;
-  loyalty_config_exists: string | null;
-  loyalty_ledger_exists: string | null;
-};
 
 const DAYS = [
   { label: 'Sun', value: 0 },
@@ -73,8 +68,6 @@ export default function PromotionsPage() {
   const [promotions, setPromotions] = useState<PromotionRow[]>([]);
   const [globalTerms, setGlobalTerms] = useState('');
   const [toastMessage, setToastMessage] = useState('');
-  const [schemaHealth, setSchemaHealth] = useState<SchemaHealthRow | null>(null);
-  const [schemaHealthError, setSchemaHealthError] = useState<string | null>(null);
   const [schemaErrorDetails, setSchemaErrorDetails] = useState<string | null>(null);
 
   const [showWizard, setShowWizard] = useState(false);
@@ -82,8 +75,9 @@ export default function PromotionsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<WizardErrors>({});
   const [editingPromotionId, setEditingPromotionId] = useState<string | null>(null);
-  const [listFilter, setListFilter] = useState<'active' | 'archived'>('active');
+  const [showArchivedPromotions, setShowArchivedPromotions] = useState(false);
   const [archivingPromotionId, setArchivingPromotionId] = useState<string | null>(null);
+  const [managingPromotion, setManagingPromotion] = useState<PromotionRow | null>(null);
 
   const [type, setType] = useState<PromotionType>('basket_discount');
   const [name, setName] = useState('');
@@ -115,6 +109,8 @@ export default function PromotionsPage() {
   const [orderTypes, setOrderTypes] = useState<string[]>(['delivery', 'collection']);
 
   const [promoTerms, setPromoTerms] = useState('');
+  const [promotionRewards, setPromotionRewards] = useState<Record<string, Record<string, unknown>>>({});
+  const [termsModalPromotion, setTermsModalPromotion] = useState<PromotionRow | null>(null);
   const [loyaltyLoading, setLoyaltyLoading] = useState(false);
   const [loyaltySaving, setLoyaltySaving] = useState(false);
   const [loyaltySaved, setLoyaltySaved] = useState(false);
@@ -159,16 +155,6 @@ export default function PromotionsPage() {
 
   const isSupportedType = SUPPORTED_TYPES.includes(type);
 
-  const configuredSupabaseProjectRef = useMemo(() => {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    if (!url) return 'unknown';
-    try {
-      const host = new URL(url).hostname;
-      return host.split('.')[0] || 'unknown';
-    } catch {
-      return 'unknown';
-    }
-  }, []);
 
   const isSchemaCacheError = (message: string | undefined | null) => {
     if (!message) return false;
@@ -193,26 +179,6 @@ export default function PromotionsPage() {
     setToastMessage(`${prefix}: ${message}`);
   };
 
-  const runSchemaHealthCheck = async () => {
-    const { data, error } = await supabase.rpc('promotions_schema_health_check');
-    if (error) {
-      setSchemaHealthError(error.message);
-      return;
-    }
-
-    const row = ((data || [])[0] || null) as SchemaHealthRow | null;
-    setSchemaHealth(row);
-  };
-
-  const copyReloadSql = async () => {
-    const snippet = "NOTIFY pgrst, 'reload schema';";
-    try {
-      await navigator.clipboard.writeText(snippet);
-      setToastMessage('Schema reload SQL copied.');
-    } catch {
-      setToastMessage(`Copy this SQL manually: ${snippet}`);
-    }
-  };
 
   useEffect(() => {
     const load = async () => {
@@ -240,7 +206,6 @@ export default function PromotionsPage() {
         fetchPromotions(membership.restaurant_id),
         fetchGlobalTerms(membership.restaurant_id),
         fetchLoyaltySettings(membership.restaurant_id),
-        runSchemaHealthCheck(),
       ]);
       setLoading(false);
     };
@@ -252,7 +217,7 @@ export default function PromotionsPage() {
     const { data, error } = await supabase
       .from('promotions')
       .select(
-        'id,restaurant_id,name,type,status,priority,is_recurring,starts_at,ends_at,days_of_week,time_window_start,time_window_end,channels,order_types,min_subtotal,max_uses_total,max_uses_per_customer,created_at'
+        'id,restaurant_id,name,type,status,priority,is_recurring,starts_at,ends_at,days_of_week,time_window_start,time_window_end,channels,order_types,min_subtotal,max_uses_total,max_uses_per_customer,promo_terms,created_at'
       )
       .eq('restaurant_id', currentRestaurantId)
       .order('priority', { ascending: true })
@@ -263,7 +228,27 @@ export default function PromotionsPage() {
       return;
     }
 
-    setPromotions((data || []) as PromotionRow[]);
+    const rows = (data || []) as PromotionRow[];
+    setPromotions(rows);
+
+    const promotionIds = rows.map((row) => row.id);
+    if (!promotionIds.length) {
+      setPromotionRewards({});
+      return;
+    }
+
+    const { data: rewardsData } = await supabase
+      .from('promotion_rewards')
+      .select('promotion_id,reward')
+      .in('promotion_id', promotionIds);
+
+    const rewardMap = (rewardsData || []).reduce((acc, row) => {
+      const key = String(row.promotion_id || '');
+      if (!key) return acc;
+      acc[key] = (row.reward as Record<string, unknown>) || {};
+      return acc;
+    }, {} as Record<string, Record<string, unknown>>);
+    setPromotionRewards(rewardMap);
   };
 
   const fetchGlobalTerms = async (currentRestaurantId: string) => {
@@ -403,10 +388,14 @@ export default function PromotionsPage() {
   };
 
 
-  const displayedPromotions = useMemo(() => {
-    if (listFilter === 'archived') return promotions.filter((promotion) => promotion.status === 'archived');
-    return promotions.filter((promotion) => promotion.status !== 'archived');
-  }, [listFilter, promotions]);
+  const activePromotions = useMemo(
+    () => promotions.filter((promotion) => promotion.status !== 'archived'),
+    [promotions]
+  );
+  const archivedPromotions = useMemo(
+    () => promotions.filter((promotion) => promotion.status === 'archived'),
+    [promotions]
+  );
 
   const valueLabel = useMemo(() => {
     if (type === 'delivery_promo') {
@@ -460,6 +449,51 @@ export default function PromotionsPage() {
     if (minSubtotal) return `Minimum spend £${minSubtotal}`;
     return null;
   }, [type, minSubtotal, freeDeliveryMinSubtotal]);
+
+  const wizardTermsPreview = useMemo(
+    () => buildPromotionTermsPreview(
+      {
+        type,
+        channels,
+        order_types: orderTypes,
+        min_subtotal: minSubtotal ? Number(minSubtotal) : null,
+        starts_at: startsAt || null,
+        ends_at: endsAt || null,
+        is_recurring: isRecurring,
+        days_of_week: daysOfWeek,
+        time_window_start: timeWindowStart || null,
+        time_window_end: timeWindowEnd || null,
+        max_uses_total: maxUsesTotal ? Number(maxUsesTotal) : null,
+        max_uses_per_customer: maxUsesPerCustomer ? Number(maxUsesPerCustomer) : null,
+      },
+      {
+        discount_type: discountType,
+        discount_value: discountValue ? Number(discountValue) : null,
+        max_discount_cap: maxDiscountCap ? Number(maxDiscountCap) : null,
+        delivery_fee_cap: deliveryFeeCap ? Number(deliveryFeeCap) : null,
+        free_delivery_min_subtotal: freeDeliveryMinSubtotal ? Number(freeDeliveryMinSubtotal) : null,
+      }
+    ),
+    [
+      type,
+      channels,
+      orderTypes,
+      minSubtotal,
+      startsAt,
+      endsAt,
+      isRecurring,
+      daysOfWeek,
+      timeWindowStart,
+      timeWindowEnd,
+      maxUsesTotal,
+      maxUsesPerCustomer,
+      discountType,
+      discountValue,
+      maxDiscountCap,
+      deliveryFeeCap,
+      freeDeliveryMinSubtotal,
+    ]
+  );
 
   const resetWizard = () => {
     setStep(0);
@@ -705,6 +739,7 @@ export default function PromotionsPage() {
     setTimeWindowEnd(promotion.time_window_end || '');
     setChannels(promotion.channels || ['website']);
     setOrderTypes(promotion.order_types || ['delivery', 'collection']);
+    setPromoTerms(promotion.promo_terms || '');
 
     const { data: rewardRow } = await supabase
       .from('promotion_rewards')
@@ -1093,75 +1128,14 @@ export default function PromotionsPage() {
           ) : null}
         </section>
 
-        <section className="rounded-2xl bg-white p-5 shadow-sm">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">Schema health check</h2>
-              <p className="mt-1 text-sm text-gray-600">Validates required promotions tables in this connected Supabase project.</p>
-              <p className="mt-1 text-xs text-gray-500">Configured project ref: <span className="font-mono">{configuredSupabaseProjectRef}</span></p>
-            </div>
-            <button
-              type="button"
-              onClick={copyReloadSql}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 transition hover:bg-gray-50"
-            >
-              Copy: NOTIFY pgrst, 'reload schema';
-            </button>
-          </div>
-
-          {schemaHealthError ? (
-            <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-              Unable to run schema health check: {schemaHealthError}
-            </p>
-          ) : null}
-
-          {schemaHealth ? (
-            (schemaHealth.promotions_exists == null
-              || schemaHealth.promotion_rewards_exists == null
-              || schemaHealth.promotion_voucher_codes_exists == null
-              || schemaHealth.restaurant_promo_terms_exists == null
-              || schemaHealth.promotion_redemptions_exists == null
-              || schemaHealth.loyalty_config_exists == null
-              || schemaHealth.loyalty_ledger_exists == null
-            ) ? (
-              <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3">
-                <p className="text-sm font-semibold text-rose-700">
-                  Promotions DB tables are missing in this Supabase project. Run the promotions migration in this project’s SQL editor.
-                </p>
-              </div>
-            ) : (
-              <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-700">
-                Promotions schema detected in this environment.
-              </div>
-            )
-          ) : (
-            <div className="mt-3 h-10 animate-pulse rounded-lg bg-gray-100" />
-          )}
-        </section>
 
         <section className="rounded-2xl bg-white p-5 shadow-sm">
           <div className="mb-4 flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold text-gray-900">Promotions</h2>
-              <p className="text-xs text-gray-500">Manage active and archived promotions.</p>
+              <p className="text-xs text-gray-500">Active offers in customer channels.</p>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setListFilter('active')}
-                className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${listFilter === 'active' ? 'bg-teal-100 text-teal-800' : 'border border-gray-300 text-gray-600 hover:bg-gray-50'}`}
-              >
-                Active
-              </button>
-              <button
-                type="button"
-                onClick={() => setListFilter('archived')}
-                className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${listFilter === 'archived' ? 'bg-teal-100 text-teal-800' : 'border border-gray-300 text-gray-600 hover:bg-gray-50'}`}
-              >
-                Archived
-              </button>
-              <span className="text-sm text-gray-500">{displayedPromotions.length} shown</span>
-            </div>
+            <span className="text-sm text-gray-500">{activePromotions.length} active</span>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
@@ -1169,76 +1143,83 @@ export default function PromotionsPage() {
                 <tr className="border-b text-left text-gray-500">
                   <th className="py-2 pr-4">Name</th>
                   <th className="py-2 pr-4">Type</th>
-                  <th className="py-2 pr-4">Status</th>
                   <th className="py-2 pr-4">Schedule</th>
-                  <th className="py-2 pr-4">Channels</th>
-                  <th className="py-2 pr-4">Order types</th>
-                  <th className="py-2 pr-4">Min subtotal</th>
-                  <th className="py-2">Action</th>
+                  <th className="py-2 pr-4">Min spend</th>
+                  <th className="py-2 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {displayedPromotions.map((promotion) => (
-                  <tr key={promotion.id} className="border-b last:border-b-0">
-                    <td className="py-3 pr-4 font-medium text-gray-900">{promotion.name}</td>
-                    <td className="py-3 pr-4 text-gray-700">{promotion.type}</td>
-                    <td className="py-3 pr-4">
-                      <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-gray-700">
-                        {promotion.status}
-                      </span>
-                    </td>
-                    <td className="py-3 pr-4 text-gray-600">{scheduleSummary(promotion)}</td>
-                    <td className="py-3 pr-4 text-gray-600">{promotion.channels.join(', ')}</td>
-                    <td className="py-3 pr-4 text-gray-600">{promotion.order_types.join(', ')}</td>
-                    <td className="py-3 pr-4 text-gray-600">
-                      {promotion.min_subtotal != null ? `£${promotion.min_subtotal}` : '—'}
-                    </td>
-                    <td className="py-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => openEditPromotion(promotion)}
-                          className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 transition hover:bg-gray-50"
-                        >
-                          Edit
-                        </button>
-                        {promotion.status === 'active' || promotion.status === 'paused' ? (
-                          <button
-                            type="button"
-                            onClick={() => handleToggleStatus(promotion)}
-                            disabled={togglingId === promotion.id}
-                            className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
-                          >
-                            {togglingId === promotion.id
-                              ? 'Saving...'
-                              : promotion.status === 'active'
-                                ? 'Pause'
-                                : 'Activate'}
-                          </button>
-                        ) : null}
-                        {promotion.status !== 'archived' ? (
-                          <button
-                            type="button"
-                            onClick={() => setArchivingPromotionId(promotion.id)}
-                            className="rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50"
-                          >
-                            Delete
-                          </button>
+                {activePromotions.map((promotion) => (
+                  <tr key={promotion.id} className={`border-b last:border-b-0 ${promotion.status === 'paused' ? 'opacity-65' : ''}`}>
+                    <td className="py-2.5 pr-4 font-medium text-gray-900">
+                      <div className="inline-flex items-center gap-2">
+                        <span>{promotion.name}</span>
+                        {promotion.status === 'paused' ? (
+                          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-600">Paused</span>
                         ) : null}
                       </div>
                     </td>
+                    <td className="py-2.5 pr-4 text-gray-700">{formatPromotionTypeLabel(promotion.type)}</td>
+                    <td className="py-2.5 pr-4 text-gray-600">{scheduleSummary(promotion)}</td>
+                    <td className="py-2.5 pr-4 text-gray-600">{promotion.min_subtotal != null ? `£${promotion.min_subtotal}` : '—'}</td>
+                    <td className="py-2.5 text-right">
+                      <button
+                        type="button"
+                        onClick={() => setManagingPromotion(promotion)}
+                        className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${promotion.status === 'paused' ? 'border-gray-200 text-gray-500 hover:bg-gray-50' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+                      >
+                        Manage
+                      </button>
+                    </td>
                   </tr>
                 ))}
-                {displayedPromotions.length === 0 ? (
+                {activePromotions.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="py-8 text-center text-gray-500">
-                      No promotions found for this filter.
+                    <td colSpan={5} className="py-8 text-center text-gray-500">
+                      No active promotions found.
                     </td>
                   </tr>
                 ) : null}
               </tbody>
             </table>
           </div>
+
+          {archivedPromotions.length ? (
+            <div className="mt-4 border-t border-gray-100 pt-3">
+              <button
+                type="button"
+                onClick={() => setShowArchivedPromotions((prev) => !prev)}
+                className="text-xs font-semibold text-gray-500 transition hover:text-gray-700 hover:underline"
+              >
+                {showArchivedPromotions ? 'Hide archived' : `View archived (${archivedPromotions.length})`}
+              </button>
+
+              {showArchivedPromotions ? (
+                <div className="mt-3 overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-gray-500">
+                        <th className="py-2 pr-4">Name</th>
+                        <th className="py-2 pr-4">Type</th>
+                        <th className="py-2 pr-4">Schedule</th>
+                        <th className="py-2">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {archivedPromotions.map((promotion) => (
+                        <tr key={promotion.id} className={`border-b last:border-b-0 ${promotion.status === 'paused' ? 'opacity-65' : ''}`}>
+                          <td className="py-2 pr-4 font-medium text-gray-900">{promotion.name}</td>
+                          <td className="py-2 pr-4 text-gray-700">{formatPromotionTypeLabel(promotion.type)}</td>
+                          <td className="py-2 pr-4 text-gray-600">{scheduleSummary(promotion)}</td>
+                          <td className="py-2 text-gray-500">archived</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </section>
 
         <section className="rounded-2xl bg-white p-5 shadow-sm">
@@ -1285,6 +1266,75 @@ export default function PromotionsPage() {
               >
                 Archive
               </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+
+      {managingPromotion ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Manage promotion</h3>
+                <p className="mt-1 text-sm text-gray-600">{managingPromotion.name}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setManagingPromotion(null)}
+                className="rounded-md p-1 text-gray-500 transition hover:bg-gray-100"
+              >
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="mt-4 space-y-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const target = managingPromotion;
+                  setManagingPromotion(null);
+                  openEditPromotion(target);
+                }}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-left text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+              >
+                Edit
+              </button>
+              {managingPromotion.status === 'active' || managingPromotion.status === 'paused' ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = managingPromotion;
+                    setManagingPromotion(null);
+                    handleToggleStatus(target);
+                  }}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-left text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                >
+                  {managingPromotion.status === 'active' ? 'Pause' : 'Resume'}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => {
+                  setTermsModalPromotion(managingPromotion);
+                  setManagingPromotion(null);
+                }}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-left text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+              >
+                Terms
+              </button>
+              {managingPromotion.status !== 'archived' ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setArchivingPromotionId(managingPromotion.id);
+                    setManagingPromotion(null);
+                  }}
+                  className="w-full rounded-lg border border-rose-200 px-3 py-2 text-left text-sm font-semibold text-rose-700 transition hover:bg-rose-50"
+                >
+                  Delete
+                </button>
+              ) : null}
             </div>
           </div>
         </div>
@@ -1367,7 +1417,7 @@ export default function PromotionsPage() {
                               type === optionType ? 'border-teal-600 bg-teal-50' : 'border-gray-200 hover:bg-gray-50'
                             }`}
                           >
-                            <p className="font-medium text-gray-900">{option}</p>
+                            <p className="font-medium text-gray-900">{formatPromotionTypeLabel(option)}</p>
                           </button>
                         );
                       })}
@@ -1769,14 +1819,32 @@ export default function PromotionsPage() {
                       <p className="text-sm text-gray-500">No extra configuration required for this promotion type.</p>
                     )}
 
-                    <div>
-                      <label className="mb-1 block text-sm font-medium text-gray-700">Promotion terms (optional)</label>
-                      <textarea
-                        value={promoTerms}
-                        onChange={(e) => setPromoTerms(e.target.value)}
-                        rows={4}
-                        className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
-                      />
+                    <div className="space-y-4">
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Customer terms preview</label>
+                        <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+                          {wizardTermsPreview.length ? (
+                            <ul className="list-disc space-y-1 pl-5 text-sm text-gray-700">
+                              {wizardTermsPreview.map((term) => (
+                                <li key={term}>{term}</li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="text-sm text-gray-500">Terms will appear as you configure this promotion.</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Add custom note (optional)</label>
+                        <textarea
+                          value={promoTerms}
+                          onChange={(e) => setPromoTerms(e.target.value)}
+                          rows={4}
+                          className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                          placeholder="Add any extra conditions for customers."
+                        />
+                      </div>
                     </div>
                   </div>
                 ) : null}
@@ -1840,6 +1908,15 @@ export default function PromotionsPage() {
           </details>
         </div>
       ) : null}
+
+      <PromotionTermsModal
+        open={!!termsModalPromotion}
+        onClose={() => setTermsModalPromotion(null)}
+        title={termsModalPromotion?.name}
+        offerTerms={termsModalPromotion ? buildPromotionTermsPreview(termsModalPromotion, promotionRewards[termsModalPromotion.id]) : []}
+        restaurantNote={termsModalPromotion?.promo_terms || ''}
+      />
+
       <Toast message={toastMessage} onClose={() => setToastMessage('')} />
     </DashboardLayout>
   );
