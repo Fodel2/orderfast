@@ -465,40 +465,59 @@ export async function fetchPromotionTermsData(restaurantId: string, promotionIds
 }
 
 export async function fetchOwnedVouchersFromDb(restaurantId: string, customerId: string): Promise<OwnedVoucher[]> {
-  const { data: redemptionRows, error: redemptionsError } = await supabase
-    .from('promotion_redemptions')
-    .select('voucher_code_id,order_id,created_at')
+  const { data: ledgerRows, error: ledgerError } = await supabase
+    .from('loyalty_ledger')
+    .select('note,created_at')
     .eq('restaurant_id', restaurantId)
     .eq('customer_id', customerId)
-    .not('voucher_code_id', 'is', null)
+    .eq('entry_type', 'spend')
+    .ilike('note', 'Redeemed for voucher %')
     .order('created_at', { ascending: false });
 
-  if (redemptionsError) throw redemptionsError;
+  if (ledgerError) throw ledgerError;
 
-  const consumed = new Set<string>();
-  const unconsumedCreatedAt = new Map<string, string | undefined>();
-  (redemptionRows || []).forEach((row) => {
-    const voucherCodeId = String(row.voucher_code_id || '').trim();
-    if (!voucherCodeId) return;
-    if (row.order_id) {
-      consumed.add(voucherCodeId);
-      return;
-    }
-    if (!unconsumedCreatedAt.has(voucherCodeId)) {
-      unconsumedCreatedAt.set(voucherCodeId, row.created_at || undefined);
+  const mintedByCode = new Map<string, string | undefined>();
+  (ledgerRows || []).forEach((row) => {
+    const note = String(row.note || '').trim();
+    if (!note.toLowerCase().startsWith('redeemed for voucher ')) return;
+    const code = note.slice('Redeemed for voucher '.length).trim();
+    const normalizedCode = code.toLowerCase();
+    if (!normalizedCode) return;
+    if (!mintedByCode.has(normalizedCode)) {
+      mintedByCode.set(normalizedCode, row.created_at || undefined);
     }
   });
 
-  const voucherIds = Array.from(unconsumedCreatedAt.keys()).filter((voucherCodeId) => !consumed.has(voucherCodeId));
-  if (!voucherIds.length) return [];
+  const normalizedCodes = Array.from(mintedByCode.keys());
+  if (!normalizedCodes.length) return [];
 
   const { data: voucherRows, error: voucherRowsError } = await supabase
     .from('promotion_voucher_codes')
-    .select('id,code,promotion_id')
-    .in('id', voucherIds);
+    .select('id,promotion_id,code,code_normalized,starts_at,ends_at,max_uses_total,max_uses_per_customer,created_at')
+    .in('code_normalized', normalizedCodes);
 
   if (voucherRowsError) throw voucherRowsError;
   if (!voucherRows?.length) return [];
+
+  const voucherIds = voucherRows
+    .map((row) => String(row.id || '').trim())
+    .filter(Boolean);
+
+  if (!voucherIds.length) return [];
+
+  const { data: consumedRows, error: consumedRowsError } = await supabase
+    .from('promotion_redemptions')
+    .select('voucher_code_id')
+    .in('voucher_code_id', voucherIds)
+    .not('order_id', 'is', null);
+
+  if (consumedRowsError) throw consumedRowsError;
+
+  const consumedVoucherIds = new Set(
+    (consumedRows || [])
+      .map((row) => String(row.voucher_code_id || '').trim())
+      .filter(Boolean)
+  );
 
   const promotionIds = Array.from(new Set(voucherRows.map((row) => String(row.promotion_id || '').trim()).filter(Boolean)));
 
@@ -525,20 +544,24 @@ export async function fetchOwnedVouchersFromDb(restaurantId: string, customerId:
   return voucherRows
     .map((row) => {
       const voucherCodeId = String(row.id || '').trim();
+      if (!voucherCodeId || consumedVoucherIds.has(voucherCodeId)) return null;
       const promotionId = String(row.promotion_id || '').trim();
       const code = String(row.code || '').trim();
-      if (!voucherCodeId || !promotionId || !code) return null;
+      const codeNormalized = String(row.code_normalized || code.toLowerCase()).trim();
+      if (!promotionId || !code) return null;
+
       return {
         voucherCodeId,
         promotionId,
         code,
-        createdAt: unconsumedCreatedAt.get(voucherCodeId),
+        createdAt: mintedByCode.get(codeNormalized) || row.created_at || undefined,
         reward: rewardMap.get(promotionId),
       } as OwnedVoucher;
     })
     .filter((row): row is OwnedVoucher => !!row)
     .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
 }
+
 
 export async function fetchLoyaltyConfig(restaurantId: string) {
   const { data, error } = await supabase
