@@ -2,11 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import {
   ArrowPathIcon,
-  CheckCircleIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  ClockIcon,
-  CubeIcon,
   MagnifyingGlassIcon,
   XMarkIcon,
   SpeakerWaveIcon,
@@ -59,11 +56,17 @@ type Order = RejectableOrder & {
 
 type StockRow = {
   id: number;
+  group_id?: number | null;
   name: string;
   stock_status: string | null;
   stock_return_date: string | null;
   out_of_stock_until: string | null;
   stock_last_updated_at: string | null;
+};
+
+type AddonGroup = {
+  id: number;
+  name: string;
 };
 
 type OrderSegment = {
@@ -231,6 +234,9 @@ export default function KitchenDisplayPage() {
   const [debouncedStockSearch, setDebouncedStockSearch] = useState('');
   const [menuStockRows, setMenuStockRows] = useState<StockRow[]>([]);
   const [addonStockRows, setAddonStockRows] = useState<StockRow[]>([]);
+  const [addonGroups, setAddonGroups] = useState<Record<number, string>>({});
+  const [stockLoading, setStockLoading] = useState(false);
+  const [stockError, setStockError] = useState('');
   const [updatingStockKeys, setUpdatingStockKeys] = useState<Set<string>>(new Set());
   const [isOnline, setIsOnline] = useState(true);
   const [now, setNow] = useState(Date.now());
@@ -435,37 +441,82 @@ export default function KitchenDisplayPage() {
   }, [isPreparedView, restaurantId]);
 
   const fetchStockRows = useCallback(async () => {
-    if (!restaurantId || !isStockModalOpen) return;
-    const searchTerm = debouncedStockSearch.trim();
+    if (!isStockModalOpen) return;
+    if (!restaurantId) {
+      setStockError('Restaurant not found.');
+      setMenuStockRows([]);
+      setAddonStockRows([]);
+      setAddonGroups({});
+      return;
+    }
+
+    setStockLoading(true);
+    setStockError('');
+
     const itemQuery = supabase
       .from('menu_items')
       .select('id,name,stock_status,stock_return_date,out_of_stock_until,stock_last_updated_at')
       .eq('restaurant_id', restaurantId)
       .is('archived_at', null)
       .order('name', { ascending: true });
-    const addonQuery = supabase
-      .from('addon_options')
-      .select('id,name,stock_status,stock_return_date,out_of_stock_until,stock_last_updated_at')
+
+    const addonGroupQuery = supabase
+      .from('addon_groups')
+      .select('id,name')
       .eq('restaurant_id', restaurantId)
       .is('archived_at', null)
       .order('name', { ascending: true });
 
-    if (searchTerm) {
-      itemQuery.ilike('name', `%${searchTerm}%`);
-      addonQuery.ilike('name', `%${searchTerm}%`);
-    }
-
-    const [{ data: items, error: itemsError }, { data: addons, error: addonsError }] = await Promise.all([
+    const [{ data: items, error: itemsError }, { data: groupData, error: groupError }] = await Promise.all([
       itemQuery,
-      addonQuery,
+      addonGroupQuery,
     ]);
-    if (itemsError || addonsError) {
-      console.error('[kod] failed to load stock rows', { itemsError, addonsError });
+
+    if (itemsError || groupError) {
+      console.error('[kod] failed to load stock rows', { itemsError, groupError });
+      setStockError('Unable to load stock rows.');
+      setStockLoading(false);
       return;
     }
+
+    const groups = (groupData as AddonGroup[]) ?? [];
+    const groupIds = groups.map((group) => group.id);
+    const nextGroupMap = groups.reduce<Record<number, string>>((acc, group) => {
+      acc[group.id] = group.name;
+      return acc;
+    }, {});
+
+    let addonRows: StockRow[] = [];
+    if (groupIds.length > 0) {
+      const { data: addonData, error: addonError } = await supabase
+        .from('addon_options')
+        .select('id,group_id,name,stock_status,stock_return_date,out_of_stock_until,stock_last_updated_at')
+        .in('group_id', groupIds)
+        .is('archived_at', null)
+        .order('name', { ascending: true });
+      if (addonError) {
+        console.error('[kod] failed to load addon stock rows', addonError);
+        setStockError('Unable to load add-ons.');
+        setStockLoading(false);
+        return;
+      }
+      addonRows = (addonData as StockRow[]) ?? [];
+    }
+
     setMenuStockRows((items as StockRow[]) ?? []);
-    setAddonStockRows((addons as StockRow[]) ?? []);
-  }, [debouncedStockSearch, isStockModalOpen, restaurantId]);
+    setAddonGroups(nextGroupMap);
+    setAddonStockRows(addonRows);
+    setStockLoading(false);
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.debug('[kod-stock] modal data loaded', {
+        restaurantId,
+        items: ((items as StockRow[]) ?? []).length,
+        addonGroups: groups.length,
+        addons: addonRows.length,
+      });
+    }
+  }, [isStockModalOpen, restaurantId]);
 
 
   const refreshCurrentView = useCallback(async () => {
@@ -513,8 +564,9 @@ export default function KitchenDisplayPage() {
   }, [stockSearch]);
 
   useEffect(() => {
+    if (!isStockModalOpen) return;
     fetchStockRows();
-  }, [fetchStockRows]);
+  }, [fetchStockRows, isStockModalOpen]);
 
   useEffect(() => {
     let mounted = true;
@@ -920,7 +972,32 @@ export default function KitchenDisplayPage() {
     `shadow-lg shadow-black/50 ${isLightTicket(orderId) ? 'bg-black' : 'bg-neutral-950'}`;
   const isKioskOrder = (order: Order) =>
     order.order_type === 'kiosk' || order.source === 'kiosk';
-  const activeStockRows = stockSection === 'items' ? menuStockRows : addonStockRows;
+
+  const stockSearchTerm = debouncedStockSearch.trim().toLowerCase();
+  const filteredMenuStockRows = useMemo(
+    () =>
+      menuStockRows.filter((row) =>
+        stockSearchTerm ? row.name.toLowerCase().includes(stockSearchTerm) : true
+      ),
+    [menuStockRows, stockSearchTerm]
+  );
+  const filteredAddonStockRows = useMemo(
+    () =>
+      addonStockRows.filter((row) =>
+        stockSearchTerm ? row.name.toLowerCase().includes(stockSearchTerm) : true
+      ),
+    [addonStockRows, stockSearchTerm]
+  );
+  const groupedAddonRows = useMemo(() => {
+    return filteredAddonStockRows.reduce<Record<string, StockRow[]>>((acc, row) => {
+      const groupName = addonGroups[row.group_id || 0] || 'Ungrouped';
+      if (!acc[groupName]) {
+        acc[groupName] = [];
+      }
+      acc[groupName].push(row);
+      return acc;
+    }, {});
+  }, [addonGroups, filteredAddonStockRows]);
 
   return (
     <FullscreenAppLayout
@@ -1277,31 +1354,91 @@ export default function KitchenDisplayPage() {
                 </div>
               </div>
               <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-white/10">
-                {activeStockRows.map((row) => {
-                  const normalizedStatus = normalizeStockStatus(row.stock_status);
-                  const statusKey = `${stockSection === 'items' ? 'menu_items' : 'addon_options'}-${row.id}`;
-                  return (
-                    <div key={statusKey} className="flex items-center justify-between gap-3 border-b border-white/5 p-3 last:border-b-0">
-                      <div>
-                        <p className="font-medium text-white">{row.name}</p>
-                        <p className="text-xs text-neutral-400">{STOCK_STATUS_LABELS[row.stock_status || normalizedStatus] || row.stock_status || 'in_stock'}</p>
+                {stockLoading ? (
+                  <div className="p-4 text-sm text-neutral-300">Loading stock…</div>
+                ) : null}
+                {!stockLoading && stockError ? (
+                  <div className="flex items-center justify-between gap-3 p-4">
+                    <p className="text-sm text-rose-200">{stockError}</p>
+                    <button
+                      type="button"
+                      onClick={() => void fetchStockRows()}
+                      className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-white hover:bg-white/20"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                ) : null}
+                {!stockLoading && !stockError && stockSection === 'items' && filteredMenuStockRows.length === 0 ? (
+                  <div className="p-4 text-sm text-neutral-300">No menu items found for this restaurant.</div>
+                ) : null}
+                {!stockLoading && !stockError && stockSection === 'addons' && Object.keys(addonGroups).length === 0 ? (
+                  <div className="p-4 text-sm text-neutral-300">No add-on groups found.</div>
+                ) : null}
+                {!stockLoading && !stockError && stockSection === 'addons' && Object.keys(addonGroups).length > 0 && filteredAddonStockRows.length === 0 ? (
+                  <div className="p-4 text-sm text-neutral-300">No add-ons found for this restaurant.</div>
+                ) : null}
+                {!stockLoading && !stockError && stockSection === 'items'
+                  ? filteredMenuStockRows.map((row) => {
+                      const normalizedStatus = normalizeStockStatus(row.stock_status);
+                      const statusKey = `menu_items-${row.id}`;
+                      return (
+                        <div key={statusKey} className="flex items-center justify-between gap-3 border-b border-white/5 p-3 last:border-b-0">
+                          <div>
+                            <p className="font-medium text-white">{row.name}</p>
+                            <p className="text-xs text-neutral-400">{STOCK_STATUS_LABELS[row.stock_status || normalizedStatus] || row.stock_status || 'in_stock'}</p>
+                          </div>
+                          <div className="flex items-center gap-1 rounded-full border border-white/10 bg-white/5 p-1">
+                            {(['in_stock', 'back_tomorrow', 'off_indefinitely'] as const).map((statusOption) => (
+                              <button
+                                key={`${statusKey}-${statusOption}`}
+                                type="button"
+                                disabled={updatingStockKeys.has(statusKey)}
+                                onClick={() => handleStockStatusChange('menu_items', row, statusOption)}
+                                className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${normalizedStatus === statusOption ? 'bg-teal-500 text-black' : 'text-white hover:bg-white/10'} disabled:opacity-40`}
+                              >
+                                {STOCK_STATUS_LABELS[statusOption]}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })
+                  : null}
+                {!stockLoading && !stockError && stockSection === 'addons'
+                  ? Object.entries(groupedAddonRows).map(([groupName, rows]) => (
+                      <div key={groupName} className="border-b border-white/5 p-3 last:border-b-0">
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">{groupName}</p>
+                        <div className="space-y-2">
+                          {rows.map((row) => {
+                            const normalizedStatus = normalizeStockStatus(row.stock_status);
+                            const statusKey = `addon_options-${row.id}`;
+                            return (
+                              <div key={statusKey} className="flex items-center justify-between gap-3">
+                                <div>
+                                  <p className="font-medium text-white">{row.name}</p>
+                                  <p className="text-xs text-neutral-400">{STOCK_STATUS_LABELS[row.stock_status || normalizedStatus] || row.stock_status || 'in_stock'}</p>
+                                </div>
+                                <div className="flex items-center gap-1 rounded-full border border-white/10 bg-white/5 p-1">
+                                  {(['in_stock', 'back_tomorrow', 'off_indefinitely'] as const).map((statusOption) => (
+                                    <button
+                                      key={`${statusKey}-${statusOption}`}
+                                      type="button"
+                                      disabled={updatingStockKeys.has(statusKey)}
+                                      onClick={() => handleStockStatusChange('addon_options', row, statusOption)}
+                                      className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${normalizedStatus === statusOption ? 'bg-teal-500 text-black' : 'text-white hover:bg-white/10'} disabled:opacity-40`}
+                                    >
+                                      {STOCK_STATUS_LABELS[statusOption]}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1 rounded-full border border-white/10 bg-white/5 p-1">
-                        {(['in_stock', 'back_tomorrow', 'off_indefinitely'] as const).map((statusOption) => (
-                          <button
-                            key={`${statusKey}-${statusOption}`}
-                            type="button"
-                            disabled={updatingStockKeys.has(statusKey)}
-                            onClick={() => handleStockStatusChange(stockSection === 'items' ? 'menu_items' : 'addon_options', row, statusOption)}
-                            className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${normalizedStatus === statusOption ? 'bg-teal-500 text-black' : 'text-white hover:bg-white/10'} disabled:opacity-40`}
-                          >
-                            {STOCK_STATUS_LABELS[statusOption]}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
+                    ))
+                  : null}
               </div>
             </div>
           </div>

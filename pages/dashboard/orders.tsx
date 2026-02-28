@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import { useRouter } from 'next/router';
 import DashboardLayout from '../../components/DashboardLayout';
@@ -93,6 +93,7 @@ export default function OrdersPage() {
   const [selectedTableSession, setSelectedTableSession] = useState<TableSessionSummary | null>(null);
   const [tableSessionOrders, setTableSessionOrders] = useState<Order[]>([]);
   const [tableActionLoading, setTableActionLoading] = useState(false);
+  const [completingOrderIds, setCompletingOrderIds] = useState<Set<string>>(new Set());
   const pendingOrderIdsRef = useRef<Set<string>>(new Set());
   const isAlertPlayingRef = useRef(false);
   const autoAcceptBeepingRef = useRef(false);
@@ -270,7 +271,7 @@ export default function OrdersPage() {
 
     if (sessionsError || !sessionsData?.length) {
       setOpenTableSessions([]);
-      return;
+      return false;
     }
 
     const sessionIds = sessionsData.map((session) => session.id);
@@ -783,10 +784,10 @@ export default function OrdersPage() {
     [fetchTableSessions, isAutoAcceptedOrder, syncAlertLoop]
   );
 
-  const updateStatus = async (id: string, status: string) => {
+  const updateStatus = async (id: string, status: string): Promise<boolean> => {
     const targetOrder = orders.find((o) => o.id === id);
     if (status === 'accepted' && targetOrder?.status === 'accepted') {
-      return;
+      return false;
     }
     const updatePayload: { status: string; accepted_at?: string | null } = { status };
     if (targetOrder?.accepted_at) {
@@ -809,7 +810,7 @@ export default function OrdersPage() {
     if (error) {
       console.error('[orders] failed to update order status', error);
       setToastMessage('Unable to update order');
-      return;
+      return false;
     }
 
     if (!data || data.length === 0) {
@@ -819,7 +820,7 @@ export default function OrdersPage() {
       }
       const refreshedOrder = await fetchOrderWithItems(id);
       setSelectedOrder(refreshedOrder ?? null);
-      return;
+      return false;
     }
 
     if (status === 'pending') {
@@ -855,7 +856,29 @@ export default function OrdersPage() {
     if (status === 'completed' && data?.[0]) {
       await awardLoyaltyPointsForCompletedOrder(data[0] as Pick<Order, 'id' | 'restaurant_id' | 'user_id' | 'total_price'>);
     }
+
+    return true;
   };
+
+
+  const handleTileComplete = useCallback(async (event: MouseEvent<HTMLButtonElement>, order: Order) => {
+    event.stopPropagation();
+    if (completingOrderIds.has(order.id)) return;
+    setCompletingOrderIds((prev) => {
+      const next = new Set(prev);
+      next.add(order.id);
+      return next;
+    });
+    try {
+      await updateStatus(order.id, 'completed');
+    } finally {
+      setCompletingOrderIds((prev) => {
+        const next = new Set(prev);
+        next.delete(order.id);
+        return next;
+      });
+    }
+  }, [completingOrderIds, updateStatus]);
 
   const awardLoyaltyPointsForCompletedOrder = useCallback(
     async (order: Pick<Order, 'id' | 'restaurant_id' | 'user_id' | 'total_price'>) => {
@@ -1151,7 +1174,7 @@ export default function OrdersPage() {
                 className={`${highlight} border rounded-lg shadow-md p-4 cursor-pointer`}
                 onClick={() => handleOpenOrder(o)}
               >
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-start gap-3">
                   <div>
                     <h3 className="font-semibold">#
                       {formatShortOrderNumber(o.short_order_number)}
@@ -1161,6 +1184,16 @@ export default function OrdersPage() {
                   <div className="text-right">
                     <p className="font-semibold">{formatPrice(o.total_price)}</p>
                     <p className="text-sm">{formatStatusLabel(o.status)}</p>
+                    {COMPLETE_ELIGIBLE_STATUSES.includes(o.status) ? (
+                      <button
+                        type="button"
+                        onClick={(event) => void handleTileComplete(event, o)}
+                        disabled={completingOrderIds.has(o.id)}
+                        className="mt-2 rounded bg-green-600 px-3 py-1 text-xs font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Complete
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               </div>

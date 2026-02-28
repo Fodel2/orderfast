@@ -42,7 +42,7 @@ export interface Order {
 interface Props {
   order: Order | null;
   onClose: () => void;
-  onUpdateStatus: (id: string, status: string) => void;
+  onUpdateStatus: (id: string, status: string) => Promise<boolean>;
 }
 
 const formatAddress = (addr: any) => {
@@ -204,7 +204,12 @@ export default function OrderDetailsModal({ order, onClose, onUpdateStatus }: Pr
               return (
                 <button
                   type="button"
-                  onClick={() => onUpdateStatus(order.id, nextStatus)}
+                  onClick={async () => {
+                    const ok = await onUpdateStatus(order.id, nextStatus);
+                    if (ok && nextStatus === 'completed') {
+                      onClose();
+                    }
+                  }}
                   className={`px-4 py-2 text-white rounded ${classes}`}
                 >
                   {label}
@@ -227,7 +232,9 @@ export default function OrderDetailsModal({ order, onClose, onUpdateStatus }: Pr
         order={order}
         show={showReject}
         onClose={() => setShowReject(false)}
-        onRejected={(status) => onUpdateStatus(order.id, status)}
+        onRejected={(status) => {
+          void onUpdateStatus(order.id, status);
+        }}
       />
     </div>
   );
