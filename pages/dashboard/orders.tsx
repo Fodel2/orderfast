@@ -377,8 +377,6 @@ export default function OrdersPage() {
         .eq('user_id', session.user.id)
         .maybeSingle();
 
-      console.log('restaurant_users result', { ruData, ruError });
-
       if (ruError || !ruData) {
         if (ruError) console.error('Error loading restaurant', ruError);
         setLoading(false);
@@ -421,8 +419,6 @@ export default function OrdersPage() {
         .eq('restaurant_id', ruData.restaurant_id)
         .in('status', ACTIVE_STATUSES)
         .order('created_at', { ascending: false });
-
-      console.log('orders query result', { ordersData, ordersError });
 
       if (!ordersError && ordersData) {
         setOrders(ordersData as Order[]);
@@ -533,37 +529,48 @@ export default function OrdersPage() {
     ) => {
       if (!isOrdersPage) return;
       const newRow = payload.new as Order;
-      if (!newRow || !matchesRestaurant(newRow.restaurant_id)) {
-        console.debug('[orders] ignoring insert for different restaurant', {
-          restaurantId,
-          incoming: newRow?.restaurant_id,
-        });
-        return;
+      if (!newRow) return;
+
+      let scopedRow = newRow;
+      if (!matchesRestaurant(scopedRow.restaurant_id)) {
+        const hydratedScoped = await fetchOrderWithItems(scopedRow.id);
+        if (!hydratedScoped || !matchesRestaurant(hydratedScoped.restaurant_id)) {
+          console.debug('[orders] ignoring insert for different restaurant', {
+            restaurantId,
+            incoming: scopedRow?.restaurant_id,
+          });
+          return;
+        }
+        scopedRow = hydratedScoped;
       }
 
-      if (newRow.status === 'pending') {
-        pendingOrderIdsRef.current.add(newRow.id);
+      if (scopedRow.status === 'pending') {
+        pendingOrderIdsRef.current.add(scopedRow.id);
       } else {
-        pendingOrderIdsRef.current.delete(newRow.id);
+        pendingOrderIdsRef.current.delete(scopedRow.id);
       }
 
-      if (!isActiveStatus(newRow.status)) {
+      if (!isActiveStatus(scopedRow.status)) {
         syncAlertLoop();
         return;
       }
 
-      const hydrated = (await hydrateOrder(newRow)) ?? {
-        ...newRow,
-        order_items: newRow.order_items ?? [],
+      const hydrated = (await hydrateOrder(scopedRow)) ?? {
+        ...scopedRow,
+        order_items: scopedRow.order_items ?? [],
       };
       if (!hydrated) {
-        console.error('[orders] failed to hydrate inserted order', newRow.id);
+        console.error('[orders] failed to hydrate inserted order', scopedRow.id);
         return;
       }
 
       setOrders((prev) => {
-        const remaining = prev.filter((o) => o.id !== hydrated.id);
-        return [hydrated, ...remaining];
+        if (prev.some((order) => order.id === hydrated.id)) {
+          return prev;
+        }
+        return [hydrated, ...prev].sort(
+          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
       });
 
       if (isAutoAcceptedOrder(hydrated)) {
