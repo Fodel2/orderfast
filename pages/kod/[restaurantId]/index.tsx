@@ -62,6 +62,7 @@ type StockRow = {
   stock_return_date: string | null;
   out_of_stock_until: string | null;
   stock_last_updated_at: string | null;
+  restaurant_id?: string | number | null;
 };
 
 type AddonGroup = {
@@ -457,7 +458,7 @@ export default function KitchenDisplayPage() {
 
     const { data: itemsData, error: itemsError } = await supabase
       .from('menu_items')
-      .select('id,name,stock_status,stock_return_date,out_of_stock_until,stock_last_updated_at')
+      .select('id,restaurant_id,name,stock_status,stock_return_date,out_of_stock_until,stock_last_updated_at')
       .eq('restaurant_id', restaurantId)
       .is('archived_at', null)
       .order('name', { ascending: true });
@@ -877,11 +878,13 @@ export default function KitchenDisplayPage() {
 
     const nextTimestamp = new Date().toISOString();
     const nextDateValue = nextStatus === 'back_tomorrow' ? tomorrow.toISOString() : null;
+    const dbStatus: 'in_stock' | 'scheduled' | 'out' =
+      nextStatus === 'in_stock' ? 'in_stock' : nextStatus === 'back_tomorrow' ? 'scheduled' : 'out';
 
     const previousRow = { ...row };
     const nextRow: StockRow = {
       ...row,
-      stock_status: nextStatus,
+      stock_status: dbStatus,
       stock_last_updated_at: nextTimestamp,
       stock_return_date: nextDateValue,
       out_of_stock_until: nextDateValue,
@@ -903,13 +906,17 @@ export default function KitchenDisplayPage() {
     }
 
     const updatePayload: Record<string, string | null> = {
-      stock_status: nextStatus,
+      stock_status: dbStatus,
       stock_last_updated_at: nextTimestamp,
       stock_return_date: nextDateValue,
       out_of_stock_until: nextDateValue,
     };
 
-    const { error } = await supabase.from(table).update(updatePayload).eq('id', row.id);
+    let query = supabase.from(table).update(updatePayload).eq('id', row.id);
+    if (table === 'menu_items') {
+      query = query.eq('restaurant_id', restaurantId);
+    }
+    const { error } = await query;
     if (error) {
       if (table === 'menu_items') {
         setItems(revertRow);
@@ -928,7 +935,7 @@ export default function KitchenDisplayPage() {
       console.debug('[kod-stock] update success', { rowKey, nextStatus });
     }
     setUpdatingRowId(null);
-  }, [updatingRowId]);
+  }, [restaurantId, updatingRowId]);
 
   const pageSize = Math.max(1, columns * rows);
   const visibleOrders = orders;
