@@ -1,10 +1,9 @@
 import { useState } from 'react';
-import { Disclosure, Listbox } from '@headlessui/react';
+import { getTomorrowLondonDate } from '@/lib/stockDate';
+import { Disclosure } from '@headlessui/react';
 import {
   ChevronUpIcon,
   ChevronDownIcon,
-  ChevronUpDownIcon,
-  CheckIcon,
 } from '@heroicons/react/24/outline';
 
 export interface StockTabProps {
@@ -23,7 +22,13 @@ export interface StockTabProps {
     name: string;
     stock_status: 'in_stock' | 'scheduled' | 'out';
     stock_return_date: string | null;
+    group_id: string;
+    group_name: string;
+    available?: boolean | null;
+    out_of_stock_until?: string | null;
+    stock_last_updated_at?: string | null;
   }[];
+  restaurantId?: number | null;
 }
 
 function StockStatusBadge({ status, returnDate }: { status: 'in_stock' | 'scheduled' | 'out'; returnDate: string | null }) {
@@ -42,9 +47,11 @@ function StockStatusBadge({ status, returnDate }: { status: 'in_stock' | 'schedu
   return <span className={`text-xs px-2 py-1 rounded ${color}`}>{label}</span>;
 }
 
-export default function StockTab({ categories, addons }: StockTabProps) {
+export default function StockTab({ categories, addons, restaurantId }: StockTabProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set(categories.map((c) => c.id)));
   const [data, setData] = useState<typeof categories>(categories);
+  const [addonData, setAddonData] = useState<typeof addons>(addons);
+  const [savedRows, setSavedRows] = useState<Record<string, boolean>>({});
 
   const stockOptions = [
     { value: 'in_stock', label: 'In Stock' },
@@ -62,31 +69,36 @@ export default function StockTab({ categories, addons }: StockTabProps) {
       return next;
     });
 
-  const tomorrowMidnight = () => {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    d.setHours(0, 0, 0, 0);
-    return d.toISOString();
-  };
-
   const updateStockStatus = async (
-    itemId: string,
+    table: 'menu_items' | 'addon_options',
+    rowId: string,
     status: 'in_stock' | 'scheduled' | 'out'
   ) => {
     const { supabase } = await import('../utils/supabaseClient');
-    let returnDate: string | null = null;
-    if (status === 'scheduled') {
-      returnDate = tomorrowMidnight();
-    }
-    const { error } = await supabase
-      .from('menu_items')
+    const returnDate: string | null = status === 'scheduled' ? getTomorrowLondonDate() : null;
+    let query = supabase
+      .from(table)
       .update({
         stock_status: status,
         stock_return_date: returnDate,
+        out_of_stock_until: null,
         stock_last_updated_at: new Date().toISOString(),
       })
-      .eq('id', itemId);
-    if (error) console.error('Failed to update stock', error);
+      .eq('id', rowId);
+    if (table === 'menu_items') {
+      if (!restaurantId) return false;
+      query = query.eq('restaurant_id', restaurantId);
+    }
+    const { error } = await query;
+    if (error) {
+      console.error('Failed to update stock', error);
+      return false;
+    }
+    setSavedRows((prev) => ({ ...prev, [rowId]: true }));
+    window.setTimeout(() => {
+      setSavedRows((prev) => ({ ...prev, [rowId]: false }));
+    }, 1200);
+    return true;
   };
 
   const handleStockChange = (
@@ -101,15 +113,39 @@ export default function StockTab({ categories, addons }: StockTabProps) {
             ? {
                 ...it,
                 stock_status: newStatus,
-                stock_return_date:
-                  newStatus === 'scheduled' ? tomorrowMidnight() : null,
+                stock_return_date: newStatus === 'scheduled' ? getTomorrowLondonDate() : null,
               }
             : it
         ),
       }))
     );
-    updateStockStatus(itemId, newStatus);
+    updateStockStatus('menu_items', itemId, newStatus);
   };
+
+  const handleAddonStockChange = (
+    addonId: string,
+    newStatus: 'in_stock' | 'scheduled' | 'out'
+  ) => {
+    setAddonData((prev) =>
+      prev.map((addon) =>
+        addon.id === addonId
+          ? {
+              ...addon,
+              stock_status: newStatus,
+              stock_return_date: newStatus === 'scheduled' ? getTomorrowLondonDate() : null,
+            }
+          : addon
+      )
+    );
+    updateStockStatus('addon_options', addonId, newStatus);
+  };
+
+  const addonsByGroup = addonData.reduce<Record<string, typeof addonData>>((acc, addon) => {
+    const key = addon.group_name || 'Other add-ons';
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(addon);
+    return acc;
+  }, {});
 
   return (
     <div className="w-full max-w-full">
@@ -170,48 +206,19 @@ export default function StockTab({ categories, addons }: StockTabProps) {
                             <span className="min-w-0 flex-1 break-words">{item.name}</span>
                             <div className="shrink-0 flex items-center space-x-2">
                               <StockStatusBadge status={item.stock_status} returnDate={item.stock_return_date} />
-                              <Listbox
-                                value={item.stock_status}
-                                onChange={(val) =>
-                                  handleStockChange(
-                                    item.id,
-                                    val as 'in_stock' | 'scheduled' | 'out'
-                                  )
-                                }
-                              >
-                                <div className="relative w-40 text-sm">
-                                  <Listbox.Button className="relative w-full cursor-default rounded border bg-white py-1 pl-2 pr-8 text-left">
-                                    <span className="block truncate">
-                                      {stockOptions.find((o) => o.value === item.stock_status)?.label}
-                                    </span>
-                                    <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
-                                      <ChevronUpDownIcon className="h-5 w-5 text-gray-400" />
-                                    </span>
-                                  </Listbox.Button>
-                                  <Listbox.Options className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md bg-white py-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
-                                    {stockOptions.map((opt) => (
-                                      <Listbox.Option
-                                        key={opt.value}
-                                        value={opt.value}
-                                        className={({ active }) =>
-                                          `relative cursor-default select-none py-2 pl-10 pr-4 ${active ? 'bg-gray-100 text-gray-900' : 'text-gray-900'}`
-                                        }
-                                      >
-                                        {({ selected }) => (
-                                          <>
-                                            <span className={`block truncate ${selected ? 'font-medium' : 'font-normal'}`}>{opt.label}</span>
-                                            {selected ? (
-                                              <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-indigo-600">
-                                                <CheckIcon className="h-5 w-5" />
-                                              </span>
-                                            ) : null}
-                                          </>
-                                        )}
-                                      </Listbox.Option>
-                                    ))}
-                                  </Listbox.Options>
-                                </div>
-                              </Listbox>
+                              <div className="inline-flex rounded-full border border-gray-200 bg-gray-50 p-1 text-xs">
+                                {stockOptions.map((opt) => (
+                                  <button
+                                    key={opt.value}
+                                    type="button"
+                                    onClick={() => handleStockChange(item.id, opt.value)}
+                                    className={`rounded-full px-2.5 py-1 font-medium transition ${item.stock_status === opt.value ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
+                                  >
+                                    {opt.label}
+                                  </button>
+                                ))}
+                              </div>
+                              {savedRows[item.id] ? <span className="text-xs text-emerald-600">Saved</span> : null}
                             </div>
                           </li>
                         ))}
@@ -224,23 +231,45 @@ export default function StockTab({ categories, addons }: StockTabProps) {
           );
         })}
       </div>
-      {addons.length > 0 && (
+      {addonData.length > 0 && (
         <div className="mt-8">
           <h3 className="text-xl font-semibold mb-2">Add-ons</h3>
-          <ul className="space-y-2">
-            {addons.map((addon) => (
-              <li
-                key={addon.id}
-                className="flex min-w-0 items-center justify-between gap-2 rounded-lg bg-white px-4 py-2 shadow"
-              >
-                <span className="min-w-0 flex-1 break-words">{addon.name}</span>
-                <StockStatusBadge
-                  status={addon.stock_status}
-                  returnDate={addon.stock_return_date}
-                />
-              </li>
+          <div className="space-y-3">
+            {Object.entries(addonsByGroup).map(([groupName, groupAddons]) => (
+              <div key={groupName} className="rounded-lg bg-white p-3 shadow">
+                <h4 className="mb-2 text-sm font-semibold text-gray-700">{groupName}</h4>
+                <ul className="space-y-2">
+                  {groupAddons.map((addon) => (
+                    <li
+                      key={addon.id}
+                      className="flex min-w-0 items-center justify-between gap-2 border-b pb-2 last:border-b-0"
+                    >
+                      <span className="min-w-0 flex-1 break-words">{addon.name}</span>
+                      <div className="shrink-0 flex items-center space-x-2">
+                        <StockStatusBadge
+                          status={addon.stock_status}
+                          returnDate={addon.stock_return_date}
+                        />
+                        <div className="inline-flex rounded-full border border-gray-200 bg-gray-50 p-1 text-xs">
+                          {stockOptions.map((opt) => (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              onClick={() => handleAddonStockChange(addon.id, opt.value)}
+                              className={`rounded-full px-2.5 py-1 font-medium transition ${addon.stock_status === opt.value ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                        {savedRows[addon.id] ? <span className="text-xs text-emerald-600">Saved</span> : null}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ))}
-          </ul>
+          </div>
         </div>
       )}
     </div>

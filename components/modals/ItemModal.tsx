@@ -9,6 +9,7 @@ import { useBrand } from '@/components/branding/BrandProvider';
 import { formatPrice, normalizePriceValue } from '@/lib/orderDisplay';
 import { getAddonsForItem } from '@/utils/getAddonsForItem';
 import type { AddonGroup } from '@/utils/types';
+import { toast } from '@/components/ui/toast';
 
 function contrast(c?: string) {
   try {
@@ -27,9 +28,10 @@ type ItemModalProps = {
   item: any;
   restaurantId: string;
   onAddToCart: (item: any, qty: number, addons: any[]) => void;
+  isOutOfStock?: boolean;
 };
 
-export default function ItemModal({ item, restaurantId, onAddToCart }: ItemModalProps) {
+export default function ItemModal({ item, restaurantId, onAddToCart, isOutOfStock = false }: ItemModalProps) {
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [groups, setGroups] = useState<AddonGroup[]>([]);
@@ -133,6 +135,31 @@ export default function ItemModal({ item, restaurantId, onAddToCart }: ItemModal
     }
   }, [groups, item?.id, restaurantId]);
 
+
+  const filteredGroups = useMemo(() => {
+    return groups
+      .map((group) => {
+        const options = Array.isArray(group.addon_options)
+          ? group.addon_options.filter(
+              (option) => option?.available !== false && option?.stock_status === 'in_stock'
+            )
+          : [];
+        return { ...group, addon_options: options };
+      })
+      .filter((group) => {
+        if (group.required) return true;
+        return group.addon_options.length > 0;
+      });
+  }, [groups]);
+
+  const requiredGroupsUnavailable = useMemo(
+    () =>
+      filteredGroups.some(
+        (group) => Boolean(group.required) && (!group.addon_options || group.addon_options.length === 0)
+      ),
+    [filteredGroups]
+  );
+
   const price = typeof item?.price === 'number' ? item.price : Number(item?.price || 0);
   const normalizedPrice = normalizePriceValue(price);
   const formattedPrice = formatPrice(normalizedPrice, currencyCode);
@@ -167,13 +194,22 @@ export default function ItemModal({ item, restaurantId, onAddToCart }: ItemModal
   };
 
   const handleFinalAdd = () => {
-    const errors = validateAddonSelections(groups, selections);
+    if (isOutOfStock) {
+      toast.error('This item is out of stock.');
+      return;
+    }
+    if (requiredGroupsUnavailable) {
+      toast.error('Options unavailable right now');
+      return;
+    }
+
+    const errors = validateAddonSelections(filteredGroups, selections);
     if (Object.keys(errors).length) {
       alert('Please complete required add-ons');
       return;
     }
 
-    const addons = groups
+    const addons = filteredGroups
       .flatMap((g) => {
         const gid = g.group_id ?? g.id;
         const opts = selections[gid] || {};
@@ -268,8 +304,15 @@ export default function ItemModal({ item, restaurantId, onAddToCart }: ItemModal
                 <div className="mt-6 w-full">
                   {loading ? (
                     <p className="text-center text-slate-500">Loading add-ons…</p>
-                  ) : groups.length > 0 ? (
-                    <AddonGroups addons={groups} onChange={setSelections} />
+                  ) : filteredGroups.length > 0 ? (
+                    <>
+                      <AddonGroups addons={filteredGroups} onChange={setSelections} />
+                      {requiredGroupsUnavailable ? (
+                        <p className="mt-3 text-sm font-medium text-rose-600">Options unavailable right now</p>
+                      ) : null}
+                    </>
+                  ) : requiredGroupsUnavailable ? (
+                    <p className="text-center text-sm font-medium text-rose-600">Options unavailable right now</p>
                   ) : null}
                 </div>
               </div>
@@ -303,11 +346,12 @@ export default function ItemModal({ item, restaurantId, onAddToCart }: ItemModal
                   <button
                     aria-label="Confirm Add to Plate"
                     onClick={handleFinalAdd}
-                    className="btn-primary flex h-12 flex-1 items-center justify-center gap-2 rounded-full px-6 text-base font-semibold transition hover:opacity-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 md:flex-none md:px-8"
+                    disabled={isOutOfStock || requiredGroupsUnavailable}
+                    className="btn-primary flex h-12 flex-1 items-center justify-center gap-2 rounded-full px-6 text-base font-semibold transition hover:opacity-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 md:flex-none md:px-8"
                     style={{ ['--tw-ring-color' as any]: accent || 'currentColor' } as CSSProperties}
                   >
                     <PlateAdd size={20} />
-                    Add to Plate
+                    {isOutOfStock ? 'Out of stock' : requiredGroupsUnavailable ? 'Options unavailable' : 'Add to Plate'}
                   </button>
                 </div>
               </div>

@@ -61,6 +61,7 @@ interface Item {
   stock_status: 'in_stock' | 'scheduled' | 'out' | null;
   out_of_stock_until?: string | null;
   stock_return_date?: string | null;
+  out_of_stock?: boolean | null;
   category_id: number | null;
   addon_groups?: any[];
 }
@@ -145,7 +146,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
           const group = {
             ...row.addon_groups,
             addon_options: (row.addon_groups.addon_options || [])
-              .filter((opt: any) => opt?.archived_at == null && opt?.available !== false)
+              .filter((opt: any) => opt?.archived_at == null && opt?.available !== false && opt?.stock_status === 'in_stock')
               .sort(sortByOrder),
           };
           arr.push(group);
@@ -187,6 +188,49 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
 
     load();
   }, [routerReady, ridLoading, effectiveRestaurantId]);
+
+
+  useEffect(() => {
+    if (!effectiveRestaurantId) return;
+    const channel = supabase
+      .channel(`customer-menu-stock-${effectiveRestaurantId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'menu_items',
+          filter: `restaurant_id=eq.${effectiveRestaurantId}`,
+        },
+        (payload) => {
+          const next = payload.new as Partial<Item> & { id?: number };
+          if (!next?.id) return;
+          setItems((prev) =>
+            prev.map((item) =>
+              item.id === next.id
+                ? {
+                    ...item,
+                    stock_status: (next.stock_status as Item['stock_status']) ?? item.stock_status,
+                    stock_return_date:
+                      next.stock_return_date !== undefined
+                        ? next.stock_return_date
+                        : item.stock_return_date,
+                    out_of_stock_until:
+                      next.out_of_stock_until !== undefined
+                        ? next.out_of_stock_until
+                        : item.out_of_stock_until,
+                  }
+                : item
+            )
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [effectiveRestaurantId]);
 
 
   const Inner = () => {

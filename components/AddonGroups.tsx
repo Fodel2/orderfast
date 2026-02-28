@@ -290,8 +290,7 @@ export default function AddonGroups({
 
                   const isOutOfStock =
                     option.available === false ||
-                    option.stock_status === 'out' ||
-                    option.stock_status === 'out_of_stock';
+                    option.stock_status !== 'in_stock';
                   const handleTileClick = () => {
                     if (isOutOfStock) return;
                     if (maxQty === 0 || groupMax === 0) return;
@@ -326,8 +325,11 @@ export default function AddonGroups({
 
                   const outOfStockLabel = (() => {
                     if (!isOutOfStock) return undefined;
-                    if (option.stock_status === 'out_of_stock') return 'Out of stock';
                     if (option.stock_status === 'out') return 'Out of stock';
+                    if (option.stock_status === 'scheduled') {
+                      const scheduledDate = formatDate(option.stock_return_date);
+                      return scheduledDate ? `Back ${scheduledDate}` : 'Back tomorrow';
+                    }
                     const nextStockDate =
                       formatDate(option.out_of_stock_until) ||
                       formatDate(option.stock_return_date);

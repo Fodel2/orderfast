@@ -5,6 +5,7 @@ import { useCart } from '../context/CartContext';
 import { useBrand } from '@/components/branding/BrandProvider';
 import { formatPrice, normalizePriceValue } from '@/lib/orderDisplay';
 import ItemModal from '@/components/modals/ItemModal';
+import { toast } from '@/components/ui/toast';
 import {
   FALLBACK_PLACEHOLDER_SRC,
   getItemPlaceholder,
@@ -34,6 +35,8 @@ interface MenuItem {
   is_vegetarian?: boolean | null;
   is_18_plus?: boolean | null;
   stock_status?: 'in_stock' | 'scheduled' | 'out' | null;
+  available?: boolean | null;
+  out_of_stock?: boolean | null;
 }
 
 export default function MenuItemCard({
@@ -128,6 +131,11 @@ export default function MenuItemCard({
     return addonGroups.some((group) => group?.required);
   }, [addonGroups]);
 
+  const isOutOfStock =
+    item?.stock_status !== 'in_stock' ||
+    item?.available === false ||
+    item?.out_of_stock === true;
+
   const handleClick = () => {
     onInteraction?.();
     if (!restaurantKey) return;
@@ -136,6 +144,11 @@ export default function MenuItemCard({
 
   const handleAddToCart = (modalItem: any, quantity: number, addons: any[]) => {
     onInteraction?.();
+    if (isOutOfStock) {
+      toast.error('This item is out of stock.');
+      return;
+    }
+
     if (!restaurantKey) {
       console.warn('[menu-item-card] missing restaurant id for addToCart', {
         itemId: item?.id,
@@ -252,6 +265,10 @@ export default function MenuItemCard({
   const handleQuickAdd = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
     onInteraction?.();
+    if (isOutOfStock) {
+      toast.error('This item is out of stock.');
+      return;
+    }
     if (!restaurantKey) {
       console.warn('[menu-item-card] missing restaurant id for quick add', { itemId: item?.id });
       return;
@@ -286,12 +303,13 @@ export default function MenuItemCard({
       <div className="relative h-full min-w-0 max-w-full">
         <div
           role="button"
+          aria-disabled={isOutOfStock}
           tabIndex={0}
           onClick={handleClick}
           onKeyDown={handleCardKeyDown}
           className={`group relative flex h-full max-w-full flex-col overflow-hidden rounded-[26px] bg-white shadow-[0_8px_32px_rgba(0,0,0,0.06)] transition duration-150 ease-out ${
-            isKiosk ? 'hover:-translate-y-1 active:scale-[0.98]' : ''
-          } focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2`}
+            isKiosk && !isOutOfStock ? 'hover:-translate-y-1 active:scale-[0.98]' : ''
+          } ${isOutOfStock ? 'opacity-60' : ''} focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2`}
           style={{ ['--tw-ring-color' as any]: cardAccent } as CSSProperties}
         >
           <div className="relative w-full overflow-hidden bg-[var(--muted-bg,#f5f5f5)]">
@@ -300,7 +318,7 @@ export default function MenuItemCard({
                 <img
                   src={imageUrl}
                   alt={item.name}
-                  className="h-full w-full object-cover transition duration-200 group-hover:scale-[1.02]"
+                  className={`h-full w-full object-cover transition duration-200 ${isOutOfStock ? 'grayscale' : 'group-hover:scale-[1.02]'}`}
                 />
               ) : (
                 <img
@@ -317,10 +335,16 @@ export default function MenuItemCard({
                 />
               )}
             </div>
+              {isOutOfStock ? (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/45">
+                  <span className="rounded-full bg-black/35 px-3 py-1 text-sm font-semibold text-white">Out of stock</span>
+                </div>
+              ) : null}
 
             <button
               type="button"
-              className="absolute bottom-4 right-4 inline-flex h-12 w-12 items-center justify-center rounded-full bg-[var(--kiosk-accent,#111827)] text-white shadow-lg shadow-black/20 transition active:scale-95"
+              disabled={isOutOfStock}
+              className="absolute bottom-4 right-4 inline-flex h-12 w-12 items-center justify-center rounded-full bg-[var(--kiosk-accent,#111827)] text-white shadow-lg shadow-black/20 transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
               aria-label={`Add ${item.name} to cart`}
               onClick={handleQuickAdd}
             >
@@ -371,7 +395,7 @@ export default function MenuItemCard({
       </div>
 
       {showModal && restaurantKey ? (
-        <ItemModal item={itemForModal} restaurantId={restaurantKey} onAddToCart={handleAddToCart} />
+        <ItemModal item={itemForModal} restaurantId={restaurantKey} onAddToCart={handleAddToCart} isOutOfStock={isOutOfStock} />
       ) : null}
 
       <style jsx global>{`
