@@ -441,13 +441,13 @@ export default function KitchenDisplayPage() {
     }
   }, [isPreparedView, restaurantId]);
 
-  const fetchStockRows = useCallback(async () => {
-    if (!isStockModalOpen) return;
+  const fetchStockRows = useCallback(async (forceOpen = false) => {
+    if (!forceOpen && !isStockModalOpen) return;
+
     if (!restaurantId) {
-      setStockError('Restaurant not found.');
-      setItems([]);
-      setAddons([]);
-      setAddonGroups({});
+      console.error('Stock modal missing restaurant_id');
+      setStockError('Restaurant context missing.');
+      setStockLoading(false);
       return;
     }
 
@@ -455,77 +455,73 @@ export default function KitchenDisplayPage() {
     setStockError('');
     setStockInlineError('');
 
-    const itemQuery = supabase
+    const { data: itemsData, error: itemsError } = await supabase
       .from('menu_items')
       .select('id,name,stock_status,stock_return_date,out_of_stock_until,stock_last_updated_at')
       .eq('restaurant_id', restaurantId)
       .is('archived_at', null)
       .order('name', { ascending: true });
 
-    const addonGroupQuery = supabase
+    const { data: groups, error: groupsError } = await supabase
       .from('addon_groups')
       .select('id,name')
       .eq('restaurant_id', restaurantId)
       .is('archived_at', null)
       .order('name', { ascending: true });
 
-    const [{ data: items, error: itemsError }, { data: groupData, error: groupError }] = await Promise.all([
-      itemQuery,
-      addonGroupQuery,
-    ]);
-
-    if (itemsError || groupError) {
-      console.error('[kod] failed to load stock rows', { itemsError, groupError });
+    if (itemsError || groupsError) {
+      console.error('[kod] failed to load stock rows', { itemsError, groupsError });
       setStockError('Unable to load stock rows.');
       setStockLoading(false);
       return;
     }
 
-    const groups = (groupData as AddonGroup[]) ?? [];
-    const groupIds = groups.map((group) => group.id);
-    const nextGroupMap = groups.reduce<Record<number, string>>((acc, group) => {
+    const safeGroups = (groups as AddonGroup[]) ?? [];
+    const groupIds = safeGroups.map((group) => group.id);
+    const nextGroupMap = safeGroups.reduce<Record<number, string>>((acc, group) => {
       acc[group.id] = group.name;
       return acc;
     }, {});
 
-    let addonRows: StockRow[] = [];
+    let addonData: StockRow[] = [];
     if (groupIds.length > 0) {
-      const { data: addonData, error: addonError } = await supabase
+      const { data, error } = await supabase
         .from('addon_options')
         .select('id,group_id,name,stock_status,stock_return_date,out_of_stock_until,stock_last_updated_at')
         .in('group_id', groupIds)
         .is('archived_at', null)
         .order('name', { ascending: true });
-      if (addonError) {
-        console.error('[kod] failed to load addon stock rows', addonError);
+
+      if (error) {
+        console.error('[kod] failed to load addon stock rows', error);
         setStockError('Unable to load add-ons.');
         setStockLoading(false);
         return;
       }
-      addonRows = (addonData as StockRow[]) ?? [];
+      addonData = (data as StockRow[]) ?? [];
     }
 
-    setItems((items as StockRow[]) ?? []);
+    setItems(itemsData ?? []);
     setAddonGroups(nextGroupMap);
-    setAddons(addonRows);
+    setAddons(addonData ?? []);
     setStockLoading(false);
 
     if (process.env.NODE_ENV !== 'production') {
-      console.debug('[kod-stock] modal data loaded', {
-        restaurantId,
-        items: ((items as StockRow[]) ?? []).length,
-        addonGroups: groups.length,
-        addons: addonRows.length,
+      console.debug('Stock loaded', {
+        items: itemsData?.length ?? 0,
+        addons: addonData?.length ?? 0,
       });
     }
   }, [isStockModalOpen, restaurantId]);
 
 
-
   const openStockModal = useCallback(() => {
+    if (process.env.NODE_ENV !== 'production') {
+      console.debug('Stock modal load', { restaurantId });
+    }
     setIsStockModalOpen(true);
-    void fetchStockRows();
-  }, [fetchStockRows]);
+    void fetchStockRows(true);
+  }, [fetchStockRows, restaurantId]);
 
   const refreshCurrentView = useCallback(async () => {
     if (isPreparedView) {
