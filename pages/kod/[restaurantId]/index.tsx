@@ -232,12 +232,13 @@ export default function KitchenDisplayPage() {
   const [stockSection, setStockSection] = useState<'items' | 'addons'>('items');
   const [stockSearch, setStockSearch] = useState('');
   const [debouncedStockSearch, setDebouncedStockSearch] = useState('');
-  const [menuStockRows, setMenuStockRows] = useState<StockRow[]>([]);
-  const [addonStockRows, setAddonStockRows] = useState<StockRow[]>([]);
+  const [items, setItems] = useState<StockRow[]>([]);
+  const [addons, setAddons] = useState<StockRow[]>([]);
   const [addonGroups, setAddonGroups] = useState<Record<number, string>>({});
   const [stockLoading, setStockLoading] = useState(false);
   const [stockError, setStockError] = useState('');
-  const [updatingStockKeys, setUpdatingStockKeys] = useState<Set<string>>(new Set());
+  const [stockInlineError, setStockInlineError] = useState('');
+  const [updatingRowId, setUpdatingRowId] = useState<string | null>(null);
   const [isOnline, setIsOnline] = useState(true);
   const [now, setNow] = useState(Date.now());
   const [pageIndex, setPageIndex] = useState(0);
@@ -444,14 +445,15 @@ export default function KitchenDisplayPage() {
     if (!isStockModalOpen) return;
     if (!restaurantId) {
       setStockError('Restaurant not found.');
-      setMenuStockRows([]);
-      setAddonStockRows([]);
+      setItems([]);
+      setAddons([]);
       setAddonGroups({});
       return;
     }
 
     setStockLoading(true);
     setStockError('');
+    setStockInlineError('');
 
     const itemQuery = supabase
       .from('menu_items')
@@ -503,9 +505,9 @@ export default function KitchenDisplayPage() {
       addonRows = (addonData as StockRow[]) ?? [];
     }
 
-    setMenuStockRows((items as StockRow[]) ?? []);
+    setItems((items as StockRow[]) ?? []);
     setAddonGroups(nextGroupMap);
-    setAddonStockRows(addonRows);
+    setAddons(addonRows);
     setStockLoading(false);
 
     if (process.env.NODE_ENV !== 'production') {
@@ -518,6 +520,12 @@ export default function KitchenDisplayPage() {
     }
   }, [isStockModalOpen, restaurantId]);
 
+
+
+  const openStockModal = useCallback(() => {
+    setIsStockModalOpen(true);
+    void fetchStockRows();
+  }, [fetchStockRows]);
 
   const refreshCurrentView = useCallback(async () => {
     if (isPreparedView) {
@@ -563,10 +571,6 @@ export default function KitchenDisplayPage() {
     return () => window.clearTimeout(timer);
   }, [stockSearch]);
 
-  useEffect(() => {
-    if (!isStockModalOpen) return;
-    fetchStockRows();
-  }, [fetchStockRows, isStockModalOpen]);
 
   useEffect(() => {
     let mounted = true;
@@ -868,44 +872,67 @@ export default function KitchenDisplayPage() {
   }, [cooldowns, fetchPreparedOrders, startCooldown]);
 
   const handleStockStatusChange = useCallback(async (table: 'menu_items' | 'addon_options', row: StockRow, nextStatus: 'in_stock' | 'back_tomorrow' | 'off_indefinitely') => {
-    const key = `${table}-${row.id}`;
-    setUpdatingStockKeys((prev) => {
-      const next = new Set(prev);
-      next.add(key);
-      return next;
-    });
+    const rowKey = `${table}-${row.id}`;
+    if (updatingRowId === rowKey) return;
 
     const tomorrow = new Date();
     tomorrow.setHours(0, 0, 0, 0);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    const updatePayload: Record<string, string | null> = {
+    const nextTimestamp = new Date().toISOString();
+    const nextDateValue = nextStatus === 'back_tomorrow' ? tomorrow.toISOString() : null;
+
+    const previousRow = { ...row };
+    const nextRow: StockRow = {
+      ...row,
       stock_status: nextStatus,
-      stock_last_updated_at: new Date().toISOString(),
-      stock_return_date: null,
-      out_of_stock_until: null,
+      stock_last_updated_at: nextTimestamp,
+      stock_return_date: nextDateValue,
+      out_of_stock_until: nextDateValue,
     };
 
-    if (nextStatus === 'back_tomorrow') {
-      const isoDate = tomorrow.toISOString();
-      updatePayload.stock_return_date = isoDate;
-      updatePayload.out_of_stock_until = isoDate;
+    setStockInlineError('');
+    setUpdatingRowId(rowKey);
+    if (process.env.NODE_ENV !== 'production') {
+      console.debug('[kod-stock] update start', { rowKey, nextStatus });
     }
+
+    const applyRow = (rows: StockRow[]) => rows.map((current) => (current.id === row.id ? nextRow : current));
+    const revertRow = (rows: StockRow[]) => rows.map((current) => (current.id === row.id ? previousRow : current));
+
+    if (table === 'menu_items') {
+      setItems(applyRow);
+    } else {
+      setAddons(applyRow);
+    }
+
+    const updatePayload: Record<string, string | null> = {
+      stock_status: nextStatus,
+      stock_last_updated_at: nextTimestamp,
+      stock_return_date: nextDateValue,
+      out_of_stock_until: nextDateValue,
+    };
 
     const { error } = await supabase.from(table).update(updatePayload).eq('id', row.id);
     if (error) {
-      console.error('[kod] failed to update stock status', error);
-      setToastMessage('Unable to update stock');
-    } else {
-      await fetchStockRows();
+      if (table === 'menu_items') {
+        setItems(revertRow);
+      } else {
+        setAddons(revertRow);
+      }
+      setStockInlineError('Unable to update stock for this row.');
+      if (process.env.NODE_ENV !== 'production') {
+        console.debug('[kod-stock] update failure', { rowKey, nextStatus, error });
+      }
+      setUpdatingRowId(null);
+      return;
     }
 
-    setUpdatingStockKeys((prev) => {
-      const next = new Set(prev);
-      next.delete(key);
-      return next;
-    });
-  }, [fetchStockRows]);
+    if (process.env.NODE_ENV !== 'production') {
+      console.debug('[kod-stock] update success', { rowKey, nextStatus });
+    }
+    setUpdatingRowId(null);
+  }, [updatingRowId]);
 
   const pageSize = Math.max(1, columns * rows);
   const visibleOrders = orders;
@@ -976,17 +1003,17 @@ export default function KitchenDisplayPage() {
   const stockSearchTerm = debouncedStockSearch.trim().toLowerCase();
   const filteredMenuStockRows = useMemo(
     () =>
-      menuStockRows.filter((row) =>
+      items.filter((row) =>
         stockSearchTerm ? row.name.toLowerCase().includes(stockSearchTerm) : true
       ),
-    [menuStockRows, stockSearchTerm]
+    [items, stockSearchTerm]
   );
   const filteredAddonStockRows = useMemo(
     () =>
-      addonStockRows.filter((row) =>
+      addons.filter((row) =>
         stockSearchTerm ? row.name.toLowerCase().includes(stockSearchTerm) : true
       ),
-    [addonStockRows, stockSearchTerm]
+    [addons, stockSearchTerm]
   );
   const groupedAddonRows = useMemo(() => {
     return filteredAddonStockRows.reduce<Record<string, StockRow[]>>((acc, row) => {
@@ -1027,7 +1054,7 @@ export default function KitchenDisplayPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setIsStockModalOpen(true)}
+                onClick={openStockModal}
                 className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-white transition hover:bg-white/10"
               >
                 Stock
@@ -1311,7 +1338,7 @@ export default function KitchenDisplayPage() {
             role="dialog"
             aria-modal="true"
             aria-label="Stock"
-            onClick={() => setIsStockModalOpen(false)}
+            onClick={() => { setIsStockModalOpen(false); setStockInlineError(''); }}
           >
             <div
               className="flex max-h-[85vh] w-full max-w-4xl flex-col rounded-2xl border border-white/15 bg-neutral-950 p-4 shadow-2xl"
@@ -1322,7 +1349,7 @@ export default function KitchenDisplayPage() {
                 <button
                   type="button"
                   className="rounded-full border border-white/20 p-2 text-white hover:bg-white/10"
-                  onClick={() => setIsStockModalOpen(false)}
+                  onClick={() => { setIsStockModalOpen(false); setStockInlineError(''); }}
                   aria-label="Close stock modal"
                 >
                   <XMarkIcon className="h-5 w-5" />
@@ -1369,6 +1396,9 @@ export default function KitchenDisplayPage() {
                     </button>
                   </div>
                 ) : null}
+                {!stockLoading && !stockError && stockInlineError ? (
+                  <div className="p-4 text-sm text-rose-200">{stockInlineError}</div>
+                ) : null}
                 {!stockLoading && !stockError && stockSection === 'items' && filteredMenuStockRows.length === 0 ? (
                   <div className="p-4 text-sm text-neutral-300">No menu items found for this restaurant.</div>
                 ) : null}
@@ -1393,7 +1423,7 @@ export default function KitchenDisplayPage() {
                               <button
                                 key={`${statusKey}-${statusOption}`}
                                 type="button"
-                                disabled={updatingStockKeys.has(statusKey)}
+                                disabled={updatingRowId === statusKey}
                                 onClick={() => handleStockStatusChange('menu_items', row, statusOption)}
                                 className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${normalizedStatus === statusOption ? 'bg-teal-500 text-black' : 'text-white hover:bg-white/10'} disabled:opacity-40`}
                               >
@@ -1424,7 +1454,7 @@ export default function KitchenDisplayPage() {
                                     <button
                                       key={`${statusKey}-${statusOption}`}
                                       type="button"
-                                      disabled={updatingStockKeys.has(statusKey)}
+                                      disabled={updatingRowId === statusKey}
                                       onClick={() => handleStockStatusChange('addon_options', row, statusOption)}
                                       className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${normalizedStatus === statusOption ? 'bg-teal-500 text-black' : 'text-white hover:bg-white/10'} disabled:opacity-40`}
                                     >
