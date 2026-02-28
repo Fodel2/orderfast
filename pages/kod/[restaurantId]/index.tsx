@@ -21,6 +21,7 @@ import { orderAlertSoundController } from '@/utils/orderAlertSoundController';
 import { getRandomOrderEmptyMessage } from '@/lib/orderEmptyState';
 import { formatShortOrderNumber } from '@/lib/orderDisplay';
 import { supabase } from '@/lib/supabaseClient';
+import { getTomorrowLondonDate } from '@/lib/stockDate';
 import { useRestaurantAvailability } from '@/hooks/useRestaurantAvailability';
 
 
@@ -90,20 +91,15 @@ const NOTES_HEADER_LINES = 2;
 const ITEM_SPACER_LINES = 1;
 const ACTIVE_STATUSES = ['pending', 'accepted', 'preparing', 'delivering', 'ready_to_collect'];
 const TERMINAL_STATUSES = ['completed', 'cancelled'];
-const STOCK_STATUS_LABELS: Record<string, string> = {
+const STOCK_STATUS_LABELS: Record<'in_stock' | 'scheduled' | 'out', string> = {
   in_stock: 'In Stock',
-  back_tomorrow: 'Back Tomorrow',
-  off_indefinitely: 'Off Indefinitely',
   scheduled: 'Back Tomorrow',
   out: 'Off Indefinitely',
-  out_of_stock: 'Off Indefinitely',
 };
 
-const normalizeStockStatus = (status: string | null | undefined) => {
-  if (status === 'back_tomorrow' || status === 'scheduled') return 'back_tomorrow';
-  if (status === 'off_indefinitely' || status === 'out' || status === 'out_of_stock') {
-    return 'off_indefinitely';
-  }
+const normalizeStockStatus = (status: string | null | undefined): 'in_stock' | 'scheduled' | 'out' => {
+  if (status === 'scheduled') return 'scheduled';
+  if (status === 'out') return 'out';
   return 'in_stock';
 };
 
@@ -868,26 +864,20 @@ export default function KitchenDisplayPage() {
     await fetchPreparedOrders();
   }, [cooldowns, fetchPreparedOrders, startCooldown]);
 
-  const handleStockStatusChange = useCallback(async (table: 'menu_items' | 'addon_options', row: StockRow, nextStatus: 'in_stock' | 'back_tomorrow' | 'off_indefinitely') => {
+  const handleStockStatusChange = useCallback(async (table: 'menu_items' | 'addon_options', row: StockRow, nextStatus: 'in_stock' | 'scheduled' | 'out') => {
     const rowKey = `${table}-${row.id}`;
     if (updatingRowId === rowKey) return;
 
-    const tomorrow = new Date();
-    tomorrow.setHours(0, 0, 0, 0);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-
     const nextTimestamp = new Date().toISOString();
-    const nextDateValue = nextStatus === 'back_tomorrow' ? tomorrow.toISOString() : null;
-    const dbStatus: 'in_stock' | 'scheduled' | 'out' =
-      nextStatus === 'in_stock' ? 'in_stock' : nextStatus === 'back_tomorrow' ? 'scheduled' : 'out';
+    const nextDateValue = nextStatus === 'scheduled' ? getTomorrowLondonDate() : null;
 
     const previousRow = { ...row };
     const nextRow: StockRow = {
       ...row,
-      stock_status: dbStatus,
+      stock_status: nextStatus,
       stock_last_updated_at: nextTimestamp,
       stock_return_date: nextDateValue,
-      out_of_stock_until: nextDateValue,
+      out_of_stock_until: null,
     };
 
     setStockInlineError('');
@@ -906,10 +896,10 @@ export default function KitchenDisplayPage() {
     }
 
     const updatePayload: Record<string, string | null> = {
-      stock_status: dbStatus,
+      stock_status: nextStatus,
       stock_last_updated_at: nextTimestamp,
       stock_return_date: nextDateValue,
-      out_of_stock_until: nextDateValue,
+      out_of_stock_until: null,
     };
 
     let query = supabase.from(table).update(updatePayload).eq('id', row.id);
@@ -1419,10 +1409,10 @@ export default function KitchenDisplayPage() {
                         <div key={statusKey} className="flex items-center justify-between gap-3 border-b border-white/5 p-3 last:border-b-0">
                           <div>
                             <p className="font-medium text-white">{row.name}</p>
-                            <p className="text-xs text-neutral-400">{STOCK_STATUS_LABELS[row.stock_status || normalizedStatus] || row.stock_status || 'in_stock'}</p>
+                            <p className="text-xs text-neutral-400">{STOCK_STATUS_LABELS[normalizedStatus]}</p>
                           </div>
                           <div className="flex items-center gap-1 rounded-full border border-white/10 bg-white/5 p-1">
-                            {(['in_stock', 'back_tomorrow', 'off_indefinitely'] as const).map((statusOption) => (
+                            {(['in_stock', 'scheduled', 'out'] as const).map((statusOption) => (
                               <button
                                 key={`${statusKey}-${statusOption}`}
                                 type="button"
@@ -1450,10 +1440,10 @@ export default function KitchenDisplayPage() {
                               <div key={statusKey} className="flex items-center justify-between gap-3">
                                 <div>
                                   <p className="font-medium text-white">{row.name}</p>
-                                  <p className="text-xs text-neutral-400">{STOCK_STATUS_LABELS[row.stock_status || normalizedStatus] || row.stock_status || 'in_stock'}</p>
+                                  <p className="text-xs text-neutral-400">{STOCK_STATUS_LABELS[normalizedStatus]}</p>
                                 </div>
                                 <div className="flex items-center gap-1 rounded-full border border-white/10 bg-white/5 p-1">
-                                  {(['in_stock', 'back_tomorrow', 'off_indefinitely'] as const).map((statusOption) => (
+                                  {(['in_stock', 'scheduled', 'out'] as const).map((statusOption) => (
                                     <button
                                       key={`${statusKey}-${statusOption}`}
                                       type="button"

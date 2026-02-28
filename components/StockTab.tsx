@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { getTomorrowLondonDate } from '@/lib/stockDate';
 import { Disclosure } from '@headlessui/react';
 import {
   ChevronUpIcon,
@@ -68,33 +69,24 @@ export default function StockTab({ categories, addons, restaurantId }: StockTabP
       return next;
     });
 
-  const tomorrowMidnight = () => {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    d.setHours(0, 0, 0, 0);
-    return d.toISOString();
-  };
-
   const updateStockStatus = async (
     table: 'menu_items' | 'addon_options',
     rowId: string,
     status: 'in_stock' | 'scheduled' | 'out'
   ) => {
     const { supabase } = await import('../utils/supabaseClient');
-    let returnDate: string | null = null;
-    if (status === 'scheduled') {
-      returnDate = tomorrowMidnight();
-    }
+    const returnDate: string | null = status === 'scheduled' ? getTomorrowLondonDate() : null;
     let query = supabase
       .from(table)
       .update({
         stock_status: status,
         stock_return_date: returnDate,
-        out_of_stock_until: returnDate,
+        out_of_stock_until: null,
         stock_last_updated_at: new Date().toISOString(),
       })
       .eq('id', rowId);
-    if (table === 'menu_items' && restaurantId) {
+    if (table === 'menu_items') {
+      if (!restaurantId) return false;
       query = query.eq('restaurant_id', restaurantId);
     }
     const { error } = await query;
@@ -121,8 +113,7 @@ export default function StockTab({ categories, addons, restaurantId }: StockTabP
             ? {
                 ...it,
                 stock_status: newStatus,
-                stock_return_date:
-                  newStatus === 'scheduled' ? tomorrowMidnight() : null,
+                stock_return_date: newStatus === 'scheduled' ? getTomorrowLondonDate() : null,
               }
             : it
         ),
@@ -141,7 +132,7 @@ export default function StockTab({ categories, addons, restaurantId }: StockTabP
           ? {
               ...addon,
               stock_status: newStatus,
-              stock_return_date: newStatus === 'scheduled' ? tomorrowMidnight() : null,
+              stock_return_date: newStatus === 'scheduled' ? getTomorrowLondonDate() : null,
             }
           : addon
       )

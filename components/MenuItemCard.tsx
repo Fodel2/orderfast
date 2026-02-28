@@ -132,7 +132,7 @@ export default function MenuItemCard({
   }, [addonGroups]);
 
   const isOutOfStock =
-    (!!item?.stock_status && item.stock_status !== 'in_stock') ||
+    item?.stock_status !== 'in_stock' ||
     item?.available === false ||
     item?.out_of_stock === true;
 
