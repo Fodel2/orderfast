@@ -15,6 +15,7 @@ import ConfirmModal from '@/components/ConfirmModal';
 import { supabase } from '@/lib/supabaseClient';
 import { ITEM_ADDON_LINK_WITH_GROUPS_SELECT } from '@/lib/queries/addons';
 import { calculateCartTotals, formatPrice } from '@/lib/orderDisplay';
+import { isInStockAddonOption, isOutOfStockEntity } from '@/lib/stockAvailability';
 import Toast from '@/components/Toast';
 
 type OrderType = 'walk-in' | 'collection' | 'delivery';
@@ -63,6 +64,7 @@ type Item = {
   is_18_plus: boolean | null;
   stock_status: 'in_stock' | 'scheduled' | 'out' | null;
   available?: boolean | null;
+  out_of_stock?: boolean | null;
   category_id?: number | null;
   addon_groups?: any[];
 };
@@ -113,6 +115,7 @@ export default function PosHomePage() {
   const [toastMessage, setToastMessage] = useState('');
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [menuRefreshKey, setMenuRefreshKey] = useState(0);
 
   useEffect(() => {
     if (!storageKey || typeof window === 'undefined') return;
@@ -168,7 +171,7 @@ export default function PosHomePage() {
         const itemsPromise = supabase
           .from('menu_items')
           .select(
-            'id,name,description,price,image_url,is_vegetarian,is_vegan,is_18_plus,stock_status,category_id,available'
+            'id,name,description,price,image_url,is_vegetarian,is_vegan,is_18_plus,stock_status,category_id,available,out_of_stock'
           )
           .eq('restaurant_id', restaurantId)
           .is('archived_at', null)
@@ -182,8 +185,8 @@ export default function PosHomePage() {
         if (catRes.error) console.error('[pos] failed to fetch categories', catRes.error);
         if (itemRes.error) console.error('[pos] failed to fetch items', itemRes.error);
 
-        const liveItems = (itemRes.data || []).filter((it: any) => it?.available !== false);
-        const liveItemIds = liveItems.map((row) => row.id);
+        const liveItems = itemRes.data || [];
+        const liveItemIds = liveItems.map((row: any) => row.id);
         let linkRows: ItemLink[] = [];
         let addonRows: any[] = [];
 
@@ -219,7 +222,7 @@ export default function PosHomePage() {
                 {
                   ...row.addon_groups,
                   addon_options: row.addon_groups.addon_options
-                    .filter((opt: any) => opt?.archived_at == null && opt?.available !== false)
+                    .filter((opt: any) => opt?.archived_at == null && isInStockAddonOption(opt))
                     .sort(sortByOrder),
                 },
               ]
@@ -228,7 +231,7 @@ export default function PosHomePage() {
                 {
                   ...row.addon_groups,
                   addon_options: (row.addon_groups.addon_options || [])
-                    .filter((opt: any) => opt?.archived_at == null && opt?.available !== false)
+                    .filter((opt: any) => opt?.archived_at == null && isInStockAddonOption(opt))
                     .sort(sortByOrder),
                 },
               ]
@@ -257,6 +260,45 @@ export default function PosHomePage() {
 
     return () => {
       active = false;
+    };
+  }, [menuRefreshKey, restaurantId]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleFocus = () => {
+      setMenuRefreshKey((prev) => prev + 1);
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        setMenuRefreshKey((prev) => prev + 1);
+      }
+    };
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!restaurantId) return;
+    const channel = supabase
+      .channel(`pos-stock-${restaurantId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'menu_items', filter: `restaurant_id=eq.${restaurantId}` },
+        () => setMenuRefreshKey((prev) => prev + 1)
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'addon_options' },
+        () => setMenuRefreshKey((prev) => prev + 1)
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
     };
   }, [restaurantId]);
 
@@ -295,6 +337,8 @@ export default function PosHomePage() {
 
   const totals = useMemo(() => calculateCartTotals(cartItems), [cartItems]);
 
+  const isItemUnavailable = useCallback((item: Item | null | undefined) => isOutOfStockEntity(item), []);
+
   const buildAddonKey = (addons?: PosAddon[]) => {
     if (!addons || addons.length === 0) return '';
     return addons
@@ -306,6 +350,10 @@ export default function PosHomePage() {
   const addLineItem = useCallback(
     (item: Item, quantity: number, addons?: PosAddon[]) => {
       if (!restaurantId) return;
+      if (isItemUnavailable(item)) {
+        setToastMessage('This item is out of stock.');
+        return;
+      }
       const addonKey = buildAddonKey(addons);
       setCartItems((prev) => {
         const existing = prev.find(
@@ -341,8 +389,13 @@ export default function PosHomePage() {
 
   const handleItemTap = (item: Item) => {
     if (!restaurantId) return;
+    if (isItemUnavailable(item)) {
+      setToastMessage('This item is out of stock.');
+      return;
+    }
     const groups = Array.isArray(item.addon_groups) ? item.addon_groups : [];
     if (groups.length > 0) {
+      setMenuRefreshKey((prev) => prev + 1);
       setActiveModalItem(item);
       return;
     }
@@ -863,13 +916,22 @@ export default function PosHomePage() {
                     </button>
                   ))}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowOrderDrawer(true)}
-                    className="rounded-full border border-gray-200 px-4 py-2 text-xs font-semibold text-gray-700 md:hidden"
-                  >
-                    View Order ({cartItems.reduce((sum, line) => sum + line.quantity, 0)})
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setMenuRefreshKey((prev) => prev + 1)}
+                      className="rounded-full border border-gray-200 px-4 py-2 text-xs font-semibold text-gray-700"
+                    >
+                      Refresh menu
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowOrderDrawer(true)}
+                      className="rounded-full border border-gray-200 px-4 py-2 text-xs font-semibold text-gray-700 md:hidden"
+                    >
+                      View Order ({cartItems.reduce((sum, line) => sum + line.quantity, 0)})
+                    </button>
+                  </div>
                 </div>
               </div>
               <div className="flex-1 overflow-y-auto px-6 py-6">
@@ -877,12 +939,16 @@ export default function PosHomePage() {
                   <div className="text-sm text-gray-500">Loading menu…</div>
                 ) : (
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-                    {visibleItems.map((item) => (
+                    {visibleItems.map((item) => {
+                      const isUnavailable = isItemUnavailable(item);
+                      return (
                       <button
                         key={item.id}
                         type="button"
                         onClick={() => handleItemTap(item)}
-                        className="flex flex-col rounded-2xl border border-gray-200 bg-white px-4 py-3 text-left shadow-sm transition hover:border-gray-300"
+                        disabled={isUnavailable}
+                        aria-disabled={isUnavailable}
+                        className={`flex flex-col rounded-2xl border px-4 py-3 text-left shadow-sm transition ${isUnavailable ? 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400 opacity-70' : 'border-gray-200 bg-white hover:border-gray-300'}`}
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0 flex-1">
@@ -894,8 +960,12 @@ export default function PosHomePage() {
                             {formatPrice(item.price)}
                           </span>
                         </div>
+                        {isUnavailable ? (
+                          <span className="mt-2 text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">Out of stock</span>
+                        ) : null}
                       </button>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -1143,9 +1213,14 @@ export default function PosHomePage() {
           item={{ ...activeModalItem, __onClose: () => setActiveModalItem(null) }}
           restaurantId={String(restaurantId ?? '')}
           onAddToCart={(item, qty, addons) => {
+            if (isItemUnavailable(activeModalItem)) {
+              setToastMessage('This item is out of stock.');
+              return;
+            }
             addLineItem(activeModalItem, qty, addons as PosAddon[]);
             setActiveModalItem(null);
           }}
+          isOutOfStock={isItemUnavailable(activeModalItem)}
         />
       ) : null}
 
