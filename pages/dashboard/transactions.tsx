@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { formatPrice, formatShortOrderNumber, formatStatusLabel } from '@/lib/orderDisplay';
 import { supabase } from '@/utils/supabaseClient';
@@ -81,6 +81,16 @@ const getDateRange = (
   }
 };
 
+const getSupabaseErrorDetails = (error: unknown) => {
+  const value = error as { message?: string; details?: string; hint?: string; code?: string } | null;
+  return {
+    message: value?.message ?? 'Unknown error',
+    details: value?.details ?? '',
+    hint: value?.hint ?? '',
+    code: value?.code ?? '',
+  };
+};
+
 export default function TransactionsPage() {
   const [restaurantId, setRestaurantId] = useState<string | null>(null);
   const [orders, setOrders] = useState<TransactionOrderRow[]>([]);
@@ -95,8 +105,13 @@ export default function TransactionsPage() {
   const [orderTypeFilter, setOrderTypeFilter] = useState<OrderTypeFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const [selectedOrder, setSelectedOrder] = useState<TransactionOrderDetail | null>(null);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [selectedOrderSummary, setSelectedOrderSummary] = useState<TransactionOrderRow | null>(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [detailData, setDetailData] = useState<TransactionOrderDetail | null>(null);
+  const detailRequestRef = useRef(0);
 
   useEffect(() => {
     let active = true;
@@ -239,33 +254,125 @@ export default function TransactionsPage() {
     });
   }, [orders, searchQuery]);
 
-  const handleOpenOrder = useCallback(async (orderId: string) => {
-    setIsDetailLoading(true);
+  const fetchOrderDetail = useCallback(
+    async (orderId: string | null, summary?: TransactionOrderRow | null) => {
+      if (!orderId || !restaurantId) {
+        setIsDetailLoading(false);
+        setDetailError('Unable to load order details. Please try again.');
+        return;
+      }
 
-    const { data, error } = await supabase
-      .from('orders')
-      .select(
-        'id,short_order_number,created_at,customer_name,phone_number,order_type,total_price,status,customer_notes,delivery_fee,service_fee,table_number,dine_in_table_number,order_items(id,name,quantity,price,notes)'
-      )
-      .eq('id', orderId)
-      .maybeSingle();
+      const requestId = ++detailRequestRef.current;
 
-    if (error || !data) {
-      setSelectedOrder(null);
+      setIsDetailLoading(true);
+      setDetailError(null);
+
+      const { data: orderData, error: orderError } = await supabase
+        .from('orders')
+        .select(
+          'id,short_order_number,created_at,customer_name,phone_number,order_type,dine_in_table_number,table_number,customer_notes,total_price,delivery_fee,service_fee,status'
+        )
+        .eq('id', orderId)
+        .eq('restaurant_id', restaurantId)
+        .maybeSingle();
+
+      if (requestId !== detailRequestRef.current) return;
+
+      if (orderError) {
+        if (process.env.NODE_ENV !== 'production') {
+          const errorDetails = getSupabaseErrorDetails(orderError);
+          console.error('[transactions] order detail fetch failed', errorDetails);
+        }
+        setDetailData(null);
+        setDetailError('Unable to load order details right now.');
+        setIsDetailLoading(false);
+        return;
+      }
+
+      if (!orderData) {
+        setDetailData(null);
+        setDetailError('Order not found.');
+        setIsDetailLoading(false);
+        return;
+      }
+
+      const { data: itemsData, error: itemsError } = await supabase
+        .from('order_items')
+        .select('id,order_id,name,quantity,price,notes')
+        .eq('order_id', orderId)
+        .order('id', { ascending: true });
+
+      if (requestId !== detailRequestRef.current) return;
+
+      if (itemsError) {
+        if (process.env.NODE_ENV !== 'production') {
+          const errorDetails = getSupabaseErrorDetails(itemsError);
+          console.error('[transactions] order items fetch failed', errorDetails);
+        }
+        setDetailData(null);
+        setDetailError('Unable to load order items right now.');
+        setIsDetailLoading(false);
+        return;
+      }
+
+      const normalizedItems: TransactionOrderItem[] = (itemsData ?? []).map((item: any) => ({
+        id: Number(item.id),
+        name: item.name,
+        quantity: Number(item.quantity) || 0,
+        price: Number(item.price) || 0,
+        notes: item.notes || null,
+      }));
+
+      const detail: TransactionOrderDetail = {
+        id: orderData.id,
+        short_order_number: orderData.short_order_number,
+        created_at: orderData.created_at,
+        customer_name: orderData.customer_name,
+        phone_number: orderData.phone_number,
+        order_type: orderData.order_type,
+        total_price: orderData.total_price,
+        status: orderData.status,
+        customer_notes: orderData.customer_notes,
+        delivery_fee: orderData.delivery_fee,
+        service_fee: orderData.service_fee,
+        table_number: orderData.table_number,
+        dine_in_table_number: orderData.dine_in_table_number,
+        order_items: normalizedItems,
+      };
+
+      setDetailData(detail);
+      setSelectedOrderSummary(summary ?? null);
+      setDetailError(null);
       setIsDetailLoading(false);
-      return;
-    }
+    },
+    [restaurantId]
+  );
 
-    setSelectedOrder(data as TransactionOrderDetail);
-    setIsDetailLoading(false);
-  }, []);
+  const handleOpenOrder = useCallback(
+    async (order: TransactionOrderRow) => {
+      setSelectedOrderId(order.id);
+      setSelectedOrderSummary(order);
+      setIsDetailModalOpen(true);
+      setIsDetailLoading(true);
+      setDetailError(null);
+      setDetailData(null);
+      await fetchOrderDetail(order.id, order);
+    },
+    [fetchOrderDetail]
+  );
 
   const closeModal = useCallback(() => {
-    setSelectedOrder(null);
+    detailRequestRef.current += 1;
+    setIsDetailModalOpen(false);
+    setSelectedOrderId(null);
+    setSelectedOrderSummary(null);
+    setIsDetailLoading(false);
+    setDetailError(null);
+    setDetailData(null);
   }, []);
 
   useEffect(() => {
-    if (!selectedOrder) return;
+    if (!isDetailModalOpen) return;
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -277,22 +384,28 @@ export default function TransactionsPage() {
     return () => {
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [closeModal, selectedOrder]);
+  }, [closeModal, isDetailModalOpen]);
 
+  const modalOrder = detailData || selectedOrderSummary;
   const modalTableNumber =
-    selectedOrder?.order_type === 'dine_in'
-      ? selectedOrder?.dine_in_table_number ?? selectedOrder?.table_number
+    detailData?.order_type === 'dine_in'
+      ? detailData?.dine_in_table_number ?? detailData?.table_number
       : null;
 
   const itemsTotal =
-    selectedOrder?.order_items?.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0), 0) ?? 0;
+    detailData?.order_items?.reduce(
+      (sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0),
+      0
+    ) ?? 0;
 
   return (
     <DashboardLayout>
       <div className="p-4 sm:p-6">
         <div className="mb-6 flex flex-col gap-2">
           <h1 className="text-2xl font-semibold text-gray-900">Transactions</h1>
-          <p className="text-sm text-gray-600">Read-only historical ledger for completed and cancelled orders.</p>
+          <p className="text-sm text-gray-600">
+            Read-only historical ledger for completed and cancelled orders.
+          </p>
         </div>
 
         <div className="mb-4 grid gap-3 rounded-xl border border-gray-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-5">
@@ -413,14 +526,18 @@ export default function TransactionsPage() {
                   <tr
                     key={order.id}
                     className="cursor-pointer border-t border-gray-100 transition hover:bg-gray-50"
-                    onClick={() => handleOpenOrder(order.id)}
+                    onClick={() => handleOpenOrder(order)}
                   >
-                    <td className="px-4 py-3 font-medium text-gray-900">{formatShortOrderNumber(order.short_order_number)}</td>
+                    <td className="px-4 py-3 font-medium text-gray-900">
+                      {formatShortOrderNumber(order.short_order_number)}
+                    </td>
                     <td className="px-4 py-3 text-gray-700">{new Date(order.created_at).toLocaleString()}</td>
                     <td className="px-4 py-3 text-gray-700">{order.customer_name || '—'}</td>
                     <td className="px-4 py-3 text-gray-700">{order.order_type || '—'}</td>
                     <td className="px-4 py-3 text-gray-700">{itemCountByOrderId[order.id] ?? 0}</td>
-                    <td className="px-4 py-3 text-gray-700">{formatPrice(Number(order.total_price) || 0)}</td>
+                    <td className="px-4 py-3 text-gray-700">
+                      {formatPrice(Number(order.total_price) || 0)}
+                    </td>
                     <td className="px-4 py-3 text-gray-700">{formatStatusLabel(order.status)}</td>
                   </tr>
                 ))
@@ -430,7 +547,7 @@ export default function TransactionsPage() {
         </div>
       </div>
 
-      {(selectedOrder || isDetailLoading) && (
+      {isDetailModalOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
           onClick={(event) => {
@@ -450,31 +567,65 @@ export default function TransactionsPage() {
               </button>
             </div>
 
-            {isDetailLoading || !selectedOrder ? (
+            {isDetailLoading ? (
               <p className="text-sm text-gray-500">Loading order details...</p>
-            ) : (
+            ) : detailError ? (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                <p>{detailError}</p>
+                <button
+                  type="button"
+                  onClick={() => fetchOrderDetail(selectedOrderId, selectedOrderSummary)}
+                  className="mt-3 rounded-lg border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-100"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : detailData ? (
               <>
                 <div className="grid gap-3 rounded-lg border border-gray-200 p-4 text-sm sm:grid-cols-2">
-                  <p><span className="font-medium text-gray-900">Order number:</span> {formatShortOrderNumber(selectedOrder.short_order_number)}</p>
-                  <p><span className="font-medium text-gray-900">Created:</span> {new Date(selectedOrder.created_at).toLocaleString()}</p>
-                  <p><span className="font-medium text-gray-900">Customer:</span> {selectedOrder.customer_name || '—'}</p>
-                  <p><span className="font-medium text-gray-900">Phone:</span> {selectedOrder.phone_number || '—'}</p>
-                  <p><span className="font-medium text-gray-900">Order type:</span> {selectedOrder.order_type || '—'}</p>
-                  <p><span className="font-medium text-gray-900">Table number:</span> {modalTableNumber ?? '—'}</p>
-                  <p className="sm:col-span-2"><span className="font-medium text-gray-900">Customer notes:</span> {selectedOrder.customer_notes || '—'}</p>
+                  <p>
+                    <span className="font-medium text-gray-900">Order number:</span>{' '}
+                    {formatShortOrderNumber(modalOrder?.short_order_number)}
+                  </p>
+                  <p>
+                    <span className="font-medium text-gray-900">Created:</span>{' '}
+                    {modalOrder?.created_at ? new Date(modalOrder.created_at).toLocaleString() : '—'}
+                  </p>
+                  <p>
+                    <span className="font-medium text-gray-900">Customer:</span>{' '}
+                    {modalOrder?.customer_name || '—'}
+                  </p>
+                  <p>
+                    <span className="font-medium text-gray-900">Phone:</span>{' '}
+                    {modalOrder?.phone_number || '—'}
+                  </p>
+                  <p>
+                    <span className="font-medium text-gray-900">Order type:</span>{' '}
+                    {modalOrder?.order_type || '—'}
+                  </p>
+                  <p>
+                    <span className="font-medium text-gray-900">Table number:</span>{' '}
+                    {modalTableNumber ?? '—'}
+                  </p>
+                  <p className="sm:col-span-2">
+                    <span className="font-medium text-gray-900">Customer notes:</span>{' '}
+                    {detailData.customer_notes || '—'}
+                  </p>
                 </div>
 
                 <div className="mt-5 rounded-lg border border-gray-200 p-4">
                   <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-700">Items</h3>
                   <div className="space-y-2">
-                    {selectedOrder.order_items.length === 0 ? (
+                    {detailData.order_items.length === 0 ? (
                       <p className="text-sm text-gray-500">No items recorded.</p>
                     ) : (
-                      selectedOrder.order_items.map((item) => (
+                      detailData.order_items.map((item) => (
                         <div key={item.id} className="rounded-md border border-gray-100 p-3 text-sm">
                           <div className="flex items-center justify-between gap-3">
                             <p className="font-medium text-gray-900">{item.name}</p>
-                            <p className="text-gray-700">{item.quantity} × {formatPrice(Number(item.price) || 0)}</p>
+                            <p className="text-gray-700">
+                              {item.quantity} × {formatPrice(Number(item.price) || 0)}
+                            </p>
                           </div>
                           {item.notes && <p className="mt-1 text-xs text-gray-500">Notes: {item.notes}</p>}
                         </div>
@@ -486,10 +637,22 @@ export default function TransactionsPage() {
                 <div className="mt-5 rounded-lg border border-gray-200 p-4 text-sm">
                   <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-700">Totals</h3>
                   <div className="space-y-2">
-                    <div className="flex items-center justify-between"><span>Items total</span><span>{formatPrice(itemsTotal)}</span></div>
-                    <div className="flex items-center justify-between"><span>Delivery fee</span><span>{formatPrice(Number(selectedOrder.delivery_fee) || 0)}</span></div>
-                    <div className="flex items-center justify-between"><span>Service fee</span><span>{formatPrice(Number(selectedOrder.service_fee) || 0)}</span></div>
-                    <div className="flex items-center justify-between border-t border-gray-200 pt-2 font-semibold text-gray-900"><span>Final total</span><span>{formatPrice(Number(selectedOrder.total_price) || 0)}</span></div>
+                    <div className="flex items-center justify-between">
+                      <span>Items total</span>
+                      <span>{formatPrice(itemsTotal)}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Delivery fee</span>
+                      <span>{formatPrice(Number(detailData.delivery_fee) || 0)}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Service fee</span>
+                      <span>{formatPrice(Number(detailData.service_fee) || 0)}</span>
+                    </div>
+                    <div className="flex items-center justify-between border-t border-gray-200 pt-2 font-semibold text-gray-900">
+                      <span>Final total</span>
+                      <span>{formatPrice(Number(detailData.total_price) || 0)}</span>
+                    </div>
                   </div>
                 </div>
 
@@ -508,6 +671,8 @@ export default function TransactionsPage() {
                   </button>
                 </div>
               </>
+            ) : (
+              <p className="text-sm text-gray-500">No order details available.</p>
             )}
           </div>
         </div>
