@@ -30,10 +30,12 @@ interface TransactionOrderDetail extends TransactionOrderRow {
   customer_notes: string | null;
   delivery_fee: number | null;
   service_fee: number | null;
-  table_number: number | null;
   dine_in_table_number: number | null;
   order_items: TransactionOrderItem[];
 }
+
+const ORDER_ID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const getDateRange = (
   preset: DateRangePreset,
@@ -82,13 +84,32 @@ const getDateRange = (
 };
 
 const getSupabaseErrorDetails = (error: unknown) => {
-  const value = error as { message?: string; details?: string; hint?: string; code?: string } | null;
+  const value =
+    error as
+      | {
+          message?: string;
+          details?: string;
+          hint?: string;
+          code?: string;
+          status?: number;
+          statusCode?: number;
+        }
+      | null;
   return {
     message: value?.message ?? 'Unknown error',
     details: value?.details ?? '',
     hint: value?.hint ?? '',
     code: value?.code ?? '',
+    status: value?.status ?? value?.statusCode ?? null,
   };
+};
+
+const isAuthLikeError = (error: unknown) => {
+  const details = getSupabaseErrorDetails(error);
+  if (details.status === 401 || details.status === 403) return true;
+  if (details.code === 'PGRST301') return true;
+  const message = details.message.toLowerCase();
+  return message.includes('jwt') || message.includes('auth') || message.includes('permission');
 };
 
 export default function TransactionsPage() {
@@ -110,6 +131,7 @@ export default function TransactionsPage() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [detailItemsError, setDetailItemsError] = useState<string | null>(null);
   const [detailData, setDetailData] = useState<TransactionOrderDetail | null>(null);
   const detailRequestRef = useRef(0);
 
@@ -256,9 +278,29 @@ export default function TransactionsPage() {
 
   const fetchOrderDetail = useCallback(
     async (orderId: string | null, summary?: TransactionOrderRow | null) => {
-      if (!orderId || !restaurantId) {
+      setDetailItemsError(null);
+      if (!orderId || !restaurantId || !ORDER_ID_REGEX.test(orderId)) {
         setIsDetailLoading(false);
         setDetailError('Unable to load order details. Please try again.');
+        return;
+      }
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.user?.id) {
+        setIsDetailLoading(false);
+        setDetailError('Your session has expired. Please refresh and sign in again.');
+        if (process.env.NODE_ENV !== 'production') {
+          console.error('Transactions detail load failed', {
+            selectedOrderId: orderId,
+            restaurantId,
+            userId: null,
+            orderError: null,
+            itemsError: null,
+          });
+        }
         return;
       }
 
@@ -270,7 +312,7 @@ export default function TransactionsPage() {
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
         .select(
-          'id,short_order_number,created_at,customer_name,phone_number,order_type,dine_in_table_number,table_number,customer_notes,total_price,delivery_fee,service_fee,status'
+          'id,short_order_number,created_at,customer_name,phone_number,order_type,dine_in_table_number,customer_notes,total_price,delivery_fee,service_fee,status'
         )
         .eq('id', orderId)
         .eq('restaurant_id', restaurantId)
@@ -278,13 +320,24 @@ export default function TransactionsPage() {
 
       if (requestId !== detailRequestRef.current) return;
 
+      if (process.env.NODE_ENV !== 'production' && orderError) {
+        console.error('Transactions detail load failed', {
+          selectedOrderId: orderId,
+          restaurantId,
+          userId: session.user.id,
+          orderError,
+          itemsError: null,
+          orderErrorInfo: getSupabaseErrorDetails(orderError),
+        });
+      }
+
       if (orderError) {
-        if (process.env.NODE_ENV !== 'production') {
-          const errorDetails = getSupabaseErrorDetails(orderError);
-          console.error('[transactions] order detail fetch failed', errorDetails);
-        }
         setDetailData(null);
-        setDetailError('Unable to load order details right now.');
+        setDetailError(
+          isAuthLikeError(orderError)
+            ? 'You are not authorized to view this order. Please refresh and sign in again.'
+            : 'Unable to load order details right now.'
+        );
         setIsDetailLoading(false);
         return;
       }
@@ -296,21 +349,46 @@ export default function TransactionsPage() {
         return;
       }
 
+      const detailBase: TransactionOrderDetail = {
+        id: orderData.id,
+        short_order_number: orderData.short_order_number,
+        created_at: orderData.created_at,
+        customer_name: orderData.customer_name,
+        phone_number: orderData.phone_number,
+        order_type: orderData.order_type,
+        total_price: orderData.total_price,
+        status: orderData.status,
+        customer_notes: orderData.customer_notes,
+        delivery_fee: orderData.delivery_fee,
+        service_fee: orderData.service_fee,
+        dine_in_table_number: orderData.dine_in_table_number,
+        order_items: [],
+      };
+
+      setDetailData(detailBase);
+      setSelectedOrderSummary(summary ?? null);
+
       const { data: itemsData, error: itemsError } = await supabase
         .from('order_items')
         .select('id,order_id,name,quantity,price,notes')
-        .eq('order_id', orderId)
-        .order('id', { ascending: true });
+        .eq('order_id', orderId);
 
       if (requestId !== detailRequestRef.current) return;
 
+      if (process.env.NODE_ENV !== 'production' && itemsError) {
+        console.error('Transactions detail load failed', {
+          selectedOrderId: orderId,
+          restaurantId,
+          userId: session.user.id,
+          orderError: null,
+          itemsError,
+          itemsErrorInfo: getSupabaseErrorDetails(itemsError),
+        });
+      }
+
       if (itemsError) {
-        if (process.env.NODE_ENV !== 'production') {
-          const errorDetails = getSupabaseErrorDetails(itemsError);
-          console.error('[transactions] order items fetch failed', errorDetails);
-        }
-        setDetailData(null);
-        setDetailError('Unable to load order items right now.');
+        setDetailItemsError('Order items could not be loaded right now.');
+        setDetailError(null);
         setIsDetailLoading(false);
         return;
       }
@@ -323,26 +401,12 @@ export default function TransactionsPage() {
         notes: item.notes || null,
       }));
 
-      const detail: TransactionOrderDetail = {
-        id: orderData.id,
-        short_order_number: orderData.short_order_number,
-        created_at: orderData.created_at,
-        customer_name: orderData.customer_name,
-        phone_number: orderData.phone_number,
-        order_type: orderData.order_type,
-        total_price: orderData.total_price,
-        status: orderData.status,
-        customer_notes: orderData.customer_notes,
-        delivery_fee: orderData.delivery_fee,
-        service_fee: orderData.service_fee,
-        table_number: orderData.table_number,
-        dine_in_table_number: orderData.dine_in_table_number,
+      setDetailData({
+        ...detailBase,
         order_items: normalizedItems,
-      };
-
-      setDetailData(detail);
-      setSelectedOrderSummary(summary ?? null);
+      });
       setDetailError(null);
+      setDetailItemsError(null);
       setIsDetailLoading(false);
     },
     [restaurantId]
@@ -355,6 +419,7 @@ export default function TransactionsPage() {
       setIsDetailModalOpen(true);
       setIsDetailLoading(true);
       setDetailError(null);
+      setDetailItemsError(null);
       setDetailData(null);
       await fetchOrderDetail(order.id, order);
     },
@@ -368,6 +433,7 @@ export default function TransactionsPage() {
     setSelectedOrderSummary(null);
     setIsDetailLoading(false);
     setDetailError(null);
+    setDetailItemsError(null);
     setDetailData(null);
   }, []);
 
@@ -387,10 +453,7 @@ export default function TransactionsPage() {
   }, [closeModal, isDetailModalOpen]);
 
   const modalOrder = detailData || selectedOrderSummary;
-  const modalTableNumber =
-    detailData?.order_type === 'dine_in'
-      ? detailData?.dine_in_table_number ?? detailData?.table_number
-      : null;
+  const modalTableNumber = detailData?.order_type === 'dine_in' ? detailData?.dine_in_table_number : null;
 
   const itemsTotal =
     detailData?.order_items?.reduce(
@@ -612,6 +675,12 @@ export default function TransactionsPage() {
                     {detailData.customer_notes || '—'}
                   </p>
                 </div>
+
+                {detailItemsError && (
+                  <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                    {detailItemsError}
+                  </div>
+                )}
 
                 <div className="mt-5 rounded-lg border border-gray-200 p-4">
                   <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-700">Items</h3>
