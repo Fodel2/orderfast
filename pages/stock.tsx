@@ -52,18 +52,24 @@ export default function StockPage() {
       name: 'Cheese',
       stock_status: 'in_stock' as const,
       stock_return_date: null,
+      group_id: 'g1',
+      group_name: 'Toppings',
     },
     {
       id: 'a2',
       name: 'Bacon',
       stock_status: 'out' as const,
       stock_return_date: null,
+      group_id: 'g1',
+      group_name: 'Toppings',
     },
     {
       id: 'a3',
       name: 'Avocado',
       stock_status: 'scheduled' as const,
       stock_return_date: new Date().toISOString(),
+      group_id: 'g2',
+      group_name: 'Sauces',
     },
   ];
 
