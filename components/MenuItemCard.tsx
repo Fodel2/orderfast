@@ -6,6 +6,7 @@ import { useBrand } from '@/components/branding/BrandProvider';
 import { formatPrice, normalizePriceValue } from '@/lib/orderDisplay';
 import ItemModal from '@/components/modals/ItemModal';
 import { toast } from '@/components/ui/toast';
+import { isOutOfStockEntity } from '@/lib/stockAvailability';
 import {
   FALLBACK_PLACEHOLDER_SRC,
   getItemPlaceholder,
@@ -131,10 +132,7 @@ export default function MenuItemCard({
     return addonGroups.some((group) => group?.required);
   }, [addonGroups]);
 
-  const isOutOfStock =
-    item?.stock_status !== 'in_stock' ||
-    item?.available === false ||
-    item?.out_of_stock === true;
+  const isOutOfStock = isOutOfStockEntity(item);
 
   const handleClick = () => {
     onInteraction?.();

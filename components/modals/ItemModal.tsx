@@ -10,6 +10,7 @@ import { formatPrice, normalizePriceValue } from '@/lib/orderDisplay';
 import { getAddonsForItem } from '@/utils/getAddonsForItem';
 import type { AddonGroup } from '@/utils/types';
 import { toast } from '@/components/ui/toast';
+import { isInStockAddonOption } from '@/lib/stockAvailability';
 
 function contrast(c?: string) {
   try {
@@ -141,7 +142,7 @@ export default function ItemModal({ item, restaurantId, onAddToCart, isOutOfStoc
       .map((group) => {
         const options = Array.isArray(group.addon_options)
           ? group.addon_options.filter(
-              (option) => option?.available !== false && option?.stock_status === 'in_stock'
+              (option) => isInStockAddonOption(option)
             )
           : [];
         return { ...group, addon_options: options };

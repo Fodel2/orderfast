@@ -354,7 +354,7 @@ export default function KitchenDisplayPage() {
       `
       )
       .eq('restaurant_id', restaurantId)
-      .eq('status', 'accepted')
+      .in('status', ACTIVE_STATUSES)
       .is('kod_done_at', null)
       .order('created_at', { ascending: true });
 
@@ -556,6 +556,27 @@ export default function KitchenDisplayPage() {
     if (!restaurantId) return;
     fetchPreparedOrders();
   }, [fetchPreparedOrders, restaurantId]);
+
+  useEffect(() => {
+    if (!restaurantId) return;
+    const channel = supabase
+      .channel(`kod-orders-${restaurantId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'orders', filter: `restaurant_id=eq.${restaurantId}` },
+        () => { void refreshCurrentView(); }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'orders', filter: `restaurant_id=eq.${restaurantId}` },
+        () => { void refreshCurrentView(); }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [refreshCurrentView, restaurantId]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -819,6 +840,13 @@ export default function KitchenDisplayPage() {
       if (isPreparedView) {
         if (order.status === 'completed') return;
         await updateOrderStatus(order, 'completed', ['accepted', 'preparing', 'ready_to_collect', 'delivering']);
+        await fetchPreparedOrders();
+        return;
+      }
+
+      if (order.status === 'pending') {
+        await updateOrderStatus(order, 'accepted', ['pending']);
+        await fetchOrders();
         await fetchPreparedOrders();
         return;
       }
@@ -1289,11 +1317,11 @@ export default function KitchenDisplayPage() {
                           disabled={
                             (isPreparedView
                               ? segment.order.status === 'completed'
-                              : !['accepted', 'preparing', 'ready_to_collect', 'delivering'].includes(segment.order.status)) || cooldowns[`${segment.order.id}-primary`]
+                              : !['pending', 'accepted', 'preparing', 'ready_to_collect', 'delivering'].includes(segment.order.status)) || cooldowns[`${segment.order.id}-primary`]
                           }
                           className="flex-1 rounded-full bg-teal-500 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-black transition hover:bg-teal-400 disabled:cursor-not-allowed disabled:opacity-40"
                         >
-                          {isPreparedView ? (segment.order.status === 'completed' ? 'VIEW' : 'COMPLETE') : 'DONE'}
+                          {isPreparedView ? (segment.order.status === 'completed' ? 'VIEW' : 'COMPLETE') : segment.order.status === 'pending' ? 'ACCEPT' : 'DONE'}
                         </button>
                         {isPreparedView && segment.order.status !== 'completed' ? (
                           <button
