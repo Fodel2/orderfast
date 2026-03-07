@@ -11,6 +11,7 @@ import Skeleton from '@/components/ui/Skeleton';
 import MenuHeader from '@/components/customer/menu/MenuHeader';
 import { useRestaurant } from '@/lib/restaurant-context';
 import { scrollElementToTop } from '@/utils/scroll';
+import { isInStockAddonOption } from '@/lib/stockAvailability';
 
 function readableText(hex?: string | null) {
   if (!hex) return '#fff';
@@ -146,7 +147,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
           const group = {
             ...row.addon_groups,
             addon_options: (row.addon_groups.addon_options || [])
-              .filter((opt: any) => opt?.archived_at == null && opt?.available !== false && opt?.stock_status === 'in_stock')
+              .filter((opt: any) => opt?.archived_at == null && isInStockAddonOption(opt))
               .sort(sortByOrder),
           };
           arr.push(group);

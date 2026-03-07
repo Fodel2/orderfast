@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { getTomorrowLondonDate } from '@/lib/stockDate';
+import { getEffectiveStockDisplayStatus } from '@/lib/stockAvailability';
 import { Disclosure } from '@headlessui/react';
 import {
   ChevronUpIcon,
@@ -198,21 +199,23 @@ export default function StockTab({ categories, addons, restaurantId }: StockTabP
                       <p className="text-sm text-gray-500">No items</p>
                     ) : (
                       <ul className="space-y-2">
-                        {cat.items.map((item) => (
+                        {cat.items.map((item) => {
+                          const displayStatus = getEffectiveStockDisplayStatus(item);
+                          return (
                           <li
                             key={item.id}
                             className="flex min-w-0 items-center justify-between gap-2 border-b pb-1 last:border-b-0"
                           >
                             <span className="min-w-0 flex-1 break-words">{item.name}</span>
                             <div className="shrink-0 flex items-center space-x-2">
-                              <StockStatusBadge status={item.stock_status} returnDate={item.stock_return_date} />
+                              <StockStatusBadge status={displayStatus} returnDate={item.stock_return_date} />
                               <div className="inline-flex rounded-full border border-gray-200 bg-gray-50 p-1 text-xs">
                                 {stockOptions.map((opt) => (
                                   <button
                                     key={opt.value}
                                     type="button"
                                     onClick={() => handleStockChange(item.id, opt.value)}
-                                    className={`rounded-full px-2.5 py-1 font-medium transition ${item.stock_status === opt.value ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
+                                    className={`rounded-full px-2.5 py-1 font-medium transition ${displayStatus === opt.value ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
                                   >
                                     {opt.label}
                                   </button>
@@ -221,7 +224,7 @@ export default function StockTab({ categories, addons, restaurantId }: StockTabP
                               {savedRows[item.id] ? <span className="text-xs text-emerald-600">Saved</span> : null}
                             </div>
                           </li>
-                        ))}
+                        );})}
                       </ul>
                     )}
                   </Disclosure.Panel>
@@ -239,7 +242,9 @@ export default function StockTab({ categories, addons, restaurantId }: StockTabP
               <div key={groupName} className="rounded-lg bg-white p-3 shadow">
                 <h4 className="mb-2 text-sm font-semibold text-gray-700">{groupName}</h4>
                 <ul className="space-y-2">
-                  {groupAddons.map((addon) => (
+                  {groupAddons.map((addon) => {
+                    const displayStatus = getEffectiveStockDisplayStatus(addon);
+                    return (
                     <li
                       key={addon.id}
                       className="flex min-w-0 items-center justify-between gap-2 border-b pb-2 last:border-b-0"
@@ -247,7 +252,7 @@ export default function StockTab({ categories, addons, restaurantId }: StockTabP
                       <span className="min-w-0 flex-1 break-words">{addon.name}</span>
                       <div className="shrink-0 flex items-center space-x-2">
                         <StockStatusBadge
-                          status={addon.stock_status}
+                          status={displayStatus}
                           returnDate={addon.stock_return_date}
                         />
                         <div className="inline-flex rounded-full border border-gray-200 bg-gray-50 p-1 text-xs">
@@ -256,7 +261,7 @@ export default function StockTab({ categories, addons, restaurantId }: StockTabP
                               key={opt.value}
                               type="button"
                               onClick={() => handleAddonStockChange(addon.id, opt.value)}
-                              className={`rounded-full px-2.5 py-1 font-medium transition ${addon.stock_status === opt.value ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
+                              className={`rounded-full px-2.5 py-1 font-medium transition ${displayStatus === opt.value ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
                             >
                               {opt.label}
                             </button>
@@ -265,7 +270,7 @@ export default function StockTab({ categories, addons, restaurantId }: StockTabP
                         {savedRows[addon.id] ? <span className="text-xs text-emerald-600">Saved</span> : null}
                       </div>
                     </li>
-                  ))}
+                  );})}
                 </ul>
               </div>
             ))}
