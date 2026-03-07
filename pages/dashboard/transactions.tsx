@@ -18,12 +18,23 @@ interface TransactionOrderRow {
   status: string;
 }
 
+interface TransactionOrderAddon {
+  id: number;
+  order_item_id: number;
+  option_id: number | null;
+  name: string;
+  price: number;
+  quantity: number;
+}
+
 interface TransactionOrderItem {
   id: number;
+  item_id: number | null;
   name: string;
   quantity: number;
   price: number;
   notes: string | null;
+  addons: TransactionOrderAddon[];
 }
 
 interface TransactionOrderDetail extends TransactionOrderRow {
@@ -132,6 +143,7 @@ export default function TransactionsPage() {
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [detailItemsError, setDetailItemsError] = useState<string | null>(null);
+  const [detailAddonsError, setDetailAddonsError] = useState<string | null>(null);
   const [detailData, setDetailData] = useState<TransactionOrderDetail | null>(null);
   const detailRequestRef = useRef(0);
 
@@ -279,6 +291,7 @@ export default function TransactionsPage() {
   const fetchOrderDetail = useCallback(
     async (orderId: string | null, summary?: TransactionOrderRow | null) => {
       setDetailItemsError(null);
+      setDetailAddonsError(null);
       if (!orderId || !restaurantId || !ORDER_ID_REGEX.test(orderId)) {
         setIsDetailLoading(false);
         setDetailError('Unable to load order details. Please try again.');
@@ -370,7 +383,7 @@ export default function TransactionsPage() {
 
       const { data: itemsData, error: itemsError } = await supabase
         .from('order_items')
-        .select('id,order_id,name,quantity,price,notes')
+        .select('id,order_id,item_id,name,quantity,price,notes')
         .eq('order_id', orderId);
 
       if (requestId !== detailRequestRef.current) return;
@@ -393,13 +406,63 @@ export default function TransactionsPage() {
         return;
       }
 
-      const normalizedItems: TransactionOrderItem[] = (itemsData ?? []).map((item: any) => ({
-        id: Number(item.id),
-        name: item.name,
-        quantity: Number(item.quantity) || 0,
-        price: Number(item.price) || 0,
-        notes: item.notes || null,
-      }));
+      const itemRows = (itemsData ?? []) as any[];
+      const orderItemIds = itemRows.map((item) => Number(item.id)).filter((id) => Number.isFinite(id));
+
+      let addonsByItemId: Record<number, TransactionOrderAddon[]> = {};
+
+      if (orderItemIds.length > 0) {
+        const { data: addonsData, error: addonsError } = await supabase
+          .from('order_addons')
+          .select('id,order_item_id,option_id,name,price,quantity')
+          .in('order_item_id', orderItemIds);
+
+        if (requestId !== detailRequestRef.current) return;
+
+        if (process.env.NODE_ENV !== 'production' && addonsError) {
+          console.error('Transactions detail addons load failed', {
+            selectedOrderId: orderId,
+            restaurantId,
+            userId: session.user.id,
+            addonsError,
+            addonsErrorInfo: getSupabaseErrorDetails(addonsError),
+          });
+        }
+
+        if (addonsError) {
+          setDetailAddonsError('Order add-ons could not be loaded right now.');
+        } else {
+          const normalizedAddons: TransactionOrderAddon[] = ((addonsData ?? []) as any[]).map((addon) => ({
+            id: Number(addon.id),
+            order_item_id: Number(addon.order_item_id),
+            option_id: typeof addon.option_id === 'number' ? addon.option_id : addon.option_id ? Number(addon.option_id) : null,
+            name: addon.name,
+            price: Number(addon.price) || 0,
+            quantity: Number(addon.quantity) || 0,
+          }));
+
+          addonsByItemId = normalizedAddons.reduce<Record<number, TransactionOrderAddon[]>>((acc, addon) => {
+            const key = addon.order_item_id;
+            if (!acc[key]) acc[key] = [];
+            acc[key].push(addon);
+            return acc;
+          }, {});
+          setDetailAddonsError(null);
+        }
+      }
+
+      const normalizedItems: TransactionOrderItem[] = itemRows.map((item: any) => {
+        const itemId = Number(item.id);
+        return {
+          id: itemId,
+          item_id: typeof item.item_id === 'number' ? item.item_id : item.item_id ? Number(item.item_id) : null,
+          name: item.name,
+          quantity: Number(item.quantity) || 0,
+          price: Number(item.price) || 0,
+          notes: item.notes || null,
+          addons: addonsByItemId[itemId] || [],
+        };
+      });
 
       setDetailData({
         ...detailBase,
@@ -420,6 +483,7 @@ export default function TransactionsPage() {
       setIsDetailLoading(true);
       setDetailError(null);
       setDetailItemsError(null);
+      setDetailAddonsError(null);
       setDetailData(null);
       await fetchOrderDetail(order.id, order);
     },
@@ -434,6 +498,7 @@ export default function TransactionsPage() {
     setIsDetailLoading(false);
     setDetailError(null);
     setDetailItemsError(null);
+    setDetailAddonsError(null);
     setDetailData(null);
   }, []);
 
@@ -463,11 +528,22 @@ export default function TransactionsPage() {
         ? 'border-rose-200 bg-rose-50 text-rose-700'
         : 'border-gray-200 bg-gray-50 text-gray-700';
 
-  const itemsTotal =
+  const baseItemsTotal =
     detailData?.order_items?.reduce(
       (sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0),
       0
     ) ?? 0;
+  const addonsTotal =
+    detailData?.order_items?.reduce(
+      (sum, item) =>
+        sum +
+        (item.addons || []).reduce(
+          (addonSum, addon) => addonSum + (Number(addon.price) || 0) * (Number(addon.quantity) || 0),
+          0
+        ),
+      0
+    ) ?? 0;
+  const itemsTotal = baseItemsTotal + addonsTotal;
 
   return (
     <DashboardLayout>
@@ -705,6 +781,12 @@ export default function TransactionsPage() {
                   </div>
                 )}
 
+                {detailAddonsError && (
+                  <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                    {detailAddonsError}
+                  </div>
+                )}
+
                 <div className="mt-5 rounded-xl border border-gray-200 bg-white p-4">
                   <div className="mb-3 flex items-center justify-between">
                     <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-gray-600">Items</h3>
@@ -714,20 +796,40 @@ export default function TransactionsPage() {
                     {detailData.order_items.length === 0 ? (
                       <p className="text-sm text-gray-500">No items recorded.</p>
                     ) : (
-                      detailData.order_items.map((item) => (
-                        <div key={item.id} className="rounded-lg border border-gray-100 bg-gray-50/60 p-3 text-sm">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="font-medium text-gray-900">{item.name}</p>
-                              {item.notes && <p className="mt-1 text-xs text-gray-500">Notes: {item.notes}</p>}
+                      detailData.order_items.map((item) => {
+                        const baseLineTotal = (Number(item.price) || 0) * (Number(item.quantity) || 0);
+                        return (
+                          <div key={item.id} className="rounded-lg border border-gray-100 bg-gray-50/60 p-3 text-sm">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="font-medium text-gray-900">{item.name}</p>
+                                {item.notes && <p className="mt-1 text-xs text-gray-500">Notes: {item.notes}</p>}
+                              </div>
+                              <div className="text-right">
+                                <p className="font-medium text-gray-800">{item.quantity} × {formatPrice(Number(item.price) || 0)}</p>
+                                <p className="text-xs text-gray-500">{formatPrice(baseLineTotal)}</p>
+                              </div>
                             </div>
-                            <div className="text-right">
-                              <p className="font-medium text-gray-800">{item.quantity} × {formatPrice(Number(item.price) || 0)}</p>
-                              <p className="text-xs text-gray-500">{formatPrice((Number(item.price) || 0) * (Number(item.quantity) || 0))}</p>
-                            </div>
+
+                            {item.addons.length > 0 && (
+                              <div className="mt-2 space-y-1 border-t border-gray-200 pt-2">
+                                {item.addons.map((addon) => {
+                                  const addonLineTotal = (Number(addon.price) || 0) * (Number(addon.quantity) || 0);
+                                  return (
+                                    <div key={addon.id} className="flex items-start justify-between gap-3 pl-3 text-xs text-gray-600">
+                                      <p className="min-w-0 truncate">+ {addon.name}</p>
+                                      <div className="text-right whitespace-nowrap">
+                                        <p>{addon.quantity} × {formatPrice(Number(addon.price) || 0)}</p>
+                                        <p className="text-gray-500">{formatPrice(addonLineTotal)}</p>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
                 </div>
@@ -738,6 +840,10 @@ export default function TransactionsPage() {
                     <div className="flex items-center justify-between">
                       <span className="text-gray-600">Items total</span>
                       <span className="font-medium text-gray-800">{formatPrice(itemsTotal)}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-600">Add-ons total</span>
+                      <span className="font-medium text-gray-800">{formatPrice(addonsTotal)}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-gray-600">Delivery fee</span>
