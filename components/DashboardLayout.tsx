@@ -280,7 +280,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       ],
     },
     { href: null, label: 'Team', icon: UserGroupIcon },
-    { href: null, label: 'Transactions', icon: ArrowsRightLeftIcon },
+    { href: '/dashboard/transactions', label: 'Transactions', icon: ArrowsRightLeftIcon },
     { href: null, label: 'Sales', icon: ChartBarIcon },
     { href: null, label: 'Invoices', icon: DocumentTextIcon },
     { href: null, label: 'Settings', icon: Cog6ToothIcon },
