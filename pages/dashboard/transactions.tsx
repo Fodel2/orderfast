@@ -19,17 +19,17 @@ interface TransactionOrderRow {
 }
 
 interface TransactionOrderAddon {
-  id: number;
-  order_item_id: number;
-  option_id: number | null;
+  id: string | number;
+  order_item_id: string | number;
+  option_id: string | number | null;
   name: string;
   price: number;
   quantity: number;
 }
 
 interface TransactionOrderItem {
-  id: number;
-  item_id: number | null;
+  id: string | number;
+  item_id: string | number | null;
   name: string;
   quantity: number;
   price: number;
@@ -144,6 +144,21 @@ export default function TransactionsPage() {
   const [detailError, setDetailError] = useState<string | null>(null);
   const [detailItemsError, setDetailItemsError] = useState<string | null>(null);
   const [detailAddonsError, setDetailAddonsError] = useState<string | null>(null);
+  const [detailDebug, setDetailDebug] = useState<{
+    orderItemsCount: number;
+    orderItemIds: Array<string | number>;
+    addonsCount: number;
+    addonsPayload: any[];
+    addonsQueryAttempted: boolean;
+    addonsQueryError: string | null;
+  }>({
+    orderItemsCount: 0,
+    orderItemIds: [],
+    addonsCount: 0,
+    addonsPayload: [],
+    addonsQueryAttempted: false,
+    addonsQueryError: null,
+  });
   const [detailData, setDetailData] = useState<TransactionOrderDetail | null>(null);
   const detailRequestRef = useRef(0);
 
@@ -292,6 +307,14 @@ export default function TransactionsPage() {
     async (orderId: string | null, summary?: TransactionOrderRow | null) => {
       setDetailItemsError(null);
       setDetailAddonsError(null);
+      setDetailDebug({
+        orderItemsCount: 0,
+        orderItemIds: [],
+        addonsCount: 0,
+        addonsPayload: [],
+        addonsQueryAttempted: false,
+        addonsQueryError: null,
+      });
       if (!orderId || !restaurantId || !ORDER_ID_REGEX.test(orderId)) {
         setIsDetailLoading(false);
         setDetailError('Unable to load order details. Please try again.');
@@ -407,14 +430,21 @@ export default function TransactionsPage() {
       }
 
       const itemRows = (itemsData ?? []) as any[];
-      const orderItemIds = itemRows.map((item) => Number(item.id)).filter((id) => Number.isFinite(id));
+      const orderItemIds = itemRows.map((item) => item?.id).filter(Boolean) as Array<string | number>;
 
       if (process.env.NODE_ENV !== 'production') {
-        console.debug('Transactions detail fetched order items', itemRows);
-        console.debug('Transactions detail order item ids', orderItemIds);
+        console.debug('Transactions modal order items', itemRows);
+        console.debug('Transactions modal order item ids', orderItemIds);
       }
 
-      let addonsByItemId: Record<number, TransactionOrderAddon[]> = {};
+      setDetailDebug((prev) => ({
+        ...prev,
+        orderItemsCount: itemRows.length,
+        orderItemIds,
+      }));
+
+      let addonsByItemId: Record<string, TransactionOrderAddon[]> = {};
+      let addonsQueryFailed = false;
 
       if (orderItemIds.length > 0) {
         const { data: addonsData, error: addonsError } = await supabase
@@ -435,40 +465,65 @@ export default function TransactionsPage() {
         }
 
         if (addonsError) {
+          addonsQueryFailed = true;
           setDetailAddonsError('Order add-ons could not be loaded right now.');
+          setDetailDebug((prev) => ({
+            ...prev,
+            addonsQueryAttempted: true,
+            addonsQueryError: JSON.stringify(getSupabaseErrorDetails(addonsError)),
+          }));
         } else {
           if (process.env.NODE_ENV !== 'production') {
-            console.debug('Transactions detail fetched order addons', addonsData ?? []);
+            console.debug('Transactions modal order addons', addonsData ?? []);
           }
           const normalizedAddons: TransactionOrderAddon[] = ((addonsData ?? []) as any[]).map((addon) => ({
-            id: Number(addon.id),
-            order_item_id: Number(addon.order_item_id),
-            option_id: typeof addon.option_id === 'number' ? addon.option_id : addon.option_id ? Number(addon.option_id) : null,
+            id: addon.id,
+            order_item_id: addon.order_item_id,
+            option_id: addon.option_id ?? null,
             name: addon.name,
             price: Number(addon.price) || 0,
             quantity: Number(addon.quantity) || 0,
           }));
 
-          addonsByItemId = normalizedAddons.reduce<Record<number, TransactionOrderAddon[]>>((acc, addon) => {
-            const key = addon.order_item_id;
+          addonsByItemId = normalizedAddons.reduce<Record<string, TransactionOrderAddon[]>>((acc, addon) => {
+            const key = String(addon.order_item_id);
             if (!acc[key]) acc[key] = [];
             acc[key].push(addon);
             return acc;
           }, {});
+          setDetailDebug((prev) => ({
+            ...prev,
+            addonsQueryAttempted: true,
+            addonsQueryError: null,
+            addonsCount: normalizedAddons.length,
+            addonsPayload: addonsData ?? [],
+          }));
           setDetailAddonsError(null);
         }
+      } else {
+        setDetailDebug((prev) => ({
+          ...prev,
+          addonsQueryAttempted: false,
+          addonsQueryError: null,
+          addonsCount: 0,
+          addonsPayload: [],
+        }));
+      }
+
+      if (orderItemIds.length > 0 && process.env.NODE_ENV !== 'production' && !addonsQueryFailed && Object.keys(addonsByItemId).length === 0) {
+        setDetailAddonsError('No order_addons were returned for these order_item_ids.');
       }
 
       const normalizedItems: TransactionOrderItem[] = itemRows.map((item: any) => {
-        const itemId = Number(item.id);
+        const itemId = item.id;
         return {
           id: itemId,
-          item_id: typeof item.item_id === 'number' ? item.item_id : item.item_id ? Number(item.item_id) : null,
+          item_id: item.item_id ?? null,
           name: item.name,
           quantity: Number(item.quantity) || 0,
           price: Number(item.price) || 0,
           notes: item.notes || null,
-          addons: addonsByItemId[itemId] || [],
+          addons: addonsByItemId[String(itemId)] || [],
         };
       });
 
@@ -492,6 +547,14 @@ export default function TransactionsPage() {
       setDetailError(null);
       setDetailItemsError(null);
       setDetailAddonsError(null);
+      setDetailDebug({
+        orderItemsCount: 0,
+        orderItemIds: [],
+        addonsCount: 0,
+        addonsPayload: [],
+        addonsQueryAttempted: false,
+        addonsQueryError: null,
+      });
       setDetailData(null);
       await fetchOrderDetail(order.id, order);
     },
@@ -507,6 +570,14 @@ export default function TransactionsPage() {
     setDetailError(null);
     setDetailItemsError(null);
     setDetailAddonsError(null);
+    setDetailDebug({
+      orderItemsCount: 0,
+      orderItemIds: [],
+      addonsCount: 0,
+      addonsPayload: [],
+      addonsQueryAttempted: false,
+      addonsQueryError: null,
+    });
     setDetailData(null);
   }, []);
 
@@ -808,7 +879,7 @@ export default function TransactionsPage() {
                       detailData.order_items.map((item) => {
                         const baseLineTotal = (Number(item.price) || 0) * (Number(item.quantity) || 0);
                         return (
-                          <div key={item.id} className="rounded-lg border border-gray-100 bg-gray-50/60 p-3 text-sm">
+                          <div key={String(item.id)} className="rounded-lg border border-gray-100 bg-gray-50/60 p-3 text-sm">
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
                                 <p className="font-medium text-gray-900">{item.name}</p>
@@ -826,7 +897,7 @@ export default function TransactionsPage() {
                                   const addonLineTotal = (Number(addon.price) || 0) * (Number(addon.quantity) || 0);
                                   const addonLabel = addon.quantity > 1 ? `+ ${addon.name} x${addon.quantity}` : `+ ${addon.name}`;
                                   return (
-                                    <div key={addon.id} className="flex items-start justify-between gap-3 pl-3 text-xs text-gray-600">
+                                    <div key={String(addon.id)} className="flex items-start justify-between gap-3 pl-3 text-xs text-gray-600">
                                       <p className="min-w-0 truncate">{addonLabel}</p>
                                       <div className="text-right whitespace-nowrap">
                                         <p>{formatPrice(addonLineTotal)}</p>
@@ -860,6 +931,23 @@ export default function TransactionsPage() {
                     </div>
                   </div>
                 </div>
+
+
+                {process.env.NODE_ENV !== 'production' && (
+                  <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700">
+                    <p><span className="font-semibold">Debug selectedOrderId:</span> {selectedOrderId || '—'}</p>
+                    <p><span className="font-semibold">Fetched order items:</span> {detailDebug.orderItemsCount}</p>
+                    <p><span className="font-semibold">Order item ids:</span> {JSON.stringify(detailDebug.orderItemIds)}</p>
+                    <p><span className="font-semibold">Fetched order addons:</span> {detailDebug.addonsCount}</p>
+                    {detailDebug.addonsQueryError && (
+                      <p className="text-rose-700"><span className="font-semibold">Addons query error:</span> {detailDebug.addonsQueryError}</p>
+                    )}
+                    {detailDebug.addonsQueryAttempted && detailDebug.addonsCount === 0 && !detailDebug.addonsQueryError && (
+                      <p className="text-amber-700">No order_addons were returned for these order_item_ids.</p>
+                    )}
+                    <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded border border-gray-200 bg-white p-2">{JSON.stringify(detailDebug.addonsPayload, null, 2)}</pre>
+                  </div>
+                )}
 
                 <div className="mt-6 flex flex-wrap justify-end gap-2 border-t border-gray-100 pt-4">
                   <button
