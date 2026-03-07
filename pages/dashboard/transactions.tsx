@@ -409,6 +409,11 @@ export default function TransactionsPage() {
       const itemRows = (itemsData ?? []) as any[];
       const orderItemIds = itemRows.map((item) => Number(item.id)).filter((id) => Number.isFinite(id));
 
+      if (process.env.NODE_ENV !== 'production') {
+        console.debug('Transactions detail fetched order items', itemRows);
+        console.debug('Transactions detail order item ids', orderItemIds);
+      }
+
       let addonsByItemId: Record<number, TransactionOrderAddon[]> = {};
 
       if (orderItemIds.length > 0) {
@@ -432,6 +437,9 @@ export default function TransactionsPage() {
         if (addonsError) {
           setDetailAddonsError('Order add-ons could not be loaded right now.');
         } else {
+          if (process.env.NODE_ENV !== 'production') {
+            console.debug('Transactions detail fetched order addons', addonsData ?? []);
+          }
           const normalizedAddons: TransactionOrderAddon[] = ((addonsData ?? []) as any[]).map((addon) => ({
             id: Number(addon.id),
             order_item_id: Number(addon.order_item_id),
@@ -544,6 +552,7 @@ export default function TransactionsPage() {
       0
     ) ?? 0;
   const itemsTotal = baseItemsTotal + addonsTotal;
+  const feesTotal = (Number(detailData?.delivery_fee) || 0) + (Number(detailData?.service_fee) || 0);
 
   return (
     <DashboardLayout>
@@ -803,11 +812,11 @@ export default function TransactionsPage() {
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
                                 <p className="font-medium text-gray-900">{item.name}</p>
+                                {item.quantity > 1 && <p className="mt-0.5 text-xs text-gray-500">x{item.quantity}</p>}
                                 {item.notes && <p className="mt-1 text-xs text-gray-500">Notes: {item.notes}</p>}
                               </div>
                               <div className="text-right">
-                                <p className="font-medium text-gray-800">{item.quantity} × {formatPrice(Number(item.price) || 0)}</p>
-                                <p className="text-xs text-gray-500">{formatPrice(baseLineTotal)}</p>
+                                <p className="font-medium text-gray-800">{formatPrice(baseLineTotal)}</p>
                               </div>
                             </div>
 
@@ -815,12 +824,12 @@ export default function TransactionsPage() {
                               <div className="mt-2 space-y-1 border-t border-gray-200 pt-2">
                                 {item.addons.map((addon) => {
                                   const addonLineTotal = (Number(addon.price) || 0) * (Number(addon.quantity) || 0);
+                                  const addonLabel = addon.quantity > 1 ? `+ ${addon.name} x${addon.quantity}` : `+ ${addon.name}`;
                                   return (
                                     <div key={addon.id} className="flex items-start justify-between gap-3 pl-3 text-xs text-gray-600">
-                                      <p className="min-w-0 truncate">+ {addon.name}</p>
+                                      <p className="min-w-0 truncate">{addonLabel}</p>
                                       <div className="text-right whitespace-nowrap">
-                                        <p>{addon.quantity} × {formatPrice(Number(addon.price) || 0)}</p>
-                                        <p className="text-gray-500">{formatPrice(addonLineTotal)}</p>
+                                        <p>{formatPrice(addonLineTotal)}</p>
                                       </div>
                                     </div>
                                   );
@@ -842,16 +851,8 @@ export default function TransactionsPage() {
                       <span className="font-medium text-gray-800">{formatPrice(itemsTotal)}</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-600">Add-ons total</span>
-                      <span className="font-medium text-gray-800">{formatPrice(addonsTotal)}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-600">Delivery fee</span>
-                      <span className="font-medium text-gray-800">{formatPrice(Number(detailData.delivery_fee) || 0)}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-600">Service fee</span>
-                      <span className="font-medium text-gray-800">{formatPrice(Number(detailData.service_fee) || 0)}</span>
+                      <span className="text-gray-600">Fees</span>
+                      <span className="font-medium text-gray-800">{formatPrice(feesTotal)}</span>
                     </div>
                     <div className="flex items-center justify-between border-t border-gray-200 pt-2 text-base font-semibold text-gray-900">
                       <span>Final total</span>
