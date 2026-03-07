@@ -22,6 +22,7 @@ import { getRandomOrderEmptyMessage } from '@/lib/orderEmptyState';
 import { formatShortOrderNumber } from '@/lib/orderDisplay';
 import { supabase } from '@/lib/supabaseClient';
 import { getTomorrowLondonDate } from '@/lib/stockDate';
+import { getEffectiveStockDisplayStatus } from '@/lib/stockAvailability';
 import { useRestaurantAvailability } from '@/hooks/useRestaurantAvailability';
 
 
@@ -97,11 +98,6 @@ const STOCK_STATUS_LABELS: Record<'in_stock' | 'scheduled' | 'out', string> = {
   out: 'Off Indefinitely',
 };
 
-const normalizeStockStatus = (status: string | null | undefined): 'in_stock' | 'scheduled' | 'out' => {
-  if (status === 'scheduled') return 'scheduled';
-  if (status === 'out') return 'out';
-  return 'in_stock';
-};
 
 const formatGBP = (value: number) =>
   new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', minimumFractionDigits: 2 }).format(
@@ -1431,7 +1427,7 @@ export default function KitchenDisplayPage() {
                 ) : null}
                 {!stockLoading && !stockError && stockSection === 'items'
                   ? filteredMenuStockRows.map((row) => {
-                      const normalizedStatus = normalizeStockStatus(row.stock_status);
+                      const normalizedStatus = getEffectiveStockDisplayStatus(row);
                       const statusKey = `menu_items-${row.id}`;
                       return (
                         <div key={statusKey} className="flex items-center justify-between gap-3 border-b border-white/5 p-3 last:border-b-0">
@@ -1462,7 +1458,7 @@ export default function KitchenDisplayPage() {
                         <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">{groupName}</p>
                         <div className="space-y-2">
                           {rows.map((row) => {
-                            const normalizedStatus = normalizeStockStatus(row.stock_status);
+                            const normalizedStatus = getEffectiveStockDisplayStatus(row);
                             const statusKey = `addon_options-${row.id}`;
                             return (
                               <div key={statusKey} className="flex items-center justify-between gap-3">

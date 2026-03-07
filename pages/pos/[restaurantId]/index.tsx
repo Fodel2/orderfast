@@ -171,7 +171,7 @@ export default function PosHomePage() {
         const itemsPromise = supabase
           .from('menu_items')
           .select(
-            'id,name,description,price,image_url,is_vegetarian,is_vegan,is_18_plus,stock_status,category_id,available,out_of_stock'
+            'id,name,description,price,image_url,is_vegetarian,is_vegan,is_18_plus,stock_status,stock_return_date,category_id,available,out_of_stock'
           )
           .eq('restaurant_id', restaurantId)
           .is('archived_at', null)

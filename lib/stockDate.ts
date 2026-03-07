@@ -17,8 +17,12 @@ const formatIsoDate = (date: Date) => {
   return `${year}-${month}-${day}`;
 };
 
+export function getTodayLondonDate(): string {
+  return LONDON_DATE_FORMATTER.format(new Date());
+}
+
 export function getTomorrowLondonDate(): string {
-  const londonToday = LONDON_DATE_FORMATTER.format(new Date());
+  const londonToday = getTodayLondonDate();
   const { year, month, day } = parseIsoDate(londonToday);
   const utcDate = new Date(Date.UTC(year, month - 1, day));
   utcDate.setUTCDate(utcDate.getUTCDate() + 1);

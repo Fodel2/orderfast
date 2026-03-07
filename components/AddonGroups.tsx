@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import type { AddonGroup } from "../utils/types";
 import { useBrand } from "@/components/branding/BrandProvider";
 import { formatPrice } from "@/lib/orderDisplay";
+import { getEffectiveStockDisplayStatus } from "@/lib/stockAvailability";
 import type { ReactNode, CSSProperties } from "react";
 
 export function validateAddonSelections(
@@ -288,9 +289,8 @@ export default function AddonGroups({
                     return Number.isNaN(d.getTime()) ? undefined : d.toLocaleDateString();
                   };
 
-                  const isOutOfStock =
-                    option.available === false ||
-                    option.stock_status !== 'in_stock';
+                  const displayStatus = getEffectiveStockDisplayStatus(option);
+                  const isOutOfStock = displayStatus !== 'in_stock';
                   const handleTileClick = () => {
                     if (isOutOfStock) return;
                     if (maxQty === 0 || groupMax === 0) return;
@@ -325,8 +325,8 @@ export default function AddonGroups({
 
                   const outOfStockLabel = (() => {
                     if (!isOutOfStock) return undefined;
-                    if (option.stock_status === 'out') return 'Out of stock';
-                    if (option.stock_status === 'scheduled') {
+                    if (displayStatus === 'out') return 'Out of stock';
+                    if (displayStatus === 'scheduled') {
                       const scheduledDate = formatDate(option.stock_return_date);
                       return scheduledDate ? `Back ${scheduledDate}` : 'Back tomorrow';
                     }

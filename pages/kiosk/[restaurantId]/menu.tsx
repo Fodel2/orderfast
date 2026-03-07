@@ -113,7 +113,7 @@ function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
         const itemsPromise = supabase
           .from('menu_items')
           .select(
-            'id,name,description,price,image_url,is_vegetarian,is_vegan,is_18_plus,stock_status,category_id,available'
+            'id,name,description,price,image_url,is_vegetarian,is_vegan,is_18_plus,stock_status,stock_return_date,category_id,available'
           )
           .eq('restaurant_id', restaurantId)
           .is('archived_at', null)
