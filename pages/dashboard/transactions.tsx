@@ -454,6 +454,14 @@ export default function TransactionsPage() {
 
   const modalOrder = detailData || selectedOrderSummary;
   const modalTableNumber = detailData?.order_type === 'dine_in' ? detailData?.dine_in_table_number : null;
+  const modalStatus = formatStatusLabel(modalOrder?.status) || 'Unknown';
+  const modalOrderType = modalOrder?.order_type ? formatStatusLabel(modalOrder.order_type) : 'Unknown';
+  const statusChipClass =
+    modalOrder?.status === 'completed'
+      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+      : modalOrder?.status === 'cancelled'
+        ? 'border-rose-200 bg-rose-50 text-rose-700'
+        : 'border-gray-200 bg-gray-50 text-gray-700';
 
   const itemsTotal =
     detailData?.order_items?.reduce(
@@ -612,28 +620,46 @@ export default function TransactionsPage() {
 
       {isDetailModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-4"
           onClick={(event) => {
             if (event.currentTarget === event.target) {
               closeModal();
             }
           }}
         >
-          <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
-            <div className="mb-4 flex items-start justify-between">
-              <h2 className="text-xl font-semibold text-gray-900">Order details</h2>
+          <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-gray-200 bg-white p-4 shadow-2xl sm:p-6">
+            <div className="mb-5 flex items-start justify-between gap-3 border-b border-gray-100 pb-4">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">Order record</p>
+                <h2 className="mt-1 text-2xl font-semibold text-gray-900">
+                  Order #{formatShortOrderNumber(modalOrder?.short_order_number)}
+                </h2>
+                <p className="mt-1 text-sm text-gray-500">
+                  {modalOrder?.created_at ? new Date(modalOrder.created_at).toLocaleString() : '—'}
+                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${statusChipClass}`}>
+                    {modalStatus}
+                  </span>
+                  <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-semibold text-gray-700">
+                    {modalOrderType}
+                  </span>
+                </div>
+              </div>
               <button
                 onClick={closeModal}
-                className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+                className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-600 transition hover:bg-gray-50 hover:text-gray-900"
               >
                 Close
               </button>
             </div>
 
             {isDetailLoading ? (
-              <p className="text-sm text-gray-500">Loading order details...</p>
+              <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-5">
+                <p className="text-sm text-gray-600">Loading order details...</p>
+              </div>
             ) : detailError ? (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
                 <p>{detailError}</p>
                 <button
                   type="button"
@@ -645,35 +671,32 @@ export default function TransactionsPage() {
               </div>
             ) : detailData ? (
               <>
-                <div className="grid gap-3 rounded-lg border border-gray-200 p-4 text-sm sm:grid-cols-2">
-                  <p>
-                    <span className="font-medium text-gray-900">Order number:</span>{' '}
-                    {formatShortOrderNumber(modalOrder?.short_order_number)}
-                  </p>
-                  <p>
-                    <span className="font-medium text-gray-900">Created:</span>{' '}
-                    {modalOrder?.created_at ? new Date(modalOrder.created_at).toLocaleString() : '—'}
-                  </p>
-                  <p>
-                    <span className="font-medium text-gray-900">Customer:</span>{' '}
-                    {modalOrder?.customer_name || '—'}
-                  </p>
-                  <p>
-                    <span className="font-medium text-gray-900">Phone:</span>{' '}
-                    {modalOrder?.phone_number || '—'}
-                  </p>
-                  <p>
-                    <span className="font-medium text-gray-900">Order type:</span>{' '}
-                    {modalOrder?.order_type || '—'}
-                  </p>
-                  <p>
-                    <span className="font-medium text-gray-900">Table number:</span>{' '}
-                    {modalTableNumber ?? '—'}
-                  </p>
-                  <p className="sm:col-span-2">
-                    <span className="font-medium text-gray-900">Customer notes:</span>{' '}
-                    {detailData.customer_notes || '—'}
-                  </p>
+                <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-4">
+                  <h3 className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">Summary</h3>
+                  <dl className="grid gap-x-4 gap-y-3 text-sm sm:grid-cols-2">
+                    <div>
+                      <dt className="text-xs uppercase tracking-wide text-gray-500">Customer</dt>
+                      <dd className="mt-1 font-medium text-gray-900">{modalOrder?.customer_name || '—'}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs uppercase tracking-wide text-gray-500">Phone</dt>
+                      <dd className="mt-1 font-medium text-gray-900">{modalOrder?.phone_number || '—'}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs uppercase tracking-wide text-gray-500">Order type</dt>
+                      <dd className="mt-1 font-medium text-gray-900">{modalOrderType}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs uppercase tracking-wide text-gray-500">Table number</dt>
+                      <dd className="mt-1 font-medium text-gray-900">{modalTableNumber ?? '—'}</dd>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <dt className="text-xs uppercase tracking-wide text-gray-500">Customer notes</dt>
+                      <dd className="mt-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-gray-800">
+                        {detailData.customer_notes || '—'}
+                      </dd>
+                    </div>
+                  </dl>
                 </div>
 
                 {detailItemsError && (
@@ -682,59 +705,65 @@ export default function TransactionsPage() {
                   </div>
                 )}
 
-                <div className="mt-5 rounded-lg border border-gray-200 p-4">
-                  <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-700">Items</h3>
+                <div className="mt-5 rounded-xl border border-gray-200 bg-white p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-gray-600">Items</h3>
+                    <span className="text-xs text-gray-500">{detailData.order_items.length} lines</span>
+                  </div>
                   <div className="space-y-2">
                     {detailData.order_items.length === 0 ? (
                       <p className="text-sm text-gray-500">No items recorded.</p>
                     ) : (
                       detailData.order_items.map((item) => (
-                        <div key={item.id} className="rounded-md border border-gray-100 p-3 text-sm">
-                          <div className="flex items-center justify-between gap-3">
-                            <p className="font-medium text-gray-900">{item.name}</p>
-                            <p className="text-gray-700">
-                              {item.quantity} × {formatPrice(Number(item.price) || 0)}
-                            </p>
+                        <div key={item.id} className="rounded-lg border border-gray-100 bg-gray-50/60 p-3 text-sm">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="font-medium text-gray-900">{item.name}</p>
+                              {item.notes && <p className="mt-1 text-xs text-gray-500">Notes: {item.notes}</p>}
+                            </div>
+                            <div className="text-right">
+                              <p className="font-medium text-gray-800">{item.quantity} × {formatPrice(Number(item.price) || 0)}</p>
+                              <p className="text-xs text-gray-500">{formatPrice((Number(item.price) || 0) * (Number(item.quantity) || 0))}</p>
+                            </div>
                           </div>
-                          {item.notes && <p className="mt-1 text-xs text-gray-500">Notes: {item.notes}</p>}
                         </div>
                       ))
                     )}
                   </div>
                 </div>
 
-                <div className="mt-5 rounded-lg border border-gray-200 p-4 text-sm">
-                  <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-700">Totals</h3>
+                <div className="mt-5 rounded-xl border border-gray-200 bg-gray-50/50 p-4 text-sm">
+                  <h3 className="mb-3 text-sm font-semibold uppercase tracking-[0.12em] text-gray-600">Totals</h3>
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <span>Items total</span>
-                      <span>{formatPrice(itemsTotal)}</span>
+                      <span className="text-gray-600">Items total</span>
+                      <span className="font-medium text-gray-800">{formatPrice(itemsTotal)}</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span>Delivery fee</span>
-                      <span>{formatPrice(Number(detailData.delivery_fee) || 0)}</span>
+                      <span className="text-gray-600">Delivery fee</span>
+                      <span className="font-medium text-gray-800">{formatPrice(Number(detailData.delivery_fee) || 0)}</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span>Service fee</span>
-                      <span>{formatPrice(Number(detailData.service_fee) || 0)}</span>
+                      <span className="text-gray-600">Service fee</span>
+                      <span className="font-medium text-gray-800">{formatPrice(Number(detailData.service_fee) || 0)}</span>
                     </div>
-                    <div className="flex items-center justify-between border-t border-gray-200 pt-2 font-semibold text-gray-900">
+                    <div className="flex items-center justify-between border-t border-gray-200 pt-2 text-base font-semibold text-gray-900">
                       <span>Final total</span>
                       <span>{formatPrice(Number(detailData.total_price) || 0)}</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="mt-5 flex flex-wrap justify-end gap-2">
+                <div className="mt-6 flex flex-wrap justify-end gap-2 border-t border-gray-100 pt-4">
                   <button
                     type="button"
-                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 transition hover:bg-gray-50"
                   >
                     Refund (placeholder)
                   </button>
                   <button
                     type="button"
-                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 transition hover:bg-gray-50"
                   >
                     Send Goodwill Voucher (placeholder)
                   </button>
