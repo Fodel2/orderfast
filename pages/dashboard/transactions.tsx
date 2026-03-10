@@ -686,7 +686,6 @@ export default function TransactionsPage() {
   }, [modalOrder?.order_type, modalOrder?.user_id]);
 
   const goodwillEligible = goodwillEligibility.eligible;
-  const goodwillIneligibleReason = goodwillEligibility.reason;
 
   const goodwillAmount = useMemo(() => {
     if (selectedGoodwillPreset === 'custom') {
@@ -1117,31 +1116,35 @@ export default function TransactionsPage() {
                   </div>
                 ) : (
                 <>
-                <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-4">
-                  <h3 className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">Summary</h3>
-                  <dl className="grid gap-x-4 gap-y-3 text-sm sm:grid-cols-2">
-                    <div>
+                <div className="rounded-xl border border-gray-200 bg-gray-50/40 p-5">
+                  <h3 className="mb-4 text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">Summary</h3>
+                  <dl className="grid gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
+                    <div className="space-y-1">
                       <dt className="text-xs uppercase tracking-wide text-gray-500">Customer</dt>
-                      <dd className="mt-1 font-medium text-gray-900">{modalOrder?.customer_name || '—'}</dd>
+                      <dd className="font-medium text-gray-900">{modalOrder?.customer_name || 'Guest order'}</dd>
                     </div>
-                    <div>
+                    <div className="space-y-1">
                       <dt className="text-xs uppercase tracking-wide text-gray-500">Phone</dt>
-                      <dd className="mt-1 font-medium text-gray-900">{modalOrder?.phone_number || '—'}</dd>
+                      <dd className="font-medium text-gray-700">{modalOrder?.phone_number || 'Not provided'}</dd>
                     </div>
-                    <div>
+                    <div className="space-y-1">
                       <dt className="text-xs uppercase tracking-wide text-gray-500">Order type</dt>
-                      <dd className="mt-1 font-medium text-gray-900">{modalOrderType}</dd>
+                      <dd className="font-medium text-gray-900">{modalOrderType}</dd>
                     </div>
-                    <div>
-                      <dt className="text-xs uppercase tracking-wide text-gray-500">Table number</dt>
-                      <dd className="mt-1 font-medium text-gray-900">{modalTableNumber ?? '—'}</dd>
-                    </div>
-                    <div className="sm:col-span-2">
-                      <dt className="text-xs uppercase tracking-wide text-gray-500">Customer notes</dt>
-                      <dd className="mt-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-gray-800">
-                        {detailData.customer_notes || '—'}
-                      </dd>
-                    </div>
+                    {modalTableNumber != null ? (
+                      <div className="space-y-1">
+                        <dt className="text-xs uppercase tracking-wide text-gray-500">Table number</dt>
+                        <dd className="font-medium text-gray-900">{modalTableNumber}</dd>
+                      </div>
+                    ) : null}
+                    {detailData.customer_notes?.trim() ? (
+                      <div className="sm:col-span-2">
+                        <dt className="text-xs uppercase tracking-wide text-gray-500">Customer notes</dt>
+                        <dd className="mt-1 rounded-lg border border-gray-200 bg-white px-3 py-2.5 leading-relaxed text-gray-700">
+                          {detailData.customer_notes}
+                        </dd>
+                      </div>
+                    ) : null}
                   </dl>
                 </div>
 
@@ -1160,16 +1163,15 @@ export default function TransactionsPage() {
                 <div className="mt-5 rounded-xl border border-gray-200 bg-white p-4">
                   <div className="mb-3 flex items-center justify-between">
                     <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-gray-600">Items</h3>
-                    <span className="text-xs text-gray-500">{detailData.order_items.length} lines</span>
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-2.5">
                     {detailData.order_items.length === 0 ? (
                       <p className="text-sm text-gray-500">No items recorded.</p>
                     ) : (
                       detailData.order_items.map((item) => {
                         const baseLineTotal = (Number(item.price) || 0) * (Number(item.quantity) || 0);
                         return (
-                          <div key={String(item.id)} className="rounded-lg border border-gray-100 bg-gray-50/60 p-3 text-sm">
+                          <div key={String(item.id)} className="rounded-lg border border-gray-100 bg-gray-50/60 p-3.5 text-sm">
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
                                 <p className="font-medium text-gray-900">{item.name}</p>
@@ -1182,12 +1184,12 @@ export default function TransactionsPage() {
                             </div>
 
                             {item.addons.length > 0 && (
-                              <div className="mt-2 space-y-1 border-t border-gray-200 pt-2">
+                              <div className="mt-2.5 space-y-1.5 border-t border-gray-200 pt-2.5">
                                 {item.addons.map((addon) => {
                                   const addonLineTotal = (Number(addon.price) || 0) * (Number(addon.quantity) || 0);
                                   const addonLabel = addon.quantity > 1 ? `+ ${addon.name} x${addon.quantity}` : `+ ${addon.name}`;
                                   return (
-                                    <div key={String(addon.id)} className="flex items-start justify-between gap-3 pl-3 text-xs text-gray-600">
+                                    <div key={String(addon.id)} className="flex items-start justify-between gap-3 pl-3 text-xs text-gray-500">
                                       <p className="min-w-0 truncate">{addonLabel}</p>
                                       <div className="text-right whitespace-nowrap">
                                         <p>{formatPrice(addonLineTotal)}</p>
@@ -1204,9 +1206,9 @@ export default function TransactionsPage() {
                   </div>
                 </div>
 
-                <div className="mt-5 rounded-xl border border-gray-200 bg-gray-50/50 p-4 text-sm">
+                <div className="mt-5 rounded-xl border border-gray-200 bg-gray-50/50 p-5 text-sm">
                   <h3 className="mb-3 text-sm font-semibold uppercase tracking-[0.12em] text-gray-600">Totals</h3>
-                  <div className="space-y-2">
+                  <div className="space-y-2.5">
                     <div className="flex items-center justify-between">
                       <span className="text-gray-600">Items total</span>
                       <span className="font-medium text-gray-800">{formatPrice(itemsTotal)}</span>
@@ -1215,7 +1217,7 @@ export default function TransactionsPage() {
                       <span className="text-gray-600">Fees</span>
                       <span className="font-medium text-gray-800">{formatPrice(feesTotal)}</span>
                     </div>
-                    <div className="flex items-center justify-between border-t border-gray-200 pt-2 text-base font-semibold text-gray-900">
+                    <div className="mt-1 flex items-center justify-between border-t border-gray-300 pt-3 text-base font-semibold text-gray-900">
                       <span>Final total</span>
                       <span>{formatPrice(Number(detailData.total_price) || 0)}</span>
                     </div>
@@ -1239,24 +1241,21 @@ export default function TransactionsPage() {
                   </div>
                 )}
 
-                <div className="mt-6 flex flex-wrap justify-end gap-2 border-t border-gray-100 pt-4">
+                <div className="mt-6 flex flex-wrap items-center justify-end gap-2.5 border-t border-gray-100 pt-4">
                   <button
                     type="button"
                     className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 transition hover:bg-gray-50"
                   >
                     Refund (placeholder)
                   </button>
-                  <div className="flex flex-col items-end gap-1">
-                    <button
-                      type="button"
-                      onClick={openGoodwillWizard}
-                      disabled={!goodwillEligible}
-                      className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      Send Goodwill Voucher
-                    </button>
-                    {!goodwillEligible ? <p className="text-xs text-gray-500">{goodwillIneligibleReason}</p> : null}
-                  </div>
+                  <button
+                    type="button"
+                    onClick={openGoodwillWizard}
+                    disabled={!goodwillEligible}
+                    className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400"
+                  >
+                    Send Goodwill Voucher
+                  </button>
                 </div>
                 </>
                 )}
