@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import DashboardLayout from '@/components/DashboardLayout';
 import { formatPrice } from '@/lib/orderDisplay';
@@ -14,8 +14,19 @@ type DashboardOrder = {
   delivery_fee: number | null;
   service_fee: number | null;
   created_at: string;
+  accepted_at?: string | null;
   kod_done_at?: string | null;
 };
+
+type ServiceThresholds = {
+  expected_prep_minutes: number;
+  busy_prep_minutes: number;
+  backlog_prep_minutes: number;
+  busy_order_threshold: number;
+  backlog_order_threshold: number;
+};
+
+type TrendDirection = 'up' | 'down' | 'flat';
 
 type DashboardOrderItem = {
   order_id: string;
@@ -45,6 +56,13 @@ type ActivityEvent = {
 
 const COMPLETED_STATUS = 'completed';
 const CANCELLED_STATUS = 'cancelled';
+const DEFAULT_SERVICE_THRESHOLDS: ServiceThresholds = {
+  expected_prep_minutes: 10,
+  busy_prep_minutes: 12,
+  backlog_prep_minutes: 18,
+  busy_order_threshold: 6,
+  backlog_order_threshold: 10,
+};
 
 const formatLongDate = (date: Date) =>
   new Intl.DateTimeFormat('en-GB', {
@@ -98,6 +116,27 @@ const formatRelativeTime = (timestamp: string) => {
   return `${days}d ago`;
 };
 
+const getOrderAcceptedAt = (order: DashboardOrder) => order.accepted_at || order.created_at;
+
+const getPrepMinutes = (order: DashboardOrder) => {
+  if (!order.kod_done_at) return null;
+  const acceptedAtMs = new Date(getOrderAcceptedAt(order)).getTime();
+  const doneAtMs = new Date(order.kod_done_at).getTime();
+  if (!Number.isFinite(acceptedAtMs) || !Number.isFinite(doneAtMs) || doneAtMs <= acceptedAtMs) return null;
+  return (doneAtMs - acceptedAtMs) / 60000;
+};
+
+const getOrderAgeMinutes = (order: DashboardOrder) => {
+  const acceptedAtMs = new Date(getOrderAcceptedAt(order)).getTime();
+  if (!Number.isFinite(acceptedAtMs)) return 0;
+  return Math.max(0, (Date.now() - acceptedAtMs) / 60000);
+};
+
+const getTrend = (current: number, previous: number): TrendDirection => {
+  if (Math.abs(current - previous) < 0.01) return 'flat';
+  return current > previous ? 'up' : 'down';
+};
+
 export default function DashboardHomePage() {
   const [restaurantId, setRestaurantId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -106,7 +145,16 @@ export default function DashboardHomePage() {
   const [revenueToday, setRevenueToday] = useState(0);
   const [revenueWeek, setRevenueWeek] = useState(0);
   const [ordersTodayCount, setOrdersTodayCount] = useState(0);
-  const [avgOrderValueToday, setAvgOrderValueToday] = useState(0);
+  const [avgPrepTimeMinutes, setAvgPrepTimeMinutes] = useState(0);
+  const [longestWaitMinutes, setLongestWaitMinutes] = useState(0);
+  const [ordersLast15Minutes, setOrdersLast15Minutes] = useState(0);
+
+  const [yesterdayRevenueAtThisTime, setYesterdayRevenueAtThisTime] = useState(0);
+  const [yesterdayOrdersAtThisTime, setYesterdayOrdersAtThisTime] = useState(0);
+  const [yesterdayAvgPrepAtThisTime, setYesterdayAvgPrepAtThisTime] = useState(0);
+  const [yesterdayOrdersLast15Minutes, setYesterdayOrdersLast15Minutes] = useState(0);
+
+  const [serviceThresholds, setServiceThresholds] = useState<ServiceThresholds>(DEFAULT_SERVICE_THRESHOLDS);
 
   const [activeOrders, setActiveOrders] = useState(0);
   const [preparedOrders, setPreparedOrders] = useState(0);
@@ -117,6 +165,8 @@ export default function DashboardHomePage() {
   const [ordersByHour, setOrdersByHour] = useState<Array<{ hour: number; count: number }>>([]);
   const [topItems, setTopItems] = useState<Array<{ name: string; quantity: number }>>([]);
   const [recentActivity, setRecentActivity] = useState<ActivityEvent[]>([]);
+  const [kpiAnimationTick, setKpiAnimationTick] = useState(0);
+  const prevKpiSignatureRef = useRef('');
 
   useEffect(() => {
     let active = true;
@@ -166,6 +216,12 @@ export default function DashboardHomePage() {
       const now = new Date();
       const { start: todayStart, end: todayEnd } = getLondonDayBounds(now);
       const { start: weekStart, end: weekEnd } = getLondonWeekBounds(now);
+      const elapsedMsToday = now.getTime() - todayStart.getTime();
+      const yesterdayStart = new Date(todayStart);
+      yesterdayStart.setUTCDate(yesterdayStart.getUTCDate() - 1);
+      const yesterdaySameTime = new Date(yesterdayStart.getTime() + elapsedMsToday);
+      const last15MinutesIso = new Date(now.getTime() - 15 * 60000).toISOString();
+      const yesterdayLast15StartIso = new Date(yesterdaySameTime.getTime() - 15 * 60000).toISOString();
       const londonToday = getTodayLondonDate();
 
       const [
@@ -176,17 +232,20 @@ export default function DashboardHomePage() {
         menuStockResponse,
         addonGroupsResponse,
         recentOrdersResponse,
+        yesterdayOrdersResponse,
+        yesterdayLast15Response,
+        serviceThresholdsResponse,
       ] = await Promise.all([
         supabase
           .from('orders')
-          .select('id,short_order_number,status,total_price,delivery_fee,service_fee,created_at,kod_done_at')
+          .select('id,short_order_number,status,total_price,delivery_fee,service_fee,created_at,accepted_at,kod_done_at')
           .eq('restaurant_id', restaurantId)
           .eq('status', COMPLETED_STATUS)
           .gte('created_at', weekStart.toISOString())
           .lt('created_at', weekEnd.toISOString()),
         supabase
           .from('orders')
-          .select('id,short_order_number,status,total_price,delivery_fee,service_fee,created_at,kod_done_at')
+          .select('id,short_order_number,status,total_price,delivery_fee,service_fee,created_at,accepted_at,kod_done_at')
           .eq('restaurant_id', restaurantId)
           .gte('created_at', todayStart.toISOString())
           .lt('created_at', todayEnd.toISOString()),
@@ -215,10 +274,29 @@ export default function DashboardHomePage() {
           .is('archived_at', null),
         supabase
           .from('orders')
-          .select('id,short_order_number,status,created_at,kod_done_at')
+          .select('id,short_order_number,status,created_at,accepted_at,kod_done_at,total_price,delivery_fee,service_fee')
           .eq('restaurant_id', restaurantId)
           .order('created_at', { ascending: false })
           .limit(25),
+        supabase
+          .from('orders')
+          .select('id,status,total_price,delivery_fee,service_fee,created_at,accepted_at,kod_done_at')
+          .eq('restaurant_id', restaurantId)
+          .gte('created_at', yesterdayStart.toISOString())
+          .lt('created_at', yesterdaySameTime.toISOString()),
+        supabase
+          .from('orders')
+          .select('id', { count: 'exact', head: true })
+          .eq('restaurant_id', restaurantId)
+          .gte('created_at', yesterdayLast15StartIso)
+          .lt('created_at', yesterdaySameTime.toISOString()),
+        supabase
+          .from('restaurants')
+          .select(
+            'expected_prep_minutes,busy_prep_minutes,backlog_prep_minutes,busy_order_threshold,backlog_order_threshold'
+          )
+          .eq('id', restaurantId)
+          .maybeSingle(),
       ]);
 
       if (!active) return;
@@ -230,7 +308,9 @@ export default function DashboardHomePage() {
         preparedOrdersResponse.error ||
         menuStockResponse.error ||
         addonGroupsResponse.error ||
-        recentOrdersResponse.error;
+        recentOrdersResponse.error ||
+        yesterdayOrdersResponse.error ||
+        yesterdayLast15Response.error;
 
       if (hasCriticalError) {
         setError('Unable to load dashboard analytics right now.');
@@ -241,17 +321,57 @@ export default function DashboardHomePage() {
       const weekCompletedOrders = (weekCompletedOrdersResponse.data || []) as DashboardOrder[];
       const todaysOrders = (todaysOrdersResponse.data || []) as DashboardOrder[];
       const todaysCompletedOrders = todaysOrders.filter((order) => order.status === COMPLETED_STATUS);
+      const todayActiveOrders = todaysOrders.filter(
+        (order) => order.status !== COMPLETED_STATUS && order.status !== CANCELLED_STATUS
+      );
+      const yesterdayOrders = (yesterdayOrdersResponse.data || []) as DashboardOrder[];
+      const yesterdayCompletedOrders = yesterdayOrders.filter((order) => order.status === COMPLETED_STATUS);
 
       const todayRevenueValue = todaysCompletedOrders.reduce((sum, order) => sum + getNetRevenue(order), 0);
       const weekRevenueValue = weekCompletedOrders.reduce((sum, order) => sum + getNetRevenue(order), 0);
+      const prepTimesToday = todaysOrders.map(getPrepMinutes).filter((value): value is number => value !== null);
+      const prepTimesYesterday = yesterdayOrders
+        .map(getPrepMinutes)
+        .filter((value): value is number => value !== null);
+      const avgPrepTodayValue = prepTimesToday.length
+        ? prepTimesToday.reduce((sum, value) => sum + value, 0) / prepTimesToday.length
+        : 0;
+      const avgPrepYesterdayValue = prepTimesYesterday.length
+        ? prepTimesYesterday.reduce((sum, value) => sum + value, 0) / prepTimesYesterday.length
+        : 0;
 
       setRevenueToday(todayRevenueValue);
       setRevenueWeek(weekRevenueValue);
-      setOrdersTodayCount(todaysCompletedOrders.length);
+      setOrdersTodayCount(todaysOrders.filter((order) => order.status !== CANCELLED_STATUS).length);
       setCompletedToday(todaysCompletedOrders.length);
-      setAvgOrderValueToday(
-        todaysCompletedOrders.length ? todayRevenueValue / todaysCompletedOrders.length : 0
+      setAvgPrepTimeMinutes(avgPrepTodayValue);
+      setLongestWaitMinutes(
+        todayActiveOrders.length ? Math.max(...todayActiveOrders.map((order) => getOrderAgeMinutes(order))) : 0
       );
+      setOrdersLast15Minutes(
+        todaysOrders.filter((order) => order.status !== CANCELLED_STATUS && order.created_at >= last15MinutesIso).length
+      );
+
+      setYesterdayRevenueAtThisTime(yesterdayCompletedOrders.reduce((sum, order) => sum + getNetRevenue(order), 0));
+      setYesterdayOrdersAtThisTime(yesterdayOrders.filter((order) => order.status !== CANCELLED_STATUS).length);
+      setYesterdayAvgPrepAtThisTime(avgPrepYesterdayValue);
+      setYesterdayOrdersLast15Minutes(yesterdayLast15Response.count || 0);
+
+      if (serviceThresholdsResponse.data) {
+        setServiceThresholds({
+          expected_prep_minutes:
+            Number(serviceThresholdsResponse.data.expected_prep_minutes) || DEFAULT_SERVICE_THRESHOLDS.expected_prep_minutes,
+          busy_prep_minutes:
+            Number(serviceThresholdsResponse.data.busy_prep_minutes) || DEFAULT_SERVICE_THRESHOLDS.busy_prep_minutes,
+          backlog_prep_minutes:
+            Number(serviceThresholdsResponse.data.backlog_prep_minutes) || DEFAULT_SERVICE_THRESHOLDS.backlog_prep_minutes,
+          busy_order_threshold:
+            Number(serviceThresholdsResponse.data.busy_order_threshold) || DEFAULT_SERVICE_THRESHOLDS.busy_order_threshold,
+          backlog_order_threshold:
+            Number(serviceThresholdsResponse.data.backlog_order_threshold) || DEFAULT_SERVICE_THRESHOLDS.backlog_order_threshold,
+        });
+      }
+
       setActiveOrders(activeOrdersResponse.count || 0);
       setPreparedOrders(preparedOrdersResponse.count || 0);
 
@@ -373,14 +493,141 @@ export default function DashboardHomePage() {
     };
   }, [restaurantId]);
 
+  useEffect(() => {
+    if (!restaurantId) return;
+
+    const channel = supabase
+      .channel(`dashboard-orders-${restaurantId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'orders', filter: `restaurant_id=eq.${restaurantId}` },
+        (payload) => {
+          const order = payload.new as DashboardOrder;
+          if (order.status !== CANCELLED_STATUS) {
+            setOrdersTodayCount((prev) => prev + 1);
+            if (new Date(order.created_at).getTime() >= Date.now() - 15 * 60000) {
+              setOrdersLast15Minutes((prev) => prev + 1);
+            }
+          }
+          if (order.status !== COMPLETED_STATUS && order.status !== CANCELLED_STATUS) {
+            setActiveOrders((prev) => prev + 1);
+            setLongestWaitMinutes((prev) => Math.max(prev, getOrderAgeMinutes(order)));
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'orders', filter: `restaurant_id=eq.${restaurantId}` },
+        (payload) => {
+          const previousOrder = payload.old as DashboardOrder;
+          const nextOrder = payload.new as DashboardOrder;
+          const wasActive = previousOrder.status !== COMPLETED_STATUS && previousOrder.status !== CANCELLED_STATUS;
+          const isActiveNow = nextOrder.status !== COMPLETED_STATUS && nextOrder.status !== CANCELLED_STATUS;
+          if (wasActive && !isActiveNow) setActiveOrders((prev) => Math.max(0, prev - 1));
+          if (!wasActive && isActiveNow) setActiveOrders((prev) => prev + 1);
+
+          if (nextOrder.status === COMPLETED_STATUS && previousOrder.status !== COMPLETED_STATUS) {
+            setRevenueToday((prev) => prev + getNetRevenue(nextOrder));
+            if (new Date(nextOrder.created_at).getTime() >= Date.now() - 15 * 60000) {
+              setOrdersLast15Minutes((prev) => Math.max(0, prev - 1));
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [restaurantId]);
+
+  useEffect(() => {
+    if (loading) return;
+    const signature = [revenueToday, ordersTodayCount, avgPrepTimeMinutes, ordersLast15Minutes, activeOrders].join('|');
+    if (prevKpiSignatureRef.current && prevKpiSignatureRef.current !== signature) {
+      setKpiAnimationTick((prev) => prev + 1);
+    }
+    prevKpiSignatureRef.current = signature;
+  }, [revenueToday, ordersTodayCount, avgPrepTimeMinutes, ordersLast15Minutes, activeOrders, loading]);
+
   const maxHourCount = useMemo(
     () => Math.max(1, ...ordersByHour.map((entry) => entry.count)),
     [ordersByHour]
   );
 
+  const servicePulse = useMemo(() => {
+    const avgPrep = avgPrepTimeMinutes;
+    const isBacklog =
+      activeOrders >= serviceThresholds.backlog_order_threshold || avgPrep >= serviceThresholds.backlog_prep_minutes;
+    const isBusy =
+      activeOrders >= serviceThresholds.busy_order_threshold || avgPrep >= serviceThresholds.busy_prep_minutes;
+
+    if (isBacklog) {
+      return {
+        label: 'Kitchen backlog',
+        containerClass: 'border-rose-200 bg-rose-50/80',
+        statusClass: 'text-rose-700',
+      };
+    }
+    if (isBusy) {
+      return {
+        label: 'Busy',
+        containerClass: 'border-amber-200 bg-amber-50/80',
+        statusClass: 'text-amber-700',
+      };
+    }
+    return {
+      label: 'Service normal',
+      containerClass: 'border-emerald-200 bg-emerald-50/80',
+      statusClass: 'text-emerald-700',
+    };
+  }, [activeOrders, avgPrepTimeMinutes, serviceThresholds]);
+
+  const kpiCards = useMemo(
+    () => [
+      {
+        label: 'Revenue Today',
+        value: formatPrice(revenueToday),
+        context: `Week: ${formatPrice(revenueWeek)}`,
+        trend: getTrend(revenueToday, yesterdayRevenueAtThisTime),
+      },
+      {
+        label: 'Orders Today',
+        value: String(ordersTodayCount),
+        context: `${activeOrders} active now`,
+        trend: getTrend(ordersTodayCount, yesterdayOrdersAtThisTime),
+      },
+      {
+        label: 'Avg Prep Time',
+        value: `${Math.round(avgPrepTimeMinutes)} min`,
+        context: `${Math.round(longestWaitMinutes)} min longest wait`,
+        trend: getTrend(avgPrepTimeMinutes, yesterdayAvgPrepAtThisTime),
+      },
+      {
+        label: 'Orders (last 15 min)',
+        value: String(ordersLast15Minutes),
+        context: `Live pace: ${ordersLast15Minutes * 4}/hr`,
+        trend: getTrend(ordersLast15Minutes, yesterdayOrdersLast15Minutes),
+      },
+    ],
+    [
+      revenueToday,
+      revenueWeek,
+      yesterdayRevenueAtThisTime,
+      ordersTodayCount,
+      activeOrders,
+      yesterdayOrdersAtThisTime,
+      avgPrepTimeMinutes,
+      longestWaitMinutes,
+      yesterdayAvgPrepAtThisTime,
+      ordersLast15Minutes,
+      yesterdayOrdersLast15Minutes,
+    ]
+  );
+
   return (
     <DashboardLayout>
-      <div className="space-y-8 p-4 sm:p-6 lg:p-8">
+      <div className="space-y-6 p-4 sm:p-6 lg:p-8">
         <section className="rounded-3xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-slate-100 p-6 shadow-sm sm:p-8">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -396,6 +643,14 @@ export default function DashboardHomePage() {
               <p className="mt-1 text-sm font-semibold text-slate-900">{formatLongDate(new Date())}</p>
             </div>
           </div>
+          <div
+            className={`mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border px-4 py-2 ${servicePulse.containerClass}`}
+          >
+            <span className={`text-sm font-semibold ${servicePulse.statusClass}`}>{servicePulse.label}</span>
+            <span className="text-xs text-slate-600">Active orders: {loading ? '—' : activeOrders}</span>
+            <span className="text-xs text-slate-600">Average prep time: {loading ? '—' : `${Math.round(avgPrepTimeMinutes)} min`}</span>
+            <span className="text-xs text-slate-600">Longest wait: {loading ? '—' : `${Math.round(longestWaitMinutes)} min`}</span>
+          </div>
         </section>
 
         {error && (
@@ -404,23 +659,33 @@ export default function DashboardHomePage() {
           </section>
         )}
 
-        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {[
-            { label: 'Revenue Today', value: formatPrice(revenueToday), tone: 'text-slate-900' },
-            { label: 'Revenue This Week', value: formatPrice(revenueWeek), tone: 'text-slate-900' },
-            { label: 'Orders Today', value: String(ordersTodayCount), tone: 'text-slate-900' },
-            {
-              label: 'Average Order Value Today',
-              value: formatPrice(avgOrderValueToday),
-              tone: 'text-slate-900',
-            },
-          ].map((metric) => (
+        <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {kpiCards.map((metric) => (
             <article
               key={metric.label}
-              className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md"
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition hover:shadow-md"
             >
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{metric.label}</p>
-              <p className={`mt-3 text-3xl font-semibold ${metric.tone}`}>{loading ? '—' : metric.value}</p>
+              <p
+                key={`${metric.label}-${kpiAnimationTick}`}
+                className="mt-2 text-3xl font-semibold text-slate-900 transition-opacity duration-200"
+              >
+                {loading ? '—' : metric.value}
+              </p>
+              <p className="mt-1 flex items-center gap-1 text-xs text-slate-500">
+                <span
+                  className={
+                    metric.trend === 'up'
+                      ? 'text-emerald-600'
+                      : metric.trend === 'down'
+                        ? 'text-rose-600'
+                        : 'text-slate-400'
+                  }
+                >
+                  {metric.trend === 'up' ? '▲' : metric.trend === 'down' ? '▼' : '•'}
+                </span>
+                <span>{metric.context}</span>
+              </p>
             </article>
           ))}
         </section>

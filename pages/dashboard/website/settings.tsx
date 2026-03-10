@@ -32,6 +32,11 @@ export default function WebsitePage() {
   const [autoAcceptKioskOrders, setAutoAcceptKioskOrders] = useState(false);
   const [autoAcceptAppOrders, setAutoAcceptAppOrders] = useState(false);
   const [autoAcceptPosOrders, setAutoAcceptPosOrders] = useState(false);
+  const [expectedPrepMinutes, setExpectedPrepMinutes] = useState(10);
+  const [busyPrepMinutes, setBusyPrepMinutes] = useState(12);
+  const [backlogPrepMinutes, setBacklogPrepMinutes] = useState(18);
+  const [busyOrderThreshold, setBusyOrderThreshold] = useState(6);
+  const [backlogOrderThreshold, setBacklogOrderThreshold] = useState(10);
 
   const [contactEnabled, setContactEnabled] = useState(true);
   const [contactEmail, setContactEmail] = useState('');
@@ -86,6 +91,11 @@ export default function WebsitePage() {
           setAutoAcceptAppOrders(!!rest.auto_accept_app_orders);
           setAutoAcceptPosOrders(!!rest.auto_accept_pos_orders);
           setCurrencyCode(rest.currency_code || 'GBP');
+          setExpectedPrepMinutes(Number(rest.expected_prep_minutes) || 10);
+          setBusyPrepMinutes(Number(rest.busy_prep_minutes) || 12);
+          setBacklogPrepMinutes(Number(rest.backlog_prep_minutes) || 18);
+          setBusyOrderThreshold(Number(rest.busy_order_threshold) || 6);
+          setBacklogOrderThreshold(Number(rest.backlog_order_threshold) || 10);
         }
         const { data: contact } = await supabase
           .from('website_contact_settings')
@@ -234,6 +244,11 @@ export default function WebsitePage() {
         auto_accept_app_orders: autoAcceptAppOrders,
         auto_accept_pos_orders: autoAcceptPosOrders,
         currency_code: currencyCode,
+        expected_prep_minutes: expectedPrepMinutes,
+        busy_prep_minutes: busyPrepMinutes,
+        backlog_prep_minutes: backlogPrepMinutes,
+        busy_order_threshold: busyOrderThreshold,
+        backlog_order_threshold: backlogOrderThreshold,
       })
       .eq('id', restaurantId);
     const { error: contactErr } = await supabase
@@ -436,6 +451,64 @@ export default function WebsitePage() {
                   />
                   <span className="font-medium">Auto-accept POS orders</span>
                 </label>
+              </div>
+            </div>
+            <div className="border-t pt-4 mt-4">
+              <h2 className="text-xl font-semibold mb-2">Kitchen &amp; Service</h2>
+              <p className="text-sm text-gray-600 mb-3">
+                These values control the Service Health indicator on the dashboard.
+              </p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="block font-semibold">Expected prep minutes</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={expectedPrepMinutes}
+                    onChange={(e) => setExpectedPrepMinutes(Number(e.target.value) || 10)}
+                    className="mt-1 w-full border border-gray-300 rounded p-2"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold">Busy prep minutes</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={busyPrepMinutes}
+                    onChange={(e) => setBusyPrepMinutes(Number(e.target.value) || 12)}
+                    className="mt-1 w-full border border-gray-300 rounded p-2"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold">Backlog prep minutes</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={backlogPrepMinutes}
+                    onChange={(e) => setBacklogPrepMinutes(Number(e.target.value) || 18)}
+                    className="mt-1 w-full border border-gray-300 rounded p-2"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold">Busy order threshold</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={busyOrderThreshold}
+                    onChange={(e) => setBusyOrderThreshold(Number(e.target.value) || 6)}
+                    className="mt-1 w-full border border-gray-300 rounded p-2"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold">Backlog order threshold</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={backlogOrderThreshold}
+                    onChange={(e) => setBacklogOrderThreshold(Number(e.target.value) || 10)}
+                    className="mt-1 w-full border border-gray-300 rounded p-2"
+                  />
+                </div>
               </div>
             </div>
             <div className="border-t pt-4 mt-4">
