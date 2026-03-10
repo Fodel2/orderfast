@@ -224,14 +224,16 @@ export default function CustomerPromotionsPage() {
       .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
       .map((voucher) => {
         const promotion = items.find((item) => item.id === voucher.promotionId);
+        const voucherTerms = promotionTermsMap[voucher.promotionId] || null;
+        const customerVisibleMessage = String(voucherTerms?.promo_terms || '').trim();
         return {
           key: `voucher:${voucher.voucherCodeId}`,
           kind: 'voucher',
-          promotionTerms: promotionTermsMap[voucher.promotionId] || null,
+          promotionTerms: voucherTerms,
           promotionId: voucher.promotionId,
           voucherCodeId: voucher.voucherCodeId,
           name: formatVoucherTitle(voucher.reward, loyaltyConfig?.reward_value ?? null),
-          subtitle: voucher.code ? `Voucher code: ${voucher.code}` : 'Enter code at checkout',
+          subtitle: customerVisibleMessage || (voucher.code ? `Voucher code: ${voucher.code}` : 'Enter code at checkout'),
           type: 'voucher',
           isCurrentlyValid: promotion?.is_currently_valid ?? true,
           status: promotion?.status || 'active',
@@ -629,7 +631,7 @@ export default function CustomerPromotionsPage() {
                         <h3 className="text-base font-semibold text-slate-900">{item.name}</h3>
                         {isActive ? <span className="rounded-full bg-teal-100 px-2 py-0.5 text-[11px] font-semibold text-teal-700">Active</span> : null}
                       </div>
-                      <p className="mt-1 text-sm text-slate-600">{scheduleLabel(item)}</p>
+                      <p className={`mt-1 text-sm leading-relaxed ${item.kind === 'voucher' ? 'max-w-[40ch] text-slate-600' : 'text-slate-600'}`}>{scheduleLabel(item)}</p>
                     </div>
                     <div className="flex items-center justify-end gap-2 min-w-[220px]">
                       {!isActive ? (
@@ -690,7 +692,7 @@ export default function CustomerPromotionsPage() {
                           <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">Owned voucher</span>
                         )}
                       </div>
-                      <p className="mt-1 text-sm text-slate-600">{scheduleLabel(item)}</p>
+                      <p className={`mt-1 text-sm leading-relaxed ${item.kind === 'voucher' ? 'max-w-[40ch] text-slate-600' : 'text-slate-600'}`}>{scheduleLabel(item)}</p>
                       {item.minSubtotal != null ? <p className="mt-1 text-xs text-slate-500">Min spend £{item.minSubtotal}</p> : null}
                     </div>
                     <div className="flex items-center justify-end min-w-[108px]">
