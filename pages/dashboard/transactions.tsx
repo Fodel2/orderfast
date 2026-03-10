@@ -9,6 +9,7 @@ type OrderTypeFilter = 'all' | 'delivery' | 'collection' | 'dine_in' | 'kiosk' |
 
 interface TransactionOrderRow {
   id: string;
+  user_id?: string | null;
   short_order_number: number | null;
   created_at: string;
   customer_name: string | null;
@@ -44,6 +45,12 @@ interface TransactionOrderDetail extends TransactionOrderRow {
   dine_in_table_number: number | null;
   order_items: TransactionOrderItem[];
 }
+
+type GoodwillWizardStep = 'details' | 'review' | 'confirm' | 'success';
+
+const GOODWILL_PRESETS = [5, 10, 15, 20] as const;
+const MESSAGE_HELPER = 'This will be displayed on the voucher and visible to customers';
+const MESSAGE_MAX_LENGTH = 240;
 
 const ORDER_ID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -123,6 +130,21 @@ const isAuthLikeError = (error: unknown) => {
   return message.includes('jwt') || message.includes('auth') || message.includes('permission');
 };
 
+const toIsoDate = (date: Date) => {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const parseCurrencyInput = (value: string) => {
+  const normalized = value.replace(/[^0-9.]/g, '').trim();
+  if (!normalized) return null;
+  const numeric = Number(normalized);
+  if (!Number.isFinite(numeric)) return null;
+  return Number(numeric.toFixed(2));
+};
+
 export default function TransactionsPage() {
   const [restaurantId, setRestaurantId] = useState<string | null>(null);
   const [orders, setOrders] = useState<TransactionOrderRow[]>([]);
@@ -160,6 +182,17 @@ export default function TransactionsPage() {
     addonsQueryError: null,
   });
   const [detailData, setDetailData] = useState<TransactionOrderDetail | null>(null);
+  const [goodwillStep, setGoodwillStep] = useState<GoodwillWizardStep>('details');
+  const [goodwillOpen, setGoodwillOpen] = useState(false);
+  const [selectedGoodwillPreset, setSelectedGoodwillPreset] = useState<number | 'custom'>(10);
+  const [customGoodwillValue, setCustomGoodwillValue] = useState('');
+  const [goodwillExpiryDate, setGoodwillExpiryDate] = useState('');
+  const [goodwillMessage, setGoodwillMessage] = useState('');
+  const [goodwillFieldError, setGoodwillFieldError] = useState<string | null>(null);
+  const [goodwillSubmitError, setGoodwillSubmitError] = useState<string | null>(null);
+  const [issuingGoodwill, setIssuingGoodwill] = useState(false);
+  const [goodwillSuccessValue, setGoodwillSuccessValue] = useState<number | null>(null);
+  const [goodwillSuccessExpiry, setGoodwillSuccessExpiry] = useState<string>('');
   const detailRequestRef = useRef(0);
 
   useEffect(() => {
@@ -213,7 +246,7 @@ export default function TransactionsPage() {
 
       let query = supabase
         .from('orders')
-        .select('id,short_order_number,created_at,customer_name,phone_number,order_type,total_price,status')
+        .select('id,user_id,short_order_number,created_at,customer_name,phone_number,order_type,total_price,status')
         .eq('restaurant_id', restaurantId)
         .in('status', ['completed', 'cancelled'])
         .order('created_at', { ascending: false });
@@ -348,7 +381,7 @@ export default function TransactionsPage() {
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
         .select(
-          'id,short_order_number,created_at,customer_name,phone_number,order_type,dine_in_table_number,customer_notes,total_price,delivery_fee,service_fee,status'
+          'id,user_id,short_order_number,created_at,customer_name,phone_number,order_type,dine_in_table_number,customer_notes,total_price,delivery_fee,service_fee,status'
         )
         .eq('id', orderId)
         .eq('restaurant_id', restaurantId)
@@ -387,6 +420,7 @@ export default function TransactionsPage() {
 
       const detailBase: TransactionOrderDetail = {
         id: orderData.id,
+        user_id: orderData.user_id ?? null,
         short_order_number: orderData.short_order_number,
         created_at: orderData.created_at,
         customer_name: orderData.customer_name,
@@ -556,6 +590,13 @@ export default function TransactionsPage() {
         addonsQueryError: null,
       });
       setDetailData(null);
+      setGoodwillOpen(false);
+      setGoodwillStep('details');
+      setGoodwillFieldError(null);
+      setGoodwillSubmitError(null);
+      setIssuingGoodwill(false);
+      setGoodwillSuccessValue(null);
+      setGoodwillSuccessExpiry('');
       await fetchOrderDetail(order.id, order);
     },
     [fetchOrderDetail]
@@ -579,6 +620,13 @@ export default function TransactionsPage() {
       addonsQueryError: null,
     });
     setDetailData(null);
+    setGoodwillOpen(false);
+    setGoodwillStep('details');
+    setGoodwillFieldError(null);
+    setGoodwillSubmitError(null);
+    setIssuingGoodwill(false);
+    setGoodwillSuccessValue(null);
+    setGoodwillSuccessExpiry('');
   }, []);
 
   useEffect(() => {
@@ -624,6 +672,110 @@ export default function TransactionsPage() {
     ) ?? 0;
   const itemsTotal = baseItemsTotal + addonsTotal;
   const feesTotal = (Number(detailData?.delivery_fee) || 0) + (Number(detailData?.service_fee) || 0);
+
+  const goodwillEligibility = useMemo(() => {
+    const userId = String(modalOrder?.user_id || '').trim();
+    if (!userId || !ORDER_ID_REGEX.test(userId)) {
+      return { eligible: false, reason: 'Customer account required' };
+    }
+    const orderType = String(modalOrder?.order_type || '').toLowerCase();
+    if (orderType === 'kiosk' || orderType === 'express') {
+      return { eligible: false, reason: 'Unavailable for this order type' };
+    }
+    return { eligible: true, reason: '' };
+  }, [modalOrder?.order_type, modalOrder?.user_id]);
+
+  const goodwillEligible = goodwillEligibility.eligible;
+  const goodwillIneligibleReason = goodwillEligibility.reason;
+
+  const goodwillAmount = useMemo(() => {
+    if (selectedGoodwillPreset === 'custom') {
+      return parseCurrencyInput(customGoodwillValue);
+    }
+    return Number(selectedGoodwillPreset);
+  }, [customGoodwillValue, selectedGoodwillPreset]);
+
+  const resetGoodwillWizard = useCallback(() => {
+    setGoodwillOpen(false);
+    setGoodwillStep('details');
+    setSelectedGoodwillPreset(10);
+    setCustomGoodwillValue('');
+    setGoodwillExpiryDate('');
+    setGoodwillMessage('');
+    setGoodwillFieldError(null);
+    setGoodwillSubmitError(null);
+    setIssuingGoodwill(false);
+    setGoodwillSuccessValue(null);
+    setGoodwillSuccessExpiry('');
+  }, []);
+
+  const openGoodwillWizard = useCallback(() => {
+    if (!goodwillEligible) return;
+    setGoodwillOpen(true);
+    setGoodwillStep('details');
+    setGoodwillFieldError(null);
+    setGoodwillSubmitError(null);
+    if (!goodwillExpiryDate) {
+      const defaultExpiry = new Date();
+      defaultExpiry.setDate(defaultExpiry.getDate() + 30);
+      setGoodwillExpiryDate(toIsoDate(defaultExpiry));
+    }
+  }, [goodwillEligible, goodwillExpiryDate]);
+
+  const validateGoodwillStep = useCallback(() => {
+    if (!goodwillEligible) {
+      setGoodwillFieldError('Customer account required');
+      return false;
+    }
+    if (!goodwillAmount || goodwillAmount <= 0 || goodwillAmount > 500) {
+      setGoodwillFieldError('Enter a valid voucher value between £0.01 and £500.');
+      return false;
+    }
+    if (!goodwillExpiryDate) {
+      setGoodwillFieldError('Expiry date is required.');
+      return false;
+    }
+    const expiry = new Date(`${goodwillExpiryDate}T23:59:59`);
+    if (Number.isNaN(expiry.valueOf()) || expiry.valueOf() <= Date.now()) {
+      setGoodwillFieldError('Expiry date must be in the future.');
+      return false;
+    }
+    setGoodwillFieldError(null);
+    return true;
+  }, [goodwillAmount, goodwillEligible, goodwillExpiryDate]);
+
+  const issueGoodwillVoucher = useCallback(async () => {
+    if (!selectedOrderId || !validateGoodwillStep() || issuingGoodwill) return;
+    setIssuingGoodwill(true);
+    setGoodwillSubmitError(null);
+
+    try {
+      const response = await fetch('/api/dashboard/issue-goodwill-voucher', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: selectedOrderId,
+          amount: goodwillAmount,
+          expiryDate: goodwillExpiryDate,
+          message: goodwillMessage.trim().slice(0, MESSAGE_MAX_LENGTH),
+        }),
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(String(payload?.message || 'Failed to issue goodwill voucher.'));
+      }
+
+      setGoodwillSuccessValue(goodwillAmount || null);
+      setGoodwillSuccessExpiry(goodwillExpiryDate);
+      setGoodwillStep('success');
+    } catch (error: any) {
+      setGoodwillSubmitError(error?.message || 'Failed to issue goodwill voucher.');
+      setGoodwillStep('review');
+    } finally {
+      setIssuingGoodwill(false);
+    }
+  }, [goodwillAmount, goodwillExpiryDate, goodwillMessage, issuingGoodwill, selectedOrderId, validateGoodwillStep]);
 
   return (
     <DashboardLayout>
@@ -827,6 +979,144 @@ export default function TransactionsPage() {
               </div>
             ) : detailData ? (
               <>
+                {goodwillOpen ? (
+                  <div className="animate-[fadeIn_.2s_ease-out] space-y-4 rounded-xl border border-gray-200 bg-gradient-to-b from-white to-gray-50/40 p-4">
+                    <div className="rounded-lg border border-gray-200 bg-white p-3">
+                      <p className="text-xs uppercase tracking-[0.12em] text-gray-500">Goodwill voucher</p>
+                      <p className="mt-1 text-sm font-medium text-gray-900">
+                        {modalOrder?.customer_name || 'Customer'} · {formatShortOrderNumber(modalOrder?.short_order_number)}
+                      </p>
+                    </div>
+
+                    {goodwillStep === 'details' && (
+                      <div className="space-y-4">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">Step 1 — Voucher Details</p>
+                        </div>
+                        <div>
+                          <p className="mb-2 text-xs uppercase tracking-[0.12em] text-gray-500">Voucher value</p>
+                          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+                            {GOODWILL_PRESETS.map((preset) => (
+                              <button
+                                key={preset}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedGoodwillPreset(preset);
+                                  setGoodwillFieldError(null);
+                                }}
+                                className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${selectedGoodwillPreset === preset ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'}`}
+                              >
+                                £{preset}
+                              </button>
+                            ))}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedGoodwillPreset('custom');
+                                setGoodwillFieldError(null);
+                              }}
+                              className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${selectedGoodwillPreset === 'custom' ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'}`}
+                            >
+                              Custom
+                            </button>
+                          </div>
+                          {selectedGoodwillPreset === 'custom' && (
+                            <label className="mt-3 block text-sm text-gray-700">
+                              <span className="mb-1 block">Custom amount</span>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={customGoodwillValue}
+                                onChange={(event) => setCustomGoodwillValue(event.target.value)}
+                                placeholder="0.00"
+                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                              />
+                            </label>
+                          )}
+                        </div>
+
+                        <label className="block text-sm text-gray-700">
+                          <span className="mb-1 block">Expiry date</span>
+                          <input
+                            type="date"
+                            value={goodwillExpiryDate}
+                            onChange={(event) => setGoodwillExpiryDate(event.target.value)}
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                          />
+                        </label>
+
+                        <label className="block text-sm text-gray-700">
+                          <span className="mb-1 block">Customer message</span>
+                          <p className="mb-1 text-xs text-gray-500">{MESSAGE_HELPER}</p>
+                          <textarea
+                            value={goodwillMessage}
+                            onChange={(event) => setGoodwillMessage(event.target.value.slice(0, MESSAGE_MAX_LENGTH))}
+                            rows={3}
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                            placeholder="Optional message"
+                          />
+                          <p className="mt-1 text-xs text-gray-400">{goodwillMessage.trim().length}/{MESSAGE_MAX_LENGTH}</p>
+                        </label>
+
+                        {goodwillFieldError && <p className="text-sm text-rose-600">{goodwillFieldError}</p>}
+
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!validateGoodwillStep()) return;
+                              setGoodwillStep('review');
+                            }}
+                            className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-700"
+                          >
+                            Continue
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {goodwillStep === 'review' && (
+                      <div className="space-y-4">
+                        <p className="text-sm font-semibold text-gray-900">Step 2 — Review</p>
+                        <div className="rounded-xl border border-gray-200 bg-white p-4 text-sm">
+                          <p><span className="text-gray-500">Customer:</span> <span className="font-medium text-gray-900">{modalOrder?.customer_name || '—'}</span></p>
+                          <p className="mt-1"><span className="text-gray-500">Voucher value:</span> <span className="font-medium text-gray-900">{formatPrice(goodwillAmount || 0)}</span></p>
+                          <p className="mt-1"><span className="text-gray-500">Expiry date:</span> <span className="font-medium text-gray-900">{goodwillExpiryDate || '—'}</span></p>
+                          {goodwillMessage.trim() ? <p className="mt-1"><span className="text-gray-500">Customer message:</span> <span className="font-medium text-gray-900">{goodwillMessage.trim()}</span></p> : null}
+                          <p className="mt-3 text-sm text-gray-600">This voucher will be issued directly to this customer's account.</p>
+                        </div>
+                        {goodwillSubmitError && <p className="text-sm text-rose-600">{goodwillSubmitError}</p>}
+                        <div className="flex justify-between gap-2">
+                          <button type="button" onClick={() => setGoodwillStep('details')} className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm text-gray-700">Back</button>
+                          <button type="button" disabled={issuingGoodwill} onClick={() => setGoodwillStep('confirm')} className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60">Issue Voucher</button>
+                        </div>
+                      </div>
+                    )}
+
+                    {goodwillStep === 'confirm' && (
+                      <div className="space-y-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                        <p className="text-sm font-semibold text-amber-900">Are you sure you want to issue this goodwill voucher?</p>
+                        <div className="flex justify-end gap-2">
+                          <button type="button" disabled={issuingGoodwill} onClick={() => setGoodwillStep('review')} className="rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm text-amber-800">Cancel</button>
+                          <button type="button" disabled={issuingGoodwill} onClick={issueGoodwillVoucher} className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60">{issuingGoodwill ? 'Issuing…' : 'Issue Voucher'}</button>
+                        </div>
+                      </div>
+                    )}
+
+                    {goodwillStep === 'success' && (
+                      <div className="space-y-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                        <p className="text-base font-semibold text-emerald-900">Voucher issued successfully</p>
+                        <p className="text-sm text-emerald-800">Value: {formatPrice(goodwillSuccessValue || 0)}</p>
+                        <p className="text-sm text-emerald-800">Expiry date: {goodwillSuccessExpiry}</p>
+                        <p className="text-sm text-emerald-800">Attached to the customer account.</p>
+                        <div className="flex justify-end">
+                          <button type="button" onClick={resetGoodwillWizard} className="rounded-lg border border-emerald-300 bg-white px-4 py-2 text-sm text-emerald-800">Return to order details</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                <>
                 <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-4">
                   <h3 className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">Summary</h3>
                   <dl className="grid gap-x-4 gap-y-3 text-sm sm:grid-cols-2">
@@ -956,13 +1246,20 @@ export default function TransactionsPage() {
                   >
                     Refund (placeholder)
                   </button>
-                  <button
-                    type="button"
-                    className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 transition hover:bg-gray-50"
-                  >
-                    Send Goodwill Voucher (placeholder)
-                  </button>
+                  <div className="flex flex-col items-end gap-1">
+                    <button
+                      type="button"
+                      onClick={openGoodwillWizard}
+                      disabled={!goodwillEligible}
+                      className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Send Goodwill Voucher
+                    </button>
+                    {!goodwillEligible ? <p className="text-xs text-gray-500">{goodwillIneligibleReason}</p> : null}
+                  </div>
                 </div>
+                </>
+                )}
               </>
             ) : (
               <p className="text-sm text-gray-500">No order details available.</p>
