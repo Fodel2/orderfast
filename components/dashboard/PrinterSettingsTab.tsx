@@ -83,6 +83,7 @@ const printerRoles = ['kitchen', 'receipt', 'packing', 'bar', 'dessert', 'expo']
 
 type PreviewTicketType = 'KOT' | 'Invoice';
 type PreviewWidth = '58mm' | '80mm';
+type PrintingSubTab = 'printers' | 'kitchen-tickets' | 'receipts' | 'alerts' | 'diagnostics';
 
 const ticketTypeOrder: PreviewTicketType[] = ['KOT', 'Invoice'];
 
@@ -114,6 +115,19 @@ const buildDefaultRuleDraft = (ticketType: PreviewTicketType): PrintRule => ({
   custom_message: 'Thanks for your order.',
 });
 
+const triggerOptionsByTicketType: Record<PreviewTicketType, { value: string; label: string }[]> = {
+  KOT: [
+    { value: 'order_created', label: 'When order is created' },
+    { value: 'order_accepted', label: 'When order is accepted' },
+    { value: 'manual_only', label: 'Manual prints only' },
+  ],
+  Invoice: [
+    { value: 'order_completed', label: 'When order is completed' },
+    { value: 'order_paid', label: 'When payment is captured' },
+    { value: 'manual_only', label: 'Manual prints only' },
+  ],
+};
+
 export default function PrinterSettingsTab({
   restaurantId,
   canEdit,
@@ -131,6 +145,7 @@ export default function PrinterSettingsTab({
   const [jobs, setJobs] = useState<PrintJob[]>([]);
   const [showAddPrinter, setShowAddPrinter] = useState(false);
   const [editingPrinter, setEditingPrinter] = useState<Printer | null>(null);
+  const [activeSubTab, setActiveSubTab] = useState<PrintingSubTab>('printers');
   const [editorTicketType, setEditorTicketType] = useState<PreviewTicketType>('KOT');
   const [printerDraft, setPrinterDraft] = useState({
     name: '',
@@ -459,6 +474,11 @@ export default function PrinterSettingsTab({
     setPreviewTicketType(editorTicketType);
   }, [editorTicketType]);
 
+  useEffect(() => {
+    if (activeSubTab === 'kitchen-tickets') setEditorTicketType('KOT');
+    if (activeSubTab === 'receipts') setEditorTicketType('Invoice');
+  }, [activeSubTab]);
+
   const previewRule = useMemo(() => {
     const baseRule = rules.find((rule) => normalizeTicketType(rule.ticket_type) === previewTicketType);
     const editingSameRule = ruleDraft && normalizeTicketType(ruleDraft.ticket_type) === previewTicketType;
@@ -546,6 +566,11 @@ export default function PrinterSettingsTab({
 
   if (loading) return <div className="bg-white p-6 rounded-lg shadow">Loading printer settings...</div>;
 
+  const isTicketTab = activeSubTab === 'kitchen-tickets' || activeSubTab === 'receipts';
+  const activeTicketType: PreviewTicketType = activeSubTab === 'receipts' ? 'Invoice' : 'KOT';
+  const triggerOptions = triggerOptionsByTicketType[activeTicketType];
+  const draftTriggerValue = ruleDraft?.trigger_event || triggerOptions[0]?.value || '';
+
   return (
     <div className="space-y-6">
       {!canEdit && (
@@ -554,6 +579,28 @@ export default function PrinterSettingsTab({
         </div>
       )}
 
+      <section className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+        <nav className="flex flex-wrap gap-2" aria-label="Printing settings sections">
+          {([
+            ['printers', 'Printers'],
+            ['kitchen-tickets', 'Kitchen Tickets'],
+            ['receipts', 'Receipts'],
+            ['alerts', 'Alerts'],
+            ['diagnostics', 'Diagnostics'],
+          ] as [PrintingSubTab, string][]).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setActiveSubTab(key)}
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium border ${activeSubTab === key ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-700 border-gray-300'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+      </section>
+
+      {activeSubTab === 'alerts' && (
       <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -607,7 +654,9 @@ export default function PrinterSettingsTab({
           </label>
         </div>
       </section>
+      )}
 
+      {activeSubTab === 'printers' && (
       <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm space-y-4">
         <div className="flex flex-wrap justify-between items-center gap-3">
           <h2 className="text-xl font-semibold">Registered Printers</h2>
@@ -673,24 +722,16 @@ export default function PrinterSettingsTab({
           {printers.length === 0 && <p className="text-sm text-gray-600">No printers yet.</p>}
         </div>
       </section>
+      )}
 
+      {isTicketTab && (
       <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 className="text-xl font-semibold">Ticket Editor</h2>
-            <p className="text-sm text-gray-500">Configure KOT and Invoice independently. Preview updates with your draft.</p>
-          </div>
-          <div className="flex items-center gap-2 rounded-lg border p-1">
-            {(['KOT', 'Invoice'] as PreviewTicketType[]).map((type) => (
-              <button
-                key={type}
-                type="button"
-                onClick={() => setEditorTicketType(type)}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium ${editorTicketType === type ? 'bg-teal-600 text-white' : 'text-gray-700'}`}
-              >
-                {type}
-              </button>
-            ))}
+            <h2 className="text-xl font-semibold">{activeTicketType === 'KOT' ? 'Kitchen Tickets' : 'Receipts'}</h2>
+            <p className="text-sm text-gray-500">
+              {activeTicketType === 'KOT' ? 'Configure kitchen ticket behavior and layout.' : 'Configure customer receipt behavior and layout.'}
+            </p>
           </div>
         </div>
 
@@ -705,13 +746,20 @@ export default function PrinterSettingsTab({
                   </label>
                   <label className="border rounded-lg p-3 text-sm">
                     <span className="block mb-1">Trigger Event</span>
-                    <input disabled={!canEdit} className="w-full border rounded p-2" value={ruleDraft.trigger_event || ''} onChange={(e) => setRuleDraft({ ...ruleDraft, trigger_event: e.target.value })} />
+                    <select disabled={!canEdit} className="w-full border rounded p-2" value={draftTriggerValue} onChange={(e) => setRuleDraft({ ...ruleDraft, trigger_event: e.target.value })}>
+                      {triggerOptions.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                      {!triggerOptions.some((option) => option.value === draftTriggerValue) && (
+                        <option value={draftTriggerValue}>Custom ({draftTriggerValue})</option>
+                      )}
+                    </select>
                   </label>
                   <label className="border rounded-lg p-3 text-sm">
                     <span className="block mb-1">Copies</span>
                     <input disabled={!canEdit} type="number" min={1} className="w-full border rounded p-2" value={ruleDraft.copies || 1} onChange={(e) => setRuleDraft({ ...ruleDraft, copies: Number(e.target.value) || 1 })} />
                   </label>
-                  {editorTicketType === 'KOT' && (
+                  {activeTicketType === 'KOT' && (
                     <label className="border rounded-lg p-3 text-sm">
                       <span className="block mb-1">Item Grouping</span>
                       <input disabled={!canEdit} className="w-full border rounded p-2" value={ruleDraft.item_grouping || ''} onChange={(e) => setRuleDraft({ ...ruleDraft, item_grouping: e.target.value })} />
@@ -738,7 +786,7 @@ export default function PrinterSettingsTab({
                 <div className="rounded-lg border border-gray-200 p-4 space-y-3">
                   <p className="text-sm font-medium">{editorTicketType} Content Settings</p>
                   <div className="grid gap-2 md:grid-cols-2 text-sm">
-                    {(editorTicketType === 'KOT'
+                    {(activeTicketType === 'KOT'
                       ? [
                           ['print_order_time', 'Print order time'],
                           ['print_item_notes', 'Print item notes'],
@@ -761,20 +809,20 @@ export default function PrinterSettingsTab({
                     <div className="rounded border border-dashed p-2 text-xs text-gray-600 md:col-span-2">
                       <p>Order number: Always shown • Add-ons: Always shown • End of order footer: Always shown.</p>
                       <p>
-                        {editorTicketType === 'KOT'
+                        {activeTicketType === 'KOT'
                           ? 'Order type, customer name, scheduled marker and payment status are always shown when available. Dietary markers are hidden by design.'
                           : 'Payment method and payment status are always shown when available.'}
                       </p>
                     </div>
 
-                    {editorTicketType === 'Invoice' && (
+                    {activeTicketType === 'Invoice' && (
                       <label className="border rounded p-2 md:col-span-2">
                         <span className="block mb-1">Custom receipt message</span>
                         <textarea disabled={!canEdit} className="w-full border rounded p-2" rows={3} value={ruleDraft.custom_message || ''} onChange={(e) => setRuleDraft({ ...ruleDraft, custom_message: e.target.value })} />
                       </label>
                     )}
 
-                    {editorTicketType === 'Invoice' && (
+                    {activeTicketType === 'Invoice' && (
                       <div className="rounded border border-dashed p-2 text-xs text-gray-600 md:col-span-2">Promotion QR coming next.</div>
                     )}
                   </div>
@@ -785,7 +833,7 @@ export default function PrinterSettingsTab({
                 </div>
               </>
             ) : (
-              <p className="text-sm text-gray-500">No {editorTicketType} rule found yet.</p>
+              <p className="text-sm text-gray-500">No {activeTicketType} rule found yet.</p>
             )}
           </div>
 
@@ -816,7 +864,9 @@ export default function PrinterSettingsTab({
           </aside>
         </div>
       </section>
+      )}
 
+      {activeSubTab === 'alerts' && (
       <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm space-y-3">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-xl font-semibold">Voice Alerts</h2>
@@ -841,7 +891,9 @@ export default function PrinterSettingsTab({
           </label>
         </div>
       </section>
+      )}
 
+      {activeSubTab === 'diagnostics' && (
       <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm space-y-3">
         <h2 className="text-xl font-semibold">Troubleshooting</h2>
         <div className="overflow-x-auto">
@@ -876,6 +928,7 @@ export default function PrinterSettingsTab({
           </table>
         </div>
       </section>
+      )}
       {showAddPrinter && (
         <div
           className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"

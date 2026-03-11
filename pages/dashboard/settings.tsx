@@ -1,7 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import DashboardLayout from '../../components/DashboardLayout';
 import PrinterSettingsTab from '../../components/dashboard/PrinterSettingsTab';
+import {
+  SettingsPlaceholder,
+  SettingsSectionCard,
+  SettingsShell,
+} from '../../components/dashboard/settings/SettingsShell';
 import Toast from '../../components/Toast';
 import { supabase } from '../../utils/supabaseClient';
 
@@ -51,11 +56,6 @@ export default function DashboardSettingsPage() {
   const activeSection: SettingsSection = isValidSection(router.query.section)
     ? router.query.section
     : 'general';
-
-  const activeItem = useMemo(
-    () => navItems.find((item) => item.key === activeSection) ?? navItems[0],
-    [activeSection]
-  );
 
   useEffect(() => {
     const load = async () => {
@@ -118,7 +118,10 @@ export default function DashboardSettingsPage() {
 
     if (activeSection === 'general') {
       return (
-        <section className="bg-white rounded-lg shadow p-6 space-y-4">
+        <SettingsSectionCard
+          title="General"
+          description="Overview of your dashboard settings areas and reusable structure."
+        >
           <p className="text-sm text-gray-600">
             Choose a settings area below. This structure is ready for future sections like kitchen, payments, delivery, website, branding, and staff permissions.
           </p>
@@ -135,18 +138,29 @@ export default function DashboardSettingsPage() {
               </button>
             ))}
           </div>
-        </section>
+        </SettingsSectionCard>
       );
     }
 
-    return (
-      <section className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold text-gray-900">{activeItem.label}</h2>
-        <p className="text-sm text-gray-600 mt-2">
-          This section is ready. Detailed controls will be added here soon.
-        </p>
-      </section>
-    );
+    if (activeSection === 'restaurant-details') {
+      return (
+        <SettingsPlaceholder
+          title="Restaurant Details"
+          description="Business profile, contact and identity details."
+        />
+      );
+    }
+
+    if (activeSection === 'opening-hours') {
+      return (
+        <SettingsPlaceholder
+          title="Opening Hours"
+          description="Daily service windows and temporary schedule controls."
+        />
+      );
+    }
+
+    return null;
   };
 
   if (loading) {
@@ -155,32 +169,15 @@ export default function DashboardSettingsPage() {
 
   return (
     <DashboardLayout>
-      <div className="max-w-5xl mx-auto space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold">Dashboard Settings</h1>
-          <p className="mt-2 text-sm text-gray-600">Manage your restaurant configuration and operations settings.</p>
-        </div>
-
-        <div className="admin-tabs-shell">
-          <nav className="admin-tabs-nav" aria-label="Settings sections">
-            {navItems.map((item) => {
-              const active = activeSection === item.key;
-              return (
-                <button
-                  key={item.key}
-                  type="button"
-                  onClick={() => openSection(item.key)}
-                  className={`admin-tab-btn ${active ? 'is-active' : ''}`}
-                >
-                  {item.label}
-                </button>
-              );
-            })}
-          </nav>
-        </div>
-
+      <SettingsShell
+        title="Dashboard Settings"
+        description="Manage your restaurant configuration and operations settings."
+        sections={navItems}
+        activeSection={activeSection}
+        onSelectSection={(section) => openSection(section as SettingsSection)}
+      >
         {renderSection()}
-      </div>
+      </SettingsShell>
       <Toast message={toastMessage} onClose={() => setToastMessage('')} />
     </DashboardLayout>
   );
