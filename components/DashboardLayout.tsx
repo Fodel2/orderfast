@@ -283,7 +283,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     { href: '/dashboard/transactions', label: 'Transactions', icon: ArrowsRightLeftIcon },
     { href: null, label: 'Sales', icon: ChartBarIcon },
     { href: null, label: 'Invoices', icon: DocumentTextIcon },
-    { href: null, label: 'Settings', icon: Cog6ToothIcon },
+    { href: '/dashboard/settings', label: 'Settings', icon: Cog6ToothIcon },
   ];
 
   const [open, setOpen] = useState(false); // mobile open state
