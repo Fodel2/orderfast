@@ -12,6 +12,7 @@ import { orderAlertSoundController } from '@/utils/orderAlertSoundController';
 import { formatPrice, formatShortOrderNumber, formatStatusLabel } from '@/lib/orderDisplay';
 import { getRandomOrderEmptyMessage } from '@/lib/orderEmptyState';
 import { useRestaurantAvailability } from '@/hooks/useRestaurantAvailability';
+import { requestPrintJobCreation } from '@/lib/print-jobs/request';
 
 const ACTIVE_STATUSES = [
   'pending',
@@ -590,6 +591,7 @@ export default function OrdersPage() {
       if (!isOrdersPage) return;
       const updated = payload.new as Order;
       const oldStatus = (payload.old as { status?: string } | null)?.status;
+      const oldScheduledFor = (payload.old as { scheduled_for?: string | null } | null)?.scheduled_for ?? null;
       if (!updated || !matchesRestaurant(updated.restaurant_id)) {
         console.debug('[orders] ignoring update for different restaurant', {
           restaurantId,
@@ -651,6 +653,26 @@ export default function OrdersPage() {
       }
 
       syncAlertLoop();
+      if (updated.scheduled_for && restaurantId) {
+        const scheduledTs = new Date(updated.scheduled_for).getTime();
+        const oldScheduledTs = oldScheduledFor ? new Date(oldScheduledFor).getTime() : null;
+        const nowTs = Date.now();
+        if (!Number.isNaN(scheduledTs) && scheduledTs <= nowTs && (oldScheduledTs == null || oldScheduledTs > nowTs)) {
+          try {
+            await requestPrintJobCreation({
+              restaurantId,
+              orderId: updated.id,
+              ticketType: 'kot',
+              source: 'auto',
+              triggerEvent: 'scheduled_prep_window',
+              dedupeToken: `scheduled_prep_window:${updated.id}`,
+            });
+          } catch (error) {
+            console.warn('[orders] failed to create scheduled prep window print jobs', error);
+          }
+        }
+      }
+
     };
 
     const channelName = `orders-realtime-${restaurantId}`;
@@ -853,8 +875,35 @@ export default function OrdersPage() {
       clearFlashForOrder(id);
     }
 
+    if (status === 'accepted' && targetOrder?.restaurant_id) {
+      try {
+        await requestPrintJobCreation({
+          restaurantId: targetOrder.restaurant_id,
+          orderId: id,
+          ticketType: 'kot',
+          source: 'auto',
+          triggerEvent: 'order_accepted',
+          dedupeToken: `order_accepted:${id}`,
+        });
+      } catch (error) {
+        console.warn('[orders] failed to create auto KOT print jobs on accept', error);
+      }
+    }
+
     if (status === 'completed' && data?.[0]) {
       await awardLoyaltyPointsForCompletedOrder(data[0] as Pick<Order, 'id' | 'restaurant_id' | 'user_id' | 'total_price'>);
+      try {
+        await requestPrintJobCreation({
+          restaurantId: String(data[0].restaurant_id),
+          orderId: id,
+          ticketType: 'invoice',
+          source: 'auto',
+          triggerEvent: 'payment_succeeded',
+          dedupeToken: `payment_succeeded:${id}`,
+        });
+      } catch (error) {
+        console.warn('[orders] failed to create auto invoice print jobs on complete', error);
+      }
     }
 
     return true;
@@ -1223,6 +1272,21 @@ export default function OrdersPage() {
           setSelectedOrder(null);
         }}
         onUpdateStatus={updateStatus}
+        onPrint={async ({ orderId, ticketType, source }) => {
+          if (!restaurantId) return;
+          try {
+            await requestPrintJobCreation({
+              restaurantId,
+              orderId,
+              ticketType,
+              source,
+            });
+            setToastMessage(`${ticketType.toUpperCase()} print job queued.`);
+          } catch (error) {
+            console.error('[orders] failed to queue manual print job', error);
+            setToastMessage('Could not queue print job.');
+          }
+        }}
       />
       {selectedTableSession ? (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4">

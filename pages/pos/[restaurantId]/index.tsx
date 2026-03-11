@@ -17,6 +17,7 @@ import { ITEM_ADDON_LINK_WITH_GROUPS_SELECT } from '@/lib/queries/addons';
 import { calculateCartTotals, formatPrice } from '@/lib/orderDisplay';
 import { isInStockAddonOption, isOutOfStockEntity } from '@/lib/stockAvailability';
 import Toast from '@/components/Toast';
+import { requestPrintJobCreation } from '@/lib/print-jobs/request';
 
 type OrderType = 'walk-in' | 'collection' | 'delivery';
 type PaymentMethod = 'cash' | 'card';
@@ -111,6 +112,7 @@ export default function PosHomePage() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null);
   const [cashReceived, setCashReceived] = useState('');
   const [receiptNumber, setReceiptNumber] = useState<string | null>(null);
+  const [latestOrderId, setLatestOrderId] = useState<string | null>(null);
   const [receiptChoice, setReceiptChoice] = useState<ReceiptChoice | null>(null);
   const [toastMessage, setToastMessage] = useState('');
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -732,6 +734,19 @@ export default function PosHomePage() {
       }
     }
 
+    try {
+      await requestPrintJobCreation({
+        restaurantId: String(restaurantId),
+        orderId: orderRow.id,
+        ticketType: 'kot',
+        source: 'auto',
+        triggerEvent: 'order_placed',
+        dedupeToken: `order_placed:${orderRow.id}`,
+      });
+    } catch (printError) {
+      console.warn('[pos] failed to create auto KOT print jobs', printError);
+    }
+
     return orderRow;
   }, [cartItems, deliveryDetails, orderNote, orderType, restaurantId, totals.total]);
 
@@ -747,6 +762,7 @@ export default function PosHomePage() {
           : orderRow.id?.slice(0, 8);
       setReceiptNumber(resolvedReceiptNumber || null);
       setReceiptChoice(null);
+      setLatestOrderId(orderRow.id);
       setStage('paymentComplete');
     } catch (error) {
       console.error('[pos] failed to save order', error);
@@ -994,7 +1010,7 @@ export default function PosHomePage() {
               </div>
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   setStage('sell');
                   setPaymentMethod(null);
                   setCashReceived('');
@@ -1173,10 +1189,23 @@ export default function PosHomePage() {
                     <button
                       key={choice}
                       type="button"
-                      onClick={() => {
+                      onClick={async () => {
                         setReceiptChoice(choice);
                         if (choice === 'print') {
-                          setToastMessage('Printing not configured yet.');
+                          if (latestOrderId && restaurantId) {
+                            try {
+                              await requestPrintJobCreation({
+                                restaurantId: String(restaurantId),
+                                orderId: latestOrderId,
+                                ticketType: 'invoice',
+                                source: 'manual_print',
+                              });
+                              setToastMessage('Invoice print job queued.');
+                            } catch (error) {
+                              console.error('[pos] failed to queue invoice print', error);
+                              setToastMessage('Could not queue invoice print job.');
+                            }
+                          }
                         }
                         if (choice === 'digital') {
                           setToastMessage('Digital receipts coming soon.');

@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/utils/supabaseClient';
+import { requestPrintJobCreation } from '@/lib/print-jobs/request';
 
 type Printer = { id: string; name: string; role: string; provider: string | null; serial_number: string | null; enabled: boolean; is_default: boolean };
 type PrinterSettings = { printing_enabled: boolean; voice_alert_enabled: boolean; voice_message: string; voice_repeat_count: number; voice_reminder_enabled: boolean; voice_reminder_delay_seconds: number; voice_reminder_message: string; require_print_for_voice: boolean };
 type PrintRule = { id: string; ticket_type: string; enabled: boolean; trigger_event: string; copies: number; item_grouping: string | null; print_order_time: boolean; print_item_notes: boolean; print_phone: boolean; print_address: boolean; highlight_age_restricted: boolean; divider_lines: boolean; print_logo: boolean; print_restaurant_details: boolean; show_vat_breakdown: boolean; custom_message: string | null };
-type PrintJob = { id: string; created_at: string; ticket_type: string | null; status: string | null; attempts: number | null; printer_id: string | null; print_rule_id: string | null };
+type PrintJob = { id: string; created_at: string; ticket_type: string | null; status: string | null; attempts: number | null; printer_id: string | null; print_rule_id: string | null; order_id?: string | null };
 
 const defaultSettings: PrinterSettings = { printing_enabled: true, voice_alert_enabled: false, voice_message: 'New order received.', voice_repeat_count: 1, voice_reminder_enabled: false, voice_reminder_delay_seconds: 60, voice_reminder_message: 'Please check the printer.', require_print_for_voice: false };
 const printerRoles = ['kitchen', 'receipt', 'packing', 'bar', 'dessert', 'expo'];
@@ -66,12 +67,27 @@ export default function PrinterSettingsTab({ restaurantId, canEdit, onToast }: {
     await loadData();
   };
 
-  const queueJob = async (source: string, job: Partial<PrintJob>) => {
+  const queueJob = async (
+    source: 'manual_print' | 'manual_reprint' | 'retry' | 'test',
+    job: Partial<PrintJob> & { order_id?: string | null }
+  ) => {
     if (!canEdit) return;
-    const { error } = await supabase.from('print_jobs').insert({ restaurant_id: restaurantId, printer_id: job.printer_id || null, print_rule_id: job.print_rule_id || null, ticket_type: job.ticket_type || 'KOT', source, status: 'queued', attempts: 0 });
-    if (error) return onToast(`Could not create print job: ${error.message}`);
-    onToast('Print job queued.');
-    await loadData();
+    if (!job.order_id) {
+      onToast('Cannot queue print job without an order context.');
+      return;
+    }
+    try {
+      await requestPrintJobCreation({
+        restaurantId,
+        orderId: job.order_id,
+        ticketType: String(job.ticket_type || 'KOT').toLowerCase() === 'invoice' ? 'invoice' : 'kot',
+        source: source === 'test' ? 'test' : source,
+      });
+      onToast('Print job queued.');
+      await loadData();
+    } catch (error: any) {
+      onToast(`Could not create print job: ${error?.message || 'Unknown error'}`);
+    }
   };
 
   const saveRule = async () => {
@@ -105,7 +121,7 @@ export default function PrinterSettingsTab({ restaurantId, canEdit, onToast }: {
 
     <section className="bg-white p-6 rounded-lg shadow space-y-3">
       <div className="flex justify-between items-center"><h2 className="text-xl font-semibold">Registered Printers</h2><button disabled={!canEdit} onClick={()=>{setEditingPrinter(null);setShowAddPrinter(true);setPrinterDraft({ name: '', role: 'kitchen', serial_number: '', is_default: false });}} className="px-3 py-2 bg-teal-600 text-white rounded disabled:opacity-60">+ Add Printer</button></div>
-      {printers.map((p)=><div key={p.id} className="border rounded p-3 flex flex-col md:flex-row md:justify-between gap-2"><div><p className="font-semibold">{p.name} {p.is_default && <span className="ml-2 text-xs bg-teal-100 text-teal-700 px-2 py-1 rounded">Default</span>}</p><p className="text-sm text-gray-600">Role: {p.role} • Provider: {p.provider || 'Not set'} • Serial: {p.serial_number || 'Not set'} • {p.enabled ? 'Enabled' : 'Disabled'}</p></div><div className="flex gap-2"><button disabled={!canEdit} onClick={()=>queueJob('test_print',{printer_id:p.id,ticket_type:'KOT'})} className="px-2 py-1 border rounded disabled:opacity-60">Test Print</button><button disabled={!canEdit} onClick={()=>{setEditingPrinter(p);setPrinterDraft({ name: p.name, role: p.role, serial_number: p.serial_number || '', is_default: p.is_default });setShowAddPrinter(true);}} className="px-2 py-1 border rounded disabled:opacity-60">Edit</button><button disabled={!canEdit} onClick={async()=>{const {error}=await supabase.from('printers').update({enabled:!p.enabled}).eq('id',p.id).eq('restaurant_id',restaurantId);if(error){onToast(error.message);return;}loadData();}} className="px-2 py-1 border rounded disabled:opacity-60">{p.enabled?'Disable':'Enable'}</button></div></div>)}
+      {printers.map((p)=><div key={p.id} className="border rounded p-3 flex flex-col md:flex-row md:justify-between gap-2"><div><p className="font-semibold">{p.name} {p.is_default && <span className="ml-2 text-xs bg-teal-100 text-teal-700 px-2 py-1 rounded">Default</span>}</p><p className="text-sm text-gray-600">Role: {p.role} • Provider: {p.provider || 'Not set'} • Serial: {p.serial_number || 'Not set'} • {p.enabled ? 'Enabled' : 'Disabled'}</p></div><div className="flex gap-2"><button disabled={!canEdit} onClick={()=>queueJob('test',{printer_id:p.id,ticket_type:'KOT',order_id:jobs[0]?.order_id || null})} className="px-2 py-1 border rounded disabled:opacity-60">Test Print</button><button disabled={!canEdit} onClick={()=>{setEditingPrinter(p);setPrinterDraft({ name: p.name, role: p.role, serial_number: p.serial_number || '', is_default: p.is_default });setShowAddPrinter(true);}} className="px-2 py-1 border rounded disabled:opacity-60">Edit</button><button disabled={!canEdit} onClick={async()=>{const {error}=await supabase.from('printers').update({enabled:!p.enabled}).eq('id',p.id).eq('restaurant_id',restaurantId);if(error){onToast(error.message);return;}loadData();}} className="px-2 py-1 border rounded disabled:opacity-60">{p.enabled?'Disable':'Enable'}</button></div></div>)}
       {printers.length===0 && <p className="text-sm text-gray-600">No printers yet.</p>}
     </section>
 

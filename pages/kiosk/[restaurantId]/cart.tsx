@@ -15,6 +15,7 @@ import { setKioskLastRealOrderNumber } from '@/utils/kiosk/orders';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { useKeyboardViewport } from '@/hooks/useKeyboardViewport';
 import { getExpressSession, patchExpressSession } from '@/utils/express/session';
+import { requestPrintJobCreation } from '@/lib/print-jobs/request';
 
 type ExpressCheckoutSettings = {
   enable_table_numbers: boolean;
@@ -415,6 +416,19 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
             orderId: order.id,
             orderNumber: order.short_order_number ?? 0,
           });
+        }
+
+        try {
+          await requestPrintJobCreation({
+            restaurantId,
+            orderId: order.id,
+            ticketType: 'kot',
+            source: 'auto',
+            triggerEvent: 'order_placed',
+            dedupeToken: `order_placed:${order.id}`,
+          });
+        } catch (printError) {
+          console.warn('[kiosk] failed to create auto KOT print jobs', printError);
         }
 
         return { orderId: order.id, orderNumber: order.short_order_number ?? 0 };
