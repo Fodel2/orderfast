@@ -83,7 +83,17 @@ const printerRoles = ['kitchen', 'receipt', 'packing', 'bar', 'dessert', 'expo']
 
 type PreviewTicketType = 'KOT' | 'Invoice';
 type PreviewWidth = '58mm' | '80mm';
-type PrintingSubTab = 'printers' | 'kitchen-tickets' | 'receipts' | 'alerts' | 'diagnostics';
+export type PrintingSubTab = 'printers' | 'kitchen-tickets' | 'receipts' | 'alerts' | 'diagnostics';
+
+const printingSubTabItems: Array<{ key: PrintingSubTab; label: string }> = [
+  { key: 'printers', label: 'Printers' },
+  { key: 'kitchen-tickets', label: 'Kitchen Tickets' },
+  { key: 'receipts', label: 'Receipts' },
+  { key: 'alerts', label: 'Alerts' },
+  { key: 'diagnostics', label: 'Diagnostics' },
+];
+
+export const PRINTING_SUB_TAB_ITEMS = printingSubTabItems;
 
 const ticketTypeOrder: PreviewTicketType[] = ['KOT', 'Invoice'];
 
@@ -132,10 +142,16 @@ export default function PrinterSettingsTab({
   restaurantId,
   canEdit,
   onToast,
+  activeSubTab,
+  onChangeSubTab,
+  showInternalSubTabNav = true,
 }: {
   restaurantId: string;
   canEdit: boolean;
   onToast: (message: string) => void;
+  activeSubTab?: PrintingSubTab;
+  onChangeSubTab?: (nextTab: PrintingSubTab) => void;
+  showInternalSubTabNav?: boolean;
 }) {
   const [loading, setLoading] = useState(true);
   const [settings, setSettings] = useState<PrinterSettings>(defaultSettings);
@@ -145,7 +161,7 @@ export default function PrinterSettingsTab({
   const [jobs, setJobs] = useState<PrintJob[]>([]);
   const [showAddPrinter, setShowAddPrinter] = useState(false);
   const [editingPrinter, setEditingPrinter] = useState<Printer | null>(null);
-  const [activeSubTab, setActiveSubTab] = useState<PrintingSubTab>('printers');
+  const [localSubTab, setLocalSubTab] = useState<PrintingSubTab>('printers');
   const [editorTicketType, setEditorTicketType] = useState<PreviewTicketType>('KOT');
   const [printerDraft, setPrinterDraft] = useState({
     name: '',
@@ -160,6 +176,12 @@ export default function PrinterSettingsTab({
   const [previewWidth, setPreviewWidth] = useState<PreviewWidth>('58mm');
   const lastQueueNudgeAtRef = useRef(0);
   const queueNudgeInFlightRef = useRef(false);
+
+  const currentSubTab = activeSubTab ?? localSubTab;
+  const setCurrentSubTab = (nextTab: PrintingSubTab) => {
+    onChangeSubTab?.(nextTab);
+    if (activeSubTab === undefined) setLocalSubTab(nextTab);
+  };
 
   const printerById = useMemo(
     () => printers.reduce<Record<string, Printer>>((acc, p) => ((acc[p.id] = p), acc), {}),
@@ -475,9 +497,9 @@ export default function PrinterSettingsTab({
   }, [editorTicketType]);
 
   useEffect(() => {
-    if (activeSubTab === 'kitchen-tickets') setEditorTicketType('KOT');
-    if (activeSubTab === 'receipts') setEditorTicketType('Invoice');
-  }, [activeSubTab]);
+    if (currentSubTab === 'kitchen-tickets') setEditorTicketType('KOT');
+    if (currentSubTab === 'receipts') setEditorTicketType('Invoice');
+  }, [currentSubTab]);
 
   const previewRule = useMemo(() => {
     const baseRule = rules.find((rule) => normalizeTicketType(rule.ticket_type) === previewTicketType);
@@ -566,8 +588,8 @@ export default function PrinterSettingsTab({
 
   if (loading) return <div className="bg-white p-6 rounded-lg shadow">Loading printer settings...</div>;
 
-  const isTicketTab = activeSubTab === 'kitchen-tickets' || activeSubTab === 'receipts';
-  const activeTicketType: PreviewTicketType = activeSubTab === 'receipts' ? 'Invoice' : 'KOT';
+  const isTicketTab = currentSubTab === 'kitchen-tickets' || currentSubTab === 'receipts';
+  const activeTicketType: PreviewTicketType = currentSubTab === 'receipts' ? 'Invoice' : 'KOT';
   const triggerOptions = triggerOptionsByTicketType[activeTicketType];
   const draftTriggerValue = ruleDraft?.trigger_event || triggerOptions[0]?.value || '';
 
@@ -579,28 +601,24 @@ export default function PrinterSettingsTab({
         </div>
       )}
 
+      {showInternalSubTabNav && (
       <section className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
         <nav className="flex flex-wrap gap-2" aria-label="Printing settings sections">
-          {([
-            ['printers', 'Printers'],
-            ['kitchen-tickets', 'Kitchen Tickets'],
-            ['receipts', 'Receipts'],
-            ['alerts', 'Alerts'],
-            ['diagnostics', 'Diagnostics'],
-          ] as [PrintingSubTab, string][]).map(([key, label]) => (
+          {printingSubTabItems.map(({ key, label }) => (
             <button
               key={key}
               type="button"
-              onClick={() => setActiveSubTab(key)}
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium border ${activeSubTab === key ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-700 border-gray-300'}`}
+              onClick={() => setCurrentSubTab(key)}
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium border ${currentSubTab === key ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-700 border-gray-300'}`}
             >
               {label}
             </button>
           ))}
         </nav>
       </section>
+      )}
 
-      {activeSubTab === 'alerts' && (
+      {currentSubTab === 'alerts' && (
       <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -656,7 +674,7 @@ export default function PrinterSettingsTab({
       </section>
       )}
 
-      {activeSubTab === 'printers' && (
+      {currentSubTab === 'printers' && (
       <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm space-y-4">
         <div className="flex flex-wrap justify-between items-center gap-3">
           <h2 className="text-xl font-semibold">Registered Printers</h2>
@@ -866,7 +884,7 @@ export default function PrinterSettingsTab({
       </section>
       )}
 
-      {activeSubTab === 'alerts' && (
+      {currentSubTab === 'alerts' && (
       <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm space-y-3">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-xl font-semibold">Voice Alerts</h2>
@@ -893,7 +911,7 @@ export default function PrinterSettingsTab({
       </section>
       )}
 
-      {activeSubTab === 'diagnostics' && (
+      {currentSubTab === 'diagnostics' && (
       <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm space-y-3">
         <h2 className="text-xl font-semibold">Troubleshooting</h2>
         <div className="overflow-x-auto">
