@@ -800,8 +800,8 @@ export default function MenuBuilder() {
           </div>
 
         {/* Tab bar */}
-        <div className="mb-4 max-w-full border-b border-gray-200">
-          <nav className="flex min-w-0 flex-wrap gap-2 sm:flex-nowrap sm:gap-4 sm:overflow-x-auto">
+        <div className="mb-4 max-w-full admin-tabs-shell">
+          <nav className="admin-tabs-nav" aria-label="Menu management tabs">
             {[
               { key: 'menu', label: 'Menu' },
               { key: 'addons', label: 'Addons' },
@@ -811,7 +811,7 @@ export default function MenuBuilder() {
               <button
                 key={t.key}
                 onClick={() => setActiveTab(t.key as any)}
-                className={`px-3 py-2 whitespace-nowrap font-medium focus:outline-none ${activeTab === t.key ? 'border-b-2 border-teal-600 text-teal-600' : 'text-gray-500 hover:text-gray-700'}`}
+                className={`admin-tab-btn ${activeTab === t.key ? 'is-active' : ''}`}
               >
                 {t.label}
               </button>
@@ -966,6 +966,7 @@ export default function MenuBuilder() {
                                   item={item}
                                   restaurantId={restaurantId!}
                                   currencyCode={currencyCode}
+                                  hideFallbackPlaceholder
                                 />
                               ))}
                           </div>

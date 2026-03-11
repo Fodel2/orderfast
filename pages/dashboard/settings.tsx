@@ -161,8 +161,8 @@ export default function DashboardSettingsPage() {
           <p className="mt-2 text-sm text-gray-600">Manage your restaurant configuration and operations settings.</p>
         </div>
 
-        <div className="bg-white rounded-lg shadow p-2">
-          <nav className="flex gap-2 overflow-x-auto" aria-label="Settings sections">
+        <div className="admin-tabs-shell">
+          <nav className="admin-tabs-nav" aria-label="Settings sections">
             {navItems.map((item) => {
               const active = activeSection === item.key;
               return (
@@ -170,9 +170,7 @@ export default function DashboardSettingsPage() {
                   key={item.key}
                   type="button"
                   onClick={() => openSection(item.key)}
-                  className={`whitespace-nowrap rounded-md px-4 py-2 text-sm font-medium transition ${
-                    active ? 'bg-teal-600 text-white' : 'text-gray-700 hover:bg-gray-100'
-                  }`}
+                  className={`admin-tab-btn ${active ? 'is-active' : ''}`}
                 >
                   {item.label}
                 </button>
