@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react';
 
-export const FALLBACK_PLACEHOLDER_SRC = '/icons/knife-fork.svg';
+export const FALLBACK_PLACEHOLDER_SRC = '';
 
 function normalizeSource(src?: string | null): string | undefined {
   if (typeof src !== 'string') return undefined;
@@ -10,7 +10,7 @@ function normalizeSource(src?: string | null): string | undefined {
 
 export function getItemPlaceholder(
   restaurantLogoUrl?: string | null
-): { src: string; style?: CSSProperties } {
+): { src?: string; style?: CSSProperties } {
   const sharedStyle: CSSProperties = {
     filter: 'grayscale(100%)',
     opacity: 0.55,
@@ -26,7 +26,7 @@ export function getItemPlaceholder(
   }
 
   return {
-    src: FALLBACK_PLACEHOLDER_SRC,
+    src: undefined,
     style: sharedStyle,
   };
 }

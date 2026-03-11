@@ -47,6 +47,7 @@ export default function MenuItemCard({
   mode,
   onInteraction,
   currencyCode,
+  hideFallbackPlaceholder,
 }: {
   item: MenuItem;
   restaurantId?: string | number;
@@ -54,6 +55,7 @@ export default function MenuItemCard({
   mode?: 'customer' | 'kiosk';
   onInteraction?: () => void;
   currencyCode?: string | null;
+  hideFallbackPlaceholder?: boolean;
 }) {
   const [showModal, setShowModal] = useState(false);
   const { addToCart } = useCart();
@@ -98,7 +100,7 @@ export default function MenuItemCard({
     () => getItemPlaceholder(restaurantLogo),
     [restaurantLogo]
   );
-  const [placeholderSrc, setPlaceholderSrc] = useState(placeholder.src);
+  const [placeholderSrc, setPlaceholderSrc] = useState<string | undefined>(placeholder.src);
   const restaurantKey = restaurantId != null ? String(restaurantId) : undefined;
 
   const price =
@@ -318,19 +320,22 @@ export default function MenuItemCard({
                   alt={item.name}
                   className={`h-full w-full object-cover transition duration-200 ${isOutOfStock ? 'grayscale' : 'group-hover:scale-[1.02]'}`}
                 />
-              ) : (
+              ) : placeholderSrc && !hideFallbackPlaceholder ? (
                 <img
                   src={placeholderSrc}
                   alt=""
                   className="h-full w-full object-cover"
                   style={placeholderStyle}
                   onError={() => {
-                    if (placeholderSrc !== FALLBACK_PLACEHOLDER_SRC) {
+                    if (FALLBACK_PLACEHOLDER_SRC && placeholderSrc !== FALLBACK_PLACEHOLDER_SRC) {
                       setPlaceholderSrc(FALLBACK_PLACEHOLDER_SRC);
                       return;
                     }
+                    setPlaceholderSrc(undefined);
                   }}
                 />
+              ) : (
+                <div className="h-full w-full bg-[var(--muted-bg,#f5f5f5)]" />
               )}
             </div>
               {isOutOfStock ? (

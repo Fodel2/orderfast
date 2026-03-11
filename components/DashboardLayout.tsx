@@ -283,7 +283,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     { href: '/dashboard/transactions', label: 'Transactions', icon: ArrowsRightLeftIcon },
     { href: null, label: 'Sales', icon: ChartBarIcon },
     { href: null, label: 'Invoices', icon: DocumentTextIcon },
-    { href: null, label: 'Settings', icon: Cog6ToothIcon },
+    { href: '/dashboard/settings', label: 'Settings', icon: Cog6ToothIcon },
   ];
 
   const [open, setOpen] = useState(false); // mobile open state
@@ -302,7 +302,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       />
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 bg-white border-r shadow-sm flex flex-col py-6 transform transition-transform md:translate-x-0 w-60 ${open ? 'translate-x-0' : '-translate-x-full'} ${collapsed ? 'md:w-20' : 'md:w-60'}`}
+        className={`fixed inset-y-0 left-0 z-50 bg-white border-r shadow-sm flex flex-col py-6 overflow-y-auto transform transition-transform md:translate-x-0 w-60 ${open ? 'translate-x-0' : '-translate-x-full'} ${collapsed ? 'md:w-20' : 'md:w-60'}`}
       >
         <div className="px-4 mb-8 flex items-center justify-between">
           {!collapsed && <span className="text-2xl font-semibold">OrderFast</span>}
@@ -327,7 +327,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             </button>
           </div>
         </div>
-        <nav className="flex-1 px-2 space-y-1">
+        <nav className="flex-1 min-h-0 overflow-y-auto px-2 space-y-1">
           {nav.map((n) => {
             const children = Array.isArray(n.children) ? n.children : [];
             const hasChildren = children.length > 0;
