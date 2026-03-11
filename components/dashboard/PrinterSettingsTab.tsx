@@ -23,6 +23,7 @@ export default function PrinterSettingsTab({ restaurantId, canEdit, onToast }: {
   const [printerDraft, setPrinterDraft] = useState({ name: '', role: 'kitchen', serial_number: '', is_default: false });
   const [ruleDraft, setRuleDraft] = useState<PrintRule | null>(null);
   const [rulePrinterDraftIds, setRulePrinterDraftIds] = useState<string[]>([]);
+  const [onlineStatusByPrinterId, setOnlineStatusByPrinterId] = useState<Record<string, string>>({});
 
   const printerById = useMemo(() => printers.reduce<Record<string, Printer>>((acc, p) => ((acc[p.id] = p), acc), {}), [printers]);
 
@@ -90,6 +91,45 @@ export default function PrinterSettingsTab({ restaurantId, canEdit, onToast }: {
     }
   };
 
+
+
+  const checkOnlineStatus = async (printerId: string) => {
+    try {
+      const response = await fetch('/api/printers/online-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ printer_id: printerId, restaurant_id: restaurantId }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || 'Status check failed');
+      }
+      const rawStatus = payload?.status?.online ?? payload?.status?.status ?? payload?.raw?.data ?? payload?.raw;
+      const statusText = typeof rawStatus === 'string' ? rawStatus : JSON.stringify(rawStatus || 'online');
+      setOnlineStatusByPrinterId((prev) => ({ ...prev, [printerId]: statusText }));
+      onToast('Printer status checked.');
+    } catch (error: any) {
+      setOnlineStatusByPrinterId((prev) => ({ ...prev, [printerId]: 'offline/unknown' }));
+      onToast(`Could not check printer status: ${error?.message || 'Unknown error'}`);
+    }
+  };
+
+  const queueTestPrint = async (printerId: string) => {
+    try {
+      const response = await fetch('/api/printers/test-print', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ printer_id: printerId, restaurant_id: restaurantId }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error || 'Failed to queue test print');
+      onToast('Test print queued.');
+      await loadData();
+    } catch (error: any) {
+      onToast(`Could not create test print: ${error?.message || 'Unknown error'}`);
+    }
+  };
+
   const saveRule = async () => {
     if (!canEdit || !ruleDraft) return;
     const { error } = await supabase.from('print_rules').update(ruleDraft).eq('id', ruleDraft.id).eq('restaurant_id', restaurantId);
@@ -121,7 +161,7 @@ export default function PrinterSettingsTab({ restaurantId, canEdit, onToast }: {
 
     <section className="bg-white p-6 rounded-lg shadow space-y-3">
       <div className="flex justify-between items-center"><h2 className="text-xl font-semibold">Registered Printers</h2><button disabled={!canEdit} onClick={()=>{setEditingPrinter(null);setShowAddPrinter(true);setPrinterDraft({ name: '', role: 'kitchen', serial_number: '', is_default: false });}} className="px-3 py-2 bg-teal-600 text-white rounded disabled:opacity-60">+ Add Printer</button></div>
-      {printers.map((p)=><div key={p.id} className="border rounded p-3 flex flex-col md:flex-row md:justify-between gap-2"><div><p className="font-semibold">{p.name} {p.is_default && <span className="ml-2 text-xs bg-teal-100 text-teal-700 px-2 py-1 rounded">Default</span>}</p><p className="text-sm text-gray-600">Role: {p.role} • Provider: {p.provider || 'Not set'} • Serial: {p.serial_number || 'Not set'} • {p.enabled ? 'Enabled' : 'Disabled'}</p></div><div className="flex gap-2"><button disabled={!canEdit} onClick={()=>queueJob('test',{printer_id:p.id,ticket_type:'KOT',order_id:jobs[0]?.order_id || null})} className="px-2 py-1 border rounded disabled:opacity-60">Test Print</button><button disabled={!canEdit} onClick={()=>{setEditingPrinter(p);setPrinterDraft({ name: p.name, role: p.role, serial_number: p.serial_number || '', is_default: p.is_default });setShowAddPrinter(true);}} className="px-2 py-1 border rounded disabled:opacity-60">Edit</button><button disabled={!canEdit} onClick={async()=>{const {error}=await supabase.from('printers').update({enabled:!p.enabled}).eq('id',p.id).eq('restaurant_id',restaurantId);if(error){onToast(error.message);return;}loadData();}} className="px-2 py-1 border rounded disabled:opacity-60">{p.enabled?'Disable':'Enable'}</button></div></div>)}
+      {printers.map((p)=><div key={p.id} className="border rounded p-3 flex flex-col md:flex-row md:justify-between gap-2"><div><p className="font-semibold">{p.name} {p.is_default && <span className="ml-2 text-xs bg-teal-100 text-teal-700 px-2 py-1 rounded">Default</span>}</p><p className="text-sm text-gray-600">Role: {p.role} • Provider: {p.provider || 'Not set'} • Serial: {p.serial_number || 'Not set'} • {p.enabled ? 'Enabled' : 'Disabled'} • Online: {onlineStatusByPrinterId[p.id] || 'Unknown'}</p></div><div className="flex gap-2"><button disabled={!canEdit} onClick={()=>queueTestPrint(p.id)} className="px-2 py-1 border rounded disabled:opacity-60">Test Print</button><button disabled={!canEdit} onClick={()=>checkOnlineStatus(p.id)} className="px-2 py-1 border rounded disabled:opacity-60">Check Status</button><button disabled={!canEdit} onClick={()=>{setEditingPrinter(p);setPrinterDraft({ name: p.name, role: p.role, serial_number: p.serial_number || '', is_default: p.is_default });setShowAddPrinter(true);}} className="px-2 py-1 border rounded disabled:opacity-60">Edit</button><button disabled={!canEdit} onClick={async()=>{const {error}=await supabase.from('printers').update({enabled:!p.enabled}).eq('id',p.id).eq('restaurant_id',restaurantId);if(error){onToast(error.message);return;}loadData();}} className="px-2 py-1 border rounded disabled:opacity-60">{p.enabled?'Disable':'Enable'}</button></div></div>)}
       {printers.length===0 && <p className="text-sm text-gray-600">No printers yet.</p>}
     </section>
 

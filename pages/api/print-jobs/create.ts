@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { createPrintJobs, type PrintJobSource } from '@/lib/server/printJobs';
+import { processPrintQueue } from '@/lib/server/printQueueProcessor';
 
 const validSources: PrintJobSource[] = ['auto', 'manual_print', 'manual_reprint', 'retry', 'test'];
 const validTicketTypes = ['kot', 'invoice'] as const;
@@ -31,7 +32,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       dedupeToken: dedupe_token,
     });
 
-    return res.status(200).json(result);
+    let dispatch: any = null;
+    try {
+      dispatch = await processPrintQueue({ batchSize: 5, restaurantId: restaurant_id });
+    } catch (dispatchError) {
+      console.warn('[print-jobs/create] immediate dispatch failed', dispatchError);
+    }
+
+    return res.status(200).json({ ...result, dispatch });
   } catch (error: any) {
     console.error('[print-jobs/create] failed', error);
     return res.status(500).json({ error: error?.message || 'Failed to create print jobs' });
