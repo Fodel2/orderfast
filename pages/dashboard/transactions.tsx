@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { formatPrice, formatShortOrderNumber, formatStatusLabel } from '@/lib/orderDisplay';
+import { requestPrintJobCreation } from '@/lib/print-jobs/request';
 import { supabase } from '@/utils/supabaseClient';
 
 type DateRangePreset = 'today' | 'yesterday' | 'this_week' | 'last_week' | 'this_month' | 'custom';
@@ -978,6 +979,12 @@ export default function TransactionsPage() {
               </div>
             ) : detailData ? (
               <>
+                <div className="mb-4 flex flex-wrap gap-2">
+                  <button type="button" onClick={async ()=>{if(!restaurantId||!selectedOrderId)return;try{await requestPrintJobCreation({restaurantId,orderId:selectedOrderId,ticketType:'kot',source:'manual_print'});setErrorMessage('KOT print job queued.');}catch(e){setErrorMessage('Could not queue KOT print job.');}}} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700">Print KOT</button>
+                  <button type="button" onClick={async ()=>{if(!restaurantId||!selectedOrderId)return;try{await requestPrintJobCreation({restaurantId,orderId:selectedOrderId,ticketType:'kot',source:'manual_reprint'});setErrorMessage('KOT reprint queued.');}catch(e){setErrorMessage('Could not queue KOT reprint.');}}} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700">Reprint KOT</button>
+                  <button type="button" onClick={async ()=>{if(!restaurantId||!selectedOrderId)return;try{await requestPrintJobCreation({restaurantId,orderId:selectedOrderId,ticketType:'invoice',source:'manual_print'});setErrorMessage('Invoice print job queued.');}catch(e){setErrorMessage('Could not queue invoice print job.');}}} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700">Print Invoice</button>
+                  <button type="button" onClick={async ()=>{if(!restaurantId||!selectedOrderId)return;try{await requestPrintJobCreation({restaurantId,orderId:selectedOrderId,ticketType:'invoice',source:'manual_reprint'});setErrorMessage('Invoice reprint queued.');}catch(e){setErrorMessage('Could not queue invoice reprint.');}}} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700">Reprint Invoice</button>
+                </div>
                 {goodwillOpen ? (
                   <div className="animate-[fadeIn_.2s_ease-out] space-y-4 rounded-xl border border-gray-200 bg-gradient-to-b from-white to-gray-50/40 p-4">
                     <div className="rounded-lg border border-gray-200 bg-white p-3">

@@ -24,6 +24,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { getTomorrowLondonDate } from '@/lib/stockDate';
 import { getEffectiveStockDisplayStatus } from '@/lib/stockAvailability';
 import { useRestaurantAvailability } from '@/hooks/useRestaurantAvailability';
+import { requestPrintJobCreation } from '@/lib/print-jobs/request';
 
 
 type OrderAddon = {
@@ -1318,6 +1319,34 @@ export default function KitchenDisplayPage() {
                           className="flex-1 rounded-full bg-teal-500 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-black transition hover:bg-teal-400 disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           {isPreparedView ? (segment.order.status === 'completed' ? 'VIEW' : 'COMPLETE') : segment.order.status === 'pending' ? 'ACCEPT' : 'DONE'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!restaurantId) return;
+                            try {
+                              await requestPrintJobCreation({ restaurantId: String(restaurantId), orderId: segment.order.id, ticketType: 'kot', source: 'manual_print' });
+                            } catch (error) {
+                              console.error('[kod] failed to queue KOT print', error);
+                            }
+                          }}
+                          className="rounded-full border border-white/20 bg-white/10 px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-white/20"
+                        >
+                          PRINT KOT
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!restaurantId) return;
+                            try {
+                              await requestPrintJobCreation({ restaurantId: String(restaurantId), orderId: segment.order.id, ticketType: 'invoice', source: 'manual_print' });
+                            } catch (error) {
+                              console.error('[kod] failed to queue invoice print', error);
+                            }
+                          }}
+                          className="rounded-full border border-white/20 bg-white/10 px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-white/20"
+                        >
+                          PRINT INVOICE
                         </button>
                         {isPreparedView && segment.order.status !== 'completed' ? (
                           <button

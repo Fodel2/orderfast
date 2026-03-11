@@ -32,6 +32,7 @@ import {
   upsertOwnedVoucher,
   validatePromotion,
 } from '@/lib/customerPromotions';
+import { requestPrintJobCreation } from '@/lib/print-jobs/request';
 
 export default function CheckoutPage() {
   const { cart, subtotal, clearCart } = useCart();
@@ -491,6 +492,19 @@ export default function CheckoutPage() {
           ]);
           if (oaErr) throw oaErr;
         }
+      }
+
+      try {
+        await requestPrintJobCreation({
+          restaurantId: cart.restaurant_id,
+          orderId: order.id,
+          ticketType: 'kot',
+          source: 'auto',
+          triggerEvent: 'order_placed',
+          dedupeToken: `order_placed:${order.id}`,
+        });
+      } catch (printError) {
+        console.warn('[checkout] failed to create auto KOT print jobs', printError);
       }
 
       if (voucherRedemptionPayload) {
