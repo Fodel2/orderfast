@@ -84,6 +84,36 @@ const printerRoles = ['kitchen', 'receipt', 'packing', 'bar', 'dessert', 'expo']
 type PreviewTicketType = 'KOT' | 'Invoice';
 type PreviewWidth = '58mm' | '80mm';
 
+const ticketTypeOrder: PreviewTicketType[] = ['KOT', 'Invoice'];
+
+const normalizeTicketType = (value: string | null | undefined): PreviewTicketType | null => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'kot') return 'KOT';
+  if (normalized === 'invoice') return 'Invoice';
+  return null;
+};
+
+const toDbTicketType = (value: PreviewTicketType) => (value === 'KOT' ? 'kot' : 'invoice');
+
+const buildDefaultRuleDraft = (ticketType: PreviewTicketType): PrintRule => ({
+  id: `fallback-${ticketType.toLowerCase()}`,
+  ticket_type: ticketType,
+  enabled: true,
+  trigger_event: ticketType === 'KOT' ? 'order_accepted' : 'order_completed',
+  copies: 1,
+  item_grouping: 'none',
+  print_order_time: true,
+  print_item_notes: true,
+  print_phone: true,
+  print_address: true,
+  highlight_age_restricted: true,
+  divider_lines: true,
+  print_logo: false,
+  print_restaurant_details: true,
+  show_vat_breakdown: true,
+  custom_message: 'Thanks for your order.',
+});
+
 export default function PrinterSettingsTab({
   restaurantId,
   canEdit,
@@ -170,22 +200,77 @@ export default function PrinterSettingsTab({
 
     if (rulesRes.data) {
       const list = rulesRes.data as PrintRule[];
+      let normalizedRules = list
+        .map((rule) => {
+          const normalizedType = normalizeTicketType(rule.ticket_type);
+          if (!normalizedType) return null;
+          return { ...rule, ticket_type: normalizedType };
+        })
+        .filter(Boolean) as PrintRule[];
+
+      const presentTypes = new Set(normalizedRules.map((rule) => rule.ticket_type as PreviewTicketType));
+      const missingTypes = ticketTypeOrder.filter((type) => !presentTypes.has(type));
+
+      if (missingTypes.length && canEdit) {
+        const insertPayload = missingTypes.map((type) => {
+          const fallback = buildDefaultRuleDraft(type);
+          return {
+            restaurant_id: restaurantId,
+            ticket_type: toDbTicketType(type),
+            enabled: fallback.enabled,
+            trigger_event: fallback.trigger_event,
+            copies: fallback.copies,
+            item_grouping: fallback.item_grouping,
+            print_order_time: fallback.print_order_time,
+            print_item_notes: fallback.print_item_notes,
+            print_phone: fallback.print_phone,
+            print_address: fallback.print_address,
+            highlight_age_restricted: fallback.highlight_age_restricted,
+            divider_lines: fallback.divider_lines,
+            print_logo: fallback.print_logo,
+            print_restaurant_details: fallback.print_restaurant_details,
+            show_vat_breakdown: fallback.show_vat_breakdown,
+            custom_message: fallback.custom_message,
+          };
+        });
+        const { data: inserted } = await supabase.from('print_rules').insert(insertPayload).select('*');
+        const insertedNormalized = (inserted || [])
+          .map((rule: any) => {
+            const normalizedType = normalizeTicketType(rule.ticket_type);
+            if (!normalizedType) return null;
+            return { ...(rule as PrintRule), ticket_type: normalizedType };
+          })
+          .filter(Boolean) as PrintRule[];
+        normalizedRules = [...normalizedRules, ...insertedNormalized];
+      }
+
+      const fallbackMissing = ticketTypeOrder.filter(
+        (type) => !normalizedRules.some((rule) => rule.ticket_type === type)
+      );
+      if (fallbackMissing.length) {
+        normalizedRules = [...normalizedRules, ...fallbackMissing.map(buildDefaultRuleDraft)];
+      }
+
       setRules(
-        [...list].sort(
-          (a, b) => ['KOT', 'Invoice'].indexOf(a.ticket_type) - ['KOT', 'Invoice'].indexOf(b.ticket_type)
+        [...normalizedRules].sort(
+          (a, b) => ticketTypeOrder.indexOf(a.ticket_type as PreviewTicketType) - ticketTypeOrder.indexOf(b.ticket_type as PreviewTicketType)
         )
       );
-      if (list.length) {
+
+      const persistedRuleIds = normalizedRules.map((r) => r.id).filter((id) => !String(id).startsWith('fallback-'));
+      if (persistedRuleIds.length) {
         const { data } = await supabase
           .from('print_rule_printers')
           .select('print_rule_id,printer_id')
-          .in('print_rule_id', list.map((r) => r.id));
+          .in('print_rule_id', persistedRuleIds);
         const next: Record<string, string[]> = {};
         (data || []).forEach((row: any) => {
           if (!next[row.print_rule_id]) next[row.print_rule_id] = [];
           next[row.print_rule_id].push(row.printer_id);
         });
         setRulePrinterMap(next);
+      } else {
+        setRulePrinterMap({});
       }
     }
 
@@ -298,23 +383,55 @@ export default function PrinterSettingsTab({
 
   const saveRule = async () => {
     if (!canEdit || !ruleDraft) return;
-    const { error } = await supabase
-      .from('print_rules')
-      .update(ruleDraft)
-      .eq('id', ruleDraft.id)
-      .eq('restaurant_id', restaurantId);
-    if (error) return onToast(`Could not save rule: ${error.message}`);
+    const normalizedDraftType = normalizeTicketType(ruleDraft.ticket_type) || editorTicketType;
+    const rulePayload = {
+      ticket_type: toDbTicketType(normalizedDraftType),
+      enabled: ruleDraft.enabled,
+      trigger_event: ruleDraft.trigger_event,
+      copies: ruleDraft.copies,
+      item_grouping: ruleDraft.item_grouping,
+      print_order_time: ruleDraft.print_order_time,
+      print_item_notes: ruleDraft.print_item_notes,
+      print_phone: ruleDraft.print_phone,
+      print_address: ruleDraft.print_address,
+      highlight_age_restricted: ruleDraft.highlight_age_restricted,
+      divider_lines: ruleDraft.divider_lines,
+      print_logo: ruleDraft.print_logo,
+      print_restaurant_details: ruleDraft.print_restaurant_details,
+      show_vat_breakdown: ruleDraft.show_vat_breakdown,
+      custom_message: ruleDraft.custom_message,
+    };
+
+    const isFallbackRule = String(ruleDraft.id).startsWith('fallback-');
+    let persistedRuleId = ruleDraft.id;
+
+    if (isFallbackRule) {
+      const { data: insertedRule, error } = await supabase
+        .from('print_rules')
+        .insert({ restaurant_id: restaurantId, ...rulePayload })
+        .select('id')
+        .single();
+      if (error) return onToast(`Could not save rule: ${error.message}`);
+      persistedRuleId = insertedRule.id;
+    } else {
+      const { error } = await supabase
+        .from('print_rules')
+        .update(rulePayload)
+        .eq('id', ruleDraft.id)
+        .eq('restaurant_id', restaurantId);
+      if (error) return onToast(`Could not save rule: ${error.message}`);
+    }
 
     const { error: deleteError } = await supabase
       .from('print_rule_printers')
       .delete()
-      .eq('print_rule_id', ruleDraft.id);
+      .eq('print_rule_id', persistedRuleId);
     if (deleteError) return onToast(`Could not update assigned printers: ${deleteError.message}`);
 
     if (rulePrinterDraftIds.length) {
       const { error: insertError } = await supabase
         .from('print_rule_printers')
-        .insert(rulePrinterDraftIds.map((printer_id) => ({ print_rule_id: ruleDraft.id, printer_id })));
+        .insert(rulePrinterDraftIds.map((printer_id) => ({ print_rule_id: persistedRuleId, printer_id })));
       if (insertError) return onToast(`Could not update assigned printers: ${insertError.message}`);
     }
 
@@ -324,7 +441,7 @@ export default function PrinterSettingsTab({
   };
 
   const activeRule = useMemo(
-    () => rules.find((rule) => rule.ticket_type === editorTicketType) || null,
+    () => rules.find((rule) => normalizeTicketType(rule.ticket_type) === editorTicketType) || null,
     [rules, editorTicketType]
   );
 
@@ -343,8 +460,8 @@ export default function PrinterSettingsTab({
   }, [editorTicketType]);
 
   const previewRule = useMemo(() => {
-    const baseRule = rules.find((rule) => rule.ticket_type === previewTicketType);
-    const editingSameRule = ruleDraft && ruleDraft.ticket_type === previewTicketType;
+    const baseRule = rules.find((rule) => normalizeTicketType(rule.ticket_type) === previewTicketType);
+    const editingSameRule = ruleDraft && normalizeTicketType(ruleDraft.ticket_type) === previewTicketType;
     return { ...defaultPreviewRule, ...(baseRule || {}), ...(editingSameRule ? ruleDraft : {}) } as PrintRuleLike;
   }, [rules, ruleDraft, previewTicketType]);
 
@@ -583,7 +700,7 @@ export default function PrinterSettingsTab({
               <>
                 <div className="grid gap-3 md:grid-cols-2">
                   <label className="flex justify-between border rounded-lg p-3 text-sm">
-                    <span>Rule Enabled</span>
+                    <span>Enabled</span>
                     <input disabled={!canEdit} type="checkbox" checked={ruleDraft.enabled} onChange={(e) => setRuleDraft({ ...ruleDraft, enabled: e.target.checked })} />
                   </label>
                   <label className="border rounded-lg p-3 text-sm">
@@ -594,22 +711,28 @@ export default function PrinterSettingsTab({
                     <span className="block mb-1">Copies</span>
                     <input disabled={!canEdit} type="number" min={1} className="w-full border rounded p-2" value={ruleDraft.copies || 1} onChange={(e) => setRuleDraft({ ...ruleDraft, copies: Number(e.target.value) || 1 })} />
                   </label>
-                  <label className="border rounded-lg p-3 text-sm">
-                    <span className="block mb-1">Item Grouping</span>
-                    <input disabled={!canEdit} className="w-full border rounded p-2" value={ruleDraft.item_grouping || ''} onChange={(e) => setRuleDraft({ ...ruleDraft, item_grouping: e.target.value })} />
-                  </label>
+                  {editorTicketType === 'KOT' && (
+                    <label className="border rounded-lg p-3 text-sm">
+                      <span className="block mb-1">Item Grouping</span>
+                      <input disabled={!canEdit} className="w-full border rounded p-2" value={ruleDraft.item_grouping || ''} onChange={(e) => setRuleDraft({ ...ruleDraft, item_grouping: e.target.value })} />
+                    </label>
+                  )}
                 </div>
 
                 <div className="rounded-lg border border-gray-200 p-4 space-y-3">
                   <p className="text-sm font-medium">Printer Assignment</p>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {printers.map((p) => (
-                      <label key={p.id} className="flex items-center gap-2 border rounded p-2 text-sm">
-                        <input disabled={!canEdit} type="checkbox" checked={rulePrinterDraftIds.includes(p.id)} onChange={(e) => setRulePrinterDraftIds((prev) => (e.target.checked ? [...prev, p.id] : prev.filter((id) => id !== p.id)))} />
-                        {p.name}
-                      </label>
-                    ))}
-                  </div>
+                  {printers.length === 0 ? (
+                    <p className="text-xs text-gray-600">Add a printer to assign this ticket.</p>
+                  ) : (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {printers.map((p) => (
+                        <label key={p.id} className="flex items-center gap-2 border rounded p-2 text-sm">
+                          <input disabled={!canEdit} type="checkbox" checked={rulePrinterDraftIds.includes(p.id)} onChange={(e) => setRulePrinterDraftIds((prev) => (e.target.checked ? [...prev, p.id] : prev.filter((id) => id !== p.id)))} />
+                          {p.name}
+                        </label>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="rounded-lg border border-gray-200 p-4 space-y-3">
@@ -636,11 +759,11 @@ export default function PrinterSettingsTab({
                     ))}
 
                     <div className="rounded border border-dashed p-2 text-xs text-gray-600 md:col-span-2">
-                      <p>Always shown by ticket standard: order number, add-ons and core line items.</p>
+                      <p>Order number: Always shown • Add-ons: Always shown • End of order footer: Always shown.</p>
                       <p>
                         {editorTicketType === 'KOT'
-                          ? 'Currently fixed: order type, customer name, scheduled marker and payment status lines are always printed when available.'
-                          : 'Currently fixed: payment method and payment status lines are printed when available.'}
+                          ? 'Order type, customer name, scheduled marker and payment status are always shown when available. Dietary markers are hidden by design.'
+                          : 'Payment method and payment status are always shown when available.'}
                       </p>
                     </div>
 
