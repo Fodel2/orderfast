@@ -5,12 +5,15 @@ import Toast from '../../../components/Toast';
 import CustomPagesSection from '../../../components/CustomPagesSection';
 import { SlidesDashboardList } from '../../../components/SlidesManager';
 import SlideModal from '../../../components/SlideModal';
+import PrinterSettingsTab from '../../../components/dashboard/PrinterSettingsTab';
 import type { SlideRow } from '../../../components/customer/home/SlidesContainer';
 import { supabase } from '../../../utils/supabaseClient';
 
 export default function WebsitePage() {
   const router = useRouter();
   const [restaurantId, setRestaurantId] = useState<string | null>(null);
+  const [canEditPrinterSettings, setCanEditPrinterSettings] = useState(true);
+  const [activeTab, setActiveTab] = useState<'website' | 'printer'>('website');
   const [loading, setLoading] = useState(true);
 
   const [logo, setLogo] = useState<string | null>(null);
@@ -63,10 +66,14 @@ export default function WebsitePage() {
       }
       const { data: ru } = await supabase
         .from('restaurant_users')
-        .select('restaurant_id')
+        .select('*')
         .eq('user_id', session.user.id)
         .maybeSingle();
       if (ru?.restaurant_id) {
+        const roleValue = String((ru as any).role || (ru as any).user_role || '').toLowerCase();
+        if (roleValue === 'staff') {
+          setCanEditPrinterSettings(false);
+        }
         setRestaurantId(ru.restaurant_id);
         const { data: rest } = await supabase
           .from('restaurants')
@@ -274,7 +281,26 @@ export default function WebsitePage() {
   return (
     <DashboardLayout>
       <div className="max-w-2xl mx-auto">
-        <h1 className="text-3xl font-bold mb-6">Website Settings</h1>
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <h1 className="text-3xl font-bold">Settings</h1>
+          <div className="inline-flex rounded-lg border border-gray-200 bg-white p-1">
+            <button
+              type="button"
+              onClick={() => setActiveTab('website')}
+              className={`px-3 py-2 text-sm rounded-md ${activeTab === 'website' ? 'bg-teal-600 text-white' : 'text-gray-700'}`}
+            >
+              Website
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('printer')}
+              className={`px-3 py-2 text-sm rounded-md ${activeTab === 'printer' ? 'bg-teal-600 text-white' : 'text-gray-700'}`}
+            >
+              Printer Settings
+            </button>
+          </div>
+        </div>
+        {activeTab === 'website' && (
         <div className="bg-white p-6 rounded-lg shadow">
           <form className="space-y-4" onSubmit={handleSubmit}>
             <div>
@@ -571,8 +597,16 @@ export default function WebsitePage() {
             </div>
           </form>
         </div>
+        )}
+        {activeTab === 'printer' && restaurantId && (
+          <PrinterSettingsTab
+            restaurantId={restaurantId}
+            canEdit={canEditPrinterSettings}
+            onToast={setToastMessage}
+          />
+        )}
       </div>
-      {restaurantId && (
+      {restaurantId && activeTab === 'website' && (
         <>
           <SlidesDashboardList restaurantId={restaurantId} onEdit={handleEditSlide} refreshKey={refreshSlides} />
           {editingSlide && (
@@ -594,7 +628,7 @@ export default function WebsitePage() {
           )}
         </>
       )}
-      {restaurantId && <CustomPagesSection restaurantId={restaurantId} />}
+      {restaurantId && activeTab === 'website' && <CustomPagesSection restaurantId={restaurantId} />}
       <Toast message={toastMessage} onClose={() => setToastMessage('')} />
     </DashboardLayout>
   );
