@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/utils/supabaseClient';
-import { requestPrintJobCreation } from '@/lib/print-jobs/request';
+import { requestPrintJobCreation, requestPrintQueueNudge } from '@/lib/print-jobs/request';
 import { buildTicketText, type PrintRuleLike, type TicketType } from '@/lib/server/printContentBuilder';
 
 type Printer = {
@@ -113,11 +113,35 @@ export default function PrinterSettingsTab({
   const [onlineStatusByPrinterId, setOnlineStatusByPrinterId] = useState<Record<string, string>>({});
   const [previewTicketType, setPreviewTicketType] = useState<PreviewTicketType>('KOT');
   const [previewWidth, setPreviewWidth] = useState<PreviewWidth>('58mm');
+  const lastQueueNudgeAtRef = useRef(0);
+  const queueNudgeInFlightRef = useRef(false);
 
   const printerById = useMemo(
     () => printers.reduce<Record<string, Printer>>((acc, p) => ((acc[p.id] = p), acc), {}),
     [printers]
   );
+
+
+  const nudgeQueueProcessing = async (reason: string) => {
+    const now = Date.now();
+    if (queueNudgeInFlightRef.current) return;
+    if (now - lastQueueNudgeAtRef.current < 15000) return;
+
+    queueNudgeInFlightRef.current = true;
+    lastQueueNudgeAtRef.current = now;
+    try {
+      await requestPrintQueueNudge({ restaurantId, batchSize: 5 });
+      if (process.env.NODE_ENV !== 'production') {
+        console.debug('[printer-settings] queue nudge completed', { restaurantId, reason });
+      }
+    } catch (error) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.debug('[printer-settings] queue nudge skipped', { restaurantId, reason, error });
+      }
+    } finally {
+      queueNudgeInFlightRef.current = false;
+    }
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -167,6 +191,7 @@ export default function PrinterSettingsTab({
 
     if (jobsRes.data) setJobs(jobsRes.data as any);
     setLoading(false);
+    await nudgeQueueProcessing('settings_load');
   };
 
   useEffect(() => {
@@ -223,6 +248,7 @@ export default function PrinterSettingsTab({
       });
       onToast('Print job queued.');
       await loadData();
+      await nudgeQueueProcessing(`manual_${source}`);
     } catch (error: any) {
       onToast(`Could not create print job: ${error?.message || 'Unknown error'}`);
     }
@@ -246,6 +272,7 @@ export default function PrinterSettingsTab({
         [printerId]: typeof rawStatus === 'string' ? rawStatus : JSON.stringify(rawStatus),
       }));
       onToast('Printer status checked.');
+      await nudgeQueueProcessing('check_status');
     } catch (error: any) {
       setOnlineStatusByPrinterId((prev) => ({ ...prev, [printerId]: 'offline/unknown' }));
       onToast(`Could not check printer status: ${error?.message || 'Unknown error'}`);
@@ -263,6 +290,7 @@ export default function PrinterSettingsTab({
       if (!response.ok) throw new Error(payload?.error || 'Failed to queue test print');
       onToast('Test print queued.');
       await loadData();
+      await nudgeQueueProcessing('test_print');
     } catch (error: any) {
       onToast(`Could not create test print: ${error?.message || 'Unknown error'}`);
     }

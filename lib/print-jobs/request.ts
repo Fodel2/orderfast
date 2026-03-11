@@ -29,3 +29,22 @@ export async function requestPrintJobCreation(params: {
 
   return response.json();
 }
+
+
+export async function requestPrintQueueNudge(params: { restaurantId: string; batchSize?: number }) {
+  const response = await fetch('/api/print-jobs/process', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      restaurant_id: params.restaurantId,
+      batch_size: params.batchSize ?? 5,
+    }),
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload?.error || 'Unable to process print queue');
+  }
+
+  return response.json();
+}
