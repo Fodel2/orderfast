@@ -56,7 +56,26 @@ async function logAttempt(params: {
   });
 }
 
-async function claimPendingJobs(batchSize: number, restaurantId?: string): Promise<QueueJob[]> {
+async function claimJobById(jobId: string, restaurantId?: string): Promise<QueueJob | null> {
+  const leaseUntil = addSecondsIso(LEASE_SECONDS);
+  let lockQ = supaServer
+    .from('print_jobs')
+    .update({ scheduled_retry_at: leaseUntil })
+    .eq('id', jobId)
+    .eq('status', 'pending')
+    .or(`scheduled_retry_at.is.null,scheduled_retry_at.lte.${nowIso()}`);
+
+  if (restaurantId) {
+    lockQ = lockQ.eq('restaurant_id', restaurantId);
+  }
+
+  const { data: locked } = await lockQ
+    .select('id,restaurant_id,order_id,print_rule_id,printer_id,ticket_type,provider,serial_number,source,status,attempts,payload_json,voice_enabled,voice_message,scheduled_retry_at')
+    .maybeSingle();
+  return (locked as QueueJob | null) || null;
+}
+
+async function claimPendingJobs(batchSize: number, restaurantId?: string, priorityJobId?: string): Promise<QueueJob[]> {
   let query = supaServer
     .from('print_jobs')
     .select('id,restaurant_id,order_id,print_rule_id,printer_id,ticket_type,provider,serial_number,source,status,attempts,payload_json,voice_enabled,voice_message,scheduled_retry_at')
@@ -74,8 +93,14 @@ async function claimPendingJobs(batchSize: number, restaurantId?: string): Promi
   const due = candidates.filter((job: any) => !job.scheduled_retry_at || new Date(job.scheduled_retry_at).getTime() <= Date.now());
   const claimed: QueueJob[] = [];
 
+  if (priorityJobId) {
+    const priority = await claimJobById(priorityJobId, restaurantId);
+    if (priority) claimed.push(priority);
+  }
+
   for (const job of due) {
     if (claimed.length >= batchSize) break;
+    if (claimed.some((c) => c.id === job.id)) continue;
     const leaseUntil = addSecondsIso(LEASE_SECONDS);
     const lockQ = supaServer
       .from('print_jobs')
@@ -252,20 +277,36 @@ async function dispatchOne(job: QueueJob) {
   return { ok: true };
 }
 
-export async function processPrintQueue(options?: { batchSize?: number; restaurantId?: string }) {
+export async function processPrintQueue(options?: { batchSize?: number; restaurantId?: string; priorityJobId?: string }) {
   const batchSize = Math.max(1, Math.min(20, Number(options?.batchSize || 10)));
-  const claimed = await claimPendingJobs(batchSize, options?.restaurantId);
+  const claimed = await claimPendingJobs(batchSize, options?.restaurantId, options?.priorityJobId);
   const scheduled = scheduleDispatch(claimed);
+
+  console.info('[print-queue] processing batch', {
+    restaurant_id: options?.restaurantId || null,
+    priority_job_id: options?.priorityJobId || null,
+    claimed: claimed.length,
+    scheduled: scheduled.length,
+    claimed_job_ids: claimed.map((job) => job.id),
+  });
 
   const results = await Promise.allSettled(scheduled.map((job) => dispatchOne(job)));
   const sent = results.filter((r) => r.status === 'fulfilled' && r.value.ok).length;
 
-  return {
+  const summary = {
     claimed: claimed.length,
     processed: scheduled.length,
     sent,
     failed: scheduled.length - sent,
   };
+
+  console.info('[print-queue] processing complete', {
+    restaurant_id: options?.restaurantId || null,
+    priority_job_id: options?.priorityJobId || null,
+    ...summary,
+  });
+
+  return summary;
 }
 
 export async function sendRestaurantVoiceReminder(params: {
