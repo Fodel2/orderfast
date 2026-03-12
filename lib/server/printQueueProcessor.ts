@@ -63,24 +63,47 @@ async function logAttempt(params: {
   });
 }
 
-async function claimJobById(jobId: string, restaurantId?: string): Promise<QueueJob | null> {
+async function tryLeaseDueJob(jobId: string, restaurantId?: string): Promise<QueueJob | null> {
   const leaseUntil = addSecondsIso(LEASE_SECONDS);
-  let lockQ = supaServer
-    .from('print_jobs')
-    .update({ scheduled_retry_at: leaseUntil })
-    .eq('id', jobId)
-    .eq('status', 'pending')
-    .eq('provider', 'sunmi_cloud')
-    .or(`scheduled_retry_at.is.null,scheduled_retry_at.lte.${nowIso()}`);
+  const selectFields = 'id,restaurant_id,order_id,print_rule_id,printer_id,ticket_type,provider,serial_number,source,status,attempts,payload_json,voice_enabled,voice_message,scheduled_retry_at';
 
-  if (restaurantId) {
-    lockQ = lockQ.eq('restaurant_id', restaurantId);
-  }
+  const lockByNullRetry = () => {
+    let q = supaServer
+      .from('print_jobs')
+      .update({ scheduled_retry_at: leaseUntil })
+      .eq('id', jobId)
+      .eq('status', 'pending')
+      .eq('provider', 'sunmi_cloud')
+      .is('scheduled_retry_at', null);
 
-  const { data: locked } = await lockQ
-    .select('id,restaurant_id,order_id,print_rule_id,printer_id,ticket_type,provider,serial_number,source,status,attempts,payload_json,voice_enabled,voice_message,scheduled_retry_at')
-    .maybeSingle();
-  return (locked as QueueJob | null) || null;
+    if (restaurantId) q = q.eq('restaurant_id', restaurantId);
+    return q.select(selectFields).maybeSingle();
+  };
+
+  const lockByPastRetry = () => {
+    let q = supaServer
+      .from('print_jobs')
+      .update({ scheduled_retry_at: leaseUntil })
+      .eq('id', jobId)
+      .eq('status', 'pending')
+      .eq('provider', 'sunmi_cloud')
+      .lte('scheduled_retry_at', nowIso());
+
+    if (restaurantId) q = q.eq('restaurant_id', restaurantId);
+    return q.select(selectFields).maybeSingle();
+  };
+
+  const { data: byNull } = await lockByNullRetry();
+  if (byNull) return byNull as QueueJob;
+
+  const { data: byPast } = await lockByPastRetry();
+  if (byPast) return byPast as QueueJob;
+
+  return null;
+}
+
+async function claimJobById(jobId: string, restaurantId?: string): Promise<QueueJob | null> {
+  return tryLeaseDueJob(jobId, restaurantId);
 }
 
 async function claimPendingJobs(batchSize: number, restaurantId?: string, priorityJobId?: string): Promise<{ claimed: QueueJob[]; diagnostics: ClaimDiagnostics }> {
@@ -148,19 +171,8 @@ async function claimPendingJobs(batchSize: number, restaurantId?: string, priori
   for (const job of due) {
     if (claimed.length >= batchSize) break;
     if (claimed.some((c) => c.id === job.id)) continue;
-    const leaseUntil = addSecondsIso(LEASE_SECONDS);
-    const lockQ = supaServer
-      .from('print_jobs')
-      .update({ scheduled_retry_at: leaseUntil })
-      .eq('id', job.id)
-      .eq('status', 'pending')
-      .eq('provider', 'sunmi_cloud')
-      .or(`scheduled_retry_at.is.null,scheduled_retry_at.lte.${nowIso()}`)
-      .select('id,restaurant_id,order_id,print_rule_id,printer_id,ticket_type,provider,serial_number,source,status,attempts,payload_json,voice_enabled,voice_message,scheduled_retry_at')
-      .maybeSingle();
-
-    const { data: locked } = await lockQ;
-    if (locked) claimed.push(locked as QueueJob);
+    const locked = await tryLeaseDueJob(job.id, restaurantId);
+    if (locked) claimed.push(locked);
   }
 
   console.info('[print-queue] claim summary', {
@@ -339,57 +351,6 @@ async function dispatchOne(job: QueueJob) {
   return { ok: true };
 }
 
-
-export async function processPrintJobDirect(options: {
-  jobId: string;
-  restaurantId?: string;
-  expectedSource?: string;
-}) {
-  let query = supaServer
-    .from('print_jobs')
-    .select('id,restaurant_id,order_id,print_rule_id,printer_id,ticket_type,provider,serial_number,source,status,attempts,payload_json,voice_enabled,voice_message,scheduled_retry_at')
-    .eq('id', options.jobId)
-    .eq('status', 'pending');
-
-  if (options.restaurantId) {
-    query = query.eq('restaurant_id', options.restaurantId);
-  }
-
-  const { data: job, error } = await query.maybeSingle();
-
-  if (error || !job) {
-    return {
-      ok: false,
-      found: false,
-      processed: 0,
-      sent: 0,
-      failed: 0,
-      reason: error?.message || 'job_not_found_or_not_pending',
-    };
-  }
-
-  if (options.expectedSource && job.source !== options.expectedSource) {
-    return {
-      ok: false,
-      found: true,
-      processed: 0,
-      sent: 0,
-      failed: 0,
-      reason: `unexpected_source:${job.source || 'missing'}`,
-    };
-  }
-
-  const result = await dispatchOne(job as QueueJob);
-
-  return {
-    ok: result.ok,
-    found: true,
-    processed: 1,
-    sent: result.ok ? 1 : 0,
-    failed: result.ok ? 0 : 1,
-    reason: result.ok ? null : result.reason,
-  };
-}
 
 export async function processPrintQueue(options?: { batchSize?: number; restaurantId?: string; priorityJobId?: string }) {
   const batchSize = Math.max(1, Math.min(20, Number(options?.batchSize || 10)));
