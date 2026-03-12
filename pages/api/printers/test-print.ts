@@ -39,7 +39,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         order_id: null,
         print_rule_id: null,
         printer_id,
-        ticket_type: 'KOT',
+        ticket_type: 'kot',
         provider: printer.provider,
         serial_number: printer.serial_number,
         source: 'test',
