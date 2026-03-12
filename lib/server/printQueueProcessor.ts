@@ -30,6 +30,13 @@ type PrinterSettings = {
   voice_reminder_message?: string | null;
 };
 
+type ClaimDiagnostics = {
+  candidatesFound: number;
+  dueCandidates: number;
+  excludedFutureRetry: number;
+  claimed: number;
+};
+
 const nowIso = () => new Date().toISOString();
 const addSecondsIso = (seconds: number) => new Date(Date.now() + seconds * 1000).toISOString();
 
@@ -76,7 +83,7 @@ async function claimJobById(jobId: string, restaurantId?: string): Promise<Queue
   return (locked as QueueJob | null) || null;
 }
 
-async function claimPendingJobs(batchSize: number, restaurantId?: string, priorityJobId?: string): Promise<QueueJob[]> {
+async function claimPendingJobs(batchSize: number, restaurantId?: string, priorityJobId?: string): Promise<{ claimed: QueueJob[]; diagnostics: ClaimDiagnostics }> {
   let query = supaServer
     .from('print_jobs')
     .select('id,restaurant_id,order_id,print_rule_id,printer_id,ticket_type,provider,serial_number,source,status,attempts,payload_json,voice_enabled,voice_message,scheduled_retry_at')
@@ -95,7 +102,15 @@ async function claimPendingJobs(batchSize: number, restaurantId?: string, priori
       restaurant_id: restaurantId || null,
       error,
     });
-    return [];
+    return {
+      claimed: [],
+      diagnostics: {
+        candidatesFound: 0,
+        dueCandidates: 0,
+        excludedFutureRetry: 0,
+        claimed: 0,
+      },
+    };
   }
 
   const nowMs = Date.now();
@@ -154,7 +169,15 @@ async function claimPendingJobs(batchSize: number, restaurantId?: string, priori
     claimed: claimed.length,
   });
 
-  return claimed;
+  return {
+    claimed,
+    diagnostics: {
+      candidatesFound: candidates.length,
+      dueCandidates: due.length,
+      excludedFutureRetry,
+      claimed: claimed.length,
+    },
+  };
 }
 
 function scheduleDispatch(jobs: QueueJob[]) {
@@ -318,7 +341,14 @@ async function dispatchOne(job: QueueJob) {
 
 export async function processPrintQueue(options?: { batchSize?: number; restaurantId?: string; priorityJobId?: string }) {
   const batchSize = Math.max(1, Math.min(20, Number(options?.batchSize || 10)));
-  const claimed = await claimPendingJobs(batchSize, options?.restaurantId, options?.priorityJobId);
+  console.info('[print-queue] supabase client path', {
+    client: 'supaServer(service_role)',
+    has_supabase_url: Boolean(process.env.SUPABASE_URL),
+    has_service_role_key: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+  });
+
+  const claimResult = await claimPendingJobs(batchSize, options?.restaurantId, options?.priorityJobId);
+  const claimed = claimResult.claimed;
   const scheduled = scheduleDispatch(claimed);
 
   console.info('[print-queue] processing batch', {
@@ -327,6 +357,9 @@ export async function processPrintQueue(options?: { batchSize?: number; restaura
     claimed: claimed.length,
     scheduled: scheduled.length,
     claimed_job_ids: claimed.map((job) => job.id),
+    candidates_found: claimResult.diagnostics.candidatesFound,
+    due_candidates: claimResult.diagnostics.dueCandidates,
+    excluded_future_retry: claimResult.diagnostics.excludedFutureRetry,
   });
 
   const results = await Promise.allSettled(scheduled.map((job) => dispatchOne(job)));
@@ -337,6 +370,7 @@ export async function processPrintQueue(options?: { batchSize?: number; restaura
     processed: scheduled.length,
     sent,
     failed: scheduled.length - sent,
+    diagnostics: claimResult.diagnostics,
   };
 
   console.info('[print-queue] processing complete', {
