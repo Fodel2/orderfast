@@ -339,6 +339,58 @@ async function dispatchOne(job: QueueJob) {
   return { ok: true };
 }
 
+
+export async function processPrintJobDirect(options: {
+  jobId: string;
+  restaurantId?: string;
+  expectedSource?: string;
+}) {
+  let query = supaServer
+    .from('print_jobs')
+    .select('id,restaurant_id,order_id,print_rule_id,printer_id,ticket_type,provider,serial_number,source,status,attempts,payload_json,voice_enabled,voice_message,scheduled_retry_at')
+    .eq('id', options.jobId)
+    .eq('status', 'pending');
+
+  if (options.restaurantId) {
+    query = query.eq('restaurant_id', options.restaurantId);
+  }
+
+  const { data: job, error } = await query.maybeSingle();
+
+  if (error || !job) {
+    return {
+      ok: false,
+      found: false,
+      processed: 0,
+      sent: 0,
+      failed: 0,
+      reason: error?.message || 'job_not_found_or_not_pending',
+    };
+  }
+
+  if (options.expectedSource && job.source !== options.expectedSource) {
+    return {
+      ok: false,
+      found: true,
+      processed: 0,
+      sent: 0,
+      failed: 0,
+      reason: `unexpected_source:${job.source || 'missing'}`,
+    };
+  }
+
+  const result = await dispatchOne(job as QueueJob);
+
+  return {
+    ok: result.ok,
+    found: true,
+    processed: 1,
+    sent: result.ok ? 1 : 0,
+    failed: result.ok ? 0 : 1,
+    reason: result.ok ? null : result.reason,
+  };
+}
+
 export async function processPrintQueue(options?: { batchSize?: number; restaurantId?: string; priorityJobId?: string }) {
   const batchSize = Math.max(1, Math.min(20, Number(options?.batchSize || 10)));
   console.info('[print-queue] supabase client path', {

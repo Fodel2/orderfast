@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { supaServer } from '@/lib/supaServer';
-import { processPrintQueue } from '@/lib/server/printQueueProcessor';
+import { processPrintJobDirect } from '@/lib/server/printQueueProcessor';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -70,24 +70,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ticket_type: 'kot',
     });
 
-    console.info('[printers/test-print] queue processing started', {
-      restaurant_id,
-      priority_job_id: inserted.id,
-    });
-
-    const dispatch = await processPrintQueue({ batchSize: 1, restaurantId: restaurant_id, priorityJobId: inserted.id });
-
-    console.info('[printers/test-print] queue processing finished', {
+    console.info('[printers/test-print] direct processing started', {
       restaurant_id,
       job_id: inserted.id,
-      claimed: dispatch.claimed,
+      source: 'test',
+    });
+
+    const dispatch = await processPrintJobDirect({
+      jobId: inserted.id,
+      restaurantId: restaurant_id,
+      expectedSource: 'test',
+    });
+
+    console.info('[printers/test-print] direct processing finished', {
+      restaurant_id,
+      job_id: inserted.id,
       processed: dispatch.processed,
       sent: dispatch.sent,
       failed: dispatch.failed,
+      reason: dispatch.reason,
     });
 
     return res.status(200).json({
-      ok: true,
+      ok: dispatch.ok,
       job_id: inserted.id,
       job_created: true,
       processing_triggered: true,
