@@ -63,6 +63,7 @@ async function claimJobById(jobId: string, restaurantId?: string): Promise<Queue
     .update({ scheduled_retry_at: leaseUntil })
     .eq('id', jobId)
     .eq('status', 'pending')
+    .eq('provider', 'sunmi_cloud')
     .or(`scheduled_retry_at.is.null,scheduled_retry_at.lte.${nowIso()}`);
 
   if (restaurantId) {
@@ -80,6 +81,8 @@ async function claimPendingJobs(batchSize: number, restaurantId?: string, priori
     .from('print_jobs')
     .select('id,restaurant_id,order_id,print_rule_id,printer_id,ticket_type,provider,serial_number,source,status,attempts,payload_json,voice_enabled,voice_message,scheduled_retry_at')
     .eq('status', 'pending')
+    .eq('provider', 'sunmi_cloud')
+    .or(`scheduled_retry_at.is.null,scheduled_retry_at.lte.${nowIso()}`)
     .order('created_at', { ascending: true })
     .limit(batchSize * 4);
 
@@ -90,7 +93,6 @@ async function claimPendingJobs(batchSize: number, restaurantId?: string, priori
   const { data: candidates, error } = await query;
   if (error || !candidates) return [];
 
-  const due = candidates.filter((job: any) => !job.scheduled_retry_at || new Date(job.scheduled_retry_at).getTime() <= Date.now());
   const claimed: QueueJob[] = [];
 
   if (priorityJobId) {
@@ -98,7 +100,7 @@ async function claimPendingJobs(batchSize: number, restaurantId?: string, priori
     if (priority) claimed.push(priority);
   }
 
-  for (const job of due) {
+  for (const job of candidates) {
     if (claimed.length >= batchSize) break;
     if (claimed.some((c) => c.id === job.id)) continue;
     const leaseUntil = addSecondsIso(LEASE_SECONDS);
@@ -107,6 +109,7 @@ async function claimPendingJobs(batchSize: number, restaurantId?: string, priori
       .update({ scheduled_retry_at: leaseUntil })
       .eq('id', job.id)
       .eq('status', 'pending')
+      .eq('provider', 'sunmi_cloud')
       .or(`scheduled_retry_at.is.null,scheduled_retry_at.lte.${nowIso()}`)
       .select('id,restaurant_id,order_id,print_rule_id,printer_id,ticket_type,provider,serial_number,source,status,attempts,payload_json,voice_enabled,voice_message,scheduled_retry_at')
       .maybeSingle();
