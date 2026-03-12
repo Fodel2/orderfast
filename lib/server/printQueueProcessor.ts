@@ -82,16 +82,46 @@ async function claimPendingJobs(batchSize: number, restaurantId?: string, priori
     .select('id,restaurant_id,order_id,print_rule_id,printer_id,ticket_type,provider,serial_number,source,status,attempts,payload_json,voice_enabled,voice_message,scheduled_retry_at')
     .eq('status', 'pending')
     .eq('provider', 'sunmi_cloud')
-    .or(`scheduled_retry_at.is.null,scheduled_retry_at.lte.${nowIso()}`)
     .order('created_at', { ascending: true })
-    .limit(batchSize * 4);
+    .limit(batchSize * 8);
 
   if (restaurantId) {
     query = query.eq('restaurant_id', restaurantId);
   }
 
   const { data: candidates, error } = await query;
-  if (error || !candidates) return [];
+  if (error || !candidates) {
+    console.warn('[print-queue] candidate selection failed', {
+      restaurant_id: restaurantId || null,
+      error,
+    });
+    return [];
+  }
+
+  const nowMs = Date.now();
+  const due: QueueJob[] = [];
+  let excludedFutureRetry = 0;
+
+  for (const job of candidates as QueueJob[]) {
+    if (!job.scheduled_retry_at) {
+      due.push(job);
+      continue;
+    }
+
+    const retryAtMs = new Date(job.scheduled_retry_at).getTime();
+    if (Number.isNaN(retryAtMs) || retryAtMs <= nowMs) {
+      due.push(job);
+    } else {
+      excludedFutureRetry += 1;
+    }
+  }
+
+  console.info('[print-queue] candidates evaluated', {
+    restaurant_id: restaurantId || null,
+    candidates_found: candidates.length,
+    excluded_future_retry: excludedFutureRetry,
+    due_candidates: due.length,
+  });
 
   const claimed: QueueJob[] = [];
 
@@ -100,7 +130,7 @@ async function claimPendingJobs(batchSize: number, restaurantId?: string, priori
     if (priority) claimed.push(priority);
   }
 
-  for (const job of candidates) {
+  for (const job of due) {
     if (claimed.length >= batchSize) break;
     if (claimed.some((c) => c.id === job.id)) continue;
     const leaseUntil = addSecondsIso(LEASE_SECONDS);
@@ -117,6 +147,12 @@ async function claimPendingJobs(batchSize: number, restaurantId?: string, priori
     const { data: locked } = await lockQ;
     if (locked) claimed.push(locked as QueueJob);
   }
+
+  console.info('[print-queue] claim summary', {
+    restaurant_id: restaurantId || null,
+    due_candidates: due.length,
+    claimed: claimed.length,
+  });
 
   return claimed;
 }
