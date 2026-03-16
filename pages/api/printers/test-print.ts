@@ -73,21 +73,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.info('[printers/test-print] queue processing started', {
       restaurant_id,
       priority_job_id: inserted.id,
+      source: 'test',
     });
 
-    const dispatch = await processPrintQueue({ batchSize: 5, restaurantId: restaurant_id, priorityJobId: inserted.id });
+    const dispatch = await processPrintQueue({
+      batchSize: 1,
+      restaurantId: restaurant_id,
+      priorityJobId: inserted.id,
+    });
 
     console.info('[printers/test-print] queue processing finished', {
       restaurant_id,
       job_id: inserted.id,
-      claimed: dispatch.claimed,
       processed: dispatch.processed,
       sent: dispatch.sent,
       failed: dispatch.failed,
     });
 
     return res.status(200).json({
-      ok: true,
+      ok: dispatch.sent > 0,
       job_id: inserted.id,
       job_created: true,
       processing_triggered: true,

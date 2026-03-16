@@ -30,6 +30,13 @@ type PrinterSettings = {
   voice_reminder_message?: string | null;
 };
 
+type ClaimDiagnostics = {
+  candidatesFound: number;
+  dueCandidates: number;
+  excludedFutureRetry: number;
+  claimed: number;
+};
+
 const nowIso = () => new Date().toISOString();
 const addSecondsIso = (seconds: number) => new Date(Date.now() + seconds * 1000).toISOString();
 
@@ -56,41 +63,104 @@ async function logAttempt(params: {
   });
 }
 
-async function claimJobById(jobId: string, restaurantId?: string): Promise<QueueJob | null> {
+async function tryLeaseDueJob(jobId: string, restaurantId?: string): Promise<QueueJob | null> {
   const leaseUntil = addSecondsIso(LEASE_SECONDS);
-  let lockQ = supaServer
-    .from('print_jobs')
-    .update({ scheduled_retry_at: leaseUntil })
-    .eq('id', jobId)
-    .eq('status', 'pending')
-    .or(`scheduled_retry_at.is.null,scheduled_retry_at.lte.${nowIso()}`);
+  const selectFields = 'id,restaurant_id,order_id,print_rule_id,printer_id,ticket_type,provider,serial_number,source,status,attempts,payload_json,voice_enabled,voice_message,scheduled_retry_at';
 
-  if (restaurantId) {
-    lockQ = lockQ.eq('restaurant_id', restaurantId);
-  }
+  const lockByNullRetry = () => {
+    let q = supaServer
+      .from('print_jobs')
+      .update({ scheduled_retry_at: leaseUntil })
+      .eq('id', jobId)
+      .eq('status', 'pending')
+      .eq('provider', 'sunmi_cloud')
+      .is('scheduled_retry_at', null);
 
-  const { data: locked } = await lockQ
-    .select('id,restaurant_id,order_id,print_rule_id,printer_id,ticket_type,provider,serial_number,source,status,attempts,payload_json,voice_enabled,voice_message,scheduled_retry_at')
-    .maybeSingle();
-  return (locked as QueueJob | null) || null;
+    if (restaurantId) q = q.eq('restaurant_id', restaurantId);
+    return q.select(selectFields).maybeSingle();
+  };
+
+  const lockByPastRetry = () => {
+    let q = supaServer
+      .from('print_jobs')
+      .update({ scheduled_retry_at: leaseUntil })
+      .eq('id', jobId)
+      .eq('status', 'pending')
+      .eq('provider', 'sunmi_cloud')
+      .lte('scheduled_retry_at', nowIso());
+
+    if (restaurantId) q = q.eq('restaurant_id', restaurantId);
+    return q.select(selectFields).maybeSingle();
+  };
+
+  const { data: byNull } = await lockByNullRetry();
+  if (byNull) return byNull as QueueJob;
+
+  const { data: byPast } = await lockByPastRetry();
+  if (byPast) return byPast as QueueJob;
+
+  return null;
 }
 
-async function claimPendingJobs(batchSize: number, restaurantId?: string, priorityJobId?: string): Promise<QueueJob[]> {
+async function claimJobById(jobId: string, restaurantId?: string): Promise<QueueJob | null> {
+  return tryLeaseDueJob(jobId, restaurantId);
+}
+
+async function claimPendingJobs(batchSize: number, restaurantId?: string, priorityJobId?: string): Promise<{ claimed: QueueJob[]; diagnostics: ClaimDiagnostics }> {
   let query = supaServer
     .from('print_jobs')
     .select('id,restaurant_id,order_id,print_rule_id,printer_id,ticket_type,provider,serial_number,source,status,attempts,payload_json,voice_enabled,voice_message,scheduled_retry_at')
     .eq('status', 'pending')
+    .eq('provider', 'sunmi_cloud')
     .order('created_at', { ascending: true })
-    .limit(batchSize * 4);
+    .limit(batchSize * 8);
 
   if (restaurantId) {
     query = query.eq('restaurant_id', restaurantId);
   }
 
   const { data: candidates, error } = await query;
-  if (error || !candidates) return [];
+  if (error || !candidates) {
+    console.warn('[print-queue] candidate selection failed', {
+      restaurant_id: restaurantId || null,
+      error,
+    });
+    return {
+      claimed: [],
+      diagnostics: {
+        candidatesFound: 0,
+        dueCandidates: 0,
+        excludedFutureRetry: 0,
+        claimed: 0,
+      },
+    };
+  }
 
-  const due = candidates.filter((job: any) => !job.scheduled_retry_at || new Date(job.scheduled_retry_at).getTime() <= Date.now());
+  const nowMs = Date.now();
+  const due: QueueJob[] = [];
+  let excludedFutureRetry = 0;
+
+  for (const job of candidates as QueueJob[]) {
+    if (!job.scheduled_retry_at) {
+      due.push(job);
+      continue;
+    }
+
+    const retryAtMs = new Date(job.scheduled_retry_at).getTime();
+    if (Number.isNaN(retryAtMs) || retryAtMs <= nowMs) {
+      due.push(job);
+    } else {
+      excludedFutureRetry += 1;
+    }
+  }
+
+  console.info('[print-queue] candidates evaluated', {
+    restaurant_id: restaurantId || null,
+    candidates_found: candidates.length,
+    excluded_future_retry: excludedFutureRetry,
+    due_candidates: due.length,
+  });
+
   const claimed: QueueJob[] = [];
 
   if (priorityJobId) {
@@ -101,21 +171,25 @@ async function claimPendingJobs(batchSize: number, restaurantId?: string, priori
   for (const job of due) {
     if (claimed.length >= batchSize) break;
     if (claimed.some((c) => c.id === job.id)) continue;
-    const leaseUntil = addSecondsIso(LEASE_SECONDS);
-    const lockQ = supaServer
-      .from('print_jobs')
-      .update({ scheduled_retry_at: leaseUntil })
-      .eq('id', job.id)
-      .eq('status', 'pending')
-      .or(`scheduled_retry_at.is.null,scheduled_retry_at.lte.${nowIso()}`)
-      .select('id,restaurant_id,order_id,print_rule_id,printer_id,ticket_type,provider,serial_number,source,status,attempts,payload_json,voice_enabled,voice_message,scheduled_retry_at')
-      .maybeSingle();
-
-    const { data: locked } = await lockQ;
-    if (locked) claimed.push(locked as QueueJob);
+    const locked = await tryLeaseDueJob(job.id, restaurantId);
+    if (locked) claimed.push(locked);
   }
 
-  return claimed;
+  console.info('[print-queue] claim summary', {
+    restaurant_id: restaurantId || null,
+    due_candidates: due.length,
+    claimed: claimed.length,
+  });
+
+  return {
+    claimed,
+    diagnostics: {
+      candidatesFound: candidates.length,
+      dueCandidates: due.length,
+      excludedFutureRetry,
+      claimed: claimed.length,
+    },
+  };
 }
 
 function scheduleDispatch(jobs: QueueJob[]) {
@@ -277,9 +351,17 @@ async function dispatchOne(job: QueueJob) {
   return { ok: true };
 }
 
+
 export async function processPrintQueue(options?: { batchSize?: number; restaurantId?: string; priorityJobId?: string }) {
   const batchSize = Math.max(1, Math.min(20, Number(options?.batchSize || 10)));
-  const claimed = await claimPendingJobs(batchSize, options?.restaurantId, options?.priorityJobId);
+  console.info('[print-queue] supabase client path', {
+    client: 'supaServer(service_role)',
+    has_supabase_url: Boolean(process.env.SUPABASE_URL),
+    has_service_role_key: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+  });
+
+  const claimResult = await claimPendingJobs(batchSize, options?.restaurantId, options?.priorityJobId);
+  const claimed = claimResult.claimed;
   const scheduled = scheduleDispatch(claimed);
 
   console.info('[print-queue] processing batch', {
@@ -288,6 +370,9 @@ export async function processPrintQueue(options?: { batchSize?: number; restaura
     claimed: claimed.length,
     scheduled: scheduled.length,
     claimed_job_ids: claimed.map((job) => job.id),
+    candidates_found: claimResult.diagnostics.candidatesFound,
+    due_candidates: claimResult.diagnostics.dueCandidates,
+    excluded_future_retry: claimResult.diagnostics.excludedFutureRetry,
   });
 
   const results = await Promise.allSettled(scheduled.map((job) => dispatchOne(job)));
@@ -298,6 +383,7 @@ export async function processPrintQueue(options?: { batchSize?: number; restaura
     processed: scheduled.length,
     sent,
     failed: scheduled.length - sent,
+    diagnostics: claimResult.diagnostics,
   };
 
   console.info('[print-queue] processing complete', {

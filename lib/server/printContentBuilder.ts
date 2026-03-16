@@ -41,6 +41,36 @@ const toHex = (value: string) => {
     .join('');
 };
 
+const utf8Bytes = (value: string) => {
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.from(value, 'utf8');
+  }
+  return new TextEncoder().encode(value);
+};
+
+function buildTestEscPosHex(job: PrintJobLike) {
+  const payload = job.payload_json || {};
+  const lines = [
+    '*** ORDERFAST TEST ***',
+    `Printer: ${payload.printer_name || 'Printer'}`,
+    `Restaurant: ${payload.restaurant_name || 'Restaurant'}`,
+    'Printer connection successful',
+    '',
+    '',
+  ];
+
+  const text = `${lines.join('\n')}\n`;
+  const initCommand = [0x1b, 0x40];
+  const cutCommand = [0x1d, 0x56, 0x00];
+
+  const bytes = new Uint8Array([...initCommand, ...utf8Bytes(text), ...cutCommand]);
+  const hex = Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+
+  return { text, hex };
+}
+
 const trimLine = (text: string, width: '58mm' | '80mm') => {
   const max = getMaxLineLength(width);
   if (text.length <= max) return text;
@@ -182,6 +212,10 @@ export function buildTicketText(job: PrintJobLike, rule: PrintRuleLike = {}, opt
 }
 
 export function buildSunmiPrintHexContent(job: PrintJobLike, rule: PrintRuleLike = {}, options: TicketBuildOptions = {}) {
+  if (job.source === 'test') {
+    return buildTestEscPosHex(job);
+  }
+
   const text = buildTicketText(job, rule, options);
   return {
     text,
