@@ -63,6 +63,10 @@ interface TransactionRefundRow {
   processed_at: string | null;
 }
 
+interface GoodwillVoucherRow {
+  id: string;
+}
+
 type GoodwillWizardStep = 'details' | 'review' | 'confirm' | 'success';
 type RefundType = 'full' | 'partial';
 
@@ -210,6 +214,7 @@ export default function TransactionsPage() {
   });
   const [detailData, setDetailData] = useState<TransactionOrderDetail | null>(null);
   const [refunds, setRefunds] = useState<TransactionRefundRow[]>([]);
+  const [goodwillVouchers, setGoodwillVouchers] = useState<GoodwillVoucherRow[]>([]);
   const [refundModalOpen, setRefundModalOpen] = useState(false);
   const [refundType, setRefundType] = useState<RefundType>('full');
   const [partialRefundAmount, setPartialRefundAmount] = useState('');
@@ -479,6 +484,7 @@ export default function TransactionsPage() {
         )
         .eq('order_id', orderId)
         .eq('restaurant_id', restaurantId)
+        .or('status.eq.succeeded,status.eq.manual,provider.eq.manual')
         .order('created_at', { ascending: false });
 
       if (requestId !== detailRequestRef.current) return;
@@ -491,6 +497,23 @@ export default function TransactionsPage() {
           refund_amount: Number(refund.refund_amount) || 0,
         })) as TransactionRefundRow[];
         setRefunds(normalizedRefunds);
+      }
+
+      const { data: goodwillRows, error: goodwillRowsError } = await supabase
+        .from('loyalty_ledger')
+        .select('id')
+        .eq('ref_order_id', orderId)
+        .eq('restaurant_id', restaurantId)
+        .eq('entry_type', 'spend')
+        .gt('currency_value', 0)
+        .limit(1);
+
+      if (requestId !== detailRequestRef.current) return;
+
+      if (goodwillRowsError) {
+        setGoodwillVouchers([]);
+      } else {
+        setGoodwillVouchers(((goodwillRows ?? []) as any[]).map((row) => ({ id: String(row.id) })));
       }
 
       setDetailData(detailBase);
@@ -649,6 +672,7 @@ export default function TransactionsPage() {
       });
       setDetailData(null);
       setRefunds([]);
+      setGoodwillVouchers([]);
       setRefundModalOpen(false);
       setRefundType('full');
       setPartialRefundAmount('');
@@ -689,6 +713,7 @@ export default function TransactionsPage() {
     });
     setDetailData(null);
     setRefunds([]);
+    setGoodwillVouchers([]);
     setRefundModalOpen(false);
     setRefundType('full');
     setPartialRefundAmount('');
@@ -757,6 +782,7 @@ export default function TransactionsPage() {
   );
   const orderTotal = Number(detailData?.total_price) || 0;
   const remainingRefundable = Number(Math.max(orderTotal - totalRefunded, 0).toFixed(2));
+  const hasHistoryRecords = refunds.length > 0 || goodwillVouchers.length > 0 || goodwillSuccessValue !== null;
 
   const selectedRefundReason = refundReason === 'Other' ? customRefundReason.trim() : refundReason.trim();
   const partialRefundAmountValue = parseCurrencyInput(partialRefundAmount);
@@ -843,6 +869,14 @@ export default function TransactionsPage() {
 
       if (!response.ok || payload?.ok !== true) {
         throw new Error(String(payload?.message || 'Failed to create refund.'));
+      }
+
+      if (payload?.refund) {
+        const normalizedRefund = {
+          ...payload.refund,
+          refund_amount: Number(payload.refund.refund_amount) || 0,
+        } as TransactionRefundRow;
+        setRefunds((current) => [normalizedRefund, ...current.filter((entry) => entry.id !== normalizedRefund.id)]);
       }
 
       await fetchOrderDetail(selectedOrderId, selectedOrderSummary);
@@ -1423,11 +1457,9 @@ export default function TransactionsPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4">
-                  <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-gray-600">Refund history</h3>
-                  {refunds.length === 0 ? (
-                    <p className="mt-2 text-sm text-gray-500">No refunds recorded.</p>
-                  ) : (
+                {hasHistoryRecords ? (
+                  <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4">
+                    <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-gray-600">Refund history</h3>
                     <div className="mt-3 space-y-2.5">
                       {refunds.map((refund) => (
                         <div key={refund.id} className="rounded-lg border border-gray-200 bg-gray-50/50 p-3 text-sm">
@@ -1441,8 +1473,8 @@ export default function TransactionsPage() {
                         </div>
                       ))}
                     </div>
-                  )}
-                </div>
+                  </div>
+                ) : null}
 
                 {process.env.NODE_ENV !== 'production' && (
                   <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700">
