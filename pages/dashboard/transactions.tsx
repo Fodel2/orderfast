@@ -484,7 +484,7 @@ export default function TransactionsPage() {
         )
         .eq('order_id', orderId)
         .eq('restaurant_id', restaurantId)
-        .or('status.eq.succeeded,status.eq.manual,provider.eq.manual')
+        .eq('status', 'succeeded')
         .order('created_at', { ascending: false });
 
       if (requestId !== detailRequestRef.current) return;
