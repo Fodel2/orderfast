@@ -782,7 +782,7 @@ export default function TransactionsPage() {
   );
   const orderTotal = Number(detailData?.total_price) || 0;
   const remainingRefundable = Number(Math.max(orderTotal - totalRefunded, 0).toFixed(2));
-  const hasHistoryRecords = refunds.length > 0 || goodwillVouchers.length > 0 || goodwillSuccessValue !== null;
+  const hasHistoryRecords = refunds.length > 0 || goodwillVouchers.length > 0;
 
   const selectedRefundReason = refundReason === 'Other' ? customRefundReason.trim() : refundReason.trim();
   const partialRefundAmountValue = parseCurrencyInput(partialRefundAmount);
