@@ -47,11 +47,37 @@ interface TransactionOrderDetail extends TransactionOrderRow {
   order_items: TransactionOrderItem[];
 }
 
+interface TransactionRefundRow {
+  id: string;
+  order_id: string;
+  restaurant_id: string;
+  refund_amount: number;
+  refund_type: 'full' | 'partial';
+  status: string;
+  reason: string | null;
+  internal_note: string | null;
+  provider: string | null;
+  provider_refund_id: string | null;
+  created_by_user_id: string | null;
+  created_at: string;
+  processed_at: string | null;
+}
+
 type GoodwillWizardStep = 'details' | 'review' | 'confirm' | 'success';
+type RefundType = 'full' | 'partial';
 
 const GOODWILL_PRESETS = [5, 10, 15, 20] as const;
 const MESSAGE_HELPER = 'This will be displayed on the voucher and visible to customers';
 const MESSAGE_MAX_LENGTH = 240;
+
+const REFUND_REASON_OPTIONS = [
+  'Customer requested',
+  'Order issue',
+  'Item unavailable',
+  'Late delivery',
+  'Quality issue',
+  'Other',
+] as const;
 
 const ORDER_ID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -183,6 +209,16 @@ export default function TransactionsPage() {
     addonsQueryError: null,
   });
   const [detailData, setDetailData] = useState<TransactionOrderDetail | null>(null);
+  const [refunds, setRefunds] = useState<TransactionRefundRow[]>([]);
+  const [refundModalOpen, setRefundModalOpen] = useState(false);
+  const [refundType, setRefundType] = useState<RefundType>('full');
+  const [partialRefundAmount, setPartialRefundAmount] = useState('');
+  const [refundReason, setRefundReason] = useState('');
+  const [customRefundReason, setCustomRefundReason] = useState('');
+  const [refundInternalNote, setRefundInternalNote] = useState('');
+  const [refundFieldError, setRefundFieldError] = useState<string | null>(null);
+  const [refundSubmitError, setRefundSubmitError] = useState<string | null>(null);
+  const [submittingRefund, setSubmittingRefund] = useState(false);
   const [goodwillStep, setGoodwillStep] = useState<GoodwillWizardStep>('details');
   const [goodwillOpen, setGoodwillOpen] = useState(false);
   const [selectedGoodwillPreset, setSelectedGoodwillPreset] = useState<number | 'custom'>(10);
@@ -436,6 +472,27 @@ export default function TransactionsPage() {
         order_items: [],
       };
 
+      const { data: refundsData, error: refundsError } = await supabase
+        .from('order_refunds')
+        .select(
+          'id,order_id,restaurant_id,refund_amount,refund_type,status,reason,internal_note,provider,provider_refund_id,created_by_user_id,created_at,processed_at'
+        )
+        .eq('order_id', orderId)
+        .eq('restaurant_id', restaurantId)
+        .order('created_at', { ascending: false });
+
+      if (requestId !== detailRequestRef.current) return;
+
+      if (refundsError) {
+        setRefunds([]);
+      } else {
+        const normalizedRefunds = ((refundsData ?? []) as any[]).map((refund) => ({
+          ...refund,
+          refund_amount: Number(refund.refund_amount) || 0,
+        })) as TransactionRefundRow[];
+        setRefunds(normalizedRefunds);
+      }
+
       setDetailData(detailBase);
       setSelectedOrderSummary(summary ?? null);
 
@@ -591,6 +648,16 @@ export default function TransactionsPage() {
         addonsQueryError: null,
       });
       setDetailData(null);
+      setRefunds([]);
+      setRefundModalOpen(false);
+      setRefundType('full');
+      setPartialRefundAmount('');
+      setRefundReason('');
+      setCustomRefundReason('');
+      setRefundInternalNote('');
+      setRefundFieldError(null);
+      setRefundSubmitError(null);
+      setSubmittingRefund(false);
       setGoodwillOpen(false);
       setGoodwillStep('details');
       setGoodwillFieldError(null);
@@ -621,6 +688,16 @@ export default function TransactionsPage() {
       addonsQueryError: null,
     });
     setDetailData(null);
+    setRefunds([]);
+    setRefundModalOpen(false);
+    setRefundType('full');
+    setPartialRefundAmount('');
+    setRefundReason('');
+    setCustomRefundReason('');
+    setRefundInternalNote('');
+    setRefundFieldError(null);
+    setRefundSubmitError(null);
+    setSubmittingRefund(false);
     setGoodwillOpen(false);
     setGoodwillStep('details');
     setGoodwillFieldError(null);
@@ -673,6 +750,109 @@ export default function TransactionsPage() {
     ) ?? 0;
   const itemsTotal = baseItemsTotal + addonsTotal;
   const feesTotal = (Number(detailData?.delivery_fee) || 0) + (Number(detailData?.service_fee) || 0);
+
+  const totalRefunded = useMemo(
+    () => Number(refunds.reduce((sum, refund) => sum + (Number(refund.refund_amount) || 0), 0).toFixed(2)),
+    [refunds]
+  );
+  const orderTotal = Number(detailData?.total_price) || 0;
+  const remainingRefundable = Number(Math.max(orderTotal - totalRefunded, 0).toFixed(2));
+
+  const selectedRefundReason = refundReason === 'Other' ? customRefundReason.trim() : refundReason.trim();
+  const partialRefundAmountValue = parseCurrencyInput(partialRefundAmount);
+  const proposedRefundAmount = refundType === 'full' ? remainingRefundable : partialRefundAmountValue;
+
+  const openRefundModal = useCallback(() => {
+    setRefundModalOpen(true);
+    setRefundType(remainingRefundable > 0 ? 'full' : 'partial');
+    setPartialRefundAmount('');
+    setRefundReason('');
+    setCustomRefundReason('');
+    setRefundInternalNote('');
+    setRefundFieldError(null);
+    setRefundSubmitError(null);
+  }, [remainingRefundable]);
+
+  const closeRefundModal = useCallback(() => {
+    setRefundModalOpen(false);
+    setRefundFieldError(null);
+    setRefundSubmitError(null);
+    setSubmittingRefund(false);
+  }, []);
+
+  const validateRefundForm = useCallback(() => {
+    if (!selectedOrderId || !ORDER_ID_REGEX.test(selectedOrderId)) {
+      setRefundFieldError('Invalid order context.');
+      return false;
+    }
+    if (!restaurantId) {
+      setRefundFieldError('Restaurant context unavailable.');
+      return false;
+    }
+    if (remainingRefundable <= 0) {
+      setRefundFieldError('This order has already been fully refunded.');
+      return false;
+    }
+    if (!selectedRefundReason) {
+      setRefundFieldError('Please select or enter a refund reason.');
+      return false;
+    }
+    if (refundType === 'partial') {
+      if (!partialRefundAmountValue || partialRefundAmountValue <= 0) {
+        setRefundFieldError('Partial refund amount must be greater than 0.');
+        return false;
+      }
+      if (partialRefundAmountValue > remainingRefundable) {
+        setRefundFieldError('Partial refund amount cannot exceed remaining refundable amount.');
+        return false;
+      }
+    }
+    if (refundType === 'full' && remainingRefundable > orderTotal) {
+      setRefundFieldError('Full refund amount cannot exceed order total.');
+      return false;
+    }
+    setRefundFieldError(null);
+    return true;
+  }, [orderTotal, partialRefundAmountValue, refundType, remainingRefundable, restaurantId, selectedOrderId, selectedRefundReason]);
+
+  const submitRefund = useCallback(async () => {
+    if (submittingRefund) return;
+    if (!validateRefundForm()) return;
+
+    const refundAmountToSend = refundType === 'full' ? remainingRefundable : partialRefundAmountValue;
+
+    setSubmittingRefund(true);
+    setRefundSubmitError(null);
+
+    try {
+      const response = await fetch('/api/dashboard/create-order-refund', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: selectedOrderId,
+          refundType,
+          refundAmount: refundAmountToSend,
+          reason: selectedRefundReason,
+          internalNote: refundInternalNote.trim(),
+          provider: 'manual',
+          providerRefundId: null,
+        }),
+      });
+
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok || payload?.ok !== true) {
+        throw new Error(String(payload?.message || 'Failed to create refund.'));
+      }
+
+      await fetchOrderDetail(selectedOrderId, selectedOrderSummary);
+      closeRefundModal();
+    } catch (error: any) {
+      setRefundSubmitError(error?.message || 'Failed to create refund.');
+    } finally {
+      setSubmittingRefund(false);
+    }
+  }, [closeRefundModal, fetchOrderDetail, partialRefundAmountValue, refundInternalNote, refundType, remainingRefundable, selectedOrderId, selectedOrderSummary, selectedRefundReason, submittingRefund, validateRefundForm]);
 
   const goodwillEligibility = useMemo(() => {
     const userId = String(modalOrder?.user_id || '').trim();
@@ -1226,11 +1406,43 @@ export default function TransactionsPage() {
                     </div>
                     <div className="mt-1 flex items-center justify-between border-t border-gray-300 pt-3 text-base font-semibold text-gray-900">
                       <span>Final total</span>
-                      <span>{formatPrice(Number(detailData.total_price) || 0)}</span>
+                      <span>{formatPrice(orderTotal)}</span>
                     </div>
+                    {totalRefunded > 0 ? (
+                      <>
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-600">Total refunded</span>
+                          <span className="font-medium text-rose-700">{formatPrice(totalRefunded)}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-600">Remaining refundable</span>
+                          <span className="font-medium text-gray-800">{formatPrice(remainingRefundable)}</span>
+                        </div>
+                      </>
+                    ) : null}
                   </div>
                 </div>
 
+                <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4">
+                  <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-gray-600">Refund history</h3>
+                  {refunds.length === 0 ? (
+                    <p className="mt-2 text-sm text-gray-500">No refunds recorded.</p>
+                  ) : (
+                    <div className="mt-3 space-y-2.5">
+                      {refunds.map((refund) => (
+                        <div key={refund.id} className="rounded-lg border border-gray-200 bg-gray-50/50 p-3 text-sm">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="font-medium text-gray-900">{formatPrice(refund.refund_amount)} · {formatStatusLabel(refund.refund_type)}</p>
+                            <p className="text-xs text-gray-500">{new Date(refund.created_at).toLocaleString()}</p>
+                          </div>
+                          <p className="mt-1 text-xs text-gray-600">Status: {formatStatusLabel(refund.status)}</p>
+                          {refund.reason ? <p className="mt-1 text-xs text-gray-600">Reason: {refund.reason}</p> : null}
+                          {refund.internal_note ? <p className="mt-1 text-xs text-gray-600">Internal note: {refund.internal_note}</p> : null}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
 
                 {process.env.NODE_ENV !== 'production' && (
                   <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700">
@@ -1251,9 +1463,11 @@ export default function TransactionsPage() {
                 <div className="mt-6 flex flex-wrap items-center justify-end gap-2.5 border-t border-gray-100 pt-4">
                   <button
                     type="button"
-                    className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 transition hover:bg-gray-50"
+                    onClick={openRefundModal}
+                    disabled={remainingRefundable <= 0}
+                    className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400"
                   >
-                    Refund (placeholder)
+                    Refund
                   </button>
                   <button
                     type="button"
@@ -1271,6 +1485,107 @@ export default function TransactionsPage() {
               <p className="text-sm text-gray-500">No order details available.</p>
             )}
           </div>
+
+          {refundModalOpen && (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-3 sm:p-4">
+              <div className="w-full max-w-lg rounded-2xl border border-gray-200 bg-white p-4 shadow-2xl sm:p-5">
+                <div className="mb-4 flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">Create refund</h3>
+                    <p className="mt-1 text-sm text-gray-500">Remaining refundable: {formatPrice(remainingRefundable)}</p>
+                  </div>
+                  <button type="button" onClick={closeRefundModal} className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50">Close</button>
+                </div>
+
+                <div className="space-y-3">
+                  <label className="block text-sm text-gray-700">
+                    <span className="mb-1 block">Refund type</span>
+                    <select
+                      value={refundType}
+                      onChange={(event) => setRefundType(event.target.value as RefundType)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    >
+                      <option value="full">Full</option>
+                      <option value="partial">Partial</option>
+                    </select>
+                  </label>
+
+                  {refundType === 'partial' && (
+                    <label className="block text-sm text-gray-700">
+                      <span className="mb-1 block">Partial refund amount</span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={partialRefundAmount}
+                        onChange={(event) => setPartialRefundAmount(event.target.value)}
+                        placeholder="0.00"
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      />
+                    </label>
+                  )}
+
+                  <label className="block text-sm text-gray-700">
+                    <span className="mb-1 block">Refund reason</span>
+                    <select
+                      value={refundReason}
+                      onChange={(event) => setRefundReason(event.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    >
+                      <option value="">Select reason</option>
+                      {REFUND_REASON_OPTIONS.map((reasonOption) => (
+                        <option key={reasonOption} value={reasonOption}>
+                          {reasonOption}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  {refundReason === 'Other' && (
+                    <label className="block text-sm text-gray-700">
+                      <span className="mb-1 block">Custom reason</span>
+                      <input
+                        type="text"
+                        value={customRefundReason}
+                        onChange={(event) => setCustomRefundReason(event.target.value)}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                        placeholder="Enter reason"
+                      />
+                    </label>
+                  )}
+
+                  <label className="block text-sm text-gray-700">
+                    <span className="mb-1 block">Internal note (optional)</span>
+                    <textarea
+                      rows={3}
+                      value={refundInternalNote}
+                      onChange={(event) => setRefundInternalNote(event.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      placeholder="Add internal note"
+                    />
+                  </label>
+
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                    Refund amount: <span className="font-semibold text-gray-900">{formatPrice(proposedRefundAmount || 0)}</span>
+                  </div>
+
+                  {refundFieldError ? <p className="text-sm text-rose-600">{refundFieldError}</p> : null}
+                  {refundSubmitError ? <p className="text-sm text-rose-600">{refundSubmitError}</p> : null}
+                </div>
+
+                <div className="mt-4 flex justify-end gap-2">
+                  <button type="button" onClick={closeRefundModal} className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm text-gray-700">Cancel</button>
+                  <button
+                    type="button"
+                    disabled={submittingRefund || remainingRefundable <= 0}
+                    onClick={submitRefund}
+                    className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {submittingRefund ? 'Submitting…' : 'Submit refund'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </DashboardLayout>
