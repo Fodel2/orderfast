@@ -462,7 +462,7 @@ export default function SalesPage() {
                 Gross sales, refunds, order mix, and top items for your selected date range.
               </p>
             </div>
-            <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white/90 p-2 shadow-sm">
+            <div className="grid w-full grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white/90 p-2 shadow-sm sm:w-auto">
               {(Object.keys(DATE_PRESET_LABELS) as DatePreset[]).map((preset) => {
                 const isActive = datePreset === preset;
                 return (
@@ -470,7 +470,7 @@ export default function SalesPage() {
                     key={preset}
                     type="button"
                     onClick={() => handlePresetSelect(preset)}
-                    className={`rounded-xl px-3 py-2 text-sm font-medium transition ${
+                    className={`flex h-10 w-full items-center justify-center whitespace-nowrap rounded-xl px-2 text-[13px] font-medium leading-none transition sm:px-3 sm:text-sm ${
                       isActive ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'
                     }`}
                   >
