@@ -454,15 +454,16 @@ export default function SalesPage() {
     <DashboardLayout>
       <div className="space-y-6 p-4 sm:p-6 lg:p-8">
         <section className="rounded-3xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-slate-100 p-6 shadow-sm sm:p-8">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Sales</p>
-              <h1 className="mt-2 text-3xl font-semibold text-slate-900 sm:text-4xl">Sales Reporting</h1>
-              <p className="mt-2 max-w-2xl text-sm text-slate-600 sm:text-base">
-                Gross sales, refunds, order mix, and top items for your selected date range.
-              </p>
-            </div>
-            <div className="grid w-full grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white/90 p-2 shadow-sm sm:w-auto">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Sales</p>
+            <h1 className="mt-2 text-3xl font-semibold text-slate-900 sm:text-4xl">Sales Reporting</h1>
+            <p className="mt-2 max-w-2xl text-sm text-slate-600 sm:text-base">
+              Gross sales, refunds, order mix, and top items for your selected date range.
+            </p>
+          </div>
+
+          <div className="mt-5">
+            <div className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white/90 p-2 shadow-sm sm:w-fit">
               {(Object.keys(DATE_PRESET_LABELS) as DatePreset[]).map((preset) => {
                 const isActive = datePreset === preset;
                 return (
