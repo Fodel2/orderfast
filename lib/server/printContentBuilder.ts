@@ -254,11 +254,11 @@ export function buildTicketDocument(job: PrintJobLike, rule: PrintRuleLike = {},
 }
 
 export function renderTicketDocumentSvg(document: TicketDocument) {
-  const width = document.width === '80mm' ? 576 : 384;
-  const paddingX = 24;
-  const paddingY = 24;
-  const fontSize = 22;
-  const lineHeight = 30;
+  const width = document.width === '80mm' ? 384 : 288;
+  const paddingX = 16;
+  const paddingY = 18;
+  const fontSize = document.width === '80mm' ? 16 : 14;
+  const lineHeight = document.width === '80mm' ? 22 : 20;
   const lines = renderTicketDocumentLines(document);
   const height = Math.max(120, paddingY * 2 + lines.length * lineHeight);
   const content = lines

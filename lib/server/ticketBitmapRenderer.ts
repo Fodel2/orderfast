@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { Resvg } from '@resvg/resvg-js';
 import { PNG } from 'pngjs';
 import { buildPrintableTicketText, buildTicketDocument, buildTestEscPosHex, renderTicketDocumentSvg, type PrintJobLike, type PrintRuleLike, type TicketBuildOptions } from './printContentBuilder';
@@ -10,6 +12,7 @@ function pngToEscPosRaster(pngBuffer: Buffer, feedLines: number) {
   const height = png.height;
   const bytesPerRow = Math.ceil(width / 8);
   const raster = new Uint8Array(bytesPerRow * height);
+  let darkPixelCount = 0;
 
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
@@ -21,6 +24,7 @@ function pngToEscPosRaster(pngBuffer: Buffer, feedLines: number) {
       const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
       const isBlack = a > 0 && luminance < 200;
       if (!isBlack) continue;
+      darkPixelCount += 1;
       const offset = y * bytesPerRow + (x >> 3);
       raster[offset] |= 0x80 >> (x & 7);
     }
@@ -40,8 +44,18 @@ function pngToEscPosRaster(pngBuffer: Buffer, feedLines: number) {
   all.set(raster, init.length + imageCmd.length);
   all.set(feed, init.length + imageCmd.length + raster.length);
   all.set(cut, init.length + imageCmd.length + raster.length + feed.length);
-  return { width, height, hex: toHex(all) };
+  return { width, height, darkPixelCount, hex: toHex(all) };
 }
+
+function maybeWriteDebugArtifact(kind: 'svg' | 'png', jobId: string, data: string | Buffer) {
+  const debugDir = process.env.PRINT_DEBUG_DIR;
+  if (!debugDir) return null;
+  fs.mkdirSync(debugDir, { recursive: true });
+  const filePath = path.join(debugDir, `${jobId}.${kind}`);
+  fs.writeFileSync(filePath, data);
+  return filePath;
+}
+
 
 export async function buildSunmiTicketBitmapContent(job: PrintJobLike, rule: PrintRuleLike = {}, options: TicketBuildOptions = {}) {
   const width = options.width || '80mm';
@@ -63,6 +77,21 @@ export async function buildSunmiTicketBitmapContent(job: PrintJobLike, rule: Pri
   const pngData = resvg.render();
   const pngBuffer = pngData.asPng();
   const raster = pngToEscPosRaster(pngBuffer, document.feedLines);
+  const svgArtifactPath = maybeWriteDebugArtifact('svg', job.id, svg.svg);
+  const pngArtifactPath = maybeWriteDebugArtifact('png', job.id, pngBuffer);
+
+  console.info('[ticket-bitmap] render diagnostics', {
+    job_id: job.id,
+    ticket_type: job.ticket_type,
+    width: raster.width,
+    height: raster.height,
+    svg_length: svg.svg.length,
+    png_length: pngBuffer.length,
+    dark_pixels: raster.darkPixelCount,
+    hex_length: raster.hex.length,
+    svg_artifact_path: svgArtifactPath,
+    png_artifact_path: pngArtifactPath,
+  });
 
   return {
     text,
@@ -71,5 +100,6 @@ export async function buildSunmiTicketBitmapContent(job: PrintJobLike, rule: Pri
     width: raster.width,
     height: raster.height,
     hex: raster.hex,
+    darkPixelCount: raster.darkPixelCount,
   };
 }
