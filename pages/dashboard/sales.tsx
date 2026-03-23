@@ -454,15 +454,16 @@ export default function SalesPage() {
     <DashboardLayout>
       <div className="space-y-6 p-4 sm:p-6 lg:p-8">
         <section className="rounded-3xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-slate-100 p-6 shadow-sm sm:p-8">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Sales</p>
-              <h1 className="mt-2 text-3xl font-semibold text-slate-900 sm:text-4xl">Sales Reporting</h1>
-              <p className="mt-2 max-w-2xl text-sm text-slate-600 sm:text-base">
-                Gross sales, refunds, order mix, and top items for your selected date range.
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white/90 p-2 shadow-sm">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Sales</p>
+            <h1 className="mt-2 text-3xl font-semibold text-slate-900 sm:text-4xl">Sales Reporting</h1>
+            <p className="mt-2 max-w-2xl text-sm text-slate-600 sm:text-base">
+              Gross sales, refunds, order mix, and top items for your selected date range.
+            </p>
+          </div>
+
+          <div className="mt-5">
+            <div className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white/90 p-2 shadow-sm md:flex md:flex-wrap md:items-center">
               {(Object.keys(DATE_PRESET_LABELS) as DatePreset[]).map((preset) => {
                 const isActive = datePreset === preset;
                 return (
@@ -470,7 +471,7 @@ export default function SalesPage() {
                     key={preset}
                     type="button"
                     onClick={() => handlePresetSelect(preset)}
-                    className={`rounded-xl px-3 py-2 text-sm font-medium transition ${
+                    className={`flex h-10 w-full items-center justify-center whitespace-nowrap rounded-xl px-2 text-[13px] font-medium leading-none transition sm:px-3 sm:text-sm md:w-auto md:min-w-[120px] ${
                       isActive ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'
                     }`}
                   >
