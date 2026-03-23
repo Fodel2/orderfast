@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/utils/supabaseClient';
 import { requestPrintJobCreation, requestPrintQueueNudge } from '@/lib/print-jobs/request';
-import { buildTicketText, type PrintRuleLike, type TicketType } from '@/lib/server/printContentBuilder';
+import { buildTicketDocument, type PrintRuleLike, type TicketType } from '@/lib/server/printContentBuilder';
 
 type Printer = {
   id: string;
@@ -658,9 +658,9 @@ export default function PrinterSettingsTab({
     [restaurantBranding]
   );
 
-  const previewText = useMemo(
+  const previewDocument = useMemo(
     () =>
-      buildTicketText(
+      buildTicketDocument(
         {
           id: 'preview-print-job',
           ticket_type: previewTicketType as TicketType,
@@ -964,48 +964,40 @@ export default function PrinterSettingsTab({
                     </div>
                   ) : null}
                   <div className="space-y-0.5">
-                    {previewText.split('\n').map((line, index) => {
-                      const trimmed = line.trim();
-                      const isDivider = /^[─-]+$/.test(trimmed);
-                      const isRestaurantName = trimmed === (previewPayload.restaurant_name || '').trim();
-                      const isOrderNumber = /^#/.test(trimmed);
-                      const isTypeBar = /^[A-Z0-9 ]+$/.test(trimmed) && ['DELIVERY', 'COLLECTION', 'TABLE', 'DINE IN'].some((token) => trimmed.includes(token));
-                      const isHeader = /(END OF ORDER|THANK YOU)/i.test(trimmed);
-                      const isCategory =
-                        !isDivider &&
-                        !!trimmed &&
-                        trimmed === trimmed.toUpperCase() &&
-                        !isOrderNumber &&
-                        !isTypeBar &&
-                        !/^TOTAL\b/.test(trimmed) &&
-                        /^[A-Z& ]+$/.test(trimmed);
-                      const isNote = /NOTE/.test(trimmed);
-                      const isAddon = /^\s+\+/.test(line);
-                      const isTotal = /^TOTAL\b/.test(trimmed);
-                      return isDivider ? (
-                        <div key={`${index}-${trimmed}`} className="my-3 border-t border-stone-900/90" />
-                      ) : (
+                    {previewDocument.nodes.map((node, index) => {
+                      if (node.type === 'divider') {
+                        return <div key={`${index}-divider`} className="my-3 border-t border-stone-900/90" />;
+                      }
+
+                      if (node.type === 'blank') {
+                        return <div key={`${index}-blank`} className="block h-2" />;
+                      }
+
+                      const line = node.align === 'center' ? node.text.trim() : node.text;
+                      return (
                         <div
-                          key={`${index}-${line}`}
+                          key={`${index}-${node.type}-${node.text}`}
                           className={`whitespace-pre-wrap break-words text-[11px] leading-[1.45] tracking-[0.01em] text-stone-900 ${
-                            isRestaurantName ? 'pb-0 text-center text-[13px] font-semibold tracking-[0.05em]' : ''
+                            node.variant === 'restaurantName' ? 'pb-0 text-center text-[13px] font-semibold tracking-[0.05em]' : ''
                           } ${
-                            isHeader ? 'pt-0.5 text-center text-[10px] font-semibold tracking-[0.1em] text-stone-950' : ''
+                            node.variant === 'footer' ? 'pt-0.5 text-center text-[10px] font-semibold tracking-[0.1em] text-stone-950' : ''
                           } ${
-                            isOrderNumber ? 'pb-0.5 pt-0 text-center text-[16px] font-bold tracking-[0.08em] text-stone-950' : ''
+                            node.variant === 'orderNumber' ? 'pb-0.5 pt-0 text-center text-[16px] font-bold tracking-[0.08em] text-stone-950' : ''
                           } ${
-                            isTypeBar ? 'my-0.5 bg-stone-950 px-2 py-1 text-center text-[10.5px] font-bold tracking-[0.16em] text-white' : ''
+                            node.variant === 'orderType' ? 'my-0.5 bg-stone-950 px-2 py-1 text-center text-[10.5px] font-bold tracking-[0.16em] text-white' : ''
                           } ${
-                            isCategory ? 'pt-1 text-[11px] font-bold tracking-[0.05em] text-stone-950' : ''
+                            node.variant === 'category' ? 'pt-1 text-[11px] font-bold tracking-[0.05em] text-stone-950' : ''
                           } ${
-                            isNote ? 'pt-1 font-semibold text-stone-950' : ''
+                            node.variant === 'noteLabel' ? 'pt-1 font-semibold text-stone-950' : ''
                           } ${
-                            isAddon ? 'pl-4 text-stone-700' : ''
+                            node.variant === 'noteText' || node.variant === 'addon' ? 'pl-4 text-stone-700' : ''
                           } ${
-                            isTotal ? 'pt-1 text-[12.5px] font-bold text-stone-950' : ''
+                            node.variant === 'total' ? 'pt-1 text-[12.5px] font-bold text-stone-950' : ''
+                          } ${
+                            node.align === 'center' ? 'text-center' : ''
                           }`}
                         >
-                          {line || <span className="block h-2" />}
+                          {line}
                         </div>
                       );
                     })}
