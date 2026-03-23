@@ -296,10 +296,21 @@ export async function createPrintJobs(input: CreatePrintJobsInput): Promise<{ cr
     }
   });
 
-  const { data: inserted, error } = await supaServer
-    .from('print_jobs')
-    .upsert(rows, { onConflict: 'dedupe_key', ignoreDuplicates: true })
-    .select('id,printer_id');
+  const insertMode = input.source === 'manual_print' ? 'insert' : 'upsert';
+
+  console.info('[print-jobs] insert mode used', {
+    restaurant_id: input.restaurantId,
+    order_id: input.orderId,
+    source: input.source,
+    ticket_type: dbTicketType,
+    insert_mode: insertMode,
+  });
+
+  const writeQuery = input.source === 'manual_print'
+    ? supaServer.from('print_jobs').insert(rows)
+    : supaServer.from('print_jobs').upsert(rows, { onConflict: 'dedupe_key', ignoreDuplicates: true });
+
+  const { data: inserted, error } = await writeQuery.select('id,printer_id');
 
   if (error) {
     console.error('[PRINT JOB] failed to insert print jobs', { input, error });
