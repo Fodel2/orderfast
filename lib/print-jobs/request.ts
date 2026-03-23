@@ -9,17 +9,21 @@ export async function requestPrintJobCreation(params: {
   triggerEvent?: 'order_placed' | 'payment_succeeded' | 'order_accepted' | 'scheduled_prep_window';
   dedupeToken?: string;
 }) {
+  const payload = {
+    restaurant_id: params.restaurantId,
+    order_id: params.orderId,
+    ticket_type: params.ticketType,
+    source: params.source,
+    trigger_event: params.triggerEvent,
+    dedupe_token: params.dedupeToken,
+  };
+
+  console.info('[print-jobs/request] request payload sent', payload);
+
   const response = await fetch('/api/print-jobs/create', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      restaurant_id: params.restaurantId,
-      order_id: params.orderId,
-      ticket_type: params.ticketType,
-      source: params.source,
-      trigger_event: params.triggerEvent,
-      dedupe_token: params.dedupeToken,
-    }),
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {

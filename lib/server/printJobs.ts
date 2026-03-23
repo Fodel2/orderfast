@@ -186,11 +186,11 @@ export async function createPrintJobs(input: CreatePrintJobsInput): Promise<{ cr
     return { created: 0, skipped: true, reason: 'printing_disabled', jobIds: [] };
   }
 
-  if (!rule) {
+  if (!rule && input.source === 'auto') {
     return { created: 0, skipped: true, reason: 'missing_rule', jobIds: [] };
   }
 
-  if (input.source === 'auto') {
+  if (input.source === 'auto' && rule) {
     if (!rule.enabled) {
       return { created: 0, skipped: true, reason: 'rule_disabled', jobIds: [] };
     }
@@ -202,7 +202,7 @@ export async function createPrintJobs(input: CreatePrintJobsInput): Promise<{ cr
   const { data: assignedRows } = await supaServer
     .from('print_rule_printers')
     .select('printer_id,printers!inner(id,restaurant_id,provider,serial_number,enabled,is_default)')
-    .eq('print_rule_id', rule.id);
+    .eq('print_rule_id', rule?.id || '');
 
   let targetPrinters = (assignedRows || [])
     .map((row: any) => row.printers)
@@ -239,7 +239,7 @@ export async function createPrintJobs(input: CreatePrintJobsInput): Promise<{ cr
       rows.push({
         restaurant_id: input.restaurantId,
         order_id: input.orderId,
-        print_rule_id: rule.id,
+        print_rule_id: rule?.id ?? null,
         printer_id: printer.id,
         ticket_type: dbTicketType,
         provider: printer.provider ?? null,

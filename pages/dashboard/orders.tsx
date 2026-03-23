@@ -1274,6 +1274,7 @@ export default function OrdersPage() {
         onUpdateStatus={updateStatus}
         onPrint={async ({ orderId, ticketType, source }) => {
           if (!restaurantId) return;
+          console.info('[orders] print button clicked', { restaurantId, orderId, ticketType, source });
           try {
             const response = await requestPrintJobCreation({
               restaurantId,

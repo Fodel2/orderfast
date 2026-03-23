@@ -36,6 +36,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       dedupeToken: dedupe_token,
     });
 
+
+    if (source === 'manual_print' && (!result.created || !result.jobIds?.length)) {
+      console.warn('[print-jobs/create] manual print did not create jobs', {
+        restaurant_id,
+        order_id,
+        ticket_type,
+        source,
+        reason: result.reason || null,
+        created: result.created || 0,
+      });
+      return res.status(409).json({
+        error: result.reason || 'Manual print job was not created',
+        ...result,
+      });
+    }
+
     let dispatch: any = null;
     try {
       if (source === 'manual_print' && result.jobIds?.length) {
