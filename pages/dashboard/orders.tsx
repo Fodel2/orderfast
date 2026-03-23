@@ -1274,12 +1274,14 @@ export default function OrdersPage() {
         onUpdateStatus={updateStatus}
         onPrint={async ({ orderId, ticketType, source }) => {
           if (!restaurantId) return;
+          const finalTicketType = String(ticketType).trim().toLowerCase() === 'invoice' ? 'invoice' : 'kot';
           console.info('[orders] print button clicked', { restaurantId, orderId, ticketType, source });
+          console.info(`manual print final ticket_type: ${finalTicketType}`);
           try {
             const response = await requestPrintJobCreation({
               restaurantId,
               orderId,
-              ticketType,
+              ticketType: finalTicketType,
               source,
             });
             const manualRuns = Array.isArray(response?.dispatch?.runs) ? response.dispatch.runs : [];
