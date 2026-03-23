@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { supaServer } from '@/lib/supaServer';
-import { buildSunmiPrintHexContent } from '@/lib/server/printContentBuilder';
+import { buildSunmiTicketBitmapContent } from '@/lib/server/ticketBitmapRenderer';
 import { checkSunmiPrinterOnlineStatus, postSunmi, sendSunmiVoice } from '@/lib/server/sunmiClient';
 
 const RETRY_SECONDS = [10, 30, 60];
@@ -302,7 +302,7 @@ async function dispatchOne(job: QueueJob) {
     .maybeSingle();
 
   const tradeNo = makeTradeNo(job.id);
-  const content = buildSunmiPrintHexContent(
+  const content = await buildSunmiTicketBitmapContent(
     {
       id: job.id,
       ticket_type: job.ticket_type,
@@ -324,6 +324,8 @@ async function dispatchOne(job: QueueJob) {
 
   const cycle = Math.min(3, Math.max(1, Number((settings as PrinterSettings | null)?.voice_repeat_count || 1)));
   const includeVoice = job.source !== 'test' && Boolean(job.voice_enabled && job.voice_message);
+  console.info('[print-queue] ticket render result', { job_id: job.id, ticket_type: job.ticket_type, source: job.source, mode: 'bitmap', width: content.width ?? null, height: content.height ?? null });
+
   const response = await postSunmi('/v2/printer/open/open/device/pushContent', {
     trade_no: tradeNo,
     sn: job.serial_number,

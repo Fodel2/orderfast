@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/utils/supabaseClient';
 import { requestPrintJobCreation, requestPrintQueueNudge } from '@/lib/print-jobs/request';
-import { buildTicketDocument, renderTicketDocumentLines, type PrintRuleLike, type TicketType } from '@/lib/server/printContentBuilder';
+import { buildTicketDocument, renderTicketDocumentSvg, type PrintRuleLike, type TicketType } from '@/lib/server/printContentBuilder';
 
 type Printer = {
   id: string;
@@ -673,7 +673,8 @@ export default function PrinterSettingsTab({
     [previewPayload, previewRule, previewTicketType]
   );
 
-  const previewLines = useMemo(() => renderTicketDocumentLines(previewDocument), [previewDocument]);
+  const previewSvg = useMemo(() => renderTicketDocumentSvg(previewDocument), [previewDocument]);
+  const previewSvgDataUrl = useMemo(() => `data:image/svg+xml;base64,${typeof window !== 'undefined' ? window.btoa(unescape(encodeURIComponent(previewSvg.svg))) : Buffer.from(previewSvg.svg, 'utf8').toString('base64')}`, [previewSvg]);
 
   if (loading) return <div className="bg-white p-6 rounded-lg shadow">Loading printer settings...</div>;
 
@@ -947,12 +948,8 @@ export default function PrinterSettingsTab({
           <aside className="space-y-3 xl:sticky xl:top-24 self-start">
             <div className="mx-auto max-w-[360px] rounded-[28px] border border-stone-300 bg-gradient-to-b from-stone-100 via-stone-50 to-stone-200 p-4 shadow-[0_18px_40px_rgba(15,23,42,0.14)] xl:mx-0">
               <div className="mx-auto rounded-[18px] border border-stone-300 bg-[#fffdfa] p-3 shadow-inner">
-                <div className="mx-auto w-full max-w-[304px] rounded-[14px] border border-stone-300 bg-white px-4 py-3 font-mono text-[11px] leading-[1.45] text-stone-900">
-                  {previewLines.map((line, index) => (
-                    <div key={`${index}-${line}`} className="whitespace-pre">
-                      {line || ' '}
-                    </div>
-                  ))}
+                <div className="mx-auto w-full max-w-[304px] rounded-[14px] border border-stone-300 bg-white p-2">
+                  <img src={previewSvgDataUrl} alt={`${previewTicketType} ticket preview`} className="block w-full" />
                 </div>
               </div>
             </div>

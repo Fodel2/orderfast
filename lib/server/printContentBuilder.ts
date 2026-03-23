@@ -73,12 +73,22 @@ const toHex = (value: string) => {
 };
 const utf8Bytes = (value: string) => (typeof Buffer !== 'undefined' ? Buffer.from(value, 'utf8') : new TextEncoder().encode(value));
 const addressText = (address: any) => [address?.address_line_1, address?.address_line_2, address?.postcode].filter(Boolean).join(', ');
+
+function escapeXml(value: string) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 const toDisplayOrderType = (payload: any) => {
   if (payload?.dine_in_table_number) return `TABLE ${payload.dine_in_table_number}`;
   return String(payload?.order_type || 'ORDER').replace(/_/g, ' ').trim().toUpperCase();
 };
 
-function buildTestEscPosHex(job: PrintJobLike, width: '58mm' | '80mm') {
+export function buildTestEscPosHex(job: PrintJobLike, width: '58mm' | '80mm') {
   const payload = job.payload_json || {};
   const lines = [
     centerText('*** ORDERFAST TEST ***', width),
@@ -241,6 +251,28 @@ export function buildTicketDocument(job: PrintJobLike, rule: PrintRuleLike = {},
   }
 
   return { width, nodes, feedLines: getFeedLines(width, job.source) };
+}
+
+export function renderTicketDocumentSvg(document: TicketDocument) {
+  const width = document.width === '80mm' ? 576 : 384;
+  const paddingX = 24;
+  const paddingY = 24;
+  const fontSize = 22;
+  const lineHeight = 30;
+  const lines = renderTicketDocumentLines(document);
+  const height = Math.max(120, paddingY * 2 + lines.length * lineHeight);
+  const content = lines
+    .map((line, index) => {
+      const y = paddingY + fontSize + index * lineHeight;
+      return `<text x="${paddingX}" y="${y}" font-family="monospace" font-size="${fontSize}" fill="#000000" xml:space="preserve">${escapeXml(line || ' ')}</text>`;
+    })
+    .join('');
+
+  return {
+    width,
+    height,
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="100%" height="100%" fill="#ffffff"/>${content}</svg>`,
+  };
 }
 
 export function renderTicketDocumentLines(document: TicketDocument) {
