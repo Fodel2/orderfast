@@ -182,6 +182,31 @@ export async function createPrintJobs(input: CreatePrintJobsInput): Promise<{ cr
       .maybeSingle(),
   ]);
 
+
+  const effectiveRule = rule || {
+    id: null,
+    enabled: true,
+    copies: 1,
+    trigger_event: null,
+    ticket_type: dbTicketType,
+  };
+
+  console.info('[print-jobs] ticket_type requested', {
+    restaurant_id: input.restaurantId,
+    order_id: input.orderId,
+    source: input.source,
+    ticket_type: dbTicketType,
+  });
+
+  console.info('[print-jobs] rule found / fallback used', {
+    restaurant_id: input.restaurantId,
+    order_id: input.orderId,
+    source: input.source,
+    ticket_type: dbTicketType,
+    rule_id: effectiveRule.id,
+    fallback_used: !rule,
+  });
+
   if (input.source === 'auto' && settings && settings.printing_enabled === false) {
     return { created: 0, skipped: true, reason: 'printing_disabled', jobIds: [] };
   }
@@ -191,10 +216,10 @@ export async function createPrintJobs(input: CreatePrintJobsInput): Promise<{ cr
   }
 
   if (input.source === 'auto' && rule) {
-    if (!rule.enabled) {
+    if (!effectiveRule.enabled) {
       return { created: 0, skipped: true, reason: 'rule_disabled', jobIds: [] };
     }
-    if (input.triggerEvent && rule.trigger_event !== input.triggerEvent) {
+    if (input.triggerEvent && effectiveRule.trigger_event !== input.triggerEvent) {
       return { created: 0, skipped: true, reason: 'trigger_mismatch', jobIds: [] };
     }
   }
@@ -202,7 +227,7 @@ export async function createPrintJobs(input: CreatePrintJobsInput): Promise<{ cr
   const { data: assignedRows } = await supaServer
     .from('print_rule_printers')
     .select('printer_id,printers!inner(id,restaurant_id,provider,serial_number,enabled,is_default)')
-    .eq('print_rule_id', rule?.id || '');
+    .eq('print_rule_id', effectiveRule.id || '');
 
   let targetPrinters = (assignedRows || [])
     .map((row: any) => row.printers)
@@ -230,7 +255,15 @@ export async function createPrintJobs(input: CreatePrintJobsInput): Promise<{ cr
     return { created: 0, skipped: true, reason: 'order_not_found', jobIds: [] };
   }
 
-  const copies = Math.max(1, Number(rule.copies || 1));
+  const copies = Math.max(1, Number(effectiveRule.copies || 1));
+
+  console.info('[print-jobs] copies value used', {
+    restaurant_id: input.restaurantId,
+    order_id: input.orderId,
+    source: input.source,
+    ticket_type: dbTicketType,
+    copies,
+  });
   const rows: any[] = [];
   const dedupeSeed = input.dedupeToken || (input.source === 'auto' ? input.triggerEvent || 'auto' : `${Date.now()}`);
 
@@ -239,7 +272,7 @@ export async function createPrintJobs(input: CreatePrintJobsInput): Promise<{ cr
       rows.push({
         restaurant_id: input.restaurantId,
         order_id: input.orderId,
-        print_rule_id: rule?.id ?? null,
+        print_rule_id: effectiveRule.id ?? null,
         printer_id: printer.id,
         ticket_type: dbTicketType,
         provider: printer.provider ?? null,
