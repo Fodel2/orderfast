@@ -43,7 +43,7 @@ interface Props {
   order: Order | null;
   onClose: () => void;
   onUpdateStatus: (id: string, status: string) => Promise<boolean>;
-  onPrint: (args: { orderId: string; ticketType: 'kot' | 'invoice'; source: 'manual_print' | 'manual_reprint' }) => Promise<void>;
+  onPrint: (args: { orderId: string; ticketType: 'kot' | 'invoice'; source: 'manual_print' }) => Promise<void>;
 }
 
 const formatAddress = (addr: any) => {
@@ -192,9 +192,7 @@ export default function OrderDetailsModal({ order, onClose, onUpdateStatus, onPr
           <p className="font-semibold">Total: {formatPrice(order.total_price)}</p>
           <div className="flex flex-wrap justify-end gap-2 pt-2">
             <button type="button" onClick={() => void onPrint({ orderId: order.id, ticketType: 'kot', source: 'manual_print' })} className="px-3 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50">Print KOT</button>
-            <button type="button" onClick={() => void onPrint({ orderId: order.id, ticketType: 'kot', source: 'manual_reprint' })} className="px-3 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50">Reprint KOT</button>
             <button type="button" onClick={() => void onPrint({ orderId: order.id, ticketType: 'invoice', source: 'manual_print' })} className="px-3 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50">Print Invoice</button>
-            <button type="button" onClick={() => void onPrint({ orderId: order.id, ticketType: 'invoice', source: 'manual_reprint' })} className="px-3 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50">Reprint Invoice</button>
             {(() => {
               const shouldAccept = order.status === 'pending';
               const shouldComplete = ['accepted', 'preparing', 'ready_to_collect', 'delivering'].includes(

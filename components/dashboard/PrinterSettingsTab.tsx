@@ -82,7 +82,13 @@ const defaultPreviewRule: PrintRuleLike = {
 const printerRoles = ['kitchen', 'receipt', 'packing', 'bar', 'dessert', 'expo'];
 
 type PreviewTicketType = 'KOT' | 'Invoice';
-type PreviewWidth = '58mm' | '80mm';
+type PrinterOnlineState = 'online' | 'offline' | 'unknown';
+type RestaurantBranding = {
+  name: string | null;
+  logo_url: string | null;
+  logo_shape: 'square' | 'round' | 'rectangular' | null;
+  contact_number: string | null;
+};
 export type PrintingSubTab = 'printers' | 'kitchen-tickets' | 'receipts' | 'alerts' | 'diagnostics';
 
 const printingSubTabItems: Array<{ key: PrintingSubTab; label: string }> = [
@@ -105,6 +111,40 @@ const normalizeTicketType = (value: string | null | undefined): PreviewTicketTyp
 };
 
 const toDbTicketType = (value: PreviewTicketType) => (value === 'KOT' ? 'kot' : 'invoice');
+
+
+const normalizePrinterOnlineState = (payload: any): PrinterOnlineState => {
+  const candidates = [
+    payload?.status?.online,
+    payload?.status?.status,
+    payload?.status?.onlineStatus,
+    payload?.raw?.data?.online,
+    payload?.raw?.data?.status,
+    payload?.raw?.data?.onlineStatus,
+    payload?.raw?.data,
+    payload?.raw,
+  ];
+
+  for (const candidate of candidates) {
+    if (candidate === true || candidate === 1) return 'online';
+    if (candidate === false || candidate === 0) return 'offline';
+
+    const normalized = String(candidate ?? '').trim().toLowerCase();
+    if (!normalized) continue;
+    if (['online', 'on', 'connected', 'ready'].includes(normalized)) return 'online';
+    if (['offline', 'off', 'disconnected', 'unreachable'].includes(normalized)) return 'offline';
+    if (normalized.includes('online')) return 'online';
+    if (normalized.includes('offline')) return 'offline';
+  }
+
+  return 'unknown';
+};
+
+const printerStateBadgeClass: Record<PrinterOnlineState, string> = {
+  online: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+  offline: 'bg-rose-100 text-rose-700 border-rose-200',
+  unknown: 'bg-slate-100 text-slate-700 border-slate-200',
+};
 
 const buildDefaultRuleDraft = (ticketType: PreviewTicketType): PrintRule => ({
   id: `fallback-${ticketType.toLowerCase()}`,
@@ -171,9 +211,15 @@ export default function PrinterSettingsTab({
   });
   const [ruleDraft, setRuleDraft] = useState<PrintRule | null>(null);
   const [rulePrinterDraftIds, setRulePrinterDraftIds] = useState<string[]>([]);
-  const [onlineStatusByPrinterId, setOnlineStatusByPrinterId] = useState<Record<string, string>>({});
+  const [onlineStatusByPrinterId, setOnlineStatusByPrinterId] = useState<Record<string, PrinterOnlineState>>({});
+  const [statusLoadingByPrinterId, setStatusLoadingByPrinterId] = useState<Record<string, boolean>>({});
+  const [restaurantBranding, setRestaurantBranding] = useState<RestaurantBranding>({
+    name: null,
+    logo_url: null,
+    logo_shape: null,
+    contact_number: null,
+  });
   const [previewTicketType, setPreviewTicketType] = useState<PreviewTicketType>('KOT');
-  const [previewWidth, setPreviewWidth] = useState<PreviewWidth>('58mm');
   const lastQueueNudgeAtRef = useRef(0);
   const queueNudgeInFlightRef = useRef(false);
 
@@ -212,7 +258,7 @@ export default function PrinterSettingsTab({
 
   const loadData = async () => {
     setLoading(true);
-    const [settingsRes, printersRes, rulesRes, jobsRes] = await Promise.all([
+    const [settingsRes, printersRes, rulesRes, jobsRes, restaurantRes] = await Promise.all([
       supabase.from('printer_settings').select('*').eq('restaurant_id', restaurantId).maybeSingle(),
       supabase
         .from('printers')
@@ -230,10 +276,19 @@ export default function PrinterSettingsTab({
         .eq('restaurant_id', restaurantId)
         .order('created_at', { ascending: false })
         .limit(20),
+      supabase
+        .from('restaurants')
+        .select('name,logo_url,logo_shape,contact_number')
+        .eq('id', restaurantId)
+        .maybeSingle(),
     ]);
 
     if (settingsRes.data) setSettings({ ...defaultSettings, ...(settingsRes.data as any) });
-    if (printersRes.data) setPrinters(printersRes.data as any);
+    if (printersRes.data) {
+      const nextPrinters = printersRes.data as any as Printer[];
+      setPrinters(nextPrinters);
+      void refreshPrinterStatuses(nextPrinters, { silent: true });
+    }
 
     if (rulesRes.data) {
       const list = rulesRes.data as PrintRule[];
@@ -312,6 +367,14 @@ export default function PrinterSettingsTab({
     }
 
     if (jobsRes.data) setJobs(jobsRes.data as any);
+    if (restaurantRes.data) {
+      setRestaurantBranding({
+        name: restaurantRes.data.name ?? null,
+        logo_url: restaurantRes.data.logo_url ?? null,
+        logo_shape: (restaurantRes.data.logo_shape as RestaurantBranding['logo_shape']) ?? null,
+        contact_number: restaurantRes.data.contact_number ?? null,
+      });
+    }
     setLoading(false);
     await nudgeQueueProcessing('settings_load');
   };
@@ -376,7 +439,8 @@ export default function PrinterSettingsTab({
     }
   };
 
-  const checkOnlineStatus = async (printerId: string) => {
+  const checkOnlineStatus = async (printerId: string, options?: { silent?: boolean }) => {
+    setStatusLoadingByPrinterId((prev) => ({ ...prev, [printerId]: true }));
     try {
       const response = await fetch('/api/printers/online-status', {
         method: 'POST',
@@ -387,18 +451,40 @@ export default function PrinterSettingsTab({
       if (!response.ok || !payload?.ok) {
         throw new Error(payload?.error || 'Status check failed');
       }
-      const rawStatus =
-        payload?.status?.online ?? payload?.status?.status ?? payload?.raw?.data ?? payload?.raw ?? 'online';
+
       setOnlineStatusByPrinterId((prev) => ({
         ...prev,
-        [printerId]: typeof rawStatus === 'string' ? rawStatus : JSON.stringify(rawStatus),
+        [printerId]: normalizePrinterOnlineState(payload),
       }));
-      onToast('Printer status checked.');
-      await nudgeQueueProcessing('check_status');
+
+      if (!options?.silent) {
+        onToast('Printer status updated.');
+        await nudgeQueueProcessing('check_status');
+      }
     } catch (error: any) {
-      setOnlineStatusByPrinterId((prev) => ({ ...prev, [printerId]: 'offline/unknown' }));
-      onToast(`Could not check printer status: ${error?.message || 'Unknown error'}`);
+      setOnlineStatusByPrinterId((prev) => ({ ...prev, [printerId]: 'unknown' }));
+      if (!options?.silent) onToast(`Could not check printer status: ${error?.message || 'Unknown error'}`);
+    } finally {
+      setStatusLoadingByPrinterId((prev) => ({ ...prev, [printerId]: false }));
     }
+  };
+
+  const refreshPrinterStatuses = async (nextPrinters: Printer[], options?: { silent?: boolean }) => {
+    const eligiblePrinters = nextPrinters.filter((printer) => printer.provider === 'sunmi_cloud' && printer.serial_number);
+    if (!eligiblePrinters.length) {
+      setOnlineStatusByPrinterId({});
+      setStatusLoadingByPrinterId({});
+      return;
+    }
+
+    if (options?.silent) {
+      setStatusLoadingByPrinterId((prev) => ({
+        ...prev,
+        ...Object.fromEntries(eligiblePrinters.map((printer) => [printer.id, true])),
+      }));
+    }
+
+    await Promise.all(eligiblePrinters.map((printer) => checkOnlineStatus(printer.id, options)));
   };
 
   const queueTestPrint = async (printerId: string) => {
@@ -517,6 +603,7 @@ export default function PrinterSettingsTab({
       order_type: 'delivery',
       customer_name: 'Alex Johnson',
       customer_phone: '+44 7700 900123',
+      customer_notes: 'Ring the side door bell once and send sauces separately.',
       delivery_address: {
         address_line_1: '12 Market Street',
         address_line_2: 'Flat 3B',
@@ -524,11 +611,15 @@ export default function PrinterSettingsTab({
       },
       payment_status: 'paid',
       payment_method: 'card',
-      restaurant_name: 'Orderfast Demo Kitchen',
-      restaurant_phone: '+44 20 7946 0000',
+      restaurant_name: restaurantBranding.name || 'Orderfast Demo Kitchen',
+      restaurant_phone: restaurantBranding.contact_number || '+44 20 7946 0000',
+      restaurant_logo_url: restaurantBranding.logo_url,
+      restaurant_logo_shape: restaurantBranding.logo_shape,
+      subtotal: 2295,
+      delivery_fee: 185,
+      discount_amount: 0,
       vat_amount: 185,
       total: 2480,
-      qr_placeholder: true,
       items: [
         {
           order_item_id: 'it-1',
@@ -568,7 +659,7 @@ export default function PrinterSettingsTab({
         },
       ],
     }),
-    []
+    [restaurantBranding]
   );
 
   const previewText = useMemo(
@@ -581,9 +672,9 @@ export default function PrinterSettingsTab({
           payload_json: previewPayload,
         },
         previewRule,
-        { width: previewWidth }
+        { width: '80mm' }
       ),
-    [previewPayload, previewRule, previewTicketType, previewWidth]
+    [previewPayload, previewRule, previewTicketType]
   );
 
   if (loading) return <div className="bg-white p-6 rounded-lg shadow">Loading printer settings...</div>;
@@ -702,15 +793,17 @@ export default function PrinterSettingsTab({
                   <p className="text-sm text-gray-600">Role: <span className="font-medium text-gray-800">{p.role}</span></p>
                   <p className="text-sm text-gray-600">Serial: {p.serial_number || 'Not set'} • Provider: {p.provider || 'Not set'}</p>
                   <div className="flex flex-wrap items-center gap-2 text-xs">
-                    <span className={`rounded-full px-2 py-0.5 ${p.enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>
+                    <span className={`rounded-full border px-2.5 py-1 font-medium ${p.enabled ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-gray-200 bg-gray-100 text-gray-600'}`}>
                       {p.enabled ? 'Enabled' : 'Disabled'}
                     </span>
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-700">Online: {onlineStatusByPrinterId[p.id] || 'Unknown'}</span>
+                    <span className={`rounded-full border px-2.5 py-1 font-medium ${printerStateBadgeClass[onlineStatusByPrinterId[p.id] || 'unknown']}`}>
+                      {statusLoadingByPrinterId[p.id] ? 'Checking…' : (onlineStatusByPrinterId[p.id] || 'unknown').replace(/^./, (char) => char.toUpperCase())}
+                    </span>
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button disabled={!canEdit} onClick={() => queueTestPrint(p.id)} className="px-2.5 py-1.5 border rounded-lg text-sm disabled:opacity-60">Test Print</button>
-                  <button disabled={!canEdit} onClick={() => checkOnlineStatus(p.id)} className="px-2.5 py-1.5 border rounded-lg text-sm disabled:opacity-60">Check Status</button>
+                  <button disabled={!canEdit || statusLoadingByPrinterId[p.id]} onClick={() => checkOnlineStatus(p.id)} className="px-2.5 py-1.5 border rounded-lg text-sm disabled:opacity-60">{statusLoadingByPrinterId[p.id] ? 'Checking…' : 'Check Status'}</button>
                   <button
                     disabled={!canEdit}
                     onClick={() => {
@@ -727,6 +820,7 @@ export default function PrinterSettingsTab({
                     onClick={async () => {
                       const { error } = await supabase.from('printers').update({ enabled: !p.enabled }).eq('id', p.id).eq('restaurant_id', restaurantId);
                       if (error) return onToast(error.message);
+                      onToast(`Printer ${p.enabled ? 'disabled' : 'enabled'}.`);
                       await loadData();
                     }}
                     className="px-2.5 py-1.5 border rounded-lg text-sm disabled:opacity-60"
@@ -840,9 +934,6 @@ export default function PrinterSettingsTab({
                       </label>
                     )}
 
-                    {activeTicketType === 'Invoice' && (
-                      <div className="rounded border border-dashed p-2 text-xs text-gray-600 md:col-span-2">Promotion QR coming next.</div>
-                    )}
                   </div>
                 </div>
 
@@ -856,26 +947,74 @@ export default function PrinterSettingsTab({
           </div>
 
           <aside className="space-y-3 xl:sticky xl:top-24 self-start">
-            <div className="rounded-lg border border-gray-200 p-3 bg-white">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs uppercase tracking-wide text-gray-500">Preview width</span>
-                <div className="ml-auto flex items-center gap-2 text-sm">
-                  {(['58mm', '80mm'] as PreviewWidth[]).map((width) => (
-                    <button
-                      key={width}
-                      type="button"
-                      onClick={() => setPreviewWidth(width)}
-                      className={`px-2.5 py-1 rounded border ${previewWidth === width ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-gray-700 border-gray-300'}`}
-                    >
-                      {width}
-                    </button>
-                  ))}
+            <div className="mx-auto max-w-[360px] rounded-[28px] border border-stone-300 bg-gradient-to-b from-stone-100 via-stone-50 to-stone-200 p-4 shadow-[0_18px_40px_rgba(15,23,42,0.14)] xl:mx-0">
+              <div className="mx-auto rounded-[18px] border border-stone-300 bg-[#fffdfa] p-3 shadow-inner">
+                <div className="mx-auto w-full max-w-[304px] rounded-[14px] border border-stone-300 bg-white px-4 py-3">
+                  {restaurantBranding.logo_url ? (
+                    <div className="mb-3 flex justify-center">
+                      <div className="flex min-h-[72px] items-center justify-center px-2 py-2">
+                        <img
+                          src={restaurantBranding.logo_url}
+                          alt={`${restaurantBranding.name || 'Restaurant'} logo`}
+                          className={`object-contain grayscale contrast-200 brightness-[0.75] ${
+                            restaurantBranding.logo_shape === 'round'
+                              ? 'max-h-14 w-14 rounded-full'
+                              : restaurantBranding.logo_shape === 'rectangular'
+                                ? 'max-h-12 w-28 rounded-lg'
+                                : 'max-h-14 w-16 rounded-xl'
+                          }`}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="space-y-1.5">
+                    {previewText.split('\n').map((line, index) => {
+                      const trimmed = line.trim();
+                      const isDivider = /^[─-]+$/.test(trimmed);
+                      const isRestaurantName = trimmed === (previewPayload.restaurant_name || '').trim();
+                      const isOrderNumber = /^#/.test(trimmed);
+                      const isTypeBar = /^[A-Z0-9 ]+$/.test(trimmed) && ['DELIVERY', 'COLLECTION', 'TABLE', 'DINE IN'].some((token) => trimmed.includes(token));
+                      const isHeader = /(END OF ORDER|THANK YOU)/i.test(trimmed);
+                      const isCategory =
+                        !isDivider &&
+                        !!trimmed &&
+                        trimmed === trimmed.toUpperCase() &&
+                        !isOrderNumber &&
+                        !isTypeBar &&
+                        !/^TOTAL\b/.test(trimmed) &&
+                        /^[A-Z& ]+$/.test(trimmed);
+                      const isNote = /NOTE/.test(trimmed);
+                      const isAddon = /^\s+\+/.test(line);
+                      const isTotal = /^TOTAL\b/.test(trimmed);
+                      return isDivider ? (
+                        <div key={`${index}-${trimmed}`} className="my-3 border-t border-stone-900/90" />
+                      ) : (
+                        <div
+                          key={`${index}-${line}`}
+                          className={`font-mono whitespace-pre-wrap break-words text-[11px] leading-[1.75] text-stone-900 ${
+                            isRestaurantName ? 'pb-0.5 text-center text-[12.5px] font-semibold tracking-[0.04em]' : ''
+                          } ${
+                            isHeader ? 'pt-1 text-center text-[10.5px] font-semibold tracking-[0.1em] text-stone-950' : ''
+                          } ${
+                            isOrderNumber ? 'pb-1 pt-0.5 text-center text-[16px] font-bold tracking-[0.08em] text-stone-950' : ''
+                          } ${
+                            isTypeBar ? 'my-1 bg-stone-950 px-2 py-1 text-center text-[10.5px] font-bold tracking-[0.16em] text-white' : ''
+                          } ${
+                            isCategory ? 'pt-2 text-[11px] font-bold tracking-[0.05em] text-stone-950' : ''
+                          } ${
+                            isNote ? 'py-0.5 font-semibold text-stone-950' : ''
+                          } ${
+                            isAddon ? 'pl-4 text-stone-700' : ''
+                          } ${
+                            isTotal ? 'pt-2 text-[12.5px] font-bold text-stone-950' : ''
+                          }`}
+                        >
+                          {line || <span className="block h-2" />}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            </div>
-            <div className="rounded-xl border border-gray-300 bg-[#f8f6ef] p-3 shadow-inner max-w-[360px] mx-auto xl:mx-0">
-              <div className="mx-auto rounded-md border border-dashed border-gray-400 bg-[#fffdf8] px-3 py-3 w-full max-w-[300px]">
-                <pre className="text-[11px] leading-[1.4] font-mono whitespace-pre-wrap break-words text-gray-900">{previewText}</pre>
               </div>
             </div>
             <p className="text-xs text-gray-500">Preview based on current settings. Final printer output may vary slightly by printer model.</p>
