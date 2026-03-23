@@ -54,7 +54,7 @@ interface OrderSnapshot {
   age_restricted_items: Array<{ item_id: string | null; name: string }>;
 }
 
-const toDbTicketType = (ticketType: TicketType) => (ticketType === 'kot' ? 'KOT' : 'Invoice');
+const toDbTicketType = (ticketType: TicketType) => (ticketType === 'invoice' ? 'invoice' : 'kot');
 
 const hashDedupe = (parts: string[]) => crypto.createHash('sha256').update(parts.join('|')).digest('hex');
 
@@ -169,7 +169,7 @@ async function buildOrderSnapshot(orderId: string): Promise<OrderSnapshot | null
   };
 }
 
-export async function createPrintJobs(input: CreatePrintJobsInput): Promise<{ created: number; skipped: boolean; reason?: string }> {
+export async function createPrintJobs(input: CreatePrintJobsInput): Promise<{ created: number; skipped: boolean; reason?: string; jobIds?: string[] }> {
   const dbTicketType = toDbTicketType(input.ticketType);
 
   const [{ data: settings }, { data: rule }] = await Promise.all([
@@ -182,31 +182,56 @@ export async function createPrintJobs(input: CreatePrintJobsInput): Promise<{ cr
       .maybeSingle(),
   ]);
 
+
+  const effectiveRule = rule || {
+    id: null,
+    enabled: true,
+    copies: 1,
+    trigger_event: null,
+    ticket_type: dbTicketType,
+  };
+
+  console.info('[print-jobs] ticket_type requested', {
+    restaurant_id: input.restaurantId,
+    order_id: input.orderId,
+    source: input.source,
+    ticket_type: dbTicketType,
+  });
+
+  console.info('[print-jobs] rule found / fallback used', {
+    restaurant_id: input.restaurantId,
+    order_id: input.orderId,
+    source: input.source,
+    ticket_type: dbTicketType,
+    rule_id: effectiveRule.id,
+    fallback_used: !rule,
+  });
+
   if (input.source === 'auto' && settings && settings.printing_enabled === false) {
-    return { created: 0, skipped: true, reason: 'printing_disabled' };
+    return { created: 0, skipped: true, reason: 'printing_disabled', jobIds: [] };
   }
 
-  if (!rule) {
-    return { created: 0, skipped: true, reason: 'missing_rule' };
+  if (!rule && input.source === 'auto') {
+    return { created: 0, skipped: true, reason: 'missing_rule', jobIds: [] };
   }
 
-  if (input.source === 'auto') {
-    if (!rule.enabled) {
-      return { created: 0, skipped: true, reason: 'rule_disabled' };
+  if (input.source === 'auto' && rule) {
+    if (!effectiveRule.enabled) {
+      return { created: 0, skipped: true, reason: 'rule_disabled', jobIds: [] };
     }
-    if (input.triggerEvent && rule.trigger_event !== input.triggerEvent) {
-      return { created: 0, skipped: true, reason: 'trigger_mismatch' };
+    if (input.triggerEvent && effectiveRule.trigger_event !== input.triggerEvent) {
+      return { created: 0, skipped: true, reason: 'trigger_mismatch', jobIds: [] };
     }
   }
 
   const { data: assignedRows } = await supaServer
     .from('print_rule_printers')
     .select('printer_id,printers!inner(id,restaurant_id,provider,serial_number,enabled,is_default)')
-    .eq('print_rule_id', rule.id);
+    .eq('print_rule_id', effectiveRule.id || '');
 
   let targetPrinters = (assignedRows || [])
     .map((row: any) => row.printers)
-    .filter((printer: any) => printer && printer.restaurant_id === input.restaurantId && printer.enabled !== false);
+    .filter((printer: any) => printer && printer.restaurant_id === input.restaurantId && printer.enabled !== false && printer.provider === 'sunmi_cloud' && printer.serial_number);
 
   if (targetPrinters.length === 0) {
     const { data: defaultPrinter } = await supaServer
@@ -216,21 +241,29 @@ export async function createPrintJobs(input: CreatePrintJobsInput): Promise<{ cr
       .eq('enabled', true)
       .eq('is_default', true)
       .maybeSingle();
-    if (defaultPrinter) {
+    if (defaultPrinter && defaultPrinter.provider === 'sunmi_cloud' && defaultPrinter.serial_number) {
       targetPrinters = [defaultPrinter];
     }
   }
 
   if (targetPrinters.length === 0) {
-    return { created: 0, skipped: true, reason: 'no_target_printers' };
+    return { created: 0, skipped: true, reason: 'no_target_printers', jobIds: [] };
   }
 
   const snapshot = await buildOrderSnapshot(input.orderId);
   if (!snapshot) {
-    return { created: 0, skipped: true, reason: 'order_not_found' };
+    return { created: 0, skipped: true, reason: 'order_not_found', jobIds: [] };
   }
 
-  const copies = Math.max(1, Number(rule.copies || 1));
+  const copies = Math.max(1, Number(effectiveRule.copies || 1));
+
+  console.info('[print-jobs] copies value used', {
+    restaurant_id: input.restaurantId,
+    order_id: input.orderId,
+    source: input.source,
+    ticket_type: dbTicketType,
+    copies,
+  });
   const rows: any[] = [];
   const dedupeSeed = input.dedupeToken || (input.source === 'auto' ? input.triggerEvent || 'auto' : `${Date.now()}`);
 
@@ -239,7 +272,7 @@ export async function createPrintJobs(input: CreatePrintJobsInput): Promise<{ cr
       rows.push({
         restaurant_id: input.restaurantId,
         order_id: input.orderId,
-        print_rule_id: rule.id,
+        print_rule_id: effectiveRule.id ?? null,
         printer_id: printer.id,
         ticket_type: dbTicketType,
         provider: printer.provider ?? null,
@@ -263,10 +296,23 @@ export async function createPrintJobs(input: CreatePrintJobsInput): Promise<{ cr
     }
   });
 
-  const { data: inserted, error } = await supaServer
-    .from('print_jobs')
-    .upsert(rows, { onConflict: 'dedupe_key', ignoreDuplicates: true })
-    .select('id,printer_id');
+  console.info(`server insert ticket_type: ${dbTicketType}`);
+
+  const insertMode = input.source === 'manual_print' ? 'insert' : 'upsert';
+
+  console.info('[print-jobs] insert mode used', {
+    restaurant_id: input.restaurantId,
+    order_id: input.orderId,
+    source: input.source,
+    ticket_type: dbTicketType,
+    insert_mode: insertMode,
+  });
+
+  const writeQuery = input.source === 'manual_print'
+    ? supaServer.from('print_jobs').insert(rows)
+    : supaServer.from('print_jobs').upsert(rows, { onConflict: 'dedupe_key', ignoreDuplicates: true });
+
+  const { data: inserted, error } = await writeQuery.select('id,printer_id');
 
   if (error) {
     console.error('[PRINT JOB] failed to insert print jobs', { input, error });
@@ -274,14 +320,15 @@ export async function createPrintJobs(input: CreatePrintJobsInput): Promise<{ cr
   }
 
   (inserted || []).forEach((job) => {
-    console.log('[PRINT JOB CREATED]', {
+    console.info('[print-jobs] job created', {
       restaurant_id: input.restaurantId,
       order_id: input.orderId,
       ticket_type: dbTicketType,
       printer_id: job.printer_id,
       source: input.source,
+      job_id: job.id,
     });
   });
 
-  return { created: inserted?.length || 0, skipped: false };
+  return { created: inserted?.length || 0, skipped: false, jobIds: (inserted || []).map((job) => String(job.id)) };
 }

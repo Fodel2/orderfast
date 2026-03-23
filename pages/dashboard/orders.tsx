@@ -1274,14 +1274,19 @@ export default function OrdersPage() {
         onUpdateStatus={updateStatus}
         onPrint={async ({ orderId, ticketType, source }) => {
           if (!restaurantId) return;
+          const finalTicketType = String(ticketType).trim().toLowerCase() === 'invoice' ? 'invoice' : 'kot';
+          console.info('[orders] print button clicked', { restaurantId, orderId, ticketType, source });
+          console.info(`manual print final ticket_type: ${finalTicketType}`);
           try {
-            await requestPrintJobCreation({
+            const response = await requestPrintJobCreation({
               restaurantId,
               orderId,
-              ticketType,
+              ticketType: finalTicketType,
               source,
             });
-            setToastMessage(`${ticketType.toUpperCase()} print job queued.`);
+            const manualRuns = Array.isArray(response?.dispatch?.runs) ? response.dispatch.runs : [];
+            const sentNow = manualRuns.length > 0 ? manualRuns.every((run: any) => Number(run?.dispatch?.sent || 0) > 0) : false;
+            setToastMessage(sentNow ? `${ticketType.toUpperCase()} sent to printer.` : `${ticketType.toUpperCase()} print job queued.`);
           } catch (error) {
             console.error('[orders] failed to queue manual print job', error);
             setToastMessage('Could not queue print job.');

@@ -115,26 +115,22 @@ const toDbTicketType = (value: PreviewTicketType) => (value === 'KOT' ? 'kot' : 
 
 const normalizePrinterOnlineState = (payload: any): PrinterOnlineState => {
   const candidates = [
-    payload?.status?.online,
+    payload?.status,
     payload?.status?.status,
+    payload?.status?.online,
     payload?.status?.onlineStatus,
-    payload?.raw?.data?.online,
-    payload?.raw?.data?.status,
-    payload?.raw?.data?.onlineStatus,
-    payload?.raw?.data,
-    payload?.raw,
+    payload?.raw?.data?.list?.[0]?.is_online,
+    payload?.raw?.data?.is_online,
   ];
 
   for (const candidate of candidates) {
-    if (candidate === true || candidate === 1) return 'online';
-    if (candidate === false || candidate === 0) return 'offline';
+    if (candidate === true || candidate === 1 || String(candidate).trim() === '1') return 'online';
+    if (candidate === false || candidate === 0 || String(candidate).trim() === '0') return 'offline';
 
     const normalized = String(candidate ?? '').trim().toLowerCase();
     if (!normalized) continue;
-    if (['online', 'on', 'connected', 'ready'].includes(normalized)) return 'online';
-    if (['offline', 'off', 'disconnected', 'unreachable'].includes(normalized)) return 'offline';
-    if (normalized.includes('online')) return 'online';
-    if (normalized.includes('offline')) return 'offline';
+    if (['online', 'on', 'connected', 'ready'].includes(normalized) || normalized.includes('online')) return 'online';
+    if (['offline', 'off', 'disconnected', 'unreachable'].includes(normalized) || normalized.includes('offline')) return 'offline';
   }
 
   return 'unknown';
@@ -949,25 +945,25 @@ export default function PrinterSettingsTab({
           <aside className="space-y-3 xl:sticky xl:top-24 self-start">
             <div className="mx-auto max-w-[360px] rounded-[28px] border border-stone-300 bg-gradient-to-b from-stone-100 via-stone-50 to-stone-200 p-4 shadow-[0_18px_40px_rgba(15,23,42,0.14)] xl:mx-0">
               <div className="mx-auto rounded-[18px] border border-stone-300 bg-[#fffdfa] p-3 shadow-inner">
-                <div className="mx-auto w-full max-w-[304px] rounded-[14px] border border-stone-300 bg-white px-4 py-3">
+                <div className="mx-auto w-full max-w-[304px] rounded-[14px] border border-stone-300 bg-white px-4 py-3 font-sans">
                   {restaurantBranding.logo_url ? (
-                    <div className="mb-3 flex justify-center">
-                      <div className="flex min-h-[72px] items-center justify-center px-2 py-2">
+                    <div className="mb-1 flex justify-center">
+                      <div className="flex min-h-[82px] items-center justify-center px-1 py-1">
                         <img
                           src={restaurantBranding.logo_url}
                           alt={`${restaurantBranding.name || 'Restaurant'} logo`}
                           className={`object-contain grayscale contrast-200 brightness-[0.75] ${
                             restaurantBranding.logo_shape === 'round'
-                              ? 'max-h-14 w-14 rounded-full'
+                              ? 'max-h-[68px] w-[68px] rounded-full'
                               : restaurantBranding.logo_shape === 'rectangular'
-                                ? 'max-h-12 w-28 rounded-lg'
-                                : 'max-h-14 w-16 rounded-xl'
+                                ? 'max-h-[56px] w-[148px] rounded-lg'
+                                : 'max-h-[64px] w-[88px] rounded-xl'
                           }`}
                         />
                       </div>
                     </div>
                   ) : null}
-                  <div className="space-y-1.5">
+                  <div className="space-y-0.5">
                     {previewText.split('\n').map((line, index) => {
                       const trimmed = line.trim();
                       const isDivider = /^[─-]+$/.test(trimmed);
@@ -991,22 +987,22 @@ export default function PrinterSettingsTab({
                       ) : (
                         <div
                           key={`${index}-${line}`}
-                          className={`font-mono whitespace-pre-wrap break-words text-[11px] leading-[1.75] text-stone-900 ${
-                            isRestaurantName ? 'pb-0.5 text-center text-[12.5px] font-semibold tracking-[0.04em]' : ''
+                          className={`whitespace-pre-wrap break-words text-[11px] leading-[1.45] tracking-[0.01em] text-stone-900 ${
+                            isRestaurantName ? 'pb-0 text-center text-[13px] font-semibold tracking-[0.05em]' : ''
                           } ${
-                            isHeader ? 'pt-1 text-center text-[10.5px] font-semibold tracking-[0.1em] text-stone-950' : ''
+                            isHeader ? 'pt-0.5 text-center text-[10px] font-semibold tracking-[0.1em] text-stone-950' : ''
                           } ${
-                            isOrderNumber ? 'pb-1 pt-0.5 text-center text-[16px] font-bold tracking-[0.08em] text-stone-950' : ''
+                            isOrderNumber ? 'pb-0.5 pt-0 text-center text-[16px] font-bold tracking-[0.08em] text-stone-950' : ''
                           } ${
-                            isTypeBar ? 'my-1 bg-stone-950 px-2 py-1 text-center text-[10.5px] font-bold tracking-[0.16em] text-white' : ''
+                            isTypeBar ? 'my-0.5 bg-stone-950 px-2 py-1 text-center text-[10.5px] font-bold tracking-[0.16em] text-white' : ''
                           } ${
-                            isCategory ? 'pt-2 text-[11px] font-bold tracking-[0.05em] text-stone-950' : ''
+                            isCategory ? 'pt-1 text-[11px] font-bold tracking-[0.05em] text-stone-950' : ''
                           } ${
-                            isNote ? 'py-0.5 font-semibold text-stone-950' : ''
+                            isNote ? 'pt-1 font-semibold text-stone-950' : ''
                           } ${
                             isAddon ? 'pl-4 text-stone-700' : ''
                           } ${
-                            isTotal ? 'pt-2 text-[12.5px] font-bold text-stone-950' : ''
+                            isTotal ? 'pt-1 text-[12.5px] font-bold text-stone-950' : ''
                           }`}
                         >
                           {line || <span className="block h-2" />}

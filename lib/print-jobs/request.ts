@@ -1,6 +1,10 @@
 export type PrintTicketType = 'kot' | 'invoice';
 export type PrintSource = 'auto' | 'manual_print' | 'manual_reprint' | 'retry' | 'test';
 
+const normalizeTicketTypeForPayload = (ticketType: string): PrintTicketType => {
+  return String(ticketType).trim().toLowerCase() === 'invoice' ? 'invoice' : 'kot';
+};
+
 export async function requestPrintJobCreation(params: {
   restaurantId: string;
   orderId: string;
@@ -9,17 +13,28 @@ export async function requestPrintJobCreation(params: {
   triggerEvent?: 'order_placed' | 'payment_succeeded' | 'order_accepted' | 'scheduled_prep_window';
   dedupeToken?: string;
 }) {
+  const normalizedTicketType = normalizeTicketTypeForPayload(String(params.ticketType));
+
+  const payload = {
+    restaurant_id: params.restaurantId,
+    order_id: params.orderId,
+    ticket_type: normalizedTicketType,
+    source: params.source,
+    trigger_event: params.triggerEvent,
+    dedupe_token: params.dedupeToken,
+  };
+
+  if (params.source === 'manual_print') {
+    console.info('[print-jobs/request] manual ticket_type payload', {
+      source: params.source,
+      ticket_type: payload.ticket_type,
+    });
+  }
+
   const response = await fetch('/api/print-jobs/create', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      restaurant_id: params.restaurantId,
-      order_id: params.orderId,
-      ticket_type: params.ticketType,
-      source: params.source,
-      trigger_event: params.triggerEvent,
-      dedupe_token: params.dedupeToken,
-    }),
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {

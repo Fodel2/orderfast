@@ -192,6 +192,30 @@ async function claimPendingJobs(batchSize: number, restaurantId?: string, priori
   };
 }
 
+
+function normalizeSunmiOnlineStatus(payload: any): 'online' | 'offline' | 'unknown' {
+  const candidates = [
+    payload?.list?.[0]?.is_online,
+    payload?.data?.list?.[0]?.is_online,
+    payload?.is_online,
+    payload?.online,
+    payload?.status,
+    payload?.onlineStatus,
+  ];
+
+  for (const candidate of candidates) {
+    if (candidate === 1 || candidate === true || String(candidate).trim().toLowerCase() === '1') return 'online';
+    if (candidate === 0 || candidate === false || String(candidate).trim().toLowerCase() === '0') return 'offline';
+
+    const normalized = String(candidate ?? '').trim().toLowerCase();
+    if (!normalized) continue;
+    if (normalized === 'online' || normalized.includes('online')) return 'online';
+    if (normalized === 'offline' || normalized.includes('offline')) return 'offline';
+  }
+
+  return 'unknown';
+}
+
 function scheduleDispatch(jobs: QueueJob[]) {
   const restaurantInFlight = new Map<string, number>();
   const printerInFlight = new Set<string>();
@@ -299,14 +323,25 @@ async function dispatchOne(job: QueueJob) {
     .maybeSingle();
 
   const cycle = Math.min(3, Math.max(1, Number((settings as PrinterSettings | null)?.voice_repeat_count || 1)));
+  const includeVoice = job.source !== 'test' && Boolean(job.voice_enabled && job.voice_message);
   const response = await postSunmi('/v2/printer/open/open/device/pushContent', {
     trade_no: tradeNo,
     sn: job.serial_number,
     order_type: 1,
     content: content.hex,
     count: 1,
-    media_text: job.voice_enabled && job.voice_message ? job.voice_message : undefined,
-    cycle: job.voice_enabled && job.voice_message ? cycle : undefined,
+    media_text: includeVoice ? job.voice_message : undefined,
+    cycle: includeVoice ? cycle : undefined,
+  });
+
+  console.info('[print-queue] SUNMI response result', {
+    job_id: job.id,
+    printer_id: job.printer_id,
+    ticket_type: job.ticket_type,
+    source: job.source,
+    ok: response.ok,
+    status: response.status,
+    error: response.error || null,
   });
 
   if (!response.ok) {
@@ -352,7 +387,7 @@ async function dispatchOne(job: QueueJob) {
 }
 
 
-export async function processPrintQueue(options?: { batchSize?: number; restaurantId?: string; priorityJobId?: string }) {
+export async function processPrintQueue(options?: { batchSize?: number; restaurantId?: string; priorityJobId?: string; priorityJobIds?: string[] }) {
   const batchSize = Math.max(1, Math.min(20, Number(options?.batchSize || 10)));
   console.info('[print-queue] supabase client path', {
     client: 'supaServer(service_role)',
@@ -360,13 +395,21 @@ export async function processPrintQueue(options?: { batchSize?: number; restaura
     has_service_role_key: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
   });
 
-  const claimResult = await claimPendingJobs(batchSize, options?.restaurantId, options?.priorityJobId);
-  const claimed = claimResult.claimed;
+  const priorityIds = Array.from(new Set([...(options?.priorityJobIds || []), ...(options?.priorityJobId ? [options.priorityJobId] : [])].filter(Boolean)));
+  const claimResult = await claimPendingJobs(batchSize, options?.restaurantId, undefined);
+  const claimed = [...claimResult.claimed];
+
+  for (const priorityId of priorityIds) {
+    if (claimed.some((job) => job.id === priorityId)) continue;
+    const locked = await claimJobById(priorityId, options?.restaurantId);
+    if (locked) claimed.unshift(locked);
+  }
   const scheduled = scheduleDispatch(claimed);
 
   console.info('[print-queue] processing batch', {
     restaurant_id: options?.restaurantId || null,
     priority_job_id: options?.priorityJobId || null,
+    priority_job_ids: priorityIds,
     claimed: claimed.length,
     scheduled: scheduled.length,
     claimed_job_ids: claimed.map((job) => job.id),
@@ -389,6 +432,7 @@ export async function processPrintQueue(options?: { batchSize?: number; restaura
   console.info('[print-queue] processing complete', {
     restaurant_id: options?.restaurantId || null,
     priority_job_id: options?.priorityJobId || null,
+    priority_job_ids: priorityIds,
     ...summary,
   });
 
@@ -455,7 +499,18 @@ export async function getPrinterOnlineStatus(printerId: string, restaurantId: st
   }
 
   const online = await checkSunmiPrinterOnlineStatus(printer.serial_number);
+  const normalizedStatus = normalizeSunmiOnlineStatus(online.data);
+
+  console.info('[printers/status] status fetch response parsing', {
+    printer_id: printer.id,
+    restaurant_id: restaurantId,
+    serial_number: printer.serial_number,
+    ok: online.ok,
+    parsed_status: normalizedStatus,
+    raw_response: online.raw,
+  });
+
   return online.ok
-    ? { ok: true, status: online.data, raw: online.raw }
-    : { ok: false, error: online.error || 'Online check failed', raw: online.raw };
+    ? { ok: true, status: normalizedStatus }
+    : { ok: false, error: online.error || 'Online check failed' };
 }
