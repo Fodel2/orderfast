@@ -308,8 +308,7 @@ export default function SalesPage() {
         .from('orders')
         .select('id,total_price,source')
         .eq('restaurant_id', restaurantId)
-        .neq('status', 'rejected')
-        .neq('status', 'cancelled')
+        .eq('status', 'completed')
         .gte('created_at', resolvedRange.startIsoUtc)
         .lt('created_at', resolvedRange.endExclusiveIsoUtc);
 
