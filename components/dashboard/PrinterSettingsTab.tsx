@@ -83,6 +83,7 @@ const printerRoles = ['kitchen', 'receipt', 'packing', 'bar', 'dessert', 'expo']
 
 type PreviewTicketType = 'KOT' | 'Invoice';
 type PreviewWidth = '58mm' | '80mm';
+type PrinterOnlineState = 'online' | 'offline' | 'unknown';
 export type PrintingSubTab = 'printers' | 'kitchen-tickets' | 'receipts' | 'alerts' | 'diagnostics';
 
 const printingSubTabItems: Array<{ key: PrintingSubTab; label: string }> = [
@@ -105,6 +106,40 @@ const normalizeTicketType = (value: string | null | undefined): PreviewTicketTyp
 };
 
 const toDbTicketType = (value: PreviewTicketType) => (value === 'KOT' ? 'kot' : 'invoice');
+
+
+const normalizePrinterOnlineState = (payload: any): PrinterOnlineState => {
+  const candidates = [
+    payload?.status?.online,
+    payload?.status?.status,
+    payload?.status?.onlineStatus,
+    payload?.raw?.data?.online,
+    payload?.raw?.data?.status,
+    payload?.raw?.data?.onlineStatus,
+    payload?.raw?.data,
+    payload?.raw,
+  ];
+
+  for (const candidate of candidates) {
+    if (candidate === true || candidate === 1) return 'online';
+    if (candidate === false || candidate === 0) return 'offline';
+
+    const normalized = String(candidate ?? '').trim().toLowerCase();
+    if (!normalized) continue;
+    if (['online', 'on', 'connected', 'ready'].includes(normalized)) return 'online';
+    if (['offline', 'off', 'disconnected', 'unreachable'].includes(normalized)) return 'offline';
+    if (normalized.includes('online')) return 'online';
+    if (normalized.includes('offline')) return 'offline';
+  }
+
+  return 'unknown';
+};
+
+const printerStateBadgeClass: Record<PrinterOnlineState, string> = {
+  online: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+  offline: 'bg-rose-100 text-rose-700 border-rose-200',
+  unknown: 'bg-slate-100 text-slate-700 border-slate-200',
+};
 
 const buildDefaultRuleDraft = (ticketType: PreviewTicketType): PrintRule => ({
   id: `fallback-${ticketType.toLowerCase()}`,
@@ -171,7 +206,8 @@ export default function PrinterSettingsTab({
   });
   const [ruleDraft, setRuleDraft] = useState<PrintRule | null>(null);
   const [rulePrinterDraftIds, setRulePrinterDraftIds] = useState<string[]>([]);
-  const [onlineStatusByPrinterId, setOnlineStatusByPrinterId] = useState<Record<string, string>>({});
+  const [onlineStatusByPrinterId, setOnlineStatusByPrinterId] = useState<Record<string, PrinterOnlineState>>({});
+  const [statusLoadingByPrinterId, setStatusLoadingByPrinterId] = useState<Record<string, boolean>>({});
   const [previewTicketType, setPreviewTicketType] = useState<PreviewTicketType>('KOT');
   const [previewWidth, setPreviewWidth] = useState<PreviewWidth>('58mm');
   const lastQueueNudgeAtRef = useRef(0);
@@ -233,7 +269,11 @@ export default function PrinterSettingsTab({
     ]);
 
     if (settingsRes.data) setSettings({ ...defaultSettings, ...(settingsRes.data as any) });
-    if (printersRes.data) setPrinters(printersRes.data as any);
+    if (printersRes.data) {
+      const nextPrinters = printersRes.data as any as Printer[];
+      setPrinters(nextPrinters);
+      void refreshPrinterStatuses(nextPrinters, { silent: true });
+    }
 
     if (rulesRes.data) {
       const list = rulesRes.data as PrintRule[];
@@ -376,7 +416,8 @@ export default function PrinterSettingsTab({
     }
   };
 
-  const checkOnlineStatus = async (printerId: string) => {
+  const checkOnlineStatus = async (printerId: string, options?: { silent?: boolean }) => {
+    setStatusLoadingByPrinterId((prev) => ({ ...prev, [printerId]: true }));
     try {
       const response = await fetch('/api/printers/online-status', {
         method: 'POST',
@@ -387,18 +428,40 @@ export default function PrinterSettingsTab({
       if (!response.ok || !payload?.ok) {
         throw new Error(payload?.error || 'Status check failed');
       }
-      const rawStatus =
-        payload?.status?.online ?? payload?.status?.status ?? payload?.raw?.data ?? payload?.raw ?? 'online';
+
       setOnlineStatusByPrinterId((prev) => ({
         ...prev,
-        [printerId]: typeof rawStatus === 'string' ? rawStatus : JSON.stringify(rawStatus),
+        [printerId]: normalizePrinterOnlineState(payload),
       }));
-      onToast('Printer status checked.');
-      await nudgeQueueProcessing('check_status');
+
+      if (!options?.silent) {
+        onToast('Printer status updated.');
+        await nudgeQueueProcessing('check_status');
+      }
     } catch (error: any) {
-      setOnlineStatusByPrinterId((prev) => ({ ...prev, [printerId]: 'offline/unknown' }));
-      onToast(`Could not check printer status: ${error?.message || 'Unknown error'}`);
+      setOnlineStatusByPrinterId((prev) => ({ ...prev, [printerId]: 'unknown' }));
+      if (!options?.silent) onToast(`Could not check printer status: ${error?.message || 'Unknown error'}`);
+    } finally {
+      setStatusLoadingByPrinterId((prev) => ({ ...prev, [printerId]: false }));
     }
+  };
+
+  const refreshPrinterStatuses = async (nextPrinters: Printer[], options?: { silent?: boolean }) => {
+    const eligiblePrinters = nextPrinters.filter((printer) => printer.provider === 'sunmi_cloud' && printer.serial_number);
+    if (!eligiblePrinters.length) {
+      setOnlineStatusByPrinterId({});
+      setStatusLoadingByPrinterId({});
+      return;
+    }
+
+    if (options?.silent) {
+      setStatusLoadingByPrinterId((prev) => ({
+        ...prev,
+        ...Object.fromEntries(eligiblePrinters.map((printer) => [printer.id, true])),
+      }));
+    }
+
+    await Promise.all(eligiblePrinters.map((printer) => checkOnlineStatus(printer.id, options)));
   };
 
   const queueTestPrint = async (printerId: string) => {
@@ -702,15 +765,17 @@ export default function PrinterSettingsTab({
                   <p className="text-sm text-gray-600">Role: <span className="font-medium text-gray-800">{p.role}</span></p>
                   <p className="text-sm text-gray-600">Serial: {p.serial_number || 'Not set'} • Provider: {p.provider || 'Not set'}</p>
                   <div className="flex flex-wrap items-center gap-2 text-xs">
-                    <span className={`rounded-full px-2 py-0.5 ${p.enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>
+                    <span className={`rounded-full border px-2.5 py-1 font-medium ${p.enabled ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-gray-200 bg-gray-100 text-gray-600'}`}>
                       {p.enabled ? 'Enabled' : 'Disabled'}
                     </span>
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-700">Online: {onlineStatusByPrinterId[p.id] || 'Unknown'}</span>
+                    <span className={`rounded-full border px-2.5 py-1 font-medium ${printerStateBadgeClass[onlineStatusByPrinterId[p.id] || 'unknown']}`}>
+                      {statusLoadingByPrinterId[p.id] ? 'Checking…' : (onlineStatusByPrinterId[p.id] || 'unknown').replace(/^./, (char) => char.toUpperCase())}
+                    </span>
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button disabled={!canEdit} onClick={() => queueTestPrint(p.id)} className="px-2.5 py-1.5 border rounded-lg text-sm disabled:opacity-60">Test Print</button>
-                  <button disabled={!canEdit} onClick={() => checkOnlineStatus(p.id)} className="px-2.5 py-1.5 border rounded-lg text-sm disabled:opacity-60">Check Status</button>
+                  <button disabled={!canEdit || statusLoadingByPrinterId[p.id]} onClick={() => checkOnlineStatus(p.id)} className="px-2.5 py-1.5 border rounded-lg text-sm disabled:opacity-60">{statusLoadingByPrinterId[p.id] ? 'Checking…' : 'Check Status'}</button>
                   <button
                     disabled={!canEdit}
                     onClick={() => {
@@ -727,6 +792,7 @@ export default function PrinterSettingsTab({
                     onClick={async () => {
                       const { error } = await supabase.from('printers').update({ enabled: !p.enabled }).eq('id', p.id).eq('restaurant_id', restaurantId);
                       if (error) return onToast(error.message);
+                      onToast(`Printer ${p.enabled ? 'disabled' : 'enabled'}.`);
                       await loadData();
                     }}
                     className="px-2.5 py-1.5 border rounded-lg text-sm disabled:opacity-60"
@@ -873,9 +939,34 @@ export default function PrinterSettingsTab({
                 </div>
               </div>
             </div>
-            <div className="rounded-xl border border-gray-300 bg-[#f8f6ef] p-3 shadow-inner max-w-[360px] mx-auto xl:mx-0">
-              <div className="mx-auto rounded-md border border-dashed border-gray-400 bg-[#fffdf8] px-3 py-3 w-full max-w-[300px]">
-                <pre className="text-[11px] leading-[1.4] font-mono whitespace-pre-wrap break-words text-gray-900">{previewText}</pre>
+            <div className="mx-auto max-w-[360px] rounded-[28px] border border-stone-300 bg-gradient-to-b from-stone-100 via-stone-50 to-stone-200 p-4 shadow-[0_18px_40px_rgba(15,23,42,0.14)] xl:mx-0">
+              <div className="mx-auto rounded-[18px] border border-stone-300 bg-[#fffdfa] p-3 shadow-inner">
+                <div className="mx-auto w-full max-w-[304px] rounded-[14px] border border-dashed border-stone-300 bg-white px-4 py-4">
+                  <div className="mb-3 flex items-center justify-between text-[10px] uppercase tracking-[0.24em] text-stone-500">
+                    <span>{previewTicketType}</span>
+                    <span>{previewWidth}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {previewText.split('\n').map((line, index) => {
+                      const trimmed = line.trim();
+                      const isDivider = /^[─-]+$/.test(trimmed);
+                      const isHeader = /(KITCHEN ORDER TICKET|CUSTOMER RECEIPT|ORDER #|SCHEDULED ORDER|END OF ORDER|THANK YOU)/i.test(trimmed);
+                      const isSectionLabel = /^(ORDER TYPE|CUSTOMER|PLACED|PAYMENT|PHONE|ADDRESS|ORDER|DATE|METHOD|VAT|TOTAL)\b/.test(trimmed);
+                      const isNote = /NOTE/.test(trimmed);
+                      const isAddon = /^\+|^\s+\+/.test(line);
+                      return isDivider ? (
+                        <div key={`${index}-${trimmed}`} className="my-2 border-t border-dashed border-stone-400" />
+                      ) : (
+                        <div
+                          key={`${index}-${line}`}
+                          className={`font-mono whitespace-pre-wrap break-words text-[11px] leading-[1.7] text-stone-900 ${isHeader ? 'text-[11.5px] font-semibold tracking-[0.08em] text-stone-950' : ''} ${isSectionLabel ? 'font-semibold text-stone-800' : ''} ${isNote ? 'rounded bg-amber-50 px-2 py-1 text-amber-900' : ''} ${isAddon ? 'pl-3 text-stone-700' : ''}`}
+                        >
+                          {line || <span className="block h-2" />}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             </div>
             <p className="text-xs text-gray-500">Preview based on current settings. Final printer output may vary slightly by printer model.</p>
