@@ -24,7 +24,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     if (source === 'manual_print') {
-      console.info(`[print-jobs/create] manual ${ticket_type} print triggered`, { restaurant_id, order_id });
+      console.info('[print-jobs/create] order print requested', { restaurant_id, order_id, ticket_type, source });
     }
 
     const result = await createPrintJobs({
@@ -38,12 +38,47 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     let dispatch: any = null;
     try {
-      if (result.jobIds?.length) {
-        console.info('[print-jobs/create] job processed immediately', { restaurant_id, order_id, ticket_type, job_ids: result.jobIds });
+      if (source === 'manual_print' && result.jobIds?.length) {
+        const runs = [];
+        for (const jobId of result.jobIds) {
+          console.info('[print-jobs/create] immediate processing started', { restaurant_id, order_id, ticket_type, job_id: jobId });
+          const jobDispatch = await processPrintQueue({
+            batchSize: 1,
+            restaurantId: restaurant_id,
+            priorityJobId: jobId,
+          });
+          console.info('[print-jobs/create] dispatch success/failure', {
+            restaurant_id,
+            order_id,
+            ticket_type,
+            job_id: jobId,
+            sent: jobDispatch.sent,
+            failed: jobDispatch.failed,
+            processed: jobDispatch.processed,
+          });
+          runs.push({ job_id: jobId, dispatch: jobDispatch });
+        }
+        dispatch = { runs };
+        const failedRuns = runs.filter((run) => !run.dispatch || run.dispatch.sent < 1);
+        if (failedRuns.length) {
+          return res.status(500).json({
+            error: 'Manual print dispatch failed',
+            ...result,
+            dispatch,
+          });
+        }
+      } else {
+        dispatch = await processPrintQueue({ batchSize: 5, restaurantId: restaurant_id });
       }
-      dispatch = await processPrintQueue({ batchSize: Math.max(5, result.jobIds?.length || 0), restaurantId: restaurant_id, priorityJobIds: result.jobIds || [] });
-    } catch (dispatchError) {
+    } catch (dispatchError: any) {
       console.warn('[print-jobs/create] immediate dispatch failed', dispatchError);
+      if (source === 'manual_print') {
+        return res.status(500).json({
+          error: dispatchError?.message || 'Manual print dispatch failed',
+          ...result,
+          dispatch,
+        });
+      }
     }
 
     return res.status(200).json({ ...result, dispatch });
