@@ -23,6 +23,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'Invalid source' });
     }
 
+    if (source === 'manual_print') {
+      console.info(`[print-jobs/create] manual ${ticket_type} print triggered`, { restaurant_id, order_id });
+    }
+
     const result = await createPrintJobs({
       restaurantId: restaurant_id,
       orderId: order_id,
@@ -34,7 +38,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     let dispatch: any = null;
     try {
-      dispatch = await processPrintQueue({ batchSize: 5, restaurantId: restaurant_id });
+      if (result.jobIds?.length) {
+        console.info('[print-jobs/create] job processed immediately', { restaurant_id, order_id, ticket_type, job_ids: result.jobIds });
+      }
+      dispatch = await processPrintQueue({ batchSize: Math.max(5, result.jobIds?.length || 0), restaurantId: restaurant_id, priorityJobIds: result.jobIds || [] });
     } catch (dispatchError) {
       console.warn('[print-jobs/create] immediate dispatch failed', dispatchError);
     }

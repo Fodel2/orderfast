@@ -13,7 +13,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const [{ data: printer }, { data: restaurant }, { data: settings }] = await Promise.all([
+    const [{ data: printer }, { data: restaurant }] = await Promise.all([
       supaServer
         .from('printers')
         .select('id,name,provider,serial_number,restaurant_id')
@@ -21,11 +21,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         .eq('restaurant_id', restaurant_id)
         .maybeSingle(),
       supaServer.from('restaurants').select('name').eq('id', restaurant_id).maybeSingle(),
-      supaServer
-        .from('printer_settings')
-        .select('voice_alert_enabled,voice_message')
-        .eq('restaurant_id', restaurant_id)
-        .maybeSingle(),
     ]);
 
     if (!printer) {
@@ -51,8 +46,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           created_at: new Date().toISOString(),
           message: 'Printer test successful',
         },
-        voice_enabled: Boolean(settings?.voice_alert_enabled),
-        voice_message: settings?.voice_message || null,
+        voice_enabled: false,
+        voice_message: null,
         scheduled_retry_at: null,
       })
       .select('id')
