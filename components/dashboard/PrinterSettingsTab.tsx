@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/utils/supabaseClient';
 import { requestPrintJobCreation, requestPrintQueueNudge } from '@/lib/print-jobs/request';
-import { buildTicketText, type PrintRuleLike, type TicketType } from '@/lib/server/printContentBuilder';
+import { buildPrintableTicketText, type PrintRuleLike, type TicketType } from '@/lib/server/printContentBuilder';
 
 type Printer = {
   id: string;
@@ -660,7 +660,7 @@ export default function PrinterSettingsTab({
 
   const previewText = useMemo(
     () =>
-      buildTicketText(
+      buildPrintableTicketText(
         {
           id: 'preview-print-job',
           ticket_type: previewTicketType as TicketType,

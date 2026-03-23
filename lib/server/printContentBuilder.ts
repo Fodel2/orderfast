@@ -254,13 +254,17 @@ export function renderTicketDocumentText(document: TicketDocument) {
   return lines.join('\n');
 }
 
-export function buildTicketText(job: PrintJobLike, rule: PrintRuleLike = {}, options: TicketBuildOptions = {}) {
+export function buildPrintableTicketText(job: PrintJobLike, rule: PrintRuleLike = {}, options: TicketBuildOptions = {}) {
   return renderTicketDocumentText(buildTicketDocument(job, rule, options));
+}
+
+export function buildTicketText(job: PrintJobLike, rule: PrintRuleLike = {}, options: TicketBuildOptions = {}) {
+  return buildPrintableTicketText(job, rule, options);
 }
 
 export function buildSunmiPrintHexContent(job: PrintJobLike, rule: PrintRuleLike = {}, options: TicketBuildOptions = {}) {
   const width = options.width || '80mm';
   if (job.source === 'test') return buildTestEscPosHex(job, width);
-  const text = buildTicketText(job, rule, options);
+  const text = buildPrintableTicketText(job, rule, options);
   return { text, hex: toHex(text) };
 }
