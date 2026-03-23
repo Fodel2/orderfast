@@ -54,7 +54,7 @@ interface OrderSnapshot {
   age_restricted_items: Array<{ item_id: string | null; name: string }>;
 }
 
-const toDbTicketType = (ticketType: TicketType) => (ticketType === 'kot' ? 'KOT' : 'Invoice');
+const toDbTicketType = (ticketType: TicketType) => (ticketType === 'invoice' ? 'invoice' : 'kot');
 
 const hashDedupe = (parts: string[]) => crypto.createHash('sha256').update(parts.join('|')).digest('hex');
 
@@ -295,6 +295,8 @@ export async function createPrintJobs(input: CreatePrintJobsInput): Promise<{ cr
       });
     }
   });
+
+  console.info(`server insert ticket_type: ${dbTicketType}`);
 
   const insertMode = input.source === 'manual_print' ? 'insert' : 'upsert';
 
