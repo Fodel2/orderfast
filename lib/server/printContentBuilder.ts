@@ -243,7 +243,7 @@ export function buildTicketDocument(job: PrintJobLike, rule: PrintRuleLike = {},
   return { width, nodes, feedLines: getFeedLines(width, job.source) };
 }
 
-export function renderTicketDocumentText(document: TicketDocument) {
+export function renderTicketDocumentLines(document: TicketDocument) {
   const dividerText = getLine(document.width);
   const lines = document.nodes.map((node) => {
     if (node.type === 'blank') return '';
@@ -251,7 +251,11 @@ export function renderTicketDocumentText(document: TicketDocument) {
     return node.align === 'center' ? centerText(node.text, document.width) : trimLine(node.text, document.width);
   });
   lines.push(...Array.from({ length: document.feedLines }, () => ''));
-  return lines.join('\n');
+  return lines;
+}
+
+export function renderTicketDocumentText(document: TicketDocument) {
+  return renderTicketDocumentLines(document).join('\n');
 }
 
 export function buildPrintableTicketText(job: PrintJobLike, rule: PrintRuleLike = {}, options: TicketBuildOptions = {}) {
