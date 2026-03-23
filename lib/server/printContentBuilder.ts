@@ -125,6 +125,42 @@ const pushWrappedLine = (lines: string[], text: string, width: '58mm' | '80mm', 
   if (current) lines.push(trimLine(`${prefix}${current}`, width));
 };
 
+const pushNoteBlock = (
+  lines: string[],
+  label: string,
+  text: string,
+  width: '58mm' | '80mm',
+  options?: { indent?: string; compact?: boolean }
+) => {
+  const indent = options?.indent ?? '';
+  const words = String(text || '').split(/\s+/).filter(Boolean);
+  if (!words.length) return;
+  const firstPrefix = `${indent}${label} `;
+  const continuationPrefix = `${indent}${' '.repeat(label.length + 1)}`;
+  const max = getMaxLineLength(width);
+  const pushSegments = (segments: string[], prefix: string) => {
+    const contentWidth = Math.max(8, max - prefix.length);
+    let current = '';
+    segments.forEach((word) => {
+      const next = current ? `${current} ${word}` : word;
+      if (next.length <= contentWidth) {
+        current = next;
+      } else if (current) {
+        lines.push(trimLine(`${prefix}${current}`, width));
+        prefix = continuationPrefix;
+        current = word;
+      } else {
+        lines.push(trimLine(`${prefix}${word}`, width));
+        prefix = continuationPrefix;
+      }
+    });
+    if (current) lines.push(trimLine(`${prefix}${current}`, width));
+  };
+
+  pushSegments(words, firstPrefix);
+  if (!options?.compact) lines.push('');
+};
+
 function pushFeedSpace(lines: string[], width: '58mm' | '80mm') {
   for (let index = 0; index < getFeedLines(width); index += 1) {
     lines.push('');
@@ -152,15 +188,25 @@ function buildKotContent(job: PrintJobLike, rule: PrintRuleLike, width: '58mm' |
     lines.push(centerText(String(payload.restaurant_name), width));
     lines.push('');
   }
-  lines.push(centerText(`ORDER #${orderNumber}`, width));
+  lines.push(centerText(`#${orderNumber}`, width));
   lines.push(centerText(orderType, width));
   if (payload.customer_notes) {
     lines.push('');
-    pushWrappedLine(lines, `NOTE ${payload.customer_notes}`, width);
+    pushNoteBlock(lines, 'NOTE', String(payload.customer_notes), width, { compact: true });
   }
   if (payload.customer_name) lines.push(trimLine(String(payload.customer_name), width));
   if (rule.print_order_time !== false) lines.push(trimLine(fmtDate(payload.created_at), width));
-  if (payload.payment_status) lines.push(trimLine(String(payload.payment_status).toUpperCase(), width));
+  if (payload.payment_status || payload.payment_method) {
+    lines.push(
+      trimLine(
+        [payload.payment_status, payload.payment_method]
+          .filter(Boolean)
+          .map((value: string) => String(value).toUpperCase())
+          .join(' • '),
+        width
+      )
+    );
+  }
   if (rule.print_phone && payload.customer_phone) lines.push(trimLine(String(payload.customer_phone), width));
   if (rule.print_address && payload.delivery_address) {
     const address = addressText(payload.delivery_address);
@@ -188,7 +234,7 @@ function buildKotContent(job: PrintJobLike, rule: PrintRuleLike, width: '58mm' |
     addons.forEach((addon: any) => lines.push(trimLine(`  + ${Number(addon.quantity || 0)}x ${addon.name || 'Addon'}`, width)));
 
     if (rule.print_item_notes !== false && item.notes) {
-      pushWrappedLine(lines, item.notes, width, '  NOTE ');
+      pushNoteBlock(lines, 'NOTE', String(item.notes), width, { indent: '  ', compact: true });
     }
 
     if (rule.highlight_age_restricted !== false && item.age_restricted) {
@@ -215,15 +261,24 @@ function buildInvoiceContent(job: PrintJobLike, rule: PrintRuleLike, width: '58m
     if (payload.restaurant_phone) lines.push(centerText(String(payload.restaurant_phone), width));
     lines.push('');
   }
-  lines.push(centerText(`ORDER #${orderNumber}`, width));
+  lines.push(centerText(`#${orderNumber}`, width));
   lines.push(centerText(orderType, width));
   if (payload.customer_notes) {
     lines.push('');
-    pushWrappedLine(lines, `NOTE ${payload.customer_notes}`, width);
+    pushNoteBlock(lines, 'NOTE', String(payload.customer_notes), width, { compact: true });
   }
   if (rule.print_order_time !== false) lines.push(trimLine(fmtDate(payload.created_at), width));
-  if (payload.payment_status) lines.push(trimLine(String(payload.payment_status).toUpperCase(), width));
-  if (payload.payment_method) lines.push(trimLine(String(payload.payment_method).toUpperCase(), width));
+  if (payload.payment_status || payload.payment_method) {
+    lines.push(
+      trimLine(
+        [payload.payment_status, payload.payment_method]
+          .filter(Boolean)
+          .map((value: string) => String(value).toUpperCase())
+          .join(' • '),
+        width
+      )
+    );
+  }
   if (rule.print_phone && payload.customer_phone) lines.push(trimLine(String(payload.customer_phone), width));
   if (rule.print_address && payload.delivery_address) {
     const address = addressText(payload.delivery_address);
@@ -253,7 +308,7 @@ function buildInvoiceContent(job: PrintJobLike, rule: PrintRuleLike, width: '58m
     });
 
     if (rule.print_item_notes !== false && item.notes) {
-      pushWrappedLine(lines, item.notes, width, '  NOTE ');
+      pushNoteBlock(lines, 'NOTE', String(item.notes), width, { indent: '  ', compact: true });
     }
   });
 

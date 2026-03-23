@@ -947,32 +947,24 @@ export default function PrinterSettingsTab({
           </div>
 
           <aside className="space-y-3 xl:sticky xl:top-24 self-start">
-            <div className="rounded-lg border border-gray-200 p-3 bg-white">
-              <div className="flex items-center justify-between gap-2 text-xs uppercase tracking-wide text-gray-500">
-                <span>Preview format</span>
-                <span>80mm thermal</span>
-              </div>
-            </div>
             <div className="mx-auto max-w-[360px] rounded-[28px] border border-stone-300 bg-gradient-to-b from-stone-100 via-stone-50 to-stone-200 p-4 shadow-[0_18px_40px_rgba(15,23,42,0.14)] xl:mx-0">
               <div className="mx-auto rounded-[18px] border border-stone-300 bg-[#fffdfa] p-3 shadow-inner">
-                <div className="mx-auto w-full max-w-[304px] rounded-[14px] border border-stone-300 bg-white px-4 py-4">
-                  <div className="mb-4 flex items-center justify-between text-[10px] uppercase tracking-[0.24em] text-stone-500">
-                    <span>{previewTicketType}</span>
-                    <span>80mm</span>
-                  </div>
+                <div className="mx-auto w-full max-w-[304px] rounded-[14px] border border-stone-300 bg-white px-4 py-3">
                   {restaurantBranding.logo_url ? (
-                    <div className="mb-4 flex justify-center">
-                      <img
-                        src={restaurantBranding.logo_url}
-                        alt={`${restaurantBranding.name || 'Restaurant'} logo`}
-                        className={`object-contain ${
-                          restaurantBranding.logo_shape === 'round'
-                            ? 'h-14 w-14 rounded-full'
-                            : restaurantBranding.logo_shape === 'rectangular'
-                              ? 'h-14 w-28 rounded-lg'
-                              : 'h-16 w-16 rounded-xl'
-                        }`}
-                      />
+                    <div className="mb-3 flex justify-center">
+                      <div className="flex min-h-[72px] items-center justify-center px-2 py-2">
+                        <img
+                          src={restaurantBranding.logo_url}
+                          alt={`${restaurantBranding.name || 'Restaurant'} logo`}
+                          className={`object-contain grayscale contrast-200 brightness-[0.75] ${
+                            restaurantBranding.logo_shape === 'round'
+                              ? 'max-h-14 w-14 rounded-full'
+                              : restaurantBranding.logo_shape === 'rectangular'
+                                ? 'max-h-12 w-28 rounded-lg'
+                                : 'max-h-14 w-16 rounded-xl'
+                          }`}
+                        />
+                      </div>
                     </div>
                   ) : null}
                   <div className="space-y-1.5">
@@ -980,9 +972,9 @@ export default function PrinterSettingsTab({
                       const trimmed = line.trim();
                       const isDivider = /^[─-]+$/.test(trimmed);
                       const isRestaurantName = trimmed === (previewPayload.restaurant_name || '').trim();
-                      const isOrderNumber = /^ORDER #/i.test(trimmed);
+                      const isOrderNumber = /^#/.test(trimmed);
                       const isTypeBar = /^[A-Z0-9 ]+$/.test(trimmed) && ['DELIVERY', 'COLLECTION', 'TABLE', 'DINE IN'].some((token) => trimmed.includes(token));
-                      const isHeader = /(KITCHEN ORDER TICKET|CUSTOMER RECEIPT|END OF ORDER|THANK YOU)/i.test(trimmed);
+                      const isHeader = /(END OF ORDER|THANK YOU)/i.test(trimmed);
                       const isCategory =
                         !isDivider &&
                         !!trimmed &&
@@ -995,26 +987,26 @@ export default function PrinterSettingsTab({
                       const isAddon = /^\s+\+/.test(line);
                       const isTotal = /^TOTAL\b/.test(trimmed);
                       return isDivider ? (
-                        <div key={`${index}-${trimmed}`} className="my-3 border-t border-stone-900" />
+                        <div key={`${index}-${trimmed}`} className="my-3 border-t border-stone-900/90" />
                       ) : (
                         <div
                           key={`${index}-${line}`}
                           className={`font-mono whitespace-pre-wrap break-words text-[11px] leading-[1.75] text-stone-900 ${
-                            isRestaurantName ? 'text-center text-[12px] font-semibold' : ''
+                            isRestaurantName ? 'pb-0.5 text-center text-[12.5px] font-semibold tracking-[0.04em]' : ''
                           } ${
-                            isHeader ? 'text-center text-[11px] font-semibold tracking-[0.08em] text-stone-950' : ''
+                            isHeader ? 'pt-1 text-center text-[10.5px] font-semibold tracking-[0.1em] text-stone-950' : ''
                           } ${
-                            isOrderNumber ? 'py-1 text-center text-[15px] font-bold tracking-[0.08em] text-stone-950' : ''
+                            isOrderNumber ? 'pb-1 pt-0.5 text-center text-[16px] font-bold tracking-[0.08em] text-stone-950' : ''
                           } ${
-                            isTypeBar ? 'my-1 bg-stone-950 px-2 py-1 text-center font-bold tracking-[0.16em] text-white' : ''
+                            isTypeBar ? 'my-1 bg-stone-950 px-2 py-1 text-center text-[10.5px] font-bold tracking-[0.16em] text-white' : ''
                           } ${
-                            isCategory ? 'pt-2 text-[11px] font-bold tracking-[0.08em] text-stone-950' : ''
+                            isCategory ? 'pt-2 text-[11px] font-bold tracking-[0.05em] text-stone-950' : ''
                           } ${
-                            isNote ? 'font-semibold text-stone-950' : ''
+                            isNote ? 'py-0.5 font-semibold text-stone-950' : ''
                           } ${
                             isAddon ? 'pl-4 text-stone-700' : ''
                           } ${
-                            isTotal ? 'pt-2 text-[12px] font-bold text-stone-950' : ''
+                            isTotal ? 'pt-2 text-[12.5px] font-bold text-stone-950' : ''
                           }`}
                         >
                           {line || <span className="block h-2" />}
