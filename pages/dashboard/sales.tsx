@@ -463,7 +463,7 @@ export default function SalesPage() {
           </div>
 
           <div className="mt-5">
-            <div className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white/90 p-2 shadow-sm sm:w-fit">
+            <div className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white/90 p-2 shadow-sm md:flex md:flex-wrap md:items-center">
               {(Object.keys(DATE_PRESET_LABELS) as DatePreset[]).map((preset) => {
                 const isActive = datePreset === preset;
                 return (
@@ -471,7 +471,7 @@ export default function SalesPage() {
                     key={preset}
                     type="button"
                     onClick={() => handlePresetSelect(preset)}
-                    className={`flex h-10 w-full items-center justify-center whitespace-nowrap rounded-xl px-2 text-[13px] font-medium leading-none transition sm:px-3 sm:text-sm ${
+                    className={`flex h-10 w-full items-center justify-center whitespace-nowrap rounded-xl px-2 text-[13px] font-medium leading-none transition sm:px-3 sm:text-sm md:w-auto md:min-w-[120px] ${
                       isActive ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'
                     }`}
                   >
