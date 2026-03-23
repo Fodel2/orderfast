@@ -82,8 +82,13 @@ const defaultPreviewRule: PrintRuleLike = {
 const printerRoles = ['kitchen', 'receipt', 'packing', 'bar', 'dessert', 'expo'];
 
 type PreviewTicketType = 'KOT' | 'Invoice';
-type PreviewWidth = '58mm' | '80mm';
 type PrinterOnlineState = 'online' | 'offline' | 'unknown';
+type RestaurantBranding = {
+  name: string | null;
+  logo_url: string | null;
+  logo_shape: 'square' | 'round' | 'rectangular' | null;
+  contact_number: string | null;
+};
 export type PrintingSubTab = 'printers' | 'kitchen-tickets' | 'receipts' | 'alerts' | 'diagnostics';
 
 const printingSubTabItems: Array<{ key: PrintingSubTab; label: string }> = [
@@ -208,8 +213,13 @@ export default function PrinterSettingsTab({
   const [rulePrinterDraftIds, setRulePrinterDraftIds] = useState<string[]>([]);
   const [onlineStatusByPrinterId, setOnlineStatusByPrinterId] = useState<Record<string, PrinterOnlineState>>({});
   const [statusLoadingByPrinterId, setStatusLoadingByPrinterId] = useState<Record<string, boolean>>({});
+  const [restaurantBranding, setRestaurantBranding] = useState<RestaurantBranding>({
+    name: null,
+    logo_url: null,
+    logo_shape: null,
+    contact_number: null,
+  });
   const [previewTicketType, setPreviewTicketType] = useState<PreviewTicketType>('KOT');
-  const [previewWidth, setPreviewWidth] = useState<PreviewWidth>('58mm');
   const lastQueueNudgeAtRef = useRef(0);
   const queueNudgeInFlightRef = useRef(false);
 
@@ -248,7 +258,7 @@ export default function PrinterSettingsTab({
 
   const loadData = async () => {
     setLoading(true);
-    const [settingsRes, printersRes, rulesRes, jobsRes] = await Promise.all([
+    const [settingsRes, printersRes, rulesRes, jobsRes, restaurantRes] = await Promise.all([
       supabase.from('printer_settings').select('*').eq('restaurant_id', restaurantId).maybeSingle(),
       supabase
         .from('printers')
@@ -266,6 +276,11 @@ export default function PrinterSettingsTab({
         .eq('restaurant_id', restaurantId)
         .order('created_at', { ascending: false })
         .limit(20),
+      supabase
+        .from('restaurants')
+        .select('name,logo_url,logo_shape,contact_number')
+        .eq('id', restaurantId)
+        .maybeSingle(),
     ]);
 
     if (settingsRes.data) setSettings({ ...defaultSettings, ...(settingsRes.data as any) });
@@ -352,6 +367,14 @@ export default function PrinterSettingsTab({
     }
 
     if (jobsRes.data) setJobs(jobsRes.data as any);
+    if (restaurantRes.data) {
+      setRestaurantBranding({
+        name: restaurantRes.data.name ?? null,
+        logo_url: restaurantRes.data.logo_url ?? null,
+        logo_shape: (restaurantRes.data.logo_shape as RestaurantBranding['logo_shape']) ?? null,
+        contact_number: restaurantRes.data.contact_number ?? null,
+      });
+    }
     setLoading(false);
     await nudgeQueueProcessing('settings_load');
   };
@@ -580,6 +603,7 @@ export default function PrinterSettingsTab({
       order_type: 'delivery',
       customer_name: 'Alex Johnson',
       customer_phone: '+44 7700 900123',
+      customer_notes: 'Ring the side door bell once and send sauces separately.',
       delivery_address: {
         address_line_1: '12 Market Street',
         address_line_2: 'Flat 3B',
@@ -587,11 +611,15 @@ export default function PrinterSettingsTab({
       },
       payment_status: 'paid',
       payment_method: 'card',
-      restaurant_name: 'Orderfast Demo Kitchen',
-      restaurant_phone: '+44 20 7946 0000',
+      restaurant_name: restaurantBranding.name || 'Orderfast Demo Kitchen',
+      restaurant_phone: restaurantBranding.contact_number || '+44 20 7946 0000',
+      restaurant_logo_url: restaurantBranding.logo_url,
+      restaurant_logo_shape: restaurantBranding.logo_shape,
+      subtotal: 2295,
+      delivery_fee: 185,
+      discount_amount: 0,
       vat_amount: 185,
       total: 2480,
-      qr_placeholder: true,
       items: [
         {
           order_item_id: 'it-1',
@@ -631,7 +659,7 @@ export default function PrinterSettingsTab({
         },
       ],
     }),
-    []
+    [restaurantBranding]
   );
 
   const previewText = useMemo(
@@ -644,9 +672,9 @@ export default function PrinterSettingsTab({
           payload_json: previewPayload,
         },
         previewRule,
-        { width: previewWidth }
+        { width: '80mm' }
       ),
-    [previewPayload, previewRule, previewTicketType, previewWidth]
+    [previewPayload, previewRule, previewTicketType]
   );
 
   if (loading) return <div className="bg-white p-6 rounded-lg shadow">Loading printer settings...</div>;
@@ -906,9 +934,6 @@ export default function PrinterSettingsTab({
                       </label>
                     )}
 
-                    {activeTicketType === 'Invoice' && (
-                      <div className="rounded border border-dashed p-2 text-xs text-gray-600 md:col-span-2">Promotion QR coming next.</div>
-                    )}
                   </div>
                 </div>
 
@@ -923,43 +948,74 @@ export default function PrinterSettingsTab({
 
           <aside className="space-y-3 xl:sticky xl:top-24 self-start">
             <div className="rounded-lg border border-gray-200 p-3 bg-white">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs uppercase tracking-wide text-gray-500">Preview width</span>
-                <div className="ml-auto flex items-center gap-2 text-sm">
-                  {(['58mm', '80mm'] as PreviewWidth[]).map((width) => (
-                    <button
-                      key={width}
-                      type="button"
-                      onClick={() => setPreviewWidth(width)}
-                      className={`px-2.5 py-1 rounded border ${previewWidth === width ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-gray-700 border-gray-300'}`}
-                    >
-                      {width}
-                    </button>
-                  ))}
-                </div>
+              <div className="flex items-center justify-between gap-2 text-xs uppercase tracking-wide text-gray-500">
+                <span>Preview format</span>
+                <span>80mm thermal</span>
               </div>
             </div>
             <div className="mx-auto max-w-[360px] rounded-[28px] border border-stone-300 bg-gradient-to-b from-stone-100 via-stone-50 to-stone-200 p-4 shadow-[0_18px_40px_rgba(15,23,42,0.14)] xl:mx-0">
               <div className="mx-auto rounded-[18px] border border-stone-300 bg-[#fffdfa] p-3 shadow-inner">
-                <div className="mx-auto w-full max-w-[304px] rounded-[14px] border border-dashed border-stone-300 bg-white px-4 py-4">
-                  <div className="mb-3 flex items-center justify-between text-[10px] uppercase tracking-[0.24em] text-stone-500">
+                <div className="mx-auto w-full max-w-[304px] rounded-[14px] border border-stone-300 bg-white px-4 py-4">
+                  <div className="mb-4 flex items-center justify-between text-[10px] uppercase tracking-[0.24em] text-stone-500">
                     <span>{previewTicketType}</span>
-                    <span>{previewWidth}</span>
+                    <span>80mm</span>
                   </div>
-                  <div className="space-y-2">
+                  {restaurantBranding.logo_url ? (
+                    <div className="mb-4 flex justify-center">
+                      <img
+                        src={restaurantBranding.logo_url}
+                        alt={`${restaurantBranding.name || 'Restaurant'} logo`}
+                        className={`object-contain ${
+                          restaurantBranding.logo_shape === 'round'
+                            ? 'h-14 w-14 rounded-full'
+                            : restaurantBranding.logo_shape === 'rectangular'
+                              ? 'h-14 w-28 rounded-lg'
+                              : 'h-16 w-16 rounded-xl'
+                        }`}
+                      />
+                    </div>
+                  ) : null}
+                  <div className="space-y-1.5">
                     {previewText.split('\n').map((line, index) => {
                       const trimmed = line.trim();
                       const isDivider = /^[─-]+$/.test(trimmed);
-                      const isHeader = /(KITCHEN ORDER TICKET|CUSTOMER RECEIPT|ORDER #|SCHEDULED ORDER|END OF ORDER|THANK YOU)/i.test(trimmed);
-                      const isSectionLabel = /^(ORDER TYPE|CUSTOMER|PLACED|PAYMENT|PHONE|ADDRESS|ORDER|DATE|METHOD|VAT|TOTAL)\b/.test(trimmed);
+                      const isRestaurantName = trimmed === (previewPayload.restaurant_name || '').trim();
+                      const isOrderNumber = /^ORDER #/i.test(trimmed);
+                      const isTypeBar = /^[A-Z0-9 ]+$/.test(trimmed) && ['DELIVERY', 'COLLECTION', 'TABLE', 'DINE IN'].some((token) => trimmed.includes(token));
+                      const isHeader = /(KITCHEN ORDER TICKET|CUSTOMER RECEIPT|END OF ORDER|THANK YOU)/i.test(trimmed);
+                      const isCategory =
+                        !isDivider &&
+                        !!trimmed &&
+                        trimmed === trimmed.toUpperCase() &&
+                        !isOrderNumber &&
+                        !isTypeBar &&
+                        !/^TOTAL\b/.test(trimmed) &&
+                        /^[A-Z& ]+$/.test(trimmed);
                       const isNote = /NOTE/.test(trimmed);
-                      const isAddon = /^\+|^\s+\+/.test(line);
+                      const isAddon = /^\s+\+/.test(line);
+                      const isTotal = /^TOTAL\b/.test(trimmed);
                       return isDivider ? (
-                        <div key={`${index}-${trimmed}`} className="my-2 border-t border-dashed border-stone-400" />
+                        <div key={`${index}-${trimmed}`} className="my-3 border-t border-stone-900" />
                       ) : (
                         <div
                           key={`${index}-${line}`}
-                          className={`font-mono whitespace-pre-wrap break-words text-[11px] leading-[1.7] text-stone-900 ${isHeader ? 'text-[11.5px] font-semibold tracking-[0.08em] text-stone-950' : ''} ${isSectionLabel ? 'font-semibold text-stone-800' : ''} ${isNote ? 'rounded bg-amber-50 px-2 py-1 text-amber-900' : ''} ${isAddon ? 'pl-3 text-stone-700' : ''}`}
+                          className={`font-mono whitespace-pre-wrap break-words text-[11px] leading-[1.75] text-stone-900 ${
+                            isRestaurantName ? 'text-center text-[12px] font-semibold' : ''
+                          } ${
+                            isHeader ? 'text-center text-[11px] font-semibold tracking-[0.08em] text-stone-950' : ''
+                          } ${
+                            isOrderNumber ? 'py-1 text-center text-[15px] font-bold tracking-[0.08em] text-stone-950' : ''
+                          } ${
+                            isTypeBar ? 'my-1 bg-stone-950 px-2 py-1 text-center font-bold tracking-[0.16em] text-white' : ''
+                          } ${
+                            isCategory ? 'pt-2 text-[11px] font-bold tracking-[0.08em] text-stone-950' : ''
+                          } ${
+                            isNote ? 'font-semibold text-stone-950' : ''
+                          } ${
+                            isAddon ? 'pl-4 text-stone-700' : ''
+                          } ${
+                            isTotal ? 'pt-2 text-[12px] font-bold text-stone-950' : ''
+                          }`}
                         >
                           {line || <span className="block h-2" />}
                         </div>

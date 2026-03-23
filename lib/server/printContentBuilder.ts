@@ -96,6 +96,35 @@ const trimLine = (text: string, width: '58mm' | '80mm') => {
 const addressText = (address: any) =>
   [address?.address_line_1, address?.address_line_2, address?.postcode].filter(Boolean).join(', ');
 
+const toDisplayOrderType = (payload: any) => {
+  if (payload?.dine_in_table_number) return `TABLE ${payload.dine_in_table_number}`;
+  return String(payload?.order_type || 'ORDER').replace(/_/g, ' ').trim().toUpperCase();
+};
+
+const pushWrappedLine = (lines: string[], text: string, width: '58mm' | '80mm', prefix = '') => {
+  const max = getMaxLineLength(width);
+  const contentWidth = Math.max(8, max - prefix.length);
+  const words = String(text || '').split(/\s+/).filter(Boolean);
+  if (!words.length) return;
+
+  let current = '';
+  words.forEach((word) => {
+    const next = current ? `${current} ${word}` : word;
+    if (next.length <= contentWidth) {
+      current = next;
+      return;
+    }
+    if (current) {
+      lines.push(trimLine(`${prefix}${current}`, width));
+      current = word;
+      return;
+    }
+    lines.push(trimLine(`${prefix}${word}`, width));
+  });
+
+  if (current) lines.push(trimLine(`${prefix}${current}`, width));
+};
+
 function pushFeedSpace(lines: string[], width: '58mm' | '80mm') {
   for (let index = 0; index < getFeedLines(width); index += 1) {
     lines.push('');
@@ -117,22 +146,29 @@ function buildKotContent(job: PrintJobLike, rule: PrintRuleLike, width: '58mm' |
   const line = getLine(width);
   const lines: string[] = [];
   const orderNumber = payload.order_number ?? String(payload.order_id || job.id).slice(0, 8);
+  const orderType = toDisplayOrderType(payload);
 
-  lines.push(centerText('KITCHEN ORDER TICKET', width));
+  if (rule.print_restaurant_details !== false && payload.restaurant_name) {
+    lines.push(centerText(String(payload.restaurant_name), width));
+    lines.push('');
+  }
   lines.push(centerText(`ORDER #${orderNumber}`, width));
-  if (payload.scheduled_for) lines.push(centerText('SCHEDULED ORDER', width));
-  lines.push(line);
-  lines.push(padColumns('ORDER TYPE', String(payload.order_type || 'unknown').toUpperCase(), width));
-  if (payload.customer_name) lines.push(padColumns('CUSTOMER', String(payload.customer_name), width));
-  if (rule.print_order_time !== false) lines.push(padColumns('PLACED', fmtDate(payload.created_at), width));
-  if (payload.payment_status) lines.push(padColumns('PAYMENT', String(payload.payment_status).toUpperCase(), width));
-  if (rule.print_phone && payload.customer_phone) lines.push(trimLine(`PHONE  ${payload.customer_phone}`, width));
+  lines.push(centerText(orderType, width));
+  if (payload.customer_notes) {
+    lines.push('');
+    pushWrappedLine(lines, `NOTE ${payload.customer_notes}`, width);
+  }
+  if (payload.customer_name) lines.push(trimLine(String(payload.customer_name), width));
+  if (rule.print_order_time !== false) lines.push(trimLine(fmtDate(payload.created_at), width));
+  if (payload.payment_status) lines.push(trimLine(String(payload.payment_status).toUpperCase(), width));
+  if (rule.print_phone && payload.customer_phone) lines.push(trimLine(String(payload.customer_phone), width));
   if (rule.print_address && payload.delivery_address) {
     const address = addressText(payload.delivery_address);
-    if (address) lines.push(trimLine(`ADDRESS ${address}`, width));
+    if (address) pushWrappedLine(lines, address, width);
   }
 
   lines.push('');
+  lines.push(line);
 
   const items = getGroupedItems(payload, rule);
   let lastCategory = '';
@@ -140,11 +176,9 @@ function buildKotContent(job: PrintJobLike, rule: PrintRuleLike, width: '58mm' |
     const category = String(item?.category || '').trim();
     if (category && rule.item_grouping && rule.item_grouping !== 'none' && category !== lastCategory) {
       if (index > 0) lines.push('');
-      lines.push(line);
-      lines.push(centerText(category.toUpperCase(), width));
-      lines.push(line);
+      lines.push(trimLine(category.toUpperCase(), width));
       lastCategory = category;
-    } else if (index > 0 && !rule.divider_lines) {
+    } else if (index > 0) {
       lines.push('');
     }
 
@@ -154,19 +188,16 @@ function buildKotContent(job: PrintJobLike, rule: PrintRuleLike, width: '58mm' |
     addons.forEach((addon: any) => lines.push(trimLine(`  + ${Number(addon.quantity || 0)}x ${addon.name || 'Addon'}`, width)));
 
     if (rule.print_item_notes !== false && item.notes) {
-      lines.push(trimLine(`  NOTE  ${item.notes}`, width));
+      pushWrappedLine(lines, item.notes, width, '  NOTE ');
     }
 
     if (rule.highlight_age_restricted !== false && item.age_restricted) {
       lines.push(trimLine('  AGE CHECK REQUIRED', width));
     }
-
-    if (rule.divider_lines) {
-      lines.push('');
-      lines.push(line);
-    }
   });
 
+  lines.push('');
+  lines.push(line);
   lines.push(centerText('END OF ORDER', width));
   pushFeedSpace(lines, width);
   return lines.join('\n');
@@ -177,25 +208,41 @@ function buildInvoiceContent(job: PrintJobLike, rule: PrintRuleLike, width: '58m
   const line = getLine(width);
   const lines: string[] = [];
   const orderNumber = payload.order_number ?? String(payload.order_id || job.id).slice(0, 8);
+  const orderType = toDisplayOrderType(payload);
 
-  lines.push(centerText('CUSTOMER RECEIPT', width));
-  if (rule.print_logo) lines.push(centerText('[LOGO PLACEHOLDER]', width));
   if (rule.print_restaurant_details && payload.restaurant_name) {
     lines.push(centerText(String(payload.restaurant_name), width));
     if (payload.restaurant_phone) lines.push(centerText(String(payload.restaurant_phone), width));
+    lines.push('');
   }
-  lines.push(line);
-  lines.push(padColumns('ORDER', `#${orderNumber}`, width));
-  lines.push(padColumns('DATE', fmtDate(payload.created_at), width));
-  if (payload.payment_status) lines.push(padColumns('PAYMENT', String(payload.payment_status).toUpperCase(), width));
-  if (payload.payment_method) lines.push(padColumns('METHOD', String(payload.payment_method).toUpperCase(), width));
+  lines.push(centerText(`ORDER #${orderNumber}`, width));
+  lines.push(centerText(orderType, width));
+  if (payload.customer_notes) {
+    lines.push('');
+    pushWrappedLine(lines, `NOTE ${payload.customer_notes}`, width);
+  }
+  if (rule.print_order_time !== false) lines.push(trimLine(fmtDate(payload.created_at), width));
+  if (payload.payment_status) lines.push(trimLine(String(payload.payment_status).toUpperCase(), width));
+  if (payload.payment_method) lines.push(trimLine(String(payload.payment_method).toUpperCase(), width));
+  if (rule.print_phone && payload.customer_phone) lines.push(trimLine(String(payload.customer_phone), width));
+  if (rule.print_address && payload.delivery_address) {
+    const address = addressText(payload.delivery_address);
+    if (address) pushWrappedLine(lines, address, width);
+  }
+  lines.push('');
   lines.push(line);
 
   const items = getGroupedItems(payload, rule);
+  let lastCategory = '';
   items.forEach((item: any, index: number) => {
     const qty = Number(item.quantity || 0);
     const price = Number(item.price || 0);
     if (index > 0) lines.push('');
+    const category = String(item?.category || '').trim();
+    if (category && rule.item_grouping && rule.item_grouping !== 'none' && category !== lastCategory) {
+      lines.push(trimLine(category.toUpperCase(), width));
+      lastCategory = category;
+    }
     lines.push(padColumns(`${qty}x ${item.name || 'Item'}`, fmtMoney(price * qty), width));
 
     const addons = Array.isArray(item.addons) ? item.addons : [];
@@ -206,24 +253,25 @@ function buildInvoiceContent(job: PrintJobLike, rule: PrintRuleLike, width: '58m
     });
 
     if (rule.print_item_notes !== false && item.notes) {
-      lines.push(trimLine(`  NOTE  ${item.notes}`, width));
+      pushWrappedLine(lines, item.notes, width, '  NOTE ');
     }
   });
 
   lines.push('');
   lines.push(line);
+  const subtotal = Number(payload.subtotal || 0);
+  const deliveryFee = Number(payload.delivery_fee || 0);
+  const discountAmount = Number(payload.discount_amount || 0);
+  if (subtotal > 0) lines.push(padColumns('Subtotal', fmtMoney(subtotal), width));
+  if (deliveryFee > 0) lines.push(padColumns('Delivery', fmtMoney(deliveryFee), width));
+  if (discountAmount > 0) lines.push(padColumns('Discount', `-${fmtMoney(discountAmount)}`, width));
   if (rule.show_vat_breakdown && typeof payload.vat_amount === 'number') {
     lines.push(padColumns('VAT', fmtMoney(payload.vat_amount), width));
   }
   lines.push(padColumns('TOTAL', fmtMoney(Number(payload.total || 0)), width));
-  lines.push(line);
   if (rule.custom_message) {
     lines.push('');
     lines.push(centerText(String(rule.custom_message), width));
-  }
-  if (payload.qr_placeholder) {
-    lines.push('');
-    lines.push(centerText('[QR / PROMO PLACEHOLDER]', width));
   }
   lines.push('');
   lines.push(centerText('Thank you for your order', width));
@@ -233,7 +281,7 @@ function buildInvoiceContent(job: PrintJobLike, rule: PrintRuleLike, width: '58m
 }
 
 export function buildTicketText(job: PrintJobLike, rule: PrintRuleLike = {}, options: TicketBuildOptions = {}) {
-  const width = options.width || '58mm';
+  const width = options.width || '80mm';
 
   if (job.source === 'test') {
     const p = job.payload_json || {};
