@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/utils/supabaseClient';
 import { requestPrintJobCreation, requestPrintQueueNudge } from '@/lib/print-jobs/request';
-import { buildTicketDocument, type PrintRuleLike, type TicketType } from '@/lib/server/printContentBuilder';
+import { buildTicketText, type PrintRuleLike, type TicketType } from '@/lib/server/printContentBuilder';
 
 type Printer = {
   id: string;
@@ -658,9 +658,9 @@ export default function PrinterSettingsTab({
     [restaurantBranding]
   );
 
-  const previewDocument = useMemo(
+  const previewText = useMemo(
     () =>
-      buildTicketDocument(
+      buildTicketText(
         {
           id: 'preview-print-job',
           ticket_type: previewTicketType as TicketType,
@@ -945,67 +945,12 @@ export default function PrinterSettingsTab({
           <aside className="space-y-3 xl:sticky xl:top-24 self-start">
             <div className="mx-auto max-w-[360px] rounded-[28px] border border-stone-300 bg-gradient-to-b from-stone-100 via-stone-50 to-stone-200 p-4 shadow-[0_18px_40px_rgba(15,23,42,0.14)] xl:mx-0">
               <div className="mx-auto rounded-[18px] border border-stone-300 bg-[#fffdfa] p-3 shadow-inner">
-                <div className="mx-auto w-full max-w-[304px] rounded-[14px] border border-stone-300 bg-white px-4 py-3 font-sans">
-                  {restaurantBranding.logo_url ? (
-                    <div className="mb-1 flex justify-center">
-                      <div className="flex min-h-[82px] items-center justify-center px-1 py-1">
-                        <img
-                          src={restaurantBranding.logo_url}
-                          alt={`${restaurantBranding.name || 'Restaurant'} logo`}
-                          className={`object-contain grayscale contrast-200 brightness-[0.75] ${
-                            restaurantBranding.logo_shape === 'round'
-                              ? 'max-h-[68px] w-[68px] rounded-full'
-                              : restaurantBranding.logo_shape === 'rectangular'
-                                ? 'max-h-[56px] w-[148px] rounded-lg'
-                                : 'max-h-[64px] w-[88px] rounded-xl'
-                          }`}
-                        />
-                      </div>
-                    </div>
-                  ) : null}
-                  <div className="space-y-0.5">
-                    {previewDocument.nodes.map((node, index) => {
-                      if (node.type === 'divider') {
-                        return <div key={`${index}-divider`} className="my-3 border-t border-stone-900/90" />;
-                      }
-
-                      if (node.type === 'blank') {
-                        return <div key={`${index}-blank`} className="block h-2" />;
-                      }
-
-                      const line = node.align === 'center' ? node.text.trim() : node.text;
-                      return (
-                        <div
-                          key={`${index}-${node.type}-${node.text}`}
-                          className={`whitespace-pre-wrap break-words text-[11px] leading-[1.45] tracking-[0.01em] text-stone-900 ${
-                            node.variant === 'restaurantName' ? 'pb-0 text-center text-[13px] font-semibold tracking-[0.05em]' : ''
-                          } ${
-                            node.variant === 'footer' ? 'pt-0.5 text-center text-[10px] font-semibold tracking-[0.1em] text-stone-950' : ''
-                          } ${
-                            node.variant === 'orderNumber' ? 'pb-0.5 pt-0 text-center text-[16px] font-bold tracking-[0.08em] text-stone-950' : ''
-                          } ${
-                            node.variant === 'orderType' ? 'my-0.5 bg-stone-950 px-2 py-1 text-center text-[10.5px] font-bold tracking-[0.16em] text-white' : ''
-                          } ${
-                            node.variant === 'category' ? 'pt-1 text-[11px] font-bold tracking-[0.05em] text-stone-950' : ''
-                          } ${
-                            node.variant === 'noteLabel' ? 'pt-1 font-semibold text-stone-950' : ''
-                          } ${
-                            node.variant === 'noteText' || node.variant === 'addon' ? 'pl-4 text-stone-700' : ''
-                          } ${
-                            node.variant === 'total' ? 'pt-1 text-[12.5px] font-bold text-stone-950' : ''
-                          } ${
-                            node.align === 'center' ? 'text-center' : ''
-                          }`}
-                        >
-                          {line}
-                        </div>
-                      );
-                    })}
-                  </div>
+                <div className="mx-auto w-full max-w-[304px] rounded-[14px] border border-stone-300 bg-white px-4 py-3">
+                  <pre className="overflow-x-auto whitespace-pre font-mono text-[11px] leading-[1.45] text-stone-900">{previewText}</pre>
                 </div>
               </div>
             </div>
-            <p className="text-xs text-gray-500">Preview based on current settings. Final printer output may vary slightly by printer model.</p>
+            <p className="text-xs text-gray-500">Preview renders the exact 80mm printable ticket text before SUNMI hex encoding.</p>
           </aside>
         </div>
       </section>
