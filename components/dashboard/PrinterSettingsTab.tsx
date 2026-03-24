@@ -846,7 +846,7 @@ export default function PrinterSettingsTab({
           </div>
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,440px)]">
           <div className="space-y-4">
             {ruleDraft ? (
               <>
@@ -945,11 +945,11 @@ export default function PrinterSettingsTab({
             )}
           </div>
 
-          <aside className="space-y-3 xl:sticky xl:top-24 self-start">
-            <div className="mx-auto max-w-[360px] rounded-[28px] border border-stone-300 bg-gradient-to-b from-stone-100 via-stone-50 to-stone-200 p-4 shadow-[0_18px_40px_rgba(15,23,42,0.14)] xl:mx-0">
+          <aside className="relative space-y-3 self-start justify-self-center w-full max-w-[440px] xl:sticky xl:top-24">
+            <div className="mx-auto w-full max-w-[440px] overflow-hidden rounded-[28px] border border-stone-300 bg-gradient-to-b from-stone-100 via-stone-50 to-stone-200 p-4 shadow-[0_18px_40px_rgba(15,23,42,0.14)]">
               <div className="mx-auto rounded-[18px] border border-stone-300 bg-[#fffdfa] p-3 shadow-inner">
-                <div className="mx-auto w-full max-w-[304px] rounded-[14px] border border-stone-300 bg-white p-2">
-                  <img src={previewSvgDataUrl} alt={`${previewTicketType} ticket preview`} className="block w-full" />
+                <div className="mx-auto w-full max-w-[384px] overflow-hidden rounded-[14px] border border-stone-300 bg-white p-2">
+                  <img src={previewSvgDataUrl} alt={`${previewTicketType} ticket preview`} className="block h-auto w-full" />
                 </div>
               </div>
             </div>
