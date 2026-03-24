@@ -946,7 +946,7 @@ export default function PrinterSettingsTab({
           </div>
 
           <aside className="space-y-3 xl:sticky xl:top-24 self-start">
-            <div className="mx-auto max-w-[360px] rounded-[28px] border border-stone-300 bg-gradient-to-b from-stone-100 via-stone-50 to-stone-200 p-4 shadow-[0_18px_40px_rgba(15,23,42,0.14)] xl:mx-0">
+            <div className="mx-auto max-w-[360px] rounded-[28px] border border-stone-300 bg-gradient-to-b from-stone-100 via-stone-50 to-stone-200 p-4 shadow-[0_18px_40px_rgba(15,23,42,0.14)]">
               <div className="mx-auto rounded-[18px] border border-stone-300 bg-[#fffdfa] p-3 shadow-inner">
                 <div className="mx-auto w-full max-w-[304px] rounded-[14px] border border-stone-300 bg-white p-2">
                   <img src={previewSvgDataUrl} alt={`${previewTicketType} ticket preview`} className="block w-full" />
