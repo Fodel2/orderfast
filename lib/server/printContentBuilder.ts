@@ -41,7 +41,7 @@ const getLine = (width: '58mm' | '80mm') => '─'.repeat(width === '80mm' ? 48 :
 const getMaxLineLength = (width: '58mm' | '80mm') => (width === '80mm' ? 48 : 32);
 const getFeedLines = (width: '58mm' | '80mm', source?: string | null) => {
   if (source === 'test') return width === '80mm' ? 8 : 6;
-  return width === '80mm' ? 4 : 3;
+  return width === '80mm' ? 6 : 5;
 };
 
 const fmtDate = (value: string | null | undefined) => (value ? new Date(value).toLocaleString() : '-');
@@ -88,6 +88,15 @@ const toDisplayOrderType = (payload: any) => {
   return String(payload?.order_type || 'ORDER').replace(/_/g, ' ').trim().toUpperCase();
 };
 
+const toFulfilmentContext = (payload: any) => {
+  const normalized = String(payload?.order_type || '').trim().toLowerCase();
+  if (payload?.dine_in_table_number) return `Dine-in · Table ${payload.dine_in_table_number}`;
+  if (normalized === 'delivery') return 'Delivery order';
+  if (normalized === 'collection' || normalized === 'pickup' || normalized === 'pick_up') return 'Collection order';
+  if (normalized) return `${normalized.replace(/_/g, ' ')} order`;
+  return null;
+};
+
 export function buildTestEscPosHex(job: PrintJobLike, width: '58mm' | '80mm') {
   const payload = job.payload_json || {};
   const lines = [
@@ -129,13 +138,6 @@ const pushWrappedTextNodes = (nodes: TicketDocumentNode[], text: string, width: 
   if (current) pushTextNode(nodes, `${prefix}${current}`, width, { align: options?.align, emphasis: options?.emphasis, variant: options?.variant });
 };
 
-const pushNoteBlock = (nodes: TicketDocumentNode[], text: string, width: '58mm' | '80mm') => {
-  const note = String(text || '').trim();
-  if (!note) return;
-  pushTextNode(nodes, 'NOTE', width, { emphasis: 'strong', variant: 'noteLabel' });
-  pushWrappedTextNodes(nodes, note, width, { prefix: '› ', variant: 'noteText' });
-};
-
 function getGroupedItems(payload: any, rule: PrintRuleLike) {
   const items = Array.isArray(payload?.items) ? payload.items : [];
   if (rule.item_grouping && rule.item_grouping !== 'none') {
@@ -148,28 +150,34 @@ function pushHeader(nodes: TicketDocumentNode[], payload: any, width: '58mm' | '
   const orderNumber = payload.order_number ?? String(payload.order_id || '').slice(0, 8);
   const orderType = toDisplayOrderType(payload);
   if (payload.restaurant_name) pushTextNode(nodes, String(payload.restaurant_name), width, { align: 'center', emphasis: 'strong', variant: 'restaurantName' });
+  nodes.push({ type: 'blank' });
   pushTextNode(nodes, `#${orderNumber}`, width, { align: 'center', emphasis: 'strong', variant: 'orderNumber' });
   pushTextNode(nodes, orderType, width, { align: 'center', emphasis: 'strong', variant: 'orderType' });
+  nodes.push({ type: 'blank' });
 }
 
 function pushKotMeta(nodes: TicketDocumentNode[], payload: any, width: '58mm' | '80mm', rule: PrintRuleLike) {
-  if (payload.customer_name) pushTextNode(nodes, String(payload.customer_name), width, { variant: 'meta' });
-  if (rule.print_order_time !== false) pushTextNode(nodes, fmtDate(payload.created_at), width, { variant: 'meta' });
-  if (rule.print_phone && payload.customer_phone) pushTextNode(nodes, String(payload.customer_phone), width, { variant: 'meta' });
+  if (payload.customer_name) pushTextNode(nodes, `Customer: ${String(payload.customer_name)}`, width, { variant: 'meta' });
+  const fulfilment = toFulfilmentContext(payload);
+  if (fulfilment) pushTextNode(nodes, `Type: ${fulfilment}`, width, { variant: 'meta' });
+  if (rule.print_order_time !== false) pushTextNode(nodes, `Time: ${fmtDate(payload.created_at)}`, width, { variant: 'meta' });
+  if (rule.print_phone && payload.customer_phone) pushTextNode(nodes, `Phone: ${String(payload.customer_phone)}`, width, { variant: 'meta' });
   if (rule.print_address && payload.delivery_address) {
     const address = addressText(payload.delivery_address);
-    if (address) pushWrappedTextNodes(nodes, address, width, { variant: 'meta' });
+    if (address) pushWrappedTextNodes(nodes, address, width, { prefix: 'Address: ', variant: 'meta' });
   }
 }
 
 function pushInvoiceMeta(nodes: TicketDocumentNode[], payload: any, width: '58mm' | '80mm', rule: PrintRuleLike) {
-  if (rule.print_restaurant_details && payload.restaurant_phone) pushTextNode(nodes, String(payload.restaurant_phone), width, { align: 'center', variant: 'meta' });
-  if (rule.print_order_time !== false) pushTextNode(nodes, fmtDate(payload.created_at), width, { variant: 'meta' });
-  if (payload.customer_name) pushTextNode(nodes, String(payload.customer_name), width, { variant: 'meta' });
-  if (rule.print_phone && payload.customer_phone) pushTextNode(nodes, String(payload.customer_phone), width, { variant: 'meta' });
+  if (rule.print_restaurant_details && payload.restaurant_phone) pushTextNode(nodes, `Restaurant: ${String(payload.restaurant_phone)}`, width, { variant: 'meta' });
+  if (payload.customer_name) pushTextNode(nodes, `Customer: ${String(payload.customer_name)}`, width, { variant: 'meta' });
+  const fulfilment = toFulfilmentContext(payload);
+  if (fulfilment) pushTextNode(nodes, `Type: ${fulfilment}`, width, { variant: 'meta' });
+  if (rule.print_order_time !== false) pushTextNode(nodes, `Time: ${fmtDate(payload.created_at)}`, width, { variant: 'meta' });
+  if (rule.print_phone && payload.customer_phone) pushTextNode(nodes, `Phone: ${String(payload.customer_phone)}`, width, { variant: 'meta' });
   if (rule.print_address && payload.delivery_address) {
     const address = addressText(payload.delivery_address);
-    if (address) pushWrappedTextNodes(nodes, address, width, { variant: 'meta' });
+    if (address) pushWrappedTextNodes(nodes, address, width, { prefix: 'Address: ', variant: 'meta' });
   }
 }
 
@@ -190,7 +198,7 @@ function pushItems(nodes: TicketDocumentNode[], payload: any, width: '58mm' | '8
 
     const addons = Array.isArray(item.addons) ? item.addons : [];
     addons.forEach((addon: any) => {
-      const addonLabel = `  + ${Number(addon.quantity || 0)}x ${addon.name || 'Addon'}`;
+      const addonLabel = ` + ${Number(addon.quantity || 0)}x ${addon.name || 'Addon'}`;
       pushTextNode(nodes, includePrices ? padColumns(addonLabel, fmtMoney(Number(addon.price || 0) * Number(addon.quantity || 0)), width) : addonLabel, width, { variant: 'addon' });
     });
 
@@ -220,13 +228,15 @@ export function buildTicketDocument(job: PrintJobLike, rule: PrintRuleLike = {},
 
   pushHeader(nodes, payload, width);
   if (payload.customer_notes) {
+    pushTextNode(nodes, 'ORDER NOTE', width, { emphasis: 'strong', variant: 'noteLabel' });
+    pushWrappedTextNodes(nodes, String(payload.customer_notes), width, { prefix: '› ', variant: 'noteText' });
     nodes.push({ type: 'blank' });
-    pushNoteBlock(nodes, String(payload.customer_notes), width);
   }
-  if (nodes.length) nodes.push({ type: 'blank' });
 
   if (job.ticket_type === 'Invoice') pushInvoiceMeta(nodes, payload, width, rule);
   else pushKotMeta(nodes, payload, width, rule);
+
+  nodes.push({ type: 'blank' });
 
   if (shouldShowDividers) nodes.push({ type: 'divider' });
   pushItems(nodes, payload, width, rule, job.ticket_type === 'Invoice');
@@ -245,10 +255,9 @@ export function buildTicketDocument(job: PrintJobLike, rule: PrintRuleLike = {},
       nodes.push({ type: 'blank' });
       pushWrappedTextNodes(nodes, String(rule.custom_message), width, { variant: 'customMessage' });
     }
-    pushTextNode(nodes, 'Thank you for your order', width, { align: 'center', emphasis: 'strong', variant: 'footer' });
-  } else {
-    pushTextNode(nodes, 'END OF ORDER', width, { align: 'center', emphasis: 'strong', variant: 'footer' });
   }
+
+  pushTextNode(nodes, 'END OF ORDER', width, { align: 'center', emphasis: 'strong', variant: 'footer' });
 
   return { width, nodes, feedLines: getFeedLines(width, job.source) };
 }
