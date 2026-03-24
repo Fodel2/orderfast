@@ -216,10 +216,22 @@ export default function PrinterSettingsTab({
     contact_number: null,
   });
   const [previewTicketType, setPreviewTicketType] = useState<PreviewTicketType>('KOT');
+  const previewPanelRef = useRef<HTMLElement | null>(null);
   const previewOuterRef = useRef<HTMLDivElement | null>(null);
   const previewPaperRef = useRef<HTMLDivElement | null>(null);
   const previewImageRef = useRef<HTMLImageElement | null>(null);
-  const [previewMetrics, setPreviewMetrics] = useState({ outerPx: 0, paperPx: 0, renderedPx: 0 });
+  const [previewMetrics, setPreviewMetrics] = useState({
+    panelPx: 0,
+    shellPx: 0,
+    paperPx: 0,
+    renderedPx: 0,
+    shellLeftOffsetPx: 0,
+    shellRightGapPx: 0,
+    shellMarginLeft: '0px',
+    shellMarginRight: '0px',
+    panelJustifyContent: '',
+    panelAlignItems: '',
+  });
   const lastQueueNudgeAtRef = useRef(0);
   const queueNudgeInFlightRef = useRef(false);
 
@@ -684,16 +696,31 @@ export default function PrinterSettingsTab({
     if (typeof window === 'undefined') return;
 
     const updateMetrics = () => {
+      const panelRect = previewPanelRef.current?.getBoundingClientRect();
+      const shellRect = previewOuterRef.current?.getBoundingClientRect();
+      const panelStyle = previewPanelRef.current ? window.getComputedStyle(previewPanelRef.current) : null;
+      const shellStyle = previewOuterRef.current ? window.getComputedStyle(previewOuterRef.current) : null;
+      const shellLeftOffsetPx = panelRect && shellRect ? Math.max(0, Math.round(shellRect.left - panelRect.left)) : 0;
+      const shellRightGapPx = panelRect && shellRect ? Math.max(0, Math.round(panelRect.right - shellRect.right)) : 0;
+
       setPreviewMetrics({
-        outerPx: Math.round(previewOuterRef.current?.getBoundingClientRect().width || 0),
+        panelPx: Math.round(panelRect?.width || 0),
+        shellPx: Math.round(shellRect?.width || 0),
         paperPx: Math.round(previewPaperRef.current?.getBoundingClientRect().width || 0),
         renderedPx: Math.round(previewImageRef.current?.getBoundingClientRect().width || 0),
+        shellLeftOffsetPx,
+        shellRightGapPx,
+        shellMarginLeft: shellStyle?.marginLeft || '0px',
+        shellMarginRight: shellStyle?.marginRight || '0px',
+        panelJustifyContent: panelStyle?.justifyContent || 'normal',
+        panelAlignItems: panelStyle?.alignItems || 'normal',
       });
     };
 
     updateMetrics();
 
     const resizeObserver = new ResizeObserver(() => updateMetrics());
+    if (previewPanelRef.current) resizeObserver.observe(previewPanelRef.current);
     if (previewOuterRef.current) resizeObserver.observe(previewOuterRef.current);
     if (previewPaperRef.current) resizeObserver.observe(previewPaperRef.current);
     if (previewImageRef.current) resizeObserver.observe(previewImageRef.current);
@@ -974,7 +1001,7 @@ export default function PrinterSettingsTab({
             )}
           </div>
 
-          <aside className="space-y-3 xl:sticky xl:top-24 self-start">
+          <aside ref={previewPanelRef} className="space-y-3 self-start justify-self-center w-full max-w-[440px] xl:sticky xl:top-24">
             <div ref={previewOuterRef} className="mx-auto w-full max-w-[440px] rounded-[28px] border border-stone-300 bg-gradient-to-b from-stone-100 via-stone-50 to-stone-200 p-4 shadow-[0_18px_40px_rgba(15,23,42,0.14)]">
               <div className="mx-auto rounded-[18px] border border-stone-300 bg-[#fffdfa] p-3 shadow-inner">
                 <div ref={previewPaperRef} className="mx-auto w-full max-w-[400px] rounded-[14px] border border-stone-300 bg-white p-2">
@@ -984,7 +1011,10 @@ export default function PrinterSettingsTab({
             </div>
             <div className="rounded border border-dashed border-gray-300 bg-gray-50 p-2 text-[11px] text-gray-600">
               <p>Preview mode: {previewTicketType} · Source width: {previewDocument.width} ({previewSvg.width}px SVG)</p>
-              <p>Outer container: {previewMetrics.outerPx}px · Inner paper: {previewMetrics.paperPx}px · Rendered ticket: {previewMetrics.renderedPx}px</p>
+              <p>Preview panel: {previewMetrics.panelPx}px · Paper shell: {previewMetrics.shellPx}px · Inner paper: {previewMetrics.paperPx}px · Rendered ticket: {previewMetrics.renderedPx}px</p>
+              <p>Shell offset in panel: left {previewMetrics.shellLeftOffsetPx}px · right gap {previewMetrics.shellRightGapPx}px</p>
+              <p>Shell margins: L {previewMetrics.shellMarginLeft} · R {previewMetrics.shellMarginRight}</p>
+              <p>Panel alignment: justify {previewMetrics.panelJustifyContent} · items {previewMetrics.panelAlignItems}</p>
             </div>
             <p className="text-xs text-gray-500">Preview renders the canonical 80mm ticket document directly with the same layout source used by print output.</p>
           </aside>
