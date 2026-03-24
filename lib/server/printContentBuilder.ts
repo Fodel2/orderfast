@@ -155,7 +155,6 @@ function pushHeader(nodes: TicketDocumentNode[], payload: any, width: '58mm' | '
   const orderNumber = (payload.order_number ?? String(payload.order_id || '').slice(0, 8)) || 'UNKNOWN';
   const orderType = toDisplayOrderType(payload);
   pushTextNode(nodes, 'ORDER TICKET', width, { align: 'center', emphasis: 'strong', variant: 'meta' });
-  if (rule.print_logo && payload.restaurant_logo_url) pushTextNode(nodes, '[LOGO]', width, { align: 'center', variant: 'meta' });
   if (payload.restaurant_name) pushTextNode(nodes, String(payload.restaurant_name), width, { align: 'center', emphasis: 'strong', variant: 'restaurantName' });
   nodes.push({ type: 'blank' });
   pushTextNode(nodes, `ORDER #${orderNumber}`, width, { align: 'center', emphasis: 'strong', variant: 'orderNumber' });
