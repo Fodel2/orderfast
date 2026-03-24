@@ -85,6 +85,7 @@ type PreviewTicketType = 'KOT' | 'Invoice';
 type PrinterOnlineState = 'online' | 'offline' | 'unknown';
 type RestaurantBranding = {
   name: string | null;
+  website_title: string | null;
   logo_url: string | null;
   logo_shape: 'square' | 'round' | 'rectangular' | null;
   contact_number: string | null;
@@ -211,6 +212,7 @@ export default function PrinterSettingsTab({
   const [statusLoadingByPrinterId, setStatusLoadingByPrinterId] = useState<Record<string, boolean>>({});
   const [restaurantBranding, setRestaurantBranding] = useState<RestaurantBranding>({
     name: null,
+    website_title: null,
     logo_url: null,
     logo_shape: null,
     contact_number: null,
@@ -274,7 +276,7 @@ export default function PrinterSettingsTab({
         .limit(20),
       supabase
         .from('restaurants')
-        .select('name,logo_url,logo_shape,contact_number')
+        .select('name,website_title,logo_url,logo_shape,contact_number')
         .eq('id', restaurantId)
         .maybeSingle(),
     ]);
@@ -366,6 +368,7 @@ export default function PrinterSettingsTab({
     if (restaurantRes.data) {
       setRestaurantBranding({
         name: restaurantRes.data.name ?? null,
+        website_title: restaurantRes.data.website_title ?? null,
         logo_url: restaurantRes.data.logo_url ?? null,
         logo_shape: (restaurantRes.data.logo_shape as RestaurantBranding['logo_shape']) ?? null,
         contact_number: restaurantRes.data.contact_number ?? null,
@@ -378,6 +381,23 @@ export default function PrinterSettingsTab({
   useEffect(() => {
     if (restaurantId) loadData();
   }, [restaurantId]);
+
+  const resolvedPreviewRestaurantName = useMemo(() => {
+    const websiteTitle = (restaurantBranding.website_title || '').trim();
+    if (websiteTitle) return websiteTitle;
+    const restaurantName = (restaurantBranding.name || '').trim();
+    return restaurantName || null;
+  }, [restaurantBranding.website_title, restaurantBranding.name]);
+
+  useEffect(() => {
+    if (!restaurantId) return;
+    const source = (restaurantBranding.website_title || '').trim() ? 'website_title' : 'name';
+    console.info('[printer-settings] Visible preview restaurant name', {
+      restaurant_id: restaurantId,
+      source,
+      restaurant_name: resolvedPreviewRestaurantName,
+    });
+  }, [restaurantId, restaurantBranding.website_title, resolvedPreviewRestaurantName]);
 
   const saveSettings = async () => {
     if (!canEdit) return;
@@ -607,8 +627,8 @@ export default function PrinterSettingsTab({
       },
       payment_status: 'paid',
       payment_method: 'card',
-      restaurant_name: restaurantBranding.name || 'Orderfast Demo Kitchen',
-      restaurant_phone: restaurantBranding.contact_number || '+44 20 7946 0000',
+      restaurant_name: resolvedPreviewRestaurantName,
+      restaurant_phone: (restaurantBranding.contact_number || '').trim() || null,
       restaurant_logo_url: restaurantBranding.logo_url,
       restaurant_logo_shape: restaurantBranding.logo_shape,
       subtotal: 2295,
@@ -655,7 +675,7 @@ export default function PrinterSettingsTab({
         },
       ],
     }),
-    [restaurantBranding]
+    [restaurantBranding, resolvedPreviewRestaurantName]
   );
 
   const previewDocument = useMemo(
