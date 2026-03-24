@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/utils/supabaseClient';
 import { requestPrintJobCreation, requestPrintQueueNudge } from '@/lib/print-jobs/request';
-import { buildTicketText, type PrintRuleLike, type TicketType } from '@/lib/server/printContentBuilder';
+import { buildTicketDocument, renderTicketDocumentSvg, type PrintRuleLike, type TicketType } from '@/lib/server/printContentBuilder';
 
 type Printer = {
   id: string;
@@ -658,9 +658,9 @@ export default function PrinterSettingsTab({
     [restaurantBranding]
   );
 
-  const previewText = useMemo(
+  const previewDocument = useMemo(
     () =>
-      buildTicketText(
+      buildTicketDocument(
         {
           id: 'preview-print-job',
           ticket_type: previewTicketType as TicketType,
@@ -672,6 +672,9 @@ export default function PrinterSettingsTab({
       ),
     [previewPayload, previewRule, previewTicketType]
   );
+
+  const previewSvg = useMemo(() => renderTicketDocumentSvg(previewDocument), [previewDocument]);
+  const previewSvgDataUrl = useMemo(() => `data:image/svg+xml;base64,${typeof window !== 'undefined' ? window.btoa(unescape(encodeURIComponent(previewSvg.svg))) : Buffer.from(previewSvg.svg, 'utf8').toString('base64')}`, [previewSvg]);
 
   if (loading) return <div className="bg-white p-6 rounded-lg shadow">Loading printer settings...</div>;
 
@@ -945,75 +948,12 @@ export default function PrinterSettingsTab({
           <aside className="space-y-3 xl:sticky xl:top-24 self-start">
             <div className="mx-auto max-w-[360px] rounded-[28px] border border-stone-300 bg-gradient-to-b from-stone-100 via-stone-50 to-stone-200 p-4 shadow-[0_18px_40px_rgba(15,23,42,0.14)] xl:mx-0">
               <div className="mx-auto rounded-[18px] border border-stone-300 bg-[#fffdfa] p-3 shadow-inner">
-                <div className="mx-auto w-full max-w-[304px] rounded-[14px] border border-stone-300 bg-white px-4 py-3 font-sans">
-                  {restaurantBranding.logo_url ? (
-                    <div className="mb-1 flex justify-center">
-                      <div className="flex min-h-[82px] items-center justify-center px-1 py-1">
-                        <img
-                          src={restaurantBranding.logo_url}
-                          alt={`${restaurantBranding.name || 'Restaurant'} logo`}
-                          className={`object-contain grayscale contrast-200 brightness-[0.75] ${
-                            restaurantBranding.logo_shape === 'round'
-                              ? 'max-h-[68px] w-[68px] rounded-full'
-                              : restaurantBranding.logo_shape === 'rectangular'
-                                ? 'max-h-[56px] w-[148px] rounded-lg'
-                                : 'max-h-[64px] w-[88px] rounded-xl'
-                          }`}
-                        />
-                      </div>
-                    </div>
-                  ) : null}
-                  <div className="space-y-0.5">
-                    {previewText.split('\n').map((line, index) => {
-                      const trimmed = line.trim();
-                      const isDivider = /^[─-]+$/.test(trimmed);
-                      const isRestaurantName = trimmed === (previewPayload.restaurant_name || '').trim();
-                      const isOrderNumber = /^#/.test(trimmed);
-                      const isTypeBar = /^[A-Z0-9 ]+$/.test(trimmed) && ['DELIVERY', 'COLLECTION', 'TABLE', 'DINE IN'].some((token) => trimmed.includes(token));
-                      const isHeader = /(END OF ORDER|THANK YOU)/i.test(trimmed);
-                      const isCategory =
-                        !isDivider &&
-                        !!trimmed &&
-                        trimmed === trimmed.toUpperCase() &&
-                        !isOrderNumber &&
-                        !isTypeBar &&
-                        !/^TOTAL\b/.test(trimmed) &&
-                        /^[A-Z& ]+$/.test(trimmed);
-                      const isNote = /NOTE/.test(trimmed);
-                      const isAddon = /^\s+\+/.test(line);
-                      const isTotal = /^TOTAL\b/.test(trimmed);
-                      return isDivider ? (
-                        <div key={`${index}-${trimmed}`} className="my-3 border-t border-stone-900/90" />
-                      ) : (
-                        <div
-                          key={`${index}-${line}`}
-                          className={`whitespace-pre-wrap break-words text-[11px] leading-[1.45] tracking-[0.01em] text-stone-900 ${
-                            isRestaurantName ? 'pb-0 text-center text-[13px] font-semibold tracking-[0.05em]' : ''
-                          } ${
-                            isHeader ? 'pt-0.5 text-center text-[10px] font-semibold tracking-[0.1em] text-stone-950' : ''
-                          } ${
-                            isOrderNumber ? 'pb-0.5 pt-0 text-center text-[16px] font-bold tracking-[0.08em] text-stone-950' : ''
-                          } ${
-                            isTypeBar ? 'my-0.5 bg-stone-950 px-2 py-1 text-center text-[10.5px] font-bold tracking-[0.16em] text-white' : ''
-                          } ${
-                            isCategory ? 'pt-1 text-[11px] font-bold tracking-[0.05em] text-stone-950' : ''
-                          } ${
-                            isNote ? 'pt-1 font-semibold text-stone-950' : ''
-                          } ${
-                            isAddon ? 'pl-4 text-stone-700' : ''
-                          } ${
-                            isTotal ? 'pt-1 text-[12.5px] font-bold text-stone-950' : ''
-                          }`}
-                        >
-                          {line || <span className="block h-2" />}
-                        </div>
-                      );
-                    })}
-                  </div>
+                <div className="mx-auto w-full max-w-[304px] rounded-[14px] border border-stone-300 bg-white p-2">
+                  <img src={previewSvgDataUrl} alt={`${previewTicketType} ticket preview`} className="block w-full" />
                 </div>
               </div>
             </div>
-            <p className="text-xs text-gray-500">Preview based on current settings. Final printer output may vary slightly by printer model.</p>
+            <p className="text-xs text-gray-500">Preview renders the canonical 80mm ticket document directly with the same layout source used by print output.</p>
           </aside>
         </div>
       </section>

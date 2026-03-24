@@ -324,6 +324,8 @@ async function dispatchOne(job: QueueJob) {
 
   const cycle = Math.min(3, Math.max(1, Number((settings as PrinterSettings | null)?.voice_repeat_count || 1)));
   const includeVoice = job.source !== 'test' && Boolean(job.voice_enabled && job.voice_message);
+  console.info('[print-queue] using text print path', { job_id: job.id, ticket_type: job.ticket_type, source: job.source });
+
   const response = await postSunmi('/v2/printer/open/open/device/pushContent', {
     trade_no: tradeNo,
     sn: job.serial_number,
