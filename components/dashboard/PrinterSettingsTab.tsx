@@ -379,6 +379,15 @@ export default function PrinterSettingsTab({
     if (restaurantId) loadData();
   }, [restaurantId]);
 
+  useEffect(() => {
+    if (!restaurantId) return;
+    const resolvedRestaurantName = (restaurantBranding.name || '').trim();
+    console.info('[printer-settings] Preview branding resolved', {
+      restaurant_id: restaurantId,
+      restaurant_name: resolvedRestaurantName || null,
+    });
+  }, [restaurantId, restaurantBranding.name]);
+
   const saveSettings = async () => {
     if (!canEdit) return;
     const { error } = await supabase
@@ -607,8 +616,8 @@ export default function PrinterSettingsTab({
       },
       payment_status: 'paid',
       payment_method: 'card',
-      restaurant_name: restaurantBranding.name || 'Orderfast Demo Kitchen',
-      restaurant_phone: restaurantBranding.contact_number || '+44 20 7946 0000',
+      restaurant_name: (restaurantBranding.name || '').trim() || null,
+      restaurant_phone: (restaurantBranding.contact_number || '').trim() || null,
       restaurant_logo_url: restaurantBranding.logo_url,
       restaurant_logo_shape: restaurantBranding.logo_shape,
       subtotal: 2295,
