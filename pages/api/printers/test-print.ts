@@ -20,12 +20,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         .eq('id', printer_id)
         .eq('restaurant_id', restaurant_id)
         .maybeSingle(),
-      supaServer.from('restaurants').select('name').eq('id', restaurant_id).maybeSingle(),
+      supaServer.from('restaurants').select('name,website_title').eq('id', restaurant_id).maybeSingle(),
     ]);
 
     if (!printer) {
       return res.status(404).json({ error: 'Printer not found' });
     }
+
+    const resolvedRestaurantName =
+      String(restaurant?.website_title || '').trim() ||
+      String(restaurant?.name || '').trim() ||
+      null;
+
+    console.info('[printers/test-print] resolved restaurant name', {
+      restaurant_id,
+      restaurant_name: resolvedRestaurantName,
+    });
 
     const { data: inserted, error: insertError } = await supaServer
       .from('print_jobs')
@@ -41,7 +51,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         status: 'pending',
         attempts: 0,
         payload_json: {
-          restaurant_name: restaurant?.name || null,
+          restaurant_name: resolvedRestaurantName,
           printer_name: printer.name,
           created_at: new Date().toISOString(),
           message: 'Printer test successful',
