@@ -216,6 +216,10 @@ export default function PrinterSettingsTab({
     contact_number: null,
   });
   const [previewTicketType, setPreviewTicketType] = useState<PreviewTicketType>('KOT');
+  const previewOuterRef = useRef<HTMLDivElement | null>(null);
+  const previewPaperRef = useRef<HTMLDivElement | null>(null);
+  const previewImageRef = useRef<HTMLImageElement | null>(null);
+  const [previewMetrics, setPreviewMetrics] = useState({ outerPx: 0, paperPx: 0, renderedPx: 0 });
   const lastQueueNudgeAtRef = useRef(0);
   const queueNudgeInFlightRef = useRef(false);
 
@@ -676,6 +680,31 @@ export default function PrinterSettingsTab({
   const previewSvg = useMemo(() => renderTicketDocumentSvg(previewDocument), [previewDocument]);
   const previewSvgDataUrl = useMemo(() => `data:image/svg+xml;base64,${typeof window !== 'undefined' ? window.btoa(unescape(encodeURIComponent(previewSvg.svg))) : Buffer.from(previewSvg.svg, 'utf8').toString('base64')}`, [previewSvg]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const updateMetrics = () => {
+      setPreviewMetrics({
+        outerPx: Math.round(previewOuterRef.current?.getBoundingClientRect().width || 0),
+        paperPx: Math.round(previewPaperRef.current?.getBoundingClientRect().width || 0),
+        renderedPx: Math.round(previewImageRef.current?.getBoundingClientRect().width || 0),
+      });
+    };
+
+    updateMetrics();
+
+    const resizeObserver = new ResizeObserver(() => updateMetrics());
+    if (previewOuterRef.current) resizeObserver.observe(previewOuterRef.current);
+    if (previewPaperRef.current) resizeObserver.observe(previewPaperRef.current);
+    if (previewImageRef.current) resizeObserver.observe(previewImageRef.current);
+    window.addEventListener('resize', updateMetrics);
+
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', updateMetrics);
+    };
+  }, [previewSvgDataUrl, previewTicketType]);
+
   if (loading) return <div className="bg-white p-6 rounded-lg shadow">Loading printer settings...</div>;
 
   const isTicketTab = currentSubTab === 'kitchen-tickets' || currentSubTab === 'receipts';
@@ -946,12 +975,16 @@ export default function PrinterSettingsTab({
           </div>
 
           <aside className="space-y-3 xl:sticky xl:top-24 self-start">
-            <div className="mx-auto max-w-[360px] rounded-[28px] border border-stone-300 bg-gradient-to-b from-stone-100 via-stone-50 to-stone-200 p-4 shadow-[0_18px_40px_rgba(15,23,42,0.14)]">
+            <div ref={previewOuterRef} className="mx-auto w-full max-w-[440px] rounded-[28px] border border-stone-300 bg-gradient-to-b from-stone-100 via-stone-50 to-stone-200 p-4 shadow-[0_18px_40px_rgba(15,23,42,0.14)]">
               <div className="mx-auto rounded-[18px] border border-stone-300 bg-[#fffdfa] p-3 shadow-inner">
-                <div className="mx-auto w-full max-w-[304px] rounded-[14px] border border-stone-300 bg-white p-2">
-                  <img src={previewSvgDataUrl} alt={`${previewTicketType} ticket preview`} className="block w-full" />
+                <div ref={previewPaperRef} className="mx-auto w-full max-w-[400px] rounded-[14px] border border-stone-300 bg-white p-2">
+                  <img ref={previewImageRef} src={previewSvgDataUrl} alt={`${previewTicketType} ticket preview`} className="block w-full" />
                 </div>
               </div>
+            </div>
+            <div className="rounded border border-dashed border-gray-300 bg-gray-50 p-2 text-[11px] text-gray-600">
+              <p>Preview mode: {previewTicketType} · Source width: {previewDocument.width} ({previewSvg.width}px SVG)</p>
+              <p>Outer container: {previewMetrics.outerPx}px · Inner paper: {previewMetrics.paperPx}px · Rendered ticket: {previewMetrics.renderedPx}px</p>
             </div>
             <p className="text-xs text-gray-500">Preview renders the canonical 80mm ticket document directly with the same layout source used by print output.</p>
           </aside>
