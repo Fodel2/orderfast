@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import DashboardLayout from '../../../components/DashboardLayout';
 import Toast from '../../../components/Toast';
@@ -13,22 +13,9 @@ export default function WebsitePage() {
   const [restaurantId, setRestaurantId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const [logo, setLogo] = useState<string | null>(null);
-  const [cover, setCover] = useState<string | null>(null);
-  const [coverFile, setCoverFile] = useState<File | null>(null);
-  const coverInputRef = useRef<HTMLInputElement>(null);
-  const [websiteTitle, setWebsiteTitle] = useState('');
-  const [menuDescription, setMenuDescription] = useState('');
   const [subdomain, setSubdomain] = useState('');
   const [customDomain, setCustomDomain] = useState('');
-  const [address, setAddress] = useState('');
-  const [contactNumber, setContactNumber] = useState('');
-  const [description, setDescription] = useState('');
-  const [brandPrimary, setBrandPrimary] = useState('#008080');
-  const [brandSecondary, setBrandSecondary] = useState('#004c4c');
-  const [logoShape, setLogoShape] = useState<'square' | 'round' | 'rectangular'>('square');
-  const [currencyCode, setCurrencyCode] = useState('GBP');
-  const [colorExtracted, setColorExtracted] = useState(false);
+
   const [autoAcceptKioskOrders, setAutoAcceptKioskOrders] = useState(false);
   const [autoAcceptAppOrders, setAutoAcceptAppOrders] = useState(false);
   const [autoAcceptPosOrders, setAutoAcceptPosOrders] = useState(false);
@@ -61,11 +48,13 @@ export default function WebsitePage() {
         router.push('/login');
         return;
       }
+
       const { data: ru } = await supabase
         .from('restaurant_users')
         .select('restaurant_id')
         .eq('user_id', session.user.id)
         .maybeSingle();
+
       if (ru?.restaurant_id) {
         setRestaurantId(ru.restaurant_id);
         const { data: rest } = await supabase
@@ -73,41 +62,33 @@ export default function WebsitePage() {
           .select('*')
           .eq('id', ru.restaurant_id)
           .single();
+
         if (rest) {
-          setLogo(rest.logo_url || null);
-          setCover(rest.cover_image_url || null);
-          setWebsiteTitle(rest.website_title || '');
-          setMenuDescription(rest.menu_description || '');
           setSubdomain(rest.subdomain || '');
           setCustomDomain(rest.custom_domain || '');
-          setAddress(rest.address || '');
-          setContactNumber(rest.contact_number || '');
-          setDescription(rest.website_description || '');
-          setBrandPrimary(rest.brand_primary_color || '#008080');
-          setBrandSecondary(rest.brand_secondary_color || '#004c4c');
-          setLogoShape(rest.logo_shape || 'square');
-          setColorExtracted(!!rest.brand_color_extracted);
           setAutoAcceptKioskOrders(!!rest.auto_accept_kiosk_orders);
           setAutoAcceptAppOrders(!!rest.auto_accept_app_orders);
           setAutoAcceptPosOrders(!!rest.auto_accept_pos_orders);
-          setCurrencyCode(rest.currency_code || 'GBP');
           setExpectedPrepMinutes(Number(rest.expected_prep_minutes) || 10);
           setBusyPrepMinutes(Number(rest.busy_prep_minutes) || 12);
           setBacklogPrepMinutes(Number(rest.backlog_prep_minutes) || 18);
           setBusyOrderThreshold(Number(rest.busy_order_threshold) || 6);
           setBacklogOrderThreshold(Number(rest.backlog_order_threshold) || 10);
         }
+
         const { data: contact } = await supabase
           .from('website_contact_settings')
           .select('*')
           .eq('restaurant_id', ru.restaurant_id)
           .maybeSingle();
+
         if (contact) {
           setContactEnabled(contact.enabled);
           setContactEmail(contact.recipient_email || '');
           setContactFields(contact.fields || { name: true, phone: false, message: true });
         }
       }
+
       setLoading(false);
     };
     load();
@@ -118,6 +99,7 @@ export default function WebsitePage() {
       setSubdomainAvailable(null);
       return;
     }
+
     const t = setTimeout(async () => {
       const { data, error } = await supabase
         .from('restaurants')
@@ -132,118 +114,31 @@ export default function WebsitePage() {
         }
       }
     }, 500);
+
     return () => clearTimeout(t);
   }, [subdomain, restaurantId]);
-
-  const fileToDataUrl = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = () => reject('failed');
-      reader.readAsDataURL(file);
-    });
-  };
-
-  const extractDominantColor = (file: File): Promise<string> => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.src = URL.createObjectURL(file);
-      img.crossOrigin = 'anonymous';
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return resolve('#000000');
-        ctx.drawImage(img, 0, 0);
-        const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-        let r = 0, g = 0, b = 0, count = 0;
-        for (let i = 0; i < data.length; i += 4) {
-          r += data[i];
-          g += data[i + 1];
-          b += data[i + 2];
-          count++;
-        }
-        r = Math.round(r / count);
-        g = Math.round(g / count);
-        b = Math.round(b / count);
-        resolve('#' + [r, g, b].map((x) => x.toString(16).padStart(2, '0')).join(''));
-      };
-    });
-  };
 
   function handleEditSlide(row: SlideRow) {
     setEditingSlide(row);
   }
 
-  const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const url = await fileToDataUrl(file);
-      setLogo(url);
-      const col = await extractDominantColor(file);
-      setBrandPrimary(col);
-      setColorExtracted(true);
-    }
-  };
-
-  const handleCoverChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setCover(URL.createObjectURL(file));
-      setCoverFile(file);
-    }
-  };
-
-  const handleRemoveCover = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setCover(null);
-    setCoverFile(null);
-    if (coverInputRef.current) coverInputRef.current.value = '';
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!restaurantId) return;
+
     if (subdomain && subdomainAvailable === false) {
       setToastMessage('Subdomain is not available');
       return;
-    }
-    let finalCover = cover;
-    if (coverFile && cover && cover.startsWith('blob:')) {
-      const path = `cover-images/${restaurantId}-${Date.now()}-${coverFile.name}`;
-      const { error: uploadError } = await supabase.storage
-        .from('menu-images')
-        .upload(path, coverFile, { upsert: true });
-      if (uploadError) {
-        setToastMessage('Failed to upload cover: ' + uploadError.message);
-        return;
-      }
-      finalCover = supabase.storage
-        .from('menu-images')
-        .getPublicUrl(path).data.publicUrl;
     }
 
     const { error } = await supabase
       .from('restaurants')
       .update({
-        logo_url: logo,
-        cover_image_url: finalCover,
-        website_title: websiteTitle,
-        menu_description: menuDescription,
-        logo_shape: logoShape,
-        brand_primary_color: brandPrimary,
-        brand_secondary_color: brandSecondary,
-        brand_color_extracted: colorExtracted,
         subdomain,
         custom_domain: customDomain,
-        address,
-        contact_number: contactNumber,
-        website_description: description,
         auto_accept_kiosk_orders: autoAcceptKioskOrders,
         auto_accept_app_orders: autoAcceptAppOrders,
         auto_accept_pos_orders: autoAcceptPosOrders,
-        currency_code: currencyCode,
         expected_prep_minutes: expectedPrepMinutes,
         busy_prep_minutes: busyPrepMinutes,
         backlog_prep_minutes: backlogPrepMinutes,
@@ -251,6 +146,7 @@ export default function WebsitePage() {
         backlog_order_threshold: backlogOrderThreshold,
       })
       .eq('id', restaurantId);
+
     const { error: contactErr } = await supabase
       .from('website_contact_settings')
       .upsert(
@@ -262,6 +158,7 @@ export default function WebsitePage() {
         },
         { onConflict: 'restaurant_id' }
       );
+
     if (error || contactErr) {
       setToastMessage('Failed to save: ' + (error?.message || contactErr?.message));
     } else {
@@ -276,48 +173,12 @@ export default function WebsitePage() {
       <div className="max-w-2xl mx-auto">
         <h1 className="text-3xl font-bold mb-6">Website Settings</h1>
         <div className="bg-white p-6 rounded-lg shadow">
+          <div className="mb-4 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
+            Branding, business info, and website copy fields have moved to{' '}
+            <span className="font-semibold">Settings → Restaurant Details</span>.
+          </div>
+
           <form className="space-y-4" onSubmit={handleSubmit}>
-            <div>
-              <label className="block font-semibold mb-1">Logo</label>
-              {logo && (
-                <img src={logo} alt="Logo" className="h-20 mb-2 object-contain" />
-              )}
-              <input type="file" accept="image/*" onChange={handleLogoChange} />
-            </div>
-            <div>
-              <label className="block font-semibold mb-1">Cover Image</label>
-              {cover && (
-                <div className="mb-2">
-                  <img
-                    src={cover}
-                    alt="Cover"
-                    className="h-32 w-full object-cover"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleRemoveCover}
-                    className="mt-1 text-sm text-red-600 underline"
-                  >
-                    Remove
-                  </button>
-                </div>
-              )}
-              <input
-                ref={coverInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleCoverChange}
-              />
-            </div>
-            <div>
-              <label className="block font-semibold">Website Title</label>
-              <input
-                type="text"
-                value={websiteTitle}
-                onChange={(e) => setWebsiteTitle(e.target.value)}
-                className="mt-1 w-full border border-gray-300 rounded p-2"
-              />
-            </div>
             <div>
               <label className="block font-semibold">Subdomain</label>
               <input
@@ -333,6 +194,7 @@ export default function WebsitePage() {
                 <p className="text-green-600 text-sm mt-1">Available</p>
               )}
             </div>
+
             <div>
               <label className="block font-semibold">Custom Domain</label>
               <input
@@ -342,85 +204,7 @@ export default function WebsitePage() {
                 className="mt-1 w-full border border-gray-300 rounded p-2"
               />
             </div>
-            <div className="flex space-x-4">
-              <div className="flex-1">
-                <label className="block font-semibold">Primary Color</label>
-                <input
-                  type="color"
-                  value={brandPrimary}
-                  onChange={(e) => {
-                    setBrandPrimary(e.target.value);
-                    setColorExtracted(false);
-                  }}
-                />
-              </div>
-              <div className="flex-1">
-                <label className="block font-semibold">Secondary Color</label>
-                <input
-                  type="color"
-                  value={brandSecondary}
-                  onChange={(e) => setBrandSecondary(e.target.value)}
-                />
-              </div>
-            </div>
-            <div>
-              <label className="block font-semibold">Logo Shape</label>
-              <select
-                value={logoShape}
-                onChange={(e) => setLogoShape(e.target.value as any)}
-                className="mt-1 w-full border border-gray-300 rounded p-2"
-              >
-                <option value="square">Square</option>
-                <option value="round">Round</option>
-                <option value="rectangular">Rectangular</option>
-              </select>
-            </div>
-            <div>
-              <label className="block font-semibold">Currency</label>
-              <select
-                value={currencyCode}
-                onChange={(e) => setCurrencyCode(e.target.value)}
-                className="mt-1 w-full border border-gray-300 rounded p-2"
-              >
-                <option value="GBP">GBP (£)</option>
-                <option value="EUR">EUR (€)</option>
-                <option value="USD">USD ($)</option>
-              </select>
-            </div>
-            <div>
-              <label className="block font-semibold">Address</label>
-              <input
-                type="text"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                className="mt-1 w-full border border-gray-300 rounded p-2"
-              />
-            </div>
-            <div>
-              <label className="block font-semibold">Contact Number</label>
-              <input
-                type="text"
-                value={contactNumber}
-                onChange={(e) => setContactNumber(e.target.value)}
-                className="mt-1 w-full border border-gray-300 rounded p-2"
-              />
-            </div>
-            <div>
-              <label className="block font-semibold">Website Description</label>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="mt-1 w-full border border-gray-300 rounded p-2"
-              />
-            </div>
-            <div>
-              <label className="block font-semibold">Menu Description</label>
-              <textarea
-                value={menuDescription}
-                onChange={(e) => setMenuDescription(e.target.value)}
-                className="mt-1 w-full border border-gray-300 rounded p-2"
-              />
-            </div>
+
             <div className="border-t pt-4 mt-4">
               <h2 className="text-xl font-semibold mb-2">Order Handling</h2>
               <p className="text-sm text-gray-600 mb-3">
@@ -453,6 +237,7 @@ export default function WebsitePage() {
                 </label>
               </div>
             </div>
+
             <div className="border-t pt-4 mt-4">
               <h2 className="text-xl font-semibold mb-2">Kitchen &amp; Service</h2>
               <p className="text-sm text-gray-600 mb-3">
@@ -511,6 +296,7 @@ export default function WebsitePage() {
                 </div>
               </div>
             </div>
+
             <div className="border-t pt-4 mt-4">
               <h2 className="text-xl font-semibold mb-2">Contact Form</h2>
               <label className="flex items-center space-x-2 mb-2">
@@ -561,6 +347,7 @@ export default function WebsitePage() {
                 </div>
               )}
             </div>
+
             <div className="text-right">
               <button
                 type="submit"
@@ -572,6 +359,7 @@ export default function WebsitePage() {
           </form>
         </div>
       </div>
+
       {restaurantId && (
         <>
           <SlidesDashboardList restaurantId={restaurantId} onEdit={handleEditSlide} refreshKey={refreshSlides} />
@@ -594,6 +382,7 @@ export default function WebsitePage() {
           )}
         </>
       )}
+
       {restaurantId && <CustomPagesSection restaurantId={restaurantId} />}
       <Toast message={toastMessage} onClose={() => setToastMessage('')} />
     </DashboardLayout>
