@@ -227,6 +227,10 @@ export default function PrinterSettingsTab({
     renderedPx: 0,
     shellLeftOffsetPx: 0,
     shellRightGapPx: 0,
+    contentLeftOffsetPx: 0,
+    contentRightGapPx: 0,
+    shellCenterPx: 0,
+    contentCenterPx: 0,
     shellMarginLeft: '0px',
     shellMarginRight: '0px',
     panelJustifyContent: '',
@@ -698,10 +702,15 @@ export default function PrinterSettingsTab({
     const updateMetrics = () => {
       const panelRect = previewPanelRef.current?.getBoundingClientRect();
       const shellRect = previewOuterRef.current?.getBoundingClientRect();
+      const contentRect = previewImageRef.current?.getBoundingClientRect();
       const panelStyle = previewPanelRef.current ? window.getComputedStyle(previewPanelRef.current) : null;
       const shellStyle = previewOuterRef.current ? window.getComputedStyle(previewOuterRef.current) : null;
       const shellLeftOffsetPx = panelRect && shellRect ? Math.max(0, Math.round(shellRect.left - panelRect.left)) : 0;
       const shellRightGapPx = panelRect && shellRect ? Math.max(0, Math.round(panelRect.right - shellRect.right)) : 0;
+      const contentLeftOffsetPx = shellRect && contentRect ? Math.max(0, Math.round(contentRect.left - shellRect.left)) : 0;
+      const contentRightGapPx = shellRect && contentRect ? Math.max(0, Math.round(shellRect.right - contentRect.right)) : 0;
+      const shellCenterPx = panelRect && shellRect ? Math.round((shellRect.left + shellRect.width / 2) - panelRect.left) : 0;
+      const contentCenterPx = panelRect && contentRect ? Math.round((contentRect.left + contentRect.width / 2) - panelRect.left) : 0;
 
       setPreviewMetrics({
         panelPx: Math.round(panelRect?.width || 0),
@@ -710,6 +719,10 @@ export default function PrinterSettingsTab({
         renderedPx: Math.round(previewImageRef.current?.getBoundingClientRect().width || 0),
         shellLeftOffsetPx,
         shellRightGapPx,
+        contentLeftOffsetPx,
+        contentRightGapPx,
+        shellCenterPx,
+        contentCenterPx,
         shellMarginLeft: shellStyle?.marginLeft || '0px',
         shellMarginRight: shellStyle?.marginRight || '0px',
         panelJustifyContent: panelStyle?.justifyContent || 'normal',
@@ -738,6 +751,9 @@ export default function PrinterSettingsTab({
   const activeTicketType: PreviewTicketType = currentSubTab === 'receipts' ? 'Invoice' : 'KOT';
   const triggerOptions = triggerOptionsByTicketType[activeTicketType];
   const draftTriggerValue = ruleDraft?.trigger_event || triggerOptions[0]?.value || '';
+  const shellCenterDelta = Math.abs(previewMetrics.shellLeftOffsetPx - previewMetrics.shellRightGapPx);
+  const contentCenterDelta = Math.abs(previewMetrics.contentLeftOffsetPx - previewMetrics.contentRightGapPx);
+  const showPositionGuides = shellCenterDelta > 1 || contentCenterDelta > 1;
 
   return (
     <div className="space-y-6">
@@ -902,7 +918,7 @@ export default function PrinterSettingsTab({
           </div>
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,440px)]">
           <div className="space-y-4">
             {ruleDraft ? (
               <>
@@ -1001,10 +1017,17 @@ export default function PrinterSettingsTab({
             )}
           </div>
 
-          <aside ref={previewPanelRef} className="space-y-3 self-start justify-self-center w-full max-w-[440px] xl:sticky xl:top-24">
-            <div ref={previewOuterRef} className="mx-auto w-full max-w-[440px] rounded-[28px] border border-stone-300 bg-gradient-to-b from-stone-100 via-stone-50 to-stone-200 p-4 shadow-[0_18px_40px_rgba(15,23,42,0.14)]">
+          <aside ref={previewPanelRef} className="relative space-y-3 self-start justify-self-center w-full max-w-[440px] xl:sticky xl:top-24">
+            {showPositionGuides && (
+              <>
+                <div className="pointer-events-none absolute inset-y-0 left-1/2 z-10 w-px -translate-x-1/2 bg-red-400/70" />
+                <div className="pointer-events-none absolute inset-y-0 z-10 w-px bg-blue-400/70" style={{ left: `${previewMetrics.shellCenterPx}px` }} />
+                <div className="pointer-events-none absolute inset-y-0 z-10 w-px bg-emerald-400/70" style={{ left: `${previewMetrics.contentCenterPx}px` }} />
+              </>
+            )}
+            <div ref={previewOuterRef} className={`mx-auto w-full max-w-[440px] rounded-[28px] border border-stone-300 bg-gradient-to-b from-stone-100 via-stone-50 to-stone-200 p-4 shadow-[0_18px_40px_rgba(15,23,42,0.14)] ${showPositionGuides ? 'outline outline-1 outline-blue-300' : ''}`}>
               <div className="mx-auto rounded-[18px] border border-stone-300 bg-[#fffdfa] p-3 shadow-inner">
-                <div ref={previewPaperRef} className="mx-auto w-full max-w-[400px] rounded-[14px] border border-stone-300 bg-white p-2">
+                <div ref={previewPaperRef} className={`mx-auto w-full max-w-[400px] rounded-[14px] border border-stone-300 bg-white p-2 ${showPositionGuides ? 'outline outline-1 outline-emerald-300' : ''}`}>
                   <img ref={previewImageRef} src={previewSvgDataUrl} alt={`${previewTicketType} ticket preview`} className="block w-full" />
                 </div>
               </div>
@@ -1013,8 +1036,10 @@ export default function PrinterSettingsTab({
               <p>Preview mode: {previewTicketType} · Source width: {previewDocument.width} ({previewSvg.width}px SVG)</p>
               <p>Preview panel: {previewMetrics.panelPx}px · Paper shell: {previewMetrics.shellPx}px · Inner paper: {previewMetrics.paperPx}px · Rendered ticket: {previewMetrics.renderedPx}px</p>
               <p>Shell offset in panel: left {previewMetrics.shellLeftOffsetPx}px · right gap {previewMetrics.shellRightGapPx}px</p>
+              <p>Content offset in shell: left {previewMetrics.contentLeftOffsetPx}px · right gap {previewMetrics.contentRightGapPx}px</p>
               <p>Shell margins: L {previewMetrics.shellMarginLeft} · R {previewMetrics.shellMarginRight}</p>
               <p>Panel alignment: justify {previewMetrics.panelJustifyContent} · items {previewMetrics.panelAlignItems}</p>
+              <p>Center delta: shell {shellCenterDelta}px · content {contentCenterDelta}px {showPositionGuides ? '• guides ON' : '• centered (guides OFF)'}</p>
             </div>
             <p className="text-xs text-gray-500">Preview renders the canonical 80mm ticket document directly with the same layout source used by print output.</p>
           </aside>
