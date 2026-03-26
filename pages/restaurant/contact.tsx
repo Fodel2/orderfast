@@ -1,5 +1,5 @@
 import { useRouter } from 'next/router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import CustomerLayout from '@/components/CustomerLayout';
 import { supabase } from '@/utils/supabaseClient';
 import { useCart } from '@/context/CartContext';
@@ -12,9 +12,26 @@ export default function ContactPage() {
   const cartCount = cart.items.reduce((s, i) => s + i.quantity, 0);
   const [restaurant, setRestaurant] = useState<any | null>(null);
   const [settings, setSettings] = useState<any | null>(null);
-  const [form, setForm] = useState({ name: '', phone: '', message: '' });
-  const [sent, setSent] = useState(false);
   const rid = resolveRestaurantId(router, null, restaurant);
+  const addressLines = useMemo(() => {
+    const structured = [
+      String(restaurant?.address_line_1 || '').trim(),
+      String(restaurant?.address_line_2 || '').trim(),
+      [String(restaurant?.city || '').trim(), String(restaurant?.county_state || '').trim(), String(restaurant?.postcode || '').trim()]
+        .filter(Boolean)
+        .join(', '),
+      String(restaurant?.country_code || '').trim(),
+    ].filter(Boolean);
+
+    if (structured.length > 0) return structured;
+
+    const raw = String(restaurant?.address || '').trim();
+    if (!raw) return [];
+    return raw
+      .split(/\r?\n|,\s*/g)
+      .map((line) => line.trim())
+      .filter(Boolean);
+  }, [restaurant?.address, restaurant?.address_line_1, restaurant?.address_line_2, restaurant?.city, restaurant?.county_state, restaurant?.postcode, restaurant?.country_code]);
 
   useEffect(() => {
     if (!router.isReady || !rid) return;
@@ -31,11 +48,6 @@ export default function ContactPage() {
       .maybeSingle()
       .then(({ data }) => setSettings(data));
   }, [router.isReady, rid]);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setSent(true);
-  };
 
   if (!settings?.enabled) {
     return (
@@ -54,41 +66,16 @@ export default function ContactPage() {
       <CustomerLayout cartCount={cartCount}>
         <div className="container mx-auto max-w-5xl px-4 py-8">
           <h1 className="text-3xl font-bold mb-4">Contact</h1>
-          {sent ? (
-            <p>{settings.success_message}</p>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {settings.fields?.name && (
-                <input
-                  type="text"
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="Name"
-                  className="w-full border border-gray-300 rounded p-2"
-                />
-              )}
-              {settings.fields?.phone && (
-                <input
-                  type="tel"
-                  value={form.phone}
-                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                  placeholder="Phone"
-                  className="w-full border border-gray-300 rounded p-2"
-                />
-              )}
-              {settings.fields?.message && (
-                <textarea
-                  value={form.message}
-                  onChange={(e) => setForm({ ...form, message: e.target.value })}
-                  placeholder="Message"
-                  className="w-full border border-gray-300 rounded p-2"
-                />
-              )}
-              <button type="submit" className="px-4 py-2 bg-teal-600 text-white rounded">
-                Send
-              </button>
-            </form>
-          )}
+          {addressLines.length > 0 ? (
+            <address className="mb-4 not-italic text-sm leading-6 text-gray-600">
+              {addressLines.map((line, index) => (
+                <div key={`${line}-${index}`}>{line}</div>
+              ))}
+            </address>
+          ) : null}
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            Contact form is not live yet on this page. Please use the restaurant phone number or recipient email shared in current customer communications.
+          </div>
         </div>
       </CustomerLayout>
     </BrandProvider>

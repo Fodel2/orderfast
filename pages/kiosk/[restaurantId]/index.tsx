@@ -41,7 +41,7 @@ function KioskHomeScreen({ restaurantId }: { restaurantId?: string | null }) {
         const { data, error } = await supabase
           .from('restaurants')
           .select(
-            'id,name,website_title,website_description,logo_url,cover_image_url,menu_header_image_url,menu_header_image_updated_at,menu_header_focal_x,menu_header_focal_y,theme_primary_color'
+            'id,name,website_title,website_description,logo_url,logo_shape,cover_image_url,menu_header_image_url,menu_header_image_updated_at,menu_header_focal_x,menu_header_focal_y,brand_primary_color,brand_secondary_color'
           )
           .eq('id', restaurantId)
           .maybeSingle();

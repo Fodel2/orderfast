@@ -48,6 +48,18 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
 
     const storedId = typeof window !== 'undefined' ? localStorage.getItem(LAST_RESTAURANT_ID_KEY) : null;
     const demo = process.env.NEXT_PUBLIC_DEMO_RESTAURANT_ID || null;
+    const normalizedDemoId = normalizeRestaurantId(demo);
+    const isCustomerFacingRoute =
+      router.pathname.startsWith('/restaurant') ||
+      router.pathname.startsWith('/kiosk') ||
+      router.pathname === '/express' ||
+      router.pathname === '/checkout' ||
+      router.pathname === '/more';
+    const normalizedStoredId = normalizeRestaurantId(storedId);
+    const safeStoredId =
+      isCustomerFacingRoute && normalizedStoredId && normalizedStoredId === normalizedDemoId
+        ? null
+        : storedId;
     const resolved = resolveRestaurantIdFromSources({
       query: {
         restaurant_id: qRestaurantId,
@@ -55,12 +67,13 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         id: qId,
         r: qR,
       },
-      storedId,
+      storedId: safeStoredId,
     });
+    const shouldUseDemoFallback = !isCustomerFacingRoute && process.env.NODE_ENV !== 'production';
 
-    setRestaurantId(resolved || normalizeRestaurantId(demo));
+    setRestaurantId(resolved || (shouldUseDemoFallback ? normalizeRestaurantId(demo) : null));
     setLoading(false);
-  }, [router.isReady, qRestaurantId, qRid, qId, qR]);
+  }, [router.isReady, router.pathname, qRestaurantId, qRid, qId, qR]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !restaurantId) return;

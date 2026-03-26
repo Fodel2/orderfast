@@ -15,7 +15,9 @@ export type KioskRestaurant = {
   menu_header_image_updated_at?: string | null;
   menu_header_focal_x?: number | null;
   menu_header_focal_y?: number | null;
-  theme_primary_color?: string | null;
+  logo_shape?: 'square' | 'round' | 'rectangular' | null;
+  brand_primary_color?: string | null;
+  brand_secondary_color?: string | null;
 };
 
 interface HomeScreenProps {
@@ -48,13 +50,20 @@ export default function HomeScreen({ restaurant, onStart, fadingOut, loading }: 
   }, [coverHero, kioskHero, restaurant?.menu_header_image_updated_at, restaurant?.menu_header_image_url]);
 
   const logoUrl = useMemo(() => normalizeSource(restaurant?.logo_url), [restaurant?.logo_url]);
+  const logoShape = restaurant?.logo_shape || 'round';
+  const logoFrameClass =
+    logoShape === 'round' ? 'rounded-full' : logoShape === 'square' ? 'rounded-lg' : 'rounded-md';
+  const logoSizeClass = logoShape === 'rectangular' ? 'h-20 w-28' : 'h-24 w-24';
 
   const backgroundImage = showSkeleton ? null : heroUrl;
 
   const focalX = restaurant?.menu_header_focal_x ?? 0.5;
   const focalY = restaurant?.menu_header_focal_y ?? 0.5;
 
-  const primaryColor = normalizeSource(restaurant?.theme_primary_color) || '#111827';
+  const primaryColor =
+    normalizeSource(restaurant?.brand_primary_color) ||
+    normalizeSource(restaurant?.brand_secondary_color) ||
+    '#111827';
 
   return (
     <div
@@ -84,16 +93,16 @@ export default function HomeScreen({ restaurant, onStart, fadingOut, loading }: 
           }}
         >
           <div className="flex flex-col items-center gap-4">
-            <div className="relative h-24 w-24 overflow-hidden rounded-full border border-neutral-200 bg-white shadow-lg shadow-neutral-200">
+            <div className={`relative ${logoSizeClass} overflow-hidden border border-neutral-200 bg-white shadow-lg shadow-neutral-200 ${logoFrameClass}`}>
               {showSkeleton ? (
-                <div className="h-full w-full rounded-full bg-neutral-200/80 animate-pulse" />
+                <div className={`h-full w-full bg-neutral-200/80 animate-pulse ${logoFrameClass}`} />
               ) : logoUrl ? (
                 <Image
                   src={logoUrl}
                   alt={restaurant?.name || 'Restaurant logo'}
                   fill
                   sizes="120px"
-                  className="object-cover"
+                  className={`${logoShape === 'rectangular' ? 'object-contain' : 'object-cover'} ${logoFrameClass}`}
                 />
               ) : (
                 <div className="flex h-full w-full items-center justify-center bg-neutral-50 text-3xl font-semibold text-neutral-500">

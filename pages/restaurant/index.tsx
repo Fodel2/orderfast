@@ -62,6 +62,7 @@ export default function RestaurantHomePage({ initialBrand }: { initialBrand: any
   // derive restaurant id from query so CTA retains context
   const rid = useMemo(() => queryRestaurantId || restaurantId || null, [queryRestaurantId, restaurantId]);
   const orderHref = rid ? `/restaurant/menu?restaurant_id=${String(rid)}` : '/restaurant/menu';
+  const heroLoading = ridLoading || !restaurant;
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -119,13 +120,14 @@ export default function RestaurantHomePage({ initialBrand }: { initialBrand: any
       >
       {process.env.NEXT_PUBLIC_DEBUG === '1' && <DebugFlag label="HOME-A" />}
       <LandingHero
-          title={restaurant?.website_title || restaurant?.name || 'Restaurant'}
+          title={restaurant?.website_title || restaurant?.name || ''}
           subtitle={restaurant?.website_description ?? null}
           ctaLabel="Order Now"
           ctaHref={orderHref}
           imageUrl={coverImg || undefined}
           logoUrl={restaurant?.logo_url ?? null}
           logoShape={restaurant?.logo_shape ?? null}
+          loading={heroLoading}
       />
       <SlidesContainer />
       </CustomerLayout>
