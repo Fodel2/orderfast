@@ -123,6 +123,20 @@ export default function DashboardMessagesPage() {
     return messages.filter((message) => normalizeStatus(message.status) === activeFilter);
   }, [messages, activeFilter]);
 
+  const messageCounts = useMemo(
+    () =>
+      messages.reduce(
+        (acc, message) => {
+          const status = normalizeStatus(message.status);
+          acc.all += 1;
+          acc[status] += 1;
+          return acc;
+        },
+        { all: 0, new: 0, read: 0, resolved: 0 }
+      ),
+    [messages]
+  );
+
   const selectedMessage =
     messages.find((message) => message.id === selectedMessageId) || filteredMessages[0] || null;
 
@@ -183,7 +197,14 @@ export default function DashboardMessagesPage() {
                     : 'bg-white text-gray-600 ring-1 ring-gray-200 hover:bg-gray-50'
                 }`}
               >
-                {filter.label}
+                <span>{filter.label}</span>
+                <span
+                  className={`ml-2 inline-flex min-w-[1.4rem] items-center justify-center rounded-full px-1.5 py-0.5 text-xs ${
+                    active ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'
+                  }`}
+                >
+                  {messageCounts[filter.value]}
+                </span>
               </button>
             );
           })}
