@@ -26,9 +26,10 @@ export default function WebsitePage() {
 
   const [contactEnabled, setContactEnabled] = useState(true);
   const [contactEmail, setContactEmail] = useState('');
-  const [contactFields, setContactFields] = useState<{ name: boolean; phone: boolean; message: boolean }>({
+  const [contactFields, setContactFields] = useState<{ name: boolean; phone: boolean; email: boolean; message: boolean }>({
     name: true,
     phone: false,
+    email: false,
     message: true,
   });
 
@@ -79,7 +80,12 @@ export default function WebsitePage() {
         if (contact) {
           setContactEnabled(contact.enabled);
           setContactEmail(contact.recipient_email || '');
-          setContactFields(contact.fields || { name: true, phone: false, message: true });
+          setContactFields({
+            name: !!contact?.fields?.name,
+            phone: !!contact?.fields?.phone,
+            email: !!contact?.fields?.email,
+            message: true,
+          });
         }
       }
       setLoading(false);
@@ -143,7 +149,12 @@ export default function WebsitePage() {
           restaurant_id: restaurantId,
           enabled: contactEnabled,
           recipient_email: contactEmail,
-          fields: contactFields,
+          fields: {
+            name: !!contactFields.name,
+            phone: !!contactFields.phone,
+            email: !!contactFields.email,
+            message: true,
+          },
         },
         { onConflict: 'restaurant_id' }
       );
@@ -317,12 +328,13 @@ export default function WebsitePage() {
                     <label className="flex items-center space-x-1">
                       <input
                         type="checkbox"
-                        checked={contactFields.message}
-                        onChange={(e) => setContactFields({ ...contactFields, message: e.target.checked })}
+                        checked={contactFields.email}
+                        onChange={(e) => setContactFields({ ...contactFields, email: e.target.checked })}
                       />
-                      <span>Message</span>
+                      <span>Email</span>
                     </label>
                   </div>
+                  <p className="text-xs text-gray-500">Message field is always enabled.</p>
                 </div>
               )}
             </div>
