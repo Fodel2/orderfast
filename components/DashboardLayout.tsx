@@ -10,6 +10,7 @@ import {
   UserGroupIcon,
   ArrowsRightLeftIcon,
   ChartBarIcon,
+  InboxIcon,
   DocumentTextIcon,
   Cog6ToothIcon,
   ComputerDesktopIcon,
@@ -53,6 +54,7 @@ type RestaurantContext = {
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [restaurant, setRestaurant] = useState<RestaurantContext | null>(null);
+  const [newInboxCount, setNewInboxCount] = useState(0);
   const router = useRouter();
   const [showPosModal, setShowPosModal] = useState(false);
   const [rememberPosChoice, setRememberPosChoice] = useState(false);
@@ -250,6 +252,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     { href: '/dashboard/menu-builder', label: 'Menu', icon: ClipboardDocumentListIcon },
     { href: '/dashboard/express-order', label: 'Express Order', icon: ClipboardDocumentListIcon },
     { href: '/dashboard/promotions', label: 'Promotions', icon: MegaphoneIcon },
+    { href: '/dashboard/messages', label: 'Inbox', icon: InboxIcon },
     {
       label: 'Till / POS',
       icon: ComputerDesktopIcon,
@@ -285,6 +288,40 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     { href: null, label: 'Invoices', icon: DocumentTextIcon },
     { href: '/dashboard/settings', label: 'Settings', icon: Cog6ToothIcon },
   ];
+
+  useEffect(() => {
+    let active = true;
+
+    const loadNewInboxCount = async () => {
+      if (!activeRestaurantId) {
+        setNewInboxCount(0);
+        return;
+      }
+
+      const { count, error } = await supabase
+        .from('contact_messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('restaurant_id', activeRestaurantId)
+        .eq('status', 'new');
+
+      if (!active) return;
+
+      if (error) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.error('[dashboard-layout] failed to load inbox count', error);
+        }
+        return;
+      }
+
+      setNewInboxCount(count || 0);
+    };
+
+    loadNewInboxCount();
+
+    return () => {
+      active = false;
+    };
+  }, [activeRestaurantId, router.pathname]);
 
   const [open, setOpen] = useState(false); // mobile open state
   const [collapsed, setCollapsed] = useState(false); // desktop collapse state
@@ -347,6 +384,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               : 'text-gray-700';
             const labelClass = `${labelColor} ${collapsed ? 'hidden' : 'ml-3'}`;
             const iconClass = `w-6 h-6 ${active ? highlight : disabled ? 'text-gray-300' : 'text-gray-400'}`;
+            const isInboxEntry = n.href === '/dashboard/messages';
 
             if (hasChildren) {
               const openDrop = dropdownOpen[n.label];
@@ -492,6 +530,11 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 >
                   <n.icon className={iconClass} aria-hidden="true" />
                   <span className={labelClass}>{n.label}</span>
+                  {!collapsed && isInboxEntry && newInboxCount > 0 && (
+                    <span className="ml-auto inline-flex min-w-[1.5rem] items-center justify-center rounded-full bg-teal-600 px-2 py-0.5 text-xs font-semibold text-white">
+                      {newInboxCount}
+                    </span>
+                  )}
                 </Link>
               );
             }

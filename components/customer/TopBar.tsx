@@ -27,7 +27,8 @@ export default function TopBar({ hidden }: { hidden?: boolean }) {
 
       if (!mounted) return;
       if (!error && data) {
-        setTitle(data.website_title ?? data.name ?? 'Restaurant');
+        const resolvedTitle = String(data.website_title ?? data.name ?? '').trim();
+        setTitle(resolvedTitle || null);
         setLogoUrl(data.logo_url ?? null);
         setLogoShape((data.logo_shape as 'square' | 'round' | 'rectangular') || 'round');
       }

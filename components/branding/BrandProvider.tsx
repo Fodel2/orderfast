@@ -28,9 +28,11 @@ const hashHSL = (name: string) => {
 export const useBrand = (): BrandCtx => {
   // SSR-safe default if provider is missing
   return React.useContext(Ctx) ?? {
-    ...hashHSL('Restaurant'),
-    name: 'Restaurant',
-    initials: 'R',
+    brand: '#6b7280',
+    brand600: '#4b5563',
+    brand700: '#374151',
+    name: '',
+    initials: '',
     logoUrl: null,
     currencyCode: normalizeCurrencyCode(),
   };
@@ -44,11 +46,12 @@ export const BrandProvider: React.FC<{
   const router = useRouter();
   const qp = (k: string) => (router?.query?.[k] as string) || '';
   const source = restaurant || initialBrand || {};
+  const hasNamedSource = Boolean((source as any)?.website_title || (source as any)?.name);
   const name =
     (source as any)?.website_title ||
     (source as any)?.name ||
     qp('name') ||
-    'Restaurant';
+    '';
   const logoUrl = (source as any)?.logo_url || qp('logo') || null;
   const logoShape = (source as any)?.logo_shape || null;
   const currencyCode = normalizeCurrencyCode((source as any)?.currency_code || qp('currency'));
@@ -64,13 +67,19 @@ export const BrandProvider: React.FC<{
         brand600: secondary || primary,
         brand700: secondary || primary,
       }
-    : hashHSL(name);
+    : hasNamedSource
+    ? hashHSL(name)
+    : {
+        brand: '#6b7280',
+        brand600: '#4b5563',
+        brand700: '#374151',
+      };
   const initials = name
     .split(' ')
     .map(p => p[0])
     .join('')
     .slice(0, 2)
-    .toUpperCase() || 'R';
+    .toUpperCase();
 
   const value = useMemo(
     () => ({ ...colors, name, initials, logoUrl, logoShape, currencyCode }),

@@ -263,7 +263,9 @@ export default function ExpressEntryPage() {
             ) : null}
             <div className="space-y-1">
               <h1 className="text-3xl font-semibold leading-tight text-neutral-900 sm:text-4xl">
-                {restaurant?.website_title || restaurant?.name || 'Restaurant'}
+                {restaurant?.website_title || restaurant?.name || (
+                  <span className="mx-auto block h-9 w-44 animate-pulse rounded bg-neutral-200" />
+                )}
               </h1>
               {restaurant?.website_description ? (
                 <p className="text-base text-neutral-600 sm:text-lg">{restaurant.website_description}</p>

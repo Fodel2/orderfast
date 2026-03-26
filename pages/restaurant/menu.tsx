@@ -371,7 +371,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
       <div>
         <div className="w-full">
           {(() => {
-            const menuTitle = restaurant?.website_title || restaurant?.name || 'Restaurant';
+            const menuTitle = restaurant?.website_title || restaurant?.name || '';
             return (
               <MenuHeader
                 title={menuTitle}

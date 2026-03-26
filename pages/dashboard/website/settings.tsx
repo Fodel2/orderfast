@@ -26,9 +26,10 @@ export default function WebsitePage() {
 
   const [contactEnabled, setContactEnabled] = useState(true);
   const [contactEmail, setContactEmail] = useState('');
-  const [contactFields, setContactFields] = useState<{ name: boolean; phone: boolean; message: boolean }>({
+  const [contactFields, setContactFields] = useState<{ name: boolean; phone: boolean; email: boolean; message: boolean }>({
     name: true,
     phone: false,
+    email: false,
     message: true,
   });
 
@@ -37,6 +38,13 @@ export default function WebsitePage() {
 
   const [subdomainAvailable, setSubdomainAvailable] = useState<boolean | null>(null);
   const [toastMessage, setToastMessage] = useState('');
+  const serviceHealthFields = [
+    'expected_prep_minutes',
+    'busy_prep_minutes',
+    'backlog_prep_minutes',
+    'busy_order_threshold',
+    'backlog_order_threshold',
+  ] as const;
 
   useEffect(() => {
     const load = async () => {
@@ -71,15 +79,17 @@ export default function WebsitePage() {
           setBusyOrderThreshold(Number(rest.busy_order_threshold) || 6);
           setBacklogOrderThreshold(Number(rest.backlog_order_threshold) || 10);
         }
-        const { data: contact } = await supabase
-          .from('website_contact_settings')
-          .select('*')
-          .eq('restaurant_id', ru.restaurant_id)
-          .maybeSingle();
-        if (contact) {
-          setContactEnabled(contact.enabled);
+        const contactResponse = await fetch('/api/dashboard/website-contact-settings');
+        if (contactResponse.ok) {
+          const contact = await contactResponse.json();
+          setContactEnabled(contact.enabled !== false);
           setContactEmail(contact.recipient_email || '');
-          setContactFields(contact.fields || { name: true, phone: false, message: true });
+          setContactFields({
+            name: !!contact?.fields?.name,
+            phone: !!contact?.fields?.phone,
+            email: !!contact?.fields?.email,
+            message: true,
+          });
         }
       }
       setLoading(false);
@@ -121,32 +131,57 @@ export default function WebsitePage() {
       setToastMessage('Subdomain is not available');
       return;
     }
-    const { error } = await supabase
+    const restaurantPayload = {
+      subdomain,
+      custom_domain: customDomain,
+      auto_accept_kiosk_orders: autoAcceptKioskOrders,
+      auto_accept_app_orders: autoAcceptAppOrders,
+      auto_accept_pos_orders: autoAcceptPosOrders,
+      expected_prep_minutes: expectedPrepMinutes,
+      busy_prep_minutes: busyPrepMinutes,
+      backlog_prep_minutes: backlogPrepMinutes,
+      busy_order_threshold: busyOrderThreshold,
+      backlog_order_threshold: backlogOrderThreshold,
+    };
+    let { error } = await supabase
       .from('restaurants')
-      .update({
+      .update(restaurantPayload)
+      .eq('id', restaurantId);
+    const missingColumn = error?.message?.match(/column ['"]?([a-z0-9_]+)['"]?/i)?.[1];
+    if (missingColumn && serviceHealthFields.includes(missingColumn as any)) {
+      const fallbackPayload = {
         subdomain,
         custom_domain: customDomain,
         auto_accept_kiosk_orders: autoAcceptKioskOrders,
         auto_accept_app_orders: autoAcceptAppOrders,
         auto_accept_pos_orders: autoAcceptPosOrders,
-        expected_prep_minutes: expectedPrepMinutes,
-        busy_prep_minutes: busyPrepMinutes,
-        backlog_prep_minutes: backlogPrepMinutes,
-        busy_order_threshold: busyOrderThreshold,
-        backlog_order_threshold: backlogOrderThreshold,
-      })
-      .eq('id', restaurantId);
-    const { error: contactErr } = await supabase
-      .from('website_contact_settings')
-      .upsert(
-        {
-          restaurant_id: restaurantId,
-          enabled: contactEnabled,
-          recipient_email: contactEmail,
-          fields: contactFields,
+      };
+      const fallbackResult = await supabase
+        .from('restaurants')
+        .update(fallbackPayload)
+        .eq('id', restaurantId);
+      error = fallbackResult.error;
+    }
+    const contactResponse = await fetch('/api/dashboard/website-contact-settings', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        enabled: contactEnabled,
+        recipient_email: contactEmail,
+        fields: {
+          name: !!contactFields.name,
+          phone: !!contactFields.phone,
+          email: !!contactFields.email,
+          message: true,
         },
-        { onConflict: 'restaurant_id' }
-      );
+      }),
+    });
+    const contactPayload = await contactResponse.json().catch(() => null);
+    const contactErr = contactResponse.ok
+      ? null
+      : { message: contactPayload?.message || 'Failed to save contact settings' };
     if (error || contactErr) {
       setToastMessage('Failed to save: ' + (error?.message || contactErr?.message));
     } else {
@@ -317,12 +352,13 @@ export default function WebsitePage() {
                     <label className="flex items-center space-x-1">
                       <input
                         type="checkbox"
-                        checked={contactFields.message}
-                        onChange={(e) => setContactFields({ ...contactFields, message: e.target.checked })}
+                        checked={contactFields.email}
+                        onChange={(e) => setContactFields({ ...contactFields, email: e.target.checked })}
                       />
-                      <span>Message</span>
+                      <span>Email</span>
                     </label>
                   </div>
+                  <p className="text-xs text-gray-500">Message field is always enabled.</p>
                 </div>
               )}
             </div>
