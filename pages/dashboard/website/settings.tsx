@@ -72,13 +72,10 @@ export default function WebsitePage() {
           setBusyOrderThreshold(Number(rest.busy_order_threshold) || 6);
           setBacklogOrderThreshold(Number(rest.backlog_order_threshold) || 10);
         }
-        const { data: contact } = await supabase
-          .from('website_contact_settings')
-          .select('*')
-          .eq('restaurant_id', ru.restaurant_id)
-          .maybeSingle();
-        if (contact) {
-          setContactEnabled(contact.enabled);
+        const contactResponse = await fetch('/api/dashboard/website-contact-settings');
+        if (contactResponse.ok) {
+          const contact = await contactResponse.json();
+          setContactEnabled(contact.enabled !== false);
           setContactEmail(contact.recipient_email || '');
           setContactFields({
             name: !!contact?.fields?.name,
@@ -142,22 +139,26 @@ export default function WebsitePage() {
         backlog_order_threshold: backlogOrderThreshold,
       })
       .eq('id', restaurantId);
-    const { error: contactErr } = await supabase
-      .from('website_contact_settings')
-      .upsert(
-        {
-          restaurant_id: restaurantId,
-          enabled: contactEnabled,
-          recipient_email: contactEmail,
-          fields: {
-            name: !!contactFields.name,
-            phone: !!contactFields.phone,
-            email: !!contactFields.email,
-            message: true,
-          },
+    const contactResponse = await fetch('/api/dashboard/website-contact-settings', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        enabled: contactEnabled,
+        recipient_email: contactEmail,
+        fields: {
+          name: !!contactFields.name,
+          phone: !!contactFields.phone,
+          email: !!contactFields.email,
+          message: true,
         },
-        { onConflict: 'restaurant_id' }
-      );
+      }),
+    });
+    const contactPayload = await contactResponse.json().catch(() => null);
+    const contactErr = contactResponse.ok
+      ? null
+      : { message: contactPayload?.message || 'Failed to save contact settings' };
     if (error || contactErr) {
       setToastMessage('Failed to save: ' + (error?.message || contactErr?.message));
     } else {

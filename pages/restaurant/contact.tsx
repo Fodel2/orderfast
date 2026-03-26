@@ -4,7 +4,7 @@ import CustomerLayout from '@/components/CustomerLayout';
 import { supabase } from '@/utils/supabaseClient';
 import { useCart } from '@/context/CartContext';
 import { BrandProvider } from '@/components/branding/BrandProvider';
-import resolveRestaurantId from '@/lib/resolveRestaurantId';
+import { useRestaurant } from '@/lib/restaurant-context';
 
 type ContactSettings = {
   enabled: boolean;
@@ -32,7 +32,15 @@ export default function ContactPage() {
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [message, setMessage] = useState('');
-  const rid = resolveRestaurantId(router, null, restaurant);
+  const { restaurantId, loading: restaurantContextLoading } = useRestaurant();
+  const queryRestaurantId = useMemo(() => {
+    const candidate =
+      (router.query.restaurant_id as string | undefined) ||
+      (router.query.id as string | undefined) ||
+      (router.query.r as string | undefined);
+    return candidate || null;
+  }, [router.query.id, router.query.r, router.query.restaurant_id]);
+  const rid = queryRestaurantId || restaurantId;
   const addressLines = useMemo(() => {
     const structured = [
       String(restaurant?.address_line_1 || '').trim(),
@@ -54,7 +62,11 @@ export default function ContactPage() {
   }, [restaurant?.address, restaurant?.address_line_1, restaurant?.address_line_2, restaurant?.city, restaurant?.county_state, restaurant?.postcode, restaurant?.country_code]);
 
   useEffect(() => {
-    if (!router.isReady || !rid) return;
+    if (!router.isReady || restaurantContextLoading) return;
+    if (!rid) {
+      setLoading(false);
+      return;
+    }
     const loadPage = async () => {
       setLoading(true);
       const [{ data: restaurantData }, { data: settingsData }] = await Promise.all([
@@ -66,7 +78,7 @@ export default function ContactPage() {
       setLoading(false);
     };
     loadPage();
-  }, [router.isReady, rid]);
+  }, [router.isReady, rid, restaurantContextLoading]);
 
   const contactFields = {
     name: !!settings?.fields?.name,

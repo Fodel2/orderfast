@@ -81,6 +81,10 @@ export default function RestaurantMorePage({ initialBrand }: { initialBrand: any
     { key: 'x', label: 'X', href: normalizeExternalUrl(restaurant?.x_url) },
     { key: 'youtube', label: 'YouTube', href: normalizeExternalUrl(restaurant?.youtube_url) },
   ].filter((item): item is { key: 'instagram' | 'facebook' | 'tiktok' | 'x' | 'youtube'; label: string; href: string } => Boolean(item.href))
+  const withRestaurantQuery = (pathname: string) =>
+    restaurantId
+      ? { pathname, query: { restaurant_id: restaurantId } }
+      : pathname;
 
   return (
       <CustomerLayout cartCount={itemCount}>
@@ -89,15 +93,15 @@ export default function RestaurantMorePage({ initialBrand }: { initialBrand: any
         <div className="w-16 h-1 mt-2" style={{ backgroundColor: brand?.brand }} />
 
         <MoreSection title="Your Account">
-          <MoreCard index={0} title="Account" description="Manage your details" href="/restaurant/account" icon={<UserIcon className="w-8 h-8 text-gray-500" />} />
-          <MoreCard index={1} title="Orders" description="View past orders" href="/restaurant/orders" icon={<ClipboardDocumentListIcon className="w-8 h-8 text-gray-500" />} />
-          <MoreCard index={2} title="Promotions" description="Apply one offer per order" href="/restaurant/promotions" icon={<MegaphoneIcon className="w-8 h-8 text-gray-500" />} />
+          <MoreCard index={0} title="Account" description="Manage your details" href={withRestaurantQuery('/restaurant/account')} icon={<UserIcon className="w-8 h-8 text-gray-500" />} />
+          <MoreCard index={1} title="Orders" description="View past orders" href={withRestaurantQuery('/restaurant/orders')} icon={<ClipboardDocumentListIcon className="w-8 h-8 text-gray-500" />} />
+          <MoreCard index={2} title="Promotions" description="Apply one offer per order" href={withRestaurantQuery('/restaurant/promotions')} icon={<MegaphoneIcon className="w-8 h-8 text-gray-500" />} />
         </MoreSection>
 
         <MoreSection title="About">
-          <MoreCard index={0} title="About Us" description="Who we are" href="/restaurant/about" icon={<InformationCircleIcon className="w-8 h-8 text-gray-500" />} />
-          <MoreCard index={1} title="Opening Times" description="When we're open" href="/restaurant/opening-times" icon={<ClockIcon className="w-8 h-8 text-gray-500" />} />
-          <MoreCard index={2} title="Contact" description="Get in touch" href="/restaurant/contact" icon={<PhoneIcon className="w-8 h-8 text-gray-500" />} />
+          <MoreCard index={0} title="About Us" description="Who we are" href={withRestaurantQuery('/restaurant/about')} icon={<InformationCircleIcon className="w-8 h-8 text-gray-500" />} />
+          <MoreCard index={1} title="Opening Times" description="When we're open" href={withRestaurantQuery('/restaurant/opening-times')} icon={<ClockIcon className="w-8 h-8 text-gray-500" />} />
+          <MoreCard index={2} title="Contact" description="Get in touch" href={withRestaurantQuery('/restaurant/contact')} icon={<PhoneIcon className="w-8 h-8 text-gray-500" />} />
         </MoreSection>
 
         <MoreSection title="Extras">

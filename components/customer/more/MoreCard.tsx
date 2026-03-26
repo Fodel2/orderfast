@@ -1,11 +1,12 @@
 import Link from 'next/link'
 import { ReactNode, useEffect, useState } from 'react'
+import type { UrlObject } from 'url'
 
 interface MoreCardProps {
   title: string
   icon?: ReactNode
   description?: string
-  href?: string
+  href?: string | UrlObject
   onClick?: () => void
   index?: number
 }
@@ -47,4 +48,3 @@ export default function MoreCard({ title, icon, description, href, onClick, inde
     </div>
   )
 }
-
