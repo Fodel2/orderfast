@@ -25,7 +25,8 @@ type RestaurantBrand = {
   menu_header_image_updated_at: string | null;
   menu_header_focal_x: number | null;
   menu_header_focal_y: number | null;
-  theme_primary_color: string | null;
+  brand_primary_color: string | null;
+  brand_secondary_color: string | null;
 };
 
 type ExpressPageData = {
@@ -57,7 +58,7 @@ async function loadExpressPageData(restaurantId: string): Promise<ExpressPageDat
       supabase
         .from('restaurants')
         .select(
-          'name,website_title,website_description,logo_url,cover_image_url,logo_shape,menu_header_image_url,menu_header_image_updated_at,menu_header_focal_x,menu_header_focal_y,theme_primary_color'
+          'name,website_title,website_description,logo_url,cover_image_url,logo_shape,menu_header_image_url,menu_header_image_updated_at,menu_header_focal_x,menu_header_focal_y,brand_primary_color,brand_secondary_color'
         )
         .eq('id', restaurantId)
         .maybeSingle<RestaurantBrand>(),
@@ -90,7 +91,7 @@ export default function ExpressEntryPage() {
   const [restaurant, setRestaurant] = useState<RestaurantBrand | null>(null);
   const [entryError, setEntryError] = useState('');
 
-  const primaryColor = restaurant?.theme_primary_color || '#111827';
+  const primaryColor = restaurant?.brand_primary_color || restaurant?.brand_secondary_color || '#111827';
   const heroImage = useMemo(() => {
     const cover = formatImageUrl(restaurant?.cover_image_url);
     if (cover) return cover;

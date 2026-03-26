@@ -251,6 +251,14 @@ export default function DashboardSettingsOpeningHoursPage() {
         return;
       }
 
+      if (!exception.is_closed && exception.periods.length === 0) {
+        setToastMessage(
+          `Special day #${index + 1} needs at least one opening period, or mark it closed all day.`
+        );
+        setSpecialSaving(false);
+        return;
+      }
+
       const { data: savedException, error: exceptionError } = await supabase
         .from('opening_hours_exceptions')
         .upsert(
