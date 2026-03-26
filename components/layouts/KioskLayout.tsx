@@ -107,7 +107,10 @@ export default function KioskLayout({
   const [showFullscreenPrompt, setShowFullscreenPrompt] = useState(false);
   const autoPromptedRef = useRef(false);
   const fullscreenRequestInFlight = useRef(false);
-  const accentColor = useMemo(() => restaurant?.theme_primary_color || '#111827', [restaurant?.theme_primary_color]);
+  const accentColor = useMemo(
+    () => restaurant?.brand_primary_color || restaurant?.brand_secondary_color || '#111827',
+    [restaurant?.brand_primary_color, restaurant?.brand_secondary_color]
+  );
   const {
     setSessionActive,
     registerActivity,

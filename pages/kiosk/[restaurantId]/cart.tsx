@@ -32,7 +32,8 @@ type Restaurant = {
   website_title?: string | null;
   website_description?: string | null;
   logo_url?: string | null;
-  theme_primary_color?: string | null;
+  brand_primary_color?: string | null;
+  brand_secondary_color?: string | null;
   menu_header_image_url?: string | null;
   menu_header_image_updated_at?: string | null;
   menu_header_focal_x?: number | null;
@@ -212,7 +213,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
         const { data, error } = await supabase
           .from('restaurants')
           .select(
-            'id,name,website_title,website_description,logo_url,theme_primary_color,menu_header_image_url,menu_header_image_updated_at,menu_header_focal_x,menu_header_focal_y,auto_accept_kiosk_orders,auto_accept_app_orders,auto_accept_pos_orders,currency_code'
+            'id,name,website_title,website_description,logo_url,brand_primary_color,brand_secondary_color,menu_header_image_url,menu_header_image_updated_at,menu_header_focal_x,menu_header_focal_y,auto_accept_kiosk_orders,auto_accept_app_orders,auto_accept_pos_orders,currency_code'
           )
           .eq('id', restaurantId)
           .maybeSingle();

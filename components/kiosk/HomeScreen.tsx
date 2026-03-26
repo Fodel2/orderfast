@@ -15,7 +15,8 @@ export type KioskRestaurant = {
   menu_header_image_updated_at?: string | null;
   menu_header_focal_x?: number | null;
   menu_header_focal_y?: number | null;
-  theme_primary_color?: string | null;
+  brand_primary_color?: string | null;
+  brand_secondary_color?: string | null;
 };
 
 interface HomeScreenProps {
@@ -54,7 +55,10 @@ export default function HomeScreen({ restaurant, onStart, fadingOut, loading }: 
   const focalX = restaurant?.menu_header_focal_x ?? 0.5;
   const focalY = restaurant?.menu_header_focal_y ?? 0.5;
 
-  const primaryColor = normalizeSource(restaurant?.theme_primary_color) || '#111827';
+  const primaryColor =
+    normalizeSource(restaurant?.brand_primary_color) ||
+    normalizeSource(restaurant?.brand_secondary_color) ||
+    '#111827';
 
   return (
     <div
