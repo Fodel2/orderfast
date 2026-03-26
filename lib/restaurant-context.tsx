@@ -57,7 +57,9 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       router.pathname === '/more';
     const normalizedStoredId = normalizeRestaurantId(storedId);
     const safeStoredId =
-      isCustomerFacingRoute && normalizedStoredId && normalizedStoredId === normalizedDemoId
+      isCustomerFacingRoute
+        ? null
+        : normalizedStoredId && normalizedStoredId === normalizedDemoId
         ? null
         : storedId;
     const resolved = resolveRestaurantIdFromSources({
