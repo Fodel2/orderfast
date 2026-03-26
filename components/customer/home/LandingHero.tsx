@@ -87,6 +87,7 @@ type LandingHeroProps = {
   logoUrl?: string | null; // avatar/logo
   logoShape?: 'square' | 'round' | 'rectangular' | null;
   isOpen?: boolean; // optional open state
+  loading?: boolean;
 };
 
 export default function LandingHero({
@@ -98,6 +99,7 @@ export default function LandingHero({
   logoUrl,
   logoShape,
   isOpen,
+  loading = false,
 }: LandingHeroProps) {
   const router = useRouter();
   const [open, setOpen] = useState<boolean | null>(typeof isOpen === 'boolean' ? isOpen : null);
@@ -197,14 +199,18 @@ export default function LandingHero({
             ></div>
             <div className="relative flex flex-col items-center text-center gap-3 sm:gap-4 px-4 py-3 sm:px-5 sm:py-4">
               <h1 className="text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.6)] text-2xl sm:text-3xl font-semibold leading-tight">
-                {title}
+                {loading ? (
+                  <span className="inline-block h-8 w-44 animate-pulse rounded bg-white/40" />
+                ) : (
+                  title
+                )}
               </h1>
-              {subtitle ? (
+              {!loading && subtitle ? (
                 <p className="text-white/90 text-sm sm:text-base leading-relaxed line-clamp-2 max-w-prose">
                   {subtitle}
                 </p>
               ) : null}
-              {open !== null && (
+              {!loading && open !== null && (
                 <span
                   className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium shadow-sm"
                   style={{
@@ -219,18 +225,22 @@ export default function LandingHero({
                   {open ? 'Open' : 'Closed'}
                 </span>
               )}
-              <Link href={ctaHref} aria-label="Order Now" className="relative">
-                <Button
-                  className="rounded-full px-5 py-2 sm:px-6 sm:py-2.5 text-sm sm:text-base font-medium tracking-tight shadow-md hover:shadow-lg transition-all duration-150 ease-out hover:scale-[1.02] active:scale-[0.99] border-0 focus:outline-none focus:ring-2 focus:ring-white/40"
-                  style={{
-                    backgroundColor: primary || 'var(--brand-primary, #111827)',
-                    color: ctaText,
-                    borderColor: 'transparent',
-                  }}
-                >
-                  {ctaLabel}
-                </Button>
-              </Link>
+              {loading ? (
+                <div className="h-10 w-32 animate-pulse rounded-full bg-white/40" />
+              ) : (
+                <Link href={ctaHref} aria-label="Order Now" className="relative">
+                  <Button
+                    className="rounded-full px-5 py-2 sm:px-6 sm:py-2.5 text-sm sm:text-base font-medium tracking-tight shadow-md hover:shadow-lg transition-all duration-150 ease-out hover:scale-[1.02] active:scale-[0.99] border-0 focus:outline-none focus:ring-2 focus:ring-white/40"
+                    style={{
+                      backgroundColor: primary || 'var(--brand-primary, #111827)',
+                      color: ctaText,
+                      borderColor: 'transparent',
+                    }}
+                  >
+                    {ctaLabel}
+                  </Button>
+                </Link>
+              )}
             </div>
           </div>
         </div>

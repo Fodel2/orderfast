@@ -47,8 +47,8 @@ export default function TopBar({ hidden }: { hidden?: boolean }) {
   const frameClass =
     logoShape === 'round' ? 'rounded-full' : logoShape === 'square' ? 'rounded-lg' : 'rounded-md';
 
-  // skeleton while loading
-  if (!ready) {
+  // skeleton while loading or unresolved title
+  if (!ready || !title) {
     return (
       <header
         className="brand-glass fixed top-0 left-0 right-0 h-14 flex items-center px-4 z-40 gap-3"
@@ -75,7 +75,7 @@ export default function TopBar({ hidden }: { hidden?: boolean }) {
           />
         </div>
       ) : null}
-      <div className="font-semibold text-lg">{title ?? 'Restaurant'}</div>
+      <div className="font-semibold text-lg">{title}</div>
     </header>
   );
 }
