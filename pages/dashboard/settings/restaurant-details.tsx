@@ -6,7 +6,7 @@ import Toast from '../../../components/Toast';
 import SettingsSectionSwitcher from '../../../components/dashboard/settings/SettingsSectionSwitcher';
 import { supabase } from '../../../utils/supabaseClient';
 
-type RestaurantDetailsSection = 'branding' | 'business' | 'copy';
+type RestaurantDetailsSection = 'branding' | 'business' | 'copy' | 'socials';
 
 type RestaurantDetailsRow = {
   id: string;
@@ -27,16 +27,35 @@ type RestaurantDetailsRow = {
   website_description: string | null;
   menu_description: string | null;
   currency_code: string | null;
+  instagram_url: string | null;
+  facebook_url: string | null;
+  tiktok_url: string | null;
+  x_url: string | null;
+  youtube_url: string | null;
 };
 
 const SECTION_ITEMS: { key: RestaurantDetailsSection; label: string }[] = [
   { key: 'branding', label: 'Branding' },
   { key: 'business', label: 'Business Information' },
   { key: 'copy', label: 'Website Copy' },
+  { key: 'socials', label: 'Socials' },
 ];
 
 const DEFAULT_PRIMARY = '#0f766e';
 const DEFAULT_SECONDARY = '#115e59';
+
+const normalizeSocialUrl = (raw: string) => {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  try {
+    const parsed = new URL(withProtocol);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+};
 
 const buildLegacyAddress = (parts: {
   addressLine1: string;
@@ -80,10 +99,16 @@ export default function DashboardSettingsRestaurantDetailsPage() {
 
   const [websiteDescription, setWebsiteDescription] = useState('');
   const [menuDescription, setMenuDescription] = useState('');
+  const [instagramUrl, setInstagramUrl] = useState('');
+  const [facebookUrl, setFacebookUrl] = useState('');
+  const [tiktokUrl, setTiktokUrl] = useState('');
+  const [xUrl, setXUrl] = useState('');
+  const [youtubeUrl, setYoutubeUrl] = useState('');
 
   const [brandingSaving, setBrandingSaving] = useState(false);
   const [businessSaving, setBusinessSaving] = useState(false);
   const [copySaving, setCopySaving] = useState(false);
+  const [socialsSaving, setSocialsSaving] = useState(false);
 
   const [logoUploading, setLogoUploading] = useState(false);
   const [coverUploading, setCoverUploading] = useState(false);
@@ -117,7 +142,7 @@ export default function DashboardSettingsRestaurantDetailsPage() {
       const { data: row, error: rowError } = await supabase
         .from('restaurants')
         .select(
-          'id,logo_url,cover_image_url,website_title,brand_primary_color,brand_secondary_color,logo_shape,address,address_line_1,address_line_2,city,county_state,postcode,country_code,contact_number,website_description,menu_description,currency_code'
+          'id,logo_url,cover_image_url,website_title,brand_primary_color,brand_secondary_color,logo_shape,address,address_line_1,address_line_2,city,county_state,postcode,country_code,contact_number,website_description,menu_description,currency_code,instagram_url,facebook_url,tiktok_url,x_url,youtube_url'
         )
         .eq('id', nextRestaurantId)
         .maybeSingle();
@@ -146,6 +171,11 @@ export default function DashboardSettingsRestaurantDetailsPage() {
         setWebsiteDescription(safeRow.website_description || '');
         setMenuDescription(safeRow.menu_description || '');
         setCurrencyCode(safeRow.currency_code || 'GBP');
+        setInstagramUrl(safeRow.instagram_url || '');
+        setFacebookUrl(safeRow.facebook_url || '');
+        setTiktokUrl(safeRow.tiktok_url || '');
+        setXUrl(safeRow.x_url || '');
+        setYoutubeUrl(safeRow.youtube_url || '');
       }
 
       setLoading(false);
@@ -260,6 +290,21 @@ export default function DashboardSettingsRestaurantDetailsPage() {
     setCopySaving(false);
   };
 
+  const saveSocials = async () => {
+    setSocialsSaving(true);
+    await updateRestaurant(
+      {
+        instagram_url: normalizeSocialUrl(instagramUrl),
+        facebook_url: normalizeSocialUrl(facebookUrl),
+        tiktok_url: normalizeSocialUrl(tiktokUrl),
+        x_url: normalizeSocialUrl(xUrl),
+        youtube_url: normalizeSocialUrl(youtubeUrl),
+      },
+      'Social links saved.'
+    );
+    setSocialsSaving(false);
+  };
+
   if (loading) return <DashboardLayout>Loading...</DashboardLayout>;
 
   if (!restaurantId) {
@@ -285,7 +330,7 @@ export default function DashboardSettingsRestaurantDetailsPage() {
             ← Settings Home
           </Link>
           <h1 className="text-3xl font-bold">Restaurant Details</h1>
-          <p className="text-sm text-gray-600">Manage branding, business info, and website copy with reliable section-level saves.</p>
+          <p className="text-sm text-gray-600">Manage branding, business info, website copy, and social links with reliable section-level saves.</p>
         </header>
 
         <SettingsSectionSwitcher
@@ -496,6 +541,73 @@ export default function DashboardSettingsRestaurantDetailsPage() {
                   value={menuDescription}
                   onChange={(event) => setMenuDescription(event.target.value)}
                   rows={4}
+                  className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-100"
+                />
+              </label>
+            </div>
+          </section>
+        )}
+
+        {activeSection === 'socials' && (
+          <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
+            <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900">Socials</h2>
+                <p className="text-sm text-gray-500">Optional links shown on the customer More page only when present.</p>
+              </div>
+              <button
+                type="button"
+                onClick={saveSocials}
+                disabled={!restaurantId || socialsSaving}
+                className="rounded-full bg-teal-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-teal-300"
+              >
+                {socialsSaving ? 'Saving…' : 'Save Socials'}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-gray-700">Instagram URL</span>
+                <input
+                  value={instagramUrl}
+                  onChange={(event) => setInstagramUrl(event.target.value)}
+                  placeholder="https://instagram.com/yourhandle"
+                  className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-100"
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-gray-700">Facebook URL</span>
+                <input
+                  value={facebookUrl}
+                  onChange={(event) => setFacebookUrl(event.target.value)}
+                  placeholder="https://facebook.com/yourpage"
+                  className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-100"
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-gray-700">TikTok URL</span>
+                <input
+                  value={tiktokUrl}
+                  onChange={(event) => setTiktokUrl(event.target.value)}
+                  placeholder="https://tiktok.com/@yourhandle"
+                  className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-100"
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-gray-700">X URL</span>
+                <input
+                  value={xUrl}
+                  onChange={(event) => setXUrl(event.target.value)}
+                  placeholder="https://x.com/yourhandle"
+                  className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-100"
+                />
+              </label>
+              <label className="space-y-1 md:col-span-2">
+                <span className="text-sm font-medium text-gray-700">YouTube URL</span>
+                <input
+                  value={youtubeUrl}
+                  onChange={(event) => setYoutubeUrl(event.target.value)}
+                  placeholder="https://youtube.com/@yourchannel"
                   className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-100"
                 />
               </label>
