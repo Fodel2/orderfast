@@ -17,6 +17,12 @@ type RestaurantDetailsRow = {
   brand_secondary_color: string | null;
   logo_shape: 'square' | 'round' | 'rectangular' | null;
   address: string | null;
+  address_line_1: string | null;
+  address_line_2: string | null;
+  city: string | null;
+  county_state: string | null;
+  postcode: string | null;
+  country_code: string | null;
   contact_number: string | null;
   website_description: string | null;
   menu_description: string | null;
@@ -32,6 +38,23 @@ const SECTION_ITEMS: { key: RestaurantDetailsSection; label: string }[] = [
 const DEFAULT_PRIMARY = '#0f766e';
 const DEFAULT_SECONDARY = '#115e59';
 
+const buildLegacyAddress = (parts: {
+  addressLine1: string;
+  addressLine2: string;
+  city: string;
+  countyState: string;
+  postcode: string;
+  countryCode: string;
+}) => {
+  const line1 = parts.addressLine1.trim();
+  const line2 = parts.addressLine2.trim();
+  const locality = [parts.city.trim(), parts.countyState.trim(), parts.postcode.trim()]
+    .filter(Boolean)
+    .join(', ');
+  const country = parts.countryCode.trim();
+  return [line1, line2, locality, country].filter(Boolean).join('\n');
+};
+
 export default function DashboardSettingsRestaurantDetailsPage() {
   const router = useRouter();
   const [restaurantId, setRestaurantId] = useState<string | null>(null);
@@ -46,7 +69,12 @@ export default function DashboardSettingsRestaurantDetailsPage() {
   const [secondaryColor, setSecondaryColor] = useState(DEFAULT_SECONDARY);
   const [logoShape, setLogoShape] = useState<'square' | 'round' | 'rectangular'>('square');
 
-  const [address, setAddress] = useState('');
+  const [addressLine1, setAddressLine1] = useState('');
+  const [addressLine2, setAddressLine2] = useState('');
+  const [city, setCity] = useState('');
+  const [countyState, setCountyState] = useState('');
+  const [postcode, setPostcode] = useState('');
+  const [countryCode, setCountryCode] = useState('');
   const [contactNumber, setContactNumber] = useState('');
   const [currencyCode, setCurrencyCode] = useState('GBP');
 
@@ -89,7 +117,7 @@ export default function DashboardSettingsRestaurantDetailsPage() {
       const { data: row, error: rowError } = await supabase
         .from('restaurants')
         .select(
-          'id,logo_url,cover_image_url,website_title,brand_primary_color,brand_secondary_color,logo_shape,address,contact_number,website_description,menu_description,currency_code'
+          'id,logo_url,cover_image_url,website_title,brand_primary_color,brand_secondary_color,logo_shape,address,address_line_1,address_line_2,city,county_state,postcode,country_code,contact_number,website_description,menu_description,currency_code'
         )
         .eq('id', nextRestaurantId)
         .maybeSingle();
@@ -108,7 +136,12 @@ export default function DashboardSettingsRestaurantDetailsPage() {
         setPrimaryColor(safeRow.brand_primary_color || DEFAULT_PRIMARY);
         setSecondaryColor(safeRow.brand_secondary_color || DEFAULT_SECONDARY);
         setLogoShape(safeRow.logo_shape || 'square');
-        setAddress(safeRow.address || '');
+        setAddressLine1(safeRow.address_line_1 || '');
+        setAddressLine2(safeRow.address_line_2 || '');
+        setCity(safeRow.city || '');
+        setCountyState(safeRow.county_state || '');
+        setPostcode(safeRow.postcode || '');
+        setCountryCode(safeRow.country_code || '');
         setContactNumber(safeRow.contact_number || '');
         setWebsiteDescription(safeRow.website_description || '');
         setMenuDescription(safeRow.menu_description || '');
@@ -190,9 +223,23 @@ export default function DashboardSettingsRestaurantDetailsPage() {
 
   const saveBusiness = async () => {
     setBusinessSaving(true);
+    const joinedAddress = buildLegacyAddress({
+      addressLine1,
+      addressLine2,
+      city,
+      countyState,
+      postcode,
+      countryCode,
+    });
     await updateRestaurant(
       {
-        address: address.trim() || null,
+        address_line_1: addressLine1.trim() || null,
+        address_line_2: addressLine2.trim() || null,
+        city: city.trim() || null,
+        county_state: countyState.trim() || null,
+        postcode: postcode.trim() || null,
+        country_code: countryCode.trim() || null,
+        address: joinedAddress || null,
         contact_number: contactNumber.trim() || null,
         currency_code: currencyCode,
       },
@@ -345,10 +392,50 @@ export default function DashboardSettingsRestaurantDetailsPage() {
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <label className="space-y-1 md:col-span-2">
-                <span className="text-sm font-medium text-gray-700">Address</span>
+                <span className="text-sm font-medium text-gray-700">Address line 1</span>
                 <input
-                  value={address}
-                  onChange={(event) => setAddress(event.target.value)}
+                  value={addressLine1}
+                  onChange={(event) => setAddressLine1(event.target.value)}
+                  className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-100"
+                />
+              </label>
+              <label className="space-y-1 md:col-span-2">
+                <span className="text-sm font-medium text-gray-700">Address line 2</span>
+                <input
+                  value={addressLine2}
+                  onChange={(event) => setAddressLine2(event.target.value)}
+                  className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-100"
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-gray-700">City</span>
+                <input
+                  value={city}
+                  onChange={(event) => setCity(event.target.value)}
+                  className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-100"
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-gray-700">County / State</span>
+                <input
+                  value={countyState}
+                  onChange={(event) => setCountyState(event.target.value)}
+                  className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-100"
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-gray-700">Postcode / ZIP</span>
+                <input
+                  value={postcode}
+                  onChange={(event) => setPostcode(event.target.value)}
+                  className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-100"
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-gray-700">Country</span>
+                <input
+                  value={countryCode}
+                  onChange={(event) => setCountryCode(event.target.value)}
                   className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-100"
                 />
               </label>

@@ -14,13 +14,24 @@ export default function ContactPage() {
   const [settings, setSettings] = useState<any | null>(null);
   const rid = resolveRestaurantId(router, null, restaurant);
   const addressLines = useMemo(() => {
+    const structured = [
+      String(restaurant?.address_line_1 || '').trim(),
+      String(restaurant?.address_line_2 || '').trim(),
+      [String(restaurant?.city || '').trim(), String(restaurant?.county_state || '').trim(), String(restaurant?.postcode || '').trim()]
+        .filter(Boolean)
+        .join(', '),
+      String(restaurant?.country_code || '').trim(),
+    ].filter(Boolean);
+
+    if (structured.length > 0) return structured;
+
     const raw = String(restaurant?.address || '').trim();
     if (!raw) return [];
     return raw
       .split(/\r?\n|,\s*/g)
       .map((line) => line.trim())
       .filter(Boolean);
-  }, [restaurant?.address]);
+  }, [restaurant?.address, restaurant?.address_line_1, restaurant?.address_line_2, restaurant?.city, restaurant?.county_state, restaurant?.postcode, restaurant?.country_code]);
 
   useEffect(() => {
     if (!router.isReady || !rid) return;
