@@ -188,25 +188,50 @@ export default function DashboardSettingsOpeningHoursPage() {
         sort_order: index,
       }))
     );
+    const existingRows = flattened.filter((row): row is typeof row & { id: number } => typeof row.id === 'number');
+    const newRows = flattened
+      .filter((row) => typeof row.id !== 'number')
+      .map(({ id: _id, ...row }) => row);
 
-    let savedRows: Array<{ id: number }> = [];
-    let upsertError: { message: string } | null = null;
-    if (flattened.length > 0) {
-      const upsertRes = await supabase
+    const updatedIds: number[] = [];
+    for (const row of existingRows) {
+      const { data, error } = await supabase
         .from('opening_hours_weekly_periods')
-        .upsert(flattened, { onConflict: 'id' })
+        .update({
+          day_of_week: row.day_of_week,
+          open_time: row.open_time,
+          close_time: row.close_time,
+          sort_order: row.sort_order,
+        })
+        .eq('restaurant_id', restaurantId)
+        .eq('id', row.id)
+        .select('id')
+        .single();
+
+      if (error) {
+        setToastMessage(`Failed to save weekly hours: ${error.message}`);
+        setWeeklySaving(false);
+        return;
+      }
+      if (typeof data?.id === 'number') updatedIds.push(data.id);
+    }
+
+    let insertedIds: number[] = [];
+    if (newRows.length > 0) {
+      const { data, error } = await supabase
+        .from('opening_hours_weekly_periods')
+        .insert(newRows)
         .select('id');
-      savedRows = (upsertRes.data || []) as Array<{ id: number }>;
-      upsertError = upsertRes.error;
+
+      if (error) {
+        setToastMessage(`Failed to save weekly hours: ${error.message}`);
+        setWeeklySaving(false);
+        return;
+      }
+      insertedIds = (data || []).map((row: any) => row.id as number);
     }
 
-    if (upsertError) {
-      setToastMessage(`Failed to save weekly hours: ${upsertError.message}`);
-      setWeeklySaving(false);
-      return;
-    }
-
-    const savedIds = (savedRows || []).map((row: any) => row.id as number);
+    const savedIds = [...updatedIds, ...insertedIds];
     const removedIds = existingWeeklyIds.filter((id) => !savedIds.includes(id));
 
     if (removedIds.length > 0) {

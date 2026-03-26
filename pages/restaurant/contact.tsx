@@ -1,5 +1,5 @@
 import { useRouter } from 'next/router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import CustomerLayout from '@/components/CustomerLayout';
 import { supabase } from '@/utils/supabaseClient';
 import { useCart } from '@/context/CartContext';
@@ -15,6 +15,14 @@ export default function ContactPage() {
   const [form, setForm] = useState({ name: '', phone: '', message: '' });
   const [sent, setSent] = useState(false);
   const rid = resolveRestaurantId(router, null, restaurant);
+  const addressLines = useMemo(() => {
+    const raw = String(restaurant?.address || '').trim();
+    if (!raw) return [];
+    return raw
+      .split(/\r?\n|,\s*/g)
+      .map((line) => line.trim())
+      .filter(Boolean);
+  }, [restaurant?.address]);
 
   useEffect(() => {
     if (!router.isReady || !rid) return;
@@ -54,6 +62,13 @@ export default function ContactPage() {
       <CustomerLayout cartCount={cartCount}>
         <div className="container mx-auto max-w-5xl px-4 py-8">
           <h1 className="text-3xl font-bold mb-4">Contact</h1>
+          {addressLines.length > 0 ? (
+            <address className="mb-4 not-italic text-sm leading-6 text-gray-600">
+              {addressLines.map((line, index) => (
+                <div key={`${line}-${index}`}>{line}</div>
+              ))}
+            </address>
+          ) : null}
           {sent ? (
             <p>{settings.success_message}</p>
           ) : (

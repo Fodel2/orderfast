@@ -46,6 +46,7 @@ type Restaurant = {
   website_title?: string | null;
   website_description?: string | null;
   logo_url?: string | null;
+  logo_shape?: 'square' | 'round' | 'rectangular' | null;
   brand_primary_color?: string | null;
   brand_secondary_color?: string | null;
   menu_header_image_url?: string | null;
@@ -98,7 +99,7 @@ function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
         const restPromise = supabase
           .from('restaurants')
           .select(
-            'id,name,website_title,website_description,logo_url,brand_primary_color,brand_secondary_color,menu_header_image_url,menu_header_image_updated_at,menu_header_focal_x,menu_header_focal_y'
+            'id,name,website_title,website_description,logo_url,logo_shape,brand_primary_color,brand_secondary_color,menu_header_image_url,menu_header_image_updated_at,menu_header_focal_x,menu_header_focal_y'
           )
           .eq('id', restaurantId)
           .maybeSingle();

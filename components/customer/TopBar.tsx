@@ -6,6 +6,7 @@ export default function TopBar({ hidden }: { hidden?: boolean }) {
   const { restaurantId, loading } = useRestaurant();
   const [title, setTitle] = useState<string | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [logoShape, setLogoShape] = useState<'square' | 'round' | 'rectangular'>('round');
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -20,7 +21,7 @@ export default function TopBar({ hidden }: { hidden?: boolean }) {
     (async () => {
       const { data, error } = await supabase
         .from('restaurants')
-        .select('website_title, name, logo_url')
+        .select('website_title, name, logo_url, logo_shape')
         .eq('id', restaurantId)
         .single();
 
@@ -28,6 +29,7 @@ export default function TopBar({ hidden }: { hidden?: boolean }) {
       if (!error && data) {
         setTitle(data.website_title ?? data.name ?? 'Restaurant');
         setLogoUrl(data.logo_url ?? null);
+        setLogoShape((data.logo_shape as 'square' | 'round' | 'rectangular') || 'round');
       }
       setReady(true);
     })();
@@ -42,6 +44,8 @@ export default function TopBar({ hidden }: { hidden?: boolean }) {
     transition: 'opacity 0.6s',
     pointerEvents: hidden ? 'none' : 'auto',
   } as React.CSSProperties;
+  const frameClass =
+    logoShape === 'round' ? 'rounded-full' : logoShape === 'square' ? 'rounded-lg' : 'rounded-md';
 
   // skeleton while loading
   if (!ready) {
@@ -62,12 +66,12 @@ export default function TopBar({ hidden }: { hidden?: boolean }) {
       style={style}
     >
       {logoUrl ? (
-        <div className="h-8 w-8 rounded-full overflow-hidden">
+        <div className={`h-8 w-8 overflow-hidden ${frameClass}`}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={logoUrl}
             alt={title ?? 'Restaurant'}
-            className="h-full w-full object-cover rounded-full"
+            className={`h-full w-full ${logoShape === 'rectangular' ? 'object-contain' : 'object-cover'} ${frameClass}`}
           />
         </div>
       ) : null}

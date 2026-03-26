@@ -57,10 +57,17 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       },
       storedId,
     });
+    const isCustomerFacingRoute =
+      router.pathname.startsWith('/restaurant') ||
+      router.pathname.startsWith('/kiosk') ||
+      router.pathname === '/express' ||
+      router.pathname === '/checkout' ||
+      router.pathname === '/more';
+    const shouldUseDemoFallback = !isCustomerFacingRoute && process.env.NODE_ENV !== 'production';
 
-    setRestaurantId(resolved || normalizeRestaurantId(demo));
+    setRestaurantId(resolved || (shouldUseDemoFallback ? normalizeRestaurantId(demo) : null));
     setLoading(false);
-  }, [router.isReady, qRestaurantId, qRid, qId, qR]);
+  }, [router.isReady, router.pathname, qRestaurantId, qRid, qId, qR]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !restaurantId) return;

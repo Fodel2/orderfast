@@ -478,6 +478,13 @@ export default function KioskLayout({
 
   const headerTitle = restaurant?.website_title || restaurant?.name || 'Restaurant';
   const logoUrl = restaurant?.logo_url || null;
+  const logoShape = restaurant?.logo_shape || 'round';
+  const logoShellClass =
+    logoShape === 'round' ? 'rounded-full' : logoShape === 'square' ? 'rounded-2xl' : 'rounded-xl';
+  const logoInnerClass =
+    logoShape === 'round' ? 'rounded-full' : logoShape === 'square' ? 'rounded-xl' : 'rounded-lg';
+  const logoSizeClass = logoShape === 'rectangular' ? 'h-16 w-20' : 'h-16 w-16';
+  const logoImageClass = logoShape === 'rectangular' ? 'object-contain' : 'object-cover';
   const showBrandSkeleton = restaurantLoading;
 
   const hasCustomHeader = Boolean(customHeaderContent);
@@ -517,14 +524,14 @@ export default function KioskLayout({
           ) : (
             <>
               {logoUrl ? (
-                <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-full bg-white/90">
-                  <div className="relative h-14 w-14 overflow-hidden rounded-full border border-neutral-200 shadow-sm">
+                <div className={`flex ${logoSizeClass} flex-shrink-0 items-center justify-center bg-white/90 ${logoShellClass}`}>
+                  <div className={`relative h-14 w-14 overflow-hidden border border-neutral-200 shadow-sm ${logoInnerClass}`}>
                     <Image
                       src={logoUrl}
                       alt={`${headerTitle} logo`}
                       fill
                       sizes="64px"
-                      className="rounded-full object-cover"
+                      className={`${logoInnerClass} ${logoImageClass}`}
                     />
                   </div>
                 </div>
@@ -559,6 +566,10 @@ export default function KioskLayout({
     cartScale,
     customHeaderContent,
     headerTitle,
+    logoImageClass,
+    logoInnerClass,
+    logoShellClass,
+    logoSizeClass,
     logoUrl,
     registerActivity,
     restaurantId,
