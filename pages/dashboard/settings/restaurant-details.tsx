@@ -39,7 +39,6 @@ export default function DashboardSettingsRestaurantDetailsPage() {
   const [logoShape, setLogoShape] = useState<LogoShape>('square');
   const [colorExtracted, setColorExtracted] = useState(false);
 
-  const [currencyCode, setCurrencyCode] = useState('GBP');
   const [address, setAddress] = useState('');
   const [contactNumber, setContactNumber] = useState('');
 
@@ -78,15 +77,17 @@ export default function DashboardSettingsRestaurantDetailsPage() {
       }
 
       setRestaurantId(membership.restaurant_id);
-      const { data: rest } = await supabase
+      const { data: rest, error: restError } = await supabase
         .from('restaurants')
         .select(
-          'logo_url,cover_image_url,website_title,brand_primary_color,brand_secondary_color,logo_shape,brand_color_extracted,currency_code,address,contact_number,website_description,menu_description'
+          'logo_url,cover_image_url,website_title,brand_primary_color,brand_secondary_color,logo_shape,brand_color_extracted,address,contact_number,website_description,menu_description'
         )
         .eq('id', membership.restaurant_id)
         .maybeSingle();
 
-      if (rest) {
+      if (restError) {
+        setToastMessage(`Failed to load restaurant details: ${restError.message}`);
+      } else if (rest) {
         setLogo(rest.logo_url || null);
         setCover(rest.cover_image_url || null);
         setWebsiteTitle(rest.website_title || '');
@@ -94,7 +95,6 @@ export default function DashboardSettingsRestaurantDetailsPage() {
         setBrandSecondary(rest.brand_secondary_color || '#004c4c');
         setLogoShape((rest.logo_shape as LogoShape) || 'square');
         setColorExtracted(!!rest.brand_color_extracted);
-        setCurrencyCode(rest.currency_code || 'GBP');
         setAddress(rest.address || '');
         setContactNumber(rest.contact_number || '');
         setWebsiteDescription(rest.website_description || '');
@@ -242,7 +242,6 @@ export default function DashboardSettingsRestaurantDetailsPage() {
       {
         address,
         contact_number: contactNumber,
-        currency_code: currencyCode,
       },
       'business-info'
     );
@@ -276,7 +275,6 @@ export default function DashboardSettingsRestaurantDetailsPage() {
       colorExtracted,
       address,
       contactNumber,
-      currencyCode,
       websiteDescription,
       menuDescription,
       restaurantId,
@@ -452,18 +450,6 @@ export default function DashboardSettingsRestaurantDetailsPage() {
                     onChange={(e) => setContactNumber(e.target.value)}
                     className="mt-1 w-full border border-gray-300 rounded-lg p-2"
                   />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-900">Currency</label>
-                  <select
-                    value={currencyCode}
-                    onChange={(e) => setCurrencyCode(e.target.value)}
-                    className="mt-1 w-full border border-gray-300 rounded-lg p-2"
-                  >
-                    <option value="GBP">GBP (£)</option>
-                    <option value="EUR">EUR (€)</option>
-                    <option value="USD">USD ($)</option>
-                  </select>
                 </div>
               </div>
             </section>

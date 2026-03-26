@@ -70,25 +70,6 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     if (!cart.restaurant_id) return;
-    let active = true;
-    supabase
-      .from('restaurants')
-      .select('currency_code')
-      .eq('id', cart.restaurant_id)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!active) return;
-        if (data?.currency_code) {
-          setCurrencyCode(data.currency_code);
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [cart.restaurant_id]);
-
-  useEffect(() => {
-    if (!cart.restaurant_id) return;
     setActiveSelection(getStoredActiveSelection(cart.restaurant_id));
     setCustomerId(session?.user?.id || getStableGuestCustomerId(cart.restaurant_id));
   }, [cart.restaurant_id, session?.user?.id]);

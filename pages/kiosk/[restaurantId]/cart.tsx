@@ -40,7 +40,6 @@ type Restaurant = {
   auto_accept_kiosk_orders?: boolean | null;
   auto_accept_app_orders?: boolean | null;
   auto_accept_pos_orders?: boolean | null;
-  currency_code?: string | null;
 };
 
 type KioskOrderRaceResult =
@@ -66,7 +65,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [restaurantLoading, setRestaurantLoading] = useState(true);
-  const currencyCode = restaurant?.currency_code || undefined;
+  const currencyCode = 'GBP';
   const [placingOrder, setPlacingOrder] = useState(false);
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
   const placeOrderDisabled = cartCount === 0 || placingOrder;
@@ -212,7 +211,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
         const { data, error } = await supabase
           .from('restaurants')
           .select(
-            'id,name,website_title,website_description,logo_url,theme_primary_color,menu_header_image_url,menu_header_image_updated_at,menu_header_focal_x,menu_header_focal_y,auto_accept_kiosk_orders,auto_accept_app_orders,auto_accept_pos_orders,currency_code'
+            'id,name,website_title,website_description,logo_url,theme_primary_color,menu_header_image_url,menu_header_image_updated_at,menu_header_focal_x,menu_header_focal_y,auto_accept_kiosk_orders,auto_accept_app_orders,auto_accept_pos_orders'
           )
           .eq('id', restaurantId)
           .maybeSingle();

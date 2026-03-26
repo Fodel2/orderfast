@@ -47,7 +47,9 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     if (!router.isReady) return;
 
     const storedId = typeof window !== 'undefined' ? localStorage.getItem(LAST_RESTAURANT_ID_KEY) : null;
-    const demo = process.env.NEXT_PUBLIC_DEMO_RESTAURANT_ID || null;
+    const demo = process.env.NODE_ENV !== 'production'
+      ? process.env.NEXT_PUBLIC_DEMO_RESTAURANT_ID || null
+      : null;
     const resolved = resolveRestaurantIdFromSources({
       query: {
         restaurant_id: qRestaurantId,
