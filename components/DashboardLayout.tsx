@@ -10,6 +10,7 @@ import {
   UserGroupIcon,
   ArrowsRightLeftIcon,
   ChartBarIcon,
+  InboxIcon,
   DocumentTextIcon,
   Cog6ToothIcon,
   ComputerDesktopIcon,
@@ -250,6 +251,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     { href: '/dashboard/menu-builder', label: 'Menu', icon: ClipboardDocumentListIcon },
     { href: '/dashboard/express-order', label: 'Express Order', icon: ClipboardDocumentListIcon },
     { href: '/dashboard/promotions', label: 'Promotions', icon: MegaphoneIcon },
+    { href: '/dashboard/messages', label: 'Inbox', icon: InboxIcon },
     {
       label: 'Till / POS',
       icon: ComputerDesktopIcon,
