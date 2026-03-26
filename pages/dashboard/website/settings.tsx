@@ -38,6 +38,13 @@ export default function WebsitePage() {
 
   const [subdomainAvailable, setSubdomainAvailable] = useState<boolean | null>(null);
   const [toastMessage, setToastMessage] = useState('');
+  const serviceHealthFields = [
+    'expected_prep_minutes',
+    'busy_prep_minutes',
+    'backlog_prep_minutes',
+    'busy_order_threshold',
+    'backlog_order_threshold',
+  ] as const;
 
   useEffect(() => {
     const load = async () => {
@@ -124,21 +131,37 @@ export default function WebsitePage() {
       setToastMessage('Subdomain is not available');
       return;
     }
-    const { error } = await supabase
+    const restaurantPayload = {
+      subdomain,
+      custom_domain: customDomain,
+      auto_accept_kiosk_orders: autoAcceptKioskOrders,
+      auto_accept_app_orders: autoAcceptAppOrders,
+      auto_accept_pos_orders: autoAcceptPosOrders,
+      expected_prep_minutes: expectedPrepMinutes,
+      busy_prep_minutes: busyPrepMinutes,
+      backlog_prep_minutes: backlogPrepMinutes,
+      busy_order_threshold: busyOrderThreshold,
+      backlog_order_threshold: backlogOrderThreshold,
+    };
+    let { error } = await supabase
       .from('restaurants')
-      .update({
+      .update(restaurantPayload)
+      .eq('id', restaurantId);
+    const missingColumn = error?.message?.match(/column ['"]?([a-z0-9_]+)['"]?/i)?.[1];
+    if (missingColumn && serviceHealthFields.includes(missingColumn as any)) {
+      const fallbackPayload = {
         subdomain,
         custom_domain: customDomain,
         auto_accept_kiosk_orders: autoAcceptKioskOrders,
         auto_accept_app_orders: autoAcceptAppOrders,
         auto_accept_pos_orders: autoAcceptPosOrders,
-        expected_prep_minutes: expectedPrepMinutes,
-        busy_prep_minutes: busyPrepMinutes,
-        backlog_prep_minutes: backlogPrepMinutes,
-        busy_order_threshold: busyOrderThreshold,
-        backlog_order_threshold: backlogOrderThreshold,
-      })
-      .eq('id', restaurantId);
+      };
+      const fallbackResult = await supabase
+        .from('restaurants')
+        .update(fallbackPayload)
+        .eq('id', restaurantId);
+      error = fallbackResult.error;
+    }
     const contactResponse = await fetch('/api/dashboard/website-contact-settings', {
       method: 'POST',
       headers: {

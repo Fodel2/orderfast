@@ -40,7 +40,10 @@ export default function ContactPage() {
       (router.query.r as string | undefined);
     return candidate || null;
   }, [router.query.id, router.query.r, router.query.restaurant_id]);
-  const rid = queryRestaurantId || restaurantId;
+  const demoRestaurantId = process.env.NEXT_PUBLIC_DEMO_RESTAURANT_ID || '';
+  const safeContextRestaurantId =
+    !queryRestaurantId && restaurantId === demoRestaurantId ? null : restaurantId;
+  const rid = queryRestaurantId || safeContextRestaurantId;
   const addressLines = useMemo(() => {
     const structured = [
       String(restaurant?.address_line_1 || '').trim(),
