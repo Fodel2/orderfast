@@ -267,6 +267,7 @@ export default function KitchenDisplayPage() {
     sessionActive: false,
     graceMinutes: 10,
   });
+  const isManuallyClosed = !unifiedAvailability.loading && unifiedAvailability.snapshot.reason === 'manual_closed';
   const mutedPreferenceKey = useMemo(
     () => (restaurantId ? `kod_sound_muted_${restaurantId}` : 'kod_sound_muted'),
     [restaurantId]
@@ -1144,14 +1145,14 @@ export default function KitchenDisplayPage() {
                     type="button"
                     onClick={toggleOpen}
                     className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] transition ${
-                      isOpen
-                        ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-100 hover:bg-emerald-500/30'
-                        : 'border-rose-400/60 bg-rose-500/20 text-rose-100 hover:bg-rose-500/30'
+                      isManuallyClosed
+                        ? 'border-rose-400/60 bg-rose-500/20 text-rose-100 hover:bg-rose-500/30'
+                        : 'border-emerald-400/60 bg-emerald-500/20 text-emerald-100 hover:bg-emerald-500/30'
                     }`}
                   >
-                    {isOpen ? 'Close Now' : 'Open Now'}
+                    {isManuallyClosed ? 'Open Now' : 'Close Now'}
                   </button>
-                  {isOpen ? (
+                  {!isManuallyClosed ? (
                     <button
                       type="button"
                       onClick={() => setShowBreakModal(true)}

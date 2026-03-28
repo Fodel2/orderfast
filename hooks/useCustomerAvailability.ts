@@ -34,7 +34,6 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
   const [overrideUntil, setOverrideUntil] = useState<string | null>(null);
   const [legacyIsOpen, setLegacyIsOpen] = useState(true);
   const [legacyBreakUntil, setLegacyBreakUntil] = useState<string | null>(null);
-  const [availabilityUpdatedAt, setAvailabilityUpdatedAt] = useState<string | null>(null);
   const [weeklyPeriods, setWeeklyPeriods] = useState<Array<OpeningPeriod & { day_of_week: number }>>([]);
   const [exceptions, setExceptions] = useState<OpeningException[]>([]);
   const [tick, setTick] = useState(Date.now());
@@ -80,7 +79,7 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
       const [restaurantRes, weeklyRes, exceptionRes] = await Promise.all([
         supabase
           .from('restaurants')
-          .select('availability_override_mode, availability_override_until, is_open, break_until, updated_at')
+          .select('availability_override_mode, availability_override_until, is_open, break_until')
           .eq('id', restaurantId)
           .maybeSingle(),
         supabase
@@ -106,7 +105,6 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
       setOverrideUntil(restaurantRes.data?.availability_override_until || null);
       setLegacyIsOpen(typeof restaurantRes.data?.is_open === 'boolean' ? restaurantRes.data.is_open : true);
       setLegacyBreakUntil(restaurantRes.data?.break_until || null);
-      setAvailabilityUpdatedAt(restaurantRes.data?.updated_at || null);
       setWeeklyPeriods((weeklyRes.data || []) as Array<OpeningPeriod & { day_of_week: number }>);
       setExceptions(
         ((exceptionRes.data || []) as any[]).map((row) => ({
@@ -136,7 +134,6 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
             availability_override_until?: string | null;
             is_open?: boolean;
             break_until?: string | null;
-            updated_at?: string | null;
           };
           setOverrideMode(
             next.availability_override_mode === 'manual_closed' || next.availability_override_mode === 'on_break'
@@ -146,10 +143,13 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
           if (typeof next.availability_override_until !== 'undefined') setOverrideUntil(next.availability_override_until || null);
           if (typeof next.is_open === 'boolean') setLegacyIsOpen(next.is_open);
           if (typeof next.break_until !== 'undefined') setLegacyBreakUntil(next.break_until || null);
-          if (typeof next.updated_at !== 'undefined') setAvailabilityUpdatedAt(next.updated_at || null);
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          void load();
+        }
+      });
 
     const scheduleRef = supabase
       .channel(`customer-availability-schedule-${restaurantId}-${channel}`)
@@ -174,7 +174,11 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
           void load();
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          void load();
+        }
+      });
 
     const scheduleRefreshTimer = window.setInterval(() => {
       void load();
@@ -196,11 +200,10 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
         overrideUntil,
         isOpen: legacyIsOpen,
         breakUntil: legacyBreakUntil,
-        availabilityUpdatedAt,
         weeklyPeriods,
         exceptions,
       }),
-    [availabilityUpdatedAt, exceptions, legacyBreakUntil, legacyIsOpen, overrideMode, overrideUntil, tick, weeklyPeriods]
+    [exceptions, legacyBreakUntil, legacyIsOpen, overrideMode, overrideUntil, tick, weeklyPeriods]
   );
 
   useEffect(() => {

@@ -23,7 +23,7 @@ export async function getServerAvailabilitySnapshot(restaurantId: string): Promi
   const [restaurantRes, weeklyRes, exceptionRes] = await Promise.all([
     supaServer
       .from('restaurants')
-      .select('availability_override_mode,availability_override_until,is_open,break_until,updated_at')
+      .select('availability_override_mode,availability_override_until,is_open,break_until')
       .eq('id', restaurantId)
       .maybeSingle(),
     supaServer
@@ -58,7 +58,6 @@ export async function getServerAvailabilitySnapshot(restaurantId: string): Promi
     overrideUntil: restaurantRes.data?.availability_override_until || null,
     isOpen: typeof restaurantRes.data?.is_open === 'boolean' ? restaurantRes.data.is_open : true,
     breakUntil: restaurantRes.data?.break_until || null,
-    availabilityUpdatedAt: restaurantRes.data?.updated_at || null,
     weeklyPeriods: (weeklyRes.data || []) as Array<OpeningPeriod & { day_of_week: number }>,
     exceptions: ((exceptionRes.data || []) as any[]).map((row) => ({
       exception_date: row.exception_date,

@@ -109,12 +109,13 @@ export default function OrdersPage() {
     startBreak,
     endBreak,
   } = useRestaurantAvailability(restaurantId);
-  const unifiedAvailability = useCustomerAvailability({
-    restaurantId,
-    channel: 'website',
-    sessionActive: false,
-    graceMinutes: 5,
-  });
+	  const unifiedAvailability = useCustomerAvailability({
+	    restaurantId,
+	    channel: 'website',
+	    sessionActive: false,
+	    graceMinutes: 5,
+	  });
+  const isManuallyClosed = !unifiedAvailability.loading && unifiedAvailability.snapshot.reason === 'manual_closed';
   const isKioskDevice = useCallback(
     () => router.pathname.startsWith('/kiosk/'),
     [router.pathname]
@@ -1108,19 +1109,19 @@ export default function OrdersPage() {
             </>
           )}
         </div>
-        {isOpen !== null && (
-          <div className="relative flex items-center space-x-2">
-            <button
-              onClick={toggleOpen}
-              className={`px-2 py-1 rounded text-white text-sm ${isOpen ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}
-            >
-              {isOpen ? 'Close Now' : 'Open Now'}
-            </button>
-            {isOpen && (
-              <button
-                onClick={() => setShowBreakModal(true)}
-                className="px-2 py-1 rounded text-white text-sm bg-blue-600 hover:bg-blue-700"
-              >
+	        {isOpen !== null && (
+	          <div className="relative flex items-center space-x-2">
+	            <button
+	              onClick={toggleOpen}
+	              className={`px-2 py-1 rounded text-white text-sm ${isManuallyClosed ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}`}
+	            >
+	              {isManuallyClosed ? 'Open Now' : 'Close Now'}
+	            </button>
+	            {!isManuallyClosed && (
+	              <button
+	                onClick={() => setShowBreakModal(true)}
+	                className="px-2 py-1 rounded text-white text-sm bg-blue-600 hover:bg-blue-700"
+	              >
                 Take a Break
               </button>
             )}
