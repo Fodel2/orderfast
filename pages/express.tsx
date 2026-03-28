@@ -237,9 +237,9 @@ export default function ExpressEntryPage() {
 
   if (!availability.loading && !availability.canStartNewSession) {
     return (
-      <div className="flex min-h-screen items-center justify-center p-6">
-        <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 text-center shadow-sm">
-          <h1 className="text-2xl font-bold text-gray-900">{availability.snapshot.primaryLabel}</h1>
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
+        <div className="w-full max-w-md rounded-3xl border border-neutral-200 bg-white/95 p-7 text-center shadow-xl backdrop-blur">
+          <h1 className="text-2xl font-semibold text-gray-900">{availability.snapshot.primaryLabel}</h1>
           <p className="mt-2 text-gray-600">
             {availability.snapshot.reason === 'on_break' ? 'Temporarily closed' : 'Express ordering is currently closed.'}
           </p>

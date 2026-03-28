@@ -58,7 +58,7 @@ export default function HomeScreen({ restaurant, onStart, fadingOut, loading, cl
   const logoShape = restaurant?.logo_shape || 'round';
   const logoFrameClass =
     logoShape === 'round' ? 'rounded-full' : logoShape === 'square' ? 'rounded-lg' : 'rounded-md';
-  const logoSizeClass = logoShape === 'rectangular' ? 'h-20 w-28' : 'h-24 w-24';
+  const logoSizeClass = logoShape === 'rectangular' ? 'h-24 w-36' : 'h-28 w-28';
 
   const backgroundImage = showSkeleton ? null : heroUrl;
 
@@ -135,9 +135,12 @@ export default function HomeScreen({ restaurant, onStart, fadingOut, loading, cl
           </div>
 
           {closedState?.active ? (
-            <div className="mt-8 w-full rounded-2xl border border-rose-300/75 bg-rose-50/90 p-4 text-left text-rose-900">
+            <div
+              className="mt-8 w-full rounded-2xl border bg-white/85 p-4 text-left text-neutral-900 shadow-lg backdrop-blur"
+              style={{ borderColor: `${primaryColor}55` }}
+            >
               <p className="text-lg font-semibold">{closedState.title}</p>
-              {closedState.detail ? <p className="mt-1 text-sm">{closedState.detail}</p> : null}
+              {closedState.detail ? <p className="mt-1 text-sm text-neutral-600">{closedState.detail}</p> : null}
             </div>
           ) : (
             <button

@@ -93,7 +93,7 @@ type LandingHeroProps = {
 export default function LandingHero({
   title,
   subtitle,
-  ctaLabel = 'Order Now',
+  ctaLabel = 'Enter',
   ctaHref = '/restaurant/menu',
   imageUrl,
   logoUrl,
@@ -133,8 +133,8 @@ export default function LandingHero({
       : 'rounded-md';
   const logoDims =
     shape === 'rectangular'
-      ? { width: 72, height: 24 }
-      : { width: 72, height: 72 };
+      ? { width: 88, height: 30 }
+      : { width: 84, height: 84 };
 
   const pick = (v: string | string[] | undefined) => {
     const raw = Array.isArray(v) ? v[0] : v;
@@ -225,11 +225,7 @@ export default function LandingHero({
               {loading ? (
                 <div className="h-10 w-32 animate-pulse rounded-full bg-white/40" />
               ) : (
-                <Link
-                  href={availability.canStartNewSession ? ctaHref : '#'}
-                  aria-label="Order Now"
-                  className={`relative ${availability.canStartNewSession ? '' : 'pointer-events-none opacity-60'}`}
-                >
+                <Link href={ctaHref} aria-label="Enter" className="relative">
                   <Button
                     className="rounded-full px-5 py-2 sm:px-6 sm:py-2.5 text-sm sm:text-base font-medium tracking-tight shadow-md hover:shadow-lg transition-all duration-150 ease-out hover:scale-[1.02] active:scale-[0.99] border-0 focus:outline-none focus:ring-2 focus:ring-white/40"
                     style={{
@@ -238,7 +234,7 @@ export default function LandingHero({
                       borderColor: 'transparent',
                     }}
                   >
-                    {availability.canStartNewSession ? ctaLabel : 'Currently Closed'}
+                    {ctaLabel}
                   </Button>
                 </Link>
               )}

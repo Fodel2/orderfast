@@ -122,7 +122,7 @@ export default function RestaurantHomePage({ initialBrand }: { initialBrand: any
       <LandingHero
           title={restaurant?.website_title || restaurant?.name || ''}
           subtitle={restaurant?.website_description ?? null}
-          ctaLabel="Order Now"
+          ctaLabel="Enter"
           ctaHref={orderHref}
           imageUrl={coverImg || undefined}
           logoUrl={restaurant?.logo_url ?? null}

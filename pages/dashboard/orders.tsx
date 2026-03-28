@@ -12,6 +12,7 @@ import { orderAlertSoundController } from '@/utils/orderAlertSoundController';
 import { formatPrice, formatShortOrderNumber, formatStatusLabel } from '@/lib/orderDisplay';
 import { getRandomOrderEmptyMessage } from '@/lib/orderEmptyState';
 import { useRestaurantAvailability } from '@/hooks/useRestaurantAvailability';
+import { useCustomerAvailability } from '@/hooks/useCustomerAvailability';
 import { requestPrintJobCreation } from '@/lib/print-jobs/request';
 
 const ACTIVE_STATUSES = [
@@ -112,6 +113,12 @@ export default function OrdersPage() {
     startBreak,
     endBreak,
   } = useRestaurantAvailability(restaurantId);
+  const liveAvailability = useCustomerAvailability({
+    restaurantId,
+    channel: 'website',
+    sessionActive: false,
+    graceMinutes: 5,
+  });
 
   const isKioskDevice = useCallback(
     () => router.pathname.startsWith('/kiosk/'),
@@ -1008,17 +1015,10 @@ export default function OrdersPage() {
   };
 
 
-  const isOpenNow = () => {
-    if (!todayHours || todayHours.closed || !todayHours.open_time || !todayHours.close_time) return false;
-    const nowDate = new Date();
-    const [oh, om] = todayHours.open_time.split(':').map(Number);
-    const [ch, cm] = todayHours.close_time.split(':').map(Number);
-    const openDate = new Date();
-    openDate.setHours(oh, om, 0, 0);
-    const closeDate = new Date();
-    closeDate.setHours(ch, cm, 0, 0);
-    return nowDate >= openDate && nowDate <= closeDate;
-  };
+  const isScheduledClosed =
+    liveAvailability.snapshot.reason === 'outside_hours' || liveAvailability.snapshot.reason === 'closed_exception';
+  const isTemporarilyClosed = liveAvailability.snapshot.reason === 'on_break';
+  const isManuallyClosed = liveAvailability.snapshot.reason === 'manual_closed';
 
 
   const handleOpenTableSession = useCallback(
@@ -1151,25 +1151,39 @@ export default function OrdersPage() {
                   {formatTime(todayHours.close_time)}
                 </span>
                 <span
-                  className={`text-xs px-2 py-1 rounded-full font-semibold ${isOpenNow() ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}
+                  className={`text-xs px-2 py-1 rounded-full font-semibold ${
+                    liveAvailability.snapshot.isOpenNow ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'
+                  }`}
                 >
-                  {isOpenNow() ? 'Open Now' : 'Closed Now'}
+                  {liveAvailability.snapshot.primaryLabel}
                 </span>
               </>
             )
           ) : (
             <span>Loading hours...</span>
           )}
+          {liveAvailability.snapshot.secondaryLabel ? (
+            <span className="text-xs text-gray-500">{liveAvailability.snapshot.secondaryLabel}</span>
+          ) : null}
         </div>
         {isOpen !== null && (
           <div className="relative flex items-center space-x-2">
             <button
               onClick={toggleOpen}
-              className={`px-2 py-1 rounded text-white text-sm ${isOpen ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}
+              disabled={isScheduledClosed || isTemporarilyClosed}
+              className={`px-2 py-1 rounded text-white text-sm disabled:cursor-not-allowed disabled:opacity-60 ${
+                isManuallyClosed ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-600 hover:bg-red-700'
+              }`}
             >
-              {isOpen ? 'Close Now' : 'Open Now'}
+              {isScheduledClosed
+                ? 'Scheduled Closed'
+                : isTemporarilyClosed
+                ? 'On Break'
+                : isManuallyClosed
+                ? 'Open Now'
+                : 'Close Now'}
             </button>
-            {isOpen && (
+            {!isScheduledClosed && !isTemporarilyClosed && !isManuallyClosed && (
               <button
                 onClick={() => setShowBreakModal(true)}
                 className="px-2 py-1 rounded text-white text-sm bg-blue-600 hover:bg-blue-700"
