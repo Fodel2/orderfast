@@ -12,7 +12,6 @@ import { orderAlertSoundController } from '@/utils/orderAlertSoundController';
 import { formatPrice, formatShortOrderNumber, formatStatusLabel } from '@/lib/orderDisplay';
 import { getRandomOrderEmptyMessage } from '@/lib/orderEmptyState';
 import { useRestaurantAvailability } from '@/hooks/useRestaurantAvailability';
-import { useCustomerAvailability } from '@/hooks/useCustomerAvailability';
 import { requestPrintJobCreation } from '@/lib/print-jobs/request';
 
 const ACTIVE_STATUSES = [
@@ -113,13 +112,6 @@ export default function OrdersPage() {
     startBreak,
     endBreak,
   } = useRestaurantAvailability(restaurantId);
-  const liveAvailability = useCustomerAvailability({
-    restaurantId,
-    channel: 'website',
-    sessionActive: false,
-    graceMinutes: 5,
-  });
-
   const isKioskDevice = useCallback(
     () => router.pathname.startsWith('/kiosk/'),
     [router.pathname]
@@ -1146,19 +1138,16 @@ export default function OrdersPage() {
                 </span>
                 <span
                   className={`text-xs px-2 py-1 rounded-full font-semibold ${
-                    liveAvailability.snapshot.isOpenNow ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'
+                    isOpen ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'
                   }`}
                 >
-                  {liveAvailability.snapshot.primaryLabel}
+                  {breakUntil && new Date(breakUntil).getTime() > now ? 'On Break' : isOpen ? 'Open' : 'Closed'}
                 </span>
               </>
             )
           ) : (
             <span>Loading hours...</span>
           )}
-          {liveAvailability.snapshot.secondaryLabel ? (
-            <span className="text-xs text-gray-500">{liveAvailability.snapshot.secondaryLabel}</span>
-          ) : null}
         </div>
         {isOpen !== null && (
           <div className="relative flex items-center space-x-2">

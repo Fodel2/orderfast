@@ -24,7 +24,6 @@ import { supabase } from '@/lib/supabaseClient';
 import { getTomorrowLondonDate } from '@/lib/stockDate';
 import { getEffectiveStockDisplayStatus } from '@/lib/stockAvailability';
 import { useRestaurantAvailability } from '@/hooks/useRestaurantAvailability';
-import { useCustomerAvailability } from '@/hooks/useCustomerAvailability';
 import { requestPrintJobCreation } from '@/lib/print-jobs/request';
 
 
@@ -260,13 +259,6 @@ export default function KitchenDisplayPage() {
     startBreak,
     endBreak,
   } = useRestaurantAvailability(restaurantId);
-  const liveAvailability = useCustomerAvailability({
-    restaurantId,
-    channel: 'kiosk',
-    sessionActive: false,
-    graceMinutes: 10,
-  });
-
   const mutedPreferenceKey = useMemo(
     () => (restaurantId ? `kod_sound_muted_${restaurantId}` : 'kod_sound_muted'),
     [restaurantId]

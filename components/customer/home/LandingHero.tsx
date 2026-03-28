@@ -102,7 +102,6 @@ export default function LandingHero({
   loading = false,
 }: LandingHeroProps) {
   const router = useRouter();
-  const [open, setOpen] = useState<boolean | null>(typeof isOpen === 'boolean' ? isOpen : null);
   const [primary, setPrimary] = useState<string | undefined>(undefined);
   const [secondary, setSecondary] = useState<string | undefined>(undefined);
 
@@ -154,12 +153,7 @@ export default function LandingHero({
     sessionActive: false,
     graceMinutes: 5,
   });
-
-  useEffect(() => {
-    if (!availability.loading) {
-      setOpen(availability.snapshot.isOpenNow);
-    }
-  }, [availability.loading, availability.snapshot.isOpenNow]);
+  const open = availability.loading ? (typeof isOpen === 'boolean' ? isOpen : null) : availability.snapshot.isOpenNow;
 
   return (
     <section className="relative w-full min-h-screen overflow-hidden">

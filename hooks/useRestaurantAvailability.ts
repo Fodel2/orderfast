@@ -68,21 +68,6 @@ export function useRestaurantAvailability(restaurantId?: string | null) {
   }, [breakUntil, endBreak, isOpen, restaurantId]);
 
   useEffect(() => {
-    if (!breakUntil) return;
-    if (new Date(breakUntil).getTime() <= Date.now()) {
-      void endBreak();
-      return;
-    }
-    const timer = setInterval(() => {
-      if (breakUntil && new Date(breakUntil).getTime() <= Date.now()) {
-        void endBreak();
-      }
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [breakUntil, endBreak]);
-
-  
-  useEffect(() => {
     if (!restaurantId) return;
     const channel = supabase
       .channel('restaurant-' + restaurantId)

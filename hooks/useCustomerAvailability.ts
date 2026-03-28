@@ -45,10 +45,15 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
     return `orderfast-grace-${channel}-${restaurantId}`;
   }, [channel, restaurantId]);
 
+  const hasActiveBreak = Boolean(breakUntil && new Date(breakUntil).getTime() > Date.now());
+  const hasActiveGrace = Boolean(graceEndAt && graceEndAt > Date.now());
+  const needsSecondResolution = hasActiveBreak || hasActiveGrace;
+
   useEffect(() => {
-    const timer = setInterval(() => setTick(Date.now()), 1000);
+    const intervalMs = needsSecondResolution ? 1000 : 15000;
+    const timer = setInterval(() => setTick(Date.now()), intervalMs);
     return () => clearInterval(timer);
-  }, []);
+  }, [needsSecondResolution]);
 
   useEffect(() => {
     if (!restaurantId) {
