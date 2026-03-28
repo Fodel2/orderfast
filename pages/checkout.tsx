@@ -33,6 +33,7 @@ import {
   validatePromotion,
 } from '@/lib/customerPromotions';
 import { requestPrintJobCreation } from '@/lib/print-jobs/request';
+import { useCustomerAvailability } from '@/hooks/useCustomerAvailability';
 
 export default function CheckoutPage() {
   const { cart, subtotal, clearCart } = useCart();
@@ -67,6 +68,12 @@ export default function CheckoutPage() {
   const [voucherError, setVoucherError] = useState('');
   const [activePromotionTerms, setActivePromotionTerms] = useState<PromotionTermsData | null>(null);
   const [showTermsModal, setShowTermsModal] = useState(false);
+  const availability = useCustomerAvailability({
+    restaurantId: cart.restaurant_id || null,
+    channel: 'website',
+    sessionActive: true,
+    graceMinutes: 5,
+  });
 
   useEffect(() => {
     if (!cart.restaurant_id) return;
@@ -359,6 +366,7 @@ export default function CheckoutPage() {
 
   const placeOrder = async () => {
     if (!cart.restaurant_id || !orderType || !customerId) return;
+    if (!availability.canSubmitActiveSession) return;
 
     const isDev = process.env.NODE_ENV !== 'production';
     let voucherRedemptionPayload: {
@@ -594,6 +602,18 @@ export default function CheckoutPage() {
   return (
     <div className="min-h-screen flex flex-col p-4">
       <h1 className="text-2xl font-bold mb-4 text-center">Checkout</h1>
+      {availability.graceActive ? (
+        <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          <p className="font-semibold">{availability.graceMessage}</p>
+          <p className="mt-1">You can finish this checkout for {availability.countdownLabel}.</p>
+        </div>
+      ) : null}
+      {!availability.loading && !availability.canSubmitActiveSession ? (
+        <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+          <p className="font-semibold">{availability.snapshot.primaryLabel}</p>
+          {availability.snapshot.secondaryLabel ? <p className="mt-1">{availability.snapshot.secondaryLabel}</p> : null}
+        </div>
+      ) : null}
       {promoErrorBanner ? (
         <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{promoErrorBanner}</div>
       ) : null}
@@ -831,7 +851,7 @@ export default function CheckoutPage() {
           <button
             type="button"
             onClick={placeOrder}
-            disabled={placing}
+            disabled={placing || !availability.canSubmitActiveSession}
             className="w-full py-3 bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50"
           >
             {placing ? 'Placing...' : 'Place Order'}

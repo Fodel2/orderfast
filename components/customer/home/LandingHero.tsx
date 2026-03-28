@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { supabase } from '@/utils/supabaseClient';
 import Button from '../../ui/Button';
 import Skeleton from '../../ui/Skeleton';
+import { useCustomerAvailability } from '@/hooks/useCustomerAvailability';
 
 function readableText(color?: string | null) {
   if (!color) return '#111827';
@@ -148,24 +148,18 @@ export default function LandingHero({
     pick(router.query.id as string | string[] | undefined) ||
     pick(router.query.r as string | string[] | undefined);
 
+  const availability = useCustomerAvailability({
+    restaurantId: routeRestaurantId || null,
+    channel: 'website',
+    sessionActive: false,
+    graceMinutes: 5,
+  });
+
   useEffect(() => {
-    if (open !== null || !routeRestaurantId) return;
-    let active = true;
-
-    supabase
-      .from('restaurants')
-      .select('is_open')
-      .eq('id', routeRestaurantId)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!active) return;
-        if (typeof data?.is_open === 'boolean') setOpen(data.is_open);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [open, routeRestaurantId]);
+    if (!availability.loading) {
+      setOpen(availability.snapshot.isOpenNow);
+    }
+  }, [availability.loading, availability.snapshot.isOpenNow]);
 
   return (
     <section className="relative w-full min-h-screen overflow-hidden">
@@ -222,13 +216,20 @@ export default function LandingHero({
                     className="inline-block w-2 h-2 rounded-full"
                     style={{ backgroundColor: open ? '#22c55e' : '#ef4444' }}
                   />
-                  {open ? 'Open' : 'Closed'}
+                  {availability.loading ? (open ? 'Open' : 'Closed') : availability.snapshot.primaryLabel}
                 </span>
               )}
+              {!loading && !availability.loading && availability.snapshot.secondaryLabel ? (
+                <p className="text-white/90 text-xs sm:text-sm leading-relaxed">{availability.snapshot.secondaryLabel}</p>
+              ) : null}
               {loading ? (
                 <div className="h-10 w-32 animate-pulse rounded-full bg-white/40" />
               ) : (
-                <Link href={ctaHref} aria-label="Order Now" className="relative">
+                <Link
+                  href={availability.canStartNewSession ? ctaHref : '#'}
+                  aria-label="Order Now"
+                  className={`relative ${availability.canStartNewSession ? '' : 'pointer-events-none opacity-60'}`}
+                >
                   <Button
                     className="rounded-full px-5 py-2 sm:px-6 sm:py-2.5 text-sm sm:text-base font-medium tracking-tight shadow-md hover:shadow-lg transition-all duration-150 ease-out hover:scale-[1.02] active:scale-[0.99] border-0 focus:outline-none focus:ring-2 focus:ring-white/40"
                     style={{
@@ -237,7 +238,7 @@ export default function LandingHero({
                       borderColor: 'transparent',
                     }}
                   >
-                    {ctaLabel}
+                    {availability.canStartNewSession ? ctaLabel : 'Currently Closed'}
                   </Button>
                 </Link>
               )}

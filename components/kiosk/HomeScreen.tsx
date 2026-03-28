@@ -25,6 +25,11 @@ interface HomeScreenProps {
   onStart: () => void;
   fadingOut?: boolean;
   loading?: boolean;
+  closedState?: {
+    active: boolean;
+    title: string;
+    detail?: string | null;
+  };
 }
 
 function formatImageUrl(url?: string | null, updatedAt?: string | null) {
@@ -35,7 +40,7 @@ function formatImageUrl(url?: string | null, updatedAt?: string | null) {
   return `${normalized}?v=${ts}`;
 }
 
-export default function HomeScreen({ restaurant, onStart, fadingOut, loading }: HomeScreenProps) {
+export default function HomeScreen({ restaurant, onStart, fadingOut, loading, closedState }: HomeScreenProps) {
   const showSkeleton = Boolean(loading);
   const kioskHero = useMemo(
     () => formatImageUrl(restaurant?.kiosk_hero_image_url, restaurant?.kiosk_hero_image_updated_at),
@@ -129,17 +134,24 @@ export default function HomeScreen({ restaurant, onStart, fadingOut, loading }: 
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onStart}
-            className="mt-8 w-full max-w-[280px] rounded-full px-8 text-lg font-semibold text-white shadow-lg shadow-neutral-400 transition focus-visible:outline-none"
-            style={{
-              backgroundColor: primaryColor,
-              minHeight: '64px',
-            }}
-          >
-            Tap to Order
-          </button>
+          {closedState?.active ? (
+            <div className="mt-8 w-full rounded-2xl border border-rose-300/75 bg-rose-50/90 p-4 text-left text-rose-900">
+              <p className="text-lg font-semibold">{closedState.title}</p>
+              {closedState.detail ? <p className="mt-1 text-sm">{closedState.detail}</p> : null}
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={onStart}
+              className="mt-8 w-full max-w-[280px] rounded-full px-8 text-lg font-semibold text-white shadow-lg shadow-neutral-400 transition focus-visible:outline-none"
+              style={{
+                backgroundColor: primaryColor,
+                minHeight: '64px',
+              }}
+            >
+              Tap to Order
+            </button>
+          )}
         </div>
       </div>
 

@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { setExpressSession } from '@/utils/express/session';
 import { markHomeSeen } from '@/utils/kiosk/session';
 import { normalizeSource } from '@/lib/media/placeholders';
+import { useCustomerAvailability } from '@/hooks/useCustomerAvailability';
 
 type ExpressSettings = {
   enabled: boolean;
@@ -90,6 +91,12 @@ export default function ExpressEntryPage() {
   const [settings, setSettings] = useState<ExpressSettings | null>(null);
   const [restaurant, setRestaurant] = useState<RestaurantBrand | null>(null);
   const [entryError, setEntryError] = useState('');
+  const availability = useCustomerAvailability({
+    restaurantId: restaurantId || null,
+    channel: 'express',
+    sessionActive: false,
+    graceMinutes: 10,
+  });
 
   const primaryColor = restaurant?.brand_primary_color || restaurant?.brand_secondary_color || '#111827';
   const heroImage = useMemo(() => {
@@ -223,6 +230,22 @@ export default function ExpressEntryPage() {
         <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 text-center shadow-sm">
           <h1 className="text-2xl font-bold text-gray-900">Express Order is unavailable</h1>
           <p className="mt-2 text-gray-600">This restaurant hasn’t enabled Express Order yet.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!availability.loading && !availability.canStartNewSession) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-6">
+        <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 text-center shadow-sm">
+          <h1 className="text-2xl font-bold text-gray-900">{availability.snapshot.primaryLabel}</h1>
+          <p className="mt-2 text-gray-600">
+            {availability.snapshot.reason === 'on_break' ? 'Temporarily closed' : 'Express ordering is currently closed.'}
+          </p>
+          {availability.snapshot.secondaryLabel ? (
+            <p className="mt-2 text-sm font-medium text-gray-700">{availability.snapshot.secondaryLabel}</p>
+          ) : null}
         </div>
       </div>
     );
