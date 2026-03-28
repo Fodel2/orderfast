@@ -14,7 +14,6 @@ import { ChefHat } from 'lucide-react';
 import FullscreenAppLayout from '@/components/layouts/FullscreenAppLayout';
 import Toast from '@/components/Toast';
 import BreakModal from '@/components/BreakModal';
-import BreakCountdown from '@/components/BreakCountdown';
 import AvailabilityControls from '@/components/availability/AvailabilityControls';
 import OrderRejectButton from '@/components/OrderRejectButton';
 import RejectOrderModal, { RejectableOrder } from '@/components/RejectOrderModal';
@@ -135,6 +134,53 @@ const getOrderTotalPrice = (order: Order) => {
   }, 0);
 };
 
+function ElapsedTime({ createdAt }: { createdAt: string }) {
+  const [tick, setTick] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setTick(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const createdTime = new Date(createdAt).getTime();
+  if (Number.isNaN(createdTime)) return <>00m 00s</>;
+  const totalSeconds = Math.max(0, Math.floor((tick - createdTime) / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return <>{`${hours}h ${minutes.toString().padStart(2, '0')}m`}</>;
+  }
+  return <>{`${minutes}m ${seconds.toString().padStart(2, '0')}s`}</>;
+}
+
+function PausedStateCard({ breakUntil }: { breakUntil: string | null }) {
+  const [tick, setTick] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!breakUntil) return;
+    const timer = window.setInterval(() => setTick(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [breakUntil]);
+
+  const resumeAt = breakUntil ? new Date(breakUntil) : null;
+  const remainingMs = resumeAt ? Math.max(0, resumeAt.getTime() - tick) : 0;
+  const mins = Math.floor(remainingMs / 60000);
+  const secs = Math.floor((remainingMs % 60000) / 1000);
+
+  return (
+    <div className="flex max-w-md flex-col items-center gap-3 rounded-3xl border border-rose-400/40 bg-rose-500/10 p-8 shadow-lg shadow-black/40">
+      <p className="text-xl font-semibold text-rose-100">Orders paused</p>
+      <p className="text-3xl font-bold text-white">
+        {breakUntil ? `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}` : 'Until reopened'}
+      </p>
+      <p className="text-sm font-medium text-rose-100/90">
+        {resumeAt ? `Resumes at ${resumeAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Resume orders when ready.'}
+      </p>
+    </div>
+  );
+}
+
 const splitNotesLines = (notes: string, lineLength: number) => {
   if (!notes) return [];
   const lines = notes
@@ -249,7 +295,6 @@ export default function KitchenDisplayPage() {
   const [stockInlineError, setStockInlineError] = useState('');
   const [updatingRowId, setUpdatingRowId] = useState<string | null>(null);
   const [isOnline, setIsOnline] = useState(true);
-  const [now, setNow] = useState(Date.now());
   const [pageIndex, setPageIndex] = useState(0);
   const [columns, setColumns] = useState(1);
   const rows = 1;
@@ -272,7 +317,6 @@ export default function KitchenDisplayPage() {
     setShowBreakModal,
     toggleOpen,
     startBreak,
-    endBreak,
     isConfirmingAction,
   } = useRestaurantAvailability(restaurantId);
   const unifiedAvailability = useCustomerAvailability({
@@ -649,15 +693,6 @@ export default function KitchenDisplayPage() {
   }, [refreshCurrentView]);
 
   useEffect(() => {
-    const interval = window.setInterval(() => {
-      setNow(Date.now());
-    }, 1000);
-    return () => {
-      window.clearInterval(interval);
-    };
-  }, []);
-
-  useEffect(() => {
     if (typeof window === 'undefined') return;
     const html = document.documentElement;
     const body = document.body;
@@ -785,19 +820,6 @@ export default function KitchenDisplayPage() {
     }
     void ensureAudioContext();
   }, [ensureAudioContext, soundEnabled]);
-
-  const formatElapsed = useCallback((createdAt: string) => {
-    const createdTime = new Date(createdAt).getTime();
-    if (Number.isNaN(createdTime)) return '--';
-    const totalSeconds = Math.max(0, Math.floor((now - createdTime) / 1000));
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-    if (hours > 0) {
-      return `${hours}h ${minutes.toString().padStart(2, '0')}m`;
-    }
-    return `${minutes}m ${seconds.toString().padStart(2, '0')}s`;
-  }, [now]);
 
   const startCooldown = useCallback((key: string) => {
     setCooldowns((prev) => ({ ...prev, [key]: true }));
@@ -1145,14 +1167,6 @@ export default function KitchenDisplayPage() {
                   Enable Sound
                 </button>
               )}
-              {breakUntil && new Date(breakUntil).getTime() > now ? (
-                <BreakCountdown
-                  breakUntil={breakUntil}
-                  onEnd={endBreak}
-                  variant="kod"
-                  className="mb-0"
-                />
-              ) : null}
               <div className="min-w-[360px]">
                 <AvailabilityControls
                   availabilityLoading={unifiedAvailability.loading}
@@ -1197,10 +1211,14 @@ export default function KitchenDisplayPage() {
           <div className="flex w-full flex-1 min-h-0 flex-col space-y-4 overflow-hidden">
             {visibleOrders.length === 0 && !isFetching ? (
               <div className="flex flex-1 items-center justify-center text-center">
-                <div className="flex max-w-md flex-col items-center gap-4 rounded-3xl border border-white/10 bg-neutral-900/80 p-8 shadow-lg shadow-black/40">
-                  <ChefHat className="h-16 w-16 text-neutral-600" />
-                  <p className="text-sm text-neutral-200">{emptyMessage}</p>
-                </div>
+                {overrideMode === 'manual_closed' || overrideMode === 'on_break' ? (
+                  <PausedStateCard breakUntil={breakUntil} />
+                ) : (
+                  <div className="flex max-w-md flex-col items-center gap-4 rounded-3xl border border-white/10 bg-neutral-900/80 p-8 shadow-lg shadow-black/40">
+                    <ChefHat className="h-16 w-16 text-neutral-600" />
+                    <p className="text-sm text-neutral-200">{emptyMessage}</p>
+                  </div>
+                )}
               </div>
             ) : null}
             <div
@@ -1244,7 +1262,7 @@ export default function KitchenDisplayPage() {
                             {segment.order.order_type}
                           </p>
                           <p className={`text-sm font-semibold ${getSecondaryTextClass(segment.order.id)}`}>
-                            {formatElapsed(segment.order.created_at)}
+                            <ElapsedTime createdAt={segment.order.created_at} />
                           </p>
                           <p
                             className={`text-xl font-semibold ${getPrimaryTextClass(

@@ -159,21 +159,21 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
         'postgres_changes',
         { event: '*', schema: 'public', table: 'opening_hours_weekly_periods', filter: `restaurant_id=eq.${restaurantId}` },
         () => {
-          void load();
+          void load({ silent: true });
         }
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'opening_hours_exceptions', filter: `restaurant_id=eq.${restaurantId}` },
         () => {
-          void load();
+          void load({ silent: true });
         }
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'opening_hours_exception_periods' },
         () => {
-          void load();
+          void load({ silent: true });
         }
       )
       .subscribe((status) => {
