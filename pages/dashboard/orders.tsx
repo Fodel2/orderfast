@@ -12,6 +12,7 @@ import { orderAlertSoundController } from '@/utils/orderAlertSoundController';
 import { formatPrice, formatShortOrderNumber, formatStatusLabel } from '@/lib/orderDisplay';
 import { getRandomOrderEmptyMessage } from '@/lib/orderEmptyState';
 import { useRestaurantAvailability } from '@/hooks/useRestaurantAvailability';
+import { useCustomerAvailability } from '@/hooks/useCustomerAvailability';
 import { requestPrintJobCreation } from '@/lib/print-jobs/request';
 
 const ACTIVE_STATUSES = [
@@ -85,10 +86,6 @@ export default function OrdersPage() {
   const [now, setNow] = useState(Date.now());
   const [restaurantId, setRestaurantId] = useState<string | null>(null);
   const [outOfStockCount, setOutOfStockCount] = useState(0);
-  const [todayHours, setTodayHours] = useState<
-    | { open_time: string | null; close_time: string | null; closed: boolean }
-    | null
-  >(null);
   const [toastMessage, setToastMessage] = useState('');
   const [openTableSessions, setOpenTableSessions] = useState<TableSessionSummary[]>([]);
   const [selectedTableSession, setSelectedTableSession] = useState<TableSessionSummary | null>(null);
@@ -112,6 +109,13 @@ export default function OrdersPage() {
     startBreak,
     endBreak,
   } = useRestaurantAvailability(restaurantId);
+	  const unifiedAvailability = useCustomerAvailability({
+	    restaurantId,
+	    channel: 'website',
+	    sessionActive: false,
+	    graceMinutes: 5,
+	  });
+  const isManuallyClosed = !unifiedAvailability.loading && unifiedAvailability.snapshot.reason === 'manual_closed';
   const isKioskDevice = useCallback(
     () => router.pathname.startsWith('/kiosk/'),
     [router.pathname]
@@ -481,46 +485,6 @@ export default function OrdersPage() {
       orderAlertSoundController.stop('Orders');
     };
   }, []);
-
-  useEffect(() => {
-    if (!restaurantId || !isOrdersPage) return;
-
-    const loadHours = async () => {
-      const today = new Date().getDay();
-      const { data } = await supabase
-        .from('opening_hours')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .eq('day_of_week', today)
-        .maybeSingle();
-      if (data) {
-        setTodayHours({
-          open_time: data.open_time,
-          close_time: data.close_time,
-          closed: data.is_closed,
-        });
-      }
-    };
-
-    loadHours();
-
-    const channel = supabase
-      .channel('hours-' + restaurantId)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'opening_hours',
-          filter: `restaurant_id=eq.${restaurantId}`,
-        },
-        () => loadHours()
-      )
-      .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [restaurantId]);
 
   useEffect(() => {
     if (!restaurantId || !isOrdersPage) return;
@@ -1127,41 +1091,37 @@ export default function OrdersPage() {
       )}
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center space-x-2">
-          {todayHours ? (
-            todayHours.closed ? (
-              <span>Closed Today</span>
-            ) : (
-              <>
-                <span>
-                  Open Today: {formatTime(todayHours.open_time)} –{' '}
-                  {formatTime(todayHours.close_time)}
-                </span>
-                <span
-                  className={`text-xs px-2 py-1 rounded-full font-semibold ${
-                    isOpen ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'
-                  }`}
-                >
-                  {breakUntil && new Date(breakUntil).getTime() > now ? 'On Break' : isOpen ? 'Open' : 'Closed'}
-                </span>
-              </>
-            )
+          {unifiedAvailability.loading ? (
+            <span>Checking availability…</span>
           ) : (
-            <span>Loading hours...</span>
+            <>
+              <span>{unifiedAvailability.snapshot.primaryLabel}</span>
+              {unifiedAvailability.snapshot.secondaryLabel ? (
+                <span className="text-sm text-gray-600">{unifiedAvailability.snapshot.secondaryLabel}</span>
+              ) : null}
+              <span
+                className={`text-xs px-2 py-1 rounded-full font-semibold ${
+                  unifiedAvailability.snapshot.isOpenNow ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'
+                }`}
+              >
+                {unifiedAvailability.snapshot.isOpenNow ? 'Open' : 'Closed'}
+              </span>
+            </>
           )}
         </div>
-        {isOpen !== null && (
-          <div className="relative flex items-center space-x-2">
-            <button
-              onClick={toggleOpen}
-              className={`px-2 py-1 rounded text-white text-sm ${isOpen ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}
-            >
-              {isOpen ? 'Close Now' : 'Open Now'}
-            </button>
-            {isOpen && (
-              <button
-                onClick={() => setShowBreakModal(true)}
-                className="px-2 py-1 rounded text-white text-sm bg-blue-600 hover:bg-blue-700"
-              >
+	        {isOpen !== null && (
+	          <div className="relative flex items-center space-x-2">
+	            <button
+	              onClick={toggleOpen}
+	              className={`px-2 py-1 rounded text-white text-sm ${isManuallyClosed ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}`}
+	            >
+	              {isManuallyClosed ? 'Open Now' : 'Close Now'}
+	            </button>
+	            {!isManuallyClosed && (
+	              <button
+	                onClick={() => setShowBreakModal(true)}
+	                className="px-2 py-1 rounded text-white text-sm bg-blue-600 hover:bg-blue-700"
+	              >
                 Take a Break
               </button>
             )}

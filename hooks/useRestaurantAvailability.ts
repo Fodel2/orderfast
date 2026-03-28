@@ -4,33 +4,61 @@ import { supabase } from '@/lib/supabaseClient';
 export function useRestaurantAvailability(restaurantId?: string | null) {
   const [isOpen, setIsOpen] = useState<boolean | null>(null);
   const [breakUntil, setBreakUntil] = useState<string | null>(null);
+  const [overrideMode, setOverrideMode] = useState<'none' | 'manual_closed' | 'on_break'>('none');
+  const [overrideUntil, setOverrideUntil] = useState<string | null>(null);
   const [showBreakModal, setShowBreakModal] = useState(false);
+
+  const applyRow = useCallback(
+    (row: {
+      availability_override_mode?: string | null;
+      availability_override_until?: string | null;
+      is_open?: boolean | null;
+      break_until?: string | null;
+    }) => {
+      const mode =
+        row.availability_override_mode === 'manual_closed' || row.availability_override_mode === 'on_break'
+          ? row.availability_override_mode
+          : 'none';
+      const until = row.availability_override_until ?? row.break_until ?? null;
+      setOverrideMode(mode);
+      setOverrideUntil(until);
+      setIsOpen(mode !== 'manual_closed');
+      setBreakUntil(until);
+    },
+    []
+  );
 
   useEffect(() => {
     if (!restaurantId) return;
     const load = async () => {
       const { data, error } = await supabase
         .from('restaurants')
-        .select('is_open, break_until')
+        .select('availability_override_mode, availability_override_until, is_open, break_until')
         .eq('id', restaurantId)
         .single();
       if (!error && data) {
-        setIsOpen(data.is_open);
-        setBreakUntil(data.break_until);
+        applyRow(data);
       }
     };
     load();
-  }, [restaurantId]);
+  }, [applyRow, restaurantId]);
 
   const endBreak = useCallback(async () => {
     if (!restaurantId) return;
     const { error } = await supabase
       .from('restaurants')
-      .update({ is_open: true, break_until: null })
+      .update({
+        availability_override_mode: 'none',
+        availability_override_until: null,
+        is_open: true,
+        break_until: null,
+      })
       .eq('id', restaurantId);
     if (!error) {
       setIsOpen(true);
       setBreakUntil(null);
+      setOverrideMode('none');
+      setOverrideUntil(null);
     }
   }, [restaurantId]);
 
@@ -40,11 +68,18 @@ export function useRestaurantAvailability(restaurantId?: string | null) {
       const until = new Date(Date.now() + mins * 60000).toISOString();
       const { error } = await supabase
         .from('restaurants')
-        .update({ is_open: true, break_until: until })
+        .update({
+          availability_override_mode: 'on_break',
+          availability_override_until: until,
+          is_open: true,
+          break_until: until,
+        })
         .eq('id', restaurantId);
       if (!error) {
         setIsOpen(true);
         setBreakUntil(until);
+        setOverrideMode('on_break');
+        setOverrideUntil(until);
       }
     },
     [restaurantId]
@@ -52,20 +87,32 @@ export function useRestaurantAvailability(restaurantId?: string | null) {
 
   const toggleOpen = useCallback(async () => {
     if (!restaurantId || isOpen === null) return;
-    if (!isOpen && breakUntil && new Date(breakUntil).getTime() > Date.now()) {
-      await endBreak();
-      return;
-    }
-    const newState = !isOpen;
+    const manuallyClosed = overrideMode === 'manual_closed';
     const { error } = await supabase
       .from('restaurants')
-      .update({ is_open: newState, break_until: null })
+      .update(
+        manuallyClosed
+          ? {
+              availability_override_mode: 'none',
+              availability_override_until: null,
+              is_open: true,
+              break_until: null,
+            }
+          : {
+              availability_override_mode: 'manual_closed',
+              availability_override_until: null,
+              is_open: false,
+              break_until: null,
+            }
+      )
       .eq('id', restaurantId);
     if (!error) {
-      setIsOpen(newState);
+      setIsOpen(manuallyClosed);
       setBreakUntil(null);
+      setOverrideMode(manuallyClosed ? 'none' : 'manual_closed');
+      setOverrideUntil(null);
     }
-  }, [breakUntil, endBreak, isOpen, restaurantId]);
+  }, [isOpen, overrideMode, restaurantId]);
 
   useEffect(() => {
     if (!restaurantId) return;
@@ -80,13 +127,13 @@ export function useRestaurantAvailability(restaurantId?: string | null) {
           filter: `id=eq.${restaurantId}`,
         },
         (payload) => {
-          const newRow = payload.new as { is_open?: boolean | null; break_until?: string | null };
-          if (typeof newRow.is_open === 'boolean') {
-            setIsOpen(newRow.is_open);
-          }
-          if (typeof newRow.break_until !== 'undefined') {
-            setBreakUntil(newRow.break_until ?? null);
-          }
+          const newRow = payload.new as {
+            availability_override_mode?: string | null;
+            availability_override_until?: string | null;
+            is_open?: boolean | null;
+            break_until?: string | null;
+          };
+          applyRow(newRow);
         }
       )
       .subscribe();
@@ -94,11 +141,13 @@ export function useRestaurantAvailability(restaurantId?: string | null) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [restaurantId]);
+  }, [applyRow, restaurantId]);
 
   return {
     isOpen,
     breakUntil,
+    overrideMode,
+    overrideUntil,
     showBreakModal,
     setShowBreakModal,
     toggleOpen,
