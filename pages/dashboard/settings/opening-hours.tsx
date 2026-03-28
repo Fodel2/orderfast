@@ -791,6 +791,7 @@ export default function DashboardSettingsOpeningHoursPage() {
             <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
               Weekly hours define your normal schedule. If a special day exists for a date, that override is used instead.
               Manual availability controls such as is_open and break_until are managed elsewhere and are not changed here.
+              Customer apps block new orders immediately after close, while customers already ordering get a short grace period to finish checkout.
             </div>
           </section>
         )}

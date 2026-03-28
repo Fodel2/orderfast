@@ -16,6 +16,7 @@ import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { useKeyboardViewport } from '@/hooks/useKeyboardViewport';
 import { getExpressSession, patchExpressSession } from '@/utils/express/session';
 import { requestPrintJobCreation } from '@/lib/print-jobs/request';
+import { useCustomerAvailability } from '@/hooks/useCustomerAvailability';
 
 type ExpressCheckoutSettings = {
   enable_table_numbers: boolean;
@@ -64,14 +65,13 @@ export default function KioskCartPage() {
 function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   const router = useRouter();
   const { cart, subtotal, clearCart } = useCart();
-  const { resetKioskToStart, registerActivity } = useKioskSession();
+  const { resetKioskToStart, registerActivity, sessionActive } = useKioskSession();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [restaurantLoading, setRestaurantLoading] = useState(true);
   const currencyCode = restaurant?.currency_code || undefined;
   const [placingOrder, setPlacingOrder] = useState(false);
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
-  const placeOrderDisabled = cartCount === 0 || placingOrder;
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [confirmStep, setConfirmStep] = useState<1 | 2>(1);
   const [confirmMessage, setConfirmMessage] = useState('');
@@ -85,6 +85,13 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   const [expressMode, setExpressMode] = useState<'takeaway' | 'dine_in' | null>(null);
   const [expressCheckoutSettings, setExpressCheckoutSettings] = useState<ExpressCheckoutSettings | null>(null);
   const [enabledTableNumbers, setEnabledTableNumbers] = useState<number[]>([]);
+  const availability = useCustomerAvailability({
+    restaurantId,
+    channel: isExpressFlow ? 'express' : 'kiosk',
+    sessionActive,
+    graceMinutes: 10,
+  });
+  const placeOrderDisabled = cartCount === 0 || placingOrder || !availability.canSubmitActiveSession;
   const submissionInFlightRef = useRef(false);
   const isMountedRef = useRef(true);
   const { height: viewportHeight, refresh: refreshViewport } = useKeyboardViewport(showConfirmModal);
@@ -261,6 +268,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
 
   const placeOrder = useCallback(async () => {
     if (!restaurantId || placingOrder || submissionInFlightRef.current) return;
+    if (!availability.canSubmitActiveSession) return;
 
     const trimmedName = customerName.trim();
     const parsedTableNumber = Number.parseInt(tableNumberInput, 10);
@@ -537,6 +545,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
       })
       .catch(handleFailure);
   }, [
+    availability.canSubmitActiveSession,
     cart.items,
     cart.restaurant_id,
     clearCart,
@@ -554,6 +563,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   ]);
 
   const openConfirmModal = () => {
+    if (!availability.canSubmitActiveSession) return;
     registerActivity();
     setConfirmStep(1);
     setConfirmMessage(getRandomMessage(confirmMessages));
@@ -610,6 +620,18 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
       customHeaderContent={headerContent}
     >
       <div className="mx-auto w-full max-w-5xl space-y-4 pb-28 pt-1 sm:space-y-5 sm:pt-2">
+        {availability.graceActive ? (
+          <div className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-950 shadow-sm">
+            <p className="text-sm font-semibold">{availability.graceMessage}</p>
+            <p className="text-sm">Complete this order in {availability.countdownLabel}.</p>
+          </div>
+        ) : null}
+        {!availability.loading && !availability.canSubmitActiveSession ? (
+          <div className="rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-rose-800 shadow-sm">
+            <p className="text-sm font-semibold">{availability.snapshot.primaryLabel}</p>
+            {availability.snapshot.secondaryLabel ? <p className="text-sm">{availability.snapshot.secondaryLabel}</p> : null}
+          </div>
+        ) : null}
         <div className="-mt-1 space-y-1 px-2 sm:-mt-1.5 sm:px-0">
           <h1 className="text-2xl font-semibold text-slate-900 sm:text-[26px]">Review your order</h1>
           <p className="text-base leading-relaxed text-slate-600 sm:text-lg">Check your items before placing your order.</p>

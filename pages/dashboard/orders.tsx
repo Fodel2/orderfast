@@ -112,7 +112,6 @@ export default function OrdersPage() {
     startBreak,
     endBreak,
   } = useRestaurantAvailability(restaurantId);
-
   const isKioskDevice = useCallback(
     () => router.pathname.startsWith('/kiosk/'),
     [router.pathname]
@@ -1008,19 +1007,6 @@ export default function OrdersPage() {
   };
 
 
-  const isOpenNow = () => {
-    if (!todayHours || todayHours.closed || !todayHours.open_time || !todayHours.close_time) return false;
-    const nowDate = new Date();
-    const [oh, om] = todayHours.open_time.split(':').map(Number);
-    const [ch, cm] = todayHours.close_time.split(':').map(Number);
-    const openDate = new Date();
-    openDate.setHours(oh, om, 0, 0);
-    const closeDate = new Date();
-    closeDate.setHours(ch, cm, 0, 0);
-    return nowDate >= openDate && nowDate <= closeDate;
-  };
-
-
   const handleOpenTableSession = useCallback(
     async (summary: TableSessionSummary) => {
       setSelectedTableSession(summary);
@@ -1151,9 +1137,11 @@ export default function OrdersPage() {
                   {formatTime(todayHours.close_time)}
                 </span>
                 <span
-                  className={`text-xs px-2 py-1 rounded-full font-semibold ${isOpenNow() ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}
+                  className={`text-xs px-2 py-1 rounded-full font-semibold ${
+                    isOpen ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'
+                  }`}
                 >
-                  {isOpenNow() ? 'Open Now' : 'Closed Now'}
+                  {breakUntil && new Date(breakUntil).getTime() > now ? 'On Break' : isOpen ? 'Open' : 'Closed'}
                 </span>
               </>
             )

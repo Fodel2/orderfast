@@ -15,6 +15,7 @@ import KioskActionButton from '@/components/kiosk/KioskActionButton';
 import { useKioskSession } from '@/context/KioskSessionContext';
 import { hasSeenHome, markHomeSeen } from '@/utils/kiosk/session';
 import { getExpressSession } from '@/utils/express/session';
+import { useCustomerAvailability } from '@/hooks/useCustomerAvailability';
 
 export const FULL_HEADER_HEIGHT = 136;
 export const COLLAPSED_HEADER_HEIGHT = 88;
@@ -112,6 +113,7 @@ export default function KioskLayout({
     [restaurant?.brand_primary_color, restaurant?.brand_secondary_color]
   );
   const {
+    sessionActive,
     setSessionActive,
     registerActivity,
     resetIdleTimer,
@@ -165,6 +167,13 @@ export default function KioskLayout({
   }, [resolveExpressSessionState, router.asPath]);
 
   const isExpressActive = isExpressRoute || hasExpressQueryFlag || isExpressSession;
+  const channel = isExpressActive ? 'express' : 'kiosk';
+  const availability = useCustomerAvailability({
+    restaurantId,
+    channel,
+    sessionActive,
+    graceMinutes: 10,
+  });
   const shouldSuppressFullscreen = isExpressActive;
 
   const shouldAutoFullscreen = fullscreenViewport !== 'phone' && !shouldSuppressFullscreen;
@@ -455,6 +464,7 @@ export default function KioskLayout({
   );
 
   const startOrdering = useCallback(async () => {
+    if (!availability.canStartNewSession) return;
     if (restaurantId) {
       markHomeSeen(restaurantId);
     }
@@ -474,7 +484,7 @@ export default function KioskLayout({
     if (menuPath && router.asPath !== menuPath) {
       router.push(menuPath).catch(() => undefined);
     }
-  }, [attemptFullscreen, menuPath, resetIdleTimer, requestWakeLock, restaurantId, router, shouldSuppressFullscreen]);
+  }, [attemptFullscreen, availability.canStartNewSession, menuPath, resetIdleTimer, requestWakeLock, restaurantId, router, shouldSuppressFullscreen]);
 
   const headerTitle = restaurant?.website_title || restaurant?.name || 'Restaurant';
   const logoUrl = restaurant?.logo_url || null;
@@ -647,7 +657,22 @@ export default function KioskLayout({
           onStart={startOrdering}
           fadingOut={homeFading}
           loading={restaurantLoading}
+          closedState={
+            !availability.loading && !availability.canStartNewSession
+              ? {
+                  active: true,
+                  title: availability.snapshot.reason === 'on_break' ? 'Temporarily closed' : 'Closed',
+                  detail: availability.snapshot.secondaryLabel,
+                }
+              : undefined
+          }
         />
+      ) : null}
+      {availability.graceActive ? (
+        <div className="fixed left-1/2 top-5 z-[75] w-[min(92vw,560px)] -translate-x-1/2 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-950 shadow-xl">
+          <p className="text-sm font-semibold">{availability.graceMessage}</p>
+          <p className="text-sm">Finish this order in {availability.countdownLabel}.</p>
+        </div>
       ) : null}
       {deferredPrompt && !isInstalled && !installDismissed ? (
         <div className="pointer-events-none fixed bottom-4 right-4 z-40">

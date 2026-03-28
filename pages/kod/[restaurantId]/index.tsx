@@ -259,7 +259,6 @@ export default function KitchenDisplayPage() {
     startBreak,
     endBreak,
   } = useRestaurantAvailability(restaurantId);
-
   const mutedPreferenceKey = useMemo(
     () => (restaurantId ? `kod_sound_muted_${restaurantId}` : 'kod_sound_muted'),
     [restaurantId]

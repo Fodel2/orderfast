@@ -12,6 +12,7 @@ import MenuHeader from '@/components/customer/menu/MenuHeader';
 import { useRestaurant } from '@/lib/restaurant-context';
 import { scrollElementToTop } from '@/utils/scroll';
 import { isInStockAddonOption } from '@/lib/stockAvailability';
+import { useCustomerAvailability } from '@/hooks/useCustomerAvailability';
 
 function readableText(hex?: string | null) {
   if (!hex) return '#fff';
@@ -84,6 +85,12 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
   const itemCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
   const { restaurantId, loading: ridLoading } = useRestaurant();
   const effectiveRestaurantId = restaurantId || (initialBrand?.id ? String(initialBrand.id) : null);
+  const availability = useCustomerAvailability({
+    restaurantId: effectiveRestaurantId,
+    channel: 'website',
+    sessionActive: false,
+    graceMinutes: 5,
+  });
 
   useEffect(() => {
     if (!routerReady || ridLoading || !effectiveRestaurantId) return;
@@ -425,6 +432,14 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
         )}
 
         <div className="px-4 sm:px-6 max-w-6xl mx-auto space-y-8 scroll-smooth pb-28">
+          {!availability.loading && !availability.snapshot.isOpenNow ? (
+            <div className="mt-5 rounded-2xl border border-neutral-200 bg-white/85 p-4 shadow-sm backdrop-blur">
+              <p className="text-sm font-semibold text-neutral-900">{availability.snapshot.primaryLabel}</p>
+              <p className="mt-1 text-sm text-neutral-600">
+                {availability.snapshot.secondaryLabel || 'You can still browse the menu while ordering is paused.'}
+              </p>
+            </div>
+          ) : null}
           {/* Inline guards rendered inside layout */}
           {!routerReady || ridLoading ? (
             <div className="p-6" />
