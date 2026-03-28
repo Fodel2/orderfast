@@ -7,6 +7,7 @@ import { ChefHat } from 'lucide-react';
 import OrderDetailsModal, { Order as OrderType } from '../../components/OrderDetailsModal';
 import BreakModal from '../../components/BreakModal';
 import BreakCountdown from '../../components/BreakCountdown';
+import AvailabilityControls from '@/components/availability/AvailabilityControls';
 import Toast from '@/components/Toast';
 import { orderAlertSoundController } from '@/utils/orderAlertSoundController';
 import { formatPrice, formatShortOrderNumber, formatStatusLabel } from '@/lib/orderDisplay';
@@ -79,6 +80,18 @@ interface Order {
   order_items: OrderItem[];
 }
 
+const isCollectionOrder = (order: Pick<Order, 'order_type' | 'source'>) =>
+  order.order_type === 'collection' || order.order_type === 'kiosk' || order.source === 'kiosk';
+
+const getProgressedStatus = (order: Pick<Order, 'status' | 'order_type' | 'source'>) => {
+  if (order.status === 'pending') return 'accepted';
+  if (order.status === 'accepted' || order.status === 'preparing') {
+    return isCollectionOrder(order) ? 'ready_to_collect' : 'delivering';
+  }
+  if (order.status === 'ready_to_collect' || order.status === 'delivering') return 'completed';
+  return null;
+};
+
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -101,13 +114,13 @@ export default function OrdersPage() {
   const isOrdersPage = router.pathname === '/dashboard/orders';
   const randomMessage = useMemo(() => getRandomOrderEmptyMessage(), []);
   const {
-    isOpen,
     breakUntil,
     showBreakModal,
     setShowBreakModal,
     toggleOpen,
     startBreak,
     endBreak,
+    isConfirmingAction,
   } = useRestaurantAvailability(restaurantId);
 	  const unifiedAvailability = useCustomerAvailability({
 	    restaurantId,
@@ -115,7 +128,7 @@ export default function OrdersPage() {
 	    sessionActive: false,
 	    graceMinutes: 5,
 	  });
-  const isManuallyClosed = !unifiedAvailability.loading && unifiedAvailability.snapshot.reason === 'manual_closed';
+  const controlsDisabled = unifiedAvailability.loading || isConfirmingAction;
   const isKioskDevice = useCallback(
     () => router.pathname.startsWith('/kiosk/'),
     [router.pathname]
@@ -782,6 +795,10 @@ export default function OrdersPage() {
     const allowedStatuses =
       status === 'accepted'
         ? ['pending']
+        : status === 'ready_to_collect'
+        ? ['accepted', 'preparing']
+        : status === 'delivering'
+        ? ['accepted', 'preparing']
         : status === 'completed'
         ? COMPLETE_ELIGIBLE_STATUSES
         : ACTIVE_STATUSES;
@@ -875,6 +892,8 @@ export default function OrdersPage() {
 
   const handleTileComplete = useCallback(async (event: MouseEvent<HTMLButtonElement>, order: Order) => {
     event.stopPropagation();
+    const nextStatus = getProgressedStatus(order);
+    if (!nextStatus) return;
     if (completingOrderIds.has(order.id)) return;
     setCompletingOrderIds((prev) => {
       const next = new Set(prev);
@@ -882,7 +901,7 @@ export default function OrdersPage() {
       return next;
     });
     try {
-      await updateStatus(order.id, 'completed');
+      await updateStatus(order.id, nextStatus);
     } finally {
       setCompletingOrderIds((prev) => {
         const next = new Set(prev);
@@ -1089,44 +1108,16 @@ export default function OrdersPage() {
           {outOfStockCount} item{outOfStockCount === 1 ? '' : 's'} currently out of stock
         </div>
       )}
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center space-x-2">
-          {unifiedAvailability.loading ? (
-            <span>Checking availability…</span>
-          ) : (
-            <>
-              <span>{unifiedAvailability.snapshot.primaryLabel}</span>
-              {unifiedAvailability.snapshot.secondaryLabel ? (
-                <span className="text-sm text-gray-600">{unifiedAvailability.snapshot.secondaryLabel}</span>
-              ) : null}
-              <span
-                className={`text-xs px-2 py-1 rounded-full font-semibold ${
-                  unifiedAvailability.snapshot.isOpenNow ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'
-                }`}
-              >
-                {unifiedAvailability.snapshot.isOpenNow ? 'Open' : 'Closed'}
-              </span>
-            </>
-          )}
-        </div>
-	        {isOpen !== null && (
-	          <div className="relative flex items-center space-x-2">
-	            <button
-	              onClick={toggleOpen}
-	              className={`px-2 py-1 rounded text-white text-sm ${isManuallyClosed ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}`}
-	            >
-	              {isManuallyClosed ? 'Open Now' : 'Close Now'}
-	            </button>
-	            {!isManuallyClosed && (
-	              <button
-	                onClick={() => setShowBreakModal(true)}
-	                className="px-2 py-1 rounded text-white text-sm bg-blue-600 hover:bg-blue-700"
-	              >
-                Take a Break
-              </button>
-            )}
-          </div>
-        )}
+      <div className="mb-4">
+        <AvailabilityControls
+          availabilityLoading={unifiedAvailability.loading}
+          snapshot={unifiedAvailability.snapshot}
+          controlsDisabled={controlsDisabled}
+          isConfirmingAction={isConfirmingAction}
+          onPauseOrders={() => setShowBreakModal(true)}
+          onResumeOrders={toggleOpen}
+          variant="orders"
+        />
       </div>
       <section className="mb-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
         <div className="mb-3 flex items-center justify-between">
@@ -1181,14 +1172,18 @@ export default function OrdersPage() {
                   <div className="text-right">
                     <p className="font-semibold">{formatPrice(o.total_price)}</p>
                     <p className="text-sm">{formatStatusLabel(o.status)}</p>
-                    {COMPLETE_ELIGIBLE_STATUSES.includes(o.status) ? (
+                    {getProgressedStatus(o) ? (
                       <button
                         type="button"
                         onClick={(event) => void handleTileComplete(event, o)}
                         disabled={completingOrderIds.has(o.id)}
                         className="mt-2 rounded bg-green-600 px-3 py-1 text-xs font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        Complete
+                        {getProgressedStatus(o) === 'completed'
+                          ? 'Complete'
+                          : o.order_type === 'delivery'
+                          ? 'Out for Delivery'
+                          : 'Ready for Collection'}
                       </button>
                     ) : null}
                   </div>
@@ -1210,6 +1205,7 @@ export default function OrdersPage() {
         show={showBreakModal}
         onClose={() => setShowBreakModal(false)}
         onSelect={startBreak}
+        disabled={controlsDisabled}
       />
       <OrderDetailsModal
         order={selectedOrder as OrderType | null}

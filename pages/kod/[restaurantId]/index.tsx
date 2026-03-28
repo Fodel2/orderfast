@@ -15,6 +15,7 @@ import FullscreenAppLayout from '@/components/layouts/FullscreenAppLayout';
 import Toast from '@/components/Toast';
 import BreakModal from '@/components/BreakModal';
 import BreakCountdown from '@/components/BreakCountdown';
+import AvailabilityControls from '@/components/availability/AvailabilityControls';
 import OrderRejectButton from '@/components/OrderRejectButton';
 import RejectOrderModal, { RejectableOrder } from '@/components/RejectOrderModal';
 import { orderAlertSoundController } from '@/utils/orderAlertSoundController';
@@ -99,6 +100,18 @@ const STOCK_STATUS_LABELS: Record<'in_stock' | 'scheduled' | 'out', string> = {
   in_stock: 'In Stock',
   scheduled: 'Back Tomorrow',
   out: 'Off Indefinitely',
+};
+
+const isCollectionOrder = (order: Pick<Order, 'order_type' | 'source'>) =>
+  order.order_type === 'collection' || order.order_type === 'kiosk' || order.source === 'kiosk';
+
+const getPreparedStatus = (order: Pick<Order, 'status' | 'order_type' | 'source'>) => {
+  if (order.status === 'pending') return 'accepted';
+  if (order.status === 'accepted' || order.status === 'preparing') {
+    return isCollectionOrder(order) ? 'ready_to_collect' : 'delivering';
+  }
+  if (order.status === 'ready_to_collect' || order.status === 'delivering') return 'completed';
+  return null;
 };
 
 
@@ -253,13 +266,13 @@ export default function KitchenDisplayPage() {
   const [rejectOrder, setRejectOrder] = useState<Order | null>(null);
   const emptyMessage = useMemo(() => getRandomOrderEmptyMessage(), []);
   const {
-    isOpen,
     breakUntil,
     showBreakModal,
     setShowBreakModal,
     toggleOpen,
     startBreak,
     endBreak,
+    isConfirmingAction,
   } = useRestaurantAvailability(restaurantId);
   const unifiedAvailability = useCustomerAvailability({
     restaurantId: restaurantId || null,
@@ -267,7 +280,7 @@ export default function KitchenDisplayPage() {
     sessionActive: false,
     graceMinutes: 10,
   });
-  const isManuallyClosed = !unifiedAvailability.loading && unifiedAvailability.snapshot.reason === 'manual_closed';
+  const controlsDisabled = unifiedAvailability.loading || isConfirmingAction;
   const mutedPreferenceKey = useMemo(
     () => (restaurantId ? `kod_sound_muted_${restaurantId}` : 'kod_sound_muted'),
     [restaurantId]
@@ -856,14 +869,19 @@ export default function KitchenDisplayPage() {
         return;
       }
 
-      if (!['accepted', 'preparing', 'ready_to_collect', 'delivering'].includes(order.status)) {
+      const nextPreparedStatus = getPreparedStatus(order);
+      if (!nextPreparedStatus || nextPreparedStatus === 'accepted') {
         return;
       }
 
       await acknowledgeOrder(order.id);
       const { error } = await supabase
         .from('orders')
-        .update({ kod_done_at: new Date().toISOString(), kod_done_by_user_id: currentUserId })
+        .update({
+          status: nextPreparedStatus,
+          kod_done_at: new Date().toISOString(),
+          kod_done_by_user_id: currentUserId,
+        })
         .eq('id', order.id)
         .in('status', ['accepted', 'preparing', 'ready_to_collect', 'delivering']);
 
@@ -1134,35 +1152,17 @@ export default function KitchenDisplayPage() {
                   className="mb-0"
                 />
               ) : null}
-              {isOpen !== null ? (
-                <div className="flex items-center gap-2">
-                  {!unifiedAvailability.loading ? (
-                    <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-white">
-                      {unifiedAvailability.snapshot.primaryLabel}
-                    </div>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={toggleOpen}
-                    className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] transition ${
-                      isManuallyClosed
-                        ? 'border-rose-400/60 bg-rose-500/20 text-rose-100 hover:bg-rose-500/30'
-                        : 'border-emerald-400/60 bg-emerald-500/20 text-emerald-100 hover:bg-emerald-500/30'
-                    }`}
-                  >
-                    {isManuallyClosed ? 'Open Now' : 'Close Now'}
-                  </button>
-                  {!isManuallyClosed ? (
-                    <button
-                      type="button"
-                      onClick={() => setShowBreakModal(true)}
-                      className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-white transition hover:bg-white/10"
-                    >
-                      Take a Break
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
+              <div className="min-w-[360px]">
+                <AvailabilityControls
+                  availabilityLoading={unifiedAvailability.loading}
+                  snapshot={unifiedAvailability.snapshot}
+                  controlsDisabled={controlsDisabled}
+                  isConfirmingAction={isConfirmingAction}
+                  onPauseOrders={() => setShowBreakModal(true)}
+                  onResumeOrders={toggleOpen}
+                  variant="kod"
+                />
+              </div>
               {waitingCount > 0 ? (
                 <div className="flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-white">
                   +{waitingCount} waiting
@@ -1327,11 +1327,21 @@ export default function KitchenDisplayPage() {
                           disabled={
                             (isPreparedView
                               ? segment.order.status === 'completed'
-                              : !['pending', 'accepted', 'preparing', 'ready_to_collect', 'delivering'].includes(segment.order.status)) || cooldowns[`${segment.order.id}-primary`]
+                              : !getPreparedStatus(segment.order)) || cooldowns[`${segment.order.id}-primary`]
                           }
                           className="flex-1 rounded-full bg-teal-500 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-black transition hover:bg-teal-400 disabled:cursor-not-allowed disabled:opacity-40"
                         >
-                          {isPreparedView ? (segment.order.status === 'completed' ? 'VIEW' : 'COMPLETE') : segment.order.status === 'pending' ? 'ACCEPT' : 'DONE'}
+                          {isPreparedView
+                            ? segment.order.status === 'completed'
+                              ? 'VIEW'
+                              : 'COMPLETE'
+                            : getPreparedStatus(segment.order) === 'accepted'
+                            ? 'ACCEPT'
+                            : getPreparedStatus(segment.order) === 'ready_to_collect'
+                            ? 'READY FOR COLLECTION'
+                            : getPreparedStatus(segment.order) === 'delivering'
+                            ? 'OUT FOR DELIVERY'
+                            : 'COMPLETE'}
                         </button>
                         <button
                           type="button"
@@ -1537,6 +1547,7 @@ export default function KitchenDisplayPage() {
           onClose={() => setShowBreakModal(false)}
           onSelect={startBreak}
           variant="kod"
+          disabled={controlsDisabled}
         />
         {rejectOrder ? (
           <RejectOrderModal
