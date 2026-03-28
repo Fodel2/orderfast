@@ -21,7 +21,11 @@ export async function getServerAvailabilitySnapshot(restaurantId: string): Promi
   end.setDate(today.getDate() + 7);
 
   const [restaurantRes, weeklyRes, exceptionRes] = await Promise.all([
-    supaServer.from('restaurants').select('is_open,break_until,updated_at').eq('id', restaurantId).maybeSingle(),
+    supaServer
+      .from('restaurants')
+      .select('availability_override_mode,availability_override_until,is_open,break_until,updated_at')
+      .eq('id', restaurantId)
+      .maybeSingle(),
     supaServer
       .from('opening_hours_weekly_periods')
       .select('day_of_week,open_time,close_time,sort_order')
@@ -46,6 +50,12 @@ export async function getServerAvailabilitySnapshot(restaurantId: string): Promi
 
   const snapshot = evaluateAvailability({
     now: new Date(),
+    overrideMode:
+      restaurantRes.data?.availability_override_mode === 'manual_closed' ||
+      restaurantRes.data?.availability_override_mode === 'on_break'
+        ? restaurantRes.data.availability_override_mode
+        : 'none',
+    overrideUntil: restaurantRes.data?.availability_override_until || null,
     isOpen: typeof restaurantRes.data?.is_open === 'boolean' ? restaurantRes.data.is_open : true,
     breakUntil: restaurantRes.data?.break_until || null,
     availabilityUpdatedAt: restaurantRes.data?.updated_at || null,

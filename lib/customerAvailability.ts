@@ -12,8 +12,10 @@ export type OpeningException = {
 
 export type AvailabilityInputs = {
   now: Date;
-  isOpen: boolean;
-  breakUntil: string | null;
+  overrideMode?: 'none' | 'manual_closed' | 'on_break' | null;
+  overrideUntil?: string | null;
+  isOpen?: boolean;
+  breakUntil?: string | null;
   availabilityUpdatedAt?: string | null;
   weeklyPeriods: Array<OpeningPeriod & { day_of_week: number }>;
   exceptions: OpeningException[];
@@ -109,30 +111,6 @@ function findNextOpening(inputs: AvailabilityInputs, now: Date): { when: Date; l
 
 export function evaluateAvailability(inputs: AvailabilityInputs): AvailabilitySnapshot {
   const now = inputs.now;
-
-  if (!inputs.isOpen) {
-    return {
-      isOpenNow: false,
-      blocksNewSessions: true,
-      reason: 'manual_closed',
-      primaryLabel: 'Closed right now',
-      secondaryLabel: null,
-    };
-  }
-
-  if (inputs.breakUntil) {
-    const breakDate = new Date(inputs.breakUntil);
-    if (breakDate.getTime() > now.getTime()) {
-      return {
-        isOpenNow: false,
-        blocksNewSessions: true,
-        reason: 'on_break',
-        primaryLabel: 'Temporarily closed',
-        secondaryLabel: `Back at ${breakDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`,
-      };
-    }
-  }
-
   const todaySchedule = getScheduleForDate(inputs, now);
   if (todaySchedule.isClosedException) {
     const next = findNextOpening(inputs, now);
@@ -167,6 +145,39 @@ export function evaluateAvailability(inputs: AvailabilityInputs): AvailabilitySn
       primaryLabel: 'Closed right now',
       secondaryLabel: next?.label || null,
     };
+  }
+
+  const normalizedOverrideMode =
+    inputs.overrideMode === 'manual_closed' || inputs.overrideMode === 'on_break' || inputs.overrideMode === 'none'
+      ? inputs.overrideMode
+      : !inputs.isOpen
+      ? 'manual_closed'
+      : inputs.breakUntil
+      ? 'on_break'
+      : 'none';
+  const effectiveOverrideUntil = inputs.overrideUntil ?? inputs.breakUntil ?? null;
+
+  if (normalizedOverrideMode === 'manual_closed') {
+    return {
+      isOpenNow: false,
+      blocksNewSessions: true,
+      reason: 'manual_closed',
+      primaryLabel: 'Closed right now',
+      secondaryLabel: null,
+    };
+  }
+
+  if (normalizedOverrideMode === 'on_break' && effectiveOverrideUntil) {
+    const breakDate = new Date(effectiveOverrideUntil);
+    if (breakDate.getTime() > now.getTime()) {
+      return {
+        isOpenNow: false,
+        blocksNewSessions: true,
+        reason: 'on_break',
+        primaryLabel: 'Temporarily closed',
+        secondaryLabel: `Back at ${breakDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`,
+      };
+    }
   }
 
   return {

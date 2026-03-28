@@ -30,8 +30,10 @@ function pickFunnyMessage(channel: Channel) {
 
 export function useCustomerAvailability({ restaurantId, channel, sessionActive, graceMinutes }: UseCustomerAvailabilityOptions) {
   const [loading, setLoading] = useState(true);
-  const [isOpen, setIsOpen] = useState(true);
-  const [breakUntil, setBreakUntil] = useState<string | null>(null);
+  const [overrideMode, setOverrideMode] = useState<'none' | 'manual_closed' | 'on_break'>('none');
+  const [overrideUntil, setOverrideUntil] = useState<string | null>(null);
+  const [legacyIsOpen, setLegacyIsOpen] = useState(true);
+  const [legacyBreakUntil, setLegacyBreakUntil] = useState<string | null>(null);
   const [availabilityUpdatedAt, setAvailabilityUpdatedAt] = useState<string | null>(null);
   const [weeklyPeriods, setWeeklyPeriods] = useState<Array<OpeningPeriod & { day_of_week: number }>>([]);
   const [exceptions, setExceptions] = useState<OpeningException[]>([]);
@@ -45,7 +47,9 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
     return `orderfast-grace-${channel}-${restaurantId}`;
   }, [channel, restaurantId]);
 
-  const hasActiveBreak = Boolean(breakUntil && new Date(breakUntil).getTime() > Date.now());
+  const hasActiveBreak = Boolean(
+    overrideMode === 'on_break' && overrideUntil && new Date(overrideUntil).getTime() > Date.now()
+  );
   const hasActiveGrace = Boolean(graceEndAt && graceEndAt > Date.now());
   const needsSecondResolution = hasActiveBreak || hasActiveGrace;
 
@@ -74,7 +78,11 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
       const toIso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
       const [restaurantRes, weeklyRes, exceptionRes] = await Promise.all([
-        supabase.from('restaurants').select('is_open, break_until, updated_at').eq('id', restaurantId).maybeSingle(),
+        supabase
+          .from('restaurants')
+          .select('availability_override_mode, availability_override_until, is_open, break_until, updated_at')
+          .eq('id', restaurantId)
+          .maybeSingle(),
         supabase
           .from('opening_hours_weekly_periods')
           .select('day_of_week,open_time,close_time,sort_order')
@@ -89,8 +97,15 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
 
       if (!active) return;
 
-      setIsOpen(typeof restaurantRes.data?.is_open === 'boolean' ? restaurantRes.data.is_open : true);
-      setBreakUntil(restaurantRes.data?.break_until || null);
+      const mode =
+        restaurantRes.data?.availability_override_mode === 'manual_closed' ||
+        restaurantRes.data?.availability_override_mode === 'on_break'
+          ? restaurantRes.data.availability_override_mode
+          : 'none';
+      setOverrideMode(mode);
+      setOverrideUntil(restaurantRes.data?.availability_override_until || null);
+      setLegacyIsOpen(typeof restaurantRes.data?.is_open === 'boolean' ? restaurantRes.data.is_open : true);
+      setLegacyBreakUntil(restaurantRes.data?.break_until || null);
       setAvailabilityUpdatedAt(restaurantRes.data?.updated_at || null);
       setWeeklyPeriods((weeklyRes.data || []) as Array<OpeningPeriod & { day_of_week: number }>);
       setExceptions(
@@ -116,9 +131,21 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
           filter: `id=eq.${restaurantId}`,
         },
         (payload) => {
-          const next = payload.new as { is_open?: boolean; break_until?: string | null; updated_at?: string | null };
-          if (typeof next.is_open === 'boolean') setIsOpen(next.is_open);
-          if (typeof next.break_until !== 'undefined') setBreakUntil(next.break_until || null);
+          const next = payload.new as {
+            availability_override_mode?: string | null;
+            availability_override_until?: string | null;
+            is_open?: boolean;
+            break_until?: string | null;
+            updated_at?: string | null;
+          };
+          setOverrideMode(
+            next.availability_override_mode === 'manual_closed' || next.availability_override_mode === 'on_break'
+              ? next.availability_override_mode
+              : 'none'
+          );
+          if (typeof next.availability_override_until !== 'undefined') setOverrideUntil(next.availability_override_until || null);
+          if (typeof next.is_open === 'boolean') setLegacyIsOpen(next.is_open);
+          if (typeof next.break_until !== 'undefined') setLegacyBreakUntil(next.break_until || null);
           if (typeof next.updated_at !== 'undefined') setAvailabilityUpdatedAt(next.updated_at || null);
         }
       )
@@ -165,13 +192,15 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
     () =>
       evaluateAvailability({
         now: new Date(tick),
-        isOpen,
-        breakUntil,
+        overrideMode,
+        overrideUntil,
+        isOpen: legacyIsOpen,
+        breakUntil: legacyBreakUntil,
         availabilityUpdatedAt,
         weeklyPeriods,
         exceptions,
       }),
-    [availabilityUpdatedAt, breakUntil, exceptions, isOpen, tick, weeklyPeriods]
+    [availabilityUpdatedAt, exceptions, legacyBreakUntil, legacyIsOpen, overrideMode, overrideUntil, tick, weeklyPeriods]
   );
 
   useEffect(() => {
