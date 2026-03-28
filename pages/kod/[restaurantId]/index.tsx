@@ -266,6 +266,7 @@ export default function KitchenDisplayPage() {
   const [rejectOrder, setRejectOrder] = useState<Order | null>(null);
   const emptyMessage = useMemo(() => getRandomOrderEmptyMessage(), []);
   const {
+    overrideMode,
     breakUntil,
     showBreakModal,
     setShowBreakModal,
@@ -1156,6 +1157,7 @@ export default function KitchenDisplayPage() {
                 <AvailabilityControls
                   availabilityLoading={unifiedAvailability.loading}
                   snapshot={unifiedAvailability.snapshot}
+                  isPaused={overrideMode === 'manual_closed' || overrideMode === 'on_break'}
                   controlsDisabled={controlsDisabled}
                   isConfirmingAction={isConfirmingAction}
                   onPauseOrders={() => setShowBreakModal(true)}

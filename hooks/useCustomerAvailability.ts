@@ -53,7 +53,7 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
   const needsSecondResolution = hasActiveBreak || hasActiveGrace;
 
   useEffect(() => {
-    const intervalMs = needsSecondResolution ? 1000 : 15000;
+    const intervalMs = needsSecondResolution ? 1000 : 60000;
     const timer = setInterval(() => setTick(Date.now()), intervalMs);
     return () => clearInterval(timer);
   }, [needsSecondResolution]);
@@ -66,8 +66,10 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
 
     let active = true;
 
-    const load = async () => {
-      setLoading(true);
+    const load = async (options?: { silent?: boolean }) => {
+      if (!options?.silent) {
+        setLoading(true);
+      }
 
       const today = new Date();
       const start = new Date(today);
@@ -147,7 +149,7 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
       )
       .subscribe((status) => {
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-          void load();
+          void load({ silent: true });
         }
       });
 
@@ -176,12 +178,12 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
       )
       .subscribe((status) => {
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-          void load();
+          void load({ silent: true });
         }
       });
 
     const scheduleRefreshTimer = window.setInterval(() => {
-      void load();
+      void load({ silent: true });
     }, 60_000);
 
     return () => {

@@ -114,6 +114,7 @@ export default function OrdersPage() {
   const isOrdersPage = router.pathname === '/dashboard/orders';
   const randomMessage = useMemo(() => getRandomOrderEmptyMessage(), []);
   const {
+    overrideMode,
     breakUntil,
     showBreakModal,
     setShowBreakModal,
@@ -1112,6 +1113,7 @@ export default function OrdersPage() {
         <AvailabilityControls
           availabilityLoading={unifiedAvailability.loading}
           snapshot={unifiedAvailability.snapshot}
+          isPaused={overrideMode === 'manual_closed' || overrideMode === 'on_break'}
           controlsDisabled={controlsDisabled}
           isConfirmingAction={isConfirmingAction}
           onPauseOrders={() => setShowBreakModal(true)}
