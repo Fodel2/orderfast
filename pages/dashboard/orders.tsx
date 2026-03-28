@@ -1015,12 +1015,6 @@ export default function OrdersPage() {
   };
 
 
-  const isScheduledClosed =
-    liveAvailability.snapshot.reason === 'outside_hours' || liveAvailability.snapshot.reason === 'closed_exception';
-  const isTemporarilyClosed = liveAvailability.snapshot.reason === 'on_break';
-  const isManuallyClosed = liveAvailability.snapshot.reason === 'manual_closed';
-
-
   const handleOpenTableSession = useCallback(
     async (summary: TableSessionSummary) => {
       setSelectedTableSession(summary);
@@ -1170,20 +1164,11 @@ export default function OrdersPage() {
           <div className="relative flex items-center space-x-2">
             <button
               onClick={toggleOpen}
-              disabled={isScheduledClosed || isTemporarilyClosed}
-              className={`px-2 py-1 rounded text-white text-sm disabled:cursor-not-allowed disabled:opacity-60 ${
-                isManuallyClosed ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-600 hover:bg-red-700'
-              }`}
+              className={`px-2 py-1 rounded text-white text-sm ${isOpen ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}
             >
-              {isScheduledClosed
-                ? 'Scheduled Closed'
-                : isTemporarilyClosed
-                ? 'On Break'
-                : isManuallyClosed
-                ? 'Open Now'
-                : 'Close Now'}
+              {isOpen ? 'Close Now' : 'Open Now'}
             </button>
-            {!isScheduledClosed && !isTemporarilyClosed && !isManuallyClosed && (
+            {isOpen && (
               <button
                 onClick={() => setShowBreakModal(true)}
                 className="px-2 py-1 rounded text-white text-sm bg-blue-600 hover:bg-blue-700"

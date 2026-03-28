@@ -197,7 +197,14 @@ export default function ExpressEntryPage() {
       <div className="fixed inset-0 z-[60] flex items-center justify-center bg-white text-neutral-900">
         <div className="absolute inset-0 overflow-hidden">
           <div className="absolute inset-0 animate-pulse bg-neutral-200" />
-          <div className="kiosk-hero-dim" />
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              background: 'rgba(255, 255, 255, 0.275)',
+              pointerEvents: 'none',
+            }}
+          />
         </div>
         <div className="relative z-10 flex w-full max-w-xl flex-col items-center gap-6 px-6 text-center">
           <div className="w-full rounded-[32px] border border-neutral-200 bg-white/95 p-8 shadow-2xl shadow-neutral-300/50 backdrop-blur">
@@ -237,15 +244,32 @@ export default function ExpressEntryPage() {
 
   if (!availability.loading && !availability.canStartNewSession) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
-        <div className="w-full max-w-md rounded-3xl border border-neutral-200 bg-white/95 p-7 text-center shadow-xl backdrop-blur">
-          <h1 className="text-2xl font-semibold text-gray-900">{availability.snapshot.primaryLabel}</h1>
+      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-white text-neutral-900">
+        <div className="absolute inset-0 overflow-hidden">
+          <div
+            className="absolute inset-0"
+            style={{
+              backgroundImage: heroImage ? `url(${heroImage})` : undefined,
+              backgroundColor: heroImage ? undefined : '#f8fafc',
+              backgroundSize: 'cover',
+              backgroundPosition: `${focalX * 100}% ${focalY * 100}%`,
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              background: 'rgba(255, 255, 255, 0.275)',
+              pointerEvents: 'none',
+            }}
+          />
+        </div>
+        <div className="relative z-10 w-full max-w-md rounded-2xl border border-gray-200 bg-white/95 p-6 text-center shadow-sm">
+          <h1 className="text-2xl font-bold text-gray-900">{availability.snapshot.primaryLabel}</h1>
           <p className="mt-2 text-gray-600">
             {availability.snapshot.reason === 'on_break' ? 'Temporarily closed' : 'Express ordering is currently closed.'}
           </p>
-          {availability.snapshot.secondaryLabel ? (
-            <p className="mt-2 text-sm font-medium text-gray-700">{availability.snapshot.secondaryLabel}</p>
-          ) : null}
+          {availability.snapshot.secondaryLabel ? <p className="mt-2 text-sm font-medium text-gray-700">{availability.snapshot.secondaryLabel}</p> : null}
         </div>
       </div>
     );

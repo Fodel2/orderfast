@@ -266,10 +266,6 @@ export default function KitchenDisplayPage() {
     sessionActive: false,
     graceMinutes: 10,
   });
-  const isScheduledClosed =
-    liveAvailability.snapshot.reason === 'outside_hours' || liveAvailability.snapshot.reason === 'closed_exception';
-  const isTemporarilyClosed = liveAvailability.snapshot.reason === 'on_break';
-  const isManuallyClosed = liveAvailability.snapshot.reason === 'manual_closed';
 
   const mutedPreferenceKey = useMemo(
     () => (restaurantId ? `kod_sound_muted_${restaurantId}` : 'kod_sound_muted'),
@@ -1142,24 +1138,15 @@ export default function KitchenDisplayPage() {
                   <button
                     type="button"
                     onClick={toggleOpen}
-                    disabled={isScheduledClosed || isTemporarilyClosed}
                     className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] transition ${
-                      isScheduledClosed
-                        ? 'border-white/10 bg-white/5 text-white/55'
-                        : isManuallyClosed
+                      isOpen
                         ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-100 hover:bg-emerald-500/30'
                         : 'border-rose-400/60 bg-rose-500/20 text-rose-100 hover:bg-rose-500/30'
                     }`}
                   >
-                    {isScheduledClosed
-                      ? 'Scheduled Closed'
-                      : isTemporarilyClosed
-                      ? 'On Break'
-                      : isManuallyClosed
-                      ? 'Open Now'
-                      : 'Close Now'}
+                    {isOpen ? 'Close Now' : 'Open Now'}
                   </button>
-                  {!isScheduledClosed && !isTemporarilyClosed && !isManuallyClosed ? (
+                  {isOpen ? (
                     <button
                       type="button"
                       onClick={() => setShowBreakModal(true)}

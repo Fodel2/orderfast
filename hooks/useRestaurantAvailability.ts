@@ -26,9 +26,10 @@ export function useRestaurantAvailability(restaurantId?: string | null) {
     if (!restaurantId) return;
     const { error } = await supabase
       .from('restaurants')
-      .update({ break_until: null })
+      .update({ is_open: true, break_until: null })
       .eq('id', restaurantId);
     if (!error) {
+      setIsOpen(true);
       setBreakUntil(null);
     }
   }, [restaurantId]);
@@ -39,9 +40,10 @@ export function useRestaurantAvailability(restaurantId?: string | null) {
       const until = new Date(Date.now() + mins * 60000).toISOString();
       const { error } = await supabase
         .from('restaurants')
-        .update({ break_until: until })
+        .update({ is_open: false, break_until: until })
         .eq('id', restaurantId);
       if (!error) {
+        setIsOpen(false);
         setBreakUntil(until);
       }
     },
@@ -64,6 +66,21 @@ export function useRestaurantAvailability(restaurantId?: string | null) {
     }
   }, [breakUntil, endBreak, isOpen, restaurantId]);
 
+  useEffect(() => {
+    if (!breakUntil) return;
+    if (new Date(breakUntil).getTime() <= Date.now()) {
+      void endBreak();
+      return;
+    }
+    const timer = setInterval(() => {
+      if (breakUntil && new Date(breakUntil).getTime() <= Date.now()) {
+        void endBreak();
+      }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [breakUntil, endBreak]);
+
+  
   useEffect(() => {
     if (!restaurantId) return;
     const channel = supabase
