@@ -80,7 +80,6 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
     { item_id: number; category_id: number }[]
   >([]);
   const [loading, setLoading] = useState(true);
-  const [showTop, setShowTop] = useState(false);
   const { cart } = useCart();
   const itemCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
   const { restaurantId, loading: ridLoading } = useRestaurant();
@@ -242,8 +241,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
 
 
   const Inner = () => {
-    const [mounted, setMounted] = useState(false);
-    useEffect(() => setMounted(true), []);
+    const [showTop, setShowTop] = useState(false);
     const [activeCat, setActiveCat] = useState<string | undefined>(undefined);
     const sectionsRef = useRef<Record<string, HTMLElement | null>>({});
     const scrollContainerRef = useRef<HTMLElement | null>(null);
@@ -347,7 +345,7 @@ export default function RestaurantMenuPage({ initialBrand }: { initialBrand: any
               {catItems.map((item, idx) => (
                 <div
                   key={item.id}
-                  className={`opacity-0 translate-y-2 transition-all duration-500 ease-out will-change-transform will-change-opacity ${mounted ? 'opacity-100 translate-y-0' : ''}`}
+                  className="opacity-100 translate-y-0 transition-all duration-500 ease-out will-change-transform will-change-opacity"
                   style={{ transitionDelay: `${idx * 75}ms` }}
                 >
                   <MenuItemCard

@@ -46,11 +46,8 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
     return `orderfast-grace-${channel}-${restaurantId}`;
   }, [channel, restaurantId]);
 
-  const hasActiveBreak = Boolean(
-    overrideMode === 'on_break' && overrideUntil && new Date(overrideUntil).getTime() > Date.now()
-  );
   const hasActiveGrace = Boolean(graceEndAt && graceEndAt > Date.now());
-  const needsSecondResolution = hasActiveBreak || hasActiveGrace;
+  const needsSecondResolution = sessionActive && hasActiveGrace;
 
   useEffect(() => {
     const intervalMs = needsSecondResolution ? 1000 : 60000;
