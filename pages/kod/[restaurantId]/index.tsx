@@ -14,7 +14,7 @@ import { ChefHat } from 'lucide-react';
 import FullscreenAppLayout from '@/components/layouts/FullscreenAppLayout';
 import Toast from '@/components/Toast';
 import BreakModal from '@/components/BreakModal';
-import BreakCountdown from '@/components/BreakCountdown';
+import AvailabilityControls from '@/components/availability/AvailabilityControls';
 import OrderRejectButton from '@/components/OrderRejectButton';
 import RejectOrderModal, { RejectableOrder } from '@/components/RejectOrderModal';
 import { orderAlertSoundController } from '@/utils/orderAlertSoundController';
@@ -101,6 +101,18 @@ const STOCK_STATUS_LABELS: Record<'in_stock' | 'scheduled' | 'out', string> = {
   out: 'Off Indefinitely',
 };
 
+const isCollectionOrder = (order: Pick<Order, 'order_type' | 'source'>) =>
+  order.order_type === 'collection' || order.order_type === 'kiosk' || order.source === 'kiosk';
+
+const getPreparedStatus = (order: Pick<Order, 'status' | 'order_type' | 'source'>) => {
+  if (order.status === 'pending') return 'accepted';
+  if (order.status === 'accepted' || order.status === 'preparing') {
+    return isCollectionOrder(order) ? 'ready_to_collect' : 'delivering';
+  }
+  if (order.status === 'ready_to_collect' || order.status === 'delivering') return 'completed';
+  return null;
+};
+
 
 const formatGBP = (value: number) =>
   new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', minimumFractionDigits: 2 }).format(
@@ -121,6 +133,53 @@ const getOrderTotalPrice = (order: Order) => {
     return sum + itemTotal + addonsTotal;
   }, 0);
 };
+
+function ElapsedTime({ createdAt }: { createdAt: string }) {
+  const [tick, setTick] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setTick(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const createdTime = new Date(createdAt).getTime();
+  if (Number.isNaN(createdTime)) return <>00m 00s</>;
+  const totalSeconds = Math.max(0, Math.floor((tick - createdTime) / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return <>{`${hours}h ${minutes.toString().padStart(2, '0')}m`}</>;
+  }
+  return <>{`${minutes}m ${seconds.toString().padStart(2, '0')}s`}</>;
+}
+
+function PausedStateCard({ breakUntil }: { breakUntil: string | null }) {
+  const [tick, setTick] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!breakUntil) return;
+    const timer = window.setInterval(() => setTick(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [breakUntil]);
+
+  const resumeAt = breakUntil ? new Date(breakUntil) : null;
+  const remainingMs = resumeAt ? Math.max(0, resumeAt.getTime() - tick) : 0;
+  const mins = Math.floor(remainingMs / 60000);
+  const secs = Math.floor((remainingMs % 60000) / 1000);
+
+  return (
+    <div className="flex max-w-md flex-col items-center gap-3 rounded-3xl border border-rose-400/40 bg-rose-500/10 p-8 shadow-lg shadow-black/40">
+      <p className="text-xl font-semibold text-rose-100">Orders paused</p>
+      <p className="text-3xl font-bold text-white">
+        {breakUntil ? `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}` : 'Until reopened'}
+      </p>
+      <p className="text-sm font-medium text-rose-100/90">
+        {resumeAt ? `Resumes at ${resumeAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Resume orders when ready.'}
+      </p>
+    </div>
+  );
+}
 
 const splitNotesLines = (notes: string, lineLength: number) => {
   if (!notes) return [];
@@ -236,7 +295,6 @@ export default function KitchenDisplayPage() {
   const [stockInlineError, setStockInlineError] = useState('');
   const [updatingRowId, setUpdatingRowId] = useState<string | null>(null);
   const [isOnline, setIsOnline] = useState(true);
-  const [now, setNow] = useState(Date.now());
   const [pageIndex, setPageIndex] = useState(0);
   const [columns, setColumns] = useState(1);
   const rows = 1;
@@ -253,13 +311,13 @@ export default function KitchenDisplayPage() {
   const [rejectOrder, setRejectOrder] = useState<Order | null>(null);
   const emptyMessage = useMemo(() => getRandomOrderEmptyMessage(), []);
   const {
-    isOpen,
+    overrideMode,
     breakUntil,
     showBreakModal,
     setShowBreakModal,
     toggleOpen,
     startBreak,
-    endBreak,
+    isConfirmingAction,
   } = useRestaurantAvailability(restaurantId);
   const unifiedAvailability = useCustomerAvailability({
     restaurantId: restaurantId || null,
@@ -267,7 +325,7 @@ export default function KitchenDisplayPage() {
     sessionActive: false,
     graceMinutes: 10,
   });
-  const isManuallyClosed = !unifiedAvailability.loading && unifiedAvailability.snapshot.reason === 'manual_closed';
+  const controlsDisabled = unifiedAvailability.loading || isConfirmingAction;
   const mutedPreferenceKey = useMemo(
     () => (restaurantId ? `kod_sound_muted_${restaurantId}` : 'kod_sound_muted'),
     [restaurantId]
@@ -635,15 +693,6 @@ export default function KitchenDisplayPage() {
   }, [refreshCurrentView]);
 
   useEffect(() => {
-    const interval = window.setInterval(() => {
-      setNow(Date.now());
-    }, 1000);
-    return () => {
-      window.clearInterval(interval);
-    };
-  }, []);
-
-  useEffect(() => {
     if (typeof window === 'undefined') return;
     const html = document.documentElement;
     const body = document.body;
@@ -772,19 +821,6 @@ export default function KitchenDisplayPage() {
     void ensureAudioContext();
   }, [ensureAudioContext, soundEnabled]);
 
-  const formatElapsed = useCallback((createdAt: string) => {
-    const createdTime = new Date(createdAt).getTime();
-    if (Number.isNaN(createdTime)) return '--';
-    const totalSeconds = Math.max(0, Math.floor((now - createdTime) / 1000));
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-    if (hours > 0) {
-      return `${hours}h ${minutes.toString().padStart(2, '0')}m`;
-    }
-    return `${minutes}m ${seconds.toString().padStart(2, '0')}s`;
-  }, [now]);
-
   const startCooldown = useCallback((key: string) => {
     setCooldowns((prev) => ({ ...prev, [key]: true }));
     window.setTimeout(() => {
@@ -856,14 +892,19 @@ export default function KitchenDisplayPage() {
         return;
       }
 
-      if (!['accepted', 'preparing', 'ready_to_collect', 'delivering'].includes(order.status)) {
+      const nextPreparedStatus = getPreparedStatus(order);
+      if (!nextPreparedStatus || nextPreparedStatus === 'accepted') {
         return;
       }
 
       await acknowledgeOrder(order.id);
       const { error } = await supabase
         .from('orders')
-        .update({ kod_done_at: new Date().toISOString(), kod_done_by_user_id: currentUserId })
+        .update({
+          status: nextPreparedStatus,
+          kod_done_at: new Date().toISOString(),
+          kod_done_by_user_id: currentUserId,
+        })
         .eq('id', order.id)
         .in('status', ['accepted', 'preparing', 'ready_to_collect', 'delivering']);
 
@@ -1126,43 +1167,18 @@ export default function KitchenDisplayPage() {
                   Enable Sound
                 </button>
               )}
-              {breakUntil && new Date(breakUntil).getTime() > now ? (
-                <BreakCountdown
-                  breakUntil={breakUntil}
-                  onEnd={endBreak}
+              <div className="min-w-[360px]">
+                <AvailabilityControls
+                  availabilityLoading={unifiedAvailability.loading}
+                  snapshot={unifiedAvailability.snapshot}
+                  isPaused={overrideMode === 'manual_closed' || overrideMode === 'on_break'}
+                  controlsDisabled={controlsDisabled}
+                  isConfirmingAction={isConfirmingAction}
+                  onPauseOrders={() => setShowBreakModal(true)}
+                  onResumeOrders={toggleOpen}
                   variant="kod"
-                  className="mb-0"
                 />
-              ) : null}
-              {isOpen !== null ? (
-                <div className="flex items-center gap-2">
-                  {!unifiedAvailability.loading ? (
-                    <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-white">
-                      {unifiedAvailability.snapshot.primaryLabel}
-                    </div>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={toggleOpen}
-                    className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] transition ${
-                      isManuallyClosed
-                        ? 'border-rose-400/60 bg-rose-500/20 text-rose-100 hover:bg-rose-500/30'
-                        : 'border-emerald-400/60 bg-emerald-500/20 text-emerald-100 hover:bg-emerald-500/30'
-                    }`}
-                  >
-                    {isManuallyClosed ? 'Open Now' : 'Close Now'}
-                  </button>
-                  {!isManuallyClosed ? (
-                    <button
-                      type="button"
-                      onClick={() => setShowBreakModal(true)}
-                      className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-white transition hover:bg-white/10"
-                    >
-                      Take a Break
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
+              </div>
               {waitingCount > 0 ? (
                 <div className="flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-white">
                   +{waitingCount} waiting
@@ -1195,10 +1211,14 @@ export default function KitchenDisplayPage() {
           <div className="flex w-full flex-1 min-h-0 flex-col space-y-4 overflow-hidden">
             {visibleOrders.length === 0 && !isFetching ? (
               <div className="flex flex-1 items-center justify-center text-center">
-                <div className="flex max-w-md flex-col items-center gap-4 rounded-3xl border border-white/10 bg-neutral-900/80 p-8 shadow-lg shadow-black/40">
-                  <ChefHat className="h-16 w-16 text-neutral-600" />
-                  <p className="text-sm text-neutral-200">{emptyMessage}</p>
-                </div>
+                {overrideMode === 'manual_closed' || overrideMode === 'on_break' ? (
+                  <PausedStateCard breakUntil={breakUntil} />
+                ) : (
+                  <div className="flex max-w-md flex-col items-center gap-4 rounded-3xl border border-white/10 bg-neutral-900/80 p-8 shadow-lg shadow-black/40">
+                    <ChefHat className="h-16 w-16 text-neutral-600" />
+                    <p className="text-sm text-neutral-200">{emptyMessage}</p>
+                  </div>
+                )}
               </div>
             ) : null}
             <div
@@ -1242,7 +1262,7 @@ export default function KitchenDisplayPage() {
                             {segment.order.order_type}
                           </p>
                           <p className={`text-sm font-semibold ${getSecondaryTextClass(segment.order.id)}`}>
-                            {formatElapsed(segment.order.created_at)}
+                            <ElapsedTime createdAt={segment.order.created_at} />
                           </p>
                           <p
                             className={`text-xl font-semibold ${getPrimaryTextClass(
@@ -1327,11 +1347,21 @@ export default function KitchenDisplayPage() {
                           disabled={
                             (isPreparedView
                               ? segment.order.status === 'completed'
-                              : !['pending', 'accepted', 'preparing', 'ready_to_collect', 'delivering'].includes(segment.order.status)) || cooldowns[`${segment.order.id}-primary`]
+                              : !getPreparedStatus(segment.order)) || cooldowns[`${segment.order.id}-primary`]
                           }
                           className="flex-1 rounded-full bg-teal-500 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-black transition hover:bg-teal-400 disabled:cursor-not-allowed disabled:opacity-40"
                         >
-                          {isPreparedView ? (segment.order.status === 'completed' ? 'VIEW' : 'COMPLETE') : segment.order.status === 'pending' ? 'ACCEPT' : 'DONE'}
+                          {isPreparedView
+                            ? segment.order.status === 'completed'
+                              ? 'VIEW'
+                              : 'COMPLETE'
+                            : getPreparedStatus(segment.order) === 'accepted'
+                            ? 'ACCEPT'
+                            : getPreparedStatus(segment.order) === 'ready_to_collect'
+                            ? 'READY FOR COLLECTION'
+                            : getPreparedStatus(segment.order) === 'delivering'
+                            ? 'OUT FOR DELIVERY'
+                            : 'COMPLETE'}
                         </button>
                         <button
                           type="button"
@@ -1537,6 +1567,7 @@ export default function KitchenDisplayPage() {
           onClose={() => setShowBreakModal(false)}
           onSelect={startBreak}
           variant="kod"
+          disabled={controlsDisabled}
         />
         {rejectOrder ? (
           <RejectOrderModal

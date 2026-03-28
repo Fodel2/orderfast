@@ -53,6 +53,18 @@ const formatAddress = (addr: any) => {
     .join(', ');
 };
 
+const isCollectionOrder = (order: Pick<Order, 'order_type' | 'source'>) =>
+  order.order_type === 'collection' || order.order_type === 'kiosk' || order.source === 'kiosk';
+
+const getNextStatus = (order: Pick<Order, 'status' | 'order_type' | 'source'>) => {
+  if (order.status === 'pending') return 'accepted';
+  if (order.status === 'accepted' || order.status === 'preparing') {
+    return isCollectionOrder(order) ? 'ready_to_collect' : 'delivering';
+  }
+  if (order.status === 'ready_to_collect' || order.status === 'delivering') return 'completed';
+  return null;
+};
+
 export default function OrderDetailsModal({ order, onClose, onUpdateStatus, onPrint }: Props) {
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const [showReject, setShowReject] = useState(false);
@@ -194,16 +206,22 @@ export default function OrderDetailsModal({ order, onClose, onUpdateStatus, onPr
             <button type="button" onClick={() => void onPrint({ orderId: order.id, ticketType: 'kot', source: 'manual_print' })} className="px-3 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50">Print KOT</button>
             <button type="button" onClick={() => void onPrint({ orderId: order.id, ticketType: 'invoice', source: 'manual_print' })} className="px-3 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50">Print Invoice</button>
             {(() => {
-              const shouldAccept = order.status === 'pending';
-              const shouldComplete = ['accepted', 'preparing', 'ready_to_collect', 'delivering'].includes(
-                order.status
-              );
-              if (!shouldAccept && !shouldComplete) return null;
-              const nextStatus = shouldAccept ? 'accepted' : 'completed';
-              const label = shouldAccept ? 'ACCEPT' : 'COMPLETE';
-              const classes = shouldAccept
-                ? 'bg-teal-600 hover:bg-teal-700'
-                : 'bg-green-600 hover:bg-green-700';
+              const nextStatus = getNextStatus(order);
+              if (!nextStatus) return null;
+              const label =
+                nextStatus === 'accepted'
+                  ? 'ACCEPT'
+                  : nextStatus === 'ready_to_collect'
+                  ? 'READY FOR COLLECTION'
+                  : nextStatus === 'delivering'
+                  ? 'OUT FOR DELIVERY'
+                  : 'COMPLETE';
+              const classes =
+                nextStatus === 'accepted'
+                  ? 'bg-teal-600 hover:bg-teal-700'
+                  : nextStatus === 'completed'
+                  ? 'bg-green-600 hover:bg-green-700'
+                  : 'bg-indigo-600 hover:bg-indigo-700';
               return (
                 <button
                   type="button"
