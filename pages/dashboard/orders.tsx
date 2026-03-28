@@ -1113,12 +1113,20 @@ export default function OrdersPage() {
         </div>
         {isOpen !== null && (
           <div className="relative flex items-center space-x-2">
-            <button
-              onClick={toggleOpen}
-              className={`px-2 py-1 rounded text-white text-sm ${isOpen ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}
-            >
-              {isOpen ? 'Close Now' : 'Open Now'}
-            </button>
+            {(() => {
+              const effectiveOpen = effectiveAvailability.snapshot.isOpenNow;
+              return (
+                <button
+                  onClick={toggleOpen}
+                  disabled={effectiveAvailability.loading}
+                  className={`px-2 py-1 rounded text-white text-sm disabled:opacity-60 disabled:cursor-not-allowed ${
+                    effectiveOpen ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'
+                  }`}
+                >
+                  {effectiveOpen ? 'Close Now' : 'Open Now'}
+                </button>
+              );
+            })()}
             {isOpen && !effectiveAvailability.loading && effectiveAvailability.snapshot.reason === 'open' && (
               <button
                 onClick={() => setShowBreakModal(true)}
