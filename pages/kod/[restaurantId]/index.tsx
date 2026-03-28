@@ -24,7 +24,9 @@ import { supabase } from '@/lib/supabaseClient';
 import { getTomorrowLondonDate } from '@/lib/stockDate';
 import { getEffectiveStockDisplayStatus } from '@/lib/stockAvailability';
 import { useRestaurantAvailability } from '@/hooks/useRestaurantAvailability';
+import { useCustomerAvailability } from '@/hooks/useCustomerAvailability';
 import { requestPrintJobCreation } from '@/lib/print-jobs/request';
+import { normalizeRestaurantId } from '@/lib/restaurant-context';
 
 
 type OrderAddon = {
@@ -215,7 +217,7 @@ const buildOrderSegments = (
 export default function KitchenDisplayPage() {
   const router = useRouter();
   const { restaurantId: routeParam } = router.query;
-  const restaurantId = Array.isArray(routeParam) ? routeParam[0] : routeParam;
+  const restaurantId = normalizeRestaurantId(Array.isArray(routeParam) ? routeParam[0] : routeParam);
   const [orders, setOrders] = useState<Order[]>([]);
   const [isFetching, setIsFetching] = useState(false);
   const [lastFetchFailed, setLastFetchFailed] = useState(false);
@@ -259,6 +261,12 @@ export default function KitchenDisplayPage() {
     startBreak,
     endBreak,
   } = useRestaurantAvailability(restaurantId);
+  const unifiedAvailability = useCustomerAvailability({
+    restaurantId: restaurantId || null,
+    channel: 'kiosk',
+    sessionActive: false,
+    graceMinutes: 10,
+  });
   const mutedPreferenceKey = useMemo(
     () => (restaurantId ? `kod_sound_muted_${restaurantId}` : 'kod_sound_muted'),
     [restaurantId]
@@ -1127,6 +1135,11 @@ export default function KitchenDisplayPage() {
               ) : null}
               {isOpen !== null ? (
                 <div className="flex items-center gap-2">
+                  {!unifiedAvailability.loading ? (
+                    <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-white">
+                      {unifiedAvailability.snapshot.primaryLabel}
+                    </div>
+                  ) : null}
                   <button
                     type="button"
                     onClick={toggleOpen}

@@ -269,6 +269,20 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   const placeOrder = useCallback(async () => {
     if (!restaurantId || placingOrder || submissionInFlightRef.current) return;
     if (!availability.canSubmitActiveSession) return;
+    const availabilityRes = await fetch('/api/availability/validate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ restaurantId }),
+    });
+    if (!availabilityRes.ok) {
+      const payload = await availabilityRes.json().catch(() => null);
+      setSubmissionError(
+        availabilityRes.status === 409 && payload?.snapshot?.primaryLabel
+          ? payload.snapshot.primaryLabel
+          : 'Ordering is currently unavailable. Please try again shortly.'
+      );
+      return;
+    }
 
     const trimmedName = customerName.trim();
     const parsedTableNumber = Number.parseInt(tableNumberInput, 10);

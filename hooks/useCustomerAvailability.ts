@@ -124,9 +124,40 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
       )
       .subscribe();
 
+    const scheduleRef = supabase
+      .channel(`customer-availability-schedule-${restaurantId}-${channel}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'opening_hours_weekly_periods', filter: `restaurant_id=eq.${restaurantId}` },
+        () => {
+          void load();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'opening_hours_exceptions', filter: `restaurant_id=eq.${restaurantId}` },
+        () => {
+          void load();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'opening_hours_exception_periods' },
+        () => {
+          void load();
+        }
+      )
+      .subscribe();
+
+    const scheduleRefreshTimer = window.setInterval(() => {
+      void load();
+    }, 60_000);
+
     return () => {
       active = false;
       supabase.removeChannel(channelRef);
+      supabase.removeChannel(scheduleRef);
+      window.clearInterval(scheduleRefreshTimer);
     };
   }, [channel, restaurantId]);
 

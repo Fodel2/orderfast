@@ -367,6 +367,20 @@ export default function CheckoutPage() {
   const placeOrder = async () => {
     if (!cart.restaurant_id || !orderType || !customerId) return;
     if (!availability.canSubmitActiveSession) return;
+    const availabilityRes = await fetch('/api/availability/validate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ restaurantId: cart.restaurant_id }),
+    });
+    if (!availabilityRes.ok) {
+      const payload = await availabilityRes.json().catch(() => null);
+      if (availabilityRes.status === 409 && payload?.snapshot?.primaryLabel) {
+        setPromoErrorBanner(payload.snapshot.primaryLabel);
+      } else {
+        setPromoErrorBanner('Ordering is currently unavailable. Please try again shortly.');
+      }
+      return;
+    }
 
     const isDev = process.env.NODE_ENV !== 'production';
     let voucherRedemptionPayload: {
