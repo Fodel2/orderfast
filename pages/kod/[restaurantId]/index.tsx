@@ -1167,18 +1167,16 @@ export default function KitchenDisplayPage() {
                   Enable Sound
                 </button>
               )}
-              <div className="min-w-[360px]">
-                <AvailabilityControls
-                  availabilityLoading={unifiedAvailability.loading}
-                  snapshot={unifiedAvailability.snapshot}
-                  isPaused={overrideMode === 'manual_closed' || overrideMode === 'on_break'}
-                  controlsDisabled={controlsDisabled}
-                  isConfirmingAction={isConfirmingAction}
-                  onPauseOrders={() => setShowBreakModal(true)}
-                  onResumeOrders={toggleOpen}
-                  variant="kod"
-                />
-              </div>
+              <AvailabilityControls
+                availabilityLoading={unifiedAvailability.loading}
+                snapshot={unifiedAvailability.snapshot}
+                isPaused={overrideMode === 'manual_closed' || overrideMode === 'on_break'}
+                controlsDisabled={controlsDisabled}
+                isConfirmingAction={isConfirmingAction}
+                onPauseOrders={() => setShowBreakModal(true)}
+                onResumeOrders={toggleOpen}
+                variant="kod"
+              />
               {waitingCount > 0 ? (
                 <div className="flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-white">
                   +{waitingCount} waiting
