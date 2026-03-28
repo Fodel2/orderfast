@@ -12,6 +12,7 @@ import { orderAlertSoundController } from '@/utils/orderAlertSoundController';
 import { formatPrice, formatShortOrderNumber, formatStatusLabel } from '@/lib/orderDisplay';
 import { getRandomOrderEmptyMessage } from '@/lib/orderEmptyState';
 import { useRestaurantAvailability } from '@/hooks/useRestaurantAvailability';
+import { useCustomerAvailability } from '@/hooks/useCustomerAvailability';
 import { requestPrintJobCreation } from '@/lib/print-jobs/request';
 
 const ACTIVE_STATUSES = [
@@ -85,10 +86,6 @@ export default function OrdersPage() {
   const [now, setNow] = useState(Date.now());
   const [restaurantId, setRestaurantId] = useState<string | null>(null);
   const [outOfStockCount, setOutOfStockCount] = useState(0);
-  const [todayHours, setTodayHours] = useState<
-    | { open_time: string | null; close_time: string | null; closed: boolean }
-    | null
-  >(null);
   const [toastMessage, setToastMessage] = useState('');
   const [openTableSessions, setOpenTableSessions] = useState<TableSessionSummary[]>([]);
   const [selectedTableSession, setSelectedTableSession] = useState<TableSessionSummary | null>(null);
@@ -112,6 +109,12 @@ export default function OrdersPage() {
     startBreak,
     endBreak,
   } = useRestaurantAvailability(restaurantId);
+  const effectiveAvailability = useCustomerAvailability({
+    restaurantId,
+    channel: 'website',
+    sessionActive: false,
+    graceMinutes: 5,
+  });
   const isKioskDevice = useCallback(
     () => router.pathname.startsWith('/kiosk/'),
     [router.pathname]
@@ -481,46 +484,6 @@ export default function OrdersPage() {
       orderAlertSoundController.stop('Orders');
     };
   }, []);
-
-  useEffect(() => {
-    if (!restaurantId || !isOrdersPage) return;
-
-    const loadHours = async () => {
-      const today = new Date().getDay();
-      const { data } = await supabase
-        .from('opening_hours')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .eq('day_of_week', today)
-        .maybeSingle();
-      if (data) {
-        setTodayHours({
-          open_time: data.open_time,
-          close_time: data.close_time,
-          closed: data.is_closed,
-        });
-      }
-    };
-
-    loadHours();
-
-    const channel = supabase
-      .channel('hours-' + restaurantId)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'opening_hours',
-          filter: `restaurant_id=eq.${restaurantId}`,
-        },
-        () => loadHours()
-      )
-      .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [restaurantId]);
 
   useEffect(() => {
     if (!restaurantId || !isOrdersPage) return;
@@ -1127,27 +1090,26 @@ export default function OrdersPage() {
       )}
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center space-x-2">
-          {todayHours ? (
-            todayHours.closed ? (
-              <span>Closed Today</span>
-            ) : (
-              <>
-                <span>
-                  Open Today: {formatTime(todayHours.open_time)} –{' '}
-                  {formatTime(todayHours.close_time)}
-                </span>
-                <span
-                  className={`text-xs px-2 py-1 rounded-full font-semibold ${
-                    isOpen ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'
-                  }`}
-                >
-                  {breakUntil && new Date(breakUntil).getTime() > now ? 'On Break' : isOpen ? 'Open' : 'Closed'}
-                </span>
-              </>
-            )
-          ) : (
-            <span>Loading hours...</span>
-          )}
+          <span>
+            Availability:{' '}
+            {effectiveAvailability.loading
+              ? 'Loading...'
+              : effectiveAvailability.snapshot.primaryLabel}
+          </span>
+          {!effectiveAvailability.loading && effectiveAvailability.snapshot.secondaryLabel ? (
+            <span className="text-xs text-gray-500">{effectiveAvailability.snapshot.secondaryLabel}</span>
+          ) : null}
+          {!effectiveAvailability.loading ? (
+            <span
+              className={`text-xs px-2 py-1 rounded-full font-semibold ${
+                effectiveAvailability.snapshot.isOpenNow
+                  ? 'bg-green-100 text-green-800'
+                  : 'bg-gray-100 text-gray-700'
+              }`}
+            >
+              {effectiveAvailability.snapshot.isOpenNow ? 'Open' : 'Closed'}
+            </span>
+          ) : null}
         </div>
         {isOpen !== null && (
           <div className="relative flex items-center space-x-2">
@@ -1157,7 +1119,7 @@ export default function OrdersPage() {
             >
               {isOpen ? 'Close Now' : 'Open Now'}
             </button>
-            {isOpen && (
+            {isOpen && !effectiveAvailability.loading && effectiveAvailability.snapshot.reason === 'open' && (
               <button
                 onClick={() => setShowBreakModal(true)}
                 className="px-2 py-1 rounded text-white text-sm bg-blue-600 hover:bg-blue-700"

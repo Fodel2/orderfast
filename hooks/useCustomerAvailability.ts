@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { evaluateAvailability, type OpeningException, type OpeningPeriod } from '@/lib/customerAvailability';
 
@@ -49,22 +49,17 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
   const hasActiveGrace = Boolean(graceEndAt && graceEndAt > Date.now());
   const needsSecondResolution = hasActiveBreak || hasActiveGrace;
 
-  useEffect(() => {
-    const intervalMs = needsSecondResolution ? 1000 : 15000;
-    const timer = setInterval(() => setTick(Date.now()), intervalMs);
-    return () => clearInterval(timer);
-  }, [needsSecondResolution]);
+  const loadAvailability = useCallback(
+    async (options?: { showLoading?: boolean }) => {
+      if (!restaurantId) {
+        setLoading(false);
+        return;
+      }
 
-  useEffect(() => {
-    if (!restaurantId) {
-      setLoading(false);
-      return;
-    }
-
-    let active = true;
-
-    const load = async () => {
-      setLoading(true);
+      const showLoading = options?.showLoading ?? false;
+      if (showLoading) {
+        setLoading(true);
+      }
 
       const today = new Date();
       const start = new Date(today);
@@ -87,8 +82,6 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
           .lte('exception_date', toIso(end)),
       ]);
 
-      if (!active) return;
-
       setIsOpen(typeof restaurantRes.data?.is_open === 'boolean' ? restaurantRes.data.is_open : true);
       setBreakUntil(restaurantRes.data?.break_until || null);
       setAvailabilityUpdatedAt(restaurantRes.data?.updated_at || null);
@@ -100,10 +93,33 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
           periods: (row.opening_hours_exception_periods || []) as OpeningPeriod[],
         }))
       );
-      setLoading(false);
-    };
 
-    void load();
+      if (showLoading) {
+        setLoading(false);
+      }
+    },
+    [restaurantId]
+  );
+
+  useEffect(() => {
+    const intervalMs = needsSecondResolution ? 1000 : 15000;
+    const timer = setInterval(() => setTick(Date.now()), intervalMs);
+    return () => clearInterval(timer);
+  }, [needsSecondResolution]);
+
+  useEffect(() => {
+    if (!restaurantId) {
+      setLoading(false);
+      return;
+    }
+
+    let active = true;
+    setLoading(true);
+    void loadAvailability({ showLoading: true }).catch(() => {
+      if (active) {
+        setLoading(false);
+      }
+    });
 
     const channelRef = supabase
       .channel(`customer-availability-${restaurantId}-${channel}`)
@@ -128,7 +144,28 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
       active = false;
       supabase.removeChannel(channelRef);
     };
-  }, [channel, restaurantId]);
+  }, [channel, loadAvailability, restaurantId]);
+
+  useEffect(() => {
+    if (!restaurantId) return;
+    const interval = setInterval(() => {
+      void loadAvailability();
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, [loadAvailability, restaurantId]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !restaurantId) return;
+    const handleFocus = () => {
+      void loadAvailability();
+    };
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('online', handleFocus);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('online', handleFocus);
+    };
+  }, [loadAvailability, restaurantId]);
 
   const snapshot = useMemo(
     () =>

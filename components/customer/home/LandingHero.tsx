@@ -87,6 +87,7 @@ type LandingHeroProps = {
   logoUrl?: string | null; // avatar/logo
   logoShape?: 'square' | 'round' | 'rectangular' | null;
   isOpen?: boolean; // optional open state
+  restaurantId?: string | null;
   loading?: boolean;
 };
 
@@ -99,6 +100,7 @@ export default function LandingHero({
   logoUrl,
   logoShape,
   isOpen,
+  restaurantId,
   loading = false,
 }: LandingHeroProps) {
   const router = useRouter();
@@ -147,8 +149,10 @@ export default function LandingHero({
     pick(router.query.id as string | string[] | undefined) ||
     pick(router.query.r as string | string[] | undefined);
 
+  const availabilityRestaurantId = restaurantId || routeRestaurantId || null;
+
   const availability = useCustomerAvailability({
-    restaurantId: routeRestaurantId || null,
+    restaurantId: availabilityRestaurantId,
     channel: 'website',
     sessionActive: false,
     graceMinutes: 5,

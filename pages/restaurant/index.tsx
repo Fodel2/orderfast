@@ -127,6 +127,7 @@ export default function RestaurantHomePage({ initialBrand }: { initialBrand: any
           imageUrl={coverImg || undefined}
           logoUrl={restaurant?.logo_url ?? null}
           logoShape={restaurant?.logo_shape ?? null}
+          restaurantId={rid}
           loading={heroLoading}
       />
       <SlidesContainer />

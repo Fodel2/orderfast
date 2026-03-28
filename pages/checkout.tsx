@@ -444,11 +444,13 @@ export default function CheckoutPage() {
       if (!cart.restaurant_id) {
         throw new Error('Missing restaurant id for checkout order');
       }
-      const { data: order, error } = await supabase
-        .from('orders')
-        .insert([
-          {
-            restaurant_id: cart.restaurant_id,
+      const createOrderResponse = await fetch('/api/orders/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channel: 'website',
+          restaurantId: cart.restaurant_id,
+          order: {
             user_id: customerId,
             order_type: orderType,
             source: 'app',
@@ -465,42 +467,27 @@ export default function CheckoutPage() {
             service_fee: serviceFee,
             delivery_fee: deliveryFee,
           },
-        ])
-        .select('id, short_order_number')
-        .single();
-
-      if (error || !order) throw error || new Error('Failed to insert order');
-
-      for (const item of cart.items) {
-        const { data: oi, error: oiErr } = await supabase
-          .from('order_items')
-          .insert([
-            {
-              order_id: order.id,
-              item_id: item.item_id,
-              name: item.name,
-              price: item.price,
-              quantity: item.quantity,
-              notes: item.notes || null,
-            },
-          ])
-          .select('id')
-          .single();
-        if (oiErr || !oi) throw oiErr || new Error('Failed to insert order item');
-
-        for (const addon of item.addons || []) {
-          const { error: oaErr } = await supabase.from('order_addons').insert([
-            {
-              order_item_id: oi.id,
+          items: cart.items.map((item) => ({
+            item_id: item.item_id,
+            name: item.name,
+            price: item.price,
+            quantity: item.quantity,
+            notes: item.notes || null,
+            addons: (item.addons || []).map((addon) => ({
               option_id: addon.option_id,
               name: addon.name,
               price: addon.price,
               quantity: addon.quantity,
-            },
-          ]);
-          if (oaErr) throw oaErr;
-        }
+            })),
+          })),
+        }),
+      });
+
+      const createOrderPayload = await createOrderResponse.json().catch(() => ({}));
+      if (!createOrderResponse.ok || !createOrderPayload?.order?.id) {
+        throw new Error(createOrderPayload?.error || 'Failed to insert order');
       }
+      const order = createOrderPayload.order as { id: string; short_order_number: number };
 
       try {
         await requestPrintJobCreation({

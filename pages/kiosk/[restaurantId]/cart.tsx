@@ -342,116 +342,68 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
       if (!restaurantId) {
         throw new Error('Missing restaurant id for kiosk order');
       }
-      let orderId: string | null = null;
+      const createOrderResponse = await fetch('/api/orders/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channel: isExpressDineIn || isExpressTakeaway ? 'express' : 'kiosk',
+          restaurantId,
+          order: {
+            customer_name: isExpressDineIn ? trimmedName || null : trimmedName,
+            order_type: 'collection',
+            source: isExpressDineIn || isExpressTakeaway ? 'express' : 'kiosk',
+            status: initialStatus,
+            accepted_at: acceptedAt,
+            total_price: subtotal,
+            service_fee: 0,
+            delivery_fee: 0,
+            dine_in_table_number: finalTableNumber,
+            table_session_id: null,
+          },
+          items: cartItemsSnapshot.map((item) => ({
+            item_id: item.item_id,
+            name: item.name,
+            price: item.price,
+            quantity: item.quantity,
+            notes: item.notes || null,
+            addons: (item.addons || []).map((addon) => ({
+              option_id: addon.option_id,
+              name: addon.name,
+              price: addon.price,
+              quantity: addon.quantity,
+            })),
+          })),
+        }),
+      });
+
+      const createOrderPayload = await createOrderResponse.json().catch(() => ({}));
+      if (!createOrderResponse.ok || !createOrderPayload?.order?.id) {
+        throw new Error(createOrderPayload?.error || 'Failed to insert order');
+      }
+
+      const order = createOrderPayload.order as { id: string; short_order_number: number };
+
+      if (process.env.NODE_ENV === 'development') {
+        console.debug('[kiosk] order inserted', {
+          orderId: order.id,
+          orderNumber: order.short_order_number ?? 0,
+        });
+      }
 
       try {
-        const { data: order, error: orderError } = await supabase
-          .from('orders')
-          .insert([
-            {
-              restaurant_id: restaurantId,
-              customer_name: isExpressDineIn ? trimmedName || null : trimmedName,
-              order_type: 'collection',
-              source: isExpressDineIn || isExpressTakeaway ? 'express' : 'kiosk',
-              status: initialStatus,
-              accepted_at: acceptedAt,
-              total_price: subtotal,
-              service_fee: 0,
-              delivery_fee: 0,
-              dine_in_table_number: finalTableNumber,
-              table_session_id: null,
-            },
-          ])
-          .select('id, short_order_number')
-          .single();
-
-        if (orderError || !order) throw orderError || new Error('Failed to insert order');
-        orderId = order.id;
-
-        if (process.env.NODE_ENV !== 'production') {
-          const { data: verified, error: verifyError } = await supabase
-            .from('orders')
-            .select('short_order_number')
-            .eq('id', order.id)
-            .single();
-          if (verifyError) {
-            console.error('[kiosk] failed to verify short_order_number', {
-              orderId: order.id,
-              error: verifyError,
-            });
-          } else if (verified?.short_order_number == null) {
-            console.error('[kiosk] short_order_number missing after insert', {
-              orderId: order.id,
-              source: 'kiosk',
-            });
-          }
-        }
-
-        for (const item of cartItemsSnapshot) {
-          const { data: orderItem, error: itemError } = await supabase
-            .from('order_items')
-            .insert([
-              {
-                order_id: order.id,
-                item_id: item.item_id,
-                name: item.name,
-                price: item.price,
-                quantity: item.quantity,
-                notes: item.notes || null,
-              },
-            ])
-            .select('id')
-            .single();
-
-          if (itemError || !orderItem) throw itemError || new Error('Failed to insert order item');
-
-          const relatedAddons = item.addons || [];
-          for (const addon of relatedAddons) {
-            const { error: addonError } = await supabase.from('order_addons').insert([
-              {
-                order_item_id: orderItem.id,
-                option_id: addon.option_id,
-                name: addon.name,
-                price: addon.price,
-                quantity: addon.quantity,
-              },
-            ]);
-
-            if (addonError) throw addonError;
-          }
-        }
-
-        if (process.env.NODE_ENV === 'development') {
-          console.debug('[kiosk] order inserted', {
-            orderId: order.id,
-            orderNumber: order.short_order_number ?? 0,
-          });
-        }
-
-        try {
-          await requestPrintJobCreation({
-            restaurantId,
-            orderId: order.id,
-            ticketType: 'kot',
-            source: 'auto',
-            triggerEvent: 'order_placed',
-            dedupeToken: `order_placed:${order.id}`,
-          });
-        } catch (printError) {
-          console.warn('[kiosk] failed to create auto KOT print jobs', printError);
-        }
-
-        return { orderId: order.id, orderNumber: order.short_order_number ?? 0 };
-      } catch (err) {
-        console.error('[kiosk] order submission failed', err);
-        if (orderId) {
-          const { error: cleanupError } = await supabase.from('orders').delete().eq('id', orderId);
-          if (cleanupError) {
-            console.error('[kiosk] failed to clean up incomplete order', cleanupError);
-          }
-        }
-        throw err;
+        await requestPrintJobCreation({
+          restaurantId,
+          orderId: order.id,
+          ticketType: 'kot',
+          source: 'auto',
+          triggerEvent: 'order_placed',
+          dedupeToken: `order_placed:${order.id}`,
+        });
+      } catch (printError) {
+        console.warn('[kiosk] failed to create auto KOT print jobs', printError);
       }
+
+      return { orderId: order.id, orderNumber: order.short_order_number ?? 0 };
     };
     const handleFailure = (err: unknown) => {
       console.error('[kiosk] order submission failed', err);

@@ -24,6 +24,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { getTomorrowLondonDate } from '@/lib/stockDate';
 import { getEffectiveStockDisplayStatus } from '@/lib/stockAvailability';
 import { useRestaurantAvailability } from '@/hooks/useRestaurantAvailability';
+import { useCustomerAvailability } from '@/hooks/useCustomerAvailability';
 import { requestPrintJobCreation } from '@/lib/print-jobs/request';
 
 
@@ -259,6 +260,12 @@ export default function KitchenDisplayPage() {
     startBreak,
     endBreak,
   } = useRestaurantAvailability(restaurantId);
+  const effectiveAvailability = useCustomerAvailability({
+    restaurantId,
+    channel: 'kiosk',
+    sessionActive: false,
+    graceMinutes: 10,
+  });
   const mutedPreferenceKey = useMemo(
     () => (restaurantId ? `kod_sound_muted_${restaurantId}` : 'kod_sound_muted'),
     [restaurantId]
@@ -1127,6 +1134,17 @@ export default function KitchenDisplayPage() {
               ) : null}
               {isOpen !== null ? (
                 <div className="flex items-center gap-2">
+                  {!effectiveAvailability.loading ? (
+                    <span
+                      className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] ${
+                        effectiveAvailability.snapshot.isOpenNow
+                          ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-100'
+                          : 'border-white/15 bg-white/5 text-white/80'
+                      }`}
+                    >
+                      {effectiveAvailability.snapshot.primaryLabel}
+                    </span>
+                  ) : null}
                   <button
                     type="button"
                     onClick={toggleOpen}
@@ -1138,7 +1156,7 @@ export default function KitchenDisplayPage() {
                   >
                     {isOpen ? 'Close Now' : 'Open Now'}
                   </button>
-                  {isOpen ? (
+                  {isOpen && !effectiveAvailability.loading && effectiveAvailability.snapshot.reason === 'open' ? (
                     <button
                       type="button"
                       onClick={() => setShowBreakModal(true)}
