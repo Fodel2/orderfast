@@ -14,6 +14,7 @@ export type AvailabilityInputs = {
   now: Date;
   isOpen: boolean;
   breakUntil: string | null;
+  availabilityUpdatedAt?: string | null;
   weeklyPeriods: Array<OpeningPeriod & { day_of_week: number }>;
   exceptions: OpeningException[];
 };
@@ -52,6 +53,13 @@ function toIsoLocalDate(date: Date) {
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
+}
+
+function buildDateAtLocalTime(baseDate: Date, value: string) {
+  const [h, m] = value.split(':').map((part) => Number(part));
+  const result = new Date(baseDate);
+  result.setHours(Number.isFinite(h) ? h : 0, Number.isFinite(m) ? m : 0, 0, 0);
+  return result;
 }
 
 function getScheduleForDate(inputs: AvailabilityInputs, date: Date): ScheduleDay {
@@ -109,29 +117,6 @@ function findNextOpening(inputs: AvailabilityInputs, now: Date): { when: Date; l
 export function evaluateAvailability(inputs: AvailabilityInputs): AvailabilitySnapshot {
   const now = inputs.now;
 
-  if (!inputs.isOpen) {
-    return {
-      isOpenNow: false,
-      blocksNewSessions: true,
-      reason: 'manual_closed',
-      primaryLabel: 'Closed right now',
-      secondaryLabel: null,
-    };
-  }
-
-  if (inputs.breakUntil) {
-    const breakDate = new Date(inputs.breakUntil);
-    if (breakDate.getTime() > now.getTime()) {
-      return {
-        isOpenNow: false,
-        blocksNewSessions: true,
-        reason: 'on_break',
-        primaryLabel: 'Temporarily closed',
-        secondaryLabel: `Back at ${breakDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`,
-      };
-    }
-  }
-
   const todaySchedule = getScheduleForDate(inputs, now);
   if (todaySchedule.isClosedException) {
     const next = findNextOpening(inputs, now);
@@ -157,22 +142,54 @@ export function evaluateAvailability(inputs: AvailabilityInputs): AvailabilitySn
     }
   }
 
-  if (activePeriod) {
+  if (!activePeriod) {
+    const next = findNextOpening(inputs, now);
     return {
-      isOpenNow: true,
-      blocksNewSessions: false,
-      reason: 'open',
-      primaryLabel: 'Open now',
-      secondaryLabel: `Closes at ${formatTime(activePeriod.close_time)}`,
+      isOpenNow: false,
+      blocksNewSessions: true,
+      reason: 'outside_hours',
+      primaryLabel: 'Closed right now',
+      secondaryLabel: next?.label || null,
     };
   }
 
-  const next = findNextOpening(inputs, now);
+  if (inputs.breakUntil) {
+    const breakDate = new Date(inputs.breakUntil);
+    if (breakDate.getTime() > now.getTime()) {
+      return {
+        isOpenNow: false,
+        blocksNewSessions: true,
+        reason: 'on_break',
+        primaryLabel: 'Temporarily closed',
+        secondaryLabel: `Back at ${breakDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`,
+      };
+    }
+  }
+
+  const manualCloseUpdatedAt = inputs.availabilityUpdatedAt ? new Date(inputs.availabilityUpdatedAt) : null;
+  const activeWindowStart = buildDateAtLocalTime(now, activePeriod.open_time);
+  const manualCloseActive = Boolean(
+    !inputs.isOpen &&
+      manualCloseUpdatedAt &&
+      Number.isFinite(manualCloseUpdatedAt.getTime()) &&
+      manualCloseUpdatedAt.getTime() >= activeWindowStart.getTime()
+  );
+
+  if (manualCloseActive) {
+    return {
+      isOpenNow: false,
+      blocksNewSessions: true,
+      reason: 'manual_closed',
+      primaryLabel: 'Closed right now',
+      secondaryLabel: null,
+    };
+  }
+
   return {
-    isOpenNow: false,
-    blocksNewSessions: true,
-    reason: 'outside_hours',
-    primaryLabel: 'Closed right now',
-    secondaryLabel: next?.label || null,
+    isOpenNow: true,
+    blocksNewSessions: false,
+    reason: 'open',
+    primaryLabel: 'Open now',
+    secondaryLabel: `Closes at ${formatTime(activePeriod.close_time)}`,
   };
 }

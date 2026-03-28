@@ -32,6 +32,7 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
   const [loading, setLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(true);
   const [breakUntil, setBreakUntil] = useState<string | null>(null);
+  const [availabilityUpdatedAt, setAvailabilityUpdatedAt] = useState<string | null>(null);
   const [weeklyPeriods, setWeeklyPeriods] = useState<Array<OpeningPeriod & { day_of_week: number }>>([]);
   const [exceptions, setExceptions] = useState<OpeningException[]>([]);
   const [tick, setTick] = useState(Date.now());
@@ -68,7 +69,7 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
       const toIso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
       const [restaurantRes, weeklyRes, exceptionRes] = await Promise.all([
-        supabase.from('restaurants').select('is_open, break_until').eq('id', restaurantId).maybeSingle(),
+        supabase.from('restaurants').select('is_open, break_until, updated_at').eq('id', restaurantId).maybeSingle(),
         supabase
           .from('opening_hours_weekly_periods')
           .select('day_of_week,open_time,close_time,sort_order')
@@ -85,6 +86,7 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
 
       setIsOpen(typeof restaurantRes.data?.is_open === 'boolean' ? restaurantRes.data.is_open : true);
       setBreakUntil(restaurantRes.data?.break_until || null);
+      setAvailabilityUpdatedAt(restaurantRes.data?.updated_at || null);
       setWeeklyPeriods((weeklyRes.data || []) as Array<OpeningPeriod & { day_of_week: number }>);
       setExceptions(
         ((exceptionRes.data || []) as any[]).map((row) => ({
@@ -109,9 +111,10 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
           filter: `id=eq.${restaurantId}`,
         },
         (payload) => {
-          const next = payload.new as { is_open?: boolean; break_until?: string | null };
+          const next = payload.new as { is_open?: boolean; break_until?: string | null; updated_at?: string | null };
           if (typeof next.is_open === 'boolean') setIsOpen(next.is_open);
           if (typeof next.break_until !== 'undefined') setBreakUntil(next.break_until || null);
+          if (typeof next.updated_at !== 'undefined') setAvailabilityUpdatedAt(next.updated_at || null);
         }
       )
       .subscribe();
@@ -128,10 +131,11 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
         now: new Date(tick),
         isOpen,
         breakUntil,
+        availabilityUpdatedAt,
         weeklyPeriods,
         exceptions,
       }),
-    [breakUntil, exceptions, isOpen, tick, weeklyPeriods]
+    [availabilityUpdatedAt, breakUntil, exceptions, isOpen, tick, weeklyPeriods]
   );
 
   useEffect(() => {
