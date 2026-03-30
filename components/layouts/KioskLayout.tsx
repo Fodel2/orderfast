@@ -599,6 +599,7 @@ export default function KioskLayout({
         {
           lastNavigationTarget: url,
           navigationStatus: 'start',
+          navigationError: null,
         },
         'route-change-start'
       );
@@ -611,6 +612,7 @@ export default function KioskLayout({
           route: url,
           lastNavigationTarget: url,
           navigationStatus: 'complete',
+          navigationError: null,
         },
         'route-change-complete'
       );
@@ -618,10 +620,12 @@ export default function KioskLayout({
     };
 
     const handleRouteError = (err: unknown, url: string) => {
+      const message = err instanceof Error ? err.message : String(err);
       patchKioskDebugState(
         {
           lastNavigationTarget: url,
           navigationStatus: 'error',
+          navigationError: message,
         },
         'route-change-error'
       );
@@ -678,15 +682,18 @@ export default function KioskLayout({
         {
           lastNavigationTarget: resolvedMenuPath,
           navigationStatus: 'start',
+          navigationError: null,
         },
         'tap-to-order-router-push-start'
       );
       console.info('[kiosk-debug] tap to order router.push start', { resolvedMenuPath });
       router.push(resolvedMenuPath).catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
         patchKioskDebugState(
           {
             lastNavigationTarget: resolvedMenuPath,
             navigationStatus: 'error',
+            navigationError: message,
           },
           'tap-to-order-router-push-error'
         );
@@ -746,16 +753,19 @@ export default function KioskLayout({
       {
         lastNavigationTarget: targetPath,
         navigationStatus: targetPath ? 'start' : 'error',
+        navigationError: targetPath ? null : 'Unable to resolve kiosk menu target path.',
       },
       'debug-force-open-menu'
     );
     console.info('[kiosk-debug] force open menu requested', { targetPath, resolvedRestaurantId });
     if (!targetPath) return;
     router.push(targetPath).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
       patchKioskDebugState(
         {
           lastNavigationTarget: targetPath,
           navigationStatus: 'error',
+          navigationError: message,
         },
         'debug-force-open-menu-error'
       );
@@ -770,15 +780,18 @@ export default function KioskLayout({
       {
         lastNavigationTarget: targetPath,
         navigationStatus: 'start',
+        navigationError: null,
       },
       'debug-exit-kiosk'
     );
     console.info('[kiosk-debug] debug exit requested', { targetPath });
     router.push(targetPath).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
       patchKioskDebugState(
         {
           lastNavigationTarget: targetPath,
           navigationStatus: 'error',
+          navigationError: message,
         },
         'debug-exit-kiosk-error'
       );
@@ -1070,6 +1083,7 @@ export default function KioskLayout({
           <p>homeVisible/contentVisible: {String(homeVisible)} / {String(contentVisible)}</p>
           <p>lastNavTarget: {debugState.lastNavigationTarget || 'n/a'}</p>
           <p>navStatus: {debugState.navigationStatus || 'idle'}</p>
+          <p>navError: {debugState.navigationError || 'n/a'}</p>
           <p>menuMounted: {String(Boolean(debugState.menuMounted))}</p>
           <p>
             menuBlocked: {String(Boolean(debugState.menuBlockedBySession))}

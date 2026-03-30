@@ -8,6 +8,7 @@ export type KioskDebugState = {
   contentVisible?: boolean;
   lastNavigationTarget?: string | null;
   navigationStatus?: 'idle' | 'start' | 'complete' | 'error';
+  navigationError?: string | null;
   menuMounted?: boolean;
   menuBlockedBySession?: boolean;
   menuBlockedReason?: string | null;
