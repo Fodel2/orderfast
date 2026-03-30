@@ -669,11 +669,6 @@ export default function KioskLayout({
       setHomeVisible(false);
       setHomeFading(false);
     }, 220);
-    if (shouldSuppressFullscreen) {
-      await requestWakeLock();
-    } else {
-      await Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]);
-    }
     const resolvedMenuPath = targetRestaurantId
       ? `/kiosk/${targetRestaurantId}/menu${isExpressActive ? '?express=1' : ''}`
       : menuPath;
@@ -699,6 +694,11 @@ export default function KioskLayout({
         );
         console.error('[kiosk-debug] tap to order router.push error', { error, resolvedMenuPath });
       });
+    }
+    if (shouldSuppressFullscreen) {
+      requestWakeLock().catch(() => undefined);
+    } else {
+      Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]).catch(() => undefined);
     }
   }, [
     attemptFullscreen,
@@ -758,7 +758,7 @@ export default function KioskLayout({
       'debug-force-open-menu'
     );
     console.info('[kiosk-debug] force open menu requested', { targetPath, resolvedRestaurantId });
-    if (!targetPath) return;
+    if (!targetPath || router.asPath === targetPath) return;
     router.push(targetPath).catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
       patchKioskDebugState(

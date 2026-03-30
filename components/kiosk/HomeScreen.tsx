@@ -150,6 +150,7 @@ export default function HomeScreen({ restaurant, onStart, fadingOut, loading, cl
               style={{
                 backgroundColor: primaryColor,
                 minHeight: '64px',
+                touchAction: 'manipulation',
               }}
             >
               Tap to Order
