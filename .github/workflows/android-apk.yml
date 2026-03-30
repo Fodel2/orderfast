@@ -6,6 +6,8 @@ on:
 jobs:
   build-apk:
     runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
 
     steps:
       - name: Checkout repo
