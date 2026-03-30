@@ -34,6 +34,33 @@ const APP_MODES: AppMode[] = [
   { key: 'menu', label: 'Menu', description: 'Customer menu preview and ordering.' },
 ];
 const RESTAURANT_SELECTION_KEY = 'orderfast_launcher_restaurant_id';
+const LAST_MODE_KEY = 'orderfast_launcher_last_mode';
+
+type LastLaunchState = {
+  restaurantId: string;
+  mode: AppMode['key'];
+  updatedAt: string;
+};
+
+const isValidMode = (value: string): value is AppMode['key'] =>
+  APP_MODES.some((mode) => mode.key === value);
+
+const parseLastLaunchState = (raw: string | null): LastLaunchState | null => {
+  if (!raw) return null;
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<LastLaunchState>;
+    if (!parsed.restaurantId || !parsed.mode || !parsed.updatedAt) return null;
+    if (!isValidMode(parsed.mode)) return null;
+    return {
+      restaurantId: parsed.restaurantId,
+      mode: parsed.mode,
+      updatedAt: parsed.updatedAt,
+    };
+  } catch {
+    return null;
+  }
+};
 
 const getRestaurantFromMembership = (row: MembershipRow): RestaurantOption | null => {
   if (!row.restaurant_id) return null;
@@ -60,6 +87,7 @@ export default function DashboardLauncherPage() {
   const [restaurants, setRestaurants] = useState<RestaurantOption[]>([]);
   const [selectedRestaurantId, setSelectedRestaurantId] = useState<string | null>(null);
   const [launchingMode, setLaunchingMode] = useState<AppMode['key'] | null>(null);
+  const [lastLaunchState, setLastLaunchState] = useState<LastLaunchState | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -97,18 +125,27 @@ export default function DashboardLauncherPage() {
 
       setRestaurants(uniqueRestaurants);
 
-      if (uniqueRestaurants.length === 1) {
-        setSelectedRestaurantId(uniqueRestaurants[0].id);
-      }
-      if (uniqueRestaurants.length > 1 && typeof window !== 'undefined') {
+      if (typeof window !== 'undefined') {
         try {
           const persistedId = window.localStorage.getItem(RESTAURANT_SELECTION_KEY);
           if (persistedId && uniqueRestaurants.some((restaurant) => restaurant.id === persistedId)) {
             setSelectedRestaurantId(persistedId);
+          } else if (uniqueRestaurants.length === 1) {
+            setSelectedRestaurantId(uniqueRestaurants[0].id);
+          }
+
+          const persistedLastLaunch = parseLastLaunchState(window.localStorage.getItem(LAST_MODE_KEY));
+          if (persistedLastLaunch && uniqueRestaurants.some((restaurant) => restaurant.id === persistedLastLaunch.restaurantId)) {
+            setLastLaunchState(persistedLastLaunch);
+          } else {
+            setLastLaunchState(null);
+            window.localStorage.removeItem(LAST_MODE_KEY);
           }
         } catch {
           // localStorage can be unavailable in some webview contexts
         }
+      } else if (uniqueRestaurants.length === 1) {
+        setSelectedRestaurantId(uniqueRestaurants[0].id);
       }
 
       if (uniqueRestaurants.length === 0) {
@@ -140,6 +177,13 @@ export default function DashboardLauncherPage() {
   }, [selectedRestaurantId]);
 
   useEffect(() => {
+    if (!selectedRestaurantId) return;
+    if (!restaurants.some((restaurant) => restaurant.id === selectedRestaurantId)) {
+      setSelectedRestaurantId(null);
+    }
+  }, [restaurants, selectedRestaurantId]);
+
+  useEffect(() => {
     if (!selectedRestaurant) return;
 
     APP_MODES.forEach((mode) => {
@@ -152,12 +196,31 @@ export default function DashboardLauncherPage() {
     if (!selectedRestaurant) return;
     const href = getModeHref(mode, selectedRestaurant.id);
     setLaunchingMode(mode);
+    const launchState: LastLaunchState = {
+      restaurantId: selectedRestaurant.id,
+      mode,
+      updatedAt: new Date().toISOString(),
+    };
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.setItem(LAST_MODE_KEY, JSON.stringify(launchState));
+        setLastLaunchState(launchState);
+      } catch {
+        // localStorage can be unavailable in some webview contexts
+      }
+    }
     try {
       await router.push(href);
     } finally {
       setLaunchingMode(null);
     }
   };
+
+  const resumeMode = useMemo(() => {
+    if (!selectedRestaurant || !lastLaunchState) return null;
+    if (lastLaunchState.restaurantId !== selectedRestaurant.id) return null;
+    return APP_MODES.find((mode) => mode.key === lastLaunchState.mode) || null;
+  }, [lastLaunchState, selectedRestaurant]);
 
   return (
     <main
@@ -245,6 +308,32 @@ export default function DashboardLauncherPage() {
                 </button>
               ) : null}
             </section>
+
+            {resumeMode ? (
+              <button
+                type="button"
+                onClick={() => {
+                  handleLaunch(resumeMode.key).catch(() => undefined);
+                }}
+                disabled={launchingMode !== null}
+                style={{
+                  textAlign: 'left',
+                  background: '#ecfeff',
+                  border: '1px solid #a5f3fc',
+                  color: '#0f172a',
+                  borderRadius: '12px',
+                  padding: '0.9rem',
+                  opacity: launchingMode && launchingMode !== resumeMode.key ? 0.65 : 1,
+                }}
+              >
+                <span style={{ display: 'block', fontWeight: 700 }}>
+                  {launchingMode === resumeMode.key ? `Opening ${resumeMode.label}…` : `Resume ${resumeMode.label}`}
+                </span>
+                <span style={{ display: 'block', marginTop: '0.25rem', color: '#155e75', fontSize: '0.85rem' }}>
+                  Last used on this device for {selectedRestaurant.name}. Opens only after session access is confirmed.
+                </span>
+              </button>
+            ) : null}
 
             <button
               type="button"
