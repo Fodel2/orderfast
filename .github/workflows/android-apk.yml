@@ -3,6 +3,9 @@ name: Build Android APK
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-apk:
     runs-on: ubuntu-latest
@@ -24,9 +27,24 @@ jobs:
       - name: Build app
         run: npm run build
 
-      - name: Upload Next build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: next-build
-          path: .next
-          include-hidden-files: true
+      - name: Generate Android platform if missing
+        run: |
+          if [ ! -d "android" ]; then
+            npx cap add android
+          else
+            echo "android folder already exists, skipping generation"
+          fi
+
+      - name: Commit Android platform if newly generated
+        run: |
+          if [ -d "android" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add android package.json package-lock.json capacitor.config.ts
+            if ! git diff --cached --quiet; then
+              git commit -m "chore: add Capacitor Android platform"
+              git push
+            else
+              echo "No changes to commit"
+            fi
+          fi
