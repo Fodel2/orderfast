@@ -8,6 +8,8 @@ import {
   useMemo,
   useRef,
   useState,
+  type FormEvent,
+  type PointerEvent,
   type ReactNode,
 } from 'react';
 import HomeScreen, { type KioskRestaurant } from '@/components/kiosk/HomeScreen';
@@ -28,6 +30,12 @@ export const COLLAPSED_HEADER_HEIGHT = 88;
 export const FULL_CAT_HEIGHT = 64;
 export const COLLAPSED_CAT_HEIGHT = 50;
 export const CATEGORY_FADE_HEIGHT = 24;
+const OPERATOR_EXIT_TAP_THRESHOLD = 5;
+const OPERATOR_EXIT_TAP_WINDOW_MS = 4000;
+const TEMP_OPERATOR_EXIT_PIN = '2580';
+const DEBUG_COLLAPSED_SIZE = 56;
+const DEBUG_PANEL_WIDTH = 320;
+const DEBUG_PANEL_HEIGHT = 280;
 
 interface WakeLockSentinel {
   released: boolean;
@@ -119,14 +127,25 @@ export default function KioskLayout({
   const [isNativeShell, setIsNativeShell] = useState(false);
   const [shrinkProgress, setShrinkProgress] = useState(0);
   const [showFullscreenPrompt, setShowFullscreenPrompt] = useState(false);
-  const [showOperatorExit, setShowOperatorExit] = useState(false);
+  const [showOperatorUnlock, setShowOperatorUnlock] = useState(false);
+  const [operatorPinInput, setOperatorPinInput] = useState('');
+  const [operatorPinError, setOperatorPinError] = useState<string | null>(null);
   const [showLockedNavigationNotice, setShowLockedNavigationNotice] = useState(false);
+  const [debugPanelExpanded, setDebugPanelExpanded] = useState(false);
+  const [debugPanelPosition, setDebugPanelPosition] = useState({ x: 16, y: 16 });
   const [debugState, setDebugState] = useState<KioskDebugState>({});
-  const operatorExitArmedRef = useRef(false);
   const autoPromptedRef = useRef(false);
   const fullscreenRequestInFlight = useRef(false);
-  const operatorPressTimerRef = useRef<number | null>(null);
   const operatorNoticeTimerRef = useRef<number | null>(null);
+  const operatorTapHistoryRef = useRef<number[]>([]);
+  const operatorPinInputRef = useRef<HTMLInputElement | null>(null);
+  const debugDragRef = useRef({
+    active: false,
+    pointerId: -1,
+    offsetX: 0,
+    offsetY: 0,
+    moved: false,
+  });
   const accentColor = useMemo(
     () => restaurant?.brand_primary_color || restaurant?.brand_secondary_color || '#111827',
     [restaurant?.brand_primary_color, restaurant?.brand_secondary_color]
@@ -148,6 +167,23 @@ export default function KioskLayout({
     }) as CSSProperties,
     [accentColor]
   );
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const startX = Math.max(12, window.innerWidth - DEBUG_COLLAPSED_SIZE - 20);
+    const startY = Math.max(12, window.innerHeight - DEBUG_COLLAPSED_SIZE - 20);
+    setDebugPanelPosition({ x: startX, y: startY });
+  }, []);
+
+  useEffect(() => {
+    if (!showOperatorUnlock) return;
+    const timer = window.setTimeout(() => {
+      operatorPinInputRef.current?.focus();
+    }, 50);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [showOperatorUnlock]);
+
   const isFullscreenActive = useCallback(() => {
     if (typeof document === 'undefined') return false;
     const anyDoc = document as Document & { webkitFullscreenElement?: Element | null };
@@ -216,15 +252,6 @@ export default function KioskLayout({
       }
     };
   }, [isExpressActive]);
-
-  useEffect(
-    () => () => {
-      if (operatorPressTimerRef.current) {
-        window.clearTimeout(operatorPressTimerRef.current);
-      }
-    },
-    []
-  );
 
   const channel = isExpressActive ? 'express' : 'kiosk';
   const availability = useCustomerAvailability({
@@ -714,35 +741,113 @@ export default function KioskLayout({
     shouldSuppressFullscreen,
   ]);
 
-  const clearOperatorPressTimer = useCallback(() => {
-    if (operatorPressTimerRef.current) {
-      window.clearTimeout(operatorPressTimerRef.current);
-      operatorPressTimerRef.current = null;
-    }
+  const resetOperatorUnlock = useCallback(() => {
+    setOperatorPinInput('');
+    setOperatorPinError(null);
   }, []);
 
-  const armOperatorExit = useCallback(() => {
+  const handleOperatorTapTrigger = useCallback(() => {
     if (isExpressActive || !restaurantId) return;
-    if (operatorExitArmedRef.current) return;
-    operatorExitArmedRef.current = true;
-    clearOperatorPressTimer();
-    operatorPressTimerRef.current = window.setTimeout(() => {
-      setShowOperatorExit(true);
-      operatorExitArmedRef.current = false;
-    }, 2000);
-  }, [clearOperatorPressTimer, isExpressActive, restaurantId]);
-
-  const disarmOperatorExit = useCallback(() => {
-    operatorExitArmedRef.current = false;
-    clearOperatorPressTimer();
-  }, [clearOperatorPressTimer]);
+    const now = Date.now();
+    const recentTaps = operatorTapHistoryRef.current.filter((timestamp) => now - timestamp <= OPERATOR_EXIT_TAP_WINDOW_MS);
+    recentTaps.push(now);
+    operatorTapHistoryRef.current = recentTaps;
+    if (recentTaps.length >= OPERATOR_EXIT_TAP_THRESHOLD) {
+      operatorTapHistoryRef.current = [];
+      resetOperatorUnlock();
+      setShowOperatorUnlock(true);
+    }
+  }, [isExpressActive, resetOperatorUnlock, restaurantId]);
 
   const handleOperatorExit = useCallback(async () => {
     if (!restaurantId) return;
-    clearOperatorPressTimer();
-    setShowOperatorExit(false);
+    resetOperatorUnlock();
+    setShowOperatorUnlock(false);
     await router.push(`/dashboard/launcher?restaurant_id=${encodeURIComponent(restaurantId)}`);
-  }, [clearOperatorPressTimer, restaurantId, router]);
+  }, [resetOperatorUnlock, restaurantId, router]);
+
+  const handleOperatorUnlockSubmit = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (!restaurantId) return;
+      if (operatorPinInput.trim() !== TEMP_OPERATOR_EXIT_PIN) {
+        setOperatorPinError('Incorrect staff PIN.');
+        return;
+      }
+      void handleOperatorExit();
+    },
+    [handleOperatorExit, operatorPinInput, restaurantId]
+  );
+
+  const clampDebugPosition = useCallback((x: number, y: number, expanded: boolean) => {
+    if (typeof window === 'undefined') return { x, y };
+    const panelWidth = expanded ? DEBUG_PANEL_WIDTH : DEBUG_COLLAPSED_SIZE;
+    const panelHeight = expanded ? DEBUG_PANEL_HEIGHT : DEBUG_COLLAPSED_SIZE;
+    const maxX = Math.max(8, window.innerWidth - panelWidth - 8);
+    const maxY = Math.max(8, window.innerHeight - panelHeight - 8);
+    return {
+      x: Math.min(Math.max(8, x), maxX),
+      y: Math.min(Math.max(8, y), maxY),
+    };
+  }, []);
+
+  const beginDebugDrag = useCallback(
+    (event: PointerEvent<HTMLElement>) => {
+      const target = event.currentTarget;
+      const pointer = debugDragRef.current;
+      pointer.active = true;
+      pointer.pointerId = event.pointerId;
+      pointer.offsetX = event.clientX - debugPanelPosition.x;
+      pointer.offsetY = event.clientY - debugPanelPosition.y;
+      pointer.moved = false;
+      target.setPointerCapture(event.pointerId);
+    },
+    [debugPanelPosition.x, debugPanelPosition.y]
+  );
+
+  const handleDebugDragMove = useCallback(
+    (event: PointerEvent<HTMLElement>) => {
+      const pointer = debugDragRef.current;
+      if (!pointer.active || pointer.pointerId !== event.pointerId) return;
+      const nextX = event.clientX - pointer.offsetX;
+      const nextY = event.clientY - pointer.offsetY;
+      if (Math.abs(nextX - debugPanelPosition.x) > 3 || Math.abs(nextY - debugPanelPosition.y) > 3) {
+        pointer.moved = true;
+      }
+      setDebugPanelPosition(clampDebugPosition(nextX, nextY, debugPanelExpanded));
+    },
+    [clampDebugPosition, debugPanelExpanded, debugPanelPosition.x, debugPanelPosition.y]
+  );
+
+  const endDebugDrag = useCallback((event: PointerEvent<HTMLElement>) => {
+    const pointer = debugDragRef.current;
+    if (!pointer.active || pointer.pointerId !== event.pointerId) return;
+    pointer.active = false;
+    pointer.pointerId = -1;
+  }, []);
+
+  const handleDebugBubbleTap = useCallback(() => {
+    if (debugDragRef.current.moved) {
+      debugDragRef.current.moved = false;
+      return;
+    }
+    setDebugPanelExpanded(true);
+  }, []);
+
+  useEffect(() => {
+    setDebugPanelPosition((prev) => clampDebugPosition(prev.x, prev.y, debugPanelExpanded));
+  }, [clampDebugPosition, debugPanelExpanded]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleResize = () => {
+      setDebugPanelPosition((prev) => clampDebugPosition(prev.x, prev.y, debugPanelExpanded));
+    };
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [clampDebugPosition, debugPanelExpanded]);
 
   const handleForceOpenMenuDebug = useCallback(() => {
     const resolvedRestaurantId = resolveRestaurantIdForNavigation();
@@ -836,9 +941,7 @@ export default function KioskLayout({
         <div
           className="relative flex items-center gap-4"
           style={{ transform: `scale(${brandScale})`, transformOrigin: 'left center' }}
-          onPointerDown={armOperatorExit}
-          onPointerUp={disarmOperatorExit}
-          onPointerCancel={disarmOperatorExit}
+          onPointerUp={handleOperatorTapTrigger}
         >
           <span
             aria-hidden
@@ -902,8 +1005,7 @@ export default function KioskLayout({
     logoShellClass,
     logoSizeClass,
     logoUrl,
-    armOperatorExit,
-    disarmOperatorExit,
+    handleOperatorTapTrigger,
     registerActivity,
     restaurantId,
     isExpressActive,
@@ -1047,66 +1149,123 @@ export default function KioskLayout({
       {showLockedNavigationNotice && !isExpressActive ? (
         <div className="fixed left-1/2 top-5 z-[80] w-[min(92vw,560px)] -translate-x-1/2 rounded-2xl border border-neutral-900/10 bg-white/95 px-4 py-3 text-neutral-900 shadow-xl backdrop-blur">
           <p className="text-sm font-semibold">Kiosk navigation is locked.</p>
-          <p className="text-xs text-neutral-600">Staff: press and hold the logo for 2 seconds to exit to launcher.</p>
+          <p className="text-xs text-neutral-600">Staff: tap the kiosk header 5 times to open staff unlock.</p>
         </div>
       ) : null}
-      {showOperatorExit && !isExpressActive ? (
+      {showOperatorUnlock && !isExpressActive ? (
         <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/30 px-6">
           <div className="w-full max-w-sm rounded-3xl border border-neutral-200 bg-white p-6 shadow-2xl shadow-black/20">
-            <p className="text-lg font-semibold text-neutral-900">Exit kiosk mode?</p>
-            <p className="mt-2 text-sm text-neutral-600">This returns to the launcher for operator controls.</p>
-            <div className="mt-5 flex gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  clearOperatorPressTimer();
-                  setShowOperatorExit(false);
+            <p className="text-lg font-semibold text-neutral-900">Staff unlock required</p>
+            <p className="mt-2 text-sm text-neutral-600">Enter staff PIN to exit kiosk and return to launcher.</p>
+            <form className="mt-5 space-y-4" onSubmit={handleOperatorUnlockSubmit}>
+              <input
+                ref={operatorPinInputRef}
+                type="password"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                autoComplete="off"
+                enterKeyHint="done"
+                value={operatorPinInput}
+                onChange={(event) => {
+                  const numericValue = event.target.value.replace(/\D/g, '');
+                  setOperatorPinInput(numericValue.slice(0, 8));
+                  setOperatorPinError(null);
                 }}
-                className="inline-flex flex-1 items-center justify-center rounded-full border border-neutral-200 px-4 py-2.5 text-sm font-semibold text-neutral-700"
-              >
-                Stay in kiosk
-              </button>
-              <KioskActionButton onClick={handleOperatorExit} className="flex-1 justify-center px-4 py-2.5 text-sm">
-                Exit to launcher
-              </KioskActionButton>
-            </div>
+                className="w-full rounded-2xl border border-neutral-300 px-4 py-3 text-base tracking-[0.22em] text-neutral-900 outline-none ring-[var(--kiosk-accent,#111827)]/20 focus:ring-2"
+                placeholder="Enter PIN"
+                aria-label="Staff unlock PIN"
+              />
+              {operatorPinError ? <p className="text-sm font-medium text-rose-600">{operatorPinError}</p> : null}
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetOperatorUnlock();
+                    setShowOperatorUnlock(false);
+                  }}
+                  className="inline-flex flex-1 items-center justify-center rounded-full border border-neutral-200 px-4 py-2.5 text-sm font-semibold text-neutral-700"
+                >
+                  Cancel
+                </button>
+                <KioskActionButton type="submit" className="flex-1 justify-center px-4 py-2.5 text-sm">
+                  Unlock exit
+                </KioskActionButton>
+              </div>
+            </form>
+            <p className="mt-3 text-[11px] text-neutral-500">
+              Temporary: this build uses a hardcoded staff PIN until kiosk settings are wired.
+            </p>
           </div>
         </div>
       ) : null}
-      <div className="fixed bottom-4 left-4 z-[90] w-[min(95vw,480px)] rounded-2xl border border-neutral-900/20 bg-black/85 p-3 text-xs text-white shadow-2xl">
-        <p className="font-semibold uppercase tracking-[0.08em] text-white/80">Kiosk debug (temporary)</p>
-        <div className="mt-2 space-y-1 font-mono text-[11px] leading-snug">
-          <p>route: {router.asPath || 'n/a'}</p>
-          <p>resolvedRestaurantId: {resolveRestaurantIdForNavigation() || 'n/a'}</p>
-          <p>sessionActive: {String(sessionActive)}</p>
-          <p>homeSeen: {String(restaurantId ? hasSeenHome(restaurantId) : false)}</p>
-          <p>homeVisible/contentVisible: {String(homeVisible)} / {String(contentVisible)}</p>
-          <p>lastNavTarget: {debugState.lastNavigationTarget || 'n/a'}</p>
-          <p>navStatus: {debugState.navigationStatus || 'idle'}</p>
-          <p>navError: {debugState.navigationError || 'n/a'}</p>
-          <p>menuMounted: {String(Boolean(debugState.menuMounted))}</p>
-          <p>
-            menuBlocked: {String(Boolean(debugState.menuBlockedBySession))}
-            {debugState.menuBlockedReason ? ` (${debugState.menuBlockedReason})` : ''}
-          </p>
-          <p>lastEvent: {debugState.lastEvent || 'n/a'}</p>
-        </div>
-        <div className="mt-3 flex flex-wrap gap-2">
+      <div className="fixed z-[90]" style={{ left: debugPanelPosition.x, top: debugPanelPosition.y }}>
+        {debugPanelExpanded ? (
+          <div className="w-[min(92vw,320px)] rounded-2xl border border-neutral-900/20 bg-black/85 p-3 text-xs text-white shadow-2xl">
+            <div
+              className="mb-2 flex cursor-move touch-none items-center justify-between"
+              onPointerDown={beginDebugDrag}
+              onPointerMove={handleDebugDragMove}
+              onPointerUp={endDebugDrag}
+              onPointerCancel={endDebugDrag}
+            >
+              <p className="font-semibold uppercase tracking-[0.08em] text-white/80">Kiosk debug (temporary)</p>
+              <button
+                type="button"
+                onClick={() => setDebugPanelExpanded(false)}
+                className="rounded-full bg-white/20 px-2 py-1 text-[11px] font-semibold text-white"
+              >
+                Collapse
+              </button>
+            </div>
+            <div className="space-y-1 font-mono text-[11px] leading-snug">
+              <p>route: {router.asPath || 'n/a'}</p>
+              <p>resolvedRestaurantId: {resolveRestaurantIdForNavigation() || 'n/a'}</p>
+              <p>sessionActive: {String(sessionActive)}</p>
+              <p>homeSeen: {String(restaurantId ? hasSeenHome(restaurantId) : false)}</p>
+              <p>homeVisible/contentVisible: {String(homeVisible)} / {String(contentVisible)}</p>
+              <p>lastNavTarget: {debugState.lastNavigationTarget || 'n/a'}</p>
+              <p>navStatus: {debugState.navigationStatus || 'idle'}</p>
+              <p>navError: {debugState.navigationError || 'n/a'}</p>
+              <p>menuMounted: {String(Boolean(debugState.menuMounted))}</p>
+              <p>
+                menuBlocked: {String(Boolean(debugState.menuBlockedBySession))}
+                {debugState.menuBlockedReason ? ` (${debugState.menuBlockedReason})` : ''}
+              </p>
+              <p>lastEvent: {debugState.lastEvent || 'n/a'}</p>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={handleForceOpenMenuDebug}
+                className="rounded-full bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white"
+              >
+                Force open menu (debug)
+              </button>
+              <button
+                type="button"
+                onClick={handleExitDebug}
+                className="rounded-full bg-rose-500 px-3 py-1.5 text-xs font-semibold text-white"
+              >
+                Exit kiosk (debug)
+              </button>
+            </div>
+          </div>
+        ) : (
           <button
             type="button"
-            onClick={handleForceOpenMenuDebug}
-            className="rounded-full bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white"
+            aria-label="Open kiosk debug panel"
+            className="flex h-14 w-14 touch-none items-center justify-center rounded-full border border-neutral-200/60 bg-black/80 text-xs font-bold text-white shadow-xl"
+            onPointerDown={beginDebugDrag}
+            onPointerMove={handleDebugDragMove}
+            onPointerUp={(event) => {
+              endDebugDrag(event);
+              handleDebugBubbleTap();
+            }}
+            onPointerCancel={endDebugDrag}
           >
-            Force open menu (debug)
+            DBG
           </button>
-          <button
-            type="button"
-            onClick={handleExitDebug}
-            className="rounded-full bg-rose-500 px-3 py-1.5 text-xs font-semibold text-white"
-          >
-            Exit kiosk (debug)
-          </button>
-        </div>
+        )}
       </div>
       {restaurantId ? (
         <div className="fixed bottom-4 right-4 z-40 flex items-center justify-end md:hidden">
