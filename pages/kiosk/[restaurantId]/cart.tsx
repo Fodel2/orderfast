@@ -681,7 +681,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                 }}
                 className="mt-2 w-full text-center text-xs font-medium text-slate-600 underline decoration-slate-300 underline-offset-2 hover:text-slate-800"
               >
-                Open kiosk payment entry shell (architecture only)
+                Open kiosk payment flow preview
               </button>
             </div>
           </div>
