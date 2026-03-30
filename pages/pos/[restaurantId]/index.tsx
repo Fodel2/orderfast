@@ -18,6 +18,7 @@ import { calculateCartTotals, formatPrice } from '@/lib/orderDisplay';
 import { isInStockAddonOption, isOutOfStockEntity } from '@/lib/stockAvailability';
 import Toast from '@/components/Toast';
 import { requestPrintJobCreation } from '@/lib/print-jobs/request';
+import { buildPosPaymentEntryPath } from '@/lib/payment-entry/routes';
 
 type OrderType = 'walk-in' | 'collection' | 'delivery';
 type PaymentMethod = 'cash' | 'card';
@@ -1068,6 +1069,17 @@ export default function PosHomePage() {
 
               <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
                 <h2 className="text-lg font-semibold text-gray-900">Payment method</h2>
+                {restaurantId ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      router.push(buildPosPaymentEntryPath(restaurantId)).catch(() => undefined);
+                    }}
+                    className="mt-2 text-xs font-medium text-gray-500 underline decoration-gray-300 underline-offset-2 hover:text-gray-700"
+                  >
+                    Open POS payment entry shell (architecture only)
+                  </button>
+                ) : null}
                 <div className="mt-4 grid grid-cols-2 gap-3">
                   <button
                     type="button"

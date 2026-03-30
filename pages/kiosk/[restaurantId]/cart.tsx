@@ -17,6 +17,7 @@ import { useKeyboardViewport } from '@/hooks/useKeyboardViewport';
 import { getExpressSession, patchExpressSession } from '@/utils/express/session';
 import { requestPrintJobCreation } from '@/lib/print-jobs/request';
 import { useCustomerAvailability } from '@/hooks/useCustomerAvailability';
+import { buildKioskPaymentEntryPath } from '@/lib/payment-entry/routes';
 
 type ExpressCheckoutSettings = {
   enable_table_numbers: boolean;
@@ -671,6 +672,17 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
               >
                 Place Order
               </KioskActionButton>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!restaurantId) return;
+                  registerActivity();
+                  router.push(buildKioskPaymentEntryPath(restaurantId)).catch(() => undefined);
+                }}
+                className="mt-2 w-full text-center text-xs font-medium text-slate-600 underline decoration-slate-300 underline-offset-2 hover:text-slate-800"
+              >
+                Open kiosk payment entry shell (architecture only)
+              </button>
             </div>
           </div>
         </div>
