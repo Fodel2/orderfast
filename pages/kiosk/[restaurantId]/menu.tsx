@@ -15,6 +15,7 @@ import Skeleton from '@/components/ui/Skeleton';
 import { useCart } from '@/context/CartContext';
 import KioskCategories from '@/components/kiosk/KioskCategories';
 import { scrollElementToTop } from '@/utils/scroll';
+import { patchKioskDebugState } from '@/utils/kiosk/debug';
 
 type Category = {
   id: number;
@@ -78,7 +79,41 @@ function KioskMenuScreen({ restaurantId }: { restaurantId?: string | null }) {
   const router = useRouter();
   const { cart } = useCart();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
-  const { registerActivity } = useKioskSession();
+  const { registerActivity, sessionActive } = useKioskSession();
+
+  useEffect(() => {
+    const blockedBySession = !sessionActive;
+    const blockedReason = !restaurantId
+      ? 'missing restaurantId'
+      : blockedBySession
+      ? 'session inactive'
+      : null;
+
+    patchKioskDebugState(
+      {
+        menuMounted: true,
+        menuBlockedBySession: blockedBySession || !restaurantId,
+        menuBlockedReason: blockedReason,
+      },
+      'menu-mounted'
+    );
+    console.info('[kiosk-debug] menu mounted', {
+      restaurantId,
+      sessionActive,
+      blockedBySession,
+      blockedReason,
+    });
+
+    return () => {
+      patchKioskDebugState(
+        {
+          menuMounted: false,
+        },
+        'menu-unmounted'
+      );
+      console.info('[kiosk-debug] menu unmounted', { restaurantId });
+    };
+  }, [restaurantId, sessionActive]);
 
   useEffect(() => {
     if (!restaurantId) {

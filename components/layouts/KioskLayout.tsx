@@ -14,6 +14,12 @@ import HomeScreen, { type KioskRestaurant } from '@/components/kiosk/HomeScreen'
 import KioskActionButton from '@/components/kiosk/KioskActionButton';
 import { useKioskSession } from '@/context/KioskSessionContext';
 import { hasSeenHome, markHomeSeen } from '@/utils/kiosk/session';
+import {
+  getKioskDebugState,
+  patchKioskDebugState,
+  subscribeKioskDebugState,
+  type KioskDebugState,
+} from '@/utils/kiosk/debug';
 import { getExpressSession } from '@/utils/express/session';
 import { useCustomerAvailability } from '@/hooks/useCustomerAvailability';
 
@@ -115,6 +121,7 @@ export default function KioskLayout({
   const [showFullscreenPrompt, setShowFullscreenPrompt] = useState(false);
   const [showOperatorExit, setShowOperatorExit] = useState(false);
   const [showLockedNavigationNotice, setShowLockedNavigationNotice] = useState(false);
+  const [debugState, setDebugState] = useState<KioskDebugState>({});
   const operatorExitArmedRef = useRef(false);
   const autoPromptedRef = useRef(false);
   const fullscreenRequestInFlight = useRef(false);
@@ -555,9 +562,98 @@ export default function KioskLayout({
     }
   }, [restaurantId, router.asPath, router.query.restaurantId]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    setDebugState(getKioskDebugState());
+    return subscribeKioskDebugState((state) => {
+      setDebugState(state);
+    });
+  }, []);
+
+  useEffect(() => {
+    const resolvedRestaurantId = resolveRestaurantIdForNavigation();
+    patchKioskDebugState(
+      {
+        route: router.asPath,
+        pathname: router.pathname,
+        resolvedRestaurantId,
+        homeSeen: resolvedRestaurantId ? hasSeenHome(resolvedRestaurantId) : false,
+        sessionActive,
+        homeVisible,
+        contentVisible,
+      },
+      'layout-state-sync'
+    );
+  }, [
+    contentVisible,
+    homeVisible,
+    resolveRestaurantIdForNavigation,
+    router.asPath,
+    router.pathname,
+    sessionActive,
+  ]);
+
+  useEffect(() => {
+    const handleRouteStart = (url: string) => {
+      patchKioskDebugState(
+        {
+          lastNavigationTarget: url,
+          navigationStatus: 'start',
+        },
+        'route-change-start'
+      );
+      console.info('[kiosk-debug] route change start', { url });
+    };
+
+    const handleRouteComplete = (url: string) => {
+      patchKioskDebugState(
+        {
+          route: url,
+          lastNavigationTarget: url,
+          navigationStatus: 'complete',
+        },
+        'route-change-complete'
+      );
+      console.info('[kiosk-debug] route change complete', { url });
+    };
+
+    const handleRouteError = (err: unknown, url: string) => {
+      patchKioskDebugState(
+        {
+          lastNavigationTarget: url,
+          navigationStatus: 'error',
+        },
+        'route-change-error'
+      );
+      console.error('[kiosk-debug] route change error', { url, err });
+    };
+
+    router.events.on('routeChangeStart', handleRouteStart);
+    router.events.on('routeChangeComplete', handleRouteComplete);
+    router.events.on('routeChangeError', handleRouteError);
+    return () => {
+      router.events.off('routeChangeStart', handleRouteStart);
+      router.events.off('routeChangeComplete', handleRouteComplete);
+      router.events.off('routeChangeError', handleRouteError);
+    };
+  }, [router.events]);
+
   const startOrdering = useCallback(async () => {
+    patchKioskDebugState({}, 'tap-to-order-pressed');
+    console.info('[kiosk-debug] tap to order pressed');
     if (!availability.canStartNewSession) return;
     const targetRestaurantId = resolveRestaurantIdForNavigation();
+    console.info('[kiosk-debug] tap to order resolved restaurant', {
+      restaurantIdFromProp: restaurantId,
+      targetRestaurantId,
+      asPath: router.asPath,
+    });
+    patchKioskDebugState(
+      {
+        resolvedRestaurantId: targetRestaurantId,
+      },
+      'tap-to-order-resolved-restaurant'
+    );
     if (targetRestaurantId) {
       markHomeSeen(targetRestaurantId);
     }
@@ -578,13 +674,31 @@ export default function KioskLayout({
       ? `/kiosk/${targetRestaurantId}/menu${isExpressActive ? '?express=1' : ''}`
       : menuPath;
     if (resolvedMenuPath && router.asPath !== resolvedMenuPath) {
-      router.push(resolvedMenuPath).catch(() => undefined);
+      patchKioskDebugState(
+        {
+          lastNavigationTarget: resolvedMenuPath,
+          navigationStatus: 'start',
+        },
+        'tap-to-order-router-push-start'
+      );
+      console.info('[kiosk-debug] tap to order router.push start', { resolvedMenuPath });
+      router.push(resolvedMenuPath).catch((error) => {
+        patchKioskDebugState(
+          {
+            lastNavigationTarget: resolvedMenuPath,
+            navigationStatus: 'error',
+          },
+          'tap-to-order-router-push-error'
+        );
+        console.error('[kiosk-debug] tap to order router.push error', { error, resolvedMenuPath });
+      });
     }
   }, [
     attemptFullscreen,
     availability.canStartNewSession,
     isExpressActive,
     menuPath,
+    restaurantId,
     resetIdleTimer,
     requestWakeLock,
     resolveRestaurantIdForNavigation,
@@ -622,6 +736,55 @@ export default function KioskLayout({
     setShowOperatorExit(false);
     await router.push(`/dashboard/launcher?restaurant_id=${encodeURIComponent(restaurantId)}`);
   }, [clearOperatorPressTimer, restaurantId, router]);
+
+  const handleForceOpenMenuDebug = useCallback(() => {
+    const resolvedRestaurantId = resolveRestaurantIdForNavigation();
+    const targetPath = resolvedRestaurantId
+      ? `/kiosk/${resolvedRestaurantId}/menu${isExpressActive ? '?express=1' : ''}`
+      : menuPath;
+    patchKioskDebugState(
+      {
+        lastNavigationTarget: targetPath,
+        navigationStatus: targetPath ? 'start' : 'error',
+      },
+      'debug-force-open-menu'
+    );
+    console.info('[kiosk-debug] force open menu requested', { targetPath, resolvedRestaurantId });
+    if (!targetPath) return;
+    router.push(targetPath).catch((error) => {
+      patchKioskDebugState(
+        {
+          lastNavigationTarget: targetPath,
+          navigationStatus: 'error',
+        },
+        'debug-force-open-menu-error'
+      );
+      console.error('[kiosk-debug] force open menu failed', { error, targetPath });
+    });
+  }, [isExpressActive, menuPath, resolveRestaurantIdForNavigation, router]);
+
+  const handleExitDebug = useCallback(() => {
+    if (!restaurantId) return;
+    const targetPath = `/dashboard/launcher?restaurant_id=${encodeURIComponent(restaurantId)}`;
+    patchKioskDebugState(
+      {
+        lastNavigationTarget: targetPath,
+        navigationStatus: 'start',
+      },
+      'debug-exit-kiosk'
+    );
+    console.info('[kiosk-debug] debug exit requested', { targetPath });
+    router.push(targetPath).catch((error) => {
+      patchKioskDebugState(
+        {
+          lastNavigationTarget: targetPath,
+          navigationStatus: 'error',
+        },
+        'debug-exit-kiosk-error'
+      );
+      console.error('[kiosk-debug] debug exit failed', { error, targetPath });
+    });
+  }, [restaurantId, router]);
 
   const headerTitle = restaurant?.website_title || restaurant?.name || 'Restaurant';
   const logoUrl = restaurant?.logo_url || null;
@@ -897,6 +1060,40 @@ export default function KioskLayout({
           </div>
         </div>
       ) : null}
+      <div className="fixed bottom-4 left-4 z-[90] w-[min(95vw,480px)] rounded-2xl border border-neutral-900/20 bg-black/85 p-3 text-xs text-white shadow-2xl">
+        <p className="font-semibold uppercase tracking-[0.08em] text-white/80">Kiosk debug (temporary)</p>
+        <div className="mt-2 space-y-1 font-mono text-[11px] leading-snug">
+          <p>route: {router.asPath || 'n/a'}</p>
+          <p>resolvedRestaurantId: {resolveRestaurantIdForNavigation() || 'n/a'}</p>
+          <p>sessionActive: {String(sessionActive)}</p>
+          <p>homeSeen: {String(restaurantId ? hasSeenHome(restaurantId) : false)}</p>
+          <p>homeVisible/contentVisible: {String(homeVisible)} / {String(contentVisible)}</p>
+          <p>lastNavTarget: {debugState.lastNavigationTarget || 'n/a'}</p>
+          <p>navStatus: {debugState.navigationStatus || 'idle'}</p>
+          <p>menuMounted: {String(Boolean(debugState.menuMounted))}</p>
+          <p>
+            menuBlocked: {String(Boolean(debugState.menuBlockedBySession))}
+            {debugState.menuBlockedReason ? ` (${debugState.menuBlockedReason})` : ''}
+          </p>
+          <p>lastEvent: {debugState.lastEvent || 'n/a'}</p>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={handleForceOpenMenuDebug}
+            className="rounded-full bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white"
+          >
+            Force open menu (debug)
+          </button>
+          <button
+            type="button"
+            onClick={handleExitDebug}
+            className="rounded-full bg-rose-500 px-3 py-1.5 text-xs font-semibold text-white"
+          >
+            Exit kiosk (debug)
+          </button>
+        </div>
+      </div>
       {restaurantId ? (
         <div className="fixed bottom-4 right-4 z-40 flex items-center justify-end md:hidden">
           <KioskActionButton
