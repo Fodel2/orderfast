@@ -12,6 +12,7 @@ import { useRouter } from 'next/router';
 import { useCart } from '@/context/CartContext';
 import { clearHomeSeen, hasSeenHome } from '@/utils/kiosk/session';
 import { getExpressSession, patchExpressSession } from '@/utils/express/session';
+import { patchKioskDebugState } from '@/utils/kiosk/debug';
 
 type KioskSessionContextValue = {
   sessionActive: boolean;
@@ -92,7 +93,14 @@ export function KioskSessionProvider({
   const setSessionActive = useCallback((active: boolean) => {
     sessionActiveRef.current = active;
     setSessionActiveState(active);
-  }, []);
+    patchKioskDebugState(
+      {
+        sessionActive: active,
+      },
+      'session-active-updated'
+    );
+    console.info('[kiosk-debug] session active updated', { active, restaurantId });
+  }, [restaurantId]);
 
   useEffect(() => {
     setSessionActive(Boolean(restaurantId && hasSeenHome(restaurantId)));
@@ -109,6 +117,10 @@ export function KioskSessionProvider({
 
   useEffect(() => {
     if (!router.isReady || !restaurantId || !hasLauncherEntryFlag) return;
+    console.info('[kiosk-debug] launcher entry detected; resetting kiosk home/session', {
+      restaurantId,
+      asPath: router.asPath,
+    });
     clearIdleState();
     clearCart();
     clearHomeSeen(restaurantId);
