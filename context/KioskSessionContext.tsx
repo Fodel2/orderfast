@@ -65,6 +65,10 @@ export function KioskSessionProvider({
   }, [router.asPath, router.pathname, router.query.express]);
 
   const basePath = useMemo(() => (restaurantId ? `/kiosk/${restaurantId}` : '/kiosk'), [restaurantId]);
+  const hasLauncherEntryFlag = useMemo(() => {
+    const entry = router.query.entry;
+    return entry === 'launcher' || (Array.isArray(entry) && entry.includes('launcher'));
+  }, [router.query.entry]);
   const sessionActive = sessionActiveState;
 
   const clearIdleState = useCallback(() => {
@@ -102,6 +106,37 @@ export function KioskSessionProvider({
     if (!session?.isExpress) return;
     patchExpressSession({ isExpress: false });
   }, [isExpressActive, router.asPath, router.pathname]);
+
+  useEffect(() => {
+    if (!router.isReady || !restaurantId || !hasLauncherEntryFlag) return;
+    clearIdleState();
+    clearCart();
+    clearHomeSeen(restaurantId);
+    setSessionActive(false);
+    router.replace(basePath, undefined, { shallow: true }).catch(() => undefined);
+  }, [basePath, clearCart, clearIdleState, hasLauncherEntryFlag, restaurantId, router, setSessionActive]);
+
+  useEffect(() => {
+    if (!restaurantId) return;
+    if (isExpressActive()) return;
+
+    router.beforePopState(({ as }) => {
+      if (as.startsWith('/kiosk/')) {
+        return true;
+      }
+
+      clearIdleState();
+      setSessionActive(false);
+      clearCart();
+      clearHomeSeen(restaurantId);
+      router.replace(basePath).catch(() => undefined);
+      return false;
+    });
+
+    return () => {
+      router.beforePopState(() => true);
+    };
+  }, [basePath, clearCart, clearIdleState, isExpressActive, restaurantId, router, setSessionActive]);
 
   const idleMessages = useMemo(
     () => [

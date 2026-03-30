@@ -36,6 +36,12 @@ type WakeLockNavigator = Navigator & {
   };
 };
 
+type CapacitorWindow = Window & {
+  Capacitor?: {
+    isNativePlatform?: () => boolean;
+  };
+};
+
 type BeforeInstallPromptEvent = Event & {
   prompt?: () => Promise<void>;
   userChoice?: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
@@ -104,6 +110,7 @@ export default function KioskLayout({
   );
   const [fullscreenViewport, setFullscreenViewport] = useState<FullscreenViewport>('desktop');
   const [isExpressSession, setIsExpressSession] = useState<boolean>(resolveExpressSessionState);
+  const [isNativeShell, setIsNativeShell] = useState(false);
   const [shrinkProgress, setShrinkProgress] = useState(0);
   const [showFullscreenPrompt, setShowFullscreenPrompt] = useState(false);
   const autoPromptedRef = useRef(false);
@@ -151,6 +158,12 @@ export default function KioskLayout({
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    const nativeShell = Boolean((window as CapacitorWindow).Capacitor?.isNativePlatform?.());
+    setIsNativeShell(nativeShell);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
 
     const syncExpressSession = () => {
       setIsExpressSession(resolveExpressSessionState());
@@ -174,7 +187,7 @@ export default function KioskLayout({
     sessionActive,
     graceMinutes: 10,
   });
-  const shouldSuppressFullscreen = isExpressActive;
+  const shouldSuppressFullscreen = isExpressActive || isNativeShell;
 
   const shouldAutoFullscreen = fullscreenViewport !== 'phone' && !shouldSuppressFullscreen;
 

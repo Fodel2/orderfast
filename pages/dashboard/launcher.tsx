@@ -74,7 +74,7 @@ const getRestaurantFromMembership = (row: MembershipRow): RestaurantOption | nul
 };
 
 const getModeHref = (mode: AppMode['key'], restaurantId: string) => {
-  if (mode === 'kiosk') return `/kiosk/${restaurantId}`;
+  if (mode === 'kiosk') return `/kiosk/${restaurantId}?entry=launcher`;
   if (mode === 'pos') return `/pos/${restaurantId}`;
   if (mode === 'kod') return `/kod/${restaurantId}`;
   return `/restaurant/menu?restaurant_id=${encodeURIComponent(restaurantId)}`;
