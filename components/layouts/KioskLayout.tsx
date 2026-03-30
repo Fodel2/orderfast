@@ -115,6 +115,7 @@ export default function KioskLayout({
   const [showFullscreenPrompt, setShowFullscreenPrompt] = useState(false);
   const [showOperatorExit, setShowOperatorExit] = useState(false);
   const [showLockedNavigationNotice, setShowLockedNavigationNotice] = useState(false);
+  const operatorExitArmedRef = useRef(false);
   const autoPromptedRef = useRef(false);
   const fullscreenRequestInFlight = useRef(false);
   const operatorPressTimerRef = useRef<number | null>(null);
@@ -485,13 +486,39 @@ export default function KioskLayout({
 
   useEffect(() => {
     if (!restaurantId) return;
+    const kioskHomeRoute = router.pathname === '/kiosk/[restaurantId]';
+    if (!forceHome && !kioskHomeRoute) {
+      markHomeSeen(restaurantId);
+      setHomeVisible(false);
+      setContentVisible(true);
+      if (!isExpressActive) {
+        setSessionActive(true);
+        resetIdleTimer();
+      }
+      return;
+    }
     const shouldShow = forceHome || !hasSeenHome(restaurantId);
     setHomeVisible(shouldShow);
     setContentVisible(!shouldShow);
     if (shouldShow) {
       setSessionActive(false);
     }
-  }, [forceHome, restaurantId, setSessionActive]);
+  }, [forceHome, isExpressActive, resetIdleTimer, restaurantId, router.asPath, router.pathname, setSessionActive]);
+
+  useEffect(() => {
+    if (!sessionActive || typeof window === 'undefined') return;
+    const handleAnyActivity = () => {
+      registerActivity();
+    };
+    window.addEventListener('pointerdown', handleAnyActivity, { passive: true });
+    window.addEventListener('keydown', handleAnyActivity);
+    window.addEventListener('touchstart', handleAnyActivity, { passive: true });
+    return () => {
+      window.removeEventListener('pointerdown', handleAnyActivity);
+      window.removeEventListener('keydown', handleAnyActivity);
+      window.removeEventListener('touchstart', handleAnyActivity);
+    };
+  }, [registerActivity, sessionActive]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -546,11 +573,19 @@ export default function KioskLayout({
 
   const armOperatorExit = useCallback(() => {
     if (isExpressActive || !restaurantId) return;
+    if (operatorExitArmedRef.current) return;
+    operatorExitArmedRef.current = true;
     clearOperatorPressTimer();
     operatorPressTimerRef.current = window.setTimeout(() => {
       setShowOperatorExit(true);
-    }, 1800);
+      operatorExitArmedRef.current = false;
+    }, 2000);
   }, [clearOperatorPressTimer, isExpressActive, restaurantId]);
+
+  const disarmOperatorExit = useCallback(() => {
+    operatorExitArmedRef.current = false;
+    clearOperatorPressTimer();
+  }, [clearOperatorPressTimer]);
 
   const handleOperatorExit = useCallback(async () => {
     if (!restaurantId) return;
@@ -597,9 +632,13 @@ export default function KioskLayout({
           className="flex items-center gap-4"
           style={{ transform: `scale(${brandScale})`, transformOrigin: 'left center' }}
           onPointerDown={armOperatorExit}
-          onPointerUp={clearOperatorPressTimer}
-          onPointerCancel={clearOperatorPressTimer}
-          onPointerLeave={clearOperatorPressTimer}
+          onPointerUp={disarmOperatorExit}
+          onPointerCancel={disarmOperatorExit}
+          onTouchStart={armOperatorExit}
+          onTouchEnd={disarmOperatorExit}
+          onMouseDown={armOperatorExit}
+          onMouseUp={disarmOperatorExit}
+          onMouseLeave={disarmOperatorExit}
         >
           {showBrandSkeleton ? (
             <>
@@ -659,7 +698,7 @@ export default function KioskLayout({
     logoSizeClass,
     logoUrl,
     armOperatorExit,
-    clearOperatorPressTimer,
+    disarmOperatorExit,
     registerActivity,
     restaurantId,
     isExpressActive,

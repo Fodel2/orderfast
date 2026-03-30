@@ -89,16 +89,16 @@ export default function HomeScreen({ restaurant, onStart, fadingOut, loading, cl
         <div className="kiosk-hero-dim" />
       </div>
 
-      <div className="relative z-10 flex w-full max-w-xl flex-col items-center gap-6 px-6 text-center">
+      <div className="kiosk-home-shell relative z-10 flex w-full max-w-xl flex-col items-center gap-6 px-6 text-center">
         <div
-          className="w-full rounded-[32px] border border-white/40 bg-white/18 p-8 shadow-[0_20px_60px_rgba(15,23,42,0.28)] backdrop-blur-xl"
+          className="kiosk-home-card w-full rounded-[32px] border border-white/40 bg-white/18 p-8 shadow-[0_20px_60px_rgba(15,23,42,0.28)] backdrop-blur-xl"
           style={{
             backgroundImage:
               'linear-gradient(140deg, rgba(255,255,255,0.46), rgba(255,255,255,0.14)), linear-gradient(320deg, rgba(15,23,42,0.1), rgba(15,23,42,0.025))',
           }}
         >
-          <div className="flex flex-col items-center gap-4">
-            <div className={`relative ${logoSizeClass} overflow-hidden border border-neutral-200 bg-white shadow-lg shadow-neutral-200 ${logoFrameClass}`}>
+          <div className="kiosk-home-stack flex flex-col items-center gap-4">
+            <div className={`kiosk-home-logo relative ${logoSizeClass} overflow-hidden border border-neutral-200 bg-white shadow-lg shadow-neutral-200 ${logoFrameClass}`}>
               {showSkeleton ? (
                 <div className={`h-full w-full bg-neutral-200/80 animate-pulse ${logoFrameClass}`} />
               ) : logoUrl ? (
@@ -123,11 +123,11 @@ export default function HomeScreen({ restaurant, onStart, fadingOut, loading, cl
                 </div>
               ) : (
                 <>
-                  <h1 className="text-3xl font-semibold leading-tight text-neutral-900 sm:text-4xl">
+                  <h1 className="kiosk-home-title text-3xl font-semibold leading-tight text-neutral-900 sm:text-4xl">
                     {restaurant?.website_title || restaurant?.name || 'Restaurant'}
                   </h1>
                   {restaurant?.website_description ? (
-                    <p className="text-base text-neutral-600 sm:text-lg">{restaurant.website_description}</p>
+                    <p className="kiosk-home-description text-base text-neutral-600 sm:text-lg">{restaurant.website_description}</p>
                   ) : null}
                 </>
               )}
@@ -146,7 +146,7 @@ export default function HomeScreen({ restaurant, onStart, fadingOut, loading, cl
             <button
               type="button"
               onClick={onStart}
-              className="mt-8 w-full max-w-[280px] rounded-full px-8 text-lg font-semibold text-white shadow-lg shadow-neutral-400 transition focus-visible:outline-none"
+              className="kiosk-home-cta mt-8 w-full max-w-[280px] rounded-full px-8 text-lg font-semibold text-white shadow-lg shadow-neutral-400 transition focus-visible:outline-none"
               style={{
                 backgroundColor: primaryColor,
                 minHeight: '64px',
@@ -164,6 +164,59 @@ export default function HomeScreen({ restaurant, onStart, fadingOut, loading, cl
           inset: 0;
           background: rgba(255, 255, 255, 0.275);
           pointer-events: none;
+        }
+
+        @media (orientation: landscape) {
+          .kiosk-home-shell {
+            max-width: min(86vw, 980px);
+            padding-left: 1rem;
+            padding-right: 1rem;
+          }
+
+          .kiosk-home-card {
+            padding: 1.25rem 1.5rem;
+          }
+
+          .kiosk-home-stack {
+            gap: 0.75rem;
+          }
+
+          .kiosk-home-logo {
+            height: 4.25rem !important;
+            width: 4.25rem !important;
+          }
+
+          .kiosk-home-title {
+            font-size: 1.6rem;
+            line-height: 1.15;
+          }
+
+          .kiosk-home-description {
+            font-size: 0.95rem;
+            line-height: 1.35;
+          }
+
+          .kiosk-home-cta {
+            margin-top: 1rem;
+            max-width: 18rem;
+            min-height: 3rem !important;
+            font-size: 1rem;
+          }
+        }
+
+        @media (orientation: landscape) and (max-height: 540px) {
+          .kiosk-home-card {
+            padding-top: 1rem;
+            padding-bottom: 1rem;
+          }
+
+          .kiosk-home-title {
+            font-size: 1.35rem;
+          }
+
+          .kiosk-home-description {
+            display: none;
+          }
         }
       `}</style>
     </div>
