@@ -56,6 +56,7 @@ export function KioskSessionProvider({
   const idleTimeoutRef = useRef<number | null>(null);
   const idleCountdownIntervalRef = useRef<number | null>(null);
   const sessionActiveRef = useRef(sessionActiveState);
+  const launcherEntryHandledRef = useRef(false);
 
   const isExpressActive = useCallback(() => {
     if (router.pathname.startsWith('/express') || router.asPath.startsWith('/express')) {
@@ -116,7 +117,13 @@ export function KioskSessionProvider({
   }, [isExpressActive, router.asPath, router.pathname]);
 
   useEffect(() => {
+    if (!hasLauncherEntryFlag) {
+      launcherEntryHandledRef.current = false;
+      return;
+    }
+    if (launcherEntryHandledRef.current) return;
     if (!router.isReady || !restaurantId || !hasLauncherEntryFlag) return;
+    launcherEntryHandledRef.current = true;
     console.info('[kiosk-debug] launcher entry detected; resetting kiosk home/session', {
       restaurantId,
       asPath: router.asPath,
