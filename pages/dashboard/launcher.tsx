@@ -139,6 +139,15 @@ export default function DashboardLauncherPage() {
     }
   }, [selectedRestaurantId]);
 
+  useEffect(() => {
+    if (!selectedRestaurant) return;
+
+    APP_MODES.forEach((mode) => {
+      const href = getModeHref(mode.key, selectedRestaurant.id);
+      router.prefetch(href).catch(() => undefined);
+    });
+  }, [router, selectedRestaurant]);
+
   const handleLaunch = async (mode: AppMode['key']) => {
     if (!selectedRestaurant) return;
     const href = getModeHref(mode, selectedRestaurant.id);
