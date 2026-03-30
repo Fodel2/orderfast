@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      KIOSK_RELEASE_TAG: kiosk-debug-testing
+      KIOSK_RELEASE_ASSET_NAME: orderfast-kiosk-debug.apk
 
     steps:
       - name: Checkout repo
@@ -30,7 +32,7 @@ jobs:
       - name: Create temporary Capacitor web assets
         run: |
           mkdir -p www
-          cat > www/index.html <<'EOF'
+          cat > www/index.html <<'EOF2'
           <!doctype html>
           <html>
             <head>
@@ -42,7 +44,7 @@ jobs:
               <div id="app">Temporary Capacitor bootstrap page</div>
             </body>
           </html>
-          EOF
+          EOF2
 
       - name: Temporarily point Capacitor to www
         run: |
@@ -90,8 +92,21 @@ jobs:
           cd android
           ./gradlew assembleDebug
 
-      - name: Upload debug APK
+      - name: Prepare kiosk release asset
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk "$KIOSK_RELEASE_ASSET_NAME"
+
+      - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: orderfast-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload kiosk debug APK to stable GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.KIOSK_RELEASE_TAG }}
+          name: Kiosk Debug APK (Testing)
+          prerelease: true
+          make_latest: false
+          files: ${{ env.KIOSK_RELEASE_ASSET_NAME }}
