@@ -10,7 +10,7 @@ import android.view.WindowInsetsController;
 import android.webkit.WebBackForwardList;
 
 import com.getcapacitor.BridgeActivity;
-import com.getcapacitor.BridgeWebView;
+import android.webkit.WebView;
 
 public class MainActivity extends BridgeActivity {
     private final Handler immersiveHandler = new Handler(Looper.getMainLooper());
@@ -26,7 +26,7 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onBackPressed() {
-        BridgeWebView webView = bridge != null ? bridge.getWebView() : null;
+        WebView webView = bridge != null ? bridge.getWebView() : null;
         if (isKioskRoute(webView)) {
             webView.evaluateJavascript(
                 "window.dispatchEvent(new CustomEvent('orderfast:kiosk-back-blocked'));",
@@ -44,7 +44,7 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
-    protected void onResume() {
+    public void onResume() {
         super.onResume();
         immersiveHandler.postDelayed(immersiveRunnable, 120);
     }
@@ -84,7 +84,7 @@ public class MainActivity extends BridgeActivity {
     }
 
     private void configureWebViewPresentation() {
-        BridgeWebView webView = bridge != null ? bridge.getWebView() : null;
+        WebView webView = bridge != null ? bridge.getWebView() : null;
         if (webView == null) {
             return;
         }
@@ -94,7 +94,7 @@ public class MainActivity extends BridgeActivity {
         webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
     }
 
-    private boolean isKioskRoute(BridgeWebView webView) {
+    private boolean isKioskRoute(WebView webView) {
         if (webView == null) {
             return false;
         }
