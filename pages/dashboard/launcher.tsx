@@ -33,6 +33,7 @@ const APP_MODES: AppMode[] = [
   { key: 'kod', label: 'KOD', description: 'Kitchen order display workflows.' },
   { key: 'menu', label: 'Menu', description: 'Customer menu preview and ordering.' },
 ];
+const RESTAURANT_SELECTION_KEY = 'orderfast_launcher_restaurant_id';
 
 const getRestaurantFromMembership = (row: MembershipRow): RestaurantOption | null => {
   if (!row.restaurant_id) return null;
@@ -58,6 +59,7 @@ export default function DashboardLauncherPage() {
   const [error, setError] = useState<string | null>(null);
   const [restaurants, setRestaurants] = useState<RestaurantOption[]>([]);
   const [selectedRestaurantId, setSelectedRestaurantId] = useState<string | null>(null);
+  const [launchingMode, setLaunchingMode] = useState<AppMode['key'] | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -98,6 +100,16 @@ export default function DashboardLauncherPage() {
       if (uniqueRestaurants.length === 1) {
         setSelectedRestaurantId(uniqueRestaurants[0].id);
       }
+      if (uniqueRestaurants.length > 1 && typeof window !== 'undefined') {
+        try {
+          const persistedId = window.localStorage.getItem(RESTAURANT_SELECTION_KEY);
+          if (persistedId && uniqueRestaurants.some((restaurant) => restaurant.id === persistedId)) {
+            setSelectedRestaurantId(persistedId);
+          }
+        } catch {
+          // localStorage can be unavailable in some webview contexts
+        }
+      }
 
       if (uniqueRestaurants.length === 0) {
         setError('No restaurant memberships were found for this account.');
@@ -118,6 +130,26 @@ export default function DashboardLauncherPage() {
     [restaurants, selectedRestaurantId]
   );
 
+  useEffect(() => {
+    if (!selectedRestaurantId || typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(RESTAURANT_SELECTION_KEY, selectedRestaurantId);
+    } catch {
+      // localStorage can be unavailable in some webview contexts
+    }
+  }, [selectedRestaurantId]);
+
+  const handleLaunch = async (mode: AppMode['key']) => {
+    if (!selectedRestaurant) return;
+    const href = getModeHref(mode, selectedRestaurant.id);
+    setLaunchingMode(mode);
+    try {
+      await router.push(href);
+    } finally {
+      setLaunchingMode(null);
+    }
+  };
+
   return (
     <main
       style={{
@@ -132,6 +164,9 @@ export default function DashboardLauncherPage() {
         <header style={{ marginTop: '0.5rem' }}>
           <p style={{ margin: 0, fontSize: '0.8rem', color: '#475569', letterSpacing: '0.06em' }}>ORDERFAST</p>
           <h1 style={{ margin: '0.25rem 0 0', fontSize: '1.5rem' }}>App launcher</h1>
+          <p style={{ margin: '0.5rem 0 0', color: '#64748b', fontSize: '0.9rem' }}>
+            Choose your destination and continue with your current restaurant context.
+          </p>
         </header>
 
         {isLoading ? <p style={{ color: '#334155' }}>Loading your access…</p> : null}
@@ -202,6 +237,29 @@ export default function DashboardLauncherPage() {
               ) : null}
             </section>
 
+            <button
+              type="button"
+              onClick={() => handleLaunch('kiosk')}
+              disabled={launchingMode !== null}
+              style={{
+                textAlign: 'left',
+                background: 'linear-gradient(135deg, #0f172a, #1e293b)',
+                color: '#fff',
+                border: '1px solid #0f172a',
+                borderRadius: '14px',
+                padding: '1rem',
+                boxShadow: '0 10px 24px rgba(15, 23, 42, 0.2)',
+                opacity: launchingMode && launchingMode !== 'kiosk' ? 0.65 : 1,
+              }}
+            >
+              <span style={{ display: 'block', fontWeight: 700, fontSize: '1rem' }}>
+                {launchingMode === 'kiosk' ? 'Opening kiosk…' : 'Open Kiosk'}
+              </span>
+              <span style={{ display: 'block', marginTop: '0.3rem', color: '#cbd5e1', fontSize: '0.88rem' }}>
+                Launches directly into the kiosk route for {selectedRestaurant.name}.
+              </span>
+            </button>
+
             <section
               style={{
                 display: 'grid',
@@ -209,23 +267,26 @@ export default function DashboardLauncherPage() {
                 gap: '0.75rem',
               }}
             >
-              {APP_MODES.map((mode) => (
+              {APP_MODES.filter((mode) => mode.key !== 'kiosk').map((mode) => (
                 <button
                   key={mode.key}
                   type="button"
                   onClick={() => {
-                    const href = getModeHref(mode.key, selectedRestaurant.id);
-                    router.push(href).catch(() => undefined);
+                    handleLaunch(mode.key).catch(() => undefined);
                   }}
+                  disabled={launchingMode !== null}
                   style={{
                     textAlign: 'left',
                     background: '#fff',
                     border: '1px solid #dbeafe',
                     borderRadius: '12px',
                     padding: '0.9rem',
+                    opacity: launchingMode === null || launchingMode === mode.key ? 1 : 0.65,
                   }}
                 >
-                  <span style={{ display: 'block', fontWeight: 700 }}>{mode.label}</span>
+                  <span style={{ display: 'block', fontWeight: 700 }}>
+                    {launchingMode === mode.key ? `Opening ${mode.label}…` : mode.label}
+                  </span>
                   <span style={{ display: 'block', marginTop: '0.25rem', color: '#475569', fontSize: '0.9rem' }}>
                     {mode.description}
                   </span>
