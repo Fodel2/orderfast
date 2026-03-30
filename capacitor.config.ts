@@ -5,7 +5,7 @@ const config: CapacitorConfig = {
   appName: 'Orderfast',
   webDir: 'www',
   server: {
-    url: 'https://orderfast.vercel.app',
+    url: 'https://orderfast.vercel.app/dashboard/launcher',
   },
 };
 
