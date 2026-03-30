@@ -24,9 +24,9 @@ jobs:
       - name: Build app
         run: npm run build
 
-      - name: Show files after build
-        run: |
-          pwd
-          ls -la
-          echo "----- find .next -----"
-          find . -maxdepth 3 -type d -name ".next"
+      - name: Upload Next build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: next-build
+          path: .next
+          include-hidden-files: true
