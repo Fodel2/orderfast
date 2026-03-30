@@ -18,6 +18,7 @@ import { getExpressSession, patchExpressSession } from '@/utils/express/session'
 import { requestPrintJobCreation } from '@/lib/print-jobs/request';
 import { useCustomerAvailability } from '@/hooks/useCustomerAvailability';
 import { buildKioskPaymentEntryPath } from '@/lib/payment-entry/routes';
+import { normalizeKioskPaymentSettings, type KioskPaymentSettingsRow } from '@/lib/kiosk/paymentSettings';
 
 type ExpressCheckoutSettings = {
   enable_table_numbers: boolean;
@@ -322,6 +323,33 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
         customerName: trimmedName || null,
         tableNumber: isDineInExpress && Number.isInteger(parsedTableNumber) ? parsedTableNumber : null,
       });
+    }
+
+    const { data: paymentSettingsRow, error: paymentSettingsError } = await supabase
+      .from('kiosk_payment_settings')
+      .select('restaurant_id,process_on_device,enable_cash,enable_contactless,enable_pay_at_counter')
+      .eq('restaurant_id', restaurantId)
+      .maybeSingle();
+
+    if (paymentSettingsError) {
+      setSubmissionError('We could not load kiosk payment settings. Please try again.');
+      return;
+    }
+
+    const normalizedPaymentSettings = normalizeKioskPaymentSettings(
+      (paymentSettingsRow as KioskPaymentSettingsRow | null) || null
+    );
+
+    if (normalizedPaymentSettings.processOnDevice) {
+      const params = new URLSearchParams();
+      if (normalizedPaymentSettings.enabledMethods.length === 1) {
+        params.set('stage', normalizedPaymentSettings.enabledMethods[0]);
+      }
+      const paymentEntryPath = buildKioskPaymentEntryPath(restaurantId);
+      const paymentEntryTarget = params.toString() ? `${paymentEntryPath}?${params.toString()}` : paymentEntryPath;
+      setShowConfirmModal(false);
+      await router.push(paymentEntryTarget);
+      return;
     }
 
     const cartItemsSnapshot = cart.items.map((item) => ({
@@ -672,17 +700,6 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
               >
                 Place Order
               </KioskActionButton>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!restaurantId) return;
-                  registerActivity();
-                  router.push(buildKioskPaymentEntryPath(restaurantId)).catch(() => undefined);
-                }}
-                className="mt-2 w-full text-center text-xs font-medium text-slate-600 underline decoration-slate-300 underline-offset-2 hover:text-slate-800"
-              >
-                Open kiosk payment flow preview
-              </button>
             </div>
           </div>
         </div>

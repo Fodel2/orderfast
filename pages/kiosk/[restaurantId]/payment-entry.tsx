@@ -77,6 +77,11 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   const [contactlessAttempts, setContactlessAttempts] = useState(0);
   const [contactlessResetUsed, setContactlessResetUsed] = useState(false);
   const [contactlessStatus, setContactlessStatus] = useState<'idle' | 'success' | 'failed'>('idle');
+  const stageParam = Array.isArray(router.query.stage) ? router.query.stage[0] : router.query.stage;
+  const preferredStageFromQuery: PaymentStage | null =
+    stageParam === 'contactless' || stageParam === 'cash' || stageParam === 'pay_at_counter' || stageParam === 'method_picker'
+      ? stageParam
+      : null;
 
   const contactlessAttemptsRemaining = Math.max(CONTACTLESS_MAX_ATTEMPTS - contactlessAttempts, 0);
   const contactlessFallbackActive = contactlessAttempts >= CONTACTLESS_MAX_ATTEMPTS && contactlessResetUsed;
@@ -146,7 +151,15 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         const nextMethods = normalized.enabledMethods;
         setEnabledMethods(nextMethods);
 
-        if (nextMethods.length === 1 && nextMethods[0] === 'contactless') {
+        if (preferredStageFromQuery === 'method_picker' && nextMethods.length > 1) {
+          setStage('method_picker');
+        } else if (preferredStageFromQuery === 'contactless' && nextMethods.includes('contactless')) {
+          setStage('contactless');
+        } else if (preferredStageFromQuery === 'cash' && nextMethods.includes('cash')) {
+          setStage('cash');
+        } else if (preferredStageFromQuery === 'pay_at_counter' && nextMethods.includes('pay_at_counter')) {
+          setStage('pay_at_counter');
+        } else if (nextMethods.length === 1 && nextMethods[0] === 'contactless') {
           setStage('contactless');
         } else if (nextMethods.length > 1) {
           setStage('method_picker');
@@ -170,7 +183,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     return () => {
       active = false;
     };
-  }, [restaurantId]);
+  }, [preferredStageFromQuery, restaurantId]);
 
   useEffect(() => {
     if (stage !== 'contactless') {
