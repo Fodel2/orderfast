@@ -83,6 +83,10 @@ type OrderSegment = {
   items: OrderItem[];
 };
 
+type RefreshOptions = {
+  silent?: boolean;
+};
+
 const NOTE_LINE_LENGTH = 38;
 const CARD_VERTICAL_PADDING = 32;
 const HEADER_RESERVED_PX = 80;
@@ -308,6 +312,8 @@ export default function KitchenDisplayPage() {
   const orderedSegmentsRef = useRef(0);
   const pageIndexRef = useRef(0);
   const pendingOrderIdsRef = useRef<Set<string>>(new Set());
+  const activeOrdersSignatureRef = useRef('');
+  const preparedOrdersSignatureRef = useRef('');
   const [rejectOrder, setRejectOrder] = useState<Order | null>(null);
   const emptyMessage = useMemo(() => getRandomOrderEmptyMessage(), []);
   const {
@@ -382,9 +388,11 @@ export default function KitchenDisplayPage() {
     }
   }, [soundEnabled, startAlertLoop, stopAlertLoop]);
 
-  const fetchOrders = useCallback(async () => {
+  const fetchOrders = useCallback(async ({ silent = false }: RefreshOptions = {}) => {
     if (!restaurantId) return;
-    setIsFetching(true);
+    if (!silent) {
+      setIsFetching(true);
+    }
     const { data, error } = await supabase
       .from('orders')
       .select(
@@ -424,21 +432,29 @@ export default function KitchenDisplayPage() {
     if (error) {
       console.error('[kod] failed to load orders', error);
       setLastFetchFailed(true);
-      setIsFetching(false);
+      if (!silent) {
+        setIsFetching(false);
+      }
       return;
     }
 
     const nextOrders = (data as Order[]) ?? [];
-    setOrders(nextOrders);
+    const nextSignature = JSON.stringify(nextOrders);
+    if (activeOrdersSignatureRef.current !== nextSignature) {
+      activeOrdersSignatureRef.current = nextSignature;
+      setOrders(nextOrders);
+    }
     pendingOrderIdsRef.current = new Set(
       nextOrders.filter((order) => order.status === 'pending').map((order) => order.id)
     );
     syncAlertLoop();
     setLastFetchFailed(false);
-    setIsFetching(false);
+    if (!silent) {
+      setIsFetching(false);
+    }
   }, [restaurantId, syncAlertLoop]);
 
-  const fetchPreparedOrders = useCallback(async () => {
+  const fetchPreparedOrders = useCallback(async ({ silent = false }: RefreshOptions = {}) => {
     if (!restaurantId) return;
     const { data: startData, error: startError } = await supabase.rpc(
       'get_restaurant_business_day_start',
@@ -497,7 +513,11 @@ export default function KitchenDisplayPage() {
     const preparedOrders = (data as Order[]) ?? [];
     setPreparedCount(preparedOrders.length);
     if (isPreparedView) {
-      setOrders(preparedOrders);
+      const nextSignature = JSON.stringify(preparedOrders);
+      if (preparedOrdersSignatureRef.current !== nextSignature) {
+        preparedOrdersSignatureRef.current = nextSignature;
+        setOrders(preparedOrders);
+      }
     }
   }, [isPreparedView, restaurantId]);
 
@@ -583,11 +603,11 @@ export default function KitchenDisplayPage() {
     void fetchStockRows(true);
   }, [fetchStockRows, restaurantId]);
 
-  const refreshCurrentView = useCallback(async () => {
+  const refreshCurrentView = useCallback(async ({ silent = true }: RefreshOptions = {}) => {
     if (isPreparedView) {
-      await fetchPreparedOrders();
+      await fetchPreparedOrders({ silent });
     } else {
-      await fetchOrders();
+      await fetchOrders({ silent });
     }
   }, [fetchOrders, fetchPreparedOrders, isPreparedView]);
 
@@ -601,7 +621,7 @@ export default function KitchenDisplayPage() {
       if (!active) return;
       const jitter = Math.floor(Math.random() * 600) - 300;
       timeoutId = window.setTimeout(async () => {
-        await fetchCurrentView();
+        await fetchCurrentView({ silent: true });
         scheduleNext();
       }, 5000 + jitter);
     };
@@ -617,7 +637,7 @@ export default function KitchenDisplayPage() {
 
   useEffect(() => {
     if (!restaurantId) return;
-    fetchPreparedOrders();
+    fetchPreparedOrders({ silent: true });
   }, [fetchPreparedOrders, restaurantId]);
 
   useEffect(() => {
