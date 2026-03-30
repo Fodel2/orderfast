@@ -10,11 +10,15 @@ export function hasSeenHome(restaurantId?: string | null): boolean {
 
   if (memoryFlags.has(key)) return true;
 
-  if (typeof window !== 'undefined' && window.sessionStorage) {
-    const value = window.sessionStorage.getItem(key);
-    if (value === 'true') {
-      memoryFlags.add(key);
-      return true;
+  if (typeof window !== 'undefined') {
+    try {
+      const value = window.sessionStorage?.getItem(key);
+      if (value === 'true') {
+        memoryFlags.add(key);
+        return true;
+      }
+    } catch {
+      // ignore storage failures
     }
   }
 
@@ -25,9 +29,9 @@ export function markHomeSeen(restaurantId?: string | null) {
   const key = storageKey(restaurantId);
   if (!key) return;
   memoryFlags.add(key);
-  if (typeof window !== 'undefined' && window.sessionStorage) {
+  if (typeof window !== 'undefined') {
     try {
-      window.sessionStorage.setItem(key, 'true');
+      window.sessionStorage?.setItem(key, 'true');
     } catch {
       // ignore storage failures
     }
@@ -38,9 +42,9 @@ export function clearHomeSeen(restaurantId?: string | null) {
   const key = storageKey(restaurantId);
   if (!key) return;
   memoryFlags.delete(key);
-  if (typeof window !== 'undefined' && window.sessionStorage) {
+  if (typeof window !== 'undefined') {
     try {
-      window.sessionStorage.removeItem(key);
+      window.sessionStorage?.removeItem(key);
     } catch {
       // ignore storage failures
     }
