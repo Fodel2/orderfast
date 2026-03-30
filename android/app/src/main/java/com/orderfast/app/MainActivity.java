@@ -7,6 +7,7 @@ import android.view.View;
 import android.view.WindowManager;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
+import android.webkit.WebBackForwardList;
 
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.BridgeWebView;
@@ -26,6 +27,14 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onBackPressed() {
         BridgeWebView webView = bridge != null ? bridge.getWebView() : null;
+        if (isKioskRoute(webView)) {
+            webView.evaluateJavascript(
+                "window.dispatchEvent(new CustomEvent('orderfast:kiosk-back-blocked'));",
+                null
+            );
+            return;
+        }
+
         if (webView != null && webView.canGoBack()) {
             webView.goBack();
             return;
@@ -83,5 +92,29 @@ public class MainActivity extends BridgeActivity {
         webView.setVerticalScrollBarEnabled(false);
         webView.setHorizontalScrollBarEnabled(false);
         webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
+    }
+
+    private boolean isKioskRoute(BridgeWebView webView) {
+        if (webView == null) {
+            return false;
+        }
+
+        String currentUrl = webView.getUrl();
+        if (currentUrl != null && currentUrl.contains("/kiosk/")) {
+            return true;
+        }
+
+        WebBackForwardList history = webView.copyBackForwardList();
+        if (history == null) {
+            return false;
+        }
+
+        int currentIndex = history.getCurrentIndex();
+        if (currentIndex < 0) {
+            return false;
+        }
+
+        String historyUrl = history.getItemAtIndex(currentIndex).getUrl();
+        return historyUrl != null && historyUrl.contains("/kiosk/");
     }
 }

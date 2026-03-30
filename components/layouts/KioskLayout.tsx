@@ -113,8 +113,12 @@ export default function KioskLayout({
   const [isNativeShell, setIsNativeShell] = useState(false);
   const [shrinkProgress, setShrinkProgress] = useState(0);
   const [showFullscreenPrompt, setShowFullscreenPrompt] = useState(false);
+  const [showOperatorExit, setShowOperatorExit] = useState(false);
+  const [showLockedNavigationNotice, setShowLockedNavigationNotice] = useState(false);
   const autoPromptedRef = useRef(false);
   const fullscreenRequestInFlight = useRef(false);
+  const operatorPressTimerRef = useRef<number | null>(null);
+  const operatorNoticeTimerRef = useRef<number | null>(null);
   const accentColor = useMemo(
     () => restaurant?.brand_primary_color || restaurant?.brand_secondary_color || '#111827',
     [restaurant?.brand_primary_color, restaurant?.brand_secondary_color]
@@ -180,6 +184,40 @@ export default function KioskLayout({
   }, [resolveExpressSessionState, router.asPath]);
 
   const isExpressActive = isExpressRoute || hasExpressQueryFlag || isExpressSession;
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || isExpressActive) return;
+
+    const handleBackBlocked = () => {
+      setShowLockedNavigationNotice(true);
+      if (operatorNoticeTimerRef.current) {
+        window.clearTimeout(operatorNoticeTimerRef.current);
+      }
+      operatorNoticeTimerRef.current = window.setTimeout(() => {
+        setShowLockedNavigationNotice(false);
+      }, 2600);
+    };
+
+    window.addEventListener('orderfast:kiosk-back-blocked', handleBackBlocked);
+
+    return () => {
+      window.removeEventListener('orderfast:kiosk-back-blocked', handleBackBlocked);
+      if (operatorNoticeTimerRef.current) {
+        window.clearTimeout(operatorNoticeTimerRef.current);
+        operatorNoticeTimerRef.current = null;
+      }
+    };
+  }, [isExpressActive]);
+
+  useEffect(
+    () => () => {
+      if (operatorPressTimerRef.current) {
+        window.clearTimeout(operatorPressTimerRef.current);
+      }
+    },
+    []
+  );
+
   const channel = isExpressActive ? 'express' : 'kiosk';
   const availability = useCustomerAvailability({
     restaurantId,
@@ -499,6 +537,28 @@ export default function KioskLayout({
     }
   }, [attemptFullscreen, availability.canStartNewSession, menuPath, resetIdleTimer, requestWakeLock, restaurantId, router, shouldSuppressFullscreen]);
 
+  const clearOperatorPressTimer = useCallback(() => {
+    if (operatorPressTimerRef.current) {
+      window.clearTimeout(operatorPressTimerRef.current);
+      operatorPressTimerRef.current = null;
+    }
+  }, []);
+
+  const armOperatorExit = useCallback(() => {
+    if (isExpressActive || !restaurantId) return;
+    clearOperatorPressTimer();
+    operatorPressTimerRef.current = window.setTimeout(() => {
+      setShowOperatorExit(true);
+    }, 1800);
+  }, [clearOperatorPressTimer, isExpressActive, restaurantId]);
+
+  const handleOperatorExit = useCallback(async () => {
+    if (!restaurantId) return;
+    clearOperatorPressTimer();
+    setShowOperatorExit(false);
+    await router.push(`/dashboard/launcher?restaurant_id=${encodeURIComponent(restaurantId)}`);
+  }, [clearOperatorPressTimer, restaurantId, router]);
+
   const headerTitle = restaurant?.website_title || restaurant?.name || 'Restaurant';
   const logoUrl = restaurant?.logo_url || null;
   const logoShape = restaurant?.logo_shape || 'round';
@@ -536,6 +596,10 @@ export default function KioskLayout({
         <div
           className="flex items-center gap-4"
           style={{ transform: `scale(${brandScale})`, transformOrigin: 'left center' }}
+          onPointerDown={armOperatorExit}
+          onPointerUp={clearOperatorPressTimer}
+          onPointerCancel={clearOperatorPressTimer}
+          onPointerLeave={clearOperatorPressTimer}
         >
           {showBrandSkeleton ? (
             <>
@@ -594,6 +658,8 @@ export default function KioskLayout({
     logoShellClass,
     logoSizeClass,
     logoUrl,
+    armOperatorExit,
+    clearOperatorPressTimer,
     registerActivity,
     restaurantId,
     isExpressActive,
@@ -730,6 +796,35 @@ export default function KioskLayout({
               <button className="IdleResetButton" onClick={handleIdleTimeout}>
                 Start over
               </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {showLockedNavigationNotice && !isExpressActive ? (
+        <div className="fixed left-1/2 top-5 z-[80] w-[min(92vw,560px)] -translate-x-1/2 rounded-2xl border border-neutral-900/10 bg-white/95 px-4 py-3 text-neutral-900 shadow-xl backdrop-blur">
+          <p className="text-sm font-semibold">Kiosk navigation is locked.</p>
+          <p className="text-xs text-neutral-600">Staff: press and hold the logo for 2 seconds to exit to launcher.</p>
+        </div>
+      ) : null}
+      {showOperatorExit && !isExpressActive ? (
+        <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/30 px-6">
+          <div className="w-full max-w-sm rounded-3xl border border-neutral-200 bg-white p-6 shadow-2xl shadow-black/20">
+            <p className="text-lg font-semibold text-neutral-900">Exit kiosk mode?</p>
+            <p className="mt-2 text-sm text-neutral-600">This returns to the launcher for operator controls.</p>
+            <div className="mt-5 flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  clearOperatorPressTimer();
+                  setShowOperatorExit(false);
+                }}
+                className="inline-flex flex-1 items-center justify-center rounded-full border border-neutral-200 px-4 py-2.5 text-sm font-semibold text-neutral-700"
+              >
+                Stay in kiosk
+              </button>
+              <KioskActionButton onClick={handleOperatorExit} className="flex-1 justify-center px-4 py-2.5 text-sm">
+                Exit to launcher
+              </KioskActionButton>
             </div>
           </div>
         </div>
