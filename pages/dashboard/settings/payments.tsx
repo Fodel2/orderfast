@@ -1,12 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import DashboardLayout from '../../../components/DashboardLayout';
 import { supabase } from '../../../utils/supabaseClient';
-import {
-  DEFAULT_KIOSK_PAYMENT_SETTINGS,
-  normalizeKioskPaymentSettings,
-  type KioskPaymentSettingsRow,
-} from '@/lib/kiosk/paymentSettings';
+import { DEFAULT_KIOSK_PAYMENT_SETTINGS, type KioskPaymentSettingsRow } from '@/lib/kiosk/paymentSettings';
+import { InputToggle } from '@/components/ui/InputToggle';
 
 type KioskPaymentDraft = {
   process_on_device: boolean;
@@ -28,6 +25,9 @@ export default function DashboardSettingsPaymentsPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [settings, setSettings] = useState<KioskPaymentDraft>(defaultDraft);
+
+  const processOnDevice = settings.process_on_device;
+  const hasEnabledDeviceMethod = settings.enable_cash || settings.enable_contactless || settings.enable_pay_at_counter;
 
   const loadSettings = useCallback(async () => {
     setLoading(true);
@@ -88,8 +88,6 @@ export default function DashboardSettingsPaymentsPage() {
     void loadSettings();
   }, [loadSettings]);
 
-  const normalizedPreview = useMemo(() => normalizeKioskPaymentSettings(settings), [settings]);
-
   const onSave = useCallback(async () => {
     if (!restaurantId) return;
     setSaving(true);
@@ -131,97 +129,119 @@ export default function DashboardSettingsPaymentsPage() {
         <header>
           <h1 className="text-3xl font-bold text-gray-900">Payments</h1>
           <p className="mt-2 text-sm text-gray-600">
-            Configure kiosk payment routing now; live Stripe/Tap to Pay device processing will be added later.
+            Choose whether customers pay on the kiosk or submit orders first and pay your team separately at collection,
+            preparation, or hand-off.
           </p>
         </header>
 
-        <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
           <h2 className="text-lg font-semibold text-gray-900">Kiosk payment processing</h2>
-          <p className="mt-1 text-sm text-gray-600">
-            Keep <strong>Pay at Counter</strong> as your baseline, and optionally enable on-device kiosk payment methods.
+          <p className="mt-2 text-sm leading-relaxed text-gray-600">
+            Device payments are <strong>off by default</strong>. Turn this on only when you want customers to choose a
+            payment method during kiosk checkout.
           </p>
 
-          <div className="mt-4 space-y-3">
-            <label className="flex items-center justify-between rounded-xl border border-gray-200 p-4">
-              <span className="font-medium text-gray-900">Process kiosk payments on this device</span>
-              <input
-                type="checkbox"
-                checked={settings.process_on_device}
-                onChange={(event) =>
-                  setSettings((prev) => ({
-                    ...prev,
-                    process_on_device: event.target.checked,
-                  }))
+          <div className="mt-5 space-y-4">
+            <div className="rounded-2xl border border-gray-200 bg-gray-50/70 p-4">
+              <InputToggle
+                checked={processOnDevice}
+                onChange={(checked) =>
+                  setSettings((prev) => {
+                    if (checked) {
+                      return {
+                        ...prev,
+                        process_on_device: true,
+                        enable_cash: false,
+                        enable_contactless: false,
+                        enable_pay_at_counter: false,
+                      };
+                    }
+                    return {
+                      ...prev,
+                      process_on_device: false,
+                    };
+                  })
+                }
+                label={
+                  <div className="pr-4">
+                    <p className="text-sm font-semibold text-gray-900">Process kiosk payments on this device</p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Whenever this is switched on after being off, all payment methods start unselected so you can choose
+                      them intentionally.
+                    </p>
+                  </div>
                 }
               />
-            </label>
-
-            <div className="rounded-xl border border-gray-200 p-4">
-              <p className="text-sm font-semibold text-gray-900">Allowed kiosk checkout payment methods</p>
-              <p className="mt-1 text-xs text-gray-500">
-                If device processing is off, kiosk checkout automatically uses Pay at Counter regardless of additional method toggles.
-              </p>
-
-              <div className="mt-4 grid gap-2 sm:grid-cols-3">
-                <label className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={settings.enable_cash}
-                    onChange={(event) =>
-                      setSettings((prev) => ({
-                        ...prev,
-                        enable_cash: event.target.checked,
-                      }))
-                    }
-                  />
-                  Cash
-                </label>
-                <label className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={settings.enable_contactless}
-                    onChange={(event) =>
-                      setSettings((prev) => ({
-                        ...prev,
-                        enable_contactless: event.target.checked,
-                      }))
-                    }
-                  />
-                  Contactless
-                </label>
-                <label className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={settings.enable_pay_at_counter}
-                    onChange={(event) =>
-                      setSettings((prev) => ({
-                        ...prev,
-                        enable_pay_at_counter: event.target.checked,
-                      }))
-                    }
-                  />
-                  Pay at Counter
-                </label>
-              </div>
             </div>
+
+            {processOnDevice ? (
+              <div className="rounded-2xl border border-gray-200 p-4">
+                <p className="text-sm font-semibold text-gray-900">Allowed kiosk checkout payment methods</p>
+                <p className="mt-1 text-xs text-gray-500">Select the methods you want customers to see during checkout.</p>
+
+                <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                  <label className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={settings.enable_cash}
+                      onChange={(event) =>
+                        setSettings((prev) => ({
+                          ...prev,
+                          enable_cash: event.target.checked,
+                        }))
+                      }
+                    />
+                    Cash
+                  </label>
+                  <label className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={settings.enable_contactless}
+                      onChange={(event) =>
+                        setSettings((prev) => ({
+                          ...prev,
+                          enable_contactless: event.target.checked,
+                        }))
+                      }
+                    />
+                    Contactless
+                  </label>
+                  <label className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={settings.enable_pay_at_counter}
+                      onChange={(event) =>
+                        setSettings((prev) => ({
+                          ...prev,
+                          enable_pay_at_counter: event.target.checked,
+                        }))
+                      }
+                    />
+                    Pay at Counter
+                  </label>
+                </div>
+              </div>
+            ) : null}
           </div>
 
-          <div className="mt-5 rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-900">
-            <p className="font-semibold">Customer kiosk flow preview</p>
-            <p className="mt-1">Enabled route methods: {normalizedPreview.enabledMethods.join(' · ')}</p>
-          </div>
-
-          <div className="mt-5 flex items-center gap-3">
+          <div className="mt-6 flex items-center gap-3">
             <button
               type="button"
               onClick={() => void onSave()}
               disabled={saving || !restaurantId}
-              className="rounded-full bg-teal-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex min-w-[160px] items-center justify-center rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {saving ? 'Saving…' : 'Save payment settings'}
             </button>
             {message ? <p className="text-sm text-gray-600">{message}</p> : null}
           </div>
+
+          {processOnDevice && !hasEnabledDeviceMethod ? (
+            <p className="mt-3 text-xs text-amber-700">
+              No kiosk payment methods are selected yet. Checkout will fall back to pay-at-counter behavior until you
+              choose at least one method.
+            </p>
+          ) : null}
         </section>
       </div>
     </DashboardLayout>
