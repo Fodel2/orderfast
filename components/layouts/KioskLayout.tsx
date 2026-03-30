@@ -541,10 +541,25 @@ export default function KioskLayout({
     [isExpressActive, restaurantId]
   );
 
+  const resolveRestaurantIdForNavigation = useCallback(() => {
+    if (restaurantId) return restaurantId;
+    const queryId = router.query.restaurantId;
+    if (typeof queryId === 'string' && queryId.trim()) return queryId;
+    if (Array.isArray(queryId) && queryId[0]?.trim()) return queryId[0];
+    const pathMatch = router.asPath.match(/\/kiosk\/([^/?#]+)/i);
+    if (!pathMatch?.[1]) return null;
+    try {
+      return decodeURIComponent(pathMatch[1]);
+    } catch {
+      return pathMatch[1];
+    }
+  }, [restaurantId, router.asPath, router.query.restaurantId]);
+
   const startOrdering = useCallback(async () => {
     if (!availability.canStartNewSession) return;
-    if (restaurantId) {
-      markHomeSeen(restaurantId);
+    const targetRestaurantId = resolveRestaurantIdForNavigation();
+    if (targetRestaurantId) {
+      markHomeSeen(targetRestaurantId);
     }
     setSessionActive(true);
     resetIdleTimer();
@@ -559,10 +574,24 @@ export default function KioskLayout({
     } else {
       await Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]);
     }
-    if (menuPath && router.asPath !== menuPath) {
-      router.push(menuPath).catch(() => undefined);
+    const resolvedMenuPath = targetRestaurantId
+      ? `/kiosk/${targetRestaurantId}/menu${isExpressActive ? '?express=1' : ''}`
+      : menuPath;
+    if (resolvedMenuPath && router.asPath !== resolvedMenuPath) {
+      router.push(resolvedMenuPath).catch(() => undefined);
     }
-  }, [attemptFullscreen, availability.canStartNewSession, menuPath, resetIdleTimer, requestWakeLock, restaurantId, router, shouldSuppressFullscreen]);
+  }, [
+    attemptFullscreen,
+    availability.canStartNewSession,
+    isExpressActive,
+    menuPath,
+    resetIdleTimer,
+    requestWakeLock,
+    resolveRestaurantIdForNavigation,
+    router,
+    setSessionActive,
+    shouldSuppressFullscreen,
+  ]);
 
   const clearOperatorPressTimer = useCallback(() => {
     if (operatorPressTimerRef.current) {
@@ -629,17 +658,17 @@ export default function KioskLayout({
         style={{ gap: '1.25rem' }}
       >
         <div
-          className="flex items-center gap-4"
+          className="relative flex items-center gap-4"
           style={{ transform: `scale(${brandScale})`, transformOrigin: 'left center' }}
           onPointerDown={armOperatorExit}
           onPointerUp={disarmOperatorExit}
           onPointerCancel={disarmOperatorExit}
-          onTouchStart={armOperatorExit}
-          onTouchEnd={disarmOperatorExit}
-          onMouseDown={armOperatorExit}
-          onMouseUp={disarmOperatorExit}
-          onMouseLeave={disarmOperatorExit}
         >
+          <span
+            aria-hidden
+            className="absolute -inset-x-4 -inset-y-3 rounded-2xl"
+            style={{ touchAction: 'none' }}
+          />
           {showBrandSkeleton ? (
             <>
               <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-full bg-white/90">
