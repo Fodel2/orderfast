@@ -23,8 +23,16 @@ type RestaurantStripeRow = {
   stripe_payouts_enabled: boolean | null;
   details_submitted: boolean | null;
   stripe_details_submitted: boolean | null;
+  card_payments_capability: string | null;
+  stripe_card_payments_capability: string | null;
+  transfers_capability: string | null;
+  stripe_transfers_capability: string | null;
   requirements_currently_due: unknown;
   stripe_requirements_currently_due: unknown;
+  requirements_eventually_due: unknown;
+  stripe_requirements_eventually_due: unknown;
+  requirements_past_due: unknown;
+  stripe_requirements_past_due: unknown;
   requirements_pending_verification: unknown;
   stripe_requirements_pending_verification: unknown;
   disabled_reason: string | null;
@@ -110,7 +118,13 @@ export const toSnapshot = (row: RestaurantStripeRow | null): StripeConnectionSna
   charges_enabled: !!pickFirst(row?.stripe_charges_enabled, row?.charges_enabled),
   payouts_enabled: !!pickFirst(row?.stripe_payouts_enabled, row?.payouts_enabled),
   details_submitted: !!pickFirst(row?.stripe_details_submitted, row?.details_submitted),
+  card_payments_capability: pickFirst(row?.stripe_card_payments_capability, row?.card_payments_capability),
+  transfers_capability: pickFirst(row?.stripe_transfers_capability, row?.transfers_capability),
   requirements_currently_due: toStringArray(pickFirst(row?.stripe_requirements_currently_due, row?.requirements_currently_due)),
+  requirements_eventually_due: toStringArray(
+    pickFirst(row?.stripe_requirements_eventually_due, row?.requirements_eventually_due)
+  ),
+  requirements_past_due: toStringArray(pickFirst(row?.stripe_requirements_past_due, row?.requirements_past_due)),
   requirements_pending_verification: toStringArray(
     pickFirst(row?.stripe_requirements_pending_verification, row?.requirements_pending_verification)
   ),
@@ -158,6 +172,10 @@ const terminalReadyFromAccount = (account: Stripe.Account) => {
 const upsertFromStripeAccount = async (restaurantId: string, account: Stripe.Account) => {
   const existing = await readRestaurantStripeRow(restaurantId);
   const requirementsCurrentlyDue = Array.isArray(account.requirements?.currently_due) ? account.requirements.currently_due : [];
+  const requirementsEventuallyDue = Array.isArray(account.requirements?.eventually_due)
+    ? account.requirements.eventually_due
+    : [];
+  const requirementsPastDue = Array.isArray(account.requirements?.past_due) ? account.requirements.past_due : [];
   const requirementsPending = Array.isArray(account.requirements?.pending_verification)
     ? account.requirements.pending_verification
     : [];
@@ -168,7 +186,11 @@ const upsertFromStripeAccount = async (restaurantId: string, account: Stripe.Acc
     charges_enabled: !!account.charges_enabled,
     payouts_enabled: !!account.payouts_enabled,
     details_submitted: !!account.details_submitted,
+    card_payments_capability: account.capabilities?.card_payments ?? null,
+    transfers_capability: account.capabilities?.transfers ?? null,
     requirements_currently_due: requirementsCurrentlyDue,
+    requirements_eventually_due: requirementsEventuallyDue,
+    requirements_past_due: requirementsPastDue,
     requirements_pending_verification: requirementsPending,
     disabled_reason: account.requirements?.disabled_reason || null,
     terminal_location_id: existing?.terminal_location_id ?? null,
@@ -217,8 +239,16 @@ const upsertFromStripeAccount = async (restaurantId: string, account: Stripe.Acc
     stripe_payouts_enabled: snapshot.payouts_enabled,
     details_submitted: snapshot.details_submitted,
     stripe_details_submitted: snapshot.details_submitted,
+    card_payments_capability: snapshot.card_payments_capability,
+    stripe_card_payments_capability: snapshot.card_payments_capability,
+    transfers_capability: snapshot.transfers_capability,
+    stripe_transfers_capability: snapshot.transfers_capability,
     requirements_currently_due: snapshot.requirements_currently_due,
     stripe_requirements_currently_due: snapshot.requirements_currently_due,
+    requirements_eventually_due: snapshot.requirements_eventually_due,
+    stripe_requirements_eventually_due: snapshot.requirements_eventually_due,
+    requirements_past_due: snapshot.requirements_past_due,
+    stripe_requirements_past_due: snapshot.requirements_past_due,
     requirements_pending_verification: snapshot.requirements_pending_verification,
     stripe_requirements_pending_verification: snapshot.requirements_pending_verification,
     disabled_reason: snapshot.disabled_reason,
@@ -245,11 +275,18 @@ const upsertFromStripeAccount = async (restaurantId: string, account: Stripe.Acc
 
 export const getOrCreateConnectedAccount = async (restaurantId: string) => {
   const existingRow = await readRestaurantStripeRow(restaurantId);
-  if (existingRow?.stripe_connected_account_id) return existingRow.stripe_connected_account_id;
+  if (existingRow?.stripe_connected_account_id) {
+    await ensureRestaurantCapabilities(existingRow.stripe_connected_account_id);
+    return existingRow.stripe_connected_account_id;
+  }
 
   const stripe = getStripeClient();
   const account = await stripe.accounts.create({
     type: 'express',
+    capabilities: {
+      card_payments: { requested: true },
+      transfers: { requested: true },
+    },
     metadata: {
       restaurant_id: restaurantId,
       platform: 'orderfast',
@@ -258,6 +295,16 @@ export const getOrCreateConnectedAccount = async (restaurantId: string) => {
 
   await upsertFromStripeAccount(restaurantId, account);
   return account.id;
+};
+
+const ensureRestaurantCapabilities = async (connectedAccountId: string) => {
+  const stripe = getStripeClient();
+  await stripe.accounts.update(connectedAccountId, {
+    capabilities: {
+      card_payments: { requested: true },
+      transfers: { requested: true },
+    },
+  });
 };
 
 const getReturnUrl = () => process.env.STRIPE_CONNECT_RETURN_URL || 'http://localhost:3000/dashboard/settings/payments?tab=stripe';
@@ -314,9 +361,14 @@ const mapRestaurantAddressToStripe = (restaurant: RestaurantAddress | null) => {
 export const createRestaurantOnboardingLink = async (restaurantId: string) => {
   const stripe = getStripeClient();
   const accountId = await getOrCreateConnectedAccount(restaurantId);
+  await ensureRestaurantCapabilities(accountId);
   const accountLink = await stripe.accountLinks.create({
     account: accountId,
     type: 'account_onboarding',
+    collection_options: {
+      fields: 'eventually_due',
+      future_requirements: 'include',
+    },
     return_url: getReturnUrl(),
     refresh_url: getRefreshUrl(),
   });
@@ -327,6 +379,7 @@ export const createRestaurantOnboardingLink = async (restaurantId: string) => {
 export const createRestaurantAccountSession = async (restaurantId: string) => {
   const stripe = getStripeClient();
   const accountId = await getOrCreateConnectedAccount(restaurantId);
+  await ensureRestaurantCapabilities(accountId);
   const session = await stripe.accountSessions.create({
     account: accountId,
     components: {
@@ -349,7 +402,8 @@ export const ensureRestaurantTerminalLocation = async (restaurantId: string) => 
     return;
   }
 
-  if (row.onboarding_status !== 'connected') {
+  const onboardingStatus = pickFirst(row.stripe_onboarding_status, row.onboarding_status) ?? 'not_connected';
+  if (onboardingStatus !== 'connected') {
     await upsertTerminalMapping(restaurantId, {
       stripeTerminalLocationId: row.stripe_terminal_location_id ?? row.terminal_location_id ?? null,
       stripeTerminalLocationDisplayName: row.stripe_terminal_location_display_name ?? null,
@@ -423,6 +477,7 @@ export const syncStripeConnection = async (restaurantId: string) => {
   }
 
   const stripe = getStripeClient();
+  await ensureRestaurantCapabilities(row.stripe_connected_account_id);
   const account = await stripe.accounts.retrieve(row.stripe_connected_account_id);
   await upsertFromStripeAccount(restaurantId, account);
   const nextRow = await readRestaurantStripeRow(restaurantId);
@@ -450,4 +505,41 @@ export const getStripeConnectionStatus = async (restaurantId: string) => {
   const readiness = deriveStripeReadiness(snapshot);
   const paymentReadiness = resolveTerminalReadiness(snapshot);
   return { snapshot, readiness, paymentReadiness };
+};
+
+export const getStripeDebugTruth = async (restaurantId: string) => {
+  const row = await readRestaurantStripeRow(restaurantId);
+  if (!row?.stripe_connected_account_id) {
+    return {
+      restaurant_id: restaurantId,
+      stripe_connected_account_id: null,
+      charges_enabled: false,
+      payouts_enabled: false,
+      capabilities: null,
+      requirements: null,
+      details_submitted: false,
+    };
+  }
+
+  const stripe = getStripeClient();
+  await ensureRestaurantCapabilities(row.stripe_connected_account_id);
+  const account = await stripe.accounts.retrieve(row.stripe_connected_account_id);
+
+  return {
+    restaurant_id: restaurantId,
+    stripe_connected_account_id: account.id,
+    charges_enabled: !!account.charges_enabled,
+    payouts_enabled: !!account.payouts_enabled,
+    capabilities: account.capabilities ?? null,
+    requirements: {
+      currently_due: Array.isArray(account.requirements?.currently_due) ? account.requirements.currently_due : [],
+      eventually_due: Array.isArray(account.requirements?.eventually_due) ? account.requirements.eventually_due : [],
+      past_due: Array.isArray(account.requirements?.past_due) ? account.requirements.past_due : [],
+      pending_verification: Array.isArray(account.requirements?.pending_verification)
+        ? account.requirements.pending_verification
+        : [],
+      disabled_reason: account.requirements?.disabled_reason ?? null,
+    },
+    details_submitted: !!account.details_submitted,
+  };
 };
