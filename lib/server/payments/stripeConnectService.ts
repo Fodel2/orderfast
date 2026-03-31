@@ -219,13 +219,13 @@ const upsertFromStripeAccount = async (restaurantId: string, account: Stripe.Acc
 
   const readinessReason =
     readinessStatus === 'not_connected'
-      ? 'Connect Stripe to prepare Tap to Pay.'
+      ? 'Connect Stripe to begin Tap to Pay setup.'
       : readinessStatus === 'stripe_setup_incomplete'
         ? 'Finish Stripe setup before Tap to Pay can be enabled.'
         : readinessStatus === 'temporarily_unavailable'
           ? terminalCheck.reason
           : readinessStatus === 'terminal_not_configured'
-            ? 'Prepare Tap to Pay to create a terminal location for this restaurant.'
+            ? 'Set up Tap to Pay readiness to create a terminal location for this restaurant.'
             : terminalCheck.reason;
 
   const payload = {
@@ -397,7 +397,7 @@ export const ensureRestaurantTerminalLocation = async (restaurantId: string) => 
       stripeTerminalLocationId: null,
       stripeTerminalLocationDisplayName: null,
       terminalReadinessStatus: 'not_connected',
-      terminalReadinessReason: 'Connect Stripe before preparing Tap to Pay.',
+      terminalReadinessReason: 'Connect Stripe before setting up Tap to Pay readiness.',
     });
     return;
   }
@@ -408,7 +408,7 @@ export const ensureRestaurantTerminalLocation = async (restaurantId: string) => 
       stripeTerminalLocationId: row.stripe_terminal_location_id ?? row.terminal_location_id ?? null,
       stripeTerminalLocationDisplayName: row.stripe_terminal_location_display_name ?? null,
       terminalReadinessStatus: 'stripe_setup_incomplete',
-      terminalReadinessReason: 'Finish Stripe setup before preparing Tap to Pay.',
+      terminalReadinessReason: 'Finish Stripe setup before Tap to Pay readiness can be configured.',
     });
     return;
   }

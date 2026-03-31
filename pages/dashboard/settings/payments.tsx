@@ -35,7 +35,7 @@ const terminalActionLabel = (readiness: TerminalPaymentReadiness | null) => {
     case 'finish_stripe_setup':
       return 'Finish Stripe setup';
     case 'prepare_tap_to_pay':
-      return 'Prepare Tap to Pay';
+      return 'Set up Tap to Pay';
     case 'refresh_status':
       return 'Refresh status';
     default:
@@ -213,7 +213,7 @@ export default function DashboardSettingsPaymentsPage() {
     }
   }, []);
 
-  const prepareTapToPay = useCallback(async () => {
+  const setupTapToPayReadiness = useCallback(async () => {
     setStripeActionBusy(true);
     setStripeError('');
     try {
@@ -222,13 +222,13 @@ export default function DashboardSettingsPaymentsPage() {
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
-        throw new Error(payload?.message || 'Could not prepare Tap to Pay.');
+        throw new Error(payload?.message || 'Could not set up Tap to Pay readiness.');
       }
       setStripeSnapshot(payload.snapshot ?? null);
       setStripeReadiness(payload.readiness ?? null);
       setPaymentReadiness(payload.paymentReadiness ?? null);
     } catch (error: any) {
-      setStripeError(error?.message || 'Could not prepare Tap to Pay.');
+      setStripeError(error?.message || 'Could not set up Tap to Pay readiness.');
     } finally {
       setStripeActionBusy(false);
     }
@@ -250,11 +250,11 @@ export default function DashboardSettingsPaymentsPage() {
       return;
     }
     if (action === 'prepare_tap_to_pay') {
-      await prepareTapToPay();
+      await setupTapToPayReadiness();
       return;
     }
     await refreshStripeStatus(false);
-  }, [createOnboardingLink, paymentReadiness?.recommended_action, prepareTapToPay, refreshStripeStatus]);
+  }, [createOnboardingLink, paymentReadiness?.recommended_action, refreshStripeStatus, setupTapToPayReadiness]);
 
   const stripePrimaryLabel = useMemo(() => {
     const action = stripeReadiness?.primary_action;
@@ -278,8 +278,8 @@ export default function DashboardSettingsPaymentsPage() {
         <header>
           <h1 className="text-3xl font-bold text-gray-900">Payments</h1>
           <p className="mt-2 text-sm text-gray-600">
-            Manage kiosk checkout behavior and restaurant-level Stripe connection setup for future card and Tap to Pay
-            routing.
+            Manage kiosk checkout behavior and restaurant-level Stripe/Tap to Pay setup readiness. Live customer card
+            collection happens automatically during kiosk checkout.
           </p>
         </header>
 
@@ -418,8 +418,8 @@ export default function DashboardSettingsPaymentsPage() {
           <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-gray-900">Stripe connection</h2>
             <p className="mt-2 text-sm text-gray-600">
-              Connect Stripe once for this restaurant. Orderfast will use this account for future card, Terminal, and Tap
-              to Pay routing.
+              Connect Stripe and configure Terminal readiness for this restaurant. This page is setup/readiness only and
+              is not used to manually start customer transactions.
             </p>
 
             <div className="mt-5 rounded-2xl border border-gray-200 bg-gray-50/70 p-4">
@@ -483,7 +483,7 @@ export default function DashboardSettingsPaymentsPage() {
                       </button>
                     </div>
                     <p className="mt-2 text-xs text-gray-600">
-                      {paymentReadiness?.description || 'Tap to Pay readiness updates will appear here.'}
+                      {paymentReadiness?.description || 'Tap to Pay setup/readiness updates will appear here.'}
                     </p>
                   </div>
 

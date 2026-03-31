@@ -109,7 +109,7 @@ export const deriveStripeReadiness = (snapshot: StripeConnectionSnapshot): Strip
     return {
       status,
       heading: 'Not connected',
-      description: 'Connect Stripe to accept card payments and prepare Tap to Pay.',
+      description: 'Connect Stripe to accept card payments and configure Tap to Pay readiness.',
       can_process_card_payments: false,
       tap_to_pay_available: false,
       primary_action: 'connect',
@@ -177,7 +177,7 @@ export const deriveTerminalPaymentReadiness = (snapshot: StripeConnectionSnapsho
     return {
       status: 'stripe_setup_incomplete',
       heading: 'Stripe setup incomplete',
-      description: buildRequirementsReason(snapshot) || 'Finish Stripe verification before Tap to Pay can be prepared.',
+      description: buildRequirementsReason(snapshot) || 'Finish Stripe verification before Tap to Pay setup can be completed.',
       tap_to_pay_available: false,
       recommended_action: 'finish_stripe_setup',
     };
@@ -197,7 +197,7 @@ export const deriveTerminalPaymentReadiness = (snapshot: StripeConnectionSnapsho
     return {
       status: 'terminal_not_configured',
       heading: 'Terminal not configured',
-      description: 'Prepare Tap to Pay to create your restaurant terminal location.',
+      description: 'Set up Tap to Pay readiness to create your restaurant terminal location.',
       tap_to_pay_available: false,
       recommended_action: 'prepare_tap_to_pay',
     };
@@ -217,7 +217,7 @@ export const deriveTerminalPaymentReadiness = (snapshot: StripeConnectionSnapsho
     return {
       status: 'tap_to_pay_ready',
       heading: 'Ready for Tap to Pay',
-      description: 'This restaurant is prepared for the next Tap to Pay rollout.',
+      description: 'This restaurant is configured and ready for kiosk Tap to Pay checkout.',
       tap_to_pay_available: true,
       recommended_action: 'refresh_status',
     };

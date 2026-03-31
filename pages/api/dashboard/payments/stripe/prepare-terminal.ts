@@ -14,6 +14,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const payload = await syncPaymentReadiness(restaurantId, true);
     return res.status(200).json(payload);
   } catch (error: any) {
-    return res.status(500).json({ message: error?.message || 'Failed to prepare Tap to Pay' });
+    return res.status(500).json({ message: error?.message || 'Failed to set up Tap to Pay readiness' });
   }
 }
