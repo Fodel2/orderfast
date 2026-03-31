@@ -1,6 +1,7 @@
 package com.orderfast.app;
 
 import android.Manifest;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.os.Handler;
 import android.os.Looper;
@@ -79,6 +80,10 @@ public class OrderfastTapToPayPlugin extends Plugin {
     private volatile Runnable timeoutRunnable = null;
     private volatile List<Reader> lastDiscoveredReaders = null;
 
+    private boolean isDebugBuild() {
+        return (getContext().getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
+    }
+
     private final ConnectionTokenProvider connectionTokenProvider = new ConnectionTokenProvider() {
         @Override
         public void fetchConnectionToken(ConnectionTokenCallback callback) {
@@ -109,7 +114,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
     private final TerminalListener terminalListener = new TerminalListener() {
         @Override
         public void onConnectionStatusChange(ConnectionStatus connectionStatus) {
-            if (BuildConfig.DEBUG) {
+            if (isDebugBuild()) {
                 Log.d(TAG, "Connection status: " + connectionStatus);
             }
             if (connectionStatus == ConnectionStatus.CONNECTED) {
@@ -121,7 +126,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
 
         @Override
         public void onPaymentStatusChange(PaymentStatus paymentStatus) {
-            if (BuildConfig.DEBUG) {
+            if (isDebugBuild()) {
                 Log.d(TAG, "Payment status: " + paymentStatus);
             }
             if (paymentStatus == PaymentStatus.WAITING_FOR_INPUT) {
@@ -137,7 +142,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
     private final TapToPayReaderListener tapToPayReaderListener = new TapToPayReaderListener() {
         @Override
         public void onDisconnect(DisconnectReason reason) {
-            if (BuildConfig.DEBUG) {
+            if (isDebugBuild()) {
                 Log.d(TAG, "Reader disconnected: " + reason);
             }
             connectedReader = null;
@@ -522,7 +527,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
         if (Terminal.isInitialized()) {
             return;
         }
-        LogLevel logLevel = BuildConfig.DEBUG ? LogLevel.VERBOSE : LogLevel.NONE;
+        LogLevel logLevel = isDebugBuild() ? LogLevel.VERBOSE : LogLevel.NONE;
         Terminal.init(getContext(), logLevel, connectionTokenProvider, terminalListener, null);
     }
 
@@ -570,7 +575,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                     "{\"session_id\":\"" + escapeJson(currentSessionId) + "\",\"restaurant_id\":\"" + escapeJson(currentRestaurantId) + "\",\"next_state\":\"" + escapeJson(nextState) + "\",\"event_type\":\"" + escapeJson(eventType) + "\"}"
                 );
             } catch (Exception e) {
-                if (BuildConfig.DEBUG) {
+                if (isDebugBuild()) {
                     Log.w(TAG, "Failed to sync session state", e);
                 }
             }
