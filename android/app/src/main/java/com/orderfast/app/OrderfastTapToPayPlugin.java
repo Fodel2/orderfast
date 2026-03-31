@@ -171,12 +171,14 @@ public class OrderfastTapToPayPlugin extends Plugin {
             call.resolve(result("failed", "native_busy", "Another Tap to Pay request is active."));
             return;
         }
+        inFlight = true;
 
         currentSessionId = call.getString("sessionId");
         currentRestaurantId = call.getString("restaurantId");
         currentBackendBaseUrl = call.getString("backendBaseUrl");
 
         if (isBlank(currentSessionId) || isBlank(currentRestaurantId) || isBlank(currentBackendBaseUrl)) {
+            inFlight = false;
             call.resolve(result("failed", "session_error", "Missing required Tap to Pay parameters."));
             return;
         }
@@ -192,6 +194,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
     @PermissionCallback
     public void preparePermissionCallback(PluginCall call) {
         if (getPermissionState("location") != PermissionState.GRANTED) {
+            inFlight = false;
             call.resolve(result("failed", "unsupported", "Location permission is required for Tap to Pay."));
             return;
         }
@@ -205,12 +208,14 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 ensureTerminalInitialized();
             } catch (Exception e) {
                 status = "failed";
+                inFlight = false;
                 call.resolve(result("failed", normalizeErrorCode(e), e.getMessage()));
                 return;
             }
 
             if (connectedReader != null && Terminal.getInstance().getConnectionStatus() == ConnectionStatus.CONNECTED) {
                 status = "ready";
+                inFlight = false;
                 call.resolve(result("ready", null, "Tap to Pay reader is already connected."));
                 return;
             }
@@ -228,6 +233,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                     public void onSuccess() {
                         if (lastDiscoveredReaders == null || lastDiscoveredReaders.isEmpty()) {
                             status = "failed";
+                            inFlight = false;
                             call.resolve(result("failed", "unsupported", "No Tap to Pay reader discovered on this device."));
                             return;
                         }
@@ -243,12 +249,16 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                 public void onSuccess(Reader reader) {
                                     connectedReader = reader;
                                     status = "ready";
+                                    inFlight = false;
+                                    discoverCancelable = null;
                                     call.resolve(result("ready", null, "Tap to Pay ready to collect payment."));
                                 }
 
                                 @Override
                                 public void onFailure(TerminalException e) {
                                     status = "failed";
+                                    inFlight = false;
+                                    discoverCancelable = null;
                                     call.resolve(result("failed", normalizeErrorCode(e), buildErrorMessage(e)));
                                 }
                             }
@@ -258,6 +268,8 @@ public class OrderfastTapToPayPlugin extends Plugin {
                     @Override
                     public void onFailure(TerminalException e) {
                         status = "failed";
+                        inFlight = false;
+                        discoverCancelable = null;
                         call.resolve(result("failed", normalizeErrorCode(e), buildErrorMessage(e)));
                     }
                 }
@@ -334,6 +346,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                         status = "failed";
                                         call.resolve(result("failed", "processing_error", "Unexpected PaymentIntent status: " + intent.getStatus()));
                                     }
+                                    processCancelable = null;
                                     inFlight = false;
                                 }
 
@@ -343,6 +356,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                     status = "failed";
                                     inFlight = false;
                                     postSessionState("failed", "native_process_failed");
+                                    processCancelable = null;
                                     call.resolve(result("failed", normalizeErrorCode(e), buildErrorMessage(e)));
                                 }
                             }
@@ -413,6 +427,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
 
                 status = "canceled";
                 inFlight = false;
+                processCancelable = null;
                 call.resolve(result("canceled", "canceled", "No active payment was running."));
             } catch (Exception ex) {
                 status = "failed";
@@ -442,11 +457,43 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 status = "ready";
             }
         }
+        if (inFlight && ("collecting".equals(status) || "processing".equals(status))) {
+            postSessionState("needs_reconciliation", "native_resumed_during_inflight");
+        }
+    }
+
+    @Override
+    protected void handleOnPause() {
+        super.handleOnPause();
+        if (inFlight && ("collecting".equals(status) || "processing".equals(status))) {
+            postSessionState("needs_reconciliation", "native_backgrounded");
+        }
     }
 
     @Override
     protected void handleOnDestroy() {
         clearOperationTimeout();
+        if (discoverCancelable != null && !discoverCancelable.isCompleted()) {
+            discoverCancelable.cancel(new Callback() {
+                @Override
+                public void onSuccess() {}
+                @Override
+                public void onFailure(TerminalException e) {}
+            });
+        }
+        if (processCancelable != null && !processCancelable.isCompleted()) {
+            processCancelable.cancel(new Callback() {
+                @Override
+                public void onSuccess() {}
+                @Override
+                public void onFailure(TerminalException e) {}
+            });
+        }
+        discoverCancelable = null;
+        processCancelable = null;
+        connectedReader = null;
+        activePaymentIntent = null;
+        inFlight = false;
         executor.shutdownNow();
         super.handleOnDestroy();
     }

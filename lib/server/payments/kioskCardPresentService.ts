@@ -9,6 +9,8 @@ type SessionRow = Omit<KioskCardPresentSession, 'metadata'> & { metadata: unknow
 const SESSION_SELECT =
   'id,restaurant_id,order_id,amount_cents,currency,state,stripe_connected_account_id,stripe_terminal_location_id,stripe_payment_intent_id,idempotency_key,kiosk_install_id,failure_code,failure_message,metadata,created_at,updated_at,finalized_at';
 
+const TERMINAL_SESSION_STATES: ReadonlySet<KioskCardPresentSessionState> = new Set(['finalized', 'canceled', 'failed']);
+
 const toSession = (row: SessionRow): KioskCardPresentSession => ({
   ...row,
   metadata: row.metadata && typeof row.metadata === 'object' ? (row.metadata as Record<string, unknown>) : null,
@@ -93,13 +95,23 @@ export const markKioskPaymentSessionState = async (input: {
   const session = await getKioskPaymentSession(input.sessionId, input.restaurantId);
   if (!session) throw new Error('Kiosk payment session not found');
 
+  const attemptedNextState = input.nextState;
+  const nextState =
+    session.state === 'finalized' && attemptedNextState !== 'finalized'
+      ? 'finalized'
+      : session.state === attemptedNextState
+        ? session.state
+        : attemptedNextState;
+
+  const shouldPreserveFailureMessage = nextState === 'finalized' && attemptedNextState !== 'finalized';
+
   const { data, error } = await supaServer
     .from('kiosk_card_present_sessions')
     .update({
-      state: input.nextState,
+      state: nextState,
       failure_code: input.failureCode ?? session.failure_code,
-      failure_message: input.failureMessage ?? session.failure_message,
-      finalized_at: input.nextState === 'finalized' ? new Date().toISOString() : session.finalized_at,
+      failure_message: shouldPreserveFailureMessage ? session.failure_message : input.failureMessage ?? session.failure_message,
+      finalized_at: nextState === 'finalized' ? session.finalized_at ?? new Date().toISOString() : session.finalized_at,
       updated_at: new Date().toISOString(),
     })
     .eq('id', session.id)
@@ -110,9 +122,9 @@ export const markKioskPaymentSessionState = async (input: {
 
   await appendKioskPaymentSessionEvent(
     session.id,
-    input.nextState,
+    nextState,
     input.eventType ?? 'state_transition',
-    input.eventPayload ?? { from: session.state, to: input.nextState }
+    input.eventPayload ?? { from: session.state, to: nextState, attempted_to: attemptedNextState }
   );
 
   return toSession(data as SessionRow);
@@ -152,6 +164,19 @@ export const createOrRetrieveCardPresentPaymentIntentForSession = async (input: 
   const session = await getKioskPaymentSession(input.sessionId, input.restaurantId);
   if (!session) throw new Error('Kiosk payment session not found');
 
+  if (session.state === 'finalized') {
+    const stripe = getStripeClient();
+    if (!session.stripe_payment_intent_id) throw new Error('Finalized session missing Stripe payment intent');
+    const finalizedIntent = await stripe.paymentIntents.retrieve(session.stripe_payment_intent_id, {
+      stripeAccount: session.stripe_connected_account_id,
+    });
+    return {
+      paymentIntentId: finalizedIntent.id,
+      clientSecret: finalizedIntent.client_secret,
+      status: finalizedIntent.status,
+    };
+  }
+
   const stripe = getStripeClient();
   const stripeAccount = session.stripe_connected_account_id;
 
@@ -187,9 +212,15 @@ export const createOrRetrieveCardPresentPaymentIntentForSession = async (input: 
     if (error) throw error;
   }
 
-  await appendKioskPaymentSessionEvent(session.id, 'ready_to_collect', 'payment_intent_ready', {
-    payment_intent_id: paymentIntent.id,
-    payment_intent_status: paymentIntent.status,
+  await markKioskPaymentSessionState({
+    sessionId: session.id,
+    restaurantId: session.restaurant_id,
+    nextState: 'ready_to_collect',
+    eventType: 'payment_intent_ready',
+    eventPayload: {
+      payment_intent_id: paymentIntent.id,
+      payment_intent_status: paymentIntent.status,
+    },
   });
 
   return {
@@ -203,10 +234,38 @@ export const cancelKioskPaymentSession = async (input: { sessionId: string; rest
   const session = await getKioskPaymentSession(input.sessionId, input.restaurantId);
   if (!session) throw new Error('Kiosk payment session not found');
 
+  if (session.state === 'finalized') {
+    return session;
+  }
+
+  if (session.state === 'canceled') {
+    return markKioskPaymentSessionState({
+      sessionId: session.id,
+      nextState: 'canceled',
+      restaurantId: session.restaurant_id,
+      failureMessage: session.failure_message ?? input.reason ?? 'Canceled by user',
+      eventType: 'session_canceled_idempotent',
+    });
+  }
+
   if (session.stripe_payment_intent_id) {
     const stripe = getStripeClient();
     try {
-      await stripe.paymentIntents.cancel(session.stripe_payment_intent_id, {}, { stripeAccount: session.stripe_connected_account_id });
+      const paymentIntent = await stripe.paymentIntents.retrieve(session.stripe_payment_intent_id, {
+        stripeAccount: session.stripe_connected_account_id,
+      });
+
+      if (paymentIntent.status === 'succeeded' || paymentIntent.status === 'processing' || paymentIntent.status === 'requires_capture') {
+        const finalized = await finalizeSuccessfulKioskPaymentSession({
+          sessionId: session.id,
+          restaurantId: session.restaurant_id,
+        });
+        return finalized.session;
+      }
+
+      if (paymentIntent.status !== 'canceled') {
+        await stripe.paymentIntents.cancel(session.stripe_payment_intent_id, {}, { stripeAccount: session.stripe_connected_account_id });
+      }
     } catch {
       // keep local cancellation path idempotent even if Stripe PI already terminal
     }
@@ -224,6 +283,11 @@ export const cancelKioskPaymentSession = async (input: { sessionId: string; rest
 export const finalizeSuccessfulKioskPaymentSession = async (input: { sessionId: string; restaurantId?: string | null }) => {
   const session = await getKioskPaymentSession(input.sessionId, input.restaurantId);
   if (!session) throw new Error('Kiosk payment session not found');
+
+  if (session.state === 'finalized') {
+    return { session, paymentIntentStatus: 'succeeded' as Stripe.PaymentIntent.Status };
+  }
+
   if (!session.stripe_payment_intent_id) throw new Error('No Stripe payment intent exists for this session');
 
   const stripe = getStripeClient();
@@ -232,16 +296,19 @@ export const finalizeSuccessfulKioskPaymentSession = async (input: { sessionId: 
   });
 
   if (paymentIntent.status === 'succeeded') {
-    const succeeded = await markKioskPaymentSessionState({
-      sessionId: session.id,
-      restaurantId: session.restaurant_id,
-      nextState: 'succeeded',
-      eventType: 'payment_confirmed',
-      eventPayload: {
-        payment_intent_id: paymentIntent.id,
-        payment_intent_status: paymentIntent.status,
-      },
-    });
+    const succeeded =
+      session.state === 'succeeded'
+        ? session
+        : await markKioskPaymentSessionState({
+            sessionId: session.id,
+            restaurantId: session.restaurant_id,
+            nextState: 'succeeded',
+            eventType: 'payment_confirmed',
+            eventPayload: {
+              payment_intent_id: paymentIntent.id,
+              payment_intent_status: paymentIntent.status,
+            },
+          });
 
     const finalized = await markKioskPaymentSessionState({
       sessionId: succeeded.id,
@@ -280,6 +347,14 @@ export const finalizeSuccessfulKioskPaymentSession = async (input: { sessionId: 
 export const reconcileAbandonedOrUnknownKioskPaymentSession = async (input: { sessionId: string; restaurantId?: string | null }) => {
   const session = await getKioskPaymentSession(input.sessionId, input.restaurantId);
   if (!session) throw new Error('Kiosk payment session not found');
+
+  if (session.state === 'finalized' || session.state === 'canceled') {
+    return session;
+  }
+
+  if (TERMINAL_SESSION_STATES.has(session.state) && !session.stripe_payment_intent_id) {
+    return session;
+  }
 
   if (!session.stripe_payment_intent_id) {
     return markKioskPaymentSessionState({
