@@ -4,7 +4,7 @@ import DashboardLayout from '../../../components/DashboardLayout';
 import { supabase } from '../../../utils/supabaseClient';
 import { DEFAULT_KIOSK_PAYMENT_SETTINGS, type KioskPaymentSettingsRow } from '@/lib/kiosk/paymentSettings';
 import { InputToggle } from '@/components/ui/InputToggle';
-import type { StripeConnectionReadiness, StripeConnectionSnapshot } from '@/lib/payments/stripeConnect';
+import type { StripeConnectionReadiness, StripeConnectionSnapshot, TerminalPaymentReadiness } from '@/lib/payments/stripeConnect';
 
 type SettingsTab = 'kiosk' | 'stripe';
 
@@ -28,6 +28,21 @@ const shortAccount = (accountId: string | null) => {
   return `${accountId.slice(0, 8)}…${accountId.slice(-4)}`;
 };
 
+const terminalActionLabel = (readiness: TerminalPaymentReadiness | null) => {
+  switch (readiness?.recommended_action) {
+    case 'connect_stripe':
+      return 'Connect Stripe';
+    case 'finish_stripe_setup':
+      return 'Finish Stripe setup';
+    case 'prepare_tap_to_pay':
+      return 'Prepare Tap to Pay';
+    case 'refresh_status':
+      return 'Refresh status';
+    default:
+      return 'Refresh status';
+  }
+};
+
 export default function DashboardSettingsPaymentsPage() {
   const [restaurantId, setRestaurantId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -41,6 +56,7 @@ export default function DashboardSettingsPaymentsPage() {
   const [stripeError, setStripeError] = useState('');
   const [stripeSnapshot, setStripeSnapshot] = useState<StripeConnectionSnapshot | null>(null);
   const [stripeReadiness, setStripeReadiness] = useState<StripeConnectionReadiness | null>(null);
+  const [paymentReadiness, setPaymentReadiness] = useState<TerminalPaymentReadiness | null>(null);
 
   const processOnDevice = settings.process_on_device;
   const hasEnabledDeviceMethod = settings.enable_cash || settings.enable_contactless || settings.enable_pay_at_counter;
@@ -56,10 +72,12 @@ export default function DashboardSettingsPaymentsPage() {
       }
       setStripeSnapshot(payload.snapshot ?? null);
       setStripeReadiness(payload.readiness ?? null);
+      setPaymentReadiness(payload.paymentReadiness ?? null);
     } catch (error: any) {
       setStripeError(error?.message || 'Could not load Stripe connection status.');
       setStripeSnapshot(null);
       setStripeReadiness(null);
+      setPaymentReadiness(null);
     } finally {
       setStripeLoading(false);
     }
@@ -170,12 +188,16 @@ export default function DashboardSettingsPaymentsPage() {
     }
   }, []);
 
-  const refreshStripeStatus = useCallback(async () => {
+  const refreshStripeStatus = useCallback(async (ensureTerminal = false) => {
     setStripeActionBusy(true);
     setStripeError('');
     try {
       const response = await fetch('/api/dashboard/payments/stripe/refresh', {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ ensure_terminal: ensureTerminal }),
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
@@ -183,8 +205,30 @@ export default function DashboardSettingsPaymentsPage() {
       }
       setStripeSnapshot(payload.snapshot ?? null);
       setStripeReadiness(payload.readiness ?? null);
+      setPaymentReadiness(payload.paymentReadiness ?? null);
     } catch (error: any) {
       setStripeError(error?.message || 'Could not refresh Stripe status.');
+    } finally {
+      setStripeActionBusy(false);
+    }
+  }, []);
+
+  const prepareTapToPay = useCallback(async () => {
+    setStripeActionBusy(true);
+    setStripeError('');
+    try {
+      const response = await fetch('/api/dashboard/payments/stripe/prepare-terminal', {
+        method: 'POST',
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message || 'Could not prepare Tap to Pay.');
+      }
+      setStripeSnapshot(payload.snapshot ?? null);
+      setStripeReadiness(payload.readiness ?? null);
+      setPaymentReadiness(payload.paymentReadiness ?? null);
+    } catch (error: any) {
+      setStripeError(error?.message || 'Could not prepare Tap to Pay.');
     } finally {
       setStripeActionBusy(false);
     }
@@ -196,8 +240,21 @@ export default function DashboardSettingsPaymentsPage() {
       await createOnboardingLink();
       return;
     }
-    await refreshStripeStatus();
+    await refreshStripeStatus(false);
   }, [createOnboardingLink, refreshStripeStatus, stripeReadiness?.primary_action]);
+
+  const onTerminalAction = useCallback(async () => {
+    const action = paymentReadiness?.recommended_action;
+    if (action === 'connect_stripe' || action === 'finish_stripe_setup') {
+      await createOnboardingLink();
+      return;
+    }
+    if (action === 'prepare_tap_to_pay') {
+      await prepareTapToPay();
+      return;
+    }
+    await refreshStripeStatus(false);
+  }, [createOnboardingLink, paymentReadiness?.recommended_action, prepareTapToPay, refreshStripeStatus]);
 
   const stripePrimaryLabel = useMemo(() => {
     const action = stripeReadiness?.primary_action;
@@ -372,7 +429,7 @@ export default function DashboardSettingsPaymentsPage() {
                 <>
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-gray-900">Status</p>
+                      <p className="text-sm font-semibold text-gray-900">Stripe account status</p>
                       <p className="mt-1 text-sm text-gray-700">{stripeReadiness?.heading || 'Not connected'}</p>
                     </div>
                     <button
@@ -389,14 +446,6 @@ export default function DashboardSettingsPaymentsPage() {
                     {stripeReadiness?.description || 'Connect Stripe to begin payment setup.'}
                   </p>
 
-                  {(stripeReadiness?.status === 'setup_incomplete' ||
-                    stripeReadiness?.status === 'under_review' ||
-                    stripeReadiness?.status === 'restricted') && (
-                    <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                      Card payments and Tap to Pay cannot be enabled until Stripe setup is fully complete for this restaurant.
-                    </p>
-                  )}
-
                   <dl className="mt-4 grid gap-3 text-sm text-gray-700 sm:grid-cols-2">
                     <div className="rounded-lg border border-gray-200 bg-white px-3 py-2">
                       <dt className="text-xs uppercase tracking-wide text-gray-500">Stripe account</dt>
@@ -411,12 +460,32 @@ export default function DashboardSettingsPaymentsPage() {
                       <dd className="mt-1 font-medium text-gray-900">{stripeSnapshot?.payouts_enabled ? 'Enabled' : 'Not enabled'}</dd>
                     </div>
                     <div className="rounded-lg border border-gray-200 bg-white px-3 py-2">
-                      <dt className="text-xs uppercase tracking-wide text-gray-500">Tap to Pay readiness</dt>
+                      <dt className="text-xs uppercase tracking-wide text-gray-500">Terminal location</dt>
                       <dd className="mt-1 font-medium text-gray-900">
-                        {stripeReadiness?.tap_to_pay_available ? 'Available in next phase' : 'Unavailable'}
+                        {stripeSnapshot?.stripe_terminal_location_display_name || shortAccount(stripeSnapshot?.stripe_terminal_location_id || null)}
                       </dd>
                     </div>
                   </dl>
+
+                  <div className="mt-4 rounded-xl border border-gray-200 bg-white p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">Tap to Pay readiness</p>
+                        <p className="mt-1 text-sm text-gray-700">{paymentReadiness?.heading || 'Checking status'}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void onTerminalAction()}
+                        disabled={stripeActionBusy || paymentReadiness?.recommended_action === 'temporarily_unavailable'}
+                        className="inline-flex items-center justify-center rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {stripeActionBusy ? 'Please wait…' : terminalActionLabel(paymentReadiness)}
+                      </button>
+                    </div>
+                    <p className="mt-2 text-xs text-gray-600">
+                      {paymentReadiness?.description || 'Tap to Pay readiness updates will appear here.'}
+                    </p>
+                  </div>
 
                   {stripeSnapshot?.disabled_reason ? (
                     <p className="mt-3 text-xs text-gray-500">Stripe note: {stripeSnapshot.disabled_reason}</p>

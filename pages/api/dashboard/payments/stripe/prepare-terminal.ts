@@ -11,10 +11,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!restaurantId) return res.status(401).json({ message: 'Unauthorized' });
 
   try {
-    const ensureTerminal = req.body?.ensure_terminal === true;
-    const payload = await syncPaymentReadiness(restaurantId, ensureTerminal);
+    const payload = await syncPaymentReadiness(restaurantId, true);
     return res.status(200).json(payload);
   } catch (error: any) {
-    return res.status(500).json({ message: error?.message || 'Failed to refresh Stripe status' });
+    return res.status(500).json({ message: error?.message || 'Failed to prepare Tap to Pay' });
   }
 }
