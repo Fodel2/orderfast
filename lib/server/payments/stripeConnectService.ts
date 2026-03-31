@@ -15,20 +15,29 @@ import { getStripeClient } from './stripeClient';
 type RestaurantStripeRow = {
   restaurant_id: string;
   stripe_connected_account_id: string | null;
-  onboarding_status: StripeConnectionSnapshot['onboarding_status'];
-  charges_enabled: boolean;
-  payouts_enabled: boolean;
-  details_submitted: boolean;
+  onboarding_status: StripeConnectionSnapshot['onboarding_status'] | null;
+  stripe_onboarding_status: StripeConnectionSnapshot['onboarding_status'] | null;
+  charges_enabled: boolean | null;
+  stripe_charges_enabled: boolean | null;
+  payouts_enabled: boolean | null;
+  stripe_payouts_enabled: boolean | null;
+  details_submitted: boolean | null;
+  stripe_details_submitted: boolean | null;
   requirements_currently_due: unknown;
+  stripe_requirements_currently_due: unknown;
   requirements_pending_verification: unknown;
+  stripe_requirements_pending_verification: unknown;
   disabled_reason: string | null;
+  stripe_disabled_reason: string | null;
   terminal_location_id: string | null;
   stripe_terminal_location_id: string | null;
   stripe_terminal_location_display_name: string | null;
-  terminal_readiness_status: TerminalReadinessStatus;
+  terminal_readiness_status: TerminalReadinessStatus | null;
   terminal_readiness_reason: string | null;
   onboarding_completed_at: string | null;
+  stripe_onboarding_completed_at: string | null;
   last_synced_at: string | null;
+  stripe_last_synced_at: string | null;
   terminal_last_checked_at: string | null;
   terminal_last_synced_at: string | null;
 };
@@ -45,6 +54,15 @@ type RestaurantAddress = {
 
 const toStringArray = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+
+
+const pickFirst = <T>(...values: Array<T | null | undefined>): T | null => {
+  for (const value of values) {
+    if (value !== undefined && value !== null) return value;
+  }
+  return null;
+};
+
 
 export const resolveRestaurantIdFromSession = async (req: NextApiRequest, res: NextApiResponse): Promise<string | null> => {
   const supabaseAuth = createServerSupabaseClient({ req, res });
@@ -67,9 +85,7 @@ export const resolveRestaurantIdFromSession = async (req: NextApiRequest, res: N
 export const readRestaurantStripeRow = async (restaurantId: string): Promise<RestaurantStripeRow | null> => {
   const { data, error } = await supaServer
     .from('restaurant_stripe_connect_accounts')
-    .select(
-      'restaurant_id,stripe_connected_account_id,onboarding_status,charges_enabled,payouts_enabled,details_submitted,requirements_currently_due,requirements_pending_verification,disabled_reason,terminal_location_id,stripe_terminal_location_id,stripe_terminal_location_display_name,terminal_readiness_status,terminal_readiness_reason,onboarding_completed_at,last_synced_at,terminal_last_checked_at,terminal_last_synced_at'
-    )
+    .select('*')
     .eq('restaurant_id', restaurantId)
     .maybeSingle();
 
@@ -90,20 +106,22 @@ const readRestaurantAddress = async (restaurantId: string): Promise<RestaurantAd
 
 export const toSnapshot = (row: RestaurantStripeRow | null): StripeConnectionSnapshot => ({
   stripe_connected_account_id: row?.stripe_connected_account_id ?? null,
-  onboarding_status: row?.onboarding_status ?? 'not_connected',
-  charges_enabled: !!row?.charges_enabled,
-  payouts_enabled: !!row?.payouts_enabled,
-  details_submitted: !!row?.details_submitted,
-  requirements_currently_due: toStringArray(row?.requirements_currently_due),
-  requirements_pending_verification: toStringArray(row?.requirements_pending_verification),
-  disabled_reason: row?.disabled_reason ?? null,
+  onboarding_status: pickFirst(row?.stripe_onboarding_status, row?.onboarding_status) ?? 'not_connected',
+  charges_enabled: !!pickFirst(row?.stripe_charges_enabled, row?.charges_enabled),
+  payouts_enabled: !!pickFirst(row?.stripe_payouts_enabled, row?.payouts_enabled),
+  details_submitted: !!pickFirst(row?.stripe_details_submitted, row?.details_submitted),
+  requirements_currently_due: toStringArray(pickFirst(row?.stripe_requirements_currently_due, row?.requirements_currently_due)),
+  requirements_pending_verification: toStringArray(
+    pickFirst(row?.stripe_requirements_pending_verification, row?.requirements_pending_verification)
+  ),
+  disabled_reason: pickFirst(row?.stripe_disabled_reason, row?.disabled_reason),
   terminal_location_id: row?.terminal_location_id ?? null,
   stripe_terminal_location_id: row?.stripe_terminal_location_id ?? row?.terminal_location_id ?? null,
   stripe_terminal_location_display_name: row?.stripe_terminal_location_display_name ?? null,
   terminal_readiness_status: row?.terminal_readiness_status ?? 'terminal_not_configured',
   terminal_readiness_reason: row?.terminal_readiness_reason ?? null,
-  onboarding_completed_at: row?.onboarding_completed_at ?? null,
-  last_synced_at: row?.last_synced_at ?? null,
+  onboarding_completed_at: pickFirst(row?.stripe_onboarding_completed_at, row?.onboarding_completed_at),
+  last_synced_at: pickFirst(row?.stripe_last_synced_at, row?.last_synced_at),
   terminal_last_checked_at: row?.terminal_last_checked_at ?? null,
   terminal_last_synced_at: row?.terminal_last_synced_at ?? null,
 });
@@ -192,12 +210,19 @@ const upsertFromStripeAccount = async (restaurantId: string, account: Stripe.Acc
     restaurant_id: restaurantId,
     stripe_connected_account_id: account.id,
     onboarding_status: nextStatus,
+    stripe_onboarding_status: nextStatus,
     charges_enabled: snapshot.charges_enabled,
+    stripe_charges_enabled: snapshot.charges_enabled,
     payouts_enabled: snapshot.payouts_enabled,
+    stripe_payouts_enabled: snapshot.payouts_enabled,
     details_submitted: snapshot.details_submitted,
+    stripe_details_submitted: snapshot.details_submitted,
     requirements_currently_due: snapshot.requirements_currently_due,
+    stripe_requirements_currently_due: snapshot.requirements_currently_due,
     requirements_pending_verification: snapshot.requirements_pending_verification,
+    stripe_requirements_pending_verification: snapshot.requirements_pending_verification,
     disabled_reason: snapshot.disabled_reason,
+    stripe_disabled_reason: snapshot.disabled_reason,
     terminal_location_id: snapshot.terminal_location_id,
     stripe_terminal_location_id: snapshot.stripe_terminal_location_id,
     stripe_terminal_location_display_name: snapshot.stripe_terminal_location_display_name,
@@ -205,7 +230,9 @@ const upsertFromStripeAccount = async (restaurantId: string, account: Stripe.Acc
     terminal_readiness_reason: readinessReason,
     terminal_last_checked_at: new Date().toISOString(),
     last_synced_at: snapshot.last_synced_at,
+    stripe_last_synced_at: snapshot.last_synced_at,
     onboarding_completed_at: nextStatus === 'connected' ? new Date().toISOString() : null,
+    stripe_onboarding_completed_at: nextStatus === 'connected' ? new Date().toISOString() : null,
   };
 
   const { error } = await supaServer.from('restaurant_stripe_connect_accounts').upsert(payload, {
