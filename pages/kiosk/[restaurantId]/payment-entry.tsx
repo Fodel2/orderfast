@@ -80,6 +80,9 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   const flowLockRef = useRef(false);
   const cancelLockRef = useRef(false);
   const stageParam = Array.isArray(router.query.stage) ? router.query.stage[0] : router.query.stage;
+  const debugParam = Array.isArray(router.query.debug) ? router.query.debug[0] : router.query.debug;
+  const operatorParam = Array.isArray(router.query.operator) ? router.query.operator[0] : router.query.operator;
+  const showOperatorDetails = debugParam === '1' || operatorParam === '1';
   const preferredStageFromQuery: PaymentStage | null =
     stageParam === 'contactless' || stageParam === 'cash' || stageParam === 'pay_at_counter' || stageParam === 'method_picker'
       ? stageParam
@@ -215,7 +218,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       const nextState = reconciled?.session?.state;
       if (!reconcileRes.ok) {
         setContactlessStatus('failed');
-        setContactlessError(reconciled?.error || 'Unable to reconcile Tap to Pay session. Check network and retry.');
+        setContactlessError('Payment failed, please try again or choose another payment method.');
         setContactlessDebug('reconcile_failed');
         return;
       }
@@ -230,7 +233,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       }
       if (nextState === 'canceled') {
         setContactlessStatus('canceled');
-        setContactlessError('Payment was canceled.');
+        setContactlessError('Payment cancelled');
         setContactlessDebug('reconciled:canceled');
         if (typeof window !== 'undefined') {
           window.localStorage.removeItem(CONTACTLESS_SESSION_STORAGE_KEY);
@@ -238,7 +241,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         return;
       }
       setContactlessStatus('processing');
-      setContactlessError('Payment is still processing. Retry reconcile shortly.');
+      setContactlessError('');
       setContactlessDebug(`reconciled:${nextState || 'unknown'}`);
     },
     [CONTACTLESS_SESSION_STORAGE_KEY, restaurantId]
@@ -269,7 +272,11 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       }
       if (serverState === 'canceled' || serverState === 'failed') {
         setContactlessStatus(serverState === 'canceled' ? 'canceled' : 'failed');
-        setContactlessError(payload?.session?.failure_message || `Payment is ${serverState}. You can start a new attempt.`);
+        setContactlessError(
+          serverState === 'canceled'
+            ? 'Payment cancelled'
+            : 'Payment failed, please try again or choose another payment method.'
+        );
         setContactlessDebug(`server:${serverState}`);
         if (typeof window !== 'undefined') {
           window.localStorage.removeItem(CONTACTLESS_SESSION_STORAGE_KEY);
@@ -278,7 +285,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       }
       if (serverState === 'processing' || serverState === 'needs_reconciliation' || serverState === 'collecting') {
         setContactlessStatus('processing');
-        setContactlessError('Session recovered. Use Reconcile status to finish confirmation.');
+        setContactlessError('');
         setContactlessDebug(`server:${serverState}`);
       }
     },
@@ -298,7 +305,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       const readiness = await readinessRes.json();
       if (!readinessRes.ok || !readiness?.tap_to_pay_available) {
         setContactlessStatus('failed');
-        setContactlessError('Tap to Pay is not ready for this restaurant yet. Please choose another payment method.');
+        setContactlessError('Contactless payment is unavailable right now. Please choose another payment method.');
         return;
       }
 
@@ -306,7 +313,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       setContactlessDebug('native_support_check');
       if (!support.supported) {
         setContactlessStatus('failed');
-        setContactlessError(support.reason || 'This device does not support Tap to Pay.');
+        setContactlessError('Contactless payment is unavailable right now. Please choose another payment method.');
         return;
       }
 
@@ -324,7 +331,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       const created = await createRes.json();
       if (!createRes.ok || !created?.session?.id) {
         setContactlessStatus('failed');
-        setContactlessError(created?.error || 'Unable to start Tap to Pay session.');
+        setContactlessError('Payment failed, please try again or choose another payment method.');
         return;
       }
 
@@ -343,7 +350,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       if (!paymentIntentRes.ok) {
         const paymentIntentErr = await paymentIntentRes.json().catch(() => ({}));
         setContactlessStatus('failed');
-        setContactlessError(paymentIntentErr?.error || 'Unable to prepare payment intent.');
+        setContactlessError(paymentIntentErr?.error || 'Payment failed, please try again or choose another payment method.');
         return;
       }
 
@@ -353,7 +360,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       const prepared = await tapToPayBridge.prepareTapToPay({ restaurantId, sessionId, backendBaseUrl });
       if (prepared.status === 'failed' || prepared.status === 'unavailable') {
         setContactlessStatus('failed');
-        setContactlessError(prepared.message || 'Tap to Pay preparation failed.');
+        setContactlessError('Contactless payment is unavailable right now. Please choose another payment method.');
         setContactlessDebug(`prepare_failed:${prepared.code || 'unknown'}`);
         await fetch('/api/kiosk/payments/card-present/session-state', {
           method: 'POST',
@@ -374,7 +381,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       const readinessCheck = await readinessCheckRes.json().catch(() => ({}));
       if (!readinessCheckRes.ok || !readinessCheck?.tap_to_pay_available) {
         setContactlessStatus('failed');
-        setContactlessError('Tap to Pay readiness changed. Retry or choose another method.');
+        setContactlessError('Contactless payment is unavailable right now. Please choose another payment method.');
         await fetch('/api/kiosk/payments/card-present/session-state', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -395,7 +402,11 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       const started = await tapToPayBridge.startTapToPayPayment({ restaurantId, sessionId, backendBaseUrl });
       if (started.status !== 'succeeded') {
         setContactlessStatus(started.status === 'canceled' ? 'canceled' : 'failed');
-        setContactlessError(started.message || 'Tap to Pay payment was not successful.');
+        setContactlessError(
+          started.status === 'canceled'
+            ? 'Payment cancelled'
+            : 'Payment failed, please try again or choose another payment method.'
+        );
         setContactlessDebug(`start_failed:${started.code || started.status}`);
         await reconcileSession(sessionId, 'native_start_failed');
         return;
@@ -411,7 +422,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       const finalized = await finalizeRes.json();
       if (!finalizeRes.ok || finalized?.session?.state !== 'finalized') {
         setContactlessStatus('processing');
-        setContactlessError('Payment reached device approval. Final confirmation is pending; use Reconcile.');
+        setContactlessError('');
         setContactlessDebug('finalize_pending');
         return;
       }
@@ -423,7 +434,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       }
     } catch (error) {
       setContactlessStatus('failed');
-      setContactlessError('Tap to Pay failed. Please retry or choose another payment method.');
+      setContactlessError('Payment failed, please try again or choose another payment method.');
       console.error('[kiosk] tap to pay flow failed', error);
     } finally {
       setContactlessBusy(false);
@@ -472,7 +483,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       if (parsed?.sessionId && parsed?.restaurantId === restaurantId) {
         setContactlessSessionId(parsed.sessionId);
         setContactlessStatus('processing');
-        setContactlessError('Recovered interrupted Tap to Pay session. Reconcile to confirm final state.');
+        setContactlessError('');
         void loadServerSessionTruth(parsed.sessionId, 'local_restore');
       }
     } catch {
@@ -486,7 +497,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
 
     const onVisibilityChange = () => {
       if (document.visibilityState === 'hidden' && (contactlessStatus === 'collecting' || contactlessStatus === 'processing' || contactlessBusy)) {
-        setContactlessError('App moved to background during Tap to Pay. Reconcile after returning to foreground.');
+        setContactlessError('');
       }
       if (document.visibilityState === 'visible' && (contactlessStatus === 'collecting' || contactlessStatus === 'processing')) {
         void loadServerSessionTruth(contactlessSessionId, 'foreground_visible');
@@ -511,7 +522,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         body: JSON.stringify({ session_id: contactlessSessionId, restaurant_id: restaurantId, reason: 'Canceled on kiosk' }),
       });
       setContactlessStatus('canceled');
-      setContactlessError('Payment canceled safely.');
+      setContactlessError('Payment cancelled');
       if (typeof window !== 'undefined') {
         window.localStorage.removeItem(CONTACTLESS_SESSION_STORAGE_KEY);
       }
@@ -567,30 +578,35 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     <section className="w-full rounded-[2rem] border border-slate-200 bg-white/95 p-5 shadow-xl shadow-slate-200/70 sm:p-8">
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Contactless payment</p>
       <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">Tap card or phone</h1>
-      <p className="mt-3 text-sm leading-relaxed text-slate-600 sm:text-base">
-        We are automatically starting a secure Tap to Pay session on this kiosk now.
-      </p>
+      <p className="mt-3 text-sm leading-relaxed text-slate-600 sm:text-base">We are automatically starting your secure contactless payment.</p>
 
       <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-        <p className="text-sm font-semibold text-slate-900">Session: {contactlessSessionId ? contactlessSessionId.slice(0, 8) : 'Not started'}</p>
-        <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.12em] text-slate-500">Debug: {contactlessDebug}</p>
+        {contactlessStatus === 'preparing' || contactlessStatus === 'idle' ? (
+          <p className="mt-2 text-sm font-medium text-slate-700">Starting secure payment…</p>
+        ) : null}
+        {contactlessStatus === 'collecting' ? (
+          <p className="mt-2 text-sm font-medium text-slate-700">Hold card or phone near reader</p>
+        ) : null}
+        {contactlessStatus === 'processing' ? (
+          <p className="mt-2 text-sm font-medium text-amber-700">Processing payment…</p>
+        ) : null}
         {contactlessStatus === 'succeeded' ? (
           <p className="mt-2 flex items-center gap-2 text-sm font-medium text-emerald-700">
             <CheckCircleIcon className="h-5 w-5" />
-            Payment approved. Final confirmation was validated by the backend.
+            Payment approved
           </p>
         ) : null}
         {contactlessStatus === 'failed' || contactlessStatus === 'canceled' ? (
           <p className="mt-2 flex items-center gap-2 text-sm font-medium text-rose-700">
             <ExclamationTriangleIcon className="h-5 w-5" />
-            {contactlessError || 'Tap to Pay did not complete.'}
+            {contactlessError || 'Payment failed, please try again or choose another payment method.'}
           </p>
         ) : null}
-        {contactlessStatus === 'processing' ? (
-          <p className="mt-2 text-sm font-medium text-amber-700">Payment processing is still being reconciled.</p>
-        ) : null}
-        {contactlessStatus === 'collecting' || contactlessStatus === 'preparing' ? (
-          <p className="mt-2 text-sm font-medium text-slate-700">Hold your card, phone, or watch near the reader to pay.</p>
+        {showOperatorDetails ? (
+          <div className="mt-3 border-t border-slate-200 pt-3">
+            <p className="text-sm font-semibold text-slate-900">Session: {contactlessSessionId ? contactlessSessionId.slice(0, 8) : 'Not started'}</p>
+            <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.12em] text-slate-500">Debug: {contactlessDebug}</p>
+          </div>
         ) : null}
       </div>
 
@@ -616,20 +632,30 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
           disabled={!contactlessSessionId}
           className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Cancel Tap to Pay
+          Cancel payment
         </button>
 
-        <button
-          type="button"
-          onClick={() => {
-            if (!contactlessSessionId) return;
-            void reconcileSession(contactlessSessionId, 'manual_reconcile');
-          }}
-          disabled={!contactlessSessionId || contactlessBusy}
-          className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          Reconcile status
-        </button>
+        {showOperatorDetails ? (
+          <button
+            type="button"
+            onClick={() => {
+              if (!contactlessSessionId) return;
+              void reconcileSession(contactlessSessionId, 'manual_reconcile');
+            }}
+            disabled={!contactlessSessionId || contactlessBusy}
+            className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Reconcile status
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setStage(enabledMethods.length > 1 ? 'method_picker' : 'pay_at_counter')}
+            className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            Choose another method
+          </button>
+        )}
       </div>
     </section>
   );
