@@ -454,6 +454,14 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   }, [contactlessSessionId, restaurantId, stage]);
 
   useEffect(() => {
+    if (stage !== 'contactless') return;
+    if (contactlessBusy) return;
+    if (contactlessStatus !== 'idle') return;
+    if (amountCents <= 0) return;
+    void runTapToPay();
+  }, [amountCents, contactlessBusy, contactlessStatus, runTapToPay, stage]);
+
+  useEffect(() => {
     if (stage !== 'contactless' || !restaurantId) return;
     if (typeof window === 'undefined') return;
 
@@ -519,7 +527,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Kiosk checkout</p>
       <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">Choose how you want to pay</h1>
       <p className="mt-3 text-sm leading-relaxed text-slate-600 sm:text-base">
-        Select your payment method to continue. Real payment processing is still in placeholder mode.
+        Select your payment method to continue checkout.
       </p>
 
       <div className="mt-6 grid gap-3 sm:grid-cols-2">
@@ -560,7 +568,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Contactless payment</p>
       <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">Tap card or phone</h1>
       <p className="mt-3 text-sm leading-relaxed text-slate-600 sm:text-base">
-        We will securely prepare and start a Tap to Pay payment session on this kiosk.
+        We are automatically starting a secure Tap to Pay session on this kiosk now.
       </p>
 
       <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -581,17 +589,26 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         {contactlessStatus === 'processing' ? (
           <p className="mt-2 text-sm font-medium text-amber-700">Payment processing is still being reconciled.</p>
         ) : null}
+        {contactlessStatus === 'collecting' || contactlessStatus === 'preparing' ? (
+          <p className="mt-2 text-sm font-medium text-slate-700">Hold your card, phone, or watch near the reader to pay.</p>
+        ) : null}
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <button
-          type="button"
-          onClick={() => void runTapToPay()}
-          disabled={contactlessBusy || amountCents <= 0}
-          className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {contactlessBusy ? 'Tap to Pay in progress…' : 'Start Tap to Pay'}
-        </button>
+        {contactlessStatus === 'failed' || contactlessStatus === 'canceled' ? (
+          <button
+            type="button"
+            onClick={() => void runTapToPay()}
+            disabled={contactlessBusy || amountCents <= 0}
+            className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {contactlessBusy ? 'Retrying Tap to Pay…' : 'Retry Tap to Pay'}
+          </button>
+        ) : (
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
+            {contactlessBusy ? 'Tap to Pay in progress…' : 'Tap to Pay starts automatically'}
+          </div>
+        )}
 
         <button
           type="button"
