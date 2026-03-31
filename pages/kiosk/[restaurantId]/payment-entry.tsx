@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import {
-  ArrowPathIcon,
   BanknotesIcon,
   BuildingStorefrontIcon,
   CheckCircleIcon,
@@ -16,6 +15,7 @@ import {
   type KioskPaymentMethod,
   type KioskPaymentSettingsRow,
 } from '@/lib/kiosk/paymentSettings';
+import { tapToPayBridge, type TapToPayStatus } from '@/lib/kiosk/tapToPayBridge';
 
 type Restaurant = {
   id: string;
@@ -33,8 +33,6 @@ type Restaurant = {
 };
 
 type PaymentStage = 'method_picker' | 'contactless' | 'cash' | 'pay_at_counter';
-
-const CONTACTLESS_MAX_ATTEMPTS = 2;
 
 const PAYMENT_METHOD_META: Record<KioskPaymentMethod, { title: string; subtitle: string; icon: typeof CreditCardIcon }> = {
   contactless: {
@@ -73,18 +71,20 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [enabledMethods, setEnabledMethods] = useState<KioskPaymentMethod[]>(['pay_at_counter']);
   const [stage, setStage] = useState<PaymentStage>('pay_at_counter');
-
-  const [contactlessAttempts, setContactlessAttempts] = useState(0);
-  const [contactlessResetUsed, setContactlessResetUsed] = useState(false);
-  const [contactlessStatus, setContactlessStatus] = useState<'idle' | 'success' | 'failed'>('idle');
+  const [contactlessStatus, setContactlessStatus] = useState<TapToPayStatus>('idle');
+  const [contactlessBusy, setContactlessBusy] = useState(false);
+  const [contactlessError, setContactlessError] = useState('');
+  const [contactlessSessionId, setContactlessSessionId] = useState<string | null>(null);
   const stageParam = Array.isArray(router.query.stage) ? router.query.stage[0] : router.query.stage;
   const preferredStageFromQuery: PaymentStage | null =
     stageParam === 'contactless' || stageParam === 'cash' || stageParam === 'pay_at_counter' || stageParam === 'method_picker'
       ? stageParam
       : null;
 
-  const contactlessAttemptsRemaining = Math.max(CONTACTLESS_MAX_ATTEMPTS - contactlessAttempts, 0);
-  const contactlessFallbackActive = contactlessAttempts >= CONTACTLESS_MAX_ATTEMPTS && contactlessResetUsed;
+  const amountParam = Array.isArray(router.query.amount_cents) ? router.query.amount_cents[0] : router.query.amount_cents;
+  const currencyParam = Array.isArray(router.query.currency) ? router.query.currency[0] : router.query.currency;
+  const amountCents = Number(amountParam || 0);
+  const currency = (currencyParam || 'usd').toLowerCase();
 
   useEffect(() => {
     if (!restaurantId) {
@@ -187,11 +187,114 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
 
   useEffect(() => {
     if (stage !== 'contactless') {
-      setContactlessAttempts(0);
-      setContactlessResetUsed(false);
       setContactlessStatus('idle');
+      setContactlessSessionId(null);
+      setContactlessBusy(false);
+      setContactlessError('');
     }
   }, [stage]);
+
+  const runTapToPay = async () => {
+    if (!restaurantId || amountCents <= 0 || contactlessBusy) return;
+    setContactlessBusy(true);
+    setContactlessError('');
+
+    try {
+      const readinessRes = await fetch(`/api/kiosk/payments/tap-to-pay-availability?restaurant_id=${encodeURIComponent(restaurantId)}`);
+      const readiness = await readinessRes.json();
+      if (!readinessRes.ok || !readiness?.tap_to_pay_available) {
+        setContactlessStatus('failed');
+        setContactlessError('Tap to Pay is not ready for this restaurant yet. Please choose another payment method.');
+        return;
+      }
+
+      const support = await tapToPayBridge.isTapToPaySupported();
+      if (!support.supported) {
+        setContactlessStatus('failed');
+        setContactlessError(support.reason || 'This device does not support Tap to Pay.');
+        return;
+      }
+
+      const idempotencyKey = `kiosk_${restaurantId}_${amountCents}_${Date.now()}`;
+      const createRes = await fetch('/api/kiosk/payments/card-present/create-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          restaurant_id: restaurantId,
+          amount_cents: amountCents,
+          currency,
+          idempotency_key: idempotencyKey,
+        }),
+      });
+      const created = await createRes.json();
+      if (!createRes.ok || !created?.session?.id) {
+        setContactlessStatus('failed');
+        setContactlessError(created?.error || 'Unable to start Tap to Pay session.');
+        return;
+      }
+
+      const sessionId = String(created.session.id);
+      setContactlessSessionId(sessionId);
+
+      await fetch('/api/kiosk/payments/card-present/payment-intent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId, restaurant_id: restaurantId }),
+      });
+
+      const backendBaseUrl = window.location.origin;
+      const prepared = await tapToPayBridge.prepareTapToPay({ restaurantId, sessionId, backendBaseUrl });
+      if (prepared.status === 'failed' || prepared.status === 'unavailable') {
+        setContactlessStatus('failed');
+        setContactlessError(prepared.message || 'Tap to Pay preparation failed.');
+        await fetch('/api/kiosk/payments/card-present/session-state', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: sessionId,
+            restaurant_id: restaurantId,
+            next_state: 'failed',
+            failure_message: prepared.message || 'Tap to Pay preparation failed',
+            event_type: 'native_prepare_failed',
+          }),
+        });
+        return;
+      }
+
+      setContactlessStatus('collecting');
+      const started = await tapToPayBridge.startTapToPayPayment({ restaurantId, sessionId, backendBaseUrl });
+      if (started.status !== 'succeeded') {
+        setContactlessStatus(started.status === 'canceled' ? 'canceled' : 'failed');
+        setContactlessError(started.message || 'Tap to Pay payment was not successful.');
+        await fetch('/api/kiosk/payments/card-present/reconcile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sessionId, restaurant_id: restaurantId }),
+        });
+        return;
+      }
+
+      const finalizeRes = await fetch('/api/kiosk/payments/card-present/finalize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId, restaurant_id: restaurantId }),
+      });
+      const finalized = await finalizeRes.json();
+      if (!finalizeRes.ok || finalized?.session?.state !== 'finalized') {
+        setContactlessStatus('processing');
+        setContactlessError('Payment is processing. Staff can verify final confirmation shortly.');
+        return;
+      }
+
+      setContactlessStatus('succeeded');
+    } catch (error) {
+      setContactlessStatus('failed');
+      setContactlessError('Tap to Pay failed. Please retry or choose another payment method.');
+      console.error('[kiosk] tap to pay flow failed', error);
+    } finally {
+      setContactlessBusy(false);
+    }
+  };
 
   const stageLabel = useMemo(() => {
     if (stage === 'method_picker') return 'Choose payment method';
@@ -243,24 +346,24 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
 
   const renderContactless = () => (
     <section className="w-full rounded-[2rem] border border-slate-200 bg-white/95 p-5 shadow-xl shadow-slate-200/70 sm:p-8">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Contactless placeholder</p>
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Contactless payment</p>
       <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">Tap card or phone</h1>
       <p className="mt-3 text-sm leading-relaxed text-slate-600 sm:text-base">
-        This is architecture-only routing for upcoming Tap to Pay integration.
+        We will securely prepare and start a Tap to Pay payment session on this kiosk.
       </p>
 
       <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-        <p className="text-sm font-semibold text-slate-900">Attempts remaining: {contactlessAttemptsRemaining}</p>
-        {contactlessStatus === 'success' ? (
+        <p className="text-sm font-semibold text-slate-900">Session: {contactlessSessionId ? contactlessSessionId.slice(0, 8) : 'Not started'}</p>
+        {contactlessStatus === 'succeeded' ? (
           <p className="mt-2 flex items-center gap-2 text-sm font-medium text-emerald-700">
             <CheckCircleIcon className="h-5 w-5" />
-            Placeholder payment success recorded. Real SDK capture not implemented.
+            Payment approved. Final confirmation was validated by the backend.
           </p>
         ) : null}
-        {contactlessStatus === 'failed' ? (
+        {contactlessStatus === 'failed' || contactlessStatus === 'canceled' ? (
           <p className="mt-2 flex items-center gap-2 text-sm font-medium text-rose-700">
             <ExclamationTriangleIcon className="h-5 w-5" />
-            Placeholder failure captured. You can retry based on remaining attempts.
+            {contactlessError || 'Tap to Pay did not complete.'}
           </p>
         ) : null}
       </div>
@@ -268,50 +371,35 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <button
           type="button"
-          onClick={() => setContactlessStatus('success')}
-          className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700"
+          onClick={() => void runTapToPay()}
+          disabled={contactlessBusy || amountCents <= 0}
+          className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          Simulate contactless success
+          {contactlessBusy ? 'Starting Tap to Pay…' : 'Start Tap to Pay'}
         </button>
 
         <button
           type="button"
-          onClick={() => {
-            setContactlessStatus('failed');
-            setContactlessAttempts((prev) => Math.min(prev + 1, CONTACTLESS_MAX_ATTEMPTS));
+          onClick={async () => {
+            if (!contactlessSessionId || !restaurantId) return;
+            setContactlessBusy(true);
+            try {
+              await tapToPayBridge.cancelTapToPayPayment();
+              await fetch('/api/kiosk/payments/card-present/cancel', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session_id: contactlessSessionId, restaurant_id: restaurantId, reason: 'Canceled on kiosk' }),
+              });
+              setContactlessStatus('canceled');
+            } finally {
+              setContactlessBusy(false);
+            }
           }}
-          disabled={contactlessAttempts >= CONTACTLESS_MAX_ATTEMPTS}
+          disabled={contactlessBusy || !contactlessSessionId}
           className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Simulate contactless failure
+          Cancel Tap to Pay
         </button>
-
-        {contactlessAttempts >= CONTACTLESS_MAX_ATTEMPTS && !contactlessResetUsed ? (
-          <button
-            type="button"
-            onClick={() => {
-              setContactlessAttempts(0);
-              setContactlessResetUsed(true);
-              setContactlessStatus('idle');
-            }}
-            className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
-          >
-            <span className="inline-flex items-center gap-2">
-              <ArrowPathIcon className="h-4 w-4" />
-              Reset terminal and retry once
-            </span>
-          </button>
-        ) : null}
-
-        {contactlessFallbackActive ? (
-          <button
-            type="button"
-            onClick={() => setStage('pay_at_counter')}
-            className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900 transition hover:bg-amber-100"
-          >
-            Offer Pay at Counter fallback
-          </button>
-        ) : null}
       </div>
     </section>
   );

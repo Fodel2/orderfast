@@ -342,6 +342,8 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
 
     if (normalizedPaymentSettings.processOnDevice) {
       const params = new URLSearchParams();
+      params.set('amount_cents', String(Math.round(subtotal * 100)));
+      params.set('currency', String(currencyCode || 'usd').toLowerCase());
       if (normalizedPaymentSettings.enabledMethods.length === 1) {
         params.set('stage', normalizedPaymentSettings.enabledMethods[0]);
       }
