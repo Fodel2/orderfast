@@ -77,6 +77,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   const [contactlessError, setContactlessError] = useState('');
   const [contactlessSessionId, setContactlessSessionId] = useState<string | null>(null);
   const [contactlessDebug, setContactlessDebug] = useState('idle');
+  const [paymentNotice, setPaymentNotice] = useState('');
   const flowLockRef = useRef(false);
   const cancelLockRef = useRef(false);
   const stageParam = Array.isArray(router.query.stage) ? router.query.stage[0] : router.query.stage;
@@ -311,7 +312,8 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
 
       const support = await tapToPayBridge.isTapToPaySupported();
       setContactlessDebug('native_support_check');
-      if (!support.supported) {
+      const locationPermissionPending = (support.reason || '').toLowerCase().includes('location permission');
+      if (!support.supported && !locationPermissionPending) {
         setContactlessStatus('failed');
         setContactlessError('Contactless payment is unavailable right now. Please choose another payment method.');
         return;
@@ -442,6 +444,22 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     }
   }, [CONTACTLESS_SESSION_STORAGE_KEY, amountCents, contactlessBusy, currency, reconcileSession, restaurantId]);
 
+  const returnToFallback = useCallback(
+    (message: string) => {
+      setPaymentNotice(message);
+      setContactlessBusy(false);
+      setContactlessStatus('idle');
+      setContactlessError('');
+      setContactlessSessionId(null);
+      setContactlessDebug('fallback');
+      setStage(enabledMethods.length > 1 ? 'method_picker' : 'pay_at_counter');
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem(CONTACTLESS_SESSION_STORAGE_KEY);
+      }
+    },
+    [CONTACTLESS_SESSION_STORAGE_KEY, enabledMethods]
+  );
+
   const stageLabel = useMemo(() => {
     if (stage === 'method_picker') return 'Choose payment method';
     if (stage === 'contactless') return 'Contactless payment';
@@ -471,6 +489,20 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     if (amountCents <= 0) return;
     void runTapToPay();
   }, [amountCents, contactlessBusy, contactlessStatus, runTapToPay, stage]);
+
+  useEffect(() => {
+    if (stage !== 'contactless') return;
+    if (contactlessBusy) return;
+    if (contactlessStatus !== 'failed' && contactlessStatus !== 'canceled') return;
+    const timeout = window.setTimeout(() => {
+      returnToFallback(
+        contactlessStatus === 'canceled'
+          ? 'Payment cancelled'
+          : contactlessError || 'Contactless payment is unavailable right now. Please choose another payment method.'
+      );
+    }, 900);
+    return () => window.clearTimeout(timeout);
+  }, [contactlessBusy, contactlessError, contactlessStatus, returnToFallback, stage]);
 
   useEffect(() => {
     if (stage !== 'contactless' || !restaurantId) return;
@@ -551,6 +583,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
               type="button"
               onClick={() => {
                 if (method === 'contactless') {
+                  setPaymentNotice('');
                   setStage('contactless');
                   return;
                 }
@@ -574,90 +607,56 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     </section>
   );
 
-  const renderContactless = () => (
-    <section className="w-full rounded-[2rem] border border-slate-200 bg-white/95 p-5 shadow-xl shadow-slate-200/70 sm:p-8">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Contactless payment</p>
-      <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">Tap card or phone</h1>
-      <p className="mt-3 text-sm leading-relaxed text-slate-600 sm:text-base">We are automatically starting your secure contactless payment.</p>
-
-      <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-        {contactlessStatus === 'preparing' || contactlessStatus === 'idle' ? (
-          <p className="mt-2 text-sm font-medium text-slate-700">Starting secure payment…</p>
-        ) : null}
-        {contactlessStatus === 'collecting' ? (
-          <p className="mt-2 text-sm font-medium text-slate-700">Hold card or phone near reader</p>
-        ) : null}
-        {contactlessStatus === 'processing' ? (
-          <p className="mt-2 text-sm font-medium text-amber-700">Processing payment…</p>
-        ) : null}
+  const renderContactlessOverlay = () => (
+    <div className="fixed inset-0 z-[75] flex items-center justify-center bg-black/45 px-4 backdrop-blur-[2px]">
+      <section className="w-full max-w-md rounded-[2rem] border border-slate-200 bg-white p-6 shadow-2xl">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Contactless payment</p>
+        {contactlessStatus === 'preparing' || contactlessStatus === 'idle' ? <p className="mt-3 text-base font-medium text-slate-800">Starting secure payment…</p> : null}
+        {contactlessStatus === 'collecting' ? <p className="mt-3 text-base font-medium text-slate-800">Hold card or phone near reader</p> : null}
+        {contactlessStatus === 'processing' ? <p className="mt-3 text-base font-medium text-amber-700">Processing payment…</p> : null}
         {contactlessStatus === 'succeeded' ? (
-          <p className="mt-2 flex items-center gap-2 text-sm font-medium text-emerald-700">
+          <p className="mt-3 flex items-center gap-2 text-base font-medium text-emerald-700">
             <CheckCircleIcon className="h-5 w-5" />
             Payment approved
           </p>
         ) : null}
         {contactlessStatus === 'failed' || contactlessStatus === 'canceled' ? (
-          <p className="mt-2 flex items-center gap-2 text-sm font-medium text-rose-700">
+          <p className="mt-3 flex items-center gap-2 text-base font-medium text-rose-700">
             <ExclamationTriangleIcon className="h-5 w-5" />
             {contactlessError || 'Payment failed, please try again or choose another payment method.'}
           </p>
         ) : null}
-        {showOperatorDetails ? (
-          <div className="mt-3 border-t border-slate-200 pt-3">
-            <p className="text-sm font-semibold text-slate-900">Session: {contactlessSessionId ? contactlessSessionId.slice(0, 8) : 'Not started'}</p>
-            <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.12em] text-slate-500">Debug: {contactlessDebug}</p>
-          </div>
-        ) : null}
-      </div>
-
-      <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        {contactlessStatus === 'failed' || contactlessStatus === 'canceled' ? (
-          <button
-            type="button"
-            onClick={() => void runTapToPay()}
-            disabled={contactlessBusy || amountCents <= 0}
-            className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {contactlessBusy ? 'Retrying Tap to Pay…' : 'Retry Tap to Pay'}
-          </button>
-        ) : (
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
-            {contactlessBusy ? 'Tap to Pay in progress…' : 'Tap to Pay starts automatically'}
-          </div>
-        )}
-
-        <button
-          type="button"
-          onClick={() => void cancelTapToPay()}
-          disabled={!contactlessSessionId}
-          className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          Cancel payment
-        </button>
-
-        {showOperatorDetails ? (
+        {showOperatorDetails ? <p className="mt-2 text-[11px] font-medium uppercase tracking-[0.12em] text-slate-500">Debug: {contactlessDebug}</p> : null}
+        <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <button
             type="button"
             onClick={() => {
-              if (!contactlessSessionId) return;
-              void reconcileSession(contactlessSessionId, 'manual_reconcile');
+              if (contactlessStatus === 'failed' || contactlessStatus === 'canceled') {
+                returnToFallback(
+                  contactlessStatus === 'canceled'
+                    ? 'Payment cancelled'
+                    : 'Payment failed, please try again or choose another payment method.'
+                );
+                return;
+              }
+              void cancelTapToPay().then(() => returnToFallback('Payment cancelled'));
             }}
-            disabled={!contactlessSessionId || contactlessBusy}
-            className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Reconcile status
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setStage(enabledMethods.length > 1 ? 'method_picker' : 'pay_at_counter')}
             className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
           >
-            Choose another method
+            {contactlessStatus === 'failed' || contactlessStatus === 'canceled' ? 'Choose another method' : 'Cancel payment'}
           </button>
-        )}
-      </div>
-    </section>
+          {(contactlessStatus === 'failed' || contactlessStatus === 'canceled') && enabledMethods.includes('contactless') ? (
+            <button
+              type="button"
+              onClick={() => void runTapToPay()}
+              className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700"
+            >
+              Retry Tap to Pay
+            </button>
+          ) : null}
+        </div>
+      </section>
+    </div>
   );
 
   const renderCash = () => (
@@ -714,11 +713,16 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
               Loading kiosk payment settings…
             </section>
           ) : null}
+          {!settingsLoading && paymentNotice ? (
+            <section className="w-full rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
+              {paymentNotice}
+            </section>
+          ) : null}
 
-          {!settingsLoading && stage === 'method_picker' ? renderMethodPicker() : null}
-          {!settingsLoading && stage === 'contactless' ? renderContactless() : null}
+          {!settingsLoading && (stage === 'method_picker' || stage === 'contactless') ? renderMethodPicker() : null}
           {!settingsLoading && stage === 'cash' ? renderCash() : null}
           {!settingsLoading && stage === 'pay_at_counter' ? renderPayAtCounter() : null}
+          {!settingsLoading && stage === 'contactless' ? renderContactlessOverlay() : null}
         </div>
       </div>
     </KioskLayout>
