@@ -36,6 +36,7 @@
     "react-easy-crop": "^4.4.0",
     "react-select": "^5.10.1",
     "string-similarity": "^4.0.4",
+    "stripe": "^18.5.0",
     "swiper": "^11.2.10"
   },
   "devDependencies": {

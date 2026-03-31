@@ -1,0 +1,426 @@
+import type { NextApiRequest, NextApiResponse } from 'next';
+import { createServerSupabaseClient } from '@supabase/auth-helpers-nextjs';
+import type Stripe from 'stripe';
+import {
+  deriveStripeConnectionStatus,
+  deriveStripeReadiness,
+  deriveTerminalPaymentReadiness,
+  type StripeConnectionSnapshot,
+  type TerminalPaymentReadiness,
+  type TerminalReadinessStatus,
+} from '@/lib/payments/stripeConnect';
+import { supaServer } from '@/lib/supaServer';
+import { getStripeClient } from './stripeClient';
+
+type RestaurantStripeRow = {
+  restaurant_id: string;
+  stripe_connected_account_id: string | null;
+  onboarding_status: StripeConnectionSnapshot['onboarding_status'];
+  charges_enabled: boolean;
+  payouts_enabled: boolean;
+  details_submitted: boolean;
+  requirements_currently_due: unknown;
+  requirements_pending_verification: unknown;
+  disabled_reason: string | null;
+  terminal_location_id: string | null;
+  stripe_terminal_location_id: string | null;
+  stripe_terminal_location_display_name: string | null;
+  terminal_readiness_status: TerminalReadinessStatus;
+  terminal_readiness_reason: string | null;
+  onboarding_completed_at: string | null;
+  last_synced_at: string | null;
+  terminal_last_checked_at: string | null;
+  terminal_last_synced_at: string | null;
+};
+
+type RestaurantAddress = {
+  name: string | null;
+  address_line_1: string | null;
+  address_line_2: string | null;
+  city: string | null;
+  county_state: string | null;
+  postcode: string | null;
+  country_code: string | null;
+};
+
+const toStringArray = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+
+export const resolveRestaurantIdFromSession = async (req: NextApiRequest, res: NextApiResponse): Promise<string | null> => {
+  const supabaseAuth = createServerSupabaseClient({ req, res });
+  const {
+    data: { session },
+  } = await supabaseAuth.auth.getSession();
+
+  if (!session?.user?.id) return null;
+
+  const { data: membership } = await supaServer
+    .from('restaurant_users')
+    .select('restaurant_id')
+    .eq('user_id', session.user.id)
+    .maybeSingle();
+
+  if (!membership?.restaurant_id) return null;
+  return String(membership.restaurant_id);
+};
+
+export const readRestaurantStripeRow = async (restaurantId: string): Promise<RestaurantStripeRow | null> => {
+  const { data, error } = await supaServer
+    .from('restaurant_stripe_connect_accounts')
+    .select(
+      'restaurant_id,stripe_connected_account_id,onboarding_status,charges_enabled,payouts_enabled,details_submitted,requirements_currently_due,requirements_pending_verification,disabled_reason,terminal_location_id,stripe_terminal_location_id,stripe_terminal_location_display_name,terminal_readiness_status,terminal_readiness_reason,onboarding_completed_at,last_synced_at,terminal_last_checked_at,terminal_last_synced_at'
+    )
+    .eq('restaurant_id', restaurantId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return (data as RestaurantStripeRow | null) ?? null;
+};
+
+const readRestaurantAddress = async (restaurantId: string): Promise<RestaurantAddress | null> => {
+  const { data, error } = await supaServer
+    .from('restaurants')
+    .select('name,address_line_1,address_line_2,city,county_state,postcode,country_code')
+    .eq('id', restaurantId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return (data as RestaurantAddress | null) ?? null;
+};
+
+export const toSnapshot = (row: RestaurantStripeRow | null): StripeConnectionSnapshot => ({
+  stripe_connected_account_id: row?.stripe_connected_account_id ?? null,
+  onboarding_status: row?.onboarding_status ?? 'not_connected',
+  charges_enabled: !!row?.charges_enabled,
+  payouts_enabled: !!row?.payouts_enabled,
+  details_submitted: !!row?.details_submitted,
+  requirements_currently_due: toStringArray(row?.requirements_currently_due),
+  requirements_pending_verification: toStringArray(row?.requirements_pending_verification),
+  disabled_reason: row?.disabled_reason ?? null,
+  terminal_location_id: row?.terminal_location_id ?? null,
+  stripe_terminal_location_id: row?.stripe_terminal_location_id ?? row?.terminal_location_id ?? null,
+  stripe_terminal_location_display_name: row?.stripe_terminal_location_display_name ?? null,
+  terminal_readiness_status: row?.terminal_readiness_status ?? 'terminal_not_configured',
+  terminal_readiness_reason: row?.terminal_readiness_reason ?? null,
+  onboarding_completed_at: row?.onboarding_completed_at ?? null,
+  last_synced_at: row?.last_synced_at ?? null,
+  terminal_last_checked_at: row?.terminal_last_checked_at ?? null,
+  terminal_last_synced_at: row?.terminal_last_synced_at ?? null,
+});
+
+const terminalReadyFromAccount = (account: Stripe.Account) => {
+  const cardPaymentsCapability = account.capabilities?.card_payments;
+  if (cardPaymentsCapability === 'active' && account.charges_enabled && account.payouts_enabled) {
+    return {
+      status: 'tap_to_pay_ready' as TerminalReadinessStatus,
+      reason: 'Stripe and Terminal setup are ready for Tap to Pay.',
+    };
+  }
+
+  if (cardPaymentsCapability === 'pending') {
+    return {
+      status: 'terminal_pending' as TerminalReadinessStatus,
+      reason: 'Stripe is still enabling card processing for Terminal payments.',
+    };
+  }
+
+  if (account.requirements?.disabled_reason) {
+    return {
+      status: 'temporarily_unavailable' as TerminalReadinessStatus,
+      reason: 'Stripe has temporarily limited this account for Terminal payments.',
+    };
+  }
+
+  return {
+    status: 'terminal_pending' as TerminalReadinessStatus,
+    reason: 'Terminal readiness is still being prepared by Stripe.',
+  };
+};
+
+const upsertFromStripeAccount = async (restaurantId: string, account: Stripe.Account) => {
+  const existing = await readRestaurantStripeRow(restaurantId);
+  const requirementsCurrentlyDue = Array.isArray(account.requirements?.currently_due) ? account.requirements.currently_due : [];
+  const requirementsPending = Array.isArray(account.requirements?.pending_verification)
+    ? account.requirements.pending_verification
+    : [];
+
+  const snapshot: StripeConnectionSnapshot = {
+    stripe_connected_account_id: account.id,
+    onboarding_status: 'setup_incomplete',
+    charges_enabled: !!account.charges_enabled,
+    payouts_enabled: !!account.payouts_enabled,
+    details_submitted: !!account.details_submitted,
+    requirements_currently_due: requirementsCurrentlyDue,
+    requirements_pending_verification: requirementsPending,
+    disabled_reason: account.requirements?.disabled_reason || null,
+    terminal_location_id: existing?.terminal_location_id ?? null,
+    stripe_terminal_location_id: existing?.stripe_terminal_location_id ?? existing?.terminal_location_id ?? null,
+    stripe_terminal_location_display_name: existing?.stripe_terminal_location_display_name ?? null,
+    terminal_readiness_status: existing?.terminal_readiness_status ?? 'terminal_not_configured',
+    terminal_readiness_reason: existing?.terminal_readiness_reason ?? null,
+    onboarding_completed_at: null,
+    last_synced_at: new Date().toISOString(),
+    terminal_last_checked_at: existing?.terminal_last_checked_at ?? null,
+    terminal_last_synced_at: existing?.terminal_last_synced_at ?? null,
+  };
+
+  const nextStatus = deriveStripeConnectionStatus(snapshot);
+  const terminalCheck = terminalReadyFromAccount(account);
+
+  const readinessStatus: TerminalReadinessStatus = !snapshot.stripe_connected_account_id
+    ? 'not_connected'
+    : nextStatus === 'setup_incomplete' || nextStatus === 'under_review'
+      ? 'stripe_setup_incomplete'
+      : nextStatus === 'restricted'
+        ? 'temporarily_unavailable'
+        : snapshot.stripe_terminal_location_id
+          ? terminalCheck.status
+          : 'terminal_not_configured';
+
+  const readinessReason =
+    readinessStatus === 'not_connected'
+      ? 'Connect Stripe to prepare Tap to Pay.'
+      : readinessStatus === 'stripe_setup_incomplete'
+        ? 'Finish Stripe setup before Tap to Pay can be enabled.'
+        : readinessStatus === 'temporarily_unavailable'
+          ? terminalCheck.reason
+          : readinessStatus === 'terminal_not_configured'
+            ? 'Prepare Tap to Pay to create a terminal location for this restaurant.'
+            : terminalCheck.reason;
+
+  const payload = {
+    restaurant_id: restaurantId,
+    stripe_connected_account_id: account.id,
+    onboarding_status: nextStatus,
+    charges_enabled: snapshot.charges_enabled,
+    payouts_enabled: snapshot.payouts_enabled,
+    details_submitted: snapshot.details_submitted,
+    requirements_currently_due: snapshot.requirements_currently_due,
+    requirements_pending_verification: snapshot.requirements_pending_verification,
+    disabled_reason: snapshot.disabled_reason,
+    terminal_location_id: snapshot.terminal_location_id,
+    stripe_terminal_location_id: snapshot.stripe_terminal_location_id,
+    stripe_terminal_location_display_name: snapshot.stripe_terminal_location_display_name,
+    terminal_readiness_status: readinessStatus,
+    terminal_readiness_reason: readinessReason,
+    terminal_last_checked_at: new Date().toISOString(),
+    last_synced_at: snapshot.last_synced_at,
+    onboarding_completed_at: nextStatus === 'connected' ? new Date().toISOString() : null,
+  };
+
+  const { error } = await supaServer.from('restaurant_stripe_connect_accounts').upsert(payload, {
+    onConflict: 'restaurant_id',
+  });
+
+  if (error) throw error;
+  return payload;
+};
+
+export const getOrCreateConnectedAccount = async (restaurantId: string) => {
+  const existingRow = await readRestaurantStripeRow(restaurantId);
+  if (existingRow?.stripe_connected_account_id) return existingRow.stripe_connected_account_id;
+
+  const stripe = getStripeClient();
+  const account = await stripe.accounts.create({
+    type: 'express',
+    metadata: {
+      restaurant_id: restaurantId,
+      platform: 'orderfast',
+    },
+  });
+
+  await upsertFromStripeAccount(restaurantId, account);
+  return account.id;
+};
+
+const getReturnUrl = () => process.env.STRIPE_CONNECT_RETURN_URL || 'http://localhost:3000/dashboard/settings/payments?tab=stripe';
+const getRefreshUrl = () => process.env.STRIPE_CONNECT_REFRESH_URL || getReturnUrl();
+
+const upsertTerminalMapping = async (
+  restaurantId: string,
+  values: {
+    stripeTerminalLocationId: string | null;
+    stripeTerminalLocationDisplayName: string | null;
+    terminalReadinessStatus: TerminalReadinessStatus;
+    terminalReadinessReason: string;
+  }
+) => {
+  const { error } = await supaServer.from('restaurant_stripe_connect_accounts').upsert(
+    {
+      restaurant_id: restaurantId,
+      stripe_terminal_location_id: values.stripeTerminalLocationId,
+      terminal_location_id: values.stripeTerminalLocationId,
+      stripe_terminal_location_display_name: values.stripeTerminalLocationDisplayName,
+      terminal_readiness_status: values.terminalReadinessStatus,
+      terminal_readiness_reason: values.terminalReadinessReason,
+      terminal_last_checked_at: new Date().toISOString(),
+      terminal_last_synced_at: values.stripeTerminalLocationId ? new Date().toISOString() : null,
+    },
+    { onConflict: 'restaurant_id' }
+  );
+
+  if (error) throw error;
+};
+
+const mapRestaurantAddressToStripe = (restaurant: RestaurantAddress | null) => {
+  if (!restaurant) return null;
+
+  const line1 = String(restaurant.address_line_1 || '').trim();
+  const city = String(restaurant.city || '').trim();
+  const postalCode = String(restaurant.postcode || '').trim();
+  const country = String(restaurant.country_code || 'US').trim().toUpperCase();
+
+  if (!line1 || !city || !postalCode || !country || country.length !== 2) {
+    return null;
+  }
+
+  return {
+    line1,
+    line2: String(restaurant.address_line_2 || '').trim() || undefined,
+    city,
+    state: String(restaurant.county_state || '').trim() || undefined,
+    postal_code: postalCode,
+    country,
+  };
+};
+
+export const createRestaurantOnboardingLink = async (restaurantId: string) => {
+  const stripe = getStripeClient();
+  const accountId = await getOrCreateConnectedAccount(restaurantId);
+  const accountLink = await stripe.accountLinks.create({
+    account: accountId,
+    type: 'account_onboarding',
+    return_url: getReturnUrl(),
+    refresh_url: getRefreshUrl(),
+  });
+
+  return { accountId, url: accountLink.url, expiresAt: accountLink.expires_at };
+};
+
+export const createRestaurantAccountSession = async (restaurantId: string) => {
+  const stripe = getStripeClient();
+  const accountId = await getOrCreateConnectedAccount(restaurantId);
+  const session = await stripe.accountSessions.create({
+    account: accountId,
+    components: {
+      account_management: { enabled: true },
+      notification_banner: { enabled: true },
+    },
+  });
+  return { accountId, clientSecret: session.client_secret, expiresAt: session.expires_at };
+};
+
+export const ensureRestaurantTerminalLocation = async (restaurantId: string) => {
+  const row = await readRestaurantStripeRow(restaurantId);
+  if (!row?.stripe_connected_account_id) {
+    await upsertTerminalMapping(restaurantId, {
+      stripeTerminalLocationId: null,
+      stripeTerminalLocationDisplayName: null,
+      terminalReadinessStatus: 'not_connected',
+      terminalReadinessReason: 'Connect Stripe before preparing Tap to Pay.',
+    });
+    return;
+  }
+
+  if (row.onboarding_status !== 'connected') {
+    await upsertTerminalMapping(restaurantId, {
+      stripeTerminalLocationId: row.stripe_terminal_location_id ?? row.terminal_location_id ?? null,
+      stripeTerminalLocationDisplayName: row.stripe_terminal_location_display_name ?? null,
+      terminalReadinessStatus: 'stripe_setup_incomplete',
+      terminalReadinessReason: 'Finish Stripe setup before preparing Tap to Pay.',
+    });
+    return;
+  }
+
+  const existingLocationId = row.stripe_terminal_location_id ?? row.terminal_location_id;
+  if (existingLocationId) {
+    await upsertTerminalMapping(restaurantId, {
+      stripeTerminalLocationId: existingLocationId,
+      stripeTerminalLocationDisplayName: row.stripe_terminal_location_display_name ?? null,
+      terminalReadinessStatus: 'terminal_pending',
+      terminalReadinessReason: 'Terminal location saved. Final readiness checks are in progress.',
+    });
+    return;
+  }
+
+  const restaurant = await readRestaurantAddress(restaurantId);
+  const stripeAddress = mapRestaurantAddressToStripe(restaurant);
+  if (!stripeAddress) {
+    await upsertTerminalMapping(restaurantId, {
+      stripeTerminalLocationId: null,
+      stripeTerminalLocationDisplayName: null,
+      terminalReadinessStatus: 'terminal_pending',
+      terminalReadinessReason: 'Add your restaurant address details to finish Tap to Pay preparation.',
+    });
+    return;
+  }
+
+  const stripe = getStripeClient();
+  const accountId = row.stripe_connected_account_id;
+  const listed = await stripe.terminal.locations.list({ limit: 100 }, { stripeAccount: accountId });
+  const existing = listed.data.find((location) => location.metadata?.restaurant_id === restaurantId) || listed.data[0] || null;
+
+  const location =
+    existing ||
+    (await stripe.terminal.locations.create(
+      {
+        display_name: (restaurant?.name || 'Restaurant').slice(0, 100),
+        address: stripeAddress,
+        metadata: {
+          restaurant_id: restaurantId,
+        },
+      },
+      { stripeAccount: accountId }
+    ));
+
+  await upsertTerminalMapping(restaurantId, {
+    stripeTerminalLocationId: location.id,
+    stripeTerminalLocationDisplayName: location.display_name || restaurant?.name || 'Restaurant',
+    terminalReadinessStatus: 'terminal_pending',
+    terminalReadinessReason: 'Terminal location configured. Refresh status to confirm Tap to Pay readiness.',
+  });
+};
+
+const resolveTerminalReadiness = (snapshot: StripeConnectionSnapshot): TerminalPaymentReadiness =>
+  deriveTerminalPaymentReadiness(snapshot);
+
+export const syncStripeConnection = async (restaurantId: string) => {
+  const row = await readRestaurantStripeRow(restaurantId);
+  if (!row?.stripe_connected_account_id) {
+    const snapshot = toSnapshot(row);
+    return {
+      snapshot,
+      readiness: deriveStripeReadiness(snapshot),
+      paymentReadiness: resolveTerminalReadiness(snapshot),
+    };
+  }
+
+  const stripe = getStripeClient();
+  const account = await stripe.accounts.retrieve(row.stripe_connected_account_id);
+  await upsertFromStripeAccount(restaurantId, account);
+  const nextRow = await readRestaurantStripeRow(restaurantId);
+  const snapshot = toSnapshot(nextRow);
+
+  return {
+    snapshot,
+    readiness: deriveStripeReadiness(snapshot),
+    paymentReadiness: resolveTerminalReadiness(snapshot),
+  };
+};
+
+export const syncPaymentReadiness = async (restaurantId: string, ensureTerminalLocation = false) => {
+  const synced = await syncStripeConnection(restaurantId);
+  if (ensureTerminalLocation) {
+    await ensureRestaurantTerminalLocation(restaurantId);
+    return getStripeConnectionStatus(restaurantId);
+  }
+  return synced;
+};
+
+export const getStripeConnectionStatus = async (restaurantId: string) => {
+  const row = await readRestaurantStripeRow(restaurantId);
+  const snapshot = toSnapshot(row);
+  const readiness = deriveStripeReadiness(snapshot);
+  const paymentReadiness = resolveTerminalReadiness(snapshot);
+  return { snapshot, readiness, paymentReadiness };
+};
