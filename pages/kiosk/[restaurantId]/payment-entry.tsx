@@ -215,12 +215,14 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       const nextState = reconciled?.session?.state;
       if (!reconcileRes.ok) {
         setContactlessStatus('failed');
-        setContactlessError(reconciled?.error || 'Unable to reconcile Tap to Pay session.');
+        setContactlessError(reconciled?.error || 'Unable to reconcile Tap to Pay session. Check network and retry.');
+        setContactlessDebug('reconcile_failed');
         return;
       }
       if (nextState === 'finalized' || nextState === 'succeeded') {
         setContactlessStatus('succeeded');
         setContactlessError('');
+        setContactlessDebug(`reconciled:${nextState}`);
         if (typeof window !== 'undefined') {
           window.localStorage.removeItem(CONTACTLESS_SESSION_STORAGE_KEY);
         }
@@ -229,6 +231,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       if (nextState === 'canceled') {
         setContactlessStatus('canceled');
         setContactlessError('Payment was canceled.');
+        setContactlessDebug('reconciled:canceled');
         if (typeof window !== 'undefined') {
           window.localStorage.removeItem(CONTACTLESS_SESSION_STORAGE_KEY);
         }
@@ -236,6 +239,48 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       }
       setContactlessStatus('processing');
       setContactlessError('Payment is still processing. Retry reconcile shortly.');
+      setContactlessDebug(`reconciled:${nextState || 'unknown'}`);
+    },
+    [CONTACTLESS_SESSION_STORAGE_KEY, restaurantId]
+  );
+
+  const loadServerSessionTruth = useCallback(
+    async (sessionId: string, reason: string) => {
+      if (!restaurantId) return;
+      setContactlessDebug(`session_check:${reason}`);
+      const sessionRes = await fetch(
+        `/api/kiosk/payments/card-present/session?session_id=${encodeURIComponent(sessionId)}&restaurant_id=${encodeURIComponent(restaurantId)}`
+      );
+      const payload = await sessionRes.json().catch(() => ({}));
+      if (!sessionRes.ok) {
+        setContactlessDebug('session_check_failed');
+        return;
+      }
+      const serverState = payload?.session?.state as string | undefined;
+      if (!serverState) return;
+      if (serverState === 'finalized' || serverState === 'succeeded') {
+        setContactlessStatus('succeeded');
+        setContactlessError('');
+        setContactlessDebug(`server:${serverState}`);
+        if (typeof window !== 'undefined') {
+          window.localStorage.removeItem(CONTACTLESS_SESSION_STORAGE_KEY);
+        }
+        return;
+      }
+      if (serverState === 'canceled' || serverState === 'failed') {
+        setContactlessStatus(serverState === 'canceled' ? 'canceled' : 'failed');
+        setContactlessError(payload?.session?.failure_message || `Payment is ${serverState}. You can start a new attempt.`);
+        setContactlessDebug(`server:${serverState}`);
+        if (typeof window !== 'undefined') {
+          window.localStorage.removeItem(CONTACTLESS_SESSION_STORAGE_KEY);
+        }
+        return;
+      }
+      if (serverState === 'processing' || serverState === 'needs_reconciliation' || serverState === 'collecting') {
+        setContactlessStatus('processing');
+        setContactlessError('Session recovered. Use Reconcile status to finish confirmation.');
+        setContactlessDebug(`server:${serverState}`);
+      }
     },
     [CONTACTLESS_SESSION_STORAGE_KEY, restaurantId]
   );
@@ -249,6 +294,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
 
     try {
       const readinessRes = await fetch(`/api/kiosk/payments/tap-to-pay-availability?restaurant_id=${encodeURIComponent(restaurantId)}`);
+      setContactlessDebug('readiness_check');
       const readiness = await readinessRes.json();
       if (!readinessRes.ok || !readiness?.tap_to_pay_available) {
         setContactlessStatus('failed');
@@ -257,6 +303,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       }
 
       const support = await tapToPayBridge.isTapToPaySupported();
+      setContactlessDebug('native_support_check');
       if (!support.supported) {
         setContactlessStatus('failed');
         setContactlessError(support.reason || 'This device does not support Tap to Pay.');
@@ -302,10 +349,12 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
 
       const backendBaseUrl = window.location.origin;
       setContactlessStatus('preparing');
+      setContactlessDebug('native_prepare');
       const prepared = await tapToPayBridge.prepareTapToPay({ restaurantId, sessionId, backendBaseUrl });
       if (prepared.status === 'failed' || prepared.status === 'unavailable') {
         setContactlessStatus('failed');
         setContactlessError(prepared.message || 'Tap to Pay preparation failed.');
+        setContactlessDebug(`prepare_failed:${prepared.code || 'unknown'}`);
         await fetch('/api/kiosk/payments/card-present/session-state', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -321,6 +370,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       }
 
       const readinessCheckRes = await fetch(`/api/kiosk/payments/tap-to-pay-availability?restaurant_id=${encodeURIComponent(restaurantId)}`);
+      setContactlessDebug('readiness_recheck');
       const readinessCheck = await readinessCheckRes.json().catch(() => ({}));
       if (!readinessCheckRes.ok || !readinessCheck?.tap_to_pay_available) {
         setContactlessStatus('failed');
@@ -341,15 +391,18 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       }
 
       setContactlessStatus('collecting');
+      setContactlessDebug('native_collect_process');
       const started = await tapToPayBridge.startTapToPayPayment({ restaurantId, sessionId, backendBaseUrl });
       if (started.status !== 'succeeded') {
         setContactlessStatus(started.status === 'canceled' ? 'canceled' : 'failed');
         setContactlessError(started.message || 'Tap to Pay payment was not successful.');
+        setContactlessDebug(`start_failed:${started.code || started.status}`);
         await reconcileSession(sessionId, 'native_start_failed');
         return;
       }
 
       setContactlessStatus('processing');
+      setContactlessDebug('backend_finalize');
       const finalizeRes = await fetch('/api/kiosk/payments/card-present/finalize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -393,9 +446,12 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       if (nativeStatus.status === 'processing' || nativeStatus.status === 'collecting') {
         setContactlessStatus(nativeStatus.status);
       }
+      if (nativeStatus.sessionId && !contactlessSessionId) {
+        setContactlessSessionId(nativeStatus.sessionId);
+      }
     };
     void statusPoll();
-  }, [restaurantId, stage]);
+  }, [contactlessSessionId, restaurantId, stage]);
 
   useEffect(() => {
     if (stage !== 'contactless' || !restaurantId) return;
@@ -409,11 +465,12 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         setContactlessSessionId(parsed.sessionId);
         setContactlessStatus('processing');
         setContactlessError('Recovered interrupted Tap to Pay session. Reconcile to confirm final state.');
+        void loadServerSessionTruth(parsed.sessionId, 'local_restore');
       }
     } catch {
       window.localStorage.removeItem(CONTACTLESS_SESSION_STORAGE_KEY);
     }
-  }, [CONTACTLESS_SESSION_STORAGE_KEY, restaurantId, stage]);
+  }, [CONTACTLESS_SESSION_STORAGE_KEY, loadServerSessionTruth, restaurantId, stage]);
 
   useEffect(() => {
     if (stage !== 'contactless' || !restaurantId || !contactlessSessionId) return;
@@ -424,13 +481,14 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         setContactlessError('App moved to background during Tap to Pay. Reconcile after returning to foreground.');
       }
       if (document.visibilityState === 'visible' && (contactlessStatus === 'collecting' || contactlessStatus === 'processing')) {
+        void loadServerSessionTruth(contactlessSessionId, 'foreground_visible');
         void reconcileSession(contactlessSessionId, 'foreground_resume');
       }
     };
 
     document.addEventListener('visibilitychange', onVisibilityChange);
     return () => document.removeEventListener('visibilitychange', onVisibilityChange);
-  }, [contactlessBusy, contactlessSessionId, contactlessStatus, reconcileSession, restaurantId, stage]);
+  }, [contactlessBusy, contactlessSessionId, contactlessStatus, loadServerSessionTruth, reconcileSession, restaurantId, stage]);
 
   const cancelTapToPay = useCallback(async () => {
     if (!contactlessSessionId || !restaurantId || cancelLockRef.current) return;

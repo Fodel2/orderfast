@@ -348,7 +348,7 @@ export const reconcileAbandonedOrUnknownKioskPaymentSession = async (input: { se
   const session = await getKioskPaymentSession(input.sessionId, input.restaurantId);
   if (!session) throw new Error('Kiosk payment session not found');
 
-  if (session.state === 'finalized' || session.state === 'canceled') {
+  if (session.state === 'finalized' || session.state === 'canceled' || session.state === 'failed') {
     return session;
   }
 

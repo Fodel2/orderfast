@@ -50,6 +50,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @CapacitorPlugin(
     name = "OrderfastTapToPay",
@@ -304,7 +305,8 @@ public class OrderfastTapToPayPlugin extends Plugin {
 
         inFlight = true;
         status = "collecting";
-        startOperationTimeout(call);
+        AtomicBoolean resolveGate = new AtomicBoolean(false);
+        startOperationTimeout(call, resolveGate);
 
         executor.execute(() -> {
             try {
@@ -341,10 +343,10 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                     if (intent.getStatus() == PaymentIntentStatus.SUCCEEDED || intent.getStatus() == PaymentIntentStatus.PROCESSING || intent.getStatus() == PaymentIntentStatus.REQUIRES_CAPTURE) {
                                         status = "succeeded";
                                         postSessionState("processing", "native_process_succeeded");
-                                        call.resolve(result("succeeded", null, "Tap to Pay payment processed by Stripe Terminal SDK."));
+                                        resolveOnce(resolveGate, call, result("succeeded", null, "Tap to Pay payment processed by Stripe Terminal SDK."));
                                     } else {
                                         status = "failed";
-                                        call.resolve(result("failed", "processing_error", "Unexpected PaymentIntent status: " + intent.getStatus()));
+                                        resolveOnce(resolveGate, call, result("failed", "processing_error", "Unexpected PaymentIntent status: " + intent.getStatus()));
                                     }
                                     processCancelable = null;
                                     inFlight = false;
@@ -357,7 +359,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                     inFlight = false;
                                     postSessionState("failed", "native_process_failed");
                                     processCancelable = null;
-                                    call.resolve(result("failed", normalizeErrorCode(e), buildErrorMessage(e)));
+                                    resolveOnce(resolveGate, call, result("failed", normalizeErrorCode(e), buildErrorMessage(e)));
                                 }
                             }
                         );
@@ -368,14 +370,14 @@ public class OrderfastTapToPayPlugin extends Plugin {
                         clearOperationTimeout();
                         status = "failed";
                         inFlight = false;
-                        call.resolve(result("failed", normalizeErrorCode(e), buildErrorMessage(e)));
+                        resolveOnce(resolveGate, call, result("failed", normalizeErrorCode(e), buildErrorMessage(e)));
                     }
                 }));
             } catch (Exception ex) {
                 clearOperationTimeout();
                 status = "failed";
                 inFlight = false;
-                call.resolve(result("failed", normalizeErrorCode(ex), ex.getMessage()));
+                resolveOnce(resolveGate, call, result("failed", normalizeErrorCode(ex), ex.getMessage()));
             }
         });
     }
@@ -391,6 +393,8 @@ public class OrderfastTapToPayPlugin extends Plugin {
                         public void onSuccess() {
                             status = "canceled";
                             inFlight = false;
+                            activePaymentIntent = null;
+                            processCancelable = null;
                             postSessionState("canceled", "native_cancel");
                             call.resolve(result("canceled", "canceled", "Tap to Pay canceled."));
                         }
@@ -399,6 +403,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                         public void onFailure(TerminalException e) {
                             status = "failed";
                             inFlight = false;
+                            processCancelable = null;
                             call.resolve(result("failed", normalizeErrorCode(e), buildErrorMessage(e)));
                         }
                     });
@@ -411,6 +416,8 @@ public class OrderfastTapToPayPlugin extends Plugin {
                         public void onSuccess(PaymentIntent paymentIntent) {
                             status = "canceled";
                             inFlight = false;
+                            activePaymentIntent = null;
+                            processCancelable = null;
                             postSessionState("canceled", "native_cancel");
                             call.resolve(result("canceled", "canceled", "Tap to Pay canceled."));
                         }
@@ -419,6 +426,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                         public void onFailure(TerminalException e) {
                             status = "failed";
                             inFlight = false;
+                            processCancelable = null;
                             call.resolve(result("failed", normalizeErrorCode(e), buildErrorMessage(e)));
                         }
                     });
@@ -569,16 +577,23 @@ public class OrderfastTapToPayPlugin extends Plugin {
         });
     }
 
-    private void startOperationTimeout(PluginCall call) {
+    private void startOperationTimeout(PluginCall call, AtomicBoolean resolveGate) {
         clearOperationTimeout();
         timeoutRunnable = () -> {
             if (inFlight) {
                 status = "failed";
                 inFlight = false;
-                call.resolve(result("failed", "processing_error", "Tap to Pay timed out. Please retry."));
+                postSessionState("needs_reconciliation", "native_timeout");
+                resolveOnce(resolveGate, call, result("failed", "processing_error", "Tap to Pay timed out. Please retry."));
             }
         };
         timeoutHandler.postDelayed(timeoutRunnable, OPERATION_TIMEOUT_MS);
+    }
+
+    private void resolveOnce(AtomicBoolean gate, PluginCall call, JSObject payload) {
+        if (gate.compareAndSet(false, true)) {
+            call.resolve(payload);
+        }
     }
 
     private void clearOperationTimeout() {
