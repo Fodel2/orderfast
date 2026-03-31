@@ -14,7 +14,11 @@ export type StripeConnectionSnapshot = {
   charges_enabled: boolean;
   payouts_enabled: boolean;
   details_submitted: boolean;
+  card_payments_capability: string | null;
+  transfers_capability: string | null;
   requirements_currently_due: string[];
+  requirements_eventually_due: string[];
+  requirements_past_due: string[];
   requirements_pending_verification: string[];
   disabled_reason: string | null;
   terminal_location_id: string | null;
@@ -46,6 +50,31 @@ export type TerminalPaymentReadiness = {
 };
 
 const pendingVerificationReasons = ['pending_verification', 'listed', 'under_review'];
+const toHumanField = (value: string) => value.replace(/\./g, ' → ').replace(/_/g, ' ');
+
+const buildRequirementsReason = (snapshot: StripeConnectionSnapshot) => {
+  const dueNow = snapshot.requirements_currently_due.slice(0, 2).map(toHumanField);
+  const pastDue = snapshot.requirements_past_due.slice(0, 2).map(toHumanField);
+  const pending = snapshot.requirements_pending_verification.slice(0, 2).map(toHumanField);
+
+  if (dueNow.length > 0) {
+    return `Stripe still needs: ${dueNow.join(', ')}.`;
+  }
+
+  if (pastDue.length > 0) {
+    return `Stripe marked these items past due: ${pastDue.join(', ')}.`;
+  }
+
+  if (pending.length > 0) {
+    return `Stripe is reviewing: ${pending.join(', ')}.`;
+  }
+
+  if (snapshot.disabled_reason) {
+    return 'Stripe has temporarily restricted this account until required updates are completed.';
+  }
+
+  return null;
+};
 
 export const deriveStripeConnectionStatus = (snapshot: StripeConnectionSnapshot): StripeConnectionStatus => {
   if (!snapshot.stripe_connected_account_id) return 'not_connected';
@@ -57,7 +86,14 @@ export const deriveStripeConnectionStatus = (snapshot: StripeConnectionSnapshot)
     return looksLikeReview ? 'under_review' : 'restricted';
   }
 
-  if (snapshot.charges_enabled && snapshot.payouts_enabled) return 'connected';
+  if (
+    snapshot.charges_enabled &&
+    snapshot.payouts_enabled &&
+    snapshot.card_payments_capability === 'active' &&
+    snapshot.transfers_capability === 'active'
+  ) {
+    return 'connected';
+  }
 
   if (snapshot.requirements_pending_verification.length > 0 && snapshot.requirements_currently_due.length === 0) {
     return 'under_review';
@@ -92,10 +128,12 @@ export const deriveStripeReadiness = (snapshot: StripeConnectionSnapshot): Strip
   }
 
   if (status === 'under_review') {
+    const requirementReason = buildRequirementsReason(snapshot);
     return {
       status,
       heading: 'Under review',
-      description: 'Stripe is reviewing your details. Card payments and Tap to Pay stay locked until approved.',
+      description:
+        requirementReason || 'Stripe is reviewing your details. Card payments and Tap to Pay stay locked until approved.',
       can_process_card_payments: false,
       tap_to_pay_available: false,
       primary_action: 'refresh_status',
@@ -103,10 +141,11 @@ export const deriveStripeReadiness = (snapshot: StripeConnectionSnapshot): Strip
   }
 
   if (status === 'restricted') {
+    const requirementReason = buildRequirementsReason(snapshot);
     return {
       status,
       heading: 'Restricted',
-      description: 'Stripe has restrictions on this account. Complete requested steps to enable payments.',
+      description: requirementReason || 'Stripe has restrictions on this account. Complete requested steps to enable payments.',
       can_process_card_payments: false,
       tap_to_pay_available: false,
       primary_action: 'continue_setup',
@@ -116,7 +155,7 @@ export const deriveStripeReadiness = (snapshot: StripeConnectionSnapshot): Strip
   return {
     status: 'setup_incomplete',
     heading: 'Setup incomplete',
-    description: 'Finish Stripe setup before card payments and Tap to Pay can be enabled.',
+    description: buildRequirementsReason(snapshot) || 'Finish Stripe setup before card payments and Tap to Pay can be enabled.',
     can_process_card_payments: false,
     tap_to_pay_available: false,
     primary_action: 'continue_setup',
@@ -138,7 +177,7 @@ export const deriveTerminalPaymentReadiness = (snapshot: StripeConnectionSnapsho
     return {
       status: 'stripe_setup_incomplete',
       heading: 'Stripe setup incomplete',
-      description: 'Finish Stripe verification before Tap to Pay can be prepared.',
+      description: buildRequirementsReason(snapshot) || 'Finish Stripe verification before Tap to Pay can be prepared.',
       tap_to_pay_available: false,
       recommended_action: 'finish_stripe_setup',
     };
@@ -148,7 +187,7 @@ export const deriveTerminalPaymentReadiness = (snapshot: StripeConnectionSnapsho
     return {
       status: 'temporarily_unavailable',
       heading: 'Temporarily unavailable',
-      description: 'Tap to Pay is paused until Stripe restrictions are cleared.',
+      description: buildRequirementsReason(snapshot) || 'Tap to Pay is paused until Stripe restrictions are cleared.',
       tap_to_pay_available: false,
       recommended_action: 'temporarily_unavailable',
     };
