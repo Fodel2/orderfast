@@ -44,9 +44,11 @@ type TapStartupResultStage =
   | 'availability_result'
   | 'session_create_result'
   | 'payment_intent_result'
-  | 'native_support_result'
+  | 'native_support_check_result'
   | 'native_prepare_result'
-  | 'native_start_result';
+  | 'native_collect_result'
+  | 'native_process_result'
+  | 'native_cancel_result';
 
 const PAYMENT_METHOD_META: Record<KioskPaymentMethod, { title: string; subtitle: string; icon: typeof CreditCardIcon }> = {
   contactless: {
@@ -423,8 +425,11 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       }
 
       const support = await tapToPayBridge.isTapToPaySupported();
-      logTapStageResult('native_support_result', support.supported ? 'ok' : 'failed', support);
-      const locationPermissionPending = (support.reason || '').toLowerCase().includes('location permission');
+      logTapStageResult('native_support_check_result', support.supported ? 'ok' : 'failed', support);
+      const locationPermissionPending =
+        support.permissionState === 'prompt' ||
+        support.permissionState === 'prompt_with_rationale' ||
+        (support.reason || '').toLowerCase().includes('location permission');
       if (!support.supported && !locationPermissionPending) {
         failAt(
           'native_support_check',
@@ -465,7 +470,11 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
             : 'Contactless payment is unavailable right now. Please choose another payment method.'
         );
         setContactlessDebug(`prepare_failed:${prepared.code || 'unknown'}`);
-        setContactlessDebugDetail(prepared.message || prepared.code || 'Native prepare returned failure.');
+        setContactlessDebugDetail(
+          prepared.detail
+            ? `${prepared.message || prepared.code || 'Native prepare returned failure.'} | ${formatDetail(prepared.detail)}`
+            : prepared.message || prepared.code || 'Native prepare returned failure.'
+        );
         await fetch('/api/kiosk/payments/card-present/session-state', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -505,7 +514,11 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       setContactlessStatus('collecting');
       setContactlessDebug('native_collect_process');
       const started = await tapToPayBridge.startTapToPayPayment({ restaurantId, sessionId, backendBaseUrl });
-      logTapStageResult('native_start_result', started.status === 'succeeded' ? 'ok' : 'failed', started);
+      logTapStageResult(
+        started.status === 'succeeded' ? 'native_process_result' : 'native_collect_result',
+        started.status === 'succeeded' ? 'ok' : 'failed',
+        started
+      );
       if (started.status !== 'succeeded') {
         setContactlessStatus(started.status === 'canceled' ? 'canceled' : 'failed');
         setContactlessError(
@@ -514,7 +527,11 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
             : 'Payment failed, please try again or choose another payment method.'
         );
         setContactlessDebug(`start_failed:${started.code || started.status}`);
-        setContactlessDebugDetail(started.message || started.code || started.status);
+        setContactlessDebugDetail(
+          started.detail
+            ? `${started.message || started.code || started.status} | ${formatDetail(started.detail)}`
+            : started.message || started.code || started.status
+        );
         await reconcileSession(sessionId, 'native_start_failed');
         return;
       }
