@@ -201,7 +201,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
     public void preparePermissionCallback(PluginCall call) {
         if (getPermissionState("location") != PermissionState.GRANTED) {
             inFlight = false;
-            call.resolve(result("failed", "unsupported", "Location permission is required for Tap to Pay."));
+            call.resolve(result("failed", "permission_required", "Location permission is required for Tap to Pay."));
             return;
         }
         prepareAfterPermission(call);

@@ -318,6 +318,11 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         setContactlessError('Contactless payment is unavailable right now. Please choose another payment method.');
         return;
       }
+      if (!support.supported && locationPermissionPending) {
+        setPaymentNotice('This device needs permission to accept contactless payments.');
+      } else {
+        setPaymentNotice('');
+      }
 
       const idempotencyKey = `kiosk_${restaurantId}_${amountCents}_${Date.now()}`;
       const createRes = await fetch('/api/kiosk/payments/card-present/create-session', {
@@ -361,8 +366,13 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       setContactlessDebug('native_prepare');
       const prepared = await tapToPayBridge.prepareTapToPay({ restaurantId, sessionId, backendBaseUrl });
       if (prepared.status === 'failed' || prepared.status === 'unavailable') {
+        const permissionDenied = prepared.code === 'permission_required';
         setContactlessStatus('failed');
-        setContactlessError('Contactless payment is unavailable right now. Please choose another payment method.');
+        setContactlessError(
+          permissionDenied
+            ? 'Contactless payment permission was not granted. Please choose another payment method.'
+            : 'Contactless payment is unavailable right now. Please choose another payment method.'
+        );
         setContactlessDebug(`prepare_failed:${prepared.code || 'unknown'}`);
         await fetch('/api/kiosk/payments/card-present/session-state', {
           method: 'POST',
@@ -377,6 +387,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         });
         return;
       }
+      setPaymentNotice('');
 
       const readinessCheckRes = await fetch(`/api/kiosk/payments/tap-to-pay-availability?restaurant_id=${encodeURIComponent(restaurantId)}`);
       setContactlessDebug('readiness_recheck');
