@@ -154,9 +154,11 @@ public class OrderfastTapToPayPlugin extends Plugin {
 
     @PluginMethod
     public void isTapToPaySupported(PluginCall call) {
+        logStartupStage("native_support_check_entered", new JSObject());
         JSObject result = new JSObject();
         boolean hasNfc = getContext().getPackageManager().hasSystemFeature(PackageManager.FEATURE_NFC);
         boolean hasLocationPermission = ContextCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+        PermissionState locationPermissionState = getPermissionState("location");
 
         if (!hasNfc) {
             result.put("supported", false);
@@ -168,14 +170,19 @@ public class OrderfastTapToPayPlugin extends Plugin {
             result.put("supported", true);
             result.put("reason", "Tap to Pay prerequisites satisfied.");
         }
-        logStartupStage("native_support_result", result);
+        result.put("permissionState", permissionStateToString(locationPermissionState));
+        result.put("hasNfc", hasNfc);
+        result.put("nativeStage", "native_support_check_result");
+        logStartupStage("native_support_check_result", result);
         call.resolve(result);
     }
 
     @PluginMethod
     public void prepareTapToPay(PluginCall call) {
+        logStartupStage("native_prepare_entered", new JSObject());
         if (inFlight) {
             JSObject payload = result("failed", "native_busy", "Another Tap to Pay request is active.");
+            payload.put("detail", detail("native_prepare_entered", "in_flight", null));
             logStartupStage("native_prepare_result", payload);
             call.resolve(payload);
             return;
@@ -188,12 +195,20 @@ public class OrderfastTapToPayPlugin extends Plugin {
 
         if (isBlank(currentSessionId) || isBlank(currentRestaurantId) || isBlank(currentBackendBaseUrl)) {
             inFlight = false;
-            logStartupStage("native_prepare_result", result("failed", "session_error", "Missing required Tap to Pay parameters."));
-            call.resolve(result("failed", "session_error", "Missing required Tap to Pay parameters."));
+            JSObject payload = result("failed", "session_error", "Missing required Tap to Pay parameters.");
+            payload.put("detail", detail("native_prepare_entered", "missing_params", null));
+            logStartupStage("native_prepare_result", payload);
+            call.resolve(payload);
             return;
         }
 
-        if (getPermissionState("location") != PermissionState.GRANTED) {
+        PermissionState permissionState = getPermissionState("location");
+        JSObject permissionPayload = new JSObject();
+        permissionPayload.put("permissionState", permissionStateToString(permissionState));
+        permissionPayload.put("nativeStage", "native_prepare_permission_state");
+        logStartupStage("native_prepare_permission_state", permissionPayload);
+
+        if (permissionState != PermissionState.GRANTED) {
             requestPermissionForAlias("location", call, "preparePermissionCallback");
             return;
         }
@@ -203,10 +218,18 @@ public class OrderfastTapToPayPlugin extends Plugin {
 
     @PermissionCallback
     public void preparePermissionCallback(PluginCall call) {
-        if (getPermissionState("location") != PermissionState.GRANTED) {
+        PermissionState permissionState = getPermissionState("location");
+        JSObject permissionPayload = new JSObject();
+        permissionPayload.put("permissionState", permissionStateToString(permissionState));
+        permissionPayload.put("nativeStage", "native_prepare_permission_state");
+        logStartupStage("native_prepare_permission_state", permissionPayload);
+
+        if (permissionState != PermissionState.GRANTED) {
             inFlight = false;
-            logStartupStage("native_prepare_result", result("failed", "permission_required", "Location permission is required for Tap to Pay."));
-            call.resolve(result("failed", "permission_required", "Location permission is required for Tap to Pay."));
+            JSObject payload = result("failed", "permission_required", "Location permission is required for Tap to Pay.");
+            payload.put("detail", detail("native_prepare_permission_state", "permission_not_granted", null));
+            logStartupStage("native_prepare_result", payload);
+            call.resolve(payload);
             return;
         }
         prepareAfterPermission(call);
@@ -221,6 +244,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 status = "failed";
                 inFlight = false;
                 JSObject payload = result("failed", normalizeErrorCode(e), e.getMessage());
+                payload.put("detail", exceptionDetail(e, "native_prepare_entered", "terminal_init_failed"));
                 logStartupStage("native_prepare_result", payload);
                 call.resolve(payload);
                 return;
@@ -230,6 +254,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 status = "ready";
                 inFlight = false;
                 JSObject payload = result("ready", null, "Tap to Pay reader is already connected.");
+                payload.put("detail", detail("native_prepare_result", "already_connected", null));
                 logStartupStage("native_prepare_result", payload);
                 call.resolve(payload);
                 return;
@@ -247,13 +272,23 @@ public class OrderfastTapToPayPlugin extends Plugin {
                     @Override
                     public void onSuccess() {
                         if (lastDiscoveredReaders == null || lastDiscoveredReaders.isEmpty()) {
+                            JSObject discoveryPayload = new JSObject();
+                            discoveryPayload.put("result", "failed");
+                            discoveryPayload.put("readersDiscovered", 0);
+                            logStartupStage("native_discovery_result", discoveryPayload);
                             status = "failed";
                             inFlight = false;
                             JSObject payload = result("failed", "unsupported", "No Tap to Pay reader discovered on this device.");
+                            payload.put("detail", detail("native_discovery_result", "no_readers", null));
                             logStartupStage("native_prepare_result", payload);
                             call.resolve(payload);
                             return;
                         }
+                        JSObject discoveryPayload = new JSObject();
+                        discoveryPayload.put("result", "success");
+                        discoveryPayload.put("readersDiscovered", lastDiscoveredReaders.size());
+                        discoveryPayload.put("readerLabel", lastDiscoveredReaders.get(0).getLabel());
+                        logStartupStage("native_discovery_result", discoveryPayload);
                         Reader selected = lastDiscoveredReaders.get(0);
                         ConnectionConfiguration.TapToPayConnectionConfiguration config =
                             new ConnectionConfiguration.TapToPayConnectionConfiguration("Orderfast", true, tapToPayReaderListener);
@@ -268,7 +303,12 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                     status = "ready";
                                     inFlight = false;
                                     discoverCancelable = null;
+                                    JSObject connectionPayload = new JSObject();
+                                    connectionPayload.put("result", "success");
+                                    connectionPayload.put("readerLabel", reader.getLabel());
+                                    logStartupStage("native_connection_result", connectionPayload);
                                     JSObject payload = result("ready", null, "Tap to Pay ready to collect payment.");
+                                    payload.put("detail", detail("native_connection_result", "connected", null));
                                     logStartupStage("native_prepare_result", payload);
                                     call.resolve(payload);
                                 }
@@ -278,7 +318,9 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                     status = "failed";
                                     inFlight = false;
                                     discoverCancelable = null;
+                                    logStartupStage("native_connection_result", terminalFailurePayload("native_connection_result", e));
                                     JSObject payload = result("failed", normalizeErrorCode(e), buildErrorMessage(e));
+                                    payload.put("detail", terminalErrorDetail(e, "native_connection_result"));
                                     logStartupStage("native_prepare_result", payload);
                                     call.resolve(payload);
                                 }
@@ -291,7 +333,9 @@ public class OrderfastTapToPayPlugin extends Plugin {
                         status = "failed";
                         inFlight = false;
                         discoverCancelable = null;
+                        logStartupStage("native_discovery_result", terminalFailurePayload("native_discovery_result", e));
                         JSObject payload = result("failed", normalizeErrorCode(e), buildErrorMessage(e));
+                        payload.put("detail", terminalErrorDetail(e, "native_discovery_result"));
                         logStartupStage("native_prepare_result", payload);
                         call.resolve(payload);
                     }
@@ -302,9 +346,11 @@ public class OrderfastTapToPayPlugin extends Plugin {
 
     @PluginMethod
     public void startTapToPayPayment(PluginCall call) {
+        logStartupStage("native_start_entered", new JSObject());
         if (inFlight) {
             JSObject payload = result("failed", "native_busy", "Another Tap to Pay request is active.");
-            logStartupStage("native_start_result", payload);
+            payload.put("detail", detail("native_start_entered", "in_flight", null));
+            logStartupStage("native_collect_result", payload);
             call.resolve(payload);
             return;
         }
@@ -315,7 +361,8 @@ public class OrderfastTapToPayPlugin extends Plugin {
 
         if (sessionId.isEmpty() || restaurantId.isEmpty() || backendBaseUrl.isEmpty()) {
             JSObject payload = result("failed", "session_error", "Missing required Tap to Pay parameters.");
-            logStartupStage("native_start_result", payload);
+            payload.put("detail", detail("native_start_entered", "missing_params", null));
+            logStartupStage("native_collect_result", payload);
             call.resolve(payload);
             return;
         }
@@ -326,7 +373,9 @@ public class OrderfastTapToPayPlugin extends Plugin {
 
         if (connectedReader == null || !Terminal.isInitialized() || Terminal.getInstance().getConnectionStatus() != ConnectionStatus.CONNECTED) {
             JSObject payload = result("failed", "session_error", "Tap to Pay reader is not connected. Prepare Tap to Pay first.");
-            logStartupStage("native_start_result", payload);
+            payload.put("detail", detail("native_connection_result", "reader_not_connected", null));
+            logStartupStage("native_connection_result", payload);
+            logStartupStage("native_collect_result", payload);
             call.resolve(payload);
             return;
         }
@@ -356,6 +405,11 @@ public class OrderfastTapToPayPlugin extends Plugin {
                     @Override
                     public void onSuccess(PaymentIntent paymentIntent) {
                         activePaymentIntent = paymentIntent;
+                        JSObject collectPayload = new JSObject();
+                        collectPayload.put("result", "success");
+                        collectPayload.put("nativeStage", "native_collect_result");
+                        collectPayload.put("paymentIntentId", paymentIntent.getId());
+                        logStartupStage("native_collect_result", collectPayload);
                         postSessionState("processing", "native_process_start");
                         status = "processing";
                         processCancelable = Terminal.getInstance().processPaymentIntent(
@@ -372,12 +426,14 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                         status = "succeeded";
                                         postSessionState("processing", "native_process_succeeded");
                                         JSObject payload = result("succeeded", null, "Tap to Pay payment processed by Stripe Terminal SDK.");
-                                        logStartupStage("native_start_result", payload);
+                                        payload.put("detail", detail("native_process_result", "succeeded", null));
+                                        logStartupStage("native_process_result", payload);
                                         resolveOnce(resolveGate, call, payload);
                                     } else {
                                         status = "failed";
                                         JSObject payload = result("failed", "processing_error", "Unexpected PaymentIntent status: " + intent.getStatus());
-                                        logStartupStage("native_start_result", payload);
+                                        payload.put("detail", detail("native_process_result", "unexpected_status", String.valueOf(intent.getStatus())));
+                                        logStartupStage("native_process_result", payload);
                                         resolveOnce(resolveGate, call, payload);
                                     }
                                     processCancelable = null;
@@ -392,7 +448,8 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                     postSessionState("failed", "native_process_failed");
                                     processCancelable = null;
                                     JSObject payload = result("failed", normalizeErrorCode(e), buildErrorMessage(e));
-                                    logStartupStage("native_start_result", payload);
+                                    payload.put("detail", terminalErrorDetail(e, "native_process_result"));
+                                    logStartupStage("native_process_result", payload);
                                     resolveOnce(resolveGate, call, payload);
                                 }
                             }
@@ -405,7 +462,8 @@ public class OrderfastTapToPayPlugin extends Plugin {
                         status = "failed";
                         inFlight = false;
                         JSObject payload = result("failed", normalizeErrorCode(e), buildErrorMessage(e));
-                        logStartupStage("native_start_result", payload);
+                        payload.put("detail", terminalErrorDetail(e, "native_collect_result"));
+                        logStartupStage("native_collect_result", payload);
                         resolveOnce(resolveGate, call, payload);
                     }
                 }));
@@ -414,7 +472,8 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 status = "failed";
                 inFlight = false;
                 JSObject payload = result("failed", normalizeErrorCode(ex), ex.getMessage());
-                logStartupStage("native_start_result", payload);
+                payload.put("detail", exceptionDetail(ex, "native_collect_result", "start_exception"));
+                logStartupStage("native_collect_result", payload);
                 resolveOnce(resolveGate, call, payload);
             }
         });
@@ -423,6 +482,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
     @PluginMethod
     public void cancelTapToPayPayment(PluginCall call) {
         clearOperationTimeout();
+        logStartupStage("native_cancel_result", detail("native_cancel_result", "entered", null));
         mainHandler.post(() -> {
             try {
                 if (processCancelable != null && !processCancelable.isCompleted()) {
@@ -434,7 +494,10 @@ public class OrderfastTapToPayPlugin extends Plugin {
                             activePaymentIntent = null;
                             processCancelable = null;
                             postSessionState("canceled", "native_cancel");
-                            call.resolve(result("canceled", "canceled", "Tap to Pay canceled."));
+                            JSObject payload = result("canceled", "canceled", "Tap to Pay canceled.");
+                            payload.put("detail", detail("native_cancel_result", "process_cancelable_canceled", null));
+                            logStartupStage("native_cancel_result", payload);
+                            call.resolve(payload);
                         }
 
                         @Override
@@ -442,7 +505,10 @@ public class OrderfastTapToPayPlugin extends Plugin {
                             status = "failed";
                             inFlight = false;
                             processCancelable = null;
-                            call.resolve(result("failed", normalizeErrorCode(e), buildErrorMessage(e)));
+                            JSObject payload = result("failed", normalizeErrorCode(e), buildErrorMessage(e));
+                            payload.put("detail", terminalErrorDetail(e, "native_cancel_result"));
+                            logStartupStage("native_cancel_result", payload);
+                            call.resolve(payload);
                         }
                     });
                     return;
@@ -457,7 +523,10 @@ public class OrderfastTapToPayPlugin extends Plugin {
                             activePaymentIntent = null;
                             processCancelable = null;
                             postSessionState("canceled", "native_cancel");
-                            call.resolve(result("canceled", "canceled", "Tap to Pay canceled."));
+                            JSObject payload = result("canceled", "canceled", "Tap to Pay canceled.");
+                            payload.put("detail", detail("native_cancel_result", "payment_intent_canceled", null));
+                            logStartupStage("native_cancel_result", payload);
+                            call.resolve(payload);
                         }
 
                         @Override
@@ -465,7 +534,10 @@ public class OrderfastTapToPayPlugin extends Plugin {
                             status = "failed";
                             inFlight = false;
                             processCancelable = null;
-                            call.resolve(result("failed", normalizeErrorCode(e), buildErrorMessage(e)));
+                            JSObject payload = result("failed", normalizeErrorCode(e), buildErrorMessage(e));
+                            payload.put("detail", terminalErrorDetail(e, "native_cancel_result"));
+                            logStartupStage("native_cancel_result", payload);
+                            call.resolve(payload);
                         }
                     });
                     return;
@@ -474,11 +546,17 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 status = "canceled";
                 inFlight = false;
                 processCancelable = null;
-                call.resolve(result("canceled", "canceled", "No active payment was running."));
+                JSObject payload = result("canceled", "canceled", "No active payment was running.");
+                payload.put("detail", detail("native_cancel_result", "no_active_payment", null));
+                logStartupStage("native_cancel_result", payload);
+                call.resolve(payload);
             } catch (Exception ex) {
                 status = "failed";
                 inFlight = false;
-                call.resolve(result("failed", normalizeErrorCode(ex), ex.getMessage()));
+                JSObject payload = result("failed", normalizeErrorCode(ex), ex.getMessage());
+                payload.put("detail", exceptionDetail(ex, "native_cancel_result", "cancel_exception"));
+                logStartupStage("native_cancel_result", payload);
+                call.resolve(payload);
             }
         });
     }
@@ -623,7 +701,8 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 inFlight = false;
                 postSessionState("needs_reconciliation", "native_timeout");
                 JSObject payload = result("failed", "processing_error", "Tap to Pay timed out. Please retry.");
-                logStartupStage("native_start_result", payload);
+                payload.put("detail", detail("native_process_result", "timeout", null));
+                logStartupStage("native_process_result", payload);
                 resolveOnce(resolveGate, call, payload);
             }
         };
@@ -699,6 +778,56 @@ public class OrderfastTapToPayPlugin extends Plugin {
 
     private void logStartupStage(String stage, JSObject payload) {
         Log.i(TAG, "[kiosk][" + stage + "] " + payload.toString());
+    }
+
+    private JSObject terminalFailurePayload(String stage, TerminalException e) {
+        JSObject payload = new JSObject();
+        payload.put("result", "failed");
+        payload.put("code", normalizeErrorCode(e));
+        payload.put("message", buildErrorMessage(e));
+        payload.put("detail", terminalErrorDetail(e, stage));
+        return payload;
+    }
+
+    private JSObject terminalErrorDetail(TerminalException e, String stage) {
+        JSObject detail = new JSObject();
+        detail.put("nativeStage", stage);
+        detail.put("terminalCode", e.getErrorCode() == null ? "UNKNOWN" : e.getErrorCode().name());
+        detail.put("message", buildErrorMessage(e));
+        if (e.getCause() != null && e.getCause().getMessage() != null) {
+            detail.put("cause", e.getCause().getMessage());
+        }
+        return detail;
+    }
+
+    private JSObject exceptionDetail(Exception e, String stage, String reason) {
+        JSObject detail = new JSObject();
+        detail.put("nativeStage", stage);
+        detail.put("reason", reason);
+        detail.put("exceptionClass", e.getClass().getSimpleName());
+        if (e.getMessage() != null) {
+            detail.put("exceptionMessage", e.getMessage());
+        }
+        return detail;
+    }
+
+    private JSObject detail(String stage, String reason, String extra) {
+        JSObject detail = new JSObject();
+        detail.put("nativeStage", stage);
+        detail.put("reason", reason);
+        if (extra != null) {
+            detail.put("extra", extra);
+        }
+        return detail;
+    }
+
+    private String permissionStateToString(PermissionState state) {
+        if (state == null) return "unknown";
+        if (state == PermissionState.GRANTED) return "granted";
+        if (state == PermissionState.PROMPT) return "prompt";
+        if (state == PermissionState.PROMPT_WITH_RATIONALE) return "prompt_with_rationale";
+        if (state == PermissionState.DENIED) return "denied";
+        return String.valueOf(state);
     }
 
     private String escapeJson(String value) {

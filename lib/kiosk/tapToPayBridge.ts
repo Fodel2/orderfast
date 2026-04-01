@@ -27,10 +27,12 @@ export type TapToPayResult = {
   code?: TapToPayErrorCode;
   message?: string;
   sessionId?: string;
+  detail?: unknown;
+  nativeStage?: string;
 };
 
 export interface TapToPayPlugin {
-  isTapToPaySupported(): Promise<{ supported: boolean; reason?: string }>;
+  isTapToPaySupported(): Promise<{ supported: boolean; reason?: string; permissionState?: string; nativeStage?: string }>;
   prepareTapToPay(options: { restaurantId: string; sessionId: string; backendBaseUrl: string }): Promise<TapToPayResult>;
   startTapToPayPayment(options: { restaurantId: string; sessionId: string; backendBaseUrl: string }): Promise<TapToPayResult>;
   cancelTapToPayPayment(): Promise<TapToPayResult>;
@@ -58,6 +60,8 @@ const webUnavailable = async (): Promise<TapToPayResult> => ({
   status: 'unavailable',
   code: 'unsupported',
   message: 'Tap to Pay is only available in the Orderfast Android kiosk app.',
+  detail: { nativeStage: 'bridge', reason: 'not_native_platform' },
+  nativeStage: 'bridge',
 });
 
 export const tapToPayBridge: TapToPayPlugin = {
@@ -65,21 +69,37 @@ export const tapToPayBridge: TapToPayPlugin = {
     try {
       return await TapToPayNative.isTapToPaySupported();
     } catch (error) {
-      return { supported: false, reason: `Tap to Pay native bridge unavailable: ${readErrorMessage(error)}` };
+      return {
+        supported: false,
+        reason: `Tap to Pay native bridge unavailable: ${readErrorMessage(error)}`,
+        nativeStage: 'bridge',
+      };
     }
   },
   async prepareTapToPay(options) {
     try {
       return await TapToPayNative.prepareTapToPay(options);
     } catch (error) {
-      return { status: 'unavailable', code: 'unsupported', message: `Tap to Pay native bridge unavailable: ${readErrorMessage(error)}` };
+      return {
+        status: 'unavailable',
+        code: 'unsupported',
+        message: `Tap to Pay native bridge unavailable: ${readErrorMessage(error)}`,
+        detail: { nativeStage: 'bridge', reason: 'prepare_bridge_unavailable' },
+        nativeStage: 'bridge',
+      };
     }
   },
   async startTapToPayPayment(options) {
     try {
       return await TapToPayNative.startTapToPayPayment(options);
     } catch (error) {
-      return { status: 'unavailable', code: 'unsupported', message: `Tap to Pay native bridge unavailable: ${readErrorMessage(error)}` };
+      return {
+        status: 'unavailable',
+        code: 'unsupported',
+        message: `Tap to Pay native bridge unavailable: ${readErrorMessage(error)}`,
+        detail: { nativeStage: 'bridge', reason: 'start_bridge_unavailable' },
+        nativeStage: 'bridge',
+      };
     }
   },
   async cancelTapToPayPayment() {
@@ -93,7 +113,13 @@ export const tapToPayBridge: TapToPayPlugin = {
     try {
       return await TapToPayNative.getTapToPayStatus();
     } catch (error) {
-      return { status: 'unavailable', code: 'unsupported', message: `Tap to Pay native bridge unavailable: ${readErrorMessage(error)}` };
+      return {
+        status: 'unavailable',
+        code: 'unsupported',
+        message: `Tap to Pay native bridge unavailable: ${readErrorMessage(error)}`,
+        detail: { nativeStage: 'bridge', reason: 'status_bridge_unavailable' },
+        nativeStage: 'bridge',
+      };
     }
   },
 };
