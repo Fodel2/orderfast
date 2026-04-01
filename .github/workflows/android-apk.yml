@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Android APKs
 
 on:
   workflow_dispatch:
@@ -7,12 +7,18 @@ permissions:
   contents: write
 
 jobs:
-  build-apk:
+  build-apks:
     runs-on: ubuntu-latest
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      KIOSK_RELEASE_TAG: kiosk-debug-testing
-      KIOSK_RELEASE_ASSET_NAME: orderfast-kiosk-debug.apk
+      KIOSK_DEBUG_RELEASE_TAG: kiosk-debug-testing
+      KIOSK_DEBUG_ASSET_NAME: orderfast-kiosk-debug.apk
+      KIOSK_TAPTOPAY_RELEASE_TAG: kiosk-taptopay-release-testing
+      KIOSK_TAPTOPAY_ASSET_NAME: orderfast-kiosk-taptopay-release.apk
+      ANDROID_KEYSTORE_PATH: android/release-keystore.jks
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
 
     steps:
       - name: Checkout repo
@@ -87,14 +93,44 @@ jobs:
       - name: Sync Capacitor Android
         run: npx cap sync android
 
-      - name: Build debug APK
+      - name: Prepare release signing (keystore secret)
+        run: |
+          if [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
+            echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > "$ANDROID_KEYSTORE_PATH"
+            echo "has_release_keystore=true" >> "$GITHUB_ENV"
+            echo "Loaded release keystore from ANDROID_KEYSTORE_BASE64 secret"
+          else
+            echo "has_release_keystore=false" >> "$GITHUB_ENV"
+            echo "ANDROID_KEYSTORE_BASE64 is not set; using debug signing key for release testing APK"
+          fi
+
+      - name: Build debug and release APKs
         run: |
           cd android
-          ./gradlew assembleDebug
+          if [ "$has_release_keystore" = "true" ]; then
+            ./gradlew assembleDebug assembleRelease \
+              -PORDERFAST_UPLOAD_STORE_FILE="$ANDROID_KEYSTORE_PATH" \
+              -PORDERFAST_UPLOAD_KEY_ALIAS="$ANDROID_KEY_ALIAS" \
+              -PORDERFAST_UPLOAD_STORE_PASSWORD="$ANDROID_KEYSTORE_PASSWORD" \
+              -PORDERFAST_UPLOAD_KEY_PASSWORD="$ANDROID_KEY_PASSWORD"
+          else
+            ./gradlew assembleDebug assembleRelease
+          fi
 
-      - name: Prepare kiosk release asset
+      - name: Verify release manifest is non-debuggable
         run: |
-          cp android/app/build/outputs/apk/debug/app-debug.apk "$KIOSK_RELEASE_ASSET_NAME"
+          MANIFEST_PATH="android/app/build/intermediates/merged_manifests/release/AndroidManifest.xml"
+          test -f "$MANIFEST_PATH"
+          if rg -n 'android:debuggable="true"' "$MANIFEST_PATH"; then
+            echo "Release manifest is debuggable, failing build"
+            exit 1
+          fi
+          echo "Release manifest verified: android:debuggable is not true"
+
+      - name: Prepare APK release assets
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk "$KIOSK_DEBUG_ASSET_NAME"
+          cp android/app/build/outputs/apk/release/app-release.apk "$KIOSK_TAPTOPAY_ASSET_NAME"
 
       - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
@@ -102,11 +138,26 @@ jobs:
           name: orderfast-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
 
+      - name: Upload Tap to Pay release APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: orderfast-taptopay-release-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
+
       - name: Upload kiosk debug APK to stable GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.KIOSK_RELEASE_TAG }}
+          tag_name: ${{ env.KIOSK_DEBUG_RELEASE_TAG }}
           name: Kiosk Debug APK (Testing)
           prerelease: true
           make_latest: false
-          files: ${{ env.KIOSK_RELEASE_ASSET_NAME }}
+          files: ${{ env.KIOSK_DEBUG_ASSET_NAME }}
+
+      - name: Upload kiosk Tap to Pay release APK to stable GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.KIOSK_TAPTOPAY_RELEASE_TAG }}
+          name: Kiosk Tap to Pay Release APK (Testing)
+          prerelease: true
+          make_latest: false
+          files: ${{ env.KIOSK_TAPTOPAY_ASSET_NAME }}

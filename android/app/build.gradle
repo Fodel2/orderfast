@@ -1,5 +1,10 @@
 apply plugin: 'com.android.application'
 
+def hasReleaseSigningProps = project.hasProperty('ORDERFAST_UPLOAD_STORE_FILE') &&
+    project.hasProperty('ORDERFAST_UPLOAD_KEY_ALIAS') &&
+    project.hasProperty('ORDERFAST_UPLOAD_STORE_PASSWORD') &&
+    project.hasProperty('ORDERFAST_UPLOAD_KEY_PASSWORD')
+
 android {
     namespace "com.orderfast.app"
     compileSdk rootProject.ext.compileSdkVersion
@@ -16,10 +21,29 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
-    buildTypes {
+    signingConfigs {
         release {
+            if (hasReleaseSigningProps) {
+                storeFile file(project.property('ORDERFAST_UPLOAD_STORE_FILE'))
+                storePassword project.property('ORDERFAST_UPLOAD_STORE_PASSWORD')
+                keyAlias project.property('ORDERFAST_UPLOAD_KEY_ALIAS')
+                keyPassword project.property('ORDERFAST_UPLOAD_KEY_PASSWORD')
+            }
+        }
+    }
+    buildTypes {
+        debug {
+            debuggable true
+        }
+        release {
+            debuggable false
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (hasReleaseSigningProps) {
+                signingConfig signingConfigs.release
+            } else {
+                signingConfig signingConfigs.debug
+            }
         }
     }
     compileOptions {
