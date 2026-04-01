@@ -43,6 +43,69 @@ const terminalActionLabel = (readiness: TerminalPaymentReadiness | null) => {
   }
 };
 
+const resolveTapToPayBlocker = (
+  snapshot: StripeConnectionSnapshot | null,
+  readiness: TerminalPaymentReadiness | null
+): { category: string; reason: string } | null => {
+  if (!snapshot || !readiness) return null;
+  if (readiness.tap_to_pay_available) return null;
+
+  const combinedReason = `${readiness.description || ''} ${snapshot.terminal_readiness_reason || ''}`.toLowerCase();
+  const capabilitiesActive =
+    snapshot.card_payments_capability === 'active' && snapshot.charges_enabled && snapshot.payouts_enabled;
+
+  if (!snapshot.stripe_connected_account_id || readiness.status === 'not_connected') {
+    return {
+      category: 'Stripe onboarding not connected',
+      reason: 'Connect and complete Stripe onboarding for this restaurant before Tap to Pay can be prepared.',
+    };
+  }
+
+  if (readiness.status === 'temporarily_unavailable' || snapshot.onboarding_status === 'restricted' || !!snapshot.disabled_reason) {
+    return {
+      category: 'Temporary unavailable / readiness failure',
+      reason:
+        readiness.description ||
+        snapshot.terminal_readiness_reason ||
+        'Stripe has temporarily restricted this account. Resolve Stripe restrictions, then retry setup.',
+    };
+  }
+
+  if (combinedReason.includes('address')) {
+    return {
+      category: 'Restaurant address incomplete',
+      reason:
+        readiness.description ||
+        snapshot.terminal_readiness_reason ||
+        'Restaurant address details are incomplete. Add line 1, city, postcode, and country to continue setup.',
+    };
+  }
+
+  if (!snapshot.stripe_terminal_location_id || readiness.status === 'terminal_not_configured') {
+    return {
+      category: 'Terminal location missing / not created',
+      reason:
+        readiness.description ||
+        snapshot.terminal_readiness_reason ||
+        'A Stripe Terminal location has not been created yet. Run setup again after fixing any prerequisites.',
+    };
+  }
+
+  if (!capabilitiesActive || readiness.status === 'stripe_setup_incomplete') {
+    return {
+      category: 'Capabilities not active',
+      reason:
+        readiness.description ||
+        'Stripe capabilities are not active yet (card payments/charges/payouts). Finish Stripe setup and retry.',
+    };
+  }
+
+  return {
+    category: 'Temporary unavailable / readiness failure',
+    reason: readiness.description || snapshot.terminal_readiness_reason || 'Tap to Pay readiness failed. Retry setup.',
+  };
+};
+
 export default function DashboardSettingsPaymentsPage() {
   const [restaurantId, setRestaurantId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -253,7 +316,7 @@ export default function DashboardSettingsPaymentsPage() {
       await setupTapToPayReadiness();
       return;
     }
-    await refreshStripeStatus(false);
+    await refreshStripeStatus(true);
   }, [createOnboardingLink, paymentReadiness?.recommended_action, refreshStripeStatus, setupTapToPayReadiness]);
 
   const stripePrimaryLabel = useMemo(() => {
@@ -263,6 +326,11 @@ export default function DashboardSettingsPaymentsPage() {
     if (action === 'refresh_status') return 'Refresh status';
     return 'Manage Stripe';
   }, [stripeReadiness?.primary_action]);
+
+  const tapToPayBlocker = useMemo(
+    () => resolveTapToPayBlocker(stripeSnapshot, paymentReadiness),
+    [paymentReadiness, stripeSnapshot]
+  );
 
   if (loading) {
     return <DashboardLayout>Loading payment settings...</DashboardLayout>;
@@ -485,6 +553,26 @@ export default function DashboardSettingsPaymentsPage() {
                     <p className="mt-2 text-xs text-gray-600">
                       {paymentReadiness?.description || 'Tap to Pay setup/readiness updates will appear here.'}
                     </p>
+                    <dl className="mt-3 grid gap-2 text-xs text-gray-700 sm:grid-cols-2">
+                      <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                        <dt className="uppercase tracking-wide text-gray-500">Final readiness state</dt>
+                        <dd className="mt-1 font-semibold text-gray-900">{paymentReadiness?.status || 'unknown'}</dd>
+                      </div>
+                      <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                        <dt className="uppercase tracking-wide text-gray-500">Terminal location value</dt>
+                        <dd className="mt-1 font-semibold text-gray-900">
+                          {stripeSnapshot?.stripe_terminal_location_display_name ||
+                            stripeSnapshot?.stripe_terminal_location_id ||
+                            'Not created'}
+                        </dd>
+                      </div>
+                    </dl>
+                    {!paymentReadiness?.tap_to_pay_available && tapToPayBlocker ? (
+                      <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                        <p className="font-semibold">Current blocker: {tapToPayBlocker.category}</p>
+                        <p className="mt-1">{tapToPayBlocker.reason}</p>
+                      </div>
+                    ) : null}
                   </div>
 
                   {stripeSnapshot?.disabled_reason ? (
