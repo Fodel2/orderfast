@@ -9,8 +9,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!restaurantId) return res.status(400).json({ error: 'restaurant_id is required' });
 
     const tap_to_pay_available = await isTapToPayAvailableForRestaurant(restaurantId);
+    console.info('[kiosk][availability_result]', { restaurant_id: restaurantId, tap_to_pay_available });
     return res.status(200).json({ tap_to_pay_available });
   } catch (error: any) {
-    return res.status(400).json({ error: error?.message || 'Failed to check readiness' });
+    const detail = error?.message || 'Failed to check readiness';
+    console.error('[kiosk][availability_result] failed', {
+      restaurant_id: String(req.query.restaurant_id || ''),
+      error: detail,
+    });
+    return res.status(400).json({ error: detail });
   }
 }

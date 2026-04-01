@@ -19,8 +19,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       orderId: order_id ? String(order_id) : null,
     });
 
+    console.info('[kiosk][session_create_result]', {
+      restaurant_id: String(restaurant_id),
+      session_id: session.id,
+      amount_cents: Number(amount_cents),
+      currency: String(currency),
+    });
     return res.status(200).json({ session });
   } catch (error: any) {
-    return res.status(400).json({ error: error?.message || 'Failed to create session' });
+    const detail = error?.message || 'Failed to create session';
+    console.error('[kiosk][session_create_result] failed', {
+      restaurant_id: req.body?.restaurant_id ? String(req.body.restaurant_id) : null,
+      amount_cents: req.body?.amount_cents ?? null,
+      currency: req.body?.currency ? String(req.body.currency) : null,
+      error: detail,
+    });
+    return res.status(400).json({ error: detail });
   }
 }

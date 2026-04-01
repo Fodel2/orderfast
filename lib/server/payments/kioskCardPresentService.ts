@@ -23,6 +23,19 @@ const assertState = (state: string): KioskCardPresentSessionState => {
   throw new Error(`Invalid kiosk payment session state: ${state}`);
 };
 
+const serializeStripeError = (error: unknown) => {
+  if (!error || typeof error !== 'object') return { message: String(error || 'Unknown Stripe error') };
+  const stripeError = error as Record<string, unknown>;
+  return {
+    message: typeof stripeError.message === 'string' ? stripeError.message : 'Unknown Stripe error',
+    type: stripeError.type ?? null,
+    code: stripeError.code ?? null,
+    decline_code: stripeError.decline_code ?? null,
+    payment_intent: stripeError.payment_intent ?? null,
+    raw: stripeError.raw ?? null,
+  };
+};
+
 export const createKioskCardPresentSession = async (input: {
   restaurantId: string;
   amountCents: number;
@@ -179,37 +192,53 @@ export const createOrRetrieveCardPresentPaymentIntentForSession = async (input: 
 
   const stripe = getStripeClient();
   const stripeAccount = session.stripe_connected_account_id;
+  const paymentIntentParams: Stripe.PaymentIntentCreateParams = {
+    amount: session.amount_cents,
+    currency: session.currency,
+    payment_method_types: ['card_present'],
+    capture_method: 'automatic',
+    metadata: {
+      restaurant_id: session.restaurant_id,
+      kiosk_payment_session_id: session.id,
+    },
+  };
 
   let paymentIntent: Stripe.PaymentIntent;
-  if (session.stripe_payment_intent_id) {
-    paymentIntent = await stripe.paymentIntents.retrieve(session.stripe_payment_intent_id, { stripeAccount });
-  } else {
-    paymentIntent = await stripe.paymentIntents.create(
-      {
-        amount: session.amount_cents,
-        currency: session.currency,
-        payment_method_types: ['card_present'],
-        capture_method: 'automatic',
-        metadata: {
-          restaurant_id: session.restaurant_id,
-          kiosk_payment_session_id: session.id,
-        },
-      },
-      {
+  try {
+    if (session.stripe_payment_intent_id) {
+      paymentIntent = await stripe.paymentIntents.retrieve(session.stripe_payment_intent_id, { stripeAccount });
+    } else {
+      paymentIntent = await stripe.paymentIntents.create(paymentIntentParams, {
         stripeAccount,
         idempotencyKey: `kiosk_pi_${session.id}`,
-      }
-    );
+      });
 
-    const { error } = await supaServer
-      .from('kiosk_card_present_sessions')
-      .update({
-        stripe_payment_intent_id: paymentIntent.id,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', session.id);
+      const { error } = await supaServer
+        .from('kiosk_card_present_sessions')
+        .update({
+          stripe_payment_intent_id: paymentIntent.id,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', session.id);
 
-    if (error) throw error;
+      if (error) throw error;
+    }
+  } catch (error) {
+    const context = {
+      session_id: session.id,
+      restaurant_id: session.restaurant_id,
+      connected_account_id: stripeAccount,
+      terminal_location_id: session.stripe_terminal_location_id,
+      amount: session.amount_cents,
+      currency: session.currency,
+      payment_intent_params_shape: {
+        ...paymentIntentParams,
+        metadata: Object.keys(paymentIntentParams.metadata || {}),
+      },
+      stripe_error: serializeStripeError(error),
+    };
+    console.error('[kiosk][payment_intent_result] failed', context);
+    throw new Error(`payment_intent_result failed: ${JSON.stringify(context)}`);
   }
 
   await markKioskPaymentSessionState({
