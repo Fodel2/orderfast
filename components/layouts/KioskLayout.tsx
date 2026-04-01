@@ -24,6 +24,7 @@ import {
 } from '@/utils/kiosk/debug';
 import { getExpressSession } from '@/utils/express/session';
 import { useCustomerAvailability } from '@/hooks/useCustomerAvailability';
+import { tapToPayBridge } from '@/lib/kiosk/tapToPayBridge';
 
 export const FULL_HEADER_HEIGHT = 136;
 export const COLLAPSED_HEADER_HEIGHT = 88;
@@ -36,6 +37,7 @@ const TEMP_OPERATOR_EXIT_PIN = '2580';
 const DEBUG_COLLAPSED_SIZE = 56;
 const DEBUG_PANEL_WIDTH = 320;
 const DEBUG_PANEL_HEIGHT = 280;
+const TAP_TO_PAY_SETUP_STORAGE_KEY = 'orderfast_kiosk_tap_to_pay_setup_ready';
 
 interface WakeLockSentinel {
   released: boolean;
@@ -210,6 +212,35 @@ export default function KioskLayout({
     setIsNativeShell(nativeShell);
   }, []);
 
+  const isExpressActive = isExpressRoute || hasExpressQueryFlag || isExpressSession;
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!isNativeShell || isExpressActive) return;
+
+    let cancelled = false;
+    const runSetupCheck = async () => {
+      const setup = await tapToPayBridge.ensureTapToPaySetup({ promptIfNeeded: true });
+      if (cancelled) return;
+      const ready = Boolean(setup.ready);
+      window.localStorage.setItem(
+        TAP_TO_PAY_SETUP_STORAGE_KEY,
+        JSON.stringify({
+          ready,
+          checkedAt: new Date().toISOString(),
+          permissionState: setup.permissionState || null,
+          locationServicesEnabled: setup.locationServicesEnabled ?? null,
+          reason: setup.reason || null,
+        })
+      );
+    };
+
+    void runSetupCheck();
+    return () => {
+      cancelled = true;
+    };
+  }, [isExpressActive, isNativeShell]);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
@@ -226,8 +257,6 @@ export default function KioskLayout({
       window.removeEventListener('focus', syncExpressSession);
     };
   }, [resolveExpressSessionState, router.asPath]);
-
-  const isExpressActive = isExpressRoute || hasExpressQueryFlag || isExpressSession;
 
   useEffect(() => {
     if (typeof window === 'undefined' || isExpressActive) return;
