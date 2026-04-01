@@ -32,7 +32,21 @@ export type TapToPayResult = {
 };
 
 export interface TapToPayPlugin {
-  isTapToPaySupported(): Promise<{ supported: boolean; reason?: string; permissionState?: string; nativeStage?: string }>;
+  isTapToPaySupported(): Promise<{
+    supported: boolean;
+    reason?: string;
+    permissionState?: string;
+    locationServicesEnabled?: boolean;
+    nativeStage?: string;
+  }>;
+  ensureTapToPaySetup(options?: { promptIfNeeded?: boolean }): Promise<{
+    ready: boolean;
+    supported: boolean;
+    reason?: string;
+    permissionState?: string;
+    locationServicesEnabled?: boolean;
+    nativeStage?: string;
+  }>;
   prepareTapToPay(options: { restaurantId: string; sessionId: string; backendBaseUrl: string; terminalLocationId: string }): Promise<TapToPayResult>;
   startTapToPayPayment(options: { restaurantId: string; sessionId: string; backendBaseUrl: string; terminalLocationId: string }): Promise<TapToPayResult>;
   cancelTapToPayPayment(): Promise<TapToPayResult>;
@@ -85,6 +99,18 @@ export const tapToPayBridge: TapToPayPlugin = {
         code: 'unsupported',
         message: `Tap to Pay native bridge unavailable: ${readErrorMessage(error)}`,
         detail: { nativeStage: 'bridge', reason: 'prepare_bridge_unavailable' },
+        nativeStage: 'bridge',
+      };
+    }
+  },
+  async ensureTapToPaySetup(options) {
+    try {
+      return await TapToPayNative.ensureTapToPaySetup(options ?? {});
+    } catch (error) {
+      return {
+        ready: false,
+        supported: false,
+        reason: `Tap to Pay native bridge unavailable: ${readErrorMessage(error)}`,
         nativeStage: 'bridge',
       };
     }

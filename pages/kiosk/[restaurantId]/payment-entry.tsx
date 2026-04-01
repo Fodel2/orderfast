@@ -82,6 +82,7 @@ export default function KioskPaymentEntryPage() {
 
 function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | null }) {
   const CONTACTLESS_SESSION_STORAGE_KEY = 'orderfast_kiosk_contactless_session';
+  const TAP_TO_PAY_SETUP_STORAGE_KEY = 'orderfast_kiosk_tap_to_pay_setup_ready';
   const router = useRouter();
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [restaurantLoading, setRestaurantLoading] = useState(true);
@@ -348,6 +349,26 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     };
 
     try {
+      if (typeof window !== 'undefined') {
+        const setupRaw = window.localStorage.getItem(TAP_TO_PAY_SETUP_STORAGE_KEY);
+        if (setupRaw) {
+          try {
+            const setupState = JSON.parse(setupRaw) as { ready?: boolean; reason?: string | null };
+            if (setupState.ready === false) {
+              failAt(
+                'native_support_check',
+                setupState.reason || 'Tap to Pay setup is incomplete on this kiosk device.',
+                'Contactless payment is temporarily unavailable. Please choose another payment method.'
+              );
+              setStage(enabledMethods.length > 1 ? 'method_picker' : 'pay_at_counter');
+              return;
+            }
+          } catch {
+            // Ignore malformed setup cache and continue with live checks.
+          }
+        }
+      }
+
       const readinessRes = await fetch(`/api/kiosk/payments/tap-to-pay-availability?restaurant_id=${encodeURIComponent(restaurantId)}`);
       const readiness = await readinessRes.json();
       logTapStageResult('availability_result', readinessRes.ok && readiness?.tap_to_pay_available ? 'ok' : 'failed', {
@@ -438,15 +459,11 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
 
       const support = await tapToPayBridge.isTapToPaySupported();
       logTapStageResult('native_support_check_result', support.supported ? 'ok' : 'failed', support);
-      const locationPermissionPending =
-        support.permissionState === 'prompt' ||
-        support.permissionState === 'prompt_with_rationale' ||
-        (support.reason || '').toLowerCase().includes('location permission');
-      if (!support.supported && !locationPermissionPending) {
+      if (!support.supported) {
         failAt(
           'native_support_check',
-          support.reason || 'Native bridge reported unsupported device state',
-          'Contactless payment is unavailable right now. Please choose another payment method.'
+          support.reason || 'Tap to Pay setup is incomplete on this kiosk device.',
+          'Contactless payment is temporarily unavailable. Please choose another payment method.'
         );
         await fetch('/api/kiosk/payments/card-present/session-state', {
           method: 'POST',
@@ -456,18 +473,38 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
             restaurant_id: restaurantId,
             next_state: 'failed',
             failure_code: 'native_support_failed',
-            failure_message: support.reason || 'Tap to Pay unsupported on this device',
+            failure_message: support.reason || 'Tap to Pay setup is incomplete on this kiosk device.',
             event_type: 'native_support_failed',
           }),
         });
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem(
+            TAP_TO_PAY_SETUP_STORAGE_KEY,
+            JSON.stringify({
+              ready: false,
+              checkedAt: new Date().toISOString(),
+              permissionState: support.permissionState || null,
+              locationServicesEnabled: support.locationServicesEnabled ?? null,
+              reason: support.reason || null,
+            })
+          );
+        }
+        setStage(enabledMethods.length > 1 ? 'method_picker' : 'pay_at_counter');
         return;
       }
-      if (!support.supported && locationPermissionPending) {
-        setPaymentNotice('This device needs permission to accept contactless payments.');
-        setContactlessDebugDetail(support.reason || 'Location permission required before prepare.');
-      } else {
-        setPaymentNotice('');
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(
+          TAP_TO_PAY_SETUP_STORAGE_KEY,
+          JSON.stringify({
+            ready: true,
+            checkedAt: new Date().toISOString(),
+            permissionState: support.permissionState || null,
+            locationServicesEnabled: support.locationServicesEnabled ?? null,
+            reason: support.reason || null,
+          })
+        );
       }
+      setPaymentNotice('');
 
       const backendBaseUrl = window.location.origin;
       setContactlessStatus('preparing');
@@ -578,7 +615,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       setContactlessBusy(false);
       flowLockRef.current = false;
     }
-  }, [CONTACTLESS_SESSION_STORAGE_KEY, amountCents, contactlessBusy, currency, reconcileSession, restaurantId]);
+  }, [CONTACTLESS_SESSION_STORAGE_KEY, TAP_TO_PAY_SETUP_STORAGE_KEY, amountCents, contactlessBusy, currency, enabledMethods.length, reconcileSession, restaurantId]);
 
   const returnToFallback = useCallback(
     (message: string) => {
