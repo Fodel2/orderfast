@@ -253,7 +253,7 @@ export default function DashboardSettingsPaymentsPage() {
       await setupTapToPayReadiness();
       return;
     }
-    await refreshStripeStatus(false);
+    await refreshStripeStatus(true);
   }, [createOnboardingLink, paymentReadiness?.recommended_action, refreshStripeStatus, setupTapToPayReadiness]);
 
   const stripePrimaryLabel = useMemo(() => {
