@@ -40,6 +40,13 @@ type TapStartupStage =
   | 'native_support_check'
   | 'native_prepare'
   | 'native_start';
+type TapStartupResultStage =
+  | 'availability_result'
+  | 'session_create_result'
+  | 'payment_intent_result'
+  | 'native_support_result'
+  | 'native_prepare_result'
+  | 'native_start_result';
 
 const PAYMENT_METHOD_META: Record<KioskPaymentMethod, { title: string; subtitle: string; icon: typeof CreditCardIcon }> = {
   contactless: {
@@ -309,6 +316,26 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     setContactlessDebug('starting');
     setContactlessDebugDetail('');
 
+    const formatDetail = (detail: unknown) => {
+      if (typeof detail === 'string') return detail;
+      try {
+        return JSON.stringify(detail);
+      } catch {
+        return String(detail);
+      }
+    };
+
+    const logTapStageResult = (stage: TapStartupResultStage, result: 'ok' | 'failed', detail: unknown) => {
+      const serialized = formatDetail(detail);
+      console[result === 'failed' ? 'error' : 'info']('[kiosk][tap_to_pay_startup]', {
+        stage,
+        result,
+        detail,
+      });
+      setContactlessDebug(`${stage}:${result}`);
+      setContactlessDebugDetail(serialized);
+    };
+
     const failAt = (stage: TapStartupStage, detail: string, customerMessage: string) => {
       setContactlessStatus('failed');
       setContactlessError(customerMessage);
@@ -318,8 +345,11 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
 
     try {
       const readinessRes = await fetch(`/api/kiosk/payments/tap-to-pay-availability?restaurant_id=${encodeURIComponent(restaurantId)}`);
-      setContactlessDebug('readiness_check');
       const readiness = await readinessRes.json();
+      logTapStageResult('availability_result', readinessRes.ok && readiness?.tap_to_pay_available ? 'ok' : 'failed', {
+        http_status: readinessRes.status,
+        payload: readiness,
+      });
       if (!readinessRes.ok || !readiness?.tap_to_pay_available) {
         failAt(
           'readiness_check',
@@ -341,6 +371,10 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         }),
       });
       const created = await createRes.json();
+      logTapStageResult('session_create_result', createRes.ok && created?.session?.id ? 'ok' : 'failed', {
+        http_status: createRes.status,
+        payload: created,
+      });
       if (!createRes.ok || !created?.session?.id) {
         failAt(
           'session_create',
@@ -362,12 +396,16 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: sessionId, restaurant_id: restaurantId }),
       });
+      const paymentIntentPayload = await paymentIntentRes.json().catch(() => ({}));
+      logTapStageResult('payment_intent_result', paymentIntentRes.ok ? 'ok' : 'failed', {
+        http_status: paymentIntentRes.status,
+        payload: paymentIntentPayload,
+      });
       if (!paymentIntentRes.ok) {
-        const paymentIntentErr = await paymentIntentRes.json().catch(() => ({}));
         failAt(
           'payment_intent',
-          paymentIntentErr?.error || `HTTP ${paymentIntentRes.status}`,
-          paymentIntentErr?.error || 'Payment failed, please try again or choose another payment method.'
+          paymentIntentPayload?.error || `HTTP ${paymentIntentRes.status}`,
+          paymentIntentPayload?.error || 'Payment failed, please try again or choose another payment method.'
         );
         await fetch('/api/kiosk/payments/card-present/session-state', {
           method: 'POST',
@@ -377,7 +415,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
             restaurant_id: restaurantId,
             next_state: 'failed',
             failure_code: 'payment_intent_failed',
-            failure_message: paymentIntentErr?.error || 'Failed to create card present payment intent',
+            failure_message: paymentIntentPayload?.error || 'Failed to create card present payment intent',
             event_type: 'payment_intent_failed',
           }),
         });
@@ -385,7 +423,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       }
 
       const support = await tapToPayBridge.isTapToPaySupported();
-      setContactlessDebug('native_support_check');
+      logTapStageResult('native_support_result', support.supported ? 'ok' : 'failed', support);
       const locationPermissionPending = (support.reason || '').toLowerCase().includes('location permission');
       if (!support.supported && !locationPermissionPending) {
         failAt(
@@ -416,8 +454,8 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
 
       const backendBaseUrl = window.location.origin;
       setContactlessStatus('preparing');
-      setContactlessDebug('native_prepare');
       const prepared = await tapToPayBridge.prepareTapToPay({ restaurantId, sessionId, backendBaseUrl });
+      logTapStageResult('native_prepare_result', prepared.status === 'ready' || prepared.status === 'preparing' ? 'ok' : 'failed', prepared);
       if (prepared.status === 'failed' || prepared.status === 'unavailable') {
         const permissionDenied = prepared.code === 'permission_required';
         setContactlessStatus('failed');
@@ -467,6 +505,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       setContactlessStatus('collecting');
       setContactlessDebug('native_collect_process');
       const started = await tapToPayBridge.startTapToPayPayment({ restaurantId, sessionId, backendBaseUrl });
+      logTapStageResult('native_start_result', started.status === 'succeeded' ? 'ok' : 'failed', started);
       if (started.status !== 'succeeded') {
         setContactlessStatus(started.status === 'canceled' ? 'canceled' : 'failed');
         setContactlessError(

@@ -39,6 +39,21 @@ export interface TapToPayPlugin {
 
 const TapToPayNative = registerPlugin<TapToPayPlugin>('OrderfastTapToPay');
 
+const readErrorMessage = (error: unknown) => {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  if (error && typeof error === 'object') {
+    const maybeMessage = (error as { message?: unknown }).message;
+    if (typeof maybeMessage === 'string' && maybeMessage.trim()) return maybeMessage;
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return 'Unknown native bridge error';
+    }
+  }
+  return 'Unknown native bridge error';
+};
+
 const webUnavailable = async (): Promise<TapToPayResult> => ({
   status: 'unavailable',
   code: 'unsupported',
@@ -49,22 +64,22 @@ export const tapToPayBridge: TapToPayPlugin = {
   async isTapToPaySupported() {
     try {
       return await TapToPayNative.isTapToPaySupported();
-    } catch {
-      return { supported: false, reason: 'Tap to Pay native bridge unavailable' };
+    } catch (error) {
+      return { supported: false, reason: `Tap to Pay native bridge unavailable: ${readErrorMessage(error)}` };
     }
   },
   async prepareTapToPay(options) {
     try {
       return await TapToPayNative.prepareTapToPay(options);
-    } catch {
-      return webUnavailable();
+    } catch (error) {
+      return { status: 'unavailable', code: 'unsupported', message: `Tap to Pay native bridge unavailable: ${readErrorMessage(error)}` };
     }
   },
   async startTapToPayPayment(options) {
     try {
       return await TapToPayNative.startTapToPayPayment(options);
-    } catch {
-      return webUnavailable();
+    } catch (error) {
+      return { status: 'unavailable', code: 'unsupported', message: `Tap to Pay native bridge unavailable: ${readErrorMessage(error)}` };
     }
   },
   async cancelTapToPayPayment() {
@@ -77,8 +92,8 @@ export const tapToPayBridge: TapToPayPlugin = {
   async getTapToPayStatus() {
     try {
       return await TapToPayNative.getTapToPayStatus();
-    } catch {
-      return { status: 'unavailable', code: 'unsupported', message: 'Tap to Pay native bridge unavailable' };
+    } catch (error) {
+      return { status: 'unavailable', code: 'unsupported', message: `Tap to Pay native bridge unavailable: ${readErrorMessage(error)}` };
     }
   },
 };

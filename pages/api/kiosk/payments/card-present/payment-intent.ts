@@ -13,8 +13,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       restaurantId: restaurant_id ? String(restaurant_id) : null,
     });
 
+    console.info('[kiosk][payment_intent_result]', {
+      session_id: String(session_id),
+      restaurant_id: restaurant_id ? String(restaurant_id) : null,
+      payment_intent_id: paymentIntent.paymentIntentId,
+      status: paymentIntent.status,
+    });
     return res.status(200).json(paymentIntent);
   } catch (error: any) {
-    return res.status(400).json({ error: error?.message || 'Failed to create/retrieve payment intent' });
+    const detail = error?.message || 'Failed to create/retrieve payment intent';
+    console.error('[kiosk][payment_intent_result] failed', {
+      session_id: req.body?.session_id ? String(req.body.session_id) : null,
+      restaurant_id: req.body?.restaurant_id ? String(req.body.restaurant_id) : null,
+      error: detail,
+    });
+    return res.status(400).json({ error: detail });
   }
 }
