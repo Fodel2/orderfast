@@ -73,6 +73,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
     private volatile String currentSessionId = null;
     private volatile String currentRestaurantId = null;
     private volatile String currentBackendBaseUrl = null;
+    private volatile String currentTerminalLocationId = null;
     private volatile Reader connectedReader = null;
     private volatile PaymentIntent activePaymentIntent = null;
     private volatile Cancelable discoverCancelable = null;
@@ -192,8 +193,9 @@ public class OrderfastTapToPayPlugin extends Plugin {
         currentSessionId = call.getString("sessionId");
         currentRestaurantId = call.getString("restaurantId");
         currentBackendBaseUrl = call.getString("backendBaseUrl");
+        currentTerminalLocationId = call.getString("terminalLocationId");
 
-        if (isBlank(currentSessionId) || isBlank(currentRestaurantId) || isBlank(currentBackendBaseUrl)) {
+        if (isBlank(currentSessionId) || isBlank(currentRestaurantId) || isBlank(currentBackendBaseUrl) || isBlank(currentTerminalLocationId)) {
             inFlight = false;
             JSObject payload = result("failed", "session_error", "Missing required Tap to Pay parameters.");
             payload.put("detail", detail("native_prepare_entered", "missing_params", null));
@@ -291,7 +293,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                         logStartupStage("native_discovery_result", discoveryPayload);
                         Reader selected = lastDiscoveredReaders.get(0);
                         ConnectionConfiguration.TapToPayConnectionConfiguration config =
-                            new ConnectionConfiguration.TapToPayConnectionConfiguration("Orderfast", true, tapToPayReaderListener);
+                            new ConnectionConfiguration.TapToPayConnectionConfiguration(currentTerminalLocationId, true, tapToPayReaderListener);
 
                         Terminal.getInstance().connectReader(
                             selected,
@@ -358,8 +360,9 @@ public class OrderfastTapToPayPlugin extends Plugin {
         final String sessionId = call.getString("sessionId", "");
         final String restaurantId = call.getString("restaurantId", "");
         final String backendBaseUrl = call.getString("backendBaseUrl", "");
+        final String terminalLocationId = call.getString("terminalLocationId", "");
 
-        if (sessionId.isEmpty() || restaurantId.isEmpty() || backendBaseUrl.isEmpty()) {
+        if (sessionId.isEmpty() || restaurantId.isEmpty() || backendBaseUrl.isEmpty() || terminalLocationId.isEmpty()) {
             JSObject payload = result("failed", "session_error", "Missing required Tap to Pay parameters.");
             payload.put("detail", detail("native_start_entered", "missing_params", null));
             logStartupStage("native_collect_result", payload);
@@ -370,6 +373,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
         currentSessionId = sessionId;
         currentRestaurantId = restaurantId;
         currentBackendBaseUrl = backendBaseUrl;
+        currentTerminalLocationId = terminalLocationId;
 
         if (connectedReader == null || !Terminal.isInitialized() || Terminal.getInstance().getConnectionStatus() != ConnectionStatus.CONNECTED) {
             JSObject payload = result("failed", "session_error", "Tap to Pay reader is not connected. Prepare Tap to Pay first.");
