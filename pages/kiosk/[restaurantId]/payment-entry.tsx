@@ -33,6 +33,13 @@ type Restaurant = {
 };
 
 type PaymentStage = 'method_picker' | 'contactless' | 'cash' | 'pay_at_counter';
+type TapStartupStage =
+  | 'readiness_check'
+  | 'session_create'
+  | 'payment_intent'
+  | 'native_support_check'
+  | 'native_prepare'
+  | 'native_start';
 
 const PAYMENT_METHOD_META: Record<KioskPaymentMethod, { title: string; subtitle: string; icon: typeof CreditCardIcon }> = {
   contactless: {
@@ -77,6 +84,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   const [contactlessError, setContactlessError] = useState('');
   const [contactlessSessionId, setContactlessSessionId] = useState<string | null>(null);
   const [contactlessDebug, setContactlessDebug] = useState('idle');
+  const [contactlessDebugDetail, setContactlessDebugDetail] = useState('');
   const [paymentNotice, setPaymentNotice] = useState('');
   const flowLockRef = useRef(false);
   const cancelLockRef = useRef(false);
@@ -299,29 +307,26 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     setContactlessBusy(true);
     setContactlessError('');
     setContactlessDebug('starting');
+    setContactlessDebugDetail('');
+
+    const failAt = (stage: TapStartupStage, detail: string, customerMessage: string) => {
+      setContactlessStatus('failed');
+      setContactlessError(customerMessage);
+      setContactlessDebug(`${stage}:failed`);
+      setContactlessDebugDetail(detail);
+    };
 
     try {
       const readinessRes = await fetch(`/api/kiosk/payments/tap-to-pay-availability?restaurant_id=${encodeURIComponent(restaurantId)}`);
       setContactlessDebug('readiness_check');
       const readiness = await readinessRes.json();
       if (!readinessRes.ok || !readiness?.tap_to_pay_available) {
-        setContactlessStatus('failed');
-        setContactlessError('Contactless payment is unavailable right now. Please choose another payment method.');
+        failAt(
+          'readiness_check',
+          readiness?.error || `HTTP ${readinessRes.status}`,
+          'Contactless payment is unavailable right now. Please choose another payment method.'
+        );
         return;
-      }
-
-      const support = await tapToPayBridge.isTapToPaySupported();
-      setContactlessDebug('native_support_check');
-      const locationPermissionPending = (support.reason || '').toLowerCase().includes('location permission');
-      if (!support.supported && !locationPermissionPending) {
-        setContactlessStatus('failed');
-        setContactlessError('Contactless payment is unavailable right now. Please choose another payment method.');
-        return;
-      }
-      if (!support.supported && locationPermissionPending) {
-        setPaymentNotice('This device needs permission to accept contactless payments.');
-      } else {
-        setPaymentNotice('');
       }
 
       const idempotencyKey = `kiosk_${restaurantId}_${amountCents}_${Date.now()}`;
@@ -337,8 +342,11 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       });
       const created = await createRes.json();
       if (!createRes.ok || !created?.session?.id) {
-        setContactlessStatus('failed');
-        setContactlessError('Payment failed, please try again or choose another payment method.');
+        failAt(
+          'session_create',
+          created?.error || `HTTP ${createRes.status}`,
+          'Payment failed, please try again or choose another payment method.'
+        );
         return;
       }
 
@@ -356,9 +364,54 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       });
       if (!paymentIntentRes.ok) {
         const paymentIntentErr = await paymentIntentRes.json().catch(() => ({}));
-        setContactlessStatus('failed');
-        setContactlessError(paymentIntentErr?.error || 'Payment failed, please try again or choose another payment method.');
+        failAt(
+          'payment_intent',
+          paymentIntentErr?.error || `HTTP ${paymentIntentRes.status}`,
+          paymentIntentErr?.error || 'Payment failed, please try again or choose another payment method.'
+        );
+        await fetch('/api/kiosk/payments/card-present/session-state', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: sessionId,
+            restaurant_id: restaurantId,
+            next_state: 'failed',
+            failure_code: 'payment_intent_failed',
+            failure_message: paymentIntentErr?.error || 'Failed to create card present payment intent',
+            event_type: 'payment_intent_failed',
+          }),
+        });
         return;
+      }
+
+      const support = await tapToPayBridge.isTapToPaySupported();
+      setContactlessDebug('native_support_check');
+      const locationPermissionPending = (support.reason || '').toLowerCase().includes('location permission');
+      if (!support.supported && !locationPermissionPending) {
+        failAt(
+          'native_support_check',
+          support.reason || 'Native bridge reported unsupported device state',
+          'Contactless payment is unavailable right now. Please choose another payment method.'
+        );
+        await fetch('/api/kiosk/payments/card-present/session-state', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: sessionId,
+            restaurant_id: restaurantId,
+            next_state: 'failed',
+            failure_code: 'native_support_failed',
+            failure_message: support.reason || 'Tap to Pay unsupported on this device',
+            event_type: 'native_support_failed',
+          }),
+        });
+        return;
+      }
+      if (!support.supported && locationPermissionPending) {
+        setPaymentNotice('This device needs permission to accept contactless payments.');
+        setContactlessDebugDetail(support.reason || 'Location permission required before prepare.');
+      } else {
+        setPaymentNotice('');
       }
 
       const backendBaseUrl = window.location.origin;
@@ -374,6 +427,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
             : 'Contactless payment is unavailable right now. Please choose another payment method.'
         );
         setContactlessDebug(`prepare_failed:${prepared.code || 'unknown'}`);
+        setContactlessDebugDetail(prepared.message || prepared.code || 'Native prepare returned failure.');
         await fetch('/api/kiosk/payments/card-present/session-state', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -421,6 +475,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
             : 'Payment failed, please try again or choose another payment method.'
         );
         setContactlessDebug(`start_failed:${started.code || started.status}`);
+        setContactlessDebugDetail(started.message || started.code || started.status);
         await reconcileSession(sessionId, 'native_start_failed');
         return;
       }
@@ -448,6 +503,8 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     } catch (error) {
       setContactlessStatus('failed');
       setContactlessError('Payment failed, please try again or choose another payment method.');
+      setContactlessDebug('startup_exception');
+      setContactlessDebugDetail(error instanceof Error ? error.message : 'Unexpected startup exception');
       console.error('[kiosk] tap to pay flow failed', error);
     } finally {
       setContactlessBusy(false);
@@ -638,6 +695,9 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
           </p>
         ) : null}
         {showOperatorDetails ? <p className="mt-2 text-[11px] font-medium uppercase tracking-[0.12em] text-slate-500">Debug: {contactlessDebug}</p> : null}
+        {showOperatorDetails && contactlessDebugDetail ? (
+          <p className="mt-1 text-xs font-medium text-slate-600">Detail: {contactlessDebugDetail}</p>
+        ) : null}
         <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <button
             type="button"
