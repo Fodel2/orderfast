@@ -49,6 +49,42 @@ type TapStartupResultStage =
   | 'native_collect_result'
   | 'native_process_result'
   | 'native_cancel_result';
+type StartupTraceStatus = 'idle' | 'pending' | 'ok' | 'failed';
+type StartupTraceKey =
+  | 'availability'
+  | 'session_create'
+  | 'payment_intent'
+  | 'native_support'
+  | 'native_prepare'
+  | 'native_discovery'
+  | 'native_connection'
+  | 'native_start';
+type StartupTraceState = Record<StartupTraceKey, { status: StartupTraceStatus; detail: string }>;
+
+const OPERATOR_DEBUG_STORAGE_KEY = 'orderfast_kiosk_operator_debug';
+const OPERATOR_DEBUG_TAP_THRESHOLD = 7;
+const OPERATOR_DEBUG_TAP_WINDOW_MS = 8000;
+const STARTUP_TRACE_LABELS: Record<StartupTraceKey, string> = {
+  availability: 'availability',
+  session_create: 'session create',
+  payment_intent: 'payment intent',
+  native_support: 'native support',
+  native_prepare: 'native prepare',
+  native_discovery: 'native discovery',
+  native_connection: 'native connection',
+  native_start: 'native start',
+};
+
+const createStartupTrace = (): StartupTraceState => ({
+  availability: { status: 'idle', detail: '' },
+  session_create: { status: 'idle', detail: '' },
+  payment_intent: { status: 'idle', detail: '' },
+  native_support: { status: 'idle', detail: '' },
+  native_prepare: { status: 'idle', detail: '' },
+  native_discovery: { status: 'idle', detail: '' },
+  native_connection: { status: 'idle', detail: '' },
+  native_start: { status: 'idle', detail: '' },
+});
 
 const PAYMENT_METHOD_META: Record<KioskPaymentMethod, { title: string; subtitle: string; icon: typeof CreditCardIcon }> = {
   contactless: {
@@ -96,13 +132,17 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   const [contactlessTerminalLocationId, setContactlessTerminalLocationId] = useState<string | null>(null);
   const [contactlessDebug, setContactlessDebug] = useState('idle');
   const [contactlessDebugDetail, setContactlessDebugDetail] = useState('');
+  const [operatorDebugEnabled, setOperatorDebugEnabled] = useState(false);
+  const [operatorTapCount, setOperatorTapCount] = useState(0);
+  const [tapStartupTrace, setTapStartupTrace] = useState<StartupTraceState>(createStartupTrace);
   const [paymentNotice, setPaymentNotice] = useState('');
   const flowLockRef = useRef(false);
   const cancelLockRef = useRef(false);
+  const operatorTapTimeoutRef = useRef<number | null>(null);
   const stageParam = Array.isArray(router.query.stage) ? router.query.stage[0] : router.query.stage;
   const debugParam = Array.isArray(router.query.debug) ? router.query.debug[0] : router.query.debug;
   const operatorParam = Array.isArray(router.query.operator) ? router.query.operator[0] : router.query.operator;
-  const showOperatorDetails = debugParam === '1' || operatorParam === '1';
+  const showOperatorDetails = operatorDebugEnabled || debugParam === '1' || operatorParam === '1';
   const preferredStageFromQuery: PaymentStage | null =
     stageParam === 'contactless' || stageParam === 'cash' || stageParam === 'pay_at_counter' || stageParam === 'method_picker'
       ? stageParam
@@ -112,6 +152,21 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   const currencyParam = Array.isArray(router.query.currency) ? router.query.currency[0] : router.query.currency;
   const amountCents = Number(amountParam || 0);
   const currency = (currencyParam || 'usd').toLowerCase();
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const stored = window.localStorage.getItem(OPERATOR_DEBUG_STORAGE_KEY);
+    setOperatorDebugEnabled(stored === '1');
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (operatorTapTimeoutRef.current) {
+        window.clearTimeout(operatorTapTimeoutRef.current);
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     if (!restaurantId) {
@@ -219,6 +274,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       setContactlessBusy(false);
       setContactlessError('');
       setContactlessDebug('idle');
+      setTapStartupTrace(createStartupTrace());
       setContactlessTerminalLocationId(null);
       if (typeof window !== 'undefined') {
         window.localStorage.removeItem(CONTACTLESS_SESSION_STORAGE_KEY);
@@ -320,6 +376,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     setContactlessError('');
     setContactlessDebug('starting');
     setContactlessDebugDetail('');
+    setTapStartupTrace(createStartupTrace());
 
     const formatDetail = (detail: unknown) => {
       if (typeof detail === 'string') return detail;
@@ -339,6 +396,19 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       });
       setContactlessDebug(`${stage}:${result}`);
       setContactlessDebugDetail(serialized);
+      if (stage === 'availability_result') {
+        setTapStartupTrace((prev) => ({ ...prev, availability: { status: result, detail: serialized } }));
+      } else if (stage === 'session_create_result') {
+        setTapStartupTrace((prev) => ({ ...prev, session_create: { status: result, detail: serialized } }));
+      } else if (stage === 'payment_intent_result') {
+        setTapStartupTrace((prev) => ({ ...prev, payment_intent: { status: result, detail: serialized } }));
+      } else if (stage === 'native_support_check_result') {
+        setTapStartupTrace((prev) => ({ ...prev, native_support: { status: result, detail: serialized } }));
+      } else if (stage === 'native_prepare_result') {
+        setTapStartupTrace((prev) => ({ ...prev, native_prepare: { status: result, detail: serialized } }));
+      } else if (stage === 'native_collect_result' || stage === 'native_process_result') {
+        setTapStartupTrace((prev) => ({ ...prev, native_start: { status: result, detail: serialized } }));
+      }
     };
 
     const failAt = (stage: TapStartupStage, detail: string, customerMessage: string) => {
@@ -508,8 +578,47 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
 
       const backendBaseUrl = window.location.origin;
       setContactlessStatus('preparing');
+      setTapStartupTrace((prev) => ({
+        ...prev,
+        native_prepare: { status: 'pending', detail: 'Preparing Stripe Terminal native SDK.' },
+        native_discovery: { status: 'pending', detail: 'Discovering Tap to Pay reader.' },
+        native_connection: { status: 'pending', detail: 'Connecting Tap to Pay reader.' },
+      }));
       const prepared = await tapToPayBridge.prepareTapToPay({ restaurantId, sessionId, backendBaseUrl, terminalLocationId });
       logTapStageResult('native_prepare_result', prepared.status === 'ready' || prepared.status === 'preparing' ? 'ok' : 'failed', prepared);
+      const preparedDetail = prepared.detail && typeof prepared.detail === 'object' ? (prepared.detail as { stage?: unknown; nativeStage?: unknown }) : null;
+      const prepareNativeStage =
+        typeof prepared.nativeStage === 'string'
+          ? prepared.nativeStage
+          : preparedDetail && typeof preparedDetail.nativeStage === 'string'
+            ? preparedDetail.nativeStage
+            : preparedDetail && typeof preparedDetail.stage === 'string'
+              ? preparedDetail.stage
+              : '';
+      if (prepareNativeStage === 'native_discovery_result') {
+        setTapStartupTrace((prev) => ({
+          ...prev,
+          native_discovery: {
+            status: prepared.status === 'failed' || prepared.status === 'unavailable' ? 'failed' : 'ok',
+            detail: formatDetail(prepared.detail || prepared.message || 'Native discovery stage reached.'),
+          },
+        }));
+      } else if (prepareNativeStage === 'native_connection_result') {
+        setTapStartupTrace((prev) => ({
+          ...prev,
+          native_discovery: { status: 'ok', detail: 'Reader discovery completed.' },
+          native_connection: {
+            status: prepared.status === 'failed' || prepared.status === 'unavailable' ? 'failed' : 'ok',
+            detail: formatDetail(prepared.detail || prepared.message || 'Native reader connection stage reached.'),
+          },
+        }));
+      } else if (prepared.status === 'ready' || prepared.status === 'preparing') {
+        setTapStartupTrace((prev) => ({
+          ...prev,
+          native_discovery: { status: 'ok', detail: 'Reader discovery completed.' },
+          native_connection: { status: 'ok', detail: 'Reader connection completed.' },
+        }));
+      }
       if (prepared.status === 'failed' || prepared.status === 'unavailable') {
         const permissionDenied = prepared.code === 'permission_required';
         setContactlessStatus('failed');
@@ -562,6 +671,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
 
       setContactlessStatus('collecting');
       setContactlessDebug('native_collect_process');
+      setTapStartupTrace((prev) => ({ ...prev, native_start: { status: 'pending', detail: 'Starting native collection flow.' } }));
       const started = await tapToPayBridge.startTapToPayPayment({ restaurantId, sessionId, backendBaseUrl, terminalLocationId });
       logTapStageResult(
         started.status === 'succeeded' ? 'native_process_result' : 'native_collect_result',
@@ -616,6 +726,27 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       flowLockRef.current = false;
     }
   }, [CONTACTLESS_SESSION_STORAGE_KEY, TAP_TO_PAY_SETUP_STORAGE_KEY, amountCents, contactlessBusy, currency, enabledMethods.length, reconcileSession, restaurantId]);
+
+  const toggleOperatorDebug = useCallback(() => {
+    const next = !operatorDebugEnabled;
+    setOperatorDebugEnabled(next);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(OPERATOR_DEBUG_STORAGE_KEY, next ? '1' : '0');
+    }
+    setPaymentNotice(next ? 'Operator diagnostics enabled.' : 'Operator diagnostics hidden.');
+    window.setTimeout(() => setPaymentNotice(''), 2200);
+  }, [operatorDebugEnabled]);
+
+  const handleHiddenOperatorTap = useCallback(() => {
+    const nextCount = operatorTapCount + 1;
+    setOperatorTapCount(nextCount);
+    if (operatorTapTimeoutRef.current) window.clearTimeout(operatorTapTimeoutRef.current);
+    operatorTapTimeoutRef.current = window.setTimeout(() => setOperatorTapCount(0), OPERATOR_DEBUG_TAP_WINDOW_MS);
+    if (nextCount >= OPERATOR_DEBUG_TAP_THRESHOLD) {
+      setOperatorTapCount(0);
+      toggleOperatorDebug();
+    }
+  }, [operatorTapCount, toggleOperatorDebug]);
 
   const returnToFallback = useCallback(
     (message: string) => {
@@ -803,6 +934,19 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         {showOperatorDetails && contactlessDebugDetail ? (
           <p className="mt-1 text-xs font-medium text-slate-600">Detail: {contactlessDebugDetail}</p>
         ) : null}
+        {showOperatorDetails ? (
+          <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Tap to Pay startup diagnostics</p>
+            <div className="mt-2 space-y-1">
+              {(Object.keys(STARTUP_TRACE_LABELS) as StartupTraceKey[]).map((key) => (
+                <p key={key} className="text-xs text-slate-700">
+                  <span className="font-semibold">{STARTUP_TRACE_LABELS[key]}:</span> {tapStartupTrace[key].status}
+                  {tapStartupTrace[key].detail ? ` — ${tapStartupTrace[key].detail}` : ''}
+                </p>
+              ))}
+            </div>
+          </div>
+        ) : null}
         <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <button
             type="button"
@@ -860,7 +1004,14 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       <div className="mx-auto flex min-h-[58vh] w-full max-w-4xl items-center px-4 py-8 sm:px-6">
         <div className="w-full space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{stageLabel}</p>
+            <button
+              type="button"
+              onClick={handleHiddenOperatorTap}
+              className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500"
+              aria-label="Payment stage"
+            >
+              {stageLabel}
+            </button>
             <div className="flex gap-2">
               {stage !== 'method_picker' && enabledMethods.length > 1 ? (
                 <button
