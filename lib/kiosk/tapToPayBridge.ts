@@ -33,8 +33,8 @@ export type TapToPayResult = {
 
 export interface TapToPayPlugin {
   isTapToPaySupported(): Promise<{ supported: boolean; reason?: string; permissionState?: string; nativeStage?: string }>;
-  prepareTapToPay(options: { restaurantId: string; sessionId: string; backendBaseUrl: string }): Promise<TapToPayResult>;
-  startTapToPayPayment(options: { restaurantId: string; sessionId: string; backendBaseUrl: string }): Promise<TapToPayResult>;
+  prepareTapToPay(options: { restaurantId: string; sessionId: string; backendBaseUrl: string; terminalLocationId: string }): Promise<TapToPayResult>;
+  startTapToPayPayment(options: { restaurantId: string; sessionId: string; backendBaseUrl: string; terminalLocationId: string }): Promise<TapToPayResult>;
   cancelTapToPayPayment(): Promise<TapToPayResult>;
   getTapToPayStatus(): Promise<TapToPayResult>;
 }

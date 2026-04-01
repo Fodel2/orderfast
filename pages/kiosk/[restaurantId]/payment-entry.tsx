@@ -92,6 +92,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   const [contactlessBusy, setContactlessBusy] = useState(false);
   const [contactlessError, setContactlessError] = useState('');
   const [contactlessSessionId, setContactlessSessionId] = useState<string | null>(null);
+  const [contactlessTerminalLocationId, setContactlessTerminalLocationId] = useState<string | null>(null);
   const [contactlessDebug, setContactlessDebug] = useState('idle');
   const [contactlessDebugDetail, setContactlessDebugDetail] = useState('');
   const [paymentNotice, setPaymentNotice] = useState('');
@@ -217,6 +218,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       setContactlessBusy(false);
       setContactlessError('');
       setContactlessDebug('idle');
+      setContactlessTerminalLocationId(null);
       if (typeof window !== 'undefined') {
         window.localStorage.removeItem(CONTACTLESS_SESSION_STORAGE_KEY);
       }
@@ -387,7 +389,17 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       }
 
       const sessionId = String(created.session.id);
+      const terminalLocationId = typeof created.session.stripe_terminal_location_id === 'string' ? created.session.stripe_terminal_location_id : '';
+      if (!terminalLocationId) {
+        failAt(
+          'session_create',
+          'Session did not include stripe_terminal_location_id',
+          'Contactless payment is unavailable right now. Please choose another payment method.'
+        );
+        return;
+      }
       setContactlessSessionId(sessionId);
+      setContactlessTerminalLocationId(terminalLocationId);
       if (typeof window !== 'undefined') {
         window.localStorage.setItem(CONTACTLESS_SESSION_STORAGE_KEY, JSON.stringify({ sessionId, restaurantId, savedAt: new Date().toISOString() }));
       }
@@ -459,7 +471,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
 
       const backendBaseUrl = window.location.origin;
       setContactlessStatus('preparing');
-      const prepared = await tapToPayBridge.prepareTapToPay({ restaurantId, sessionId, backendBaseUrl });
+      const prepared = await tapToPayBridge.prepareTapToPay({ restaurantId, sessionId, backendBaseUrl, terminalLocationId });
       logTapStageResult('native_prepare_result', prepared.status === 'ready' || prepared.status === 'preparing' ? 'ok' : 'failed', prepared);
       if (prepared.status === 'failed' || prepared.status === 'unavailable') {
         const permissionDenied = prepared.code === 'permission_required';
@@ -513,7 +525,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
 
       setContactlessStatus('collecting');
       setContactlessDebug('native_collect_process');
-      const started = await tapToPayBridge.startTapToPayPayment({ restaurantId, sessionId, backendBaseUrl });
+      const started = await tapToPayBridge.startTapToPayPayment({ restaurantId, sessionId, backendBaseUrl, terminalLocationId });
       logTapStageResult(
         started.status === 'succeeded' ? 'native_process_result' : 'native_collect_result',
         started.status === 'succeeded' ? 'ok' : 'failed',
