@@ -13,6 +13,7 @@ export type TapToPayStatus =
 
 export type TapToPayErrorCode =
   | 'unsupported'
+  | 'permission_required'
   | 'readiness_false'
   | 'network_error'
   | 'session_error'

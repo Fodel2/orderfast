@@ -414,12 +414,17 @@ export const ensureRestaurantTerminalLocation = async (restaurantId: string) => 
   }
 
   const existingLocationId = row.stripe_terminal_location_id ?? row.terminal_location_id;
+  const stripe = getStripeClient();
+  const accountId = row.stripe_connected_account_id;
+  const account = await stripe.accounts.retrieve(accountId);
+  const terminalCheck = terminalReadyFromAccount(account);
+
   if (existingLocationId) {
     await upsertTerminalMapping(restaurantId, {
       stripeTerminalLocationId: existingLocationId,
       stripeTerminalLocationDisplayName: row.stripe_terminal_location_display_name ?? null,
-      terminalReadinessStatus: 'terminal_pending',
-      terminalReadinessReason: 'Terminal location saved. Final readiness checks are in progress.',
+      terminalReadinessStatus: terminalCheck.status,
+      terminalReadinessReason: terminalCheck.reason,
     });
     return;
   }
@@ -436,8 +441,6 @@ export const ensureRestaurantTerminalLocation = async (restaurantId: string) => 
     return;
   }
 
-  const stripe = getStripeClient();
-  const accountId = row.stripe_connected_account_id;
   const listed = await stripe.terminal.locations.list({ limit: 100 }, { stripeAccount: accountId });
   const existing = listed.data.find((location) => location.metadata?.restaurant_id === restaurantId) || listed.data[0] || null;
 
@@ -457,8 +460,11 @@ export const ensureRestaurantTerminalLocation = async (restaurantId: string) => 
   await upsertTerminalMapping(restaurantId, {
     stripeTerminalLocationId: location.id,
     stripeTerminalLocationDisplayName: location.display_name || restaurant?.name || 'Restaurant',
-    terminalReadinessStatus: 'terminal_pending',
-    terminalReadinessReason: 'Terminal location configured. Refresh status to confirm Tap to Pay readiness.',
+    terminalReadinessStatus: terminalCheck.status,
+    terminalReadinessReason:
+      terminalCheck.status === 'tap_to_pay_ready'
+        ? 'Terminal location configured. This restaurant is ready for kiosk Tap to Pay checkout.'
+        : terminalCheck.reason,
   });
 };
 
