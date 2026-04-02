@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { resolveServerKioskTerminalMode } from '@/lib/kiosk/terminalMode';
+import { resolveRestaurantTerminalMode } from '@/lib/server/kiosk/terminalModeResolver';
 import { simulateSuccessfulKioskPaymentSession } from '@/lib/server/payments/kioskCardPresentService';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -8,15 +8,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const { session_id, restaurant_id } = req.body || {};
     if (!session_id) return res.status(400).json({ error: 'session_id is required' });
+    if (!restaurant_id) return res.status(400).json({ error: 'restaurant_id is required' });
 
-    const mode = resolveServerKioskTerminalMode();
+    const mode = await resolveRestaurantTerminalMode(String(restaurant_id));
     if (mode !== 'simulated_terminal') {
-      return res.status(403).json({ error: 'Simulated terminal completion is disabled in this environment' });
+      return res.status(403).json({ error: 'Simulated terminal completion is disabled for this restaurant' });
     }
 
     const session = await simulateSuccessfulKioskPaymentSession({
       sessionId: String(session_id),
-      restaurantId: restaurant_id ? String(restaurant_id) : null,
+      restaurantId: String(restaurant_id),
     });
 
     return res.status(200).json({ session, terminal_mode: mode });

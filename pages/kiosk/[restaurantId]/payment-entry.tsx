@@ -16,7 +16,7 @@ import {
   type KioskPaymentSettingsRow,
 } from '@/lib/kiosk/paymentSettings';
 import { tapToPayBridge, type TapToPayStatus } from '@/lib/kiosk/tapToPayBridge';
-import { resolveClientKioskTerminalMode, type KioskTerminalMode } from '@/lib/kiosk/terminalMode';
+import type { KioskTerminalMode } from '@/lib/kiosk/terminalMode';
 
 type Restaurant = {
   id: string;
@@ -138,7 +138,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   const [operatorTapCount, setOperatorTapCount] = useState(0);
   const [tapStartupTrace, setTapStartupTrace] = useState<StartupTraceState>(createStartupTrace);
   const [paymentNotice, setPaymentNotice] = useState('');
-  const [terminalMode] = useState<KioskTerminalMode>(() => resolveClientKioskTerminalMode());
+  const [terminalMode, setTerminalMode] = useState<KioskTerminalMode>('real_tap_to_pay');
   const flowLockRef = useRef(false);
   const cancelLockRef = useRef(false);
   const operatorTapTimeoutRef = useRef<number | null>(null);
@@ -454,14 +454,9 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         );
         return;
       }
-      if (typeof readiness?.terminal_mode === 'string' && readiness.terminal_mode !== terminalMode) {
-        failAt(
-          'readiness_check',
-          `Terminal mode mismatch (client=${terminalMode}, server=${readiness.terminal_mode})`,
-          'Contactless payment is unavailable right now. Please choose another payment method.'
-        );
-        return;
-      }
+      const resolvedTerminalMode: KioskTerminalMode =
+        readiness?.terminal_mode === 'simulated_terminal' ? 'simulated_terminal' : 'real_tap_to_pay';
+      setTerminalMode(resolvedTerminalMode);
 
       const idempotencyKey = `kiosk_${restaurantId}_${amountCents}_${Date.now()}`;
       const createRes = await fetch('/api/kiosk/payments/card-present/create-session', {
@@ -536,7 +531,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         return;
       }
 
-      if (terminalMode === 'simulated_terminal') {
+      if (resolvedTerminalMode === 'simulated_terminal') {
         setContactlessStatus('processing');
         setContactlessDebug('simulated_terminal');
         setContactlessDebugDetail('Running Stripe Terminal simulated testing mode.');
@@ -768,7 +763,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       setContactlessBusy(false);
       flowLockRef.current = false;
     }
-  }, [CONTACTLESS_SESSION_STORAGE_KEY, TAP_TO_PAY_SETUP_STORAGE_KEY, amountCents, contactlessBusy, currency, enabledMethods.length, reconcileSession, restaurantId, terminalMode]);
+  }, [CONTACTLESS_SESSION_STORAGE_KEY, TAP_TO_PAY_SETUP_STORAGE_KEY, amountCents, contactlessBusy, currency, enabledMethods.length, reconcileSession, restaurantId]);
 
   const toggleOperatorDebug = useCallback(() => {
     const next = !operatorDebugEnabled;

@@ -3,6 +3,7 @@ import Link from 'next/link';
 import DashboardLayout from '../../../components/DashboardLayout';
 import { supabase } from '../../../utils/supabaseClient';
 import { DEFAULT_KIOSK_PAYMENT_SETTINGS, type KioskPaymentSettingsRow } from '@/lib/kiosk/paymentSettings';
+import type { KioskTerminalMode } from '@/lib/kiosk/terminalMode';
 import { InputToggle } from '@/components/ui/InputToggle';
 import type { StripeConnectionReadiness, StripeConnectionSnapshot, TerminalPaymentReadiness } from '@/lib/payments/stripeConnect';
 
@@ -13,6 +14,7 @@ type KioskPaymentDraft = {
   enable_cash: boolean;
   enable_contactless: boolean;
   enable_pay_at_counter: boolean;
+  terminal_mode: KioskTerminalMode;
 };
 
 const defaultDraft: KioskPaymentDraft = {
@@ -20,6 +22,7 @@ const defaultDraft: KioskPaymentDraft = {
   enable_cash: DEFAULT_KIOSK_PAYMENT_SETTINGS.enable_cash,
   enable_contactless: DEFAULT_KIOSK_PAYMENT_SETTINGS.enable_contactless,
   enable_pay_at_counter: DEFAULT_KIOSK_PAYMENT_SETTINGS.enable_pay_at_counter,
+  terminal_mode: DEFAULT_KIOSK_PAYMENT_SETTINGS.terminal_mode,
 };
 
 const shortAccount = (accountId: string | null) => {
@@ -175,7 +178,7 @@ export default function DashboardSettingsPaymentsPage() {
 
     const { data: row, error } = await supabase
       .from('kiosk_payment_settings')
-      .select('restaurant_id,process_on_device,enable_cash,enable_contactless,enable_pay_at_counter')
+      .select('restaurant_id,process_on_device,enable_cash,enable_contactless,enable_pay_at_counter,terminal_mode')
       .eq('restaurant_id', nextRestaurantId)
       .maybeSingle();
 
@@ -197,6 +200,7 @@ export default function DashboardSettingsPaymentsPage() {
       enable_cash: !!row.enable_cash,
       enable_contactless: !!row.enable_contactless,
       enable_pay_at_counter: row.enable_pay_at_counter !== false,
+      terminal_mode: row.terminal_mode === 'simulated_terminal' ? 'simulated_terminal' : 'real_tap_to_pay',
     });
     setLoading(false);
   }, []);
@@ -217,6 +221,7 @@ export default function DashboardSettingsPaymentsPage() {
       enable_cash: settings.enable_cash,
       enable_contactless: settings.enable_contactless,
       enable_pay_at_counter: settings.enable_pay_at_counter,
+      terminal_mode: settings.terminal_mode,
     };
 
     const { error } = await supabase.from('kiosk_payment_settings').upsert(payload, {
@@ -381,6 +386,48 @@ export default function DashboardSettingsPaymentsPage() {
             </p>
 
             <div className="mt-5 space-y-4">
+              <div className="rounded-2xl border border-gray-200 p-4">
+                <p className="text-sm font-semibold text-gray-900">Terminal test mode</p>
+                <p className="mt-1 text-xs text-gray-500">Choose how kiosk contactless payment runs for this restaurant.</p>
+
+                <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                  <label className="flex items-start gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm">
+                    <input
+                      type="radio"
+                      name="terminal_mode"
+                      checked={settings.terminal_mode === 'real_tap_to_pay'}
+                      onChange={() =>
+                        setSettings((prev) => ({
+                          ...prev,
+                          terminal_mode: 'real_tap_to_pay',
+                        }))
+                      }
+                    />
+                    <span>
+                      <span className="block font-medium text-gray-900">Real Tap to Pay</span>
+                      <span className="block text-xs text-gray-500">Use the live Android Tap to Pay terminal flow.</span>
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm">
+                    <input
+                      type="radio"
+                      name="terminal_mode"
+                      checked={settings.terminal_mode === 'simulated_terminal'}
+                      onChange={() =>
+                        setSettings((prev) => ({
+                          ...prev,
+                          terminal_mode: 'simulated_terminal',
+                        }))
+                      }
+                    />
+                    <span>
+                      <span className="block font-medium text-gray-900">Simulated terminal</span>
+                      <span className="block text-xs text-gray-500">Bypass native collection and auto-complete through simulation.</span>
+                    </span>
+                  </label>
+                </div>
+              </div>
+
               <div className="rounded-2xl border border-gray-200 bg-gray-50/70 p-4">
                 <InputToggle
                   checked={processOnDevice}

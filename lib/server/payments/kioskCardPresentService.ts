@@ -1,7 +1,7 @@
 import Stripe from 'stripe';
 import { KIOSK_CARD_PRESENT_SESSION_STATES, type KioskCardPresentSession, type KioskCardPresentSessionState } from '@/lib/payments/kioskCardPresent';
 import { supaServer } from '@/lib/supaServer';
-import { resolveServerKioskTerminalMode } from '@/lib/kiosk/terminalMode';
+import { resolveRestaurantTerminalMode } from '@/lib/server/kiosk/terminalModeResolver';
 import { getStripeClient } from './stripeClient';
 import { getRestaurantStripeContext, isTapToPayAvailableForRestaurant } from './restaurantStripeContext';
 
@@ -46,7 +46,7 @@ export const createKioskCardPresentSession = async (input: {
   orderId?: string | null;
   metadata?: Record<string, unknown> | null;
 }) => {
-  const terminalMode = resolveServerKioskTerminalMode();
+  const terminalMode = await resolveRestaurantTerminalMode(input.restaurantId);
   if (!(await isTapToPayAvailableForRestaurant(input.restaurantId))) {
     throw new Error('Tap to Pay is not available for this restaurant yet');
   }
@@ -379,13 +379,13 @@ export const finalizeSuccessfulKioskPaymentSession = async (input: { sessionId: 
 };
 
 export const simulateSuccessfulKioskPaymentSession = async (input: { sessionId: string; restaurantId?: string | null }) => {
-  const mode = resolveServerKioskTerminalMode();
-  if (mode !== 'simulated_terminal') {
-    throw new Error('Simulated terminal completion is only enabled when KIOSK_TERMINAL_MODE=simulated_terminal');
-  }
-
   const session = await getKioskPaymentSession(input.sessionId, input.restaurantId);
   if (!session) throw new Error('Kiosk payment session not found');
+
+  const mode = await resolveRestaurantTerminalMode(session.restaurant_id);
+  if (mode !== 'simulated_terminal') {
+    throw new Error('Simulated terminal completion is only enabled when terminal mode is set to simulated_terminal in Payments settings');
+  }
   if (session.state === 'finalized') return session;
 
   const succeeded = await markKioskPaymentSessionState({
