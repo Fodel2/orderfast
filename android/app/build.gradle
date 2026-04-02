@@ -4,6 +4,8 @@ def hasReleaseSigningProps = project.hasProperty('ORDERFAST_UPLOAD_STORE_FILE') 
     project.hasProperty('ORDERFAST_UPLOAD_KEY_ALIAS') &&
     project.hasProperty('ORDERFAST_UPLOAD_STORE_PASSWORD') &&
     project.hasProperty('ORDERFAST_UPLOAD_KEY_PASSWORD')
+def orderfastVersionCode = (project.findProperty('ORDERFAST_VERSION_CODE') ?: "1").toInteger()
+def orderfastVersionName = project.findProperty('ORDERFAST_VERSION_NAME') ?: "1.0"
 
 android {
     namespace "com.orderfast.app"
@@ -12,8 +14,8 @@ android {
         applicationId "com.orderfast.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode orderfastVersionCode
+        versionName orderfastVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

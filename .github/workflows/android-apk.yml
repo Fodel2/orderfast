@@ -1,6 +1,9 @@
 name: Build Android APK
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -105,14 +108,19 @@ jobs:
       - name: Build release APK
         run: |
           cd android
+          BUILD_VERSION_NAME="kiosk-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}"
           if [ "$has_release_keystore" = "true" ]; then
             ./gradlew assembleRelease \
+              -PORDERFAST_VERSION_CODE="$GITHUB_RUN_NUMBER" \
+              -PORDERFAST_VERSION_NAME="$BUILD_VERSION_NAME" \
               -PORDERFAST_UPLOAD_STORE_FILE="$ANDROID_KEYSTORE_PATH" \
               -PORDERFAST_UPLOAD_KEY_ALIAS="$ANDROID_KEY_ALIAS" \
               -PORDERFAST_UPLOAD_STORE_PASSWORD="$ANDROID_KEYSTORE_PASSWORD" \
               -PORDERFAST_UPLOAD_KEY_PASSWORD="$ANDROID_KEY_PASSWORD"
           else
-            ./gradlew assembleRelease
+            ./gradlew assembleRelease \
+              -PORDERFAST_VERSION_CODE="$GITHUB_RUN_NUMBER" \
+              -PORDERFAST_VERSION_NAME="$BUILD_VERSION_NAME"
           fi
 
       - name: Verify release manifest is non-debuggable
@@ -150,4 +158,6 @@ jobs:
           name: Kiosk Tap to Pay Release APK (Testing)
           prerelease: true
           make_latest: false
+          overwrite_files: true
+          fail_on_unmatched_files: true
           files: ${{ env.KIOSK_ASSET_NAME }}
