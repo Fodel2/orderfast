@@ -1,6 +1,7 @@
 import Stripe from 'stripe';
 import { KIOSK_CARD_PRESENT_SESSION_STATES, type KioskCardPresentSession, type KioskCardPresentSessionState } from '@/lib/payments/kioskCardPresent';
 import { supaServer } from '@/lib/supaServer';
+import { resolveServerKioskTerminalMode } from '@/lib/kiosk/terminalMode';
 import { getStripeClient } from './stripeClient';
 import { getRestaurantStripeContext, isTapToPayAvailableForRestaurant } from './restaurantStripeContext';
 
@@ -45,6 +46,7 @@ export const createKioskCardPresentSession = async (input: {
   orderId?: string | null;
   metadata?: Record<string, unknown> | null;
 }) => {
+  const terminalMode = resolveServerKioskTerminalMode();
   if (!(await isTapToPayAvailableForRestaurant(input.restaurantId))) {
     throw new Error('Tap to Pay is not available for this restaurant yet');
   }
@@ -74,7 +76,10 @@ export const createKioskCardPresentSession = async (input: {
     stripe_terminal_location_id: context.terminalLocationId,
     idempotency_key: input.idempotencyKey,
     kiosk_install_id: input.kioskInstallId ?? null,
-    metadata: input.metadata ?? {},
+    metadata: {
+      ...(input.metadata ?? {}),
+      terminal_mode: terminalMode,
+    },
   };
 
   const { data, error } = await supaServer.from('kiosk_card_present_sessions').insert(payload).select(SESSION_SELECT).single();
@@ -371,6 +376,39 @@ export const finalizeSuccessfulKioskPaymentSession = async (input: { sessionId: 
   });
 
   return { session: failed, paymentIntentStatus: paymentIntent.status };
+};
+
+export const simulateSuccessfulKioskPaymentSession = async (input: { sessionId: string; restaurantId?: string | null }) => {
+  const mode = resolveServerKioskTerminalMode();
+  if (mode !== 'simulated_terminal') {
+    throw new Error('Simulated terminal completion is only enabled when KIOSK_TERMINAL_MODE=simulated_terminal');
+  }
+
+  const session = await getKioskPaymentSession(input.sessionId, input.restaurantId);
+  if (!session) throw new Error('Kiosk payment session not found');
+  if (session.state === 'finalized') return session;
+
+  const succeeded = await markKioskPaymentSessionState({
+    sessionId: session.id,
+    restaurantId: session.restaurant_id,
+    nextState: 'succeeded',
+    eventType: 'simulated_terminal_succeeded',
+    eventPayload: {
+      terminal_mode: mode,
+      stripe_payment_intent_id: session.stripe_payment_intent_id,
+    },
+  });
+
+  return markKioskPaymentSessionState({
+    sessionId: succeeded.id,
+    restaurantId: succeeded.restaurant_id,
+    nextState: 'finalized',
+    eventType: 'simulated_terminal_finalized',
+    eventPayload: {
+      terminal_mode: mode,
+      stripe_payment_intent_id: session.stripe_payment_intent_id,
+    },
+  });
 };
 
 export const reconcileAbandonedOrUnknownKioskPaymentSession = async (input: { sessionId: string; restaurantId?: string | null }) => {

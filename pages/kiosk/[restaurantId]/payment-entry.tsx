@@ -16,6 +16,7 @@ import {
   type KioskPaymentSettingsRow,
 } from '@/lib/kiosk/paymentSettings';
 import { tapToPayBridge, type TapToPayStatus } from '@/lib/kiosk/tapToPayBridge';
+import { resolveClientKioskTerminalMode, type KioskTerminalMode } from '@/lib/kiosk/terminalMode';
 
 type Restaurant = {
   id: string;
@@ -37,6 +38,7 @@ type TapStartupStage =
   | 'readiness_check'
   | 'session_create'
   | 'payment_intent'
+  | 'simulated_terminal'
   | 'native_support_check'
   | 'native_prepare'
   | 'native_start';
@@ -136,13 +138,12 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   const [operatorTapCount, setOperatorTapCount] = useState(0);
   const [tapStartupTrace, setTapStartupTrace] = useState<StartupTraceState>(createStartupTrace);
   const [paymentNotice, setPaymentNotice] = useState('');
+  const [terminalMode] = useState<KioskTerminalMode>(() => resolveClientKioskTerminalMode());
   const flowLockRef = useRef(false);
   const cancelLockRef = useRef(false);
   const operatorTapTimeoutRef = useRef<number | null>(null);
   const stageParam = Array.isArray(router.query.stage) ? router.query.stage[0] : router.query.stage;
-  const debugParam = Array.isArray(router.query.debug) ? router.query.debug[0] : router.query.debug;
-  const operatorParam = Array.isArray(router.query.operator) ? router.query.operator[0] : router.query.operator;
-  const showOperatorDetails = operatorDebugEnabled || debugParam === '1' || operatorParam === '1';
+  const showOperatorDetails = operatorDebugEnabled;
   const preferredStageFromQuery: PaymentStage | null =
     stageParam === 'contactless' || stageParam === 'cash' || stageParam === 'pay_at_counter' || stageParam === 'method_picker'
       ? stageParam
@@ -453,6 +454,14 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         );
         return;
       }
+      if (typeof readiness?.terminal_mode === 'string' && readiness.terminal_mode !== terminalMode) {
+        failAt(
+          'readiness_check',
+          `Terminal mode mismatch (client=${terminalMode}, server=${readiness.terminal_mode})`,
+          'Contactless payment is unavailable right now. Please choose another payment method.'
+        );
+        return;
+      }
 
       const idempotencyKey = `kiosk_${restaurantId}_${amountCents}_${Date.now()}`;
       const createRes = await fetch('/api/kiosk/payments/card-present/create-session', {
@@ -524,6 +533,40 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
             event_type: 'payment_intent_failed',
           }),
         });
+        return;
+      }
+
+      if (terminalMode === 'simulated_terminal') {
+        setContactlessStatus('processing');
+        setContactlessDebug('simulated_terminal');
+        setContactlessDebugDetail('Running Stripe Terminal simulated testing mode.');
+        setTapStartupTrace((prev) => ({
+          ...prev,
+          native_support: { status: 'ok', detail: 'Bypassed in simulated terminal mode.' },
+          native_prepare: { status: 'ok', detail: 'Bypassed in simulated terminal mode.' },
+          native_discovery: { status: 'ok', detail: 'Bypassed in simulated terminal mode.' },
+          native_connection: { status: 'ok', detail: 'Bypassed in simulated terminal mode.' },
+          native_start: { status: 'ok', detail: 'Completed by simulated terminal backend route.' },
+        }));
+        const simulatedRes = await fetch('/api/kiosk/payments/card-present/simulate-complete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sessionId, restaurant_id: restaurantId }),
+        });
+        const simulatedPayload = await simulatedRes.json().catch(() => ({}));
+        if (!simulatedRes.ok || simulatedPayload?.session?.state !== 'finalized') {
+          failAt(
+            'simulated_terminal',
+            simulatedPayload?.error || `HTTP ${simulatedRes.status}`,
+            'Payment failed, please try again or choose another payment method.'
+          );
+          return;
+        }
+        setContactlessStatus('succeeded');
+        setContactlessDebug('simulated_terminal:finalized');
+        if (typeof window !== 'undefined') {
+          window.localStorage.removeItem(CONTACTLESS_SESSION_STORAGE_KEY);
+        }
         return;
       }
 
@@ -725,7 +768,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       setContactlessBusy(false);
       flowLockRef.current = false;
     }
-  }, [CONTACTLESS_SESSION_STORAGE_KEY, TAP_TO_PAY_SETUP_STORAGE_KEY, amountCents, contactlessBusy, currency, enabledMethods.length, reconcileSession, restaurantId]);
+  }, [CONTACTLESS_SESSION_STORAGE_KEY, TAP_TO_PAY_SETUP_STORAGE_KEY, amountCents, contactlessBusy, currency, enabledMethods.length, reconcileSession, restaurantId, terminalMode]);
 
   const toggleOperatorDebug = useCallback(() => {
     const next = !operatorDebugEnabled;
@@ -937,6 +980,9 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         {showOperatorDetails ? (
           <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Tap to Pay startup diagnostics</p>
+            <p className="mt-1 text-xs text-slate-700">
+              <span className="font-semibold">mode:</span> {terminalMode}
+            </p>
             <div className="mt-2 space-y-1">
               {(Object.keys(STARTUP_TRACE_LABELS) as StartupTraceKey[]).map((key) => (
                 <p key={key} className="text-xs text-slate-700">
