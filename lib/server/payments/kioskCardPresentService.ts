@@ -196,6 +196,7 @@ export const createOrRetrieveCardPresentPaymentIntentForSession = async (input: 
   const session = await getKioskPaymentSession(input.sessionId, input.restaurantId);
   if (!session) throw new Error('Kiosk payment session not found');
   if (!session.stripe_connected_account_id) throw new Error('Stripe account is not configured for this session');
+  const mode = await resolveRestaurantTerminalMode(session.restaurant_id);
 
   if (session.state === 'finalized') {
     const stripe = getStripeClient();
@@ -215,24 +216,45 @@ export const createOrRetrieveCardPresentPaymentIntentForSession = async (input: 
   const paymentIntentParams: Stripe.PaymentIntentCreateParams = {
     amount: session.amount_cents,
     currency: session.currency,
-    payment_method_types: ['card_present'],
+    payment_method_types: mode === 'simulated_terminal' ? ['card'] : ['card_present'],
     capture_method: 'automatic',
     metadata: {
       restaurant_id: session.restaurant_id,
       kiosk_payment_session_id: session.id,
     },
   };
+  if (mode === 'simulated_terminal') {
+    paymentIntentParams.confirm = true;
+    paymentIntentParams.payment_method = 'pm_card_visa';
+  }
 
   let paymentIntent: Stripe.PaymentIntent;
   try {
     if (session.stripe_payment_intent_id) {
       paymentIntent = await stripe.paymentIntents.retrieve(session.stripe_payment_intent_id, { stripeAccount });
+
+      const shouldReplaceLegacySimulatedIntent =
+        mode === 'simulated_terminal' &&
+        paymentIntent.status === 'requires_payment_method' &&
+        paymentIntent.payment_method_types.includes('card_present');
+
+      if (shouldReplaceLegacySimulatedIntent) {
+        await stripe.paymentIntents.cancel(paymentIntent.id, {}, { stripeAccount });
+        paymentIntent = await stripe.paymentIntents.create(paymentIntentParams, {
+          stripeAccount,
+          idempotencyKey: `kiosk_pi_simulated_${session.id}_${Date.now()}`,
+        });
+      }
     } else {
       paymentIntent = await stripe.paymentIntents.create(paymentIntentParams, {
         stripeAccount,
         idempotencyKey: `kiosk_pi_${session.id}`,
       });
 
+    }
+
+    const shouldPersistIntentId = session.stripe_payment_intent_id !== paymentIntent.id;
+    if (shouldPersistIntentId) {
       const { error } = await supaServer
         .from('kiosk_card_present_sessions')
         .update({
