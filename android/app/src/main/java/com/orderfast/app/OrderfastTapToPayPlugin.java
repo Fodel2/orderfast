@@ -496,11 +496,18 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                     activePaymentIntent = intent;
                                     clearOperationTimeout();
 
-                                    if (intent.getStatus() == PaymentIntentStatus.SUCCEEDED || intent.getStatus() == PaymentIntentStatus.PROCESSING || intent.getStatus() == PaymentIntentStatus.REQUIRES_CAPTURE) {
+                                    if (intent.getStatus() == PaymentIntentStatus.SUCCEEDED) {
                                         status = "succeeded";
                                         postSessionState("processing", "native_process_succeeded");
                                         JSObject payload = result("succeeded", null, "Tap to Pay payment processed by Stripe Terminal SDK.");
-                                        payload.put("detail", detail("native_process_result", "succeeded", null));
+                                        payload.put("detail", detail("native_process_result", "succeeded", intent.getStatus().name()));
+                                        logStartupStage("native_process_result", payload);
+                                        resolveOnce(resolveGate, call, payload);
+                                    } else if (intent.getStatus() == PaymentIntentStatus.PROCESSING || intent.getStatus() == PaymentIntentStatus.REQUIRES_CAPTURE) {
+                                        status = "processing";
+                                        postSessionState("needs_reconciliation", "native_process_pending");
+                                        JSObject payload = result("processing", null, "Stripe Terminal returned a pending PaymentIntent state.");
+                                        payload.put("detail", detail("native_process_result", "pending", intent.getStatus().name()));
                                         logStartupStage("native_process_result", payload);
                                         resolveOnce(resolveGate, call, payload);
                                     } else {

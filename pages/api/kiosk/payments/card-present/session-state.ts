@@ -9,6 +9,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!session_id || !next_state || !isKioskSessionState(String(next_state))) {
       return res.status(400).json({ error: 'session_id and valid next_state are required' });
     }
+    if (next_state === 'finalized' || next_state === 'succeeded') {
+      return res.status(400).json({
+        error: 'finalized/succeeded cannot be set directly; use Stripe-verified finalize flow',
+      });
+    }
 
     const session = await markKioskPaymentSessionState({
       sessionId: String(session_id),
