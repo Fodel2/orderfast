@@ -938,6 +938,8 @@ export default function KioskLayout({
   const logoShape = restaurant?.logo_shape || 'round';
   const logoShellClass =
     logoShape === 'round' ? 'rounded-full' : logoShape === 'square' ? 'rounded-2xl' : 'rounded-xl';
+  const debugPanelEnabled =
+    router.query.operator_debug === '1' || (Array.isArray(router.query.operator_debug) && router.query.operator_debug.includes('1'));
   const logoInnerClass =
     logoShape === 'round' ? 'rounded-full' : logoShape === 'square' ? 'rounded-xl' : 'rounded-lg';
   const logoSizeClass = logoShape === 'rectangular' ? 'h-16 w-20' : 'h-16 w-16';
@@ -1227,75 +1229,84 @@ export default function KioskLayout({
           </div>
         </div>
       ) : null}
-      <div className="fixed z-[90]" style={{ left: debugPanelPosition.x, top: debugPanelPosition.y }}>
-        {debugPanelExpanded ? (
-          <div className="w-[min(92vw,320px)] rounded-2xl border border-neutral-900/20 bg-black/85 p-3 text-xs text-white shadow-2xl">
+      {debugPanelEnabled ? (
+        <div className="fixed z-[90]" style={{ left: debugPanelPosition.x, top: debugPanelPosition.y }}>
+          {debugPanelExpanded ? (
+            <div className="w-[min(92vw,320px)] rounded-2xl border border-neutral-900/20 bg-black/85 p-3 text-xs text-white shadow-2xl">
+              <div
+                className="mb-2 flex cursor-move touch-none items-center justify-between"
+                onPointerDown={beginDebugDrag}
+                onPointerMove={handleDebugDragMove}
+                onPointerUp={endDebugDrag}
+                onPointerCancel={endDebugDrag}
+              >
+                <p className="font-semibold uppercase tracking-[0.08em] text-white/80">Kiosk debug (temporary)</p>
+                <button
+                  type="button"
+                  onClick={() => setDebugPanelExpanded(false)}
+                  className="rounded-full bg-white/20 px-2 py-1 text-[11px] font-semibold text-white"
+                >
+                  Collapse
+                </button>
+              </div>
+              <div className="space-y-1 font-mono text-[11px] leading-snug">
+                <p>route: {router.asPath || 'n/a'}</p>
+                <p>resolvedRestaurantId: {resolveRestaurantIdForNavigation() || 'n/a'}</p>
+                <p>sessionActive: {String(sessionActive)}</p>
+                <p>homeSeen: {String(restaurantId ? hasSeenHome(restaurantId) : false)}</p>
+                <p>homeVisible/contentVisible: {String(homeVisible)} / {String(contentVisible)}</p>
+                <p>lastNavTarget: {debugState.lastNavigationTarget || 'n/a'}</p>
+                <p>navStatus: {debugState.navigationStatus || 'idle'}</p>
+                <p>navError: {debugState.navigationError || 'n/a'}</p>
+                <p>menuMounted: {String(Boolean(debugState.menuMounted))}</p>
+                <p>
+                  menuBlocked: {String(Boolean(debugState.menuBlockedBySession))}
+                  {debugState.menuBlockedReason ? ` (${debugState.menuBlockedReason})` : ''}
+                </p>
+                <p>lastEvent: {debugState.lastEvent || 'n/a'}</p>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleForceOpenMenuDebug}
+                  className="rounded-full bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white"
+                >
+                  Force open menu (debug)
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExitDebug}
+                  className="rounded-full bg-rose-500 px-3 py-1.5 text-xs font-semibold text-white"
+                >
+                  Exit kiosk (debug)
+                </button>
+              </div>
+            </div>
+          ) : (
             <div
-              className="mb-2 flex cursor-move touch-none items-center justify-between"
+              role="button"
+              tabIndex={0}
+              aria-label="Open kiosk debug panel"
+              className="flex h-14 w-14 touch-none items-center justify-center rounded-full border border-neutral-200/60 bg-black/80 text-xs font-bold text-white shadow-xl"
               onPointerDown={beginDebugDrag}
               onPointerMove={handleDebugDragMove}
-              onPointerUp={endDebugDrag}
+              onPointerUp={(event) => {
+                endDebugDrag(event);
+                handleDebugBubbleTap();
+              }}
               onPointerCancel={endDebugDrag}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  setDebugPanelExpanded(true);
+                }
+              }}
             >
-              <p className="font-semibold uppercase tracking-[0.08em] text-white/80">Kiosk debug (temporary)</p>
-              <button
-                type="button"
-                onClick={() => setDebugPanelExpanded(false)}
-                className="rounded-full bg-white/20 px-2 py-1 text-[11px] font-semibold text-white"
-              >
-                Collapse
-              </button>
+              DBG
             </div>
-            <div className="space-y-1 font-mono text-[11px] leading-snug">
-              <p>route: {router.asPath || 'n/a'}</p>
-              <p>resolvedRestaurantId: {resolveRestaurantIdForNavigation() || 'n/a'}</p>
-              <p>sessionActive: {String(sessionActive)}</p>
-              <p>homeSeen: {String(restaurantId ? hasSeenHome(restaurantId) : false)}</p>
-              <p>homeVisible/contentVisible: {String(homeVisible)} / {String(contentVisible)}</p>
-              <p>lastNavTarget: {debugState.lastNavigationTarget || 'n/a'}</p>
-              <p>navStatus: {debugState.navigationStatus || 'idle'}</p>
-              <p>navError: {debugState.navigationError || 'n/a'}</p>
-              <p>menuMounted: {String(Boolean(debugState.menuMounted))}</p>
-              <p>
-                menuBlocked: {String(Boolean(debugState.menuBlockedBySession))}
-                {debugState.menuBlockedReason ? ` (${debugState.menuBlockedReason})` : ''}
-              </p>
-              <p>lastEvent: {debugState.lastEvent || 'n/a'}</p>
-            </div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={handleForceOpenMenuDebug}
-                className="rounded-full bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white"
-              >
-                Force open menu (debug)
-              </button>
-              <button
-                type="button"
-                onClick={handleExitDebug}
-                className="rounded-full bg-rose-500 px-3 py-1.5 text-xs font-semibold text-white"
-              >
-                Exit kiosk (debug)
-              </button>
-            </div>
-          </div>
-        ) : (
-          <button
-            type="button"
-            aria-label="Open kiosk debug panel"
-            className="flex h-14 w-14 touch-none items-center justify-center rounded-full border border-neutral-200/60 bg-black/80 text-xs font-bold text-white shadow-xl"
-            onPointerDown={beginDebugDrag}
-            onPointerMove={handleDebugDragMove}
-            onPointerUp={(event) => {
-              endDebugDrag(event);
-              handleDebugBubbleTap();
-            }}
-            onPointerCancel={endDebugDrag}
-          >
-            DBG
-          </button>
-        )}
-      </div>
+          )}
+        </div>
+      ) : null}
       {restaurantId ? (
         <div className="fixed bottom-4 right-4 z-40 flex items-center justify-end md:hidden">
           <KioskActionButton
