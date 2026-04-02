@@ -84,6 +84,21 @@ public class OrderfastTapToPayPlugin extends Plugin {
     private volatile List<Reader> lastDiscoveredReaders = null;
     private volatile PluginCall pendingSetupPermissionCall = null;
 
+    private void clearActivePaymentState() {
+        clearOperationTimeout();
+        activePaymentIntent = null;
+        processCancelable = null;
+        inFlight = false;
+    }
+
+    private void resetStatusForNextAttempt() {
+        if (connectedReader != null && Terminal.isInitialized() && Terminal.getInstance().getConnectionStatus() == ConnectionStatus.CONNECTED) {
+            status = "ready";
+        } else {
+            status = "idle";
+        }
+    }
+
     private boolean isDebugBuild() {
         return (getContext().getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
     }
@@ -444,6 +459,9 @@ public class OrderfastTapToPayPlugin extends Plugin {
         currentRestaurantId = restaurantId;
         currentBackendBaseUrl = backendBaseUrl;
         currentTerminalLocationId = terminalLocationId;
+        clearOperationTimeout();
+        activePaymentIntent = null;
+        processCancelable = null;
 
         if (connectedReader == null || !Terminal.isInitialized() || Terminal.getInstance().getConnectionStatus() != ConnectionStatus.CONNECTED) {
             JSObject payload = result("failed", "session_error", "Tap to Pay reader is not connected. Prepare Tap to Pay first.");
@@ -494,14 +512,14 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                 @Override
                                 public void onSuccess(PaymentIntent intent) {
                                     activePaymentIntent = intent;
-                                    clearOperationTimeout();
 
                                     if (intent.getStatus() == PaymentIntentStatus.SUCCEEDED) {
-                                        status = "succeeded";
                                         postSessionState("processing", "native_process_succeeded");
                                         JSObject payload = result("succeeded", null, "Tap to Pay payment processed by Stripe Terminal SDK.");
                                         payload.put("detail", detail("native_process_result", "succeeded", intent.getStatus().name()));
                                         logStartupStage("native_process_result", payload);
+                                        clearActivePaymentState();
+                                        resetStatusForNextAttempt();
                                         resolveOnce(resolveGate, call, payload);
                                     } else if (intent.getStatus() == PaymentIntentStatus.PROCESSING || intent.getStatus() == PaymentIntentStatus.REQUIRES_CAPTURE) {
                                         status = "processing";
@@ -509,28 +527,29 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                         JSObject payload = result("processing", null, "Stripe Terminal returned a pending PaymentIntent state.");
                                         payload.put("detail", detail("native_process_result", "pending", intent.getStatus().name()));
                                         logStartupStage("native_process_result", payload);
+                                        clearActivePaymentState();
+                                        resetStatusForNextAttempt();
                                         resolveOnce(resolveGate, call, payload);
                                     } else {
                                         status = "failed";
                                         JSObject payload = result("failed", "processing_error", "Unexpected PaymentIntent status: " + intent.getStatus());
                                         payload.put("detail", detail("native_process_result", "unexpected_status", String.valueOf(intent.getStatus())));
                                         logStartupStage("native_process_result", payload);
+                                        clearActivePaymentState();
+                                        resetStatusForNextAttempt();
                                         resolveOnce(resolveGate, call, payload);
                                     }
-                                    processCancelable = null;
-                                    inFlight = false;
                                 }
 
                                 @Override
                                 public void onFailure(TerminalException e) {
-                                    clearOperationTimeout();
                                     status = "failed";
-                                    inFlight = false;
                                     postSessionState("failed", "native_process_failed");
-                                    processCancelable = null;
                                     JSObject payload = result("failed", normalizeErrorCode(e), buildErrorMessage(e));
                                     payload.put("detail", terminalErrorDetail(e, "native_process_result"));
                                     logStartupStage("native_process_result", payload);
+                                    clearActivePaymentState();
+                                    resetStatusForNextAttempt();
                                     resolveOnce(resolveGate, call, payload);
                                 }
                             }
@@ -539,22 +558,22 @@ public class OrderfastTapToPayPlugin extends Plugin {
 
                     @Override
                     public void onFailure(TerminalException e) {
-                        clearOperationTimeout();
                         status = "failed";
-                        inFlight = false;
                         JSObject payload = result("failed", normalizeErrorCode(e), buildErrorMessage(e));
                         payload.put("detail", terminalErrorDetail(e, "native_collect_result"));
                         logStartupStage("native_collect_result", payload);
+                        clearActivePaymentState();
+                        resetStatusForNextAttempt();
                         resolveOnce(resolveGate, call, payload);
                     }
                 }));
             } catch (Exception ex) {
-                clearOperationTimeout();
                 status = "failed";
-                inFlight = false;
                 JSObject payload = result("failed", normalizeErrorCode(ex), ex.getMessage());
                 payload.put("detail", exceptionDetail(ex, "native_collect_result", "start_exception"));
                 logStartupStage("native_collect_result", payload);
+                clearActivePaymentState();
+                resetStatusForNextAttempt();
                 resolveOnce(resolveGate, call, payload);
             }
         });
@@ -571,24 +590,23 @@ public class OrderfastTapToPayPlugin extends Plugin {
                         @Override
                         public void onSuccess() {
                             status = "canceled";
-                            inFlight = false;
-                            activePaymentIntent = null;
-                            processCancelable = null;
                             postSessionState("canceled", "native_cancel");
                             JSObject payload = result("canceled", "canceled", "Tap to Pay canceled.");
                             payload.put("detail", detail("native_cancel_result", "process_cancelable_canceled", null));
                             logStartupStage("native_cancel_result", payload);
+                            clearActivePaymentState();
+                            resetStatusForNextAttempt();
                             call.resolve(payload);
                         }
 
                         @Override
                         public void onFailure(TerminalException e) {
                             status = "failed";
-                            inFlight = false;
-                            processCancelable = null;
                             JSObject payload = result("failed", normalizeErrorCode(e), buildErrorMessage(e));
                             payload.put("detail", terminalErrorDetail(e, "native_cancel_result"));
                             logStartupStage("native_cancel_result", payload);
+                            clearActivePaymentState();
+                            resetStatusForNextAttempt();
                             call.resolve(payload);
                         }
                     });
@@ -600,24 +618,23 @@ public class OrderfastTapToPayPlugin extends Plugin {
                         @Override
                         public void onSuccess(PaymentIntent paymentIntent) {
                             status = "canceled";
-                            inFlight = false;
-                            activePaymentIntent = null;
-                            processCancelable = null;
                             postSessionState("canceled", "native_cancel");
                             JSObject payload = result("canceled", "canceled", "Tap to Pay canceled.");
                             payload.put("detail", detail("native_cancel_result", "payment_intent_canceled", null));
                             logStartupStage("native_cancel_result", payload);
+                            clearActivePaymentState();
+                            resetStatusForNextAttempt();
                             call.resolve(payload);
                         }
 
                         @Override
                         public void onFailure(TerminalException e) {
                             status = "failed";
-                            inFlight = false;
-                            processCancelable = null;
                             JSObject payload = result("failed", normalizeErrorCode(e), buildErrorMessage(e));
                             payload.put("detail", terminalErrorDetail(e, "native_cancel_result"));
                             logStartupStage("native_cancel_result", payload);
+                            clearActivePaymentState();
+                            resetStatusForNextAttempt();
                             call.resolve(payload);
                         }
                     });
@@ -625,18 +642,19 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 }
 
                 status = "canceled";
-                inFlight = false;
-                processCancelable = null;
                 JSObject payload = result("canceled", "canceled", "No active payment was running.");
                 payload.put("detail", detail("native_cancel_result", "no_active_payment", null));
                 logStartupStage("native_cancel_result", payload);
+                clearActivePaymentState();
+                resetStatusForNextAttempt();
                 call.resolve(payload);
             } catch (Exception ex) {
                 status = "failed";
-                inFlight = false;
                 JSObject payload = result("failed", normalizeErrorCode(ex), ex.getMessage());
                 payload.put("detail", exceptionDetail(ex, "native_cancel_result", "cancel_exception"));
                 logStartupStage("native_cancel_result", payload);
+                clearActivePaymentState();
+                resetStatusForNextAttempt();
                 call.resolve(payload);
             }
         });
@@ -779,11 +797,20 @@ public class OrderfastTapToPayPlugin extends Plugin {
         timeoutRunnable = () -> {
             if (inFlight) {
                 status = "failed";
-                inFlight = false;
                 postSessionState("needs_reconciliation", "native_timeout");
+                if (processCancelable != null && !processCancelable.isCompleted()) {
+                    processCancelable.cancel(new Callback() {
+                        @Override
+                        public void onSuccess() {}
+                        @Override
+                        public void onFailure(TerminalException e) {}
+                    });
+                }
                 JSObject payload = result("failed", "processing_error", "Tap to Pay timed out. Please retry.");
                 payload.put("detail", detail("native_process_result", "timeout", null));
                 logStartupStage("native_process_result", payload);
+                clearActivePaymentState();
+                resetStatusForNextAttempt();
                 resolveOnce(resolveGate, call, payload);
             }
         };
