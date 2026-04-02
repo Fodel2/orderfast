@@ -26,6 +26,7 @@ import PosLaunchModal from '@/components/PosLaunchModal';
 import { POS_APK_DOWNLOAD_URL } from '@/utils/pos/constants';
 import { KIOSK_APK_DOWNLOAD_URL } from '@/utils/kiosk/constants';
 import { KOD_APK_DOWNLOAD_URL } from '@/utils/kod/constants';
+import { APP_CHANNEL, type ApkBuildStatus } from '@/utils/android/apkChannels';
 
 type NavChild = {
   href: string;
@@ -65,6 +66,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [showKodModal, setShowKodModal] = useState(false);
   const [rememberKodChoice, setRememberKodChoice] = useState(false);
   const [kodPreferenceSaved, setKodPreferenceSaved] = useState(false);
+  const [kioskBuildStatus, setKioskBuildStatus] = useState<ApkBuildStatus>('building');
 
   useEffect(() => {
     let active = true;
@@ -167,6 +169,32 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     const stored = window.localStorage.getItem(kodPreferenceKey);
     setKodPreferenceSaved(stored === 'pwa');
   }, [kodPreferenceKey]);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadBuildStatus = async () => {
+      try {
+        const response = await fetch(`/api/android-build-status?channel=${encodeURIComponent(APP_CHANNEL)}`);
+        if (!response.ok) return;
+        const payload = (await response.json()) as { status?: ApkBuildStatus };
+        if (!active || !payload?.status) return;
+        setKioskBuildStatus(payload.status);
+      } catch {
+        if (active) setKioskBuildStatus('failed');
+      }
+    };
+
+    void loadBuildStatus();
+    const interval = window.setInterval(() => {
+      void loadBuildStatus();
+    }, 30000);
+
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, []);
 
   const handlePosLaunch = () => {
     if (!posUrl) return;
@@ -588,6 +616,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         description="Choose how you want to run the kiosk experience."
         launchLabel="Launch Kiosk (PWA)"
         downloadLabel="Download Kiosk APK"
+        statusLabel={`APK status (${APP_CHANNEL})`}
+        buildStatus={kioskBuildStatus}
         rememberChoice={rememberKioskChoice}
         onRememberChange={setRememberKioskChoice}
         onLaunchPwa={handleKioskLaunch}

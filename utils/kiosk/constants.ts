@@ -1,8 +1,3 @@
-const KIOSK_APK_RELEASE_TAG = 'kiosk-taptopay-release-testing';
-const KIOSK_APK_ASSET_NAME = 'orderfast-kiosk-taptopay-release.apk';
-const GITHUB_REPOSITORY = process.env.NEXT_PUBLIC_GITHUB_REPOSITORY;
+import { APP_CHANNEL, getApkDownloadUrl } from '@/utils/android/apkChannels';
 
-export const KIOSK_APK_DOWNLOAD_URL =
-  (GITHUB_REPOSITORY
-    ? `https://github.com/${GITHUB_REPOSITORY}/releases/download/${KIOSK_APK_RELEASE_TAG}/${KIOSK_APK_ASSET_NAME}`
-    : '#');
+export const KIOSK_APK_DOWNLOAD_URL = getApkDownloadUrl(APP_CHANNEL);

@@ -4,160 +4,44 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
+    inputs:
+      channel:
+        description: APK channel to build
+        required: true
+        default: live
+        type: choice
+        options:
+          - live
+          - preview
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
-  build-apk:
-    runs-on: ubuntu-latest
-    env:
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      KIOSK_RELEASE_TAG: kiosk-taptopay-release-testing
-      KIOSK_ASSET_NAME: orderfast-kiosk-taptopay-release.apk
-      ANDROID_KEYSTORE_PATH: android/release-keystore.jks
-      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+  build-live:
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.channel == 'live')
+    uses: ./.github/workflows/android-apk-template.yml
+    with:
+      channel: live
+      gradle_flavor: Live
+      release_tag: orderfast-android-live
+      asset_name: orderfast-android-live.apk
+      app_channel_env: live
 
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build app
-        run: npm run build
-
-      - name: Create temporary Capacitor web assets
-        run: |
-          mkdir -p www
-          cat > www/index.html <<'EOF2'
-          <!doctype html>
-          <html>
-            <head>
-              <meta charset="utf-8" />
-              <meta name="viewport" content="width=device-width, initial-scale=1" />
-              <title>Orderfast</title>
-            </head>
-            <body>
-              <div id="app">Temporary Capacitor bootstrap page</div>
-            </body>
-          </html>
-          EOF2
-
-      - name: Temporarily point Capacitor to www
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path("capacitor.config.ts")
-          s = p.read_text()
-          s = s.replace("webDir: '.next'", "webDir: 'www'")
-          s = s.replace('webDir: ".next"', 'webDir: "www"')
-          p.write_text(s)
-          print("Updated capacitor.config.ts to use webDir = www")
-          PY
-
-      - name: Generate Android platform if missing
-        run: |
-          if [ ! -d "android" ]; then
-            npx cap add android
-          else
-            echo "android folder already exists, skipping generation"
-          fi
-
-      - name: Commit Android platform if newly generated
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add android package.json package-lock.json capacitor.config.ts www
-          if ! git diff --cached --quiet; then
-            git commit -m "chore: add Capacitor Android platform"
-            git push
-          else
-            echo "No changes to commit"
-          fi
-
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 21
-
-      - name: Sync Capacitor Android
-        run: npx cap sync android
-
-      - name: Prepare release signing (keystore secret)
-        run: |
-          if [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
-            echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > "$ANDROID_KEYSTORE_PATH"
-            echo "has_release_keystore=true" >> "$GITHUB_ENV"
-            echo "Loaded release keystore from ANDROID_KEYSTORE_BASE64 secret"
-          else
-            echo "has_release_keystore=false" >> "$GITHUB_ENV"
-            echo "ANDROID_KEYSTORE_BASE64 is not set; using debug signing key for release testing APK"
-          fi
-
-      - name: Build release APK
-        run: |
-          cd android
-          BUILD_VERSION_NAME="kiosk-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}"
-          if [ "$has_release_keystore" = "true" ]; then
-            ./gradlew assembleRelease \
-              -PORDERFAST_VERSION_CODE="$GITHUB_RUN_NUMBER" \
-              -PORDERFAST_VERSION_NAME="$BUILD_VERSION_NAME" \
-              -PORDERFAST_UPLOAD_STORE_FILE="$ANDROID_KEYSTORE_PATH" \
-              -PORDERFAST_UPLOAD_KEY_ALIAS="$ANDROID_KEY_ALIAS" \
-              -PORDERFAST_UPLOAD_STORE_PASSWORD="$ANDROID_KEYSTORE_PASSWORD" \
-              -PORDERFAST_UPLOAD_KEY_PASSWORD="$ANDROID_KEY_PASSWORD"
-          else
-            ./gradlew assembleRelease \
-              -PORDERFAST_VERSION_CODE="$GITHUB_RUN_NUMBER" \
-              -PORDERFAST_VERSION_NAME="$BUILD_VERSION_NAME"
-          fi
-
-      - name: Verify release manifest is non-debuggable
-        run: |
-          MANIFEST_PATH="$(find android/app/build/intermediates/merged_manifests -type f -path '*/release/AndroidManifest.xml' | head -n 1)"
-          if [ -z "$MANIFEST_PATH" ]; then
-            echo "⚠️ Release manifest check skipped: no release AndroidManifest.xml found under android/app/build/intermediates/merged_manifests"
-            echo "manifest_found=false"
-            exit 0
-          fi
-
-          echo "manifest_found=true"
-          echo "manifest_path=$MANIFEST_PATH"
-          if rg -q 'android:debuggable="true"' "$MANIFEST_PATH"; then
-            echo "debuggable_attr_detected=true"
-            echo "❌ Release manifest check failed: android:debuggable=\"true\" is present"
-            exit 1
-          fi
-          echo "debuggable_attr_detected=false"
-          echo "✅ Release manifest check passed: android:debuggable=\"true\" is not present"
-
-      - name: Prepare APK release asset
-        run: cp android/app/build/outputs/apk/release/app-release.apk "$KIOSK_ASSET_NAME"
-
-      - name: Upload Tap to Pay release APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: orderfast-kiosk-taptopay-release-apk
-          path: android/app/build/outputs/apk/release/app-release.apk
-
-      - name: Upload kiosk Tap to Pay release APK to stable GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ env.KIOSK_RELEASE_TAG }}
-          name: Kiosk Tap to Pay Release APK (Testing)
-          prerelease: true
-          make_latest: false
-          overwrite_files: true
-          fail_on_unmatched_files: true
-          files: ${{ env.KIOSK_ASSET_NAME }}
+  build-preview:
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.channel == 'preview')
+    uses: ./.github/workflows/android-apk-template.yml
+    with:
+      channel: preview
+      gradle_flavor: Preview
+      release_tag: orderfast-android-preview
+      asset_name: orderfast-android-preview.apk
+      app_channel_env: preview

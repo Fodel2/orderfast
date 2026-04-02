@@ -26,6 +26,27 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    flavorDimensions += "channel"
+    productFlavors {
+        live {
+            dimension "channel"
+            applicationId "com.orderfast.app"
+            buildConfigField "String", "ORDERFAST_APP_CHANNEL", "\"live\""
+            resValue "string", "app_name", "Orderfast"
+            resValue "string", "title_activity_main", "Orderfast"
+            resValue "string", "package_name", "com.orderfast.app"
+            resValue "string", "custom_url_scheme", "com.orderfast.app"
+        }
+        preview {
+            dimension "channel"
+            applicationId "com.orderfast.app.preview"
+            buildConfigField "String", "ORDERFAST_APP_CHANNEL", "\"preview\""
+            resValue "string", "app_name", "Orderfast Preview"
+            resValue "string", "title_activity_main", "Orderfast Preview"
+            resValue "string", "package_name", "com.orderfast.app.preview"
+            resValue "string", "custom_url_scheme", "com.orderfast.app.preview"
+        }
+    }
     signingConfigs {
         release {
             if (hasReleaseSigningProps) {
