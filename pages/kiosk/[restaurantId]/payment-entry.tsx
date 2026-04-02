@@ -9,6 +9,7 @@ import {
 } from '@heroicons/react/24/outline';
 import KioskLayout from '@/components/layouts/KioskLayout';
 import { KioskSessionProvider } from '@/context/KioskSessionContext';
+import { useCart } from '@/context/CartContext';
 import { supabase } from '@/lib/supabaseClient';
 import {
   normalizeKioskPaymentSettings,
@@ -17,6 +18,8 @@ import {
 } from '@/lib/kiosk/paymentSettings';
 import { tapToPayBridge, type TapToPayStatus } from '@/lib/kiosk/tapToPayBridge';
 import type { KioskTerminalMode } from '@/lib/kiosk/terminalMode';
+import { setKioskLastRealOrderNumber } from '@/utils/kiosk/orders';
+import { requestPrintJobCreation } from '@/lib/print-jobs/request';
 
 type Restaurant = {
   id: string;
@@ -31,6 +34,24 @@ type Restaurant = {
   menu_header_image_updated_at?: string | null;
   menu_header_focal_x?: number | null;
   menu_header_focal_y?: number | null;
+  auto_accept_kiosk_orders?: boolean | null;
+};
+type StoredCheckoutItem = {
+  item_id: string;
+  name: string;
+  price: number;
+  quantity: number;
+  notes?: string;
+  addons?: Array<{ option_id: string; name: string; price: number; quantity: number }>;
+};
+type StoredCheckoutContext = {
+  restaurantId: string;
+  customerName: string;
+  isExpressFlow: boolean;
+  tableNumber: number | null;
+  cartItems: StoredCheckoutItem[];
+  subtotal: number;
+  currency: string;
 };
 
 type PaymentStage = 'method_picker' | 'contactless' | 'cash' | 'pay_at_counter';
@@ -72,8 +93,16 @@ type PaymentVerification = {
 };
 
 const OPERATOR_DEBUG_STORAGE_KEY = 'orderfast_kiosk_operator_debug';
+const KIOSK_CHECKOUT_CONTEXT_STORAGE_KEY = 'orderfast_kiosk_checkout_context';
 const OPERATOR_DEBUG_TAP_THRESHOLD = 7;
 const OPERATOR_DEBUG_TAP_WINDOW_MS = 8000;
+const PAYMENT_PREP_MESSAGES = [
+  'Loading up the payment magic...',
+  'Deliciousness secured... now time to secure the payment.',
+  'Waking up the card goblins...',
+  'Getting the tap ready...',
+  'One tiny beep away from greatness...',
+];
 const STARTUP_TRACE_LABELS: Record<StartupTraceKey, string> = {
   availability: 'availability',
   session_create: 'session create',
@@ -132,6 +161,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   const CONTACTLESS_SESSION_STORAGE_KEY = 'orderfast_kiosk_contactless_session';
   const TAP_TO_PAY_SETUP_STORAGE_KEY = 'orderfast_kiosk_tap_to_pay_setup_ready';
   const router = useRouter();
+  const { cart, clearCart } = useCart();
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [restaurantLoading, setRestaurantLoading] = useState(true);
   const [settingsLoading, setSettingsLoading] = useState(true);
@@ -148,6 +178,12 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   const [operatorTapCount, setOperatorTapCount] = useState(0);
   const [tapStartupTrace, setTapStartupTrace] = useState<StartupTraceState>(createStartupTrace);
   const [paymentNotice, setPaymentNotice] = useState('');
+  const [checkoutContext, setCheckoutContext] = useState<StoredCheckoutContext | null>(null);
+  const [orderSubmitting, setOrderSubmitting] = useState(false);
+  const [orderSubmitError, setOrderSubmitError] = useState('');
+  const [currentOrderMethod, setCurrentOrderMethod] = useState<'cash' | 'pay_at_counter' | 'contactless' | null>(null);
+  const [autoSubmitAttemptedMethod, setAutoSubmitAttemptedMethod] = useState<'cash' | 'pay_at_counter' | 'contactless' | null>(null);
+  const [prepMessageIndex, setPrepMessageIndex] = useState(0);
   const [terminalMode, setTerminalMode] = useState<KioskTerminalMode>('real_tap_to_pay');
   const isVerifiedPaidPayload = useCallback((verification: PaymentVerification | null | undefined) => {
     if (!verification || verification.verifiedPaid !== true) return false;
@@ -155,6 +191,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     return verification.paymentIntentStatus === 'succeeded';
   }, []);
   const flowLockRef = useRef(false);
+  const orderSubmitLockRef = useRef(false);
   const cancelLockRef = useRef(false);
   const operatorTapTimeoutRef = useRef<number | null>(null);
   const stageParam = Array.isArray(router.query.stage) ? router.query.stage[0] : router.query.stage;
@@ -174,6 +211,20 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     const stored = window.localStorage.getItem(OPERATOR_DEBUG_STORAGE_KEY);
     setOperatorDebugEnabled(stored === '1');
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !restaurantId) return;
+    const raw = window.sessionStorage.getItem(KIOSK_CHECKOUT_CONTEXT_STORAGE_KEY);
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as StoredCheckoutContext;
+      if (parsed?.restaurantId === restaurantId) {
+        setCheckoutContext(parsed);
+      }
+    } catch {
+      window.sessionStorage.removeItem(KIOSK_CHECKOUT_CONTEXT_STORAGE_KEY);
+    }
+  }, [restaurantId]);
 
   useEffect(
     () => () => {
@@ -201,7 +252,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         const { data, error } = await supabase
           .from('restaurants')
           .select(
-            'id,name,website_title,website_description,logo_url,logo_shape,brand_primary_color,brand_secondary_color,menu_header_image_url,menu_header_image_updated_at,menu_header_focal_x,menu_header_focal_y'
+            'id,name,website_title,website_description,logo_url,logo_shape,brand_primary_color,brand_secondary_color,menu_header_image_url,menu_header_image_updated_at,menu_header_focal_x,menu_header_focal_y,auto_accept_kiosk_orders'
           )
           .eq('id', restaurantId)
           .maybeSingle();
@@ -298,6 +349,17 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       }
     }
   }, [CONTACTLESS_SESSION_STORAGE_KEY, stage]);
+
+  useEffect(() => {
+    if (!orderSubmitting && !contactlessBusy && contactlessStatus !== 'preparing' && contactlessStatus !== 'collecting') {
+      setPrepMessageIndex(0);
+      return;
+    }
+    const interval = window.setInterval(() => {
+      setPrepMessageIndex((prev) => (prev + 1) % PAYMENT_PREP_MESSAGES.length);
+    }, 1800);
+    return () => window.clearInterval(interval);
+  }, [contactlessBusy, contactlessStatus, orderSubmitting]);
 
   const reconcileSession = useCallback(
     async (sessionId: string, reason: string) => {
@@ -875,12 +937,128 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       setContactlessError('');
       setContactlessSessionId(null);
       setContactlessDebug('fallback');
+      setAutoSubmitAttemptedMethod(null);
       setStage(enabledMethods.length > 1 ? 'method_picker' : 'pay_at_counter');
       if (typeof window !== 'undefined') {
         window.localStorage.removeItem(CONTACTLESS_SESSION_STORAGE_KEY);
       }
     },
     [CONTACTLESS_SESSION_STORAGE_KEY, enabledMethods]
+  );
+
+  const submitOrderAndRedirect = useCallback(
+    async (method: 'cash' | 'pay_at_counter' | 'contactless') => {
+      if (!restaurantId || orderSubmitLockRef.current) return;
+      orderSubmitLockRef.current = true;
+      setCurrentOrderMethod(method);
+      setOrderSubmitting(true);
+      setOrderSubmitError('');
+
+      const cartItems = checkoutContext?.cartItems?.length ? checkoutContext.cartItems : cart.items;
+      const customerName = checkoutContext?.customerName?.trim() || 'Guest';
+      const isExpressFlow = checkoutContext?.isExpressFlow === true;
+      const tableNumber = checkoutContext?.tableNumber ?? null;
+      const subtotalAmount = checkoutContext?.subtotal ?? amountCents / 100;
+      const initialStatus = restaurant?.auto_accept_kiosk_orders ? 'accepted' : 'pending';
+      const acceptedAt = restaurant?.auto_accept_kiosk_orders ? new Date().toISOString() : null;
+      const source = isExpressFlow ? 'express' : 'kiosk';
+      let orderId: string | null = null;
+
+      try {
+        if (!cartItems.length) {
+          throw new Error('Cart is empty');
+        }
+        const { data: order, error: orderError } = await supabase
+          .from('orders')
+          .insert([
+            {
+              restaurant_id: restaurantId,
+              customer_name: customerName,
+              order_type: 'collection',
+              source,
+              status: initialStatus,
+              accepted_at: acceptedAt,
+              total_price: subtotalAmount,
+              service_fee: 0,
+              delivery_fee: 0,
+              dine_in_table_number: isExpressFlow ? tableNumber : null,
+              table_session_id: null,
+            },
+          ])
+          .select('id, short_order_number')
+          .single();
+        if (orderError || !order) throw orderError || new Error('Failed to create order');
+        orderId = order.id;
+
+        for (const item of cartItems) {
+          const { data: orderItem, error: itemError } = await supabase
+            .from('order_items')
+            .insert([
+              {
+                order_id: order.id,
+                item_id: item.item_id,
+                name: item.name,
+                price: item.price,
+                quantity: item.quantity,
+                notes: item.notes || null,
+              },
+            ])
+            .select('id')
+            .single();
+          if (itemError || !orderItem) throw itemError || new Error('Failed to insert order item');
+          for (const addon of item.addons || []) {
+            const { error: addonError } = await supabase.from('order_addons').insert([
+              {
+                order_item_id: orderItem.id,
+                option_id: addon.option_id,
+                name: addon.name,
+                price: addon.price,
+                quantity: addon.quantity,
+              },
+            ]);
+            if (addonError) throw addonError;
+          }
+        }
+
+        try {
+          await requestPrintJobCreation({
+            restaurantId,
+            orderId: order.id,
+            ticketType: 'kot',
+            source: 'auto',
+            triggerEvent: 'order_placed',
+            dedupeToken: `order_placed:${order.id}`,
+          });
+        } catch (printError) {
+          console.warn('[kiosk] failed to create auto KOT print jobs', printError);
+        }
+
+        clearCart();
+        setKioskLastRealOrderNumber(restaurantId, order.short_order_number ?? 0);
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.removeItem(KIOSK_CHECKOUT_CONTEXT_STORAGE_KEY);
+        }
+        const params = new URLSearchParams({ orderNumber: String(order.short_order_number ?? 0) });
+        if (isExpressFlow) params.set('express', '1');
+        await router.replace(`/kiosk/${restaurantId}/confirm?${params.toString()}`);
+      } catch (error) {
+        console.error('[kiosk] failed to submit order from payment entry', error);
+        if (orderId) {
+          await supabase.from('orders').delete().eq('id', orderId);
+        }
+        setOrderSubmitError('We could not place your order. Please choose a method and try again.');
+        if (method === 'contactless') {
+          setStage(enabledMethods.length > 1 ? 'method_picker' : 'contactless');
+          setPaymentNotice('Payment was successful, but order submission failed. Please ask staff for help.');
+        } else {
+          setStage(enabledMethods.length > 1 ? 'method_picker' : method);
+        }
+      } finally {
+        setOrderSubmitting(false);
+        orderSubmitLockRef.current = false;
+      }
+    },
+    [amountCents, cart.items, checkoutContext, clearCart, enabledMethods.length, restaurant?.auto_accept_kiosk_orders, restaurantId, router]
   );
 
   const stageLabel = useMemo(() => {
@@ -927,6 +1105,23 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     }, 900);
     return () => window.clearTimeout(timeout);
   }, [contactlessBusy, contactlessError, contactlessStatus, returnToFallback, stage]);
+
+  useEffect(() => {
+    if (orderSubmitting) return;
+    if (stage === 'cash' && autoSubmitAttemptedMethod !== 'cash') {
+      setAutoSubmitAttemptedMethod('cash');
+      void submitOrderAndRedirect('cash');
+    } else if (stage === 'pay_at_counter' && autoSubmitAttemptedMethod !== 'pay_at_counter') {
+      setAutoSubmitAttemptedMethod('pay_at_counter');
+      void submitOrderAndRedirect('pay_at_counter');
+    }
+  }, [autoSubmitAttemptedMethod, orderSubmitting, stage, submitOrderAndRedirect]);
+
+  useEffect(() => {
+    if (contactlessStatus !== 'succeeded' || orderSubmitting || autoSubmitAttemptedMethod === 'contactless') return;
+    setAutoSubmitAttemptedMethod('contactless');
+    void submitOrderAndRedirect('contactless');
+  }, [autoSubmitAttemptedMethod, contactlessStatus, orderSubmitting, submitOrderAndRedirect]);
 
   useEffect(() => {
     if (stage !== 'contactless' || !restaurantId) return;
@@ -1006,6 +1201,8 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
               key={method}
               type="button"
               onClick={() => {
+                setOrderSubmitError('');
+                setAutoSubmitAttemptedMethod(null);
                 if (method === 'contactless') {
                   setPaymentNotice('');
                   setStage('contactless');
@@ -1032,23 +1229,32 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   );
 
   const renderContactlessOverlay = () => (
-    <div className="fixed inset-0 z-[75] flex items-center justify-center bg-black/45 px-4 backdrop-blur-[2px]">
-      <section className="w-full max-w-md rounded-[2rem] border border-slate-200 bg-white p-6 shadow-2xl">
+    <div className="fixed inset-0 z-[75] flex items-center justify-center bg-slate-500/35 px-4 backdrop-blur-[2px]">
+      <section className="w-full max-w-md rounded-[2rem] border border-slate-200 bg-white/95 p-6 shadow-2xl">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Contactless payment</p>
-        {contactlessStatus === 'preparing' || contactlessStatus === 'idle' ? <p className="mt-3 text-base font-medium text-slate-800">Starting secure payment…</p> : null}
-        {contactlessStatus === 'collecting' ? <p className="mt-3 text-base font-medium text-slate-800">Hold card or phone near reader</p> : null}
-        {contactlessStatus === 'processing' ? <p className="mt-3 text-base font-medium text-amber-700">Processing payment…</p> : null}
+        {contactlessStatus === 'preparing' || contactlessStatus === 'idle' ? (
+          <p className="mt-3 text-base font-medium text-slate-800">{PAYMENT_PREP_MESSAGES[prepMessageIndex]}</p>
+        ) : null}
+        {contactlessStatus === 'collecting' ? <p className="mt-3 text-base font-medium text-slate-800">Reader is ready. Hold your card or phone near the reader.</p> : null}
+        {contactlessStatus === 'processing' ? <p className="mt-3 text-base font-medium text-amber-700">Finalizing payment result...</p> : null}
         {contactlessStatus === 'succeeded' ? (
           <p className="mt-3 flex items-center gap-2 text-base font-medium text-emerald-700">
             <CheckCircleIcon className="h-5 w-5" />
-            Payment approved
+            Payment approved. Sending your order now...
           </p>
         ) : null}
         {contactlessStatus === 'failed' || contactlessStatus === 'canceled' ? (
           <p className="mt-3 flex items-center gap-2 text-base font-medium text-rose-700">
             <ExclamationTriangleIcon className="h-5 w-5" />
-            {contactlessError || 'Payment failed, please try again or choose another payment method.'}
+            {contactlessStatus === 'canceled'
+              ? 'Payment was canceled. Please choose a payment method to continue.'
+              : contactlessError || 'Payment failed, please try again or choose another payment method.'}
           </p>
+        ) : null}
+        {contactlessStatus === 'preparing' || contactlessStatus === 'idle' || contactlessStatus === 'collecting' || contactlessStatus === 'processing' ? (
+          <div className="mt-5 flex justify-center">
+            <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-slate-700" />
+          </div>
         ) : null}
         {showOperatorDetails ? <p className="mt-2 text-[11px] font-medium uppercase tracking-[0.12em] text-slate-500">Debug: {contactlessDebug}</p> : null}
         {showOperatorDetails && contactlessDebugDetail ? (
@@ -1102,24 +1308,16 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     </div>
   );
 
-  const renderCash = () => (
-    <section className="w-full rounded-[2rem] border border-slate-200 bg-white/95 p-5 shadow-xl shadow-slate-200/70 sm:p-8">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Cash path</p>
-      <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">Pay with cash</h1>
-      <p className="mt-3 text-sm leading-relaxed text-slate-600 sm:text-base">
-        Cash is enabled. This path is separated and ready for future tendering/change logic.
-      </p>
-    </section>
-  );
-
-  const renderPayAtCounter = () => (
-    <section className="w-full rounded-[2rem] border border-slate-200 bg-white/95 p-5 shadow-xl shadow-slate-200/70 sm:p-8">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Default flow</p>
-      <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">Pay at Counter</h1>
-      <p className="mt-3 text-sm leading-relaxed text-slate-600 sm:text-base">
-        Baseline kiosk behavior is unchanged: place your order and complete payment with staff at the counter.
-      </p>
-    </section>
+  const renderOrderSubmittingOverlay = () => (
+    <div className="fixed inset-0 z-[74] flex items-center justify-center bg-slate-500/35 px-4 backdrop-blur-[2px]">
+      <section className="w-full max-w-md rounded-[2rem] border border-slate-200 bg-white/95 p-6 text-center shadow-2xl">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Finishing checkout</p>
+        <div className="mx-auto mt-4 h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-slate-700" />
+        <p className="mt-4 text-base font-medium text-slate-800">
+          {currentOrderMethod === 'contactless' ? 'Payment captured. Sending your order to the kitchen...' : 'Sending your order to the kitchen...'}
+        </p>
+      </section>
+    </div>
   );
 
   return (
@@ -1168,11 +1366,31 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
               {paymentNotice}
             </section>
           ) : null}
+          {!settingsLoading && orderSubmitError ? (
+            <section className="w-full rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800">
+              <p>{orderSubmitError}</p>
+              {!orderSubmitting && (stage === 'cash' || stage === 'pay_at_counter' || stage === 'contactless') ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAutoSubmitAttemptedMethod(null);
+                    if (stage === 'contactless') {
+                      void runTapToPay();
+                      return;
+                    }
+                    void submitOrderAndRedirect(stage);
+                  }}
+                  className="mt-2 rounded-full border border-rose-300 bg-white px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-rose-700"
+                >
+                  Try again
+                </button>
+              ) : null}
+            </section>
+          ) : null}
 
-          {!settingsLoading && (stage === 'method_picker' || stage === 'contactless') ? renderMethodPicker() : null}
-          {!settingsLoading && stage === 'cash' ? renderCash() : null}
-          {!settingsLoading && stage === 'pay_at_counter' ? renderPayAtCounter() : null}
+          {!settingsLoading ? renderMethodPicker() : null}
           {!settingsLoading && stage === 'contactless' ? renderContactlessOverlay() : null}
+          {!settingsLoading && orderSubmitting ? renderOrderSubmittingOverlay() : null}
         </div>
       </div>
     </KioskLayout>
