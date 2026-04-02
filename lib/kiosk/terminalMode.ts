@@ -9,19 +9,15 @@ const normalizeMode = (value: string | null | undefined): KioskTerminalMode | nu
 };
 
 const inferDefaultModeFromEnv = (envName: string | null | undefined): KioskTerminalMode => {
-  if (!envName) return 'simulated_terminal';
+  if (!envName) return 'real_tap_to_pay';
   const normalized = envName.trim().toLowerCase();
   return normalized === 'production' ? 'real_tap_to_pay' : 'simulated_terminal';
 };
 
-export const resolveServerKioskTerminalMode = (): KioskTerminalMode => {
+export const resolveServerDefaultKioskTerminalMode = (): KioskTerminalMode => {
   const explicit = normalizeMode(process.env.KIOSK_TERMINAL_MODE);
   if (explicit) return explicit;
   return inferDefaultModeFromEnv(process.env.VERCEL_ENV || process.env.NODE_ENV);
 };
 
-export const resolveClientKioskTerminalMode = (): KioskTerminalMode => {
-  const explicit = normalizeMode(process.env.NEXT_PUBLIC_KIOSK_TERMINAL_MODE);
-  if (explicit) return explicit;
-  return inferDefaultModeFromEnv(process.env.NEXT_PUBLIC_VERCEL_ENV || process.env.NODE_ENV);
-};
+export const normalizeKioskTerminalMode = normalizeMode;
