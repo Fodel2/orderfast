@@ -38,7 +38,7 @@ type TapStartupStage =
   | 'readiness_check'
   | 'session_create'
   | 'payment_intent'
-  | 'simulated_terminal'
+  | 'simulated_complete'
   | 'native_support_check'
   | 'native_prepare'
   | 'native_start';
@@ -46,16 +46,18 @@ type TapStartupResultStage =
   | 'availability_result'
   | 'session_create_result'
   | 'payment_intent_result'
+  | 'simulated_complete_result'
   | 'native_support_check_result'
   | 'native_prepare_result'
   | 'native_collect_result'
   | 'native_process_result'
   | 'native_cancel_result';
-type StartupTraceStatus = 'idle' | 'pending' | 'ok' | 'failed';
+type StartupTraceStatus = 'idle' | 'pending' | 'ok' | 'failed' | 'skipped';
 type StartupTraceKey =
   | 'availability'
   | 'session_create'
   | 'payment_intent'
+  | 'simulated_complete'
   | 'native_support'
   | 'native_prepare'
   | 'native_discovery'
@@ -76,6 +78,7 @@ const STARTUP_TRACE_LABELS: Record<StartupTraceKey, string> = {
   availability: 'availability',
   session_create: 'session create',
   payment_intent: 'payment intent',
+  simulated_complete: 'simulated complete',
   native_support: 'native support',
   native_prepare: 'native prepare',
   native_discovery: 'native discovery',
@@ -87,6 +90,7 @@ const createStartupTrace = (): StartupTraceState => ({
   availability: { status: 'idle', detail: '' },
   session_create: { status: 'idle', detail: '' },
   payment_intent: { status: 'idle', detail: '' },
+  simulated_complete: { status: 'idle', detail: '' },
   native_support: { status: 'idle', detail: '' },
   native_prepare: { status: 'idle', detail: '' },
   native_discovery: { status: 'idle', detail: '' },
@@ -146,7 +150,9 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   const [paymentNotice, setPaymentNotice] = useState('');
   const [terminalMode, setTerminalMode] = useState<KioskTerminalMode>('real_tap_to_pay');
   const isVerifiedPaidPayload = useCallback((verification: PaymentVerification | null | undefined) => {
-    return verification?.verifiedPaid === true && verification?.paymentIntentStatus === 'succeeded';
+    if (!verification || verification.verifiedPaid !== true) return false;
+    if (verification.mode === 'simulated_terminal') return true;
+    return verification.paymentIntentStatus === 'succeeded';
   }, []);
   const flowLockRef = useRef(false);
   const cancelLockRef = useRef(false);
@@ -438,6 +444,8 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         setTapStartupTrace((prev) => ({ ...prev, session_create: { status: result, detail: serialized } }));
       } else if (stage === 'payment_intent_result') {
         setTapStartupTrace((prev) => ({ ...prev, payment_intent: { status: result, detail: serialized } }));
+      } else if (stage === 'simulated_complete_result') {
+        setTapStartupTrace((prev) => ({ ...prev, simulated_complete: { status: result, detail: serialized } }));
       } else if (stage === 'native_support_check_result') {
         setTapStartupTrace((prev) => ({ ...prev, native_support: { status: result, detail: serialized } }));
       } else if (stage === 'native_prepare_result') {
@@ -532,6 +540,14 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
 
       if (resolvedTerminalMode === 'simulated_terminal') {
         setPaymentNotice('Sandbox test terminal mode: success is only shown after Stripe test completion.');
+        setTapStartupTrace((prev) => ({
+          ...prev,
+          native_support: { status: 'skipped', detail: 'Skipped in simulated_terminal mode.' },
+          native_prepare: { status: 'skipped', detail: 'Skipped in simulated_terminal mode.' },
+          native_discovery: { status: 'skipped', detail: 'Skipped in simulated_terminal mode.' },
+          native_connection: { status: 'skipped', detail: 'Skipped in simulated_terminal mode.' },
+          native_start: { status: 'skipped', detail: 'Skipped in simulated_terminal mode.' },
+        }));
       }
 
       const paymentIntentRes = await fetch('/api/kiosk/payments/card-present/payment-intent', {
@@ -562,6 +578,51 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
             event_type: 'payment_intent_failed',
           }),
         });
+        return;
+      }
+
+      if (resolvedTerminalMode === 'simulated_terminal') {
+        setContactlessStatus('processing');
+        setContactlessDebug('simulated_complete');
+        const simulatedCompleteRes = await fetch('/api/kiosk/payments/card-present/simulate-complete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sessionId, restaurant_id: restaurantId }),
+        });
+        const simulatedCompletePayload = await simulatedCompleteRes.json().catch(() => ({}));
+        const simulatedVerified = isVerifiedPaidPayload(simulatedCompletePayload?.verification);
+        logTapStageResult('simulated_complete_result', simulatedCompleteRes.ok && simulatedVerified ? 'ok' : 'failed', {
+          http_status: simulatedCompleteRes.status,
+          payload: simulatedCompletePayload,
+        });
+        if (!simulatedCompleteRes.ok || simulatedCompletePayload?.session?.state !== 'finalized' || !simulatedVerified) {
+          failAt(
+            'simulated_complete',
+            simulatedCompletePayload?.error || simulatedCompletePayload?.verification?.reason || `HTTP ${simulatedCompleteRes.status}`,
+            'Test contactless payment failed. Please try again or choose another payment method.'
+          );
+          await fetch('/api/kiosk/payments/card-present/session-state', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              session_id: sessionId,
+              restaurant_id: restaurantId,
+              next_state: 'failed',
+              failure_code: 'simulated_completion_failed',
+              failure_message:
+                simulatedCompletePayload?.error || simulatedCompletePayload?.verification?.reason || 'Simulated completion failed',
+              event_type: 'simulated_completion_failed',
+            }),
+          });
+          return;
+        }
+
+        setContactlessStatus('succeeded');
+        setContactlessError('');
+        setContactlessDebug('simulated_finalized');
+        if (typeof window !== 'undefined') {
+          window.localStorage.removeItem(CONTACTLESS_SESSION_STORAGE_KEY);
+        }
         return;
       }
 
@@ -830,6 +891,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
 
   useEffect(() => {
     if (stage !== 'contactless' || !restaurantId) return;
+    if (terminalMode === 'simulated_terminal') return;
     const statusPoll = async () => {
       const nativeStatus = await tapToPayBridge.getTapToPayStatus();
       setContactlessDebug(`native:${nativeStatus.status}`);
@@ -841,7 +903,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       }
     };
     void statusPoll();
-  }, [contactlessSessionId, restaurantId, stage]);
+  }, [contactlessSessionId, restaurantId, stage, terminalMode]);
 
   useEffect(() => {
     if (stage !== 'contactless') return;

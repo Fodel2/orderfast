@@ -1,10 +1,20 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
+import { completeSimulatedKioskPaymentSession } from '@/lib/server/payments/kioskCardPresentService';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  return res.status(410).json({
-    error:
-      'Simulated local completion is disabled. Kiosk success is only allowed after Stripe Terminal reports a completed PaymentIntent.',
-  });
+  try {
+    const { session_id, restaurant_id } = req.body || {};
+    if (!session_id) return res.status(400).json({ error: 'session_id is required' });
+
+    const result = await completeSimulatedKioskPaymentSession({
+      sessionId: String(session_id),
+      restaurantId: restaurant_id ? String(restaurant_id) : null,
+    });
+
+    return res.status(200).json(result);
+  } catch (error: any) {
+    return res.status(400).json({ error: error?.message || 'Failed to complete simulated kiosk payment session' });
+  }
 }
