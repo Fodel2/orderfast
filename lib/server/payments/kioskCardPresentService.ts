@@ -20,12 +20,7 @@ export type KioskSessionPaymentVerification = {
   reason: string;
 };
 
-const hasSimulatedCompletionMarker = (session: KioskCardPresentSession) =>
-  Boolean(
-    session.metadata &&
-      typeof session.metadata === 'object' &&
-      (session.metadata as Record<string, unknown>).simulated_completion === true
-  );
+const isStripePaymentIntentCompleted = (status: Stripe.PaymentIntent.Status) => status === 'succeeded';
 
 const toSession = (row: SessionRow): KioskCardPresentSession => ({
   ...row,
@@ -309,12 +304,22 @@ export const cancelKioskPaymentSession = async (input: { sessionId: string; rest
         stripeAccount: session.stripe_connected_account_id,
       });
 
-      if (paymentIntent.status === 'succeeded' || paymentIntent.status === 'processing' || paymentIntent.status === 'requires_capture') {
+      if (isStripePaymentIntentCompleted(paymentIntent.status)) {
         const finalized = await finalizeSuccessfulKioskPaymentSession({
           sessionId: session.id,
           restaurantId: session.restaurant_id,
         });
         return finalized.session;
+      }
+
+      if (paymentIntent.status === 'processing' || paymentIntent.status === 'requires_capture') {
+        return markKioskPaymentSessionState({
+          sessionId: session.id,
+          restaurantId: session.restaurant_id,
+          nextState: 'needs_reconciliation',
+          eventType: 'cancel_requested_while_payment_pending',
+          eventPayload: { payment_intent_status: paymentIntent.status },
+        });
       }
 
       if (paymentIntent.status !== 'canceled') {
@@ -355,7 +360,7 @@ export const finalizeSuccessfulKioskPaymentSession = async (input: { sessionId: 
     stripeAccount: session.stripe_connected_account_id,
   });
 
-  if (paymentIntent.status === 'succeeded') {
+  if (isStripePaymentIntentCompleted(paymentIntent.status)) {
     const succeeded =
       session.state === 'succeeded'
         ? session
@@ -386,7 +391,10 @@ export const finalizeSuccessfulKioskPaymentSession = async (input: { sessionId: 
       restaurantId: session.restaurant_id,
       nextState: 'needs_reconciliation',
       eventType: 'payment_needs_reconciliation',
-      eventPayload: { payment_intent_status: paymentIntent.status },
+      eventPayload: {
+        payment_intent_status: paymentIntent.status,
+        completion_rule: paymentIntent.status === 'requires_capture' ? 'authorized_only_not_completed' : 'awaiting_terminal_stripe_completion',
+      },
     });
 
     return { session: needsReconciliation, paymentIntentStatus: paymentIntent.status };
@@ -434,43 +442,19 @@ export const completeSimulatedKioskPaymentSession = async (input: { sessionId: s
 
   if (error || !data) throw error || new Error('Failed to mark simulated completion metadata');
 
-  const succeeded = await markKioskPaymentSessionState({
+  const finalized = await finalizeSuccessfulKioskPaymentSession({
     sessionId: session.id,
     restaurantId: session.restaurant_id,
-    nextState: 'succeeded',
-    eventType: 'simulated_payment_confirmed',
   });
+  const verification = await verifyKioskSessionPaymentCompletion(finalized.session);
 
-  const finalized = await markKioskPaymentSessionState({
-    sessionId: succeeded.id,
-    restaurantId: succeeded.restaurant_id,
-    nextState: 'finalized',
-    eventType: 'simulated_session_finalized',
-  });
-
-  return {
-    session: finalized,
-    verification: {
-      mode,
-      verifiedPaid: true,
-      paymentIntentStatus: 'succeeded' as Stripe.PaymentIntent.Status,
-      reason: 'Simulated terminal completion accepted for kiosk testing',
-    } satisfies KioskSessionPaymentVerification,
-  };
+  return { session: finalized.session, verification };
 };
 
 export const verifyKioskSessionPaymentCompletion = async (
   session: KioskCardPresentSession
 ): Promise<KioskSessionPaymentVerification> => {
   const mode = await resolveRestaurantTerminalMode(session.restaurant_id);
-  if (mode === 'simulated_terminal' && session.state === 'finalized' && hasSimulatedCompletionMarker(session)) {
-    return {
-      mode,
-      verifiedPaid: true,
-      paymentIntentStatus: 'succeeded',
-      reason: 'Simulated terminal completion accepted for kiosk testing',
-    };
-  }
 
   if (!session.stripe_connected_account_id || !session.stripe_payment_intent_id) {
     return {
@@ -486,12 +470,15 @@ export const verifyKioskSessionPaymentCompletion = async (
     stripeAccount: session.stripe_connected_account_id,
   });
 
-  if (paymentIntent.status !== 'succeeded') {
+  if (!isStripePaymentIntentCompleted(paymentIntent.status)) {
     return {
       mode,
       verifiedPaid: false,
       paymentIntentStatus: paymentIntent.status,
-      reason: `Stripe PaymentIntent is not completed (status: ${paymentIntent.status})`,
+      reason:
+        paymentIntent.status === 'requires_capture'
+          ? 'Stripe PaymentIntent is only authorized (requires_capture) and is not treated as a completed payment.'
+          : `Stripe PaymentIntent is not completed (status: ${paymentIntent.status})`,
     };
   }
 

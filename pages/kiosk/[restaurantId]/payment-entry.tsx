@@ -772,12 +772,13 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       setContactlessDebug('native_collect_process');
       setTapStartupTrace((prev) => ({ ...prev, native_start: { status: 'pending', detail: 'Starting native collection flow.' } }));
       const started = await tapToPayBridge.startTapToPayPayment({ restaurantId, sessionId, backendBaseUrl, terminalLocationId });
+      const isNativeSuccessOrPending = started.status === 'succeeded' || started.status === 'processing';
       logTapStageResult(
-        started.status === 'succeeded' ? 'native_process_result' : 'native_collect_result',
-        started.status === 'succeeded' ? 'ok' : 'failed',
+        isNativeSuccessOrPending ? 'native_process_result' : 'native_collect_result',
+        isNativeSuccessOrPending ? 'ok' : 'failed',
         started
       );
-      if (started.status !== 'succeeded') {
+      if (!isNativeSuccessOrPending) {
         setContactlessStatus(started.status === 'canceled' ? 'canceled' : 'failed');
         setContactlessError(
           started.status === 'canceled'
