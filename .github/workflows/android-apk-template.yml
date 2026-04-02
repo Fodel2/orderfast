@@ -18,6 +18,11 @@ on:
       app_channel_env:
         required: true
         type: string
+    secrets:
+      SUPABASE_URL:
+        required: true
+      SUPABASE_SERVICE_ROLE_KEY:
+        required: true
 
 permissions:
   contents: write
@@ -49,6 +54,15 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Check required server env presence for Next build
+        run: |
+          echo "has_SUPABASE_URL=$([ -n \"$SUPABASE_URL\" ] && echo true || echo false)"
+          echo "has_SUPABASE_SERVICE_ROLE_KEY=$([ -n \"$SUPABASE_SERVICE_ROLE_KEY\" ] && echo true || echo false)"
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "Missing required server env for Next build (SUPABASE_URL and/or SUPABASE_SERVICE_ROLE_KEY)."
+            exit 1
+          fi
 
       - name: Build app
         run: npm run build
