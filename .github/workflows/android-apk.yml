@@ -119,11 +119,11 @@ jobs:
         run: |
           MANIFEST_PATH="android/app/build/intermediates/merged_manifests/release/AndroidManifest.xml"
           test -f "$MANIFEST_PATH"
-          if rg -n 'android:debuggable="true"' "$MANIFEST_PATH"; then
-            echo "Release manifest is debuggable, failing build"
+          if rg -q 'android:debuggable="true"' "$MANIFEST_PATH"; then
+            echo "❌ Release manifest check failed: android:debuggable=\"true\" is present"
             exit 1
           fi
-          echo "Release manifest verified: android:debuggable is not true"
+          echo "✅ Release manifest check passed: android:debuggable=\"true\" is not present"
 
       - name: Prepare APK release asset
         run: cp android/app/build/outputs/apk/release/app-release.apk "$KIOSK_ASSET_NAME"
