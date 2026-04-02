@@ -10,6 +10,9 @@ def orderfastVersionName = project.findProperty('ORDERFAST_VERSION_NAME') ?: "1.
 android {
     namespace "com.orderfast.app"
     compileSdk rootProject.ext.compileSdkVersion
+    buildFeatures {
+        buildConfig true
+    }
     defaultConfig {
         applicationId "com.orderfast.app"
         minSdkVersion rootProject.ext.minSdkVersion
