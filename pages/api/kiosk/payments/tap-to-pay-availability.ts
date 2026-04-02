@@ -9,8 +9,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const restaurantId = String(req.query.restaurant_id || '');
     if (!restaurantId) return res.status(400).json({ error: 'restaurant_id is required' });
 
-    const tap_to_pay_available = await isTapToPayAvailableForRestaurant(restaurantId);
     const terminal_mode = await resolveRestaurantTerminalMode(restaurantId);
+    const tap_to_pay_available =
+      terminal_mode === 'simulated_terminal' ? true : await isTapToPayAvailableForRestaurant(restaurantId);
     console.info('[kiosk][availability_result]', { restaurant_id: restaurantId, tap_to_pay_available, terminal_mode });
     return res.status(200).json({ tap_to_pay_available, terminal_mode });
   } catch (error: any) {

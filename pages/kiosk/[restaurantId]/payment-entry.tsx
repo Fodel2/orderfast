@@ -220,7 +220,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       try {
         const { data, error } = await supabase
           .from('kiosk_payment_settings')
-          .select('restaurant_id,process_on_device,enable_cash,enable_contactless,enable_pay_at_counter')
+          .select('restaurant_id,process_on_device,enable_cash,enable_contactless,enable_pay_at_counter,terminal_mode')
           .eq('restaurant_id', restaurantId)
           .maybeSingle();
 
@@ -231,6 +231,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         }
 
         const normalized = normalizeKioskPaymentSettings((data as KioskPaymentSettingsRow | null) || null);
+        setTerminalMode(normalized.terminalMode);
         const nextMethods = normalized.enabledMethods;
         setEnabledMethods(nextMethods);
 
@@ -426,13 +427,8 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
           try {
             const setupState = JSON.parse(setupRaw) as { ready?: boolean; reason?: string | null };
             if (setupState.ready === false) {
-              failAt(
-                'native_support_check',
-                setupState.reason || 'Tap to Pay setup is incomplete on this kiosk device.',
-                'Contactless payment is temporarily unavailable. Please choose another payment method.'
-              );
-              setStage(enabledMethods.length > 1 ? 'method_picker' : 'pay_at_counter');
-              return;
+              setContactlessDebug('native_setup_cached_not_ready');
+              setContactlessDebugDetail(setupState.reason || 'Cached setup state says not ready; running live checks.');
             }
           } catch {
             // Ignore malformed setup cache and continue with live checks.
@@ -485,7 +481,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
 
       const sessionId = String(created.session.id);
       const terminalLocationId = typeof created.session.stripe_terminal_location_id === 'string' ? created.session.stripe_terminal_location_id : '';
-      if (!terminalLocationId) {
+      if (resolvedTerminalMode === 'real_tap_to_pay' && !terminalLocationId) {
         failAt(
           'session_create',
           'Session did not include stripe_terminal_location_id',
@@ -499,6 +495,44 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         window.localStorage.setItem(CONTACTLESS_SESSION_STORAGE_KEY, JSON.stringify({ sessionId, restaurantId, savedAt: new Date().toISOString() }));
       }
       setContactlessDebug(`session:${sessionId.slice(0, 8)}`);
+
+      if (resolvedTerminalMode === 'simulated_terminal') {
+        setContactlessStatus('processing');
+        setContactlessDebug('simulated_terminal');
+        setContactlessDebugDetail('Running kiosk simulated terminal mode (no Stripe PaymentIntent completion).');
+        logTapStageResult('payment_intent_result', 'ok', {
+          simulated: true,
+          detail: 'Skipped Stripe PaymentIntent creation for app-level simulated mode.',
+        });
+        setTapStartupTrace((prev) => ({
+          ...prev,
+          native_support: { status: 'ok', detail: 'Bypassed in simulated terminal mode.' },
+          native_prepare: { status: 'ok', detail: 'Bypassed in simulated terminal mode.' },
+          native_discovery: { status: 'ok', detail: 'Bypassed in simulated terminal mode.' },
+          native_connection: { status: 'ok', detail: 'Bypassed in simulated terminal mode.' },
+          native_start: { status: 'ok', detail: 'Completed by simulated terminal backend route.' },
+        }));
+        const simulatedRes = await fetch('/api/kiosk/payments/card-present/simulate-complete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sessionId, restaurant_id: restaurantId }),
+        });
+        const simulatedPayload = await simulatedRes.json().catch(() => ({}));
+        if (!simulatedRes.ok || simulatedPayload?.session?.state !== 'finalized') {
+          failAt(
+            'simulated_terminal',
+            simulatedPayload?.error || `HTTP ${simulatedRes.status}`,
+            'Payment failed, please try again or choose another payment method.'
+          );
+          return;
+        }
+        setContactlessStatus('succeeded');
+        setContactlessDebug('simulated_terminal:finalized');
+        if (typeof window !== 'undefined') {
+          window.localStorage.removeItem(CONTACTLESS_SESSION_STORAGE_KEY);
+        }
+        return;
+      }
 
       const paymentIntentRes = await fetch('/api/kiosk/payments/card-present/payment-intent', {
         method: 'POST',
@@ -528,40 +562,6 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
             event_type: 'payment_intent_failed',
           }),
         });
-        return;
-      }
-
-      if (resolvedTerminalMode === 'simulated_terminal') {
-        setContactlessStatus('processing');
-        setContactlessDebug('simulated_terminal');
-        setContactlessDebugDetail('Running Stripe Terminal simulated testing mode.');
-        setTapStartupTrace((prev) => ({
-          ...prev,
-          native_support: { status: 'ok', detail: 'Bypassed in simulated terminal mode.' },
-          native_prepare: { status: 'ok', detail: 'Bypassed in simulated terminal mode.' },
-          native_discovery: { status: 'ok', detail: 'Bypassed in simulated terminal mode.' },
-          native_connection: { status: 'ok', detail: 'Bypassed in simulated terminal mode.' },
-          native_start: { status: 'ok', detail: 'Completed by simulated terminal backend route.' },
-        }));
-        const simulatedRes = await fetch('/api/kiosk/payments/card-present/simulate-complete', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ session_id: sessionId, restaurant_id: restaurantId }),
-        });
-        const simulatedPayload = await simulatedRes.json().catch(() => ({}));
-        if (!simulatedRes.ok || simulatedPayload?.session?.state !== 'finalized') {
-          failAt(
-            'simulated_terminal',
-            simulatedPayload?.error || `HTTP ${simulatedRes.status}`,
-            'Payment failed, please try again or choose another payment method.'
-          );
-          return;
-        }
-        setContactlessStatus('succeeded');
-        setContactlessDebug('simulated_terminal:finalized');
-        if (typeof window !== 'undefined') {
-          window.localStorage.removeItem(CONTACTLESS_SESSION_STORAGE_KEY);
-        }
         return;
       }
 

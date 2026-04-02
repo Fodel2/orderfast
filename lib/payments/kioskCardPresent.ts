@@ -21,8 +21,8 @@ export type KioskCardPresentSession = {
   amount_cents: number;
   currency: string;
   state: KioskCardPresentSessionState;
-  stripe_connected_account_id: string;
-  stripe_terminal_location_id: string;
+  stripe_connected_account_id: string | null;
+  stripe_terminal_location_id: string | null;
   stripe_payment_intent_id: string | null;
   idempotency_key: string;
   kiosk_install_id: string | null;
