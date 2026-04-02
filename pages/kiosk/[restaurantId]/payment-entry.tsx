@@ -5,6 +5,7 @@ import {
   BuildingStorefrontIcon,
   CheckCircleIcon,
   CreditCardIcon,
+  DevicePhoneMobileIcon,
   ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 import KioskLayout from '@/components/layouts/KioskLayout';
@@ -113,6 +114,36 @@ const STARTUP_TRACE_LABELS: Record<StartupTraceKey, string> = {
   native_discovery: 'native discovery',
   native_connection: 'native connection',
   native_start: 'native start',
+};
+
+type PaymentTheme = {
+  primary: string;
+  secondary: string;
+  primarySoft: string;
+  secondarySoft: string;
+  ring: string;
+};
+
+const HEX_COLOR_REGEX = /^#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})$/;
+
+const normalizeHexColor = (value?: string | null): string | null => {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!HEX_COLOR_REGEX.test(trimmed)) return null;
+  if (trimmed.length === 4) {
+    return `#${trimmed[1]}${trimmed[1]}${trimmed[2]}${trimmed[2]}${trimmed[3]}${trimmed[3]}`.toUpperCase();
+  }
+  return trimmed.toUpperCase();
+};
+
+const hexToRgba = (hex: string, alpha: number) => {
+  const sanitized = normalizeHexColor(hex);
+  if (!sanitized) return `rgba(15, 23, 42, ${alpha})`;
+  const value = sanitized.slice(1);
+  const red = Number.parseInt(value.slice(0, 2), 16);
+  const green = Number.parseInt(value.slice(2, 4), 16);
+  const blue = Number.parseInt(value.slice(4, 6), 16);
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 };
 
 const createStartupTrace = (): StartupTraceState => ({
@@ -1099,6 +1130,32 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     return 'Pay at counter';
   }, [stage]);
 
+  const paymentTheme = useMemo<PaymentTheme>(() => {
+    const primary = normalizeHexColor(restaurant?.brand_primary_color) || '#0F172A';
+    const secondary = normalizeHexColor(restaurant?.brand_secondary_color) || '#334155';
+    return {
+      primary,
+      secondary,
+      primarySoft: hexToRgba(primary, 0.12),
+      secondarySoft: hexToRgba(secondary, 0.14),
+      ring: hexToRgba(primary, 0.28),
+    };
+  }, [restaurant?.brand_primary_color, restaurant?.brand_secondary_color]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const orientationApi = window.screen?.orientation as (ScreenOrientation & { lock?: (orientation: string) => Promise<void> }) | undefined;
+    if (!orientationApi?.lock) return;
+    if (stage !== 'contactless') return;
+    orientationApi.lock('portrait').catch(() => undefined);
+    return () => {
+      const unlockApi = window.screen?.orientation as (ScreenOrientation & { unlock?: () => void }) | undefined;
+      if (unlockApi?.unlock) {
+        unlockApi.unlock();
+      }
+    };
+  }, [stage]);
+
   useEffect(() => {
     if (stage !== 'contactless' || !restaurantId) return;
     if (terminalMode === 'simulated_terminal') return;
@@ -1217,7 +1274,10 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   }, [CONTACTLESS_SESSION_STORAGE_KEY, contactlessSessionId, restaurantId]);
 
   const renderMethodPicker = () => (
-    <section className="w-full rounded-[2rem] border border-slate-200 bg-white/95 p-5 shadow-xl shadow-slate-200/70 sm:p-8">
+    <section
+      className="w-full rounded-[2rem] border bg-white/95 p-5 shadow-xl shadow-slate-200/70 sm:p-8"
+      style={{ borderColor: paymentTheme.ring }}
+    >
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Kiosk checkout</p>
       <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">Choose how you want to pay</h1>
       <p className="mt-3 text-sm leading-relaxed text-slate-600 sm:text-base">
@@ -1247,8 +1307,15 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
                 setStage('pay_at_counter');
               }}
               className="group relative overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-slate-100 px-5 py-6 text-left shadow-sm transition hover:-translate-y-[2px] hover:border-slate-300 hover:shadow-lg"
+              style={{
+                borderColor: paymentTheme.ring,
+                backgroundImage: `linear-gradient(135deg, #ffffff 0%, ${paymentTheme.primarySoft} 100%)`,
+              }}
             >
-              <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-sm">
+              <div
+                className="inline-flex h-11 w-11 items-center justify-center rounded-2xl text-white shadow-sm"
+                style={{ background: `linear-gradient(135deg, ${paymentTheme.primary}, ${paymentTheme.secondary})` }}
+              >
                 <Icon className="h-6 w-6" />
               </div>
               <p className="mt-4 text-lg font-semibold text-slate-900">{meta.title}</p>
@@ -1261,9 +1328,38 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   );
 
   const renderContactlessOverlay = () => (
-    <div className="fixed inset-0 z-[75] flex items-center justify-center bg-slate-500/35 px-4 backdrop-blur-[2px]">
-      <section className="w-full max-w-md rounded-[2rem] border border-slate-200 bg-white/95 p-6 shadow-2xl">
+    <div
+      className="fixed inset-0 z-[75] flex items-center justify-center px-3 py-4 backdrop-blur-[2px] sm:px-4"
+      style={{
+        backgroundImage: `linear-gradient(160deg, ${hexToRgba(paymentTheme.primary, 0.34)}, ${hexToRgba(paymentTheme.secondary, 0.22)})`,
+      }}
+    >
+      <section
+        className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-[2rem] border bg-white/95 p-5 shadow-2xl sm:p-6"
+        style={{ borderColor: paymentTheme.ring }}
+      >
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Contactless payment</p>
+        <div
+          className="mt-4 flex items-center justify-center rounded-3xl border px-4 py-6 text-center"
+          style={{
+            borderColor: paymentTheme.ring,
+            background: `radial-gradient(circle at top, ${paymentTheme.primarySoft}, rgba(255,255,255,0.9))`,
+          }}
+        >
+          <div className="space-y-2">
+            <div
+              className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl text-white"
+              style={{ background: `linear-gradient(135deg, ${paymentTheme.primary}, ${paymentTheme.secondary})` }}
+              aria-hidden="true"
+            >
+              <DevicePhoneMobileIcon className="h-8 w-8" />
+            </div>
+            <p className="text-sm font-semibold text-slate-700">Tap card or phone near the reader</p>
+            <p className="text-xs text-slate-500">
+              If reader position is unclear, use the center area of this device as a fallback.
+            </p>
+          </div>
+        </div>
         {contactlessStatus === 'preparing' || contactlessStatus === 'idle' ? (
           <p className="mt-3 text-base font-medium text-slate-800">{PAYMENT_PREP_MESSAGES[prepMessageIndex]}</p>
         ) : null}
@@ -1285,7 +1381,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         ) : null}
         {contactlessStatus === 'preparing' || contactlessStatus === 'idle' || contactlessStatus === 'collecting' || contactlessStatus === 'processing' ? (
           <div className="mt-5 flex justify-center">
-            <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-slate-700" />
+            <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200" style={{ borderTopColor: paymentTheme.primary }} />
           </div>
         ) : null}
         {showOperatorDetails ? <p className="mt-2 text-[11px] font-medium uppercase tracking-[0.12em] text-slate-500">Debug: {contactlessDebug}</p> : null}
@@ -1322,7 +1418,8 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
               }
               void cancelTapToPay().then(() => returnToFallback('Payment cancelled'));
             }}
-            className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            className="rounded-2xl border bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            style={{ borderColor: paymentTheme.ring }}
           >
             {contactlessStatus === 'failed' || contactlessStatus === 'canceled' ? 'Choose another method' : 'Cancel payment'}
           </button>
@@ -1330,7 +1427,8 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
             <button
               type="button"
               onClick={() => void runTapToPay()}
-              className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700"
+              className="rounded-2xl px-4 py-3 text-sm font-semibold text-white transition"
+              style={{ background: `linear-gradient(135deg, ${paymentTheme.primary}, ${paymentTheme.secondary})` }}
             >
               Retry Tap to Pay
             </button>
@@ -1341,10 +1439,15 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   );
 
   const renderOrderSubmittingOverlay = () => (
-    <div className="fixed inset-0 z-[74] flex items-center justify-center bg-slate-500/35 px-4 backdrop-blur-[2px]">
-      <section className="w-full max-w-md rounded-[2rem] border border-slate-200 bg-white/95 p-6 text-center shadow-2xl">
+    <div
+      className="fixed inset-0 z-[74] flex items-center justify-center px-4 backdrop-blur-[2px]"
+      style={{
+        backgroundImage: `linear-gradient(160deg, ${hexToRgba(paymentTheme.primary, 0.34)}, ${hexToRgba(paymentTheme.secondary, 0.22)})`,
+      }}
+    >
+      <section className="w-full max-w-md rounded-[2rem] border bg-white/95 p-6 text-center shadow-2xl" style={{ borderColor: paymentTheme.ring }}>
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Finishing checkout</p>
-        <div className="mx-auto mt-4 h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-slate-700" />
+        <div className="mx-auto mt-4 h-10 w-10 animate-spin rounded-full border-4 border-slate-200" style={{ borderTopColor: paymentTheme.primary }} />
         <p className="mt-4 text-base font-medium text-slate-800">
           {currentOrderMethod === 'contactless' ? 'Payment captured. Sending your order to the kitchen...' : 'Sending your order to the kitchen...'}
         </p>
@@ -1354,7 +1457,17 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
 
   return (
     <KioskLayout restaurantId={restaurantId} restaurant={restaurant} restaurantLoading={restaurantLoading}>
-      <div className="mx-auto flex min-h-[58vh] w-full max-w-4xl items-center px-4 py-8 sm:px-6">
+      <div
+        className="mx-auto flex min-h-[58vh] w-full max-w-4xl items-center px-4 py-6 sm:px-6 sm:py-8"
+        style={
+          stage === 'contactless'
+            ? {
+                backgroundImage: `linear-gradient(155deg, ${hexToRgba(paymentTheme.primary, 0.08)}, ${hexToRgba(paymentTheme.secondary, 0.05)})`,
+                borderRadius: '1.5rem',
+              }
+            : undefined
+        }
+      >
         <div className="w-full space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <button
