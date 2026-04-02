@@ -8,6 +8,7 @@ import android.view.WindowManager;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.webkit.WebBackForwardList;
+import android.widget.Toast;
 
 import com.getcapacitor.BridgeActivity;
 import android.webkit.WebView;
@@ -23,6 +24,7 @@ public class MainActivity extends BridgeActivity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         applyImmersiveMode();
         configureWebViewPresentation();
+        Toast.makeText(this, "Build " + BuildConfig.VERSION_NAME, Toast.LENGTH_LONG).show();
     }
 
     @Override
