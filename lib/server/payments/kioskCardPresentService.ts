@@ -20,6 +20,13 @@ export type KioskSessionPaymentVerification = {
   reason: string;
 };
 
+const hasSimulatedCompletionMarker = (session: KioskCardPresentSession) =>
+  Boolean(
+    session.metadata &&
+      typeof session.metadata === 'object' &&
+      (session.metadata as Record<string, unknown>).simulated_completion === true
+  );
+
 const toSession = (row: SessionRow): KioskCardPresentSession => ({
   ...row,
   metadata: row.metadata && typeof row.metadata === 'object' ? (row.metadata as Record<string, unknown>) : null,
@@ -397,10 +404,74 @@ export const finalizeSuccessfulKioskPaymentSession = async (input: { sessionId: 
   return { session: failed, paymentIntentStatus: paymentIntent.status };
 };
 
+export const completeSimulatedKioskPaymentSession = async (input: { sessionId: string; restaurantId?: string | null }) => {
+  const session = await getKioskPaymentSession(input.sessionId, input.restaurantId);
+  if (!session) throw new Error('Kiosk payment session not found');
+
+  const mode = await resolveRestaurantTerminalMode(session.restaurant_id);
+  if (mode !== 'simulated_terminal') {
+    throw new Error('Simulated completion is only allowed in simulated_terminal mode');
+  }
+
+  await createOrRetrieveCardPresentPaymentIntentForSession({
+    sessionId: session.id,
+    restaurantId: session.restaurant_id,
+  });
+
+  const { data, error } = await supaServer
+    .from('kiosk_card_present_sessions')
+    .update({
+      metadata: {
+        ...(session.metadata ?? {}),
+        simulated_completion: true,
+        simulated_completed_at: new Date().toISOString(),
+      },
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', session.id)
+    .select(SESSION_SELECT)
+    .single();
+
+  if (error || !data) throw error || new Error('Failed to mark simulated completion metadata');
+
+  const succeeded = await markKioskPaymentSessionState({
+    sessionId: session.id,
+    restaurantId: session.restaurant_id,
+    nextState: 'succeeded',
+    eventType: 'simulated_payment_confirmed',
+  });
+
+  const finalized = await markKioskPaymentSessionState({
+    sessionId: succeeded.id,
+    restaurantId: succeeded.restaurant_id,
+    nextState: 'finalized',
+    eventType: 'simulated_session_finalized',
+  });
+
+  return {
+    session: finalized,
+    verification: {
+      mode,
+      verifiedPaid: true,
+      paymentIntentStatus: 'succeeded' as Stripe.PaymentIntent.Status,
+      reason: 'Simulated terminal completion accepted for kiosk testing',
+    } satisfies KioskSessionPaymentVerification,
+  };
+};
+
 export const verifyKioskSessionPaymentCompletion = async (
   session: KioskCardPresentSession
 ): Promise<KioskSessionPaymentVerification> => {
   const mode = await resolveRestaurantTerminalMode(session.restaurant_id);
+  if (mode === 'simulated_terminal' && session.state === 'finalized' && hasSimulatedCompletionMarker(session)) {
+    return {
+      mode,
+      verifiedPaid: true,
+      paymentIntentStatus: 'succeeded',
+      reason: 'Simulated terminal completion accepted for kiosk testing',
+    };
+  }
+
   if (!session.stripe_connected_account_id || !session.stripe_payment_intent_id) {
     return {
       mode,

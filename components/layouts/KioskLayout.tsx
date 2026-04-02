@@ -938,8 +938,7 @@ export default function KioskLayout({
   const logoShape = restaurant?.logo_shape || 'round';
   const logoShellClass =
     logoShape === 'round' ? 'rounded-full' : logoShape === 'square' ? 'rounded-2xl' : 'rounded-xl';
-  const debugPanelEnabled =
-    router.query.operator_debug === '1' || (Array.isArray(router.query.operator_debug) && router.query.operator_debug.includes('1'));
+  const debugPanelEnabled = false;
   const logoInnerClass =
     logoShape === 'round' ? 'rounded-full' : logoShape === 'square' ? 'rounded-xl' : 'rounded-lg';
   const logoSizeClass = logoShape === 'rectangular' ? 'h-16 w-20' : 'h-16 w-16';
