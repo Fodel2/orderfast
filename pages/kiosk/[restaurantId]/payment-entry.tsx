@@ -62,6 +62,12 @@ type StartupTraceKey =
   | 'native_connection'
   | 'native_start';
 type StartupTraceState = Record<StartupTraceKey, { status: StartupTraceStatus; detail: string }>;
+type PaymentVerification = {
+  verifiedPaid?: boolean;
+  paymentIntentStatus?: string | null;
+  reason?: string;
+  mode?: KioskTerminalMode;
+};
 
 const OPERATOR_DEBUG_STORAGE_KEY = 'orderfast_kiosk_operator_debug';
 const OPERATOR_DEBUG_TAP_THRESHOLD = 7;
@@ -139,6 +145,9 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   const [tapStartupTrace, setTapStartupTrace] = useState<StartupTraceState>(createStartupTrace);
   const [paymentNotice, setPaymentNotice] = useState('');
   const [terminalMode, setTerminalMode] = useState<KioskTerminalMode>('real_tap_to_pay');
+  const isVerifiedPaidPayload = useCallback((verification: PaymentVerification | null | undefined) => {
+    return verification?.verifiedPaid === true && verification?.paymentIntentStatus === 'succeeded';
+  }, []);
   const flowLockRef = useRef(false);
   const cancelLockRef = useRef(false);
   const operatorTapTimeoutRef = useRef<number | null>(null);
@@ -295,13 +304,14 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       });
       const reconciled = await reconcileRes.json().catch(() => ({}));
       const nextState = reconciled?.session?.state;
+      const verifiedPaid = isVerifiedPaidPayload(reconciled?.verification);
       if (!reconcileRes.ok) {
         setContactlessStatus('failed');
         setContactlessError('Payment failed, please try again or choose another payment method.');
         setContactlessDebug('reconcile_failed');
         return;
       }
-      if (nextState === 'finalized' || nextState === 'succeeded') {
+      if (nextState === 'finalized' && verifiedPaid) {
         setContactlessStatus('succeeded');
         setContactlessError('');
         setContactlessDebug(`reconciled:${nextState}`);
@@ -319,11 +329,21 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         }
         return;
       }
+      if (nextState === 'finalized' && !verifiedPaid) {
+        setContactlessStatus('failed');
+        setContactlessError('Payment was not completed. Please try again or choose another payment method.');
+        setContactlessDebug('reconciled:unverified_finalized');
+        setContactlessDebugDetail(
+          reconciled?.verification?.reason ||
+            `Finalized state rejected because PaymentIntent status is ${reconciled?.verification?.paymentIntentStatus || 'unknown'}.`
+        );
+        return;
+      }
       setContactlessStatus('processing');
       setContactlessError('');
       setContactlessDebug(`reconciled:${nextState || 'unknown'}`);
     },
-    [CONTACTLESS_SESSION_STORAGE_KEY, restaurantId]
+    [CONTACTLESS_SESSION_STORAGE_KEY, isVerifiedPaidPayload, restaurantId]
   );
 
   const loadServerSessionTruth = useCallback(
@@ -339,11 +359,25 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         return;
       }
       const serverState = payload?.session?.state as string | undefined;
+      const verifiedPaid = isVerifiedPaidPayload(payload?.verification);
       if (!serverState) return;
-      if (serverState === 'finalized' || serverState === 'succeeded') {
+      if (serverState === 'finalized' && verifiedPaid) {
         setContactlessStatus('succeeded');
         setContactlessError('');
         setContactlessDebug(`server:${serverState}`);
+        if (typeof window !== 'undefined') {
+          window.localStorage.removeItem(CONTACTLESS_SESSION_STORAGE_KEY);
+        }
+        return;
+      }
+      if (serverState === 'finalized' && !verifiedPaid) {
+        setContactlessStatus('failed');
+        setContactlessError('Payment was not completed. Please try again or choose another payment method.');
+        setContactlessDebug('server:unverified_finalized');
+        setContactlessDebugDetail(
+          payload?.verification?.reason ||
+            `Finalized state rejected because PaymentIntent status is ${payload?.verification?.paymentIntentStatus || 'unknown'}.`
+        );
         if (typeof window !== 'undefined') {
           window.localStorage.removeItem(CONTACTLESS_SESSION_STORAGE_KEY);
         }
@@ -368,7 +402,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         setContactlessDebug(`server:${serverState}`);
       }
     },
-    [CONTACTLESS_SESSION_STORAGE_KEY, restaurantId]
+    [CONTACTLESS_SESSION_STORAGE_KEY, isVerifiedPaidPayload, restaurantId]
   );
 
   const runTapToPay = useCallback(async () => {
@@ -497,41 +531,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       setContactlessDebug(`session:${sessionId.slice(0, 8)}`);
 
       if (resolvedTerminalMode === 'simulated_terminal') {
-        setContactlessStatus('processing');
-        setContactlessDebug('simulated_terminal');
-        setContactlessDebugDetail('Running kiosk simulated terminal mode (no Stripe PaymentIntent completion).');
-        logTapStageResult('payment_intent_result', 'ok', {
-          simulated: true,
-          detail: 'Skipped Stripe PaymentIntent creation for app-level simulated mode.',
-        });
-        setTapStartupTrace((prev) => ({
-          ...prev,
-          native_support: { status: 'ok', detail: 'Bypassed in simulated terminal mode.' },
-          native_prepare: { status: 'ok', detail: 'Bypassed in simulated terminal mode.' },
-          native_discovery: { status: 'ok', detail: 'Bypassed in simulated terminal mode.' },
-          native_connection: { status: 'ok', detail: 'Bypassed in simulated terminal mode.' },
-          native_start: { status: 'ok', detail: 'Completed by simulated terminal backend route.' },
-        }));
-        const simulatedRes = await fetch('/api/kiosk/payments/card-present/simulate-complete', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ session_id: sessionId, restaurant_id: restaurantId }),
-        });
-        const simulatedPayload = await simulatedRes.json().catch(() => ({}));
-        if (!simulatedRes.ok || simulatedPayload?.session?.state !== 'finalized') {
-          failAt(
-            'simulated_terminal',
-            simulatedPayload?.error || `HTTP ${simulatedRes.status}`,
-            'Payment failed, please try again or choose another payment method.'
-          );
-          return;
-        }
-        setContactlessStatus('succeeded');
-        setContactlessDebug('simulated_terminal:finalized');
-        if (typeof window !== 'undefined') {
-          window.localStorage.removeItem(CONTACTLESS_SESSION_STORAGE_KEY);
-        }
-        return;
+        setPaymentNotice('Sandbox test terminal mode: success is only shown after Stripe test completion.');
       }
 
       const paymentIntentRes = await fetch('/api/kiosk/payments/card-present/payment-intent', {
@@ -741,10 +741,19 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         body: JSON.stringify({ session_id: sessionId, restaurant_id: restaurantId }),
       });
       const finalized = await finalizeRes.json();
-      if (!finalizeRes.ok || finalized?.session?.state !== 'finalized') {
+      const verifiedPaid = isVerifiedPaidPayload(finalized?.verification);
+      if (!finalizeRes.ok || finalized?.session?.state !== 'finalized' || !verifiedPaid) {
         setContactlessStatus('processing');
         setContactlessError('');
-        setContactlessDebug('finalize_pending');
+        setContactlessDebug(finalized?.session?.state === 'finalized' && !verifiedPaid ? 'finalize_unverified' : 'finalize_pending');
+        if (finalized?.session?.state === 'finalized' && !verifiedPaid) {
+          setContactlessStatus('failed');
+          setContactlessError('Payment was not completed. Please try again or choose another payment method.');
+          setContactlessDebugDetail(
+            finalized?.verification?.reason ||
+              `Finalized state rejected because PaymentIntent status is ${finalized?.verification?.paymentIntentStatus || 'unknown'}.`
+          );
+        }
         return;
       }
 
@@ -763,7 +772,17 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       setContactlessBusy(false);
       flowLockRef.current = false;
     }
-  }, [CONTACTLESS_SESSION_STORAGE_KEY, TAP_TO_PAY_SETUP_STORAGE_KEY, amountCents, contactlessBusy, currency, enabledMethods.length, reconcileSession, restaurantId]);
+  }, [
+    CONTACTLESS_SESSION_STORAGE_KEY,
+    TAP_TO_PAY_SETUP_STORAGE_KEY,
+    amountCents,
+    contactlessBusy,
+    currency,
+    enabledMethods.length,
+    isVerifiedPaidPayload,
+    reconcileSession,
+    restaurantId,
+  ]);
 
   const toggleOperatorDebug = useCallback(() => {
     const next = !operatorDebugEnabled;
