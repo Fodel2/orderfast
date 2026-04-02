@@ -341,6 +341,21 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     );
 
     if (normalizedPaymentSettings.processOnDevice) {
+      if (typeof window !== 'undefined') {
+        const checkoutContext = {
+          restaurantId,
+          customerName: trimmedName || 'Guest',
+          isExpressFlow,
+          tableNumber: isDineInExpress && Number.isInteger(parsedTableNumber) ? parsedTableNumber : null,
+          cartItems: cart.items.map((item) => ({
+            ...item,
+            addons: item.addons ? [...item.addons] : [],
+          })),
+          subtotal,
+          currency: String(currencyCode || 'usd').toLowerCase(),
+        };
+        window.sessionStorage.setItem('orderfast_kiosk_checkout_context', JSON.stringify(checkoutContext));
+      }
       const params = new URLSearchParams();
       params.set('amount_cents', String(Math.round(subtotal * 100)));
       params.set('currency', String(currencyCode || 'usd').toLowerCase());
