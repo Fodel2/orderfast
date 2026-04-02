@@ -27,6 +27,7 @@ jobs:
       github.event_name == 'push' ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.channel == 'live')
     uses: ./.github/workflows/android-apk-template.yml
+    secrets: inherit
     with:
       channel: live
       gradle_flavor: Live
@@ -39,6 +40,7 @@ jobs:
       github.event_name == 'pull_request' ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.channel == 'preview')
     uses: ./.github/workflows/android-apk-template.yml
+    secrets: inherit
     with:
       channel: preview
       gradle_flavor: Preview
