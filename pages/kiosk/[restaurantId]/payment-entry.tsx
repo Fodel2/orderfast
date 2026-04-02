@@ -166,7 +166,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   const [restaurantLoading, setRestaurantLoading] = useState(true);
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [enabledMethods, setEnabledMethods] = useState<KioskPaymentMethod[]>(['pay_at_counter']);
-  const [stage, setStage] = useState<PaymentStage>('pay_at_counter');
+  const [stage, setStage] = useState<PaymentStage>('method_picker');
   const [contactlessStatus, setContactlessStatus] = useState<TapToPayStatus>('idle');
   const [contactlessBusy, setContactlessBusy] = useState(false);
   const [contactlessError, setContactlessError] = useState('');
@@ -834,13 +834,13 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       setContactlessDebug('native_collect_process');
       setTapStartupTrace((prev) => ({ ...prev, native_start: { status: 'pending', detail: 'Starting native collection flow.' } }));
       const started = await tapToPayBridge.startTapToPayPayment({ restaurantId, sessionId, backendBaseUrl, terminalLocationId });
-      const isNativeSuccessOrPending = started.status === 'succeeded' || started.status === 'processing';
+      const isNativeSuccessOrProcessing = started.status === 'succeeded' || started.status === 'processing';
       logTapStageResult(
-        isNativeSuccessOrPending ? 'native_process_result' : 'native_collect_result',
-        isNativeSuccessOrPending ? 'ok' : 'failed',
+        isNativeSuccessOrProcessing ? 'native_process_result' : 'native_collect_result',
+        isNativeSuccessOrProcessing ? 'ok' : 'failed',
         started
       );
-      if (!isNativeSuccessOrPending) {
+      if (!isNativeSuccessOrProcessing) {
         setContactlessStatus(started.status === 'canceled' ? 'canceled' : 'failed');
         setContactlessError(
           started.status === 'canceled'
@@ -855,6 +855,37 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         );
         await reconcileSession(sessionId, 'native_start_failed');
         return;
+      }
+
+      if (started.status === 'processing') {
+        const nativePollDeadline = Date.now() + 180000;
+        let nativeResolvedStatus: TapToPayStatus = 'processing';
+
+        while (Date.now() < nativePollDeadline) {
+          await new Promise<void>((resolve) => {
+            window.setTimeout(() => resolve(), 700);
+          });
+          const polledStatus = await tapToPayBridge.getTapToPayStatus();
+          if (polledStatus.sessionId && polledStatus.sessionId !== sessionId) {
+            continue;
+          }
+          setContactlessDebug(`native_poll:${polledStatus.status}`);
+          if (polledStatus.status === 'succeeded' || polledStatus.status === 'failed' || polledStatus.status === 'canceled') {
+            nativeResolvedStatus = polledStatus.status;
+            logTapStageResult(polledStatus.status === 'succeeded' ? 'native_process_result' : 'native_collect_result', polledStatus.status === 'succeeded' ? 'ok' : 'failed', polledStatus);
+            break;
+          }
+        }
+
+        if (nativeResolvedStatus !== 'succeeded') {
+          await reconcileSession(sessionId, nativeResolvedStatus === 'processing' ? 'native_poll_timeout' : `native_poll_${nativeResolvedStatus}`);
+          if (nativeResolvedStatus === 'processing') {
+            setContactlessStatus('failed');
+            setContactlessError('Payment did not complete. Please try again or choose another payment method.');
+            setContactlessDebug('native_poll_timeout');
+          }
+          return;
+        }
       }
 
       setContactlessStatus('processing');
@@ -1107,6 +1138,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   }, [contactlessBusy, contactlessError, contactlessStatus, returnToFallback, stage]);
 
   useEffect(() => {
+    if (settingsLoading) return;
     if (orderSubmitting) return;
     if (stage === 'cash' && autoSubmitAttemptedMethod !== 'cash') {
       setAutoSubmitAttemptedMethod('cash');
@@ -1115,7 +1147,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       setAutoSubmitAttemptedMethod('pay_at_counter');
       void submitOrderAndRedirect('pay_at_counter');
     }
-  }, [autoSubmitAttemptedMethod, orderSubmitting, stage, submitOrderAndRedirect]);
+  }, [autoSubmitAttemptedMethod, orderSubmitting, settingsLoading, stage, submitOrderAndRedirect]);
 
   useEffect(() => {
     if (contactlessStatus !== 'succeeded' || orderSubmitting || autoSubmitAttemptedMethod === 'contactless') return;
