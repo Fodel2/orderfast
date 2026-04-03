@@ -12,6 +12,13 @@ import {
 import { supaServer } from '@/lib/supaServer';
 import { getStripeClient } from './stripeClient';
 
+class StripeConnectConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'StripeConnectConfigError';
+  }
+}
+
 type RestaurantStripeRow = {
   restaurant_id: string;
   stripe_connected_account_id: string | null;
@@ -307,8 +314,42 @@ const ensureRestaurantCapabilities = async (connectedAccountId: string) => {
   });
 };
 
-const getReturnUrl = () => process.env.STRIPE_CONNECT_RETURN_URL || 'http://localhost:3000/dashboard/settings/payments?tab=stripe';
-const getRefreshUrl = () => process.env.STRIPE_CONNECT_REFRESH_URL || getReturnUrl();
+const DEFAULT_CONNECT_RETURN_URL = 'http://localhost:3000/dashboard/settings/payments?tab=stripe';
+
+const isAllowedConnectUrl = (value: string) => {
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+    if (parsed.protocol === 'http:' && parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1') return false;
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const resolveConnectUrl = (
+  envValue: string | undefined,
+  envName: 'STRIPE_CONNECT_RETURN_URL' | 'STRIPE_CONNECT_REFRESH_URL',
+  fallback: string
+) => {
+  const candidate = (envValue || fallback).trim();
+  if (!isAllowedConnectUrl(candidate)) {
+    throw new StripeConnectConfigError(
+      `${envName} must be an absolute http(s) URL. http:// is only allowed for localhost. Received: ${candidate || '(empty)'}`
+    );
+  }
+  return candidate;
+};
+
+const resolveConnectUrls = () => {
+  const returnUrl = resolveConnectUrl(
+    process.env.STRIPE_CONNECT_RETURN_URL,
+    'STRIPE_CONNECT_RETURN_URL',
+    DEFAULT_CONNECT_RETURN_URL
+  );
+  const refreshUrl = resolveConnectUrl(process.env.STRIPE_CONNECT_REFRESH_URL, 'STRIPE_CONNECT_REFRESH_URL', returnUrl);
+  return { returnUrl, refreshUrl };
+};
 
 const upsertTerminalMapping = async (
   restaurantId: string,
@@ -383,6 +424,7 @@ const upsertStripeAccountBaseline = async (restaurantId: string, account: Stripe
 };
 
 export const createRestaurantOnboardingLink = async (restaurantId: string) => {
+  const { returnUrl, refreshUrl } = resolveConnectUrls();
   const stripe = getStripeClient();
   const accountId = await getOrCreateConnectedAccount(restaurantId);
   await ensureRestaurantCapabilities(accountId);
@@ -393,12 +435,15 @@ export const createRestaurantOnboardingLink = async (restaurantId: string) => {
       fields: 'eventually_due',
       future_requirements: 'include',
     },
-    return_url: getReturnUrl(),
-    refresh_url: getRefreshUrl(),
+    return_url: returnUrl,
+    refresh_url: refreshUrl,
   });
 
   return { accountId, url: accountLink.url, expiresAt: accountLink.expires_at };
 };
+
+export const isStripeConnectConfigError = (error: unknown): error is StripeConnectConfigError =>
+  error instanceof StripeConnectConfigError;
 
 export const createRestaurantAccountSession = async (restaurantId: string) => {
   const stripe = getStripeClient();
