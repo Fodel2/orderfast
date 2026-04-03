@@ -293,7 +293,7 @@ export const getOrCreateConnectedAccount = async (restaurantId: string) => {
     },
   });
 
-  await upsertFromStripeAccount(restaurantId, account);
+  await upsertStripeAccountBaseline(restaurantId, account);
   return account.id;
 };
 
@@ -356,6 +356,30 @@ const mapRestaurantAddressToStripe = (restaurant: RestaurantAddress | null) => {
     postal_code: postalCode,
     country,
   };
+};
+
+const upsertStripeAccountBaseline = async (restaurantId: string, account: Stripe.Account) => {
+  const payload = {
+    restaurant_id: restaurantId,
+    stripe_connected_account_id: account.id,
+    onboarding_status: 'setup_incomplete' as StripeConnectionSnapshot['onboarding_status'],
+    charges_enabled: !!account.charges_enabled,
+    payouts_enabled: !!account.payouts_enabled,
+    details_submitted: !!account.details_submitted,
+    requirements_currently_due: Array.isArray(account.requirements?.currently_due) ? account.requirements.currently_due : [],
+    requirements_pending_verification: Array.isArray(account.requirements?.pending_verification)
+      ? account.requirements.pending_verification
+      : [],
+    disabled_reason: account.requirements?.disabled_reason || null,
+    onboarding_completed_at: null,
+    last_synced_at: new Date().toISOString(),
+  };
+
+  const { error } = await supaServer.from('restaurant_stripe_connect_accounts').upsert(payload, {
+    onConflict: 'restaurant_id',
+  });
+
+  if (error) throw error;
 };
 
 export const createRestaurantOnboardingLink = async (restaurantId: string) => {
