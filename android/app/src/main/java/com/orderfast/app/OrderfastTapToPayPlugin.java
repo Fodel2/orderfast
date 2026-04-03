@@ -2,6 +2,7 @@ package com.orderfast.app;
 
 import android.Manifest;
 import android.content.Context;
+import android.content.pm.ActivityInfo;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.location.LocationManager;
@@ -670,6 +671,54 @@ public class OrderfastTapToPayPlugin extends Plugin {
             result.put("sessionId", currentSessionId);
         }
         call.resolve(result);
+    }
+
+    @PluginMethod
+    public void lockPaymentOrientationToPortrait(PluginCall call) {
+        mainHandler.post(() -> {
+            try {
+                if (getActivity() == null) {
+                    JSObject payload = new JSObject();
+                    payload.put("locked", false);
+                    payload.put("reason", "Activity unavailable");
+                    call.resolve(payload);
+                    return;
+                }
+                getActivity().setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+                JSObject payload = new JSObject();
+                payload.put("locked", true);
+                call.resolve(payload);
+            } catch (Exception ex) {
+                JSObject payload = new JSObject();
+                payload.put("locked", false);
+                payload.put("reason", ex.getMessage() == null ? "Failed to lock orientation" : ex.getMessage());
+                call.resolve(payload);
+            }
+        });
+    }
+
+    @PluginMethod
+    public void unlockPaymentOrientation(PluginCall call) {
+        mainHandler.post(() -> {
+            try {
+                if (getActivity() == null) {
+                    JSObject payload = new JSObject();
+                    payload.put("unlocked", false);
+                    payload.put("reason", "Activity unavailable");
+                    call.resolve(payload);
+                    return;
+                }
+                getActivity().setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+                JSObject payload = new JSObject();
+                payload.put("unlocked", true);
+                call.resolve(payload);
+            } catch (Exception ex) {
+                JSObject payload = new JSObject();
+                payload.put("unlocked", false);
+                payload.put("reason", ex.getMessage() == null ? "Failed to unlock orientation" : ex.getMessage());
+                call.resolve(payload);
+            }
+        });
     }
 
     @Override

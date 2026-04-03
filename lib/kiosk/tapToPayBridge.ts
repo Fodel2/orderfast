@@ -51,6 +51,8 @@ export interface TapToPayPlugin {
   startTapToPayPayment(options: { restaurantId: string; sessionId: string; backendBaseUrl: string; terminalLocationId: string }): Promise<TapToPayResult>;
   cancelTapToPayPayment(): Promise<TapToPayResult>;
   getTapToPayStatus(): Promise<TapToPayResult>;
+  lockPaymentOrientationToPortrait(): Promise<{ locked: boolean; reason?: string }>;
+  unlockPaymentOrientation(): Promise<{ unlocked: boolean; reason?: string }>;
 }
 
 const TapToPayNative = registerPlugin<TapToPayPlugin>('OrderfastTapToPay');
@@ -145,6 +147,26 @@ export const tapToPayBridge: TapToPayPlugin = {
         message: `Tap to Pay native bridge unavailable: ${readErrorMessage(error)}`,
         detail: { nativeStage: 'bridge', reason: 'status_bridge_unavailable' },
         nativeStage: 'bridge',
+      };
+    }
+  },
+  async lockPaymentOrientationToPortrait() {
+    try {
+      return await TapToPayNative.lockPaymentOrientationToPortrait();
+    } catch (error) {
+      return {
+        locked: false,
+        reason: `Orientation lock unavailable: ${readErrorMessage(error)}`,
+      };
+    }
+  },
+  async unlockPaymentOrientation() {
+    try {
+      return await TapToPayNative.unlockPaymentOrientation();
+    } catch (error) {
+      return {
+        unlocked: false,
+        reason: `Orientation unlock unavailable: ${readErrorMessage(error)}`,
       };
     }
   },
