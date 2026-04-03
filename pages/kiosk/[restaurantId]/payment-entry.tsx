@@ -104,6 +104,12 @@ const PAYMENT_PREP_MESSAGES = [
   'Getting the tap ready...',
   'One tiny beep away from greatness...',
 ];
+const PAYMENT_COLLECT_MESSAGES = [
+  'Ready when you are — tap to pay.',
+  'One quick tap and we are done.',
+  'Phones, cards, watches — all welcome.',
+  'Tap now and we will fire your order.',
+];
 const STARTUP_TRACE_LABELS: Record<StartupTraceKey, string> = {
   availability: 'availability',
   session_create: 'session create',
@@ -215,6 +221,8 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   const [currentOrderMethod, setCurrentOrderMethod] = useState<'cash' | 'pay_at_counter' | 'contactless' | null>(null);
   const [autoSubmitAttemptedMethod, setAutoSubmitAttemptedMethod] = useState<'cash' | 'pay_at_counter' | 'contactless' | null>(null);
   const [prepMessageIndex, setPrepMessageIndex] = useState(0);
+  const [collectMessageIndex, setCollectMessageIndex] = useState(0);
+  const [readerHint, setReaderHint] = useState('');
   const [terminalMode, setTerminalMode] = useState<KioskTerminalMode>('real_tap_to_pay');
   const isVerifiedPaidPayload = useCallback((verification: PaymentVerification | null | undefined) => {
     if (!verification || verification.verifiedPaid !== true) return false;
@@ -375,6 +383,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       setContactlessDebug('idle');
       setTapStartupTrace(createStartupTrace());
       setContactlessTerminalLocationId(null);
+      setReaderHint('');
       if (typeof window !== 'undefined') {
         window.localStorage.removeItem(CONTACTLESS_SESSION_STORAGE_KEY);
       }
@@ -384,10 +393,12 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   useEffect(() => {
     if (!orderSubmitting && !contactlessBusy && contactlessStatus !== 'preparing' && contactlessStatus !== 'collecting') {
       setPrepMessageIndex(0);
+      setCollectMessageIndex(0);
       return;
     }
     const interval = window.setInterval(() => {
       setPrepMessageIndex((prev) => (prev + 1) % PAYMENT_PREP_MESSAGES.length);
+      setCollectMessageIndex((prev) => (prev + 1) % PAYMENT_COLLECT_MESSAGES.length);
     }, 1800);
     return () => window.clearInterval(interval);
   }, [contactlessBusy, contactlessStatus, orderSubmitting]);
@@ -519,6 +530,14 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         return JSON.stringify(detail);
       } catch {
         return String(detail);
+      }
+    };
+
+    const updateReaderHintFromDetail = (detail: unknown) => {
+      if (!detail || typeof detail !== 'object') return;
+      const maybeReaderLabel = (detail as { readerLabel?: unknown }).readerLabel;
+      if (typeof maybeReaderLabel === 'string' && maybeReaderLabel.trim()) {
+        setReaderHint(`Reader connected: ${maybeReaderLabel}. If unclear, tap near the center of this device.`);
       }
     };
 
@@ -777,6 +796,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         native_connection: { status: 'pending', detail: 'Connecting Tap to Pay reader.' },
       }));
       const prepared = await tapToPayBridge.prepareTapToPay({ restaurantId, sessionId, backendBaseUrl, terminalLocationId });
+      updateReaderHintFromDetail(prepared.detail);
       logTapStageResult('native_prepare_result', prepared.status === 'ready' || prepared.status === 'preparing' ? 'ok' : 'failed', prepared);
       const preparedDetail = prepared.detail && typeof prepared.detail === 'object' ? (prepared.detail as { stage?: unknown; nativeStage?: unknown }) : null;
       const prepareNativeStage =
@@ -865,6 +885,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       setContactlessDebug('native_collect_process');
       setTapStartupTrace((prev) => ({ ...prev, native_start: { status: 'pending', detail: 'Starting native collection flow.' } }));
       const started = await tapToPayBridge.startTapToPayPayment({ restaurantId, sessionId, backendBaseUrl, terminalLocationId });
+      updateReaderHintFromDetail(started.detail);
       const isNativeSuccessOrProcessing = started.status === 'succeeded' || started.status === 'processing';
       logTapStageResult(
         isNativeSuccessOrProcessing ? 'native_process_result' : 'native_collect_result',
@@ -897,6 +918,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
             window.setTimeout(() => resolve(), 700);
           });
           const polledStatus = await tapToPayBridge.getTapToPayStatus();
+          updateReaderHintFromDetail(polledStatus.detail);
           if (polledStatus.sessionId && polledStatus.sessionId !== sessionId) {
             continue;
           }
@@ -939,7 +961,11 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
             finalized?.verification?.reason ||
               `Finalized state rejected because PaymentIntent status is ${finalized?.verification?.paymentIntentStatus || 'unknown'}.`
           );
+          await reconcileSession(sessionId, 'finalize_unverified');
+          return;
         }
+        await loadServerSessionTruth(sessionId, 'finalize_pending');
+        await reconcileSession(sessionId, 'finalize_pending');
         return;
       }
 
@@ -966,6 +992,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     currency,
     enabledMethods.length,
     isVerifiedPaidPayload,
+    loadServerSessionTruth,
     reconcileSession,
     restaurantId,
   ]);
@@ -999,7 +1026,10 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       setContactlessError('');
       setContactlessSessionId(null);
       setContactlessDebug('fallback');
+      setContactlessDebugDetail('');
       setAutoSubmitAttemptedMethod(null);
+      flowLockRef.current = false;
+      cancelLockRef.current = false;
       setStage(enabledMethods.length > 1 ? 'method_picker' : 'pay_at_counter');
       if (typeof window !== 'undefined') {
         window.localStorage.removeItem(CONTACTLESS_SESSION_STORAGE_KEY);
@@ -1143,18 +1173,26 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   }, [restaurant?.brand_primary_color, restaurant?.brand_secondary_color]);
 
   useEffect(() => {
+    const shouldLock =
+      stage === 'contactless' &&
+      terminalMode === 'real_tap_to_pay' &&
+      (contactlessBusy ||
+        contactlessStatus === 'idle' ||
+        contactlessStatus === 'preparing' ||
+        contactlessStatus === 'collecting' ||
+        contactlessStatus === 'processing');
     if (typeof window === 'undefined') return;
-    const orientationApi = window.screen?.orientation as (ScreenOrientation & { lock?: (orientation: string) => Promise<void> }) | undefined;
-    if (!orientationApi?.lock) return;
-    if (stage !== 'contactless') return;
-    orientationApi.lock('portrait').catch(() => undefined);
-    return () => {
-      const unlockApi = window.screen?.orientation as (ScreenOrientation & { unlock?: () => void }) | undefined;
-      if (unlockApi?.unlock) {
-        unlockApi.unlock();
-      }
-    };
-  }, [stage]);
+
+    const orientationApi = window.screen?.orientation as (ScreenOrientation & { lock?: (orientation: string) => Promise<void>; unlock?: () => void }) | undefined;
+    if (shouldLock) {
+      orientationApi?.lock?.('portrait').catch(() => undefined);
+      void tapToPayBridge.lockPaymentOrientationToPortrait();
+      return;
+    }
+
+    orientationApi?.unlock?.();
+    void tapToPayBridge.unlockPaymentOrientation();
+  }, [contactlessBusy, contactlessStatus, stage, terminalMode]);
 
   useEffect(() => {
     if (stage !== 'contactless' || !restaurantId) return;
@@ -1193,6 +1231,30 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     }, 900);
     return () => window.clearTimeout(timeout);
   }, [contactlessBusy, contactlessError, contactlessStatus, returnToFallback, stage]);
+
+  useEffect(() => {
+    if (stage !== 'contactless') return;
+    if (!contactlessSessionId || !restaurantId) return;
+    if (contactlessStatus !== 'processing' && contactlessStatus !== 'collecting') return;
+
+    const watchdog = window.setTimeout(() => {
+      void (async () => {
+        await loadServerSessionTruth(contactlessSessionId, 'watchdog');
+        await reconcileSession(contactlessSessionId, 'watchdog');
+        window.setTimeout(() => {
+          setContactlessStatus((current) => {
+            if (current === 'processing' || current === 'collecting') {
+              setContactlessError('Payment did not complete. Please choose another payment method and try again.');
+              return 'failed';
+            }
+            return current;
+          });
+        }, 1400);
+      })();
+    }, 45000);
+
+    return () => window.clearTimeout(watchdog);
+  }, [contactlessSessionId, contactlessStatus, loadServerSessionTruth, reconcileSession, restaurantId, stage]);
 
   useEffect(() => {
     if (settingsLoading) return;
@@ -1329,60 +1391,45 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
 
   const renderContactlessOverlay = () => (
     <div
-      className="fixed inset-0 z-[75] flex items-center justify-center px-3 py-4 backdrop-blur-[2px] sm:px-4"
+      className="fixed inset-0 z-[75] flex items-center justify-center px-4 py-6 backdrop-blur-[3px] sm:px-6"
       style={{
-        backgroundImage: `linear-gradient(160deg, ${hexToRgba(paymentTheme.primary, 0.34)}, ${hexToRgba(paymentTheme.secondary, 0.22)})`,
+        background: `linear-gradient(165deg, rgba(148, 163, 184, 0.42), ${hexToRgba(paymentTheme.primary, 0.2)} 55%, ${hexToRgba(paymentTheme.secondary, 0.18)})`,
       }}
     >
-      <section
-        className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-[2rem] border bg-white/95 p-5 shadow-2xl sm:p-6"
-        style={{ borderColor: paymentTheme.ring }}
-      >
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Contactless payment</p>
+      <section className="w-full max-w-3xl text-center">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-600">Contactless payment</p>
+        <div className="mx-auto mt-4 h-12 w-12 animate-spin rounded-full border-4 border-white/70" style={{ borderTopColor: paymentTheme.primary }} />
         <div
-          className="mt-4 flex items-center justify-center rounded-3xl border px-4 py-6 text-center"
-          style={{
-            borderColor: paymentTheme.ring,
-            background: `radial-gradient(circle at top, ${paymentTheme.primarySoft}, rgba(255,255,255,0.9))`,
-          }}
+          className="mx-auto mt-6 inline-flex h-16 w-16 items-center justify-center rounded-3xl shadow-lg"
+          style={{ background: `linear-gradient(135deg, ${paymentTheme.primary}, ${paymentTheme.secondary})` }}
+          aria-hidden="true"
         >
-          <div className="space-y-2">
-            <div
-              className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl text-white"
-              style={{ background: `linear-gradient(135deg, ${paymentTheme.primary}, ${paymentTheme.secondary})` }}
-              aria-hidden="true"
-            >
-              <DevicePhoneMobileIcon className="h-8 w-8" />
-            </div>
-            <p className="text-sm font-semibold text-slate-700">Tap card or phone near the reader</p>
-            <p className="text-xs text-slate-500">
-              If reader position is unclear, use the center area of this device as a fallback.
-            </p>
-          </div>
+          <DevicePhoneMobileIcon className="h-9 w-9 text-white" />
         </div>
+        <p className="mt-5 text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">Tap card or phone near the reader</p>
+        <p className="mx-auto mt-2 max-w-lg text-sm text-slate-700 sm:text-base">
+          {readerHint || 'If the reader location is unclear, tap near the center of this device to continue.'}
+        </p>
         {contactlessStatus === 'preparing' || contactlessStatus === 'idle' ? (
-          <p className="mt-3 text-base font-medium text-slate-800">{PAYMENT_PREP_MESSAGES[prepMessageIndex]}</p>
+          <p className="mt-5 text-base font-medium text-slate-800">{PAYMENT_PREP_MESSAGES[prepMessageIndex]}</p>
         ) : null}
-        {contactlessStatus === 'collecting' ? <p className="mt-3 text-base font-medium text-slate-800">Reader is ready. Hold your card or phone near the reader.</p> : null}
+        {contactlessStatus === 'collecting' ? (
+          <p className="mt-5 text-base font-medium text-slate-800">{PAYMENT_COLLECT_MESSAGES[collectMessageIndex]}</p>
+        ) : null}
         {contactlessStatus === 'processing' ? <p className="mt-3 text-base font-medium text-amber-700">Finalizing payment result...</p> : null}
         {contactlessStatus === 'succeeded' ? (
-          <p className="mt-3 flex items-center gap-2 text-base font-medium text-emerald-700">
-            <CheckCircleIcon className="h-5 w-5" />
+          <p className="mt-4 flex items-center justify-center gap-2 text-base font-medium text-emerald-700">
+            <CheckCircleIcon className="h-5 w-5 shrink-0" />
             Payment approved. Sending your order now...
           </p>
         ) : null}
         {contactlessStatus === 'failed' || contactlessStatus === 'canceled' ? (
-          <p className="mt-3 flex items-center gap-2 text-base font-medium text-rose-700">
-            <ExclamationTriangleIcon className="h-5 w-5" />
+          <p className="mx-auto mt-4 flex max-w-xl items-center justify-center gap-2 text-base font-medium text-rose-700">
+            <ExclamationTriangleIcon className="h-5 w-5 shrink-0" />
             {contactlessStatus === 'canceled'
               ? 'Payment was canceled. Please choose a payment method to continue.'
               : contactlessError || 'Payment failed, please try again or choose another payment method.'}
           </p>
-        ) : null}
-        {contactlessStatus === 'preparing' || contactlessStatus === 'idle' || contactlessStatus === 'collecting' || contactlessStatus === 'processing' ? (
-          <div className="mt-5 flex justify-center">
-            <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200" style={{ borderTopColor: paymentTheme.primary }} />
-          </div>
         ) : null}
         {showOperatorDetails ? <p className="mt-2 text-[11px] font-medium uppercase tracking-[0.12em] text-slate-500">Debug: {contactlessDebug}</p> : null}
         {showOperatorDetails && contactlessDebugDetail ? (
@@ -1404,7 +1451,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
             </div>
           </div>
         ) : null}
-        <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="mx-auto mt-7 grid max-w-md grid-cols-1 gap-3 sm:grid-cols-2">
           <button
             type="button"
             onClick={() => {
@@ -1418,7 +1465,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
               }
               void cancelTapToPay().then(() => returnToFallback('Payment cancelled'));
             }}
-            className="rounded-2xl border bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            className="rounded-2xl border bg-white/90 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-white"
             style={{ borderColor: paymentTheme.ring }}
           >
             {contactlessStatus === 'failed' || contactlessStatus === 'canceled' ? 'Choose another method' : 'Cancel payment'}
@@ -1533,7 +1580,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
             </section>
           ) : null}
 
-          {!settingsLoading ? renderMethodPicker() : null}
+          {!settingsLoading && stage === 'method_picker' ? renderMethodPicker() : null}
           {!settingsLoading && stage === 'contactless' ? renderContactlessOverlay() : null}
           {!settingsLoading && orderSubmitting ? renderOrderSubmittingOverlay() : null}
         </div>
