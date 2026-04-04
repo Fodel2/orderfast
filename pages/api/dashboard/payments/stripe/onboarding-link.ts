@@ -29,15 +29,37 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     method: req.method,
   };
   console.info('[stripe][onboarding-link][route.start]', logContext);
-
-  if (req.method !== 'POST') {
-    res.setHeader('Allow', 'POST');
-    console.warn('[stripe][onboarding-link][route.method_not_allowed]', logContext);
-    return res.status(405).json({ message: 'Method not allowed' });
-  }
-
   let restaurantId: string | null = null;
+  let step = 'pre.lookup.method_check';
   try {
+    console.info('[stripe][onboarding-link][pre.lookup.method_check.before]', logContext);
+    const requestMethod = typeof req?.method === 'string' ? req.method : '';
+    const isPost = requestMethod === 'POST';
+    console.info('[stripe][onboarding-link][pre.lookup.method_check.after]', {
+      ...logContext,
+      requestMethod,
+      isPost,
+    });
+    if (!isPost) {
+      console.warn('[stripe][onboarding-link][pre.lookup.method_not_allowed.before_set_header]', {
+        ...logContext,
+        requestMethod,
+      });
+      res.setHeader('Allow', 'POST');
+      console.warn('[stripe][onboarding-link][pre.lookup.method_not_allowed.after_set_header]', {
+        ...logContext,
+        requestMethod,
+      });
+      return res.status(405).json({ message: 'Method not allowed' });
+    }
+
+    step = 'pre.lookup.restaurant_id_init';
+    console.info('[stripe][onboarding-link][pre.lookup.restaurant_id_init.before]', logContext);
+    restaurantId = null;
+    console.info('[stripe][onboarding-link][pre.lookup.restaurant_id_init.after]', logContext);
+
+    step = 'restaurant.lookup';
+    console.info('[stripe][onboarding-link][pre.lookup.try_enter]', logContext);
     console.info('[stripe][onboarding-link][restaurant.lookup.start]', logContext);
     restaurantId = await resolveRestaurantIdFromSession(req, res);
     console.info('[stripe][onboarding-link][restaurant.lookup.result]', {
@@ -49,6 +71,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(401).json({ message: 'Unauthorized' });
     }
 
+    step = 'service.create_link';
     console.info('[stripe][onboarding-link][service.create_link.start]', {
       ...logContext,
       restaurantId,
@@ -94,9 +117,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.error('[stripe][onboarding-link][unexpected]', {
       ...logContext,
       restaurantId,
+      step,
       message: error?.message,
       stack: error?.stack,
     });
+    if (step === 'restaurant.lookup') {
+      return res.status(500).json({ message: 'Could not resolve your restaurant session. Please sign in again and retry.' });
+    }
     return res.status(500).json({ message: 'Could not start Stripe onboarding. Please retry in a moment.' });
   }
 }
