@@ -12,6 +12,21 @@ import {
 import { supaServer } from '@/lib/supaServer';
 import { getStripeClient } from './stripeClient';
 
+class StripeConnectConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'StripeConnectConfigError';
+  }
+}
+
+const logOnboardingInfo = (step: string, payload: Record<string, unknown>) => {
+  console.info('[stripe][onboarding-link]', { step, ...payload });
+};
+
+const logOnboardingError = (step: string, payload: Record<string, unknown>) => {
+  console.error('[stripe][onboarding-link]', { step, ...payload });
+};
+
 type RestaurantStripeRow = {
   restaurant_id: string;
   stripe_connected_account_id: string | null;
@@ -274,13 +289,28 @@ const upsertFromStripeAccount = async (restaurantId: string, account: Stripe.Acc
 };
 
 export const getOrCreateConnectedAccount = async (restaurantId: string) => {
+  logOnboardingInfo('connected_account.lookup.start', { restaurantId });
   const existingRow = await readRestaurantStripeRow(restaurantId);
+  logOnboardingInfo('connected_account.lookup.result', {
+    restaurantId,
+    hasRow: !!existingRow,
+    hasConnectedAccountId: !!existingRow?.stripe_connected_account_id,
+  });
   if (existingRow?.stripe_connected_account_id) {
+    logOnboardingInfo('connected_account.ensure_capabilities.start', {
+      restaurantId,
+      accountId: existingRow.stripe_connected_account_id,
+    });
     await ensureRestaurantCapabilities(existingRow.stripe_connected_account_id);
+    logOnboardingInfo('connected_account.ensure_capabilities.success', {
+      restaurantId,
+      accountId: existingRow.stripe_connected_account_id,
+    });
     return existingRow.stripe_connected_account_id;
   }
 
   const stripe = getStripeClient();
+  logOnboardingInfo('connected_account.create.start', { restaurantId });
   const account = await stripe.accounts.create({
     type: 'express',
     capabilities: {
@@ -293,8 +323,43 @@ export const getOrCreateConnectedAccount = async (restaurantId: string) => {
     },
   });
 
-  await upsertStripeAccountBaseline(restaurantId, account);
-  return account.id;
+  logOnboardingInfo('connected_account.create.success', {
+    restaurantId,
+    accountId: account.id,
+  });
+  console.info('[stripe][onboarding-link][post_create.next_line]', {
+    restaurantId,
+    accountId: account.id,
+    step: 'post_create.enter',
+  });
+  try {
+    console.info('[stripe][onboarding-link][post_create.persist_baseline.before]', {
+      restaurantId,
+      accountId: account.id,
+      step: 'post_create.persist_baseline.before',
+    });
+    await upsertStripeAccountBaseline(restaurantId, account);
+    console.info('[stripe][onboarding-link][post_create.persist_baseline.after]', {
+      restaurantId,
+      accountId: account.id,
+      step: 'post_create.persist_baseline.after',
+    });
+    return account.id;
+  } catch (error: any) {
+    console.error('[stripe][onboarding-link][post_create.error]', {
+      restaurantId,
+      accountId: account.id,
+      step: 'post_create.persist_or_return',
+      message: error?.message,
+      stack: error?.stack,
+      type: error?.type,
+      code: error?.code,
+      param: error?.param,
+      statusCode: error?.statusCode,
+      requestId: error?.requestId,
+    });
+    throw error;
+  }
 };
 
 const ensureRestaurantCapabilities = async (connectedAccountId: string) => {
@@ -307,8 +372,42 @@ const ensureRestaurantCapabilities = async (connectedAccountId: string) => {
   });
 };
 
-const getReturnUrl = () => process.env.STRIPE_CONNECT_RETURN_URL || 'http://localhost:3000/dashboard/settings/payments?tab=stripe';
-const getRefreshUrl = () => process.env.STRIPE_CONNECT_REFRESH_URL || getReturnUrl();
+const DEFAULT_CONNECT_RETURN_URL = 'http://localhost:3000/dashboard/settings/payments?tab=stripe';
+
+const isAllowedConnectUrl = (value: string) => {
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+    if (parsed.protocol === 'http:' && parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1') return false;
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const resolveConnectUrl = (
+  envValue: string | undefined,
+  envName: 'STRIPE_CONNECT_RETURN_URL' | 'STRIPE_CONNECT_REFRESH_URL',
+  fallback: string
+) => {
+  const candidate = (envValue || fallback).trim();
+  if (!isAllowedConnectUrl(candidate)) {
+    throw new StripeConnectConfigError(
+      `${envName} must be an absolute http(s) URL. http:// is only allowed for localhost. Received: ${candidate || '(empty)'}`
+    );
+  }
+  return candidate;
+};
+
+const resolveConnectUrls = () => {
+  const returnUrl = resolveConnectUrl(
+    process.env.STRIPE_CONNECT_RETURN_URL,
+    'STRIPE_CONNECT_RETURN_URL',
+    DEFAULT_CONNECT_RETURN_URL
+  );
+  const refreshUrl = resolveConnectUrl(process.env.STRIPE_CONNECT_REFRESH_URL, 'STRIPE_CONNECT_REFRESH_URL', returnUrl);
+  return { returnUrl, refreshUrl };
+};
 
 const upsertTerminalMapping = async (
   restaurantId: string,
@@ -359,46 +458,150 @@ const mapRestaurantAddressToStripe = (restaurant: RestaurantAddress | null) => {
 };
 
 const upsertStripeAccountBaseline = async (restaurantId: string, account: Stripe.Account) => {
-  const payload = {
-    restaurant_id: restaurantId,
-    stripe_connected_account_id: account.id,
-    onboarding_status: 'setup_incomplete' as StripeConnectionSnapshot['onboarding_status'],
-    charges_enabled: !!account.charges_enabled,
-    payouts_enabled: !!account.payouts_enabled,
-    details_submitted: !!account.details_submitted,
-    requirements_currently_due: Array.isArray(account.requirements?.currently_due) ? account.requirements.currently_due : [],
-    requirements_pending_verification: Array.isArray(account.requirements?.pending_verification)
-      ? account.requirements.pending_verification
-      : [],
-    disabled_reason: account.requirements?.disabled_reason || null,
-    onboarding_completed_at: null,
-    last_synced_at: new Date().toISOString(),
-  };
-
-  const { error } = await supaServer.from('restaurant_stripe_connect_accounts').upsert(payload, {
-    onConflict: 'restaurant_id',
+  console.info('[stripe][onboarding-link][persist_baseline.start]', {
+    restaurantId,
+    accountId: account.id,
+    step: 'persist_baseline.start',
   });
+  try {
+    console.info('[stripe][onboarding-link][persist_baseline.payload.before]', {
+      restaurantId,
+      accountId: account.id,
+      step: 'persist_baseline.payload.before',
+    });
+    const payload = {
+      restaurant_id: restaurantId,
+      stripe_connected_account_id: account.id,
+      last_synced_at: new Date().toISOString(),
+    };
+    console.info('[stripe][onboarding-link][persist_baseline.payload.after]', {
+      restaurantId,
+      accountId: account.id,
+      step: 'persist_baseline.payload.after',
+    });
 
-  if (error) throw error;
+    console.info('[stripe][onboarding-link][persist_baseline.upsert.before]', {
+      restaurantId,
+      accountId: account.id,
+      step: 'persist_baseline.upsert.before',
+    });
+    const { error } = await supaServer.from('restaurant_stripe_connect_accounts').upsert(payload, {
+      onConflict: 'restaurant_id',
+    });
+    console.info('[stripe][onboarding-link][persist_baseline.upsert.after]', {
+      restaurantId,
+      accountId: account.id,
+      hasError: !!error,
+      step: 'persist_baseline.upsert.after',
+    });
+
+    if (error) {
+      console.error('[stripe][onboarding-link][persist_baseline.error]', {
+        restaurantId,
+        accountId: account.id,
+        step: 'persist_baseline.upsert.error',
+        message: error.message,
+        code: (error as any).code,
+        details: (error as any).details,
+        hint: (error as any).hint,
+      });
+      throw error;
+    }
+
+    console.info('[stripe][onboarding-link][persist_baseline.success]', {
+      restaurantId,
+      accountId: account.id,
+      step: 'persist_baseline.success',
+    });
+  } catch (error: any) {
+    console.error('[stripe][onboarding-link][persist_baseline.exception]', {
+      restaurantId,
+      accountId: account.id,
+      step: 'persist_baseline.exception',
+      message: error?.message,
+      stack: error?.stack,
+      type: error?.type,
+      code: error?.code,
+      param: error?.param,
+      statusCode: error?.statusCode,
+      requestId: error?.requestId,
+    });
+    throw error;
+  }
 };
 
 export const createRestaurantOnboardingLink = async (restaurantId: string) => {
-  const stripe = getStripeClient();
-  const accountId = await getOrCreateConnectedAccount(restaurantId);
-  await ensureRestaurantCapabilities(accountId);
-  const accountLink = await stripe.accountLinks.create({
-    account: accountId,
-    type: 'account_onboarding',
-    collection_options: {
-      fields: 'eventually_due',
-      future_requirements: 'include',
-    },
-    return_url: getReturnUrl(),
-    refresh_url: getRefreshUrl(),
+  logOnboardingInfo('route.create_onboarding_link.start', { restaurantId });
+  const { returnUrl, refreshUrl } = resolveConnectUrls();
+  logOnboardingInfo('route.create_onboarding_link.urls_resolved', {
+    restaurantId,
+    returnUrlOrigin: new URL(returnUrl).origin,
+    refreshUrlOrigin: new URL(refreshUrl).origin,
   });
+  const stripe = getStripeClient();
+  logOnboardingInfo('route.create_onboarding_link.account_id.before', { restaurantId });
+  const accountId = await getOrCreateConnectedAccount(restaurantId);
+  logOnboardingInfo('route.create_onboarding_link.account_id.after', { restaurantId, accountId });
+  logOnboardingInfo('route.create_onboarding_link.account_ready', { restaurantId, accountId });
+  logOnboardingInfo('route.create_onboarding_link.ensure_capabilities.before', { restaurantId, accountId });
+  await ensureRestaurantCapabilities(accountId);
+  logOnboardingInfo('route.create_onboarding_link.ensure_capabilities.after', { restaurantId, accountId });
+  logOnboardingInfo('route.create_onboarding_link.account_capabilities_ensured', { restaurantId, accountId });
+  console.info('[stripe][onboarding-link][account_link_create.start]', {
+    restaurantId,
+    accountId,
+    step: 'account_link_create.start',
+  });
+  try {
+    const accountLink = await stripe.accountLinks.create({
+      account: accountId,
+      type: 'account_onboarding',
+      collection_options: {
+        fields: 'eventually_due',
+        future_requirements: 'include',
+      },
+      return_url: returnUrl,
+      refresh_url: refreshUrl,
+    });
 
-  return { accountId, url: accountLink.url, expiresAt: accountLink.expires_at };
+    console.info('[stripe][onboarding-link][account_link_create.success]', {
+      restaurantId,
+      accountId,
+      expiresAt: accountLink.expires_at,
+      step: 'account_link_create.success',
+    });
+    console.info('[stripe][onboarding-link][response_build.start]', {
+      restaurantId,
+      accountId,
+      step: 'response_build.start',
+    });
+    const responsePayload = { accountId, url: accountLink.url, expiresAt: accountLink.expires_at };
+    console.info('[stripe][onboarding-link][response_build.success]', {
+      restaurantId,
+      accountId,
+      hasUrl: !!responsePayload.url,
+      step: 'response_build.success',
+    });
+    return responsePayload;
+  } catch (error: any) {
+    console.error('[stripe][onboarding-link][account_link_create.error]', {
+      restaurantId,
+      accountId,
+      step: 'account_link_create.error',
+      message: error?.message,
+      type: error?.type,
+      code: error?.code,
+      param: error?.param,
+      statusCode: error?.statusCode,
+      requestId: error?.requestId,
+      stack: error?.stack,
+    });
+    throw error;
+  }
 };
+
+export const isStripeConnectConfigError = (error: unknown): error is StripeConnectConfigError =>
+  error instanceof StripeConnectConfigError;
 
 export const createRestaurantAccountSession = async (restaurantId: string) => {
   const stripe = getStripeClient();
