@@ -24,22 +24,50 @@ const isStripeError = (error: unknown): error is StripeishError => {
 };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  const logContext = {
+    route: '/api/dashboard/payments/stripe/onboarding-link',
+    method: req.method,
+  };
+  console.info('[stripe][onboarding-link][route.start]', logContext);
+
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
+    console.warn('[stripe][onboarding-link][route.method_not_allowed]', logContext);
     return res.status(405).json({ message: 'Method not allowed' });
   }
 
-  const restaurantId = await resolveRestaurantIdFromSession(req, res);
-  if (!restaurantId) return res.status(401).json({ message: 'Unauthorized' });
-
+  let restaurantId: string | null = null;
   try {
+    console.info('[stripe][onboarding-link][restaurant.lookup.start]', logContext);
+    restaurantId = await resolveRestaurantIdFromSession(req, res);
+    console.info('[stripe][onboarding-link][restaurant.lookup.result]', {
+      ...logContext,
+      restaurantId,
+    });
+    if (!restaurantId) {
+      console.warn('[stripe][onboarding-link][route.unauthorized]', logContext);
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    console.info('[stripe][onboarding-link][service.create_link.start]', {
+      ...logContext,
+      restaurantId,
+    });
     const payload = await createRestaurantOnboardingLink(restaurantId);
+    console.info('[stripe][onboarding-link][route.success]', {
+      ...logContext,
+      restaurantId,
+      accountId: payload.accountId,
+      expiresAt: payload.expiresAt,
+    });
     return res.status(200).json(payload);
   } catch (error: any) {
     if (isStripeConnectConfigError(error)) {
       console.error('[stripe][onboarding-link][config]', {
+        ...logContext,
         restaurantId,
         message: error?.message,
+        stack: error?.stack,
       });
       return res.status(500).json({
         message: 'Stripe onboarding is not configured correctly. Please ask an admin to verify Stripe Connect return URLs.',
@@ -48,6 +76,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (isStripeError(error)) {
       console.error('[stripe][onboarding-link][upstream]', {
+        ...logContext,
         restaurantId,
         message: error?.message,
         type: error?.type,
@@ -63,6 +92,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     console.error('[stripe][onboarding-link][unexpected]', {
+      ...logContext,
       restaurantId,
       message: error?.message,
       stack: error?.stack,

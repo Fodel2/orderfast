@@ -19,6 +19,14 @@ class StripeConnectConfigError extends Error {
   }
 }
 
+const logOnboardingInfo = (step: string, payload: Record<string, unknown>) => {
+  console.info('[stripe][onboarding-link]', { step, ...payload });
+};
+
+const logOnboardingError = (step: string, payload: Record<string, unknown>) => {
+  console.error('[stripe][onboarding-link]', { step, ...payload });
+};
+
 type RestaurantStripeRow = {
   restaurant_id: string;
   stripe_connected_account_id: string | null;
@@ -281,13 +289,28 @@ const upsertFromStripeAccount = async (restaurantId: string, account: Stripe.Acc
 };
 
 export const getOrCreateConnectedAccount = async (restaurantId: string) => {
+  logOnboardingInfo('connected_account.lookup.start', { restaurantId });
   const existingRow = await readRestaurantStripeRow(restaurantId);
+  logOnboardingInfo('connected_account.lookup.result', {
+    restaurantId,
+    hasRow: !!existingRow,
+    hasConnectedAccountId: !!existingRow?.stripe_connected_account_id,
+  });
   if (existingRow?.stripe_connected_account_id) {
+    logOnboardingInfo('connected_account.ensure_capabilities.start', {
+      restaurantId,
+      accountId: existingRow.stripe_connected_account_id,
+    });
     await ensureRestaurantCapabilities(existingRow.stripe_connected_account_id);
+    logOnboardingInfo('connected_account.ensure_capabilities.success', {
+      restaurantId,
+      accountId: existingRow.stripe_connected_account_id,
+    });
     return existingRow.stripe_connected_account_id;
   }
 
   const stripe = getStripeClient();
+  logOnboardingInfo('connected_account.create.start', { restaurantId });
   const account = await stripe.accounts.create({
     type: 'express',
     capabilities: {
@@ -300,6 +323,10 @@ export const getOrCreateConnectedAccount = async (restaurantId: string) => {
     },
   });
 
+  logOnboardingInfo('connected_account.create.success', {
+    restaurantId,
+    accountId: account.id,
+  });
   await upsertStripeAccountBaseline(restaurantId, account);
   return account.id;
 };
@@ -400,6 +427,10 @@ const mapRestaurantAddressToStripe = (restaurant: RestaurantAddress | null) => {
 };
 
 const upsertStripeAccountBaseline = async (restaurantId: string, account: Stripe.Account) => {
+  logOnboardingInfo('connected_account.persist_baseline.start', {
+    restaurantId,
+    accountId: account.id,
+  });
   const payload = {
     restaurant_id: restaurantId,
     stripe_connected_account_id: account.id,
@@ -420,14 +451,38 @@ const upsertStripeAccountBaseline = async (restaurantId: string, account: Stripe
     onConflict: 'restaurant_id',
   });
 
-  if (error) throw error;
+  if (error) {
+    logOnboardingError('connected_account.persist_baseline.error', {
+      restaurantId,
+      accountId: account.id,
+      message: error.message,
+      code: (error as any).code,
+      details: (error as any).details,
+      hint: (error as any).hint,
+    });
+    throw error;
+  }
+
+  logOnboardingInfo('connected_account.persist_baseline.success', {
+    restaurantId,
+    accountId: account.id,
+  });
 };
 
 export const createRestaurantOnboardingLink = async (restaurantId: string) => {
+  logOnboardingInfo('route.create_onboarding_link.start', { restaurantId });
   const { returnUrl, refreshUrl } = resolveConnectUrls();
+  logOnboardingInfo('route.create_onboarding_link.urls_resolved', {
+    restaurantId,
+    returnUrlOrigin: new URL(returnUrl).origin,
+    refreshUrlOrigin: new URL(refreshUrl).origin,
+  });
   const stripe = getStripeClient();
   const accountId = await getOrCreateConnectedAccount(restaurantId);
+  logOnboardingInfo('route.create_onboarding_link.account_ready', { restaurantId, accountId });
   await ensureRestaurantCapabilities(accountId);
+  logOnboardingInfo('route.create_onboarding_link.account_capabilities_ensured', { restaurantId, accountId });
+  logOnboardingInfo('route.create_onboarding_link.account_link_create.start', { restaurantId, accountId });
   const accountLink = await stripe.accountLinks.create({
     account: accountId,
     type: 'account_onboarding',
@@ -439,6 +494,11 @@ export const createRestaurantOnboardingLink = async (restaurantId: string) => {
     refresh_url: refreshUrl,
   });
 
+  logOnboardingInfo('route.create_onboarding_link.account_link_create.success', {
+    restaurantId,
+    accountId,
+    expiresAt: accountLink.expires_at,
+  });
   return { accountId, url: accountLink.url, expiresAt: accountLink.expires_at };
 };
 
