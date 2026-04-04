@@ -431,42 +431,43 @@ const upsertStripeAccountBaseline = async (restaurantId: string, account: Stripe
     restaurantId,
     accountId: account.id,
   });
-  const payload = {
-    restaurant_id: restaurantId,
-    stripe_connected_account_id: account.id,
-    onboarding_status: 'setup_incomplete' as StripeConnectionSnapshot['onboarding_status'],
-    charges_enabled: !!account.charges_enabled,
-    payouts_enabled: !!account.payouts_enabled,
-    details_submitted: !!account.details_submitted,
-    requirements_currently_due: Array.isArray(account.requirements?.currently_due) ? account.requirements.currently_due : [],
-    requirements_pending_verification: Array.isArray(account.requirements?.pending_verification)
-      ? account.requirements.pending_verification
-      : [],
-    disabled_reason: account.requirements?.disabled_reason || null,
-    onboarding_completed_at: null,
-    last_synced_at: new Date().toISOString(),
-  };
+  try {
+    const payload = {
+      restaurant_id: restaurantId,
+      stripe_connected_account_id: account.id,
+      onboarding_status: 'setup_incomplete' as StripeConnectionSnapshot['onboarding_status'],
+      last_synced_at: new Date().toISOString(),
+    };
 
-  const { error } = await supaServer.from('restaurant_stripe_connect_accounts').upsert(payload, {
-    onConflict: 'restaurant_id',
-  });
+    const { error } = await supaServer.from('restaurant_stripe_connect_accounts').upsert(payload, {
+      onConflict: 'restaurant_id',
+    });
 
-  if (error) {
-    logOnboardingError('connected_account.persist_baseline.error', {
+    if (error) {
+      logOnboardingError('connected_account.persist_baseline.error', {
+        restaurantId,
+        accountId: account.id,
+        message: error.message,
+        code: (error as any).code,
+        details: (error as any).details,
+        hint: (error as any).hint,
+      });
+      throw error;
+    }
+
+    logOnboardingInfo('connected_account.persist_baseline.success', {
       restaurantId,
       accountId: account.id,
-      message: error.message,
-      code: (error as any).code,
-      details: (error as any).details,
-      hint: (error as any).hint,
+    });
+  } catch (error: any) {
+    logOnboardingError('connected_account.persist_baseline.exception', {
+      restaurantId,
+      accountId: account.id,
+      message: error?.message,
+      stack: error?.stack,
     });
     throw error;
   }
-
-  logOnboardingInfo('connected_account.persist_baseline.success', {
-    restaurantId,
-    accountId: account.id,
-  });
 };
 
 export const createRestaurantOnboardingLink = async (restaurantId: string) => {
@@ -483,23 +484,38 @@ export const createRestaurantOnboardingLink = async (restaurantId: string) => {
   await ensureRestaurantCapabilities(accountId);
   logOnboardingInfo('route.create_onboarding_link.account_capabilities_ensured', { restaurantId, accountId });
   logOnboardingInfo('route.create_onboarding_link.account_link_create.start', { restaurantId, accountId });
-  const accountLink = await stripe.accountLinks.create({
-    account: accountId,
-    type: 'account_onboarding',
-    collection_options: {
-      fields: 'eventually_due',
-      future_requirements: 'include',
-    },
-    return_url: returnUrl,
-    refresh_url: refreshUrl,
-  });
+  try {
+    const accountLink = await stripe.accountLinks.create({
+      account: accountId,
+      type: 'account_onboarding',
+      collection_options: {
+        fields: 'eventually_due',
+        future_requirements: 'include',
+      },
+      return_url: returnUrl,
+      refresh_url: refreshUrl,
+    });
 
-  logOnboardingInfo('route.create_onboarding_link.account_link_create.success', {
-    restaurantId,
-    accountId,
-    expiresAt: accountLink.expires_at,
-  });
-  return { accountId, url: accountLink.url, expiresAt: accountLink.expires_at };
+    logOnboardingInfo('route.create_onboarding_link.account_link_create.success', {
+      restaurantId,
+      accountId,
+      expiresAt: accountLink.expires_at,
+    });
+    return { accountId, url: accountLink.url, expiresAt: accountLink.expires_at };
+  } catch (error: any) {
+    logOnboardingError('route.create_onboarding_link.account_link_create.error', {
+      restaurantId,
+      accountId,
+      message: error?.message,
+      type: error?.type,
+      code: error?.code,
+      param: error?.param,
+      statusCode: error?.statusCode,
+      requestId: error?.requestId,
+      stack: error?.stack,
+    });
+    throw error;
+  }
 };
 
 export const isStripeConnectConfigError = (error: unknown): error is StripeConnectConfigError =>
