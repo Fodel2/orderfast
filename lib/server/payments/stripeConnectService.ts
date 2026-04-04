@@ -472,7 +472,6 @@ const upsertStripeAccountBaseline = async (restaurantId: string, account: Stripe
     const payload = {
       restaurant_id: restaurantId,
       stripe_connected_account_id: account.id,
-      onboarding_status: 'setup_incomplete' as StripeConnectionSnapshot['onboarding_status'],
       last_synced_at: new Date().toISOString(),
     };
     console.info('[stripe][onboarding-link][persist_baseline.payload.after]', {
