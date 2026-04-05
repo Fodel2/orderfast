@@ -498,57 +498,96 @@ public class OrderfastTapToPayPlugin extends Plugin {
                     @Override
                     public void onSuccess(PaymentIntent paymentIntent) {
                         activePaymentIntent = paymentIntent;
-                        JSObject collectPayload = new JSObject();
-                        collectPayload.put("result", "success");
-                        collectPayload.put("nativeStage", "native_collect_result");
-                        collectPayload.put("paymentIntentId", paymentIntent.getId());
-                        logStartupStage("native_collect_result", collectPayload);
-                        postSessionState("processing", "native_process_start");
-                        status = "processing";
-                        processCancelable = Terminal.getInstance().processPaymentIntent(
+                        JSObject collectStartPayload = new JSObject();
+                        collectStartPayload.put("result", "started");
+                        collectStartPayload.put("nativeStage", "native_collect_start");
+                        collectStartPayload.put("paymentIntentId", paymentIntent.getId());
+                        collectStartPayload.put("paymentIntentStatus", paymentIntent.getStatus() == null ? "unknown" : paymentIntent.getStatus().name());
+                        logStartupStage("native_collect_start", collectStartPayload);
+                        postSessionState("collecting", "native_collect_start");
+                        status = "collecting";
+
+                        Terminal.getInstance().collectPaymentMethod(
                             paymentIntent,
-                            new com.stripe.stripeterminal.external.models.CollectPaymentIntentConfiguration.Builder().build(),
-                            new com.stripe.stripeterminal.external.models.ConfirmPaymentIntentConfiguration.Builder().build(),
+                            new com.stripe.stripeterminal.external.models.CollectConfiguration.Builder().build(),
                             new PaymentIntentCallback() {
                                 @Override
-                                public void onSuccess(PaymentIntent intent) {
-                                    activePaymentIntent = intent;
+                                public void onSuccess(PaymentIntent collectedIntent) {
+                                    activePaymentIntent = collectedIntent;
+                                    JSObject collectPayload = new JSObject();
+                                    collectPayload.put("result", "success");
+                                    collectPayload.put("nativeStage", "native_collect_result");
+                                    collectPayload.put("paymentIntentId", collectedIntent.getId());
+                                    collectPayload.put(
+                                        "paymentIntentStatus",
+                                        collectedIntent.getStatus() == null ? "unknown" : collectedIntent.getStatus().name()
+                                    );
+                                    logStartupStage("native_collect_result", collectPayload);
 
-                                    if (intent.getStatus() == PaymentIntentStatus.SUCCEEDED) {
-                                        postSessionState("processing", "native_process_succeeded");
-                                        JSObject payload = result("succeeded", null, "Tap to Pay payment processed by Stripe Terminal SDK.");
-                                        payload.put("detail", detail("native_process_result", "succeeded", intent.getStatus().name()));
-                                        logStartupStage("native_process_result", payload);
-                                        clearActivePaymentState();
-                                        resetStatusForNextAttempt();
-                                        resolveOnce(resolveGate, call, payload);
-                                    } else if (intent.getStatus() == PaymentIntentStatus.PROCESSING || intent.getStatus() == PaymentIntentStatus.REQUIRES_CAPTURE) {
-                                        status = "processing";
-                                        postSessionState("needs_reconciliation", "native_process_pending");
-                                        JSObject payload = result("processing", null, "Stripe Terminal returned a pending PaymentIntent state.");
-                                        payload.put("detail", detail("native_process_result", "pending", intent.getStatus().name()));
-                                        logStartupStage("native_process_result", payload);
-                                        clearActivePaymentState();
-                                        resetStatusForNextAttempt();
-                                        resolveOnce(resolveGate, call, payload);
-                                    } else {
-                                        status = "failed";
-                                        JSObject payload = result("failed", "processing_error", "Unexpected PaymentIntent status: " + intent.getStatus());
-                                        payload.put("detail", detail("native_process_result", "unexpected_status", String.valueOf(intent.getStatus())));
-                                        logStartupStage("native_process_result", payload);
-                                        clearActivePaymentState();
-                                        resetStatusForNextAttempt();
-                                        resolveOnce(resolveGate, call, payload);
-                                    }
+                                    JSObject processStartPayload = new JSObject();
+                                    processStartPayload.put("result", "started");
+                                    processStartPayload.put("nativeStage", "native_process_start");
+                                    processStartPayload.put("paymentIntentId", collectedIntent.getId());
+                                    logStartupStage("native_process_start", processStartPayload);
+                                    postSessionState("processing", "native_process_start");
+                                    status = "processing";
+                                    processCancelable = Terminal.getInstance().processPaymentIntent(
+                                        collectedIntent,
+                                        new PaymentIntentCallback() {
+                                            @Override
+                                            public void onSuccess(PaymentIntent intent) {
+                                                activePaymentIntent = intent;
+
+                                                if (intent.getStatus() == PaymentIntentStatus.SUCCEEDED) {
+                                                    postSessionState("processing", "native_process_succeeded");
+                                                    JSObject payload = result("succeeded", null, "Tap to Pay payment processed by Stripe Terminal SDK.");
+                                                    payload.put("detail", detail("native_process_result", "succeeded", intent.getStatus().name()));
+                                                    logStartupStage("native_process_result", payload);
+                                                    clearActivePaymentState();
+                                                    resetStatusForNextAttempt();
+                                                    resolveOnce(resolveGate, call, payload);
+                                                } else if (intent.getStatus() == PaymentIntentStatus.PROCESSING || intent.getStatus() == PaymentIntentStatus.REQUIRES_CAPTURE) {
+                                                    status = "processing";
+                                                    postSessionState("needs_reconciliation", "native_process_pending");
+                                                    JSObject payload = result("processing", null, "Stripe Terminal returned a pending PaymentIntent state.");
+                                                    payload.put("detail", detail("native_process_result", "pending", intent.getStatus().name()));
+                                                    logStartupStage("native_process_result", payload);
+                                                    clearActivePaymentState();
+                                                    resetStatusForNextAttempt();
+                                                    resolveOnce(resolveGate, call, payload);
+                                                } else {
+                                                    status = "failed";
+                                                    JSObject payload = result("failed", "processing_error", "Unexpected PaymentIntent status: " + intent.getStatus());
+                                                    payload.put("detail", detail("native_process_result", "unexpected_status", String.valueOf(intent.getStatus())));
+                                                    logStartupStage("native_process_result", payload);
+                                                    clearActivePaymentState();
+                                                    resetStatusForNextAttempt();
+                                                    resolveOnce(resolveGate, call, payload);
+                                                }
+                                            }
+
+                                            @Override
+                                            public void onFailure(TerminalException e) {
+                                                status = "failed";
+                                                postSessionState("failed", "native_process_failed");
+                                                JSObject payload = result("failed", normalizeErrorCode(e), buildErrorMessage(e));
+                                                payload.put("detail", terminalErrorDetail(e, "native_process_result"));
+                                                logStartupStage("native_process_result", payload);
+                                                clearActivePaymentState();
+                                                resetStatusForNextAttempt();
+                                                resolveOnce(resolveGate, call, payload);
+                                            }
+                                        }
+                                    );
                                 }
 
                                 @Override
                                 public void onFailure(TerminalException e) {
                                     status = "failed";
-                                    postSessionState("failed", "native_process_failed");
+                                    postSessionState("failed", "native_collect_failed");
                                     JSObject payload = result("failed", normalizeErrorCode(e), buildErrorMessage(e));
-                                    payload.put("detail", terminalErrorDetail(e, "native_process_result"));
-                                    logStartupStage("native_process_result", payload);
+                                    payload.put("detail", terminalErrorDetail(e, "native_collect_result"));
+                                    logStartupStage("native_collect_result", payload);
                                     clearActivePaymentState();
                                     resetStatusForNextAttempt();
                                     resolveOnce(resolveGate, call, payload);
