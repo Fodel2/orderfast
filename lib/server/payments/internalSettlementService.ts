@@ -6,6 +6,7 @@ import {
   createOrRetrieveCardPresentPaymentIntentForSession,
   finalizeSuccessfulKioskPaymentSession,
   markKioskPaymentSessionState,
+  reconcileAbandonedOrUnknownKioskPaymentSession,
   verifyKioskSessionPaymentCompletion,
 } from '@/lib/server/payments/kioskCardPresentService';
 
@@ -344,4 +345,13 @@ export const cancelInternalSettlement = async (input: { sessionId: string; resta
   }
 
   return { session: canceled };
+};
+
+export const reconcileInternalSettlement = async (input: { sessionId: string; restaurantId: string }) => {
+  const session = await reconcileAbandonedOrUnknownKioskPaymentSession({
+    sessionId: input.sessionId,
+    restaurantId: input.restaurantId,
+  });
+  const verification = await verifyKioskSessionPaymentCompletion(session);
+  return { session, verification };
 };

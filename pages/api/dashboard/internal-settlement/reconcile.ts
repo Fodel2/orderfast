@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { resolveRestaurantIdFromSession } from '@/lib/server/payments/stripeConnectService';
-import { createInternalSettlementPaymentIntent } from '@/lib/server/payments/internalSettlementService';
+import { reconcileInternalSettlement } from '@/lib/server/payments/internalSettlementService';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -14,11 +14,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const sessionId = String(req.body?.session_id || '');
     if (!sessionId) return res.status(400).json({ message: 'session_id is required' });
-    console.info('[internal-settlement][api]', { route: 'payment-intent', restaurantId, sessionId });
+    console.info('[internal-settlement][api]', { route: 'reconcile', restaurantId, sessionId });
 
-    const paymentIntent = await createInternalSettlementPaymentIntent({ sessionId, restaurantId });
-    return res.status(200).json(paymentIntent);
+    const result = await reconcileInternalSettlement({ sessionId, restaurantId });
+    return res.status(200).json(result);
   } catch (error: any) {
-    return res.status(400).json({ message: error?.message || 'Failed to create payment intent' });
+    return res.status(400).json({ message: error?.message || 'Failed to reconcile settlement session' });
   }
 }
