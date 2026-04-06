@@ -22,7 +22,7 @@ type MembershipRow = {
 };
 
 type AppMode = {
-  key: 'kiosk' | 'pos' | 'kod' | 'menu';
+  key: 'kiosk' | 'pos' | 'kod' | 'menu' | 'take_payment';
   label: string;
   description: string;
 };
@@ -30,6 +30,7 @@ type AppMode = {
 const APP_MODES: AppMode[] = [
   { key: 'kiosk', label: 'Kiosk', description: 'Self-service ordering experience.' },
   { key: 'pos', label: 'POS', description: 'Front-of-house point of sale tools.' },
+  { key: 'take_payment', label: 'Take Payment', description: 'Collect ad-hoc and unpaid-order card payments.' },
   { key: 'kod', label: 'KOD', description: 'Kitchen order display workflows.' },
   { key: 'menu', label: 'Menu', description: 'Customer menu preview and ordering.' },
 ];
@@ -76,6 +77,7 @@ const getRestaurantFromMembership = (row: MembershipRow): RestaurantOption | nul
 const getModeHref = (mode: AppMode['key'], restaurantId: string) => {
   if (mode === 'kiosk') return `/kiosk/${restaurantId}?entry=launcher`;
   if (mode === 'pos') return `/pos/${restaurantId}`;
+  if (mode === 'take_payment') return '/dashboard/take-payment';
   if (mode === 'kod') return `/kod/${restaurantId}`;
   return `/restaurant/menu?restaurant_id=${encodeURIComponent(restaurantId)}`;
 };

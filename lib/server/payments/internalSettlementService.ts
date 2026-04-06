@@ -31,6 +31,43 @@ const isCollectionOperationalType = (orderType: string | null | undefined) => {
   return orderType !== 'delivery';
 };
 
+const updatePaidOrderWithOptionalStripeIntent = async (input: {
+  orderId: string;
+  restaurantId: string;
+  paidAt: string;
+  paymentIntentId: string | null;
+}) => {
+  const baseUpdate = {
+    payment_status: 'paid',
+    payment_method: 'card_present',
+    paid_at: input.paidAt,
+    payment_reference: input.paymentIntentId,
+  };
+
+  const withStripeIntent = {
+    ...baseUpdate,
+    stripe_payment_intent_id: input.paymentIntentId,
+  };
+
+  const runUpdate = async (payload: Record<string, unknown>) =>
+    supaServer
+      .from('orders')
+      .update(payload)
+      .eq('id', input.orderId)
+      .eq('restaurant_id', input.restaurantId)
+      .select('id,status,order_type,restaurant_id')
+      .maybeSingle();
+
+  const withStripeIntentResult = await runUpdate(withStripeIntent);
+  if (!withStripeIntentResult.error) return withStripeIntentResult;
+
+  if (!String(withStripeIntentResult.error.message || '').includes('stripe_payment_intent_id')) {
+    return withStripeIntentResult;
+  }
+
+  return runUpdate(baseUpdate);
+};
+
 const maybeAutoCompletePreparedOrder = async (input: { orderId: string; orderStatus: string; orderType: string | null }) => {
   if (!isCollectionOperationalType(input.orderType)) return;
   if (input.orderStatus !== 'prepared') return;
@@ -178,18 +215,12 @@ export const finalizeInternalSettlement = async (input: { sessionId: string; res
 
   if (finalized.session.order_id) {
     const paidAt = new Date().toISOString();
-    const { data: updatedOrder, error } = await supaServer
-      .from('orders')
-      .update({
-        payment_status: 'paid',
-        payment_method: 'card_present',
-        paid_at: paidAt,
-        payment_reference: finalized.session.stripe_payment_intent_id,
-      })
-      .eq('id', finalized.session.order_id)
-      .eq('restaurant_id', input.restaurantId)
-      .select('id,status,order_type,restaurant_id')
-      .maybeSingle();
+    const { data: updatedOrder, error } = await updatePaidOrderWithOptionalStripeIntent({
+      orderId: finalized.session.order_id,
+      restaurantId: input.restaurantId,
+      paidAt,
+      paymentIntentId: finalized.session.stripe_payment_intent_id,
+    });
 
     if (error) throw error;
 

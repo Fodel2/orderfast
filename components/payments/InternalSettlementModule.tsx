@@ -19,11 +19,22 @@ const toCurrencyCode = (value?: string | null) => (value || 'GBP').toUpperCase()
 
 const makeIdempotencyKey = (prefix: string) => `${prefix}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
 
-export default function InternalSettlementModule() {
+type InternalSettlementModuleProps = {
+  title?: string;
+  eyebrow?: string;
+};
+
+export default function InternalSettlementModule({
+  title = 'Internal collection',
+  eyebrow = 'Internal settlement module',
+}: InternalSettlementModuleProps) {
   const [mode, setMode] = useState<SettlementMode>('order_payment');
   const [orders, setOrders] = useState<UnpaidOrder[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
   const [selectedOrderId, setSelectedOrderId] = useState<string>('');
+  const [tapAvailabilityLoading, setTapAvailabilityLoading] = useState(true);
+  const [tapAvailabilityReady, setTapAvailabilityReady] = useState(false);
+  const [tapAvailabilityReason, setTapAvailabilityReason] = useState('');
 
   const [quickAmount, setQuickAmount] = useState('0.00');
   const [quickNote, setQuickNote] = useState('');
@@ -69,10 +80,43 @@ export default function InternalSettlementModule() {
     void loadOrders();
   }, [loadOrders]);
 
+  useEffect(() => {
+    let active = true;
+
+    const loadAvailability = async () => {
+      setTapAvailabilityLoading(true);
+      try {
+        const response = await fetch('/api/dashboard/internal-settlement/tap-to-pay-availability');
+        const payload = await response.json().catch(() => ({}));
+        if (!active) return;
+        if (!response.ok) throw new Error(payload?.message || `HTTP ${response.status}`);
+        const available = payload?.tap_to_pay_available === true;
+        setTapAvailabilityReady(available);
+        setTapAvailabilityReason(available ? '' : String(payload?.reason || 'Tap to Pay is not available for this restaurant.'));
+      } catch (error: any) {
+        if (!active) return;
+        setTapAvailabilityReady(false);
+        setTapAvailabilityReason(error?.message || 'Tap to Pay availability could not be confirmed.');
+      } finally {
+        if (active) setTapAvailabilityLoading(false);
+      }
+    };
+
+    void loadAvailability();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const isUnsupportedDeviceError = (code?: string) => code === 'unsupported' || code === 'unsupported_device';
 
   const handleCollectContactless = useCallback(async () => {
     if (busy) return;
+    if (!tapAvailabilityReady) {
+      setState('unavailable');
+      setMessage(tapAvailabilityReason || 'Tap to Pay is not available for this restaurant.');
+      return;
+    }
     if (mode === 'order_payment' && !selectedOrderId) {
       setState('failed');
       setMessage('Select an unpaid order first.');
@@ -220,7 +264,7 @@ export default function InternalSettlementModule() {
     } finally {
       setBusy(false);
     }
-  }, [amountCents, busy, loadOrders, mode, quickNote, quickReference, selectedOrderId]);
+  }, [amountCents, busy, loadOrders, mode, quickNote, quickReference, selectedOrderId, tapAvailabilityReady, tapAvailabilityReason]);
 
   const handleCancel = useCallback(async () => {
     if (!activeSessionId) return;
@@ -243,8 +287,8 @@ export default function InternalSettlementModule() {
 
   return (
     <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Internal settlement module</p>
-      <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">Internal collection</h1>
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{eyebrow}</p>
+      <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">{title}</h1>
 
       <div className="mt-6 flex flex-wrap gap-2 rounded-2xl bg-slate-100 p-1">
         <button
@@ -286,6 +330,12 @@ export default function InternalSettlementModule() {
                   </option>
                 ))}
               </select>
+              {loadingOrders ? <p className="text-xs text-slate-500">Loading unpaid orders…</p> : null}
+              {!loadingOrders && orders.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                  No unpaid pending/prepared orders are ready for collection right now.
+                </p>
+              ) : null}
             </>
           ) : (
             <>
@@ -325,6 +375,16 @@ export default function InternalSettlementModule() {
         <div className="space-y-4 rounded-2xl border border-slate-200 p-4">
           <h2 className="text-sm font-semibold text-slate-900">Payment method</h2>
           <p className="text-sm text-slate-600">Contactless card-present via Tap to Pay</p>
+          {tapAvailabilityLoading ? (
+            <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              Checking Tap to Pay availability…
+            </p>
+          ) : null}
+          {!tapAvailabilityLoading && !tapAvailabilityReady ? (
+            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              Tap to Pay unavailable: {tapAvailabilityReason || 'Tap to Pay is not ready on this account/device.'}
+            </p>
+          ) : null}
 
           <div
             className={`rounded-2xl border px-4 py-3 text-sm ${
@@ -348,7 +408,13 @@ export default function InternalSettlementModule() {
           <div className="flex flex-wrap gap-3">
             <button
               type="button"
-              disabled={busy || amountCents <= 0 || (mode === 'order_payment' && !selectedOrderId)}
+              disabled={
+                busy ||
+                tapAvailabilityLoading ||
+                !tapAvailabilityReady ||
+                amountCents <= 0 ||
+                (mode === 'order_payment' && !selectedOrderId)
+              }
               onClick={handleCollectContactless}
               className="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
