@@ -948,8 +948,9 @@ public class OrderfastTapToPayPlugin extends Plugin {
             case REQUEST_TIMED_OUT:
             case STRIPE_API_CONNECTION_ERROR:
                 return "network_error";
-            case TAP_TO_PAY_UNSUPPORTED_ANDROID_VERSION:
             case TAP_TO_PAY_UNSUPPORTED_DEVICE:
+                return "unsupported_device";
+            case TAP_TO_PAY_UNSUPPORTED_ANDROID_VERSION:
             case TAP_TO_PAY_NFC_DISABLED:
             case TAP_TO_PAY_PIN_UNAVAILABLE:
             case TAP_TO_PAY_INSECURE_ENVIRONMENT:
@@ -987,9 +988,15 @@ public class OrderfastTapToPayPlugin extends Plugin {
 
     private JSObject terminalErrorDetail(TerminalException e, String stage) {
         JSObject detail = new JSObject();
+        TerminalErrorCode terminalCode = e.getErrorCode();
         detail.put("nativeStage", stage);
-        detail.put("terminalCode", e.getErrorCode() == null ? "UNKNOWN" : e.getErrorCode().name());
+        detail.put("terminalCode", terminalCode == null ? "UNKNOWN" : terminalCode.name());
         detail.put("message", buildErrorMessage(e));
+        if (terminalCode == TerminalErrorCode.TAP_TO_PAY_UNSUPPORTED_DEVICE) {
+            detail.put("unsupportedDevice", true);
+            detail.put("unsupportedDevicePermanent", true);
+            detail.put("unsupportedReason", "This Android device does not meet Stripe Tap to Pay hardware/security requirements.");
+        }
         if (e.getCause() != null && e.getCause().getMessage() != null) {
             detail.put("cause", e.getCause().getMessage());
         }

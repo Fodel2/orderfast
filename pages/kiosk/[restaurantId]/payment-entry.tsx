@@ -17,7 +17,7 @@ import {
   type KioskPaymentMethod,
   type KioskPaymentSettingsRow,
 } from '@/lib/kiosk/paymentSettings';
-import { tapToPayBridge, type TapToPayStatus } from '@/lib/kiosk/tapToPayBridge';
+import { tapToPayBridge, type TapToPayResult, type TapToPayStatus } from '@/lib/kiosk/tapToPayBridge';
 import type { KioskTerminalMode } from '@/lib/kiosk/terminalMode';
 import { setKioskLastRealOrderNumber } from '@/utils/kiosk/orders';
 import { requestPrintJobCreation } from '@/lib/print-jobs/request';
@@ -207,6 +207,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   const [contactlessStatus, setContactlessStatus] = useState<TapToPayStatus>('idle');
   const [contactlessBusy, setContactlessBusy] = useState(false);
   const [contactlessError, setContactlessError] = useState('');
+  const [contactlessUnsupportedDevice, setContactlessUnsupportedDevice] = useState(false);
   const [contactlessSessionId, setContactlessSessionId] = useState<string | null>(null);
   const [contactlessTerminalLocationId, setContactlessTerminalLocationId] = useState<string | null>(null);
   const [contactlessDebug, setContactlessDebug] = useState('idle');
@@ -520,6 +521,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     flowLockRef.current = true;
     setContactlessBusy(true);
     setContactlessError('');
+    setContactlessUnsupportedDevice(false);
     setContactlessDebug('starting');
     setContactlessDebugDetail('');
     setTapStartupTrace(createStartupTrace());
@@ -570,8 +572,15 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     const failAt = (stage: TapStartupStage, detail: string, customerMessage: string) => {
       setContactlessStatus('failed');
       setContactlessError(customerMessage);
+      setContactlessUnsupportedDevice(false);
       setContactlessDebug(`${stage}:failed`);
       setContactlessDebugDetail(detail);
+    };
+
+    const isUnsupportedDeviceResult = (result: TapToPayResult) => {
+      if (result.code === 'unsupported_device') return true;
+      if (!result.detail || typeof result.detail !== 'object') return false;
+      return (result.detail as { terminalCode?: unknown }).terminalCode === 'TAP_TO_PAY_UNSUPPORTED_DEVICE';
     };
 
     try {
@@ -833,9 +842,13 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       }
       if (prepared.status === 'failed' || prepared.status === 'unavailable') {
         const permissionDenied = prepared.code === 'permission_required';
+        const unsupportedDevice = isUnsupportedDeviceResult(prepared);
         setContactlessStatus('failed');
+        setContactlessUnsupportedDevice(unsupportedDevice);
         setContactlessError(
-          permissionDenied
+          unsupportedDevice
+            ? 'This device cannot use Tap to Pay. Please choose another payment method.'
+            : permissionDenied
             ? 'Contactless payment permission was not granted. Please choose another payment method.'
             : 'Contactless payment is unavailable right now. Please choose another payment method.'
         );
@@ -852,10 +865,23 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
             session_id: sessionId,
             restaurant_id: restaurantId,
             next_state: 'failed',
+            failure_code: unsupportedDevice ? 'unsupported_device' : prepared.code || 'native_prepare_failed',
             failure_message: prepared.message || 'Tap to Pay preparation failed',
             event_type: 'native_prepare_failed',
           }),
         });
+        if (unsupportedDevice && typeof window !== 'undefined') {
+          window.localStorage.setItem(
+            TAP_TO_PAY_SETUP_STORAGE_KEY,
+            JSON.stringify({
+              ready: false,
+              checkedAt: new Date().toISOString(),
+              unsupportedDevice: true,
+              unsupportedDevicePermanent: true,
+              reason: prepared.message || 'Stripe Tap to Pay rejected this device for hardware/security requirements.',
+            })
+          );
+        }
         return;
       }
       setPaymentNotice('');
@@ -893,11 +919,15 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         started
       );
       if (!isNativeSuccessOrProcessing) {
+        const unsupportedDevice = isUnsupportedDeviceResult(started);
         setContactlessStatus(started.status === 'canceled' ? 'canceled' : 'failed');
+        setContactlessUnsupportedDevice(unsupportedDevice);
         setContactlessError(
           started.status === 'canceled'
             ? 'Payment cancelled'
-            : 'Payment failed, please try again or choose another payment method.'
+            : unsupportedDevice
+              ? 'This device cannot use Tap to Pay. Please choose another payment method.'
+              : 'Payment failed, please try again or choose another payment method.'
         );
         setContactlessDebug(`start_failed:${started.code || started.status}`);
         setContactlessDebugDetail(
@@ -905,6 +935,18 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
             ? `${started.message || started.code || started.status} | ${formatDetail(started.detail)}`
             : started.message || started.code || started.status
         );
+        if (unsupportedDevice && typeof window !== 'undefined') {
+          window.localStorage.setItem(
+            TAP_TO_PAY_SETUP_STORAGE_KEY,
+            JSON.stringify({
+              ready: false,
+              checkedAt: new Date().toISOString(),
+              unsupportedDevice: true,
+              unsupportedDevicePermanent: true,
+              reason: started.message || 'Stripe Tap to Pay rejected this device for hardware/security requirements.',
+            })
+          );
+        }
         await reconcileSession(sessionId, 'native_start_failed');
         return;
       }
@@ -977,6 +1019,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     } catch (error) {
       setContactlessStatus('failed');
       setContactlessError('Payment failed, please try again or choose another payment method.');
+      setContactlessUnsupportedDevice(false);
       setContactlessDebug('startup_exception');
       setContactlessDebugDetail(error instanceof Error ? error.message : 'Unexpected startup exception');
       console.error('[kiosk] tap to pay flow failed', error);
@@ -1024,6 +1067,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       setContactlessBusy(false);
       setContactlessStatus('idle');
       setContactlessError('');
+      setContactlessUnsupportedDevice(false);
       setContactlessSessionId(null);
       setContactlessDebug('fallback');
       setContactlessDebugDetail('');
@@ -1325,6 +1369,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       });
       setContactlessStatus('canceled');
       setContactlessError('Payment cancelled');
+      setContactlessUnsupportedDevice(false);
       if (typeof window !== 'undefined') {
         window.localStorage.removeItem(CONTACTLESS_SESSION_STORAGE_KEY);
       }
@@ -1428,7 +1473,10 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
             <ExclamationTriangleIcon className="h-5 w-5 shrink-0" />
             {contactlessStatus === 'canceled'
               ? 'Payment was canceled. Please choose a payment method to continue.'
-              : contactlessError || 'Payment failed, please try again or choose another payment method.'}
+              : contactlessError ||
+                (contactlessUnsupportedDevice
+                  ? 'This device cannot use Tap to Pay. Please choose another payment method.'
+                  : 'Payment failed, please try again or choose another payment method.')}
           </p>
         ) : null}
         {showOperatorDetails ? <p className="mt-2 text-[11px] font-medium uppercase tracking-[0.12em] text-slate-500">Debug: {contactlessDebug}</p> : null}
@@ -1459,7 +1507,9 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
                 returnToFallback(
                   contactlessStatus === 'canceled'
                     ? 'Payment cancelled'
-                    : 'Payment failed, please try again or choose another payment method.'
+                    : contactlessUnsupportedDevice
+                      ? 'This kiosk device does not support Tap to Pay on this hardware. Please use another payment method.'
+                      : 'Payment failed, please try again or choose another payment method.'
                 );
                 return;
               }
@@ -1470,7 +1520,9 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
           >
             {contactlessStatus === 'failed' || contactlessStatus === 'canceled' ? 'Choose another method' : 'Cancel payment'}
           </button>
-          {(contactlessStatus === 'failed' || contactlessStatus === 'canceled') && enabledMethods.includes('contactless') ? (
+          {(contactlessStatus === 'failed' || contactlessStatus === 'canceled') &&
+          enabledMethods.includes('contactless') &&
+          !contactlessUnsupportedDevice ? (
             <button
               type="button"
               onClick={() => void runTapToPay()}

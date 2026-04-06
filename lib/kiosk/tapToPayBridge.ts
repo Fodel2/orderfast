@@ -12,6 +12,7 @@ export type TapToPayStatus =
   | 'unavailable';
 
 export type TapToPayErrorCode =
+  | 'unsupported_device'
   | 'unsupported'
   | 'permission_required'
   | 'readiness_false'
@@ -57,6 +58,24 @@ export interface TapToPayPlugin {
 
 const TapToPayNative = registerPlugin<TapToPayPlugin>('OrderfastTapToPay');
 
+const normalizeTapToPayResult = (result: TapToPayResult): TapToPayResult => {
+  if (result.code === 'unsupported_device') {
+    return result;
+  }
+
+  if (result.code === 'unsupported' && result.detail && typeof result.detail === 'object') {
+    const terminalCode = (result.detail as { terminalCode?: unknown }).terminalCode;
+    if (terminalCode === 'TAP_TO_PAY_UNSUPPORTED_DEVICE') {
+      return {
+        ...result,
+        code: 'unsupported_device',
+      };
+    }
+  }
+
+  return result;
+};
+
 const readErrorMessage = (error: unknown) => {
   if (error instanceof Error) return error.message;
   if (typeof error === 'string') return error;
@@ -94,7 +113,7 @@ export const tapToPayBridge: TapToPayPlugin = {
   },
   async prepareTapToPay(options) {
     try {
-      return await TapToPayNative.prepareTapToPay(options);
+      return normalizeTapToPayResult(await TapToPayNative.prepareTapToPay(options));
     } catch (error) {
       return {
         status: 'unavailable',
@@ -119,7 +138,7 @@ export const tapToPayBridge: TapToPayPlugin = {
   },
   async startTapToPayPayment(options) {
     try {
-      return await TapToPayNative.startTapToPayPayment(options);
+      return normalizeTapToPayResult(await TapToPayNative.startTapToPayPayment(options));
     } catch (error) {
       return {
         status: 'unavailable',
