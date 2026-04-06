@@ -511,7 +511,6 @@ public class OrderfastTapToPayPlugin extends Plugin {
 
                         Terminal.getInstance().collectPaymentMethod(
                             paymentIntent,
-                            new CollectPaymentIntentConfiguration.Builder().build(),
                             new PaymentIntentCallback() {
                                 @Override
                                 public void onSuccess(PaymentIntent collectedIntent) {
@@ -596,7 +595,8 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                     resetStatusForNextAttempt();
                                     resolveOnce(resolveGate, call, payload);
                                 }
-                            }
+                            },
+                            new CollectPaymentIntentConfiguration.Builder().build()
                         );
                     }
 
