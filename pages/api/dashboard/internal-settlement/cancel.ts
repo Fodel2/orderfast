@@ -14,6 +14,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const sessionId = String(req.body?.session_id || '');
     if (!sessionId) return res.status(400).json({ message: 'session_id is required' });
+    console.info('[internal-settlement][api]', { route: 'cancel', restaurantId, sessionId });
 
     const result = await cancelInternalSettlement({ sessionId, restaurantId });
     return res.status(200).json(result);

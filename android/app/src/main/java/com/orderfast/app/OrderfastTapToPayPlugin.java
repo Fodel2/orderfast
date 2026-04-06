@@ -86,11 +86,15 @@ public class OrderfastTapToPayPlugin extends Plugin {
     private volatile Runnable timeoutRunnable = null;
     private volatile List<Reader> lastDiscoveredReaders = null;
     private volatile PluginCall pendingSetupPermissionCall = null;
+    private volatile boolean cancelRequestedByApp = false;
+    private volatile boolean lifecyclePausedDuringActiveFlow = false;
 
     private void clearActivePaymentState() {
         clearOperationTimeout();
         activePaymentIntent = null;
         processCancelable = null;
+        cancelRequestedByApp = false;
+        lifecyclePausedDuringActiveFlow = false;
         inFlight = false;
     }
 
@@ -571,9 +575,13 @@ public class OrderfastTapToPayPlugin extends Plugin {
 
                                             @Override
                                             public void onFailure(TerminalException e) {
-                                                status = "failed";
-                                                postSessionState("failed", "native_process_failed");
-                                                JSObject payload = result("failed", normalizeErrorCode(e), buildErrorMessage(e));
+                                                String normalizedCode = normalizeErrorCode(e);
+                                                String reasonCategory = classifyTerminalFailureCategory(normalizedCode);
+                                                boolean treatAsCanceled = "customer_cancelled".equals(reasonCategory) || "app_cancelled".equals(reasonCategory);
+                                                status = treatAsCanceled ? "canceled" : "failed";
+                                                postSessionState(treatAsCanceled ? "canceled" : "failed", treatAsCanceled ? "native_process_canceled" : "native_process_failed");
+                                                JSObject payload = result(treatAsCanceled ? "canceled" : "failed", normalizedCode, buildErrorMessage(e));
+                                                payload.put("reasonCategory", reasonCategory);
                                                 payload.put("detail", terminalErrorDetail(e, "native_process_result"));
                                                 logStartupStage("native_process_result", payload);
                                                 clearActivePaymentState();
@@ -586,9 +594,13 @@ public class OrderfastTapToPayPlugin extends Plugin {
 
                                 @Override
                                 public void onFailure(TerminalException e) {
-                                    status = "failed";
-                                    postSessionState("failed", "native_collect_failed");
-                                    JSObject payload = result("failed", normalizeErrorCode(e), buildErrorMessage(e));
+                                    String normalizedCode = normalizeErrorCode(e);
+                                    String reasonCategory = classifyTerminalFailureCategory(normalizedCode);
+                                    boolean treatAsCanceled = "customer_cancelled".equals(reasonCategory) || "app_cancelled".equals(reasonCategory);
+                                    status = treatAsCanceled ? "canceled" : "failed";
+                                    postSessionState(treatAsCanceled ? "canceled" : "failed", treatAsCanceled ? "native_collect_canceled" : "native_collect_failed");
+                                    JSObject payload = result(treatAsCanceled ? "canceled" : "failed", normalizedCode, buildErrorMessage(e));
+                                    payload.put("reasonCategory", reasonCategory);
                                     payload.put("detail", terminalErrorDetail(e, "native_collect_result"));
                                     logStartupStage("native_collect_result", payload);
                                     clearActivePaymentState();
@@ -626,6 +638,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
     @PluginMethod
     public void cancelTapToPayPayment(PluginCall call) {
         clearOperationTimeout();
+        cancelRequestedByApp = true;
         logStartupStage("native_cancel_result", detail("native_cancel_result", "entered", null));
         mainHandler.post(() -> {
             try {
@@ -767,6 +780,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
     @Override
     protected void handleOnResume() {
         super.handleOnResume();
+        logStartupStage("native_lifecycle", detail("native_lifecycle", "resume", inFlight ? status : "idle"));
         if (Terminal.isInitialized() && connectedReader != null && Terminal.getInstance().getConnectionStatus() == ConnectionStatus.CONNECTED) {
             if (!inFlight && ("failed".equals(status) || "idle".equals(status))) {
                 status = "ready";
@@ -780,7 +794,9 @@ public class OrderfastTapToPayPlugin extends Plugin {
     @Override
     protected void handleOnPause() {
         super.handleOnPause();
+        logStartupStage("native_lifecycle", detail("native_lifecycle", "pause", inFlight ? status : "idle"));
         if (inFlight && ("collecting".equals(status) || "processing".equals(status))) {
+            lifecyclePausedDuringActiveFlow = true;
             postSessionState("needs_reconciliation", "native_backgrounded");
         }
     }
@@ -899,6 +915,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                     });
                 }
                 JSObject payload = result("failed", "processing_error", "Tap to Pay timed out. Please retry.");
+                payload.put("reasonCategory", "timeout");
                 payload.put("detail", detail("native_process_result", "timeout", null));
                 logStartupStage("native_process_result", payload);
                 clearActivePaymentState();
@@ -971,6 +988,15 @@ public class OrderfastTapToPayPlugin extends Plugin {
             return error.getErrorMessage();
         }
         return error.getMessage() != null ? error.getMessage() : "Tap to Pay operation failed.";
+    }
+
+    private String classifyTerminalFailureCategory(String normalizedCode) {
+        if ("canceled".equals(normalizedCode)) {
+            if (cancelRequestedByApp) return "app_cancelled";
+            if (lifecyclePausedDuringActiveFlow) return "lifecycle_cancelled";
+            return "customer_cancelled";
+        }
+        return "collect_failed";
     }
 
     private boolean isBlank(String value) {
