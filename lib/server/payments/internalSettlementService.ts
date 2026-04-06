@@ -21,6 +21,11 @@ export type UnpaidOrderSummary = {
   created_at: string;
 };
 
+const isMissingColumnError = (error: unknown, column: string) => {
+  const message = String((error as { message?: unknown })?.message || '');
+  return message.includes(column);
+};
+
 const isOrderPaymentUnpaid = (value: unknown) => {
   if (typeof value !== 'string') return true;
   return value === '' || value === 'unpaid' || value === 'failed';
@@ -37,18 +42,6 @@ const updatePaidOrderWithOptionalStripeIntent = async (input: {
   paidAt: string;
   paymentIntentId: string | null;
 }) => {
-  const baseUpdate = {
-    payment_status: 'paid',
-    payment_method: 'card_present',
-    paid_at: input.paidAt,
-    payment_reference: input.paymentIntentId,
-  };
-
-  const withStripeIntent = {
-    ...baseUpdate,
-    stripe_payment_intent_id: input.paymentIntentId,
-  };
-
   const runUpdate = async (payload: Record<string, unknown>) =>
     supaServer
       .from('orders')
@@ -58,14 +51,39 @@ const updatePaidOrderWithOptionalStripeIntent = async (input: {
       .select('id,status,order_type,restaurant_id')
       .maybeSingle();
 
-  const withStripeIntentResult = await runUpdate(withStripeIntent);
-  if (!withStripeIntentResult.error) return withStripeIntentResult;
+  const payload: Record<string, unknown> = {
+    payment_status: 'paid',
+    payment_method: 'card_present',
+    paid_at: input.paidAt,
+    payment_reference: input.paymentIntentId,
+    stripe_payment_intent_id: input.paymentIntentId,
+  };
 
-  if (!String(withStripeIntentResult.error.message || '').includes('stripe_payment_intent_id')) {
-    return withStripeIntentResult;
+  while (true) {
+    const result = await runUpdate(payload);
+    if (!result.error) return result;
+    if (isMissingColumnError(result.error, 'stripe_payment_intent_id') && 'stripe_payment_intent_id' in payload) {
+      delete payload.stripe_payment_intent_id;
+      continue;
+    }
+    if (isMissingColumnError(result.error, 'payment_reference') && 'payment_reference' in payload) {
+      delete payload.payment_reference;
+      continue;
+    }
+    if (isMissingColumnError(result.error, 'paid_at') && 'paid_at' in payload) {
+      delete payload.paid_at;
+      continue;
+    }
+    if (isMissingColumnError(result.error, 'payment_method') && 'payment_method' in payload) {
+      delete payload.payment_method;
+      continue;
+    }
+    if (isMissingColumnError(result.error, 'payment_status') && 'payment_status' in payload) {
+      delete payload.payment_status;
+      continue;
+    }
+    return result;
   }
-
-  return runUpdate(baseUpdate);
 };
 
 const maybeAutoCompletePreparedOrder = async (input: { orderId: string; orderStatus: string; orderType: string | null }) => {
@@ -87,13 +105,27 @@ const maybeAutoCompletePreparedOrder = async (input: { orderId: string; orderSta
 };
 
 export const listUnpaidOrdersForSettlement = async (restaurantId: string, limit = 80): Promise<UnpaidOrderSummary[]> => {
-  const { data, error } = await supaServer
+  const initialResult = await supaServer
     .from('orders')
     .select('id,short_order_number,customer_name,order_type,status,total_price,created_at,payment_status')
     .eq('restaurant_id', restaurantId)
     .in('status', ['pending', 'accepted', 'prepared'])
     .order('created_at', { ascending: false })
     .limit(limit);
+  let data: any[] | null = initialResult.data as any[] | null;
+  let error: { message?: string } | null = initialResult.error;
+
+  if (error && isMissingColumnError(error, 'payment_status')) {
+    const fallbackResult = await supaServer
+      .from('orders')
+      .select('id,short_order_number,customer_name,order_type,status,total_price,created_at')
+      .eq('restaurant_id', restaurantId)
+      .in('status', ['pending', 'accepted', 'prepared'])
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    data = fallbackResult.data as any[] | null;
+    error = fallbackResult.error;
+  }
 
   if (error) throw error;
 
@@ -126,12 +158,21 @@ export const createInternalSettlementSession = async (input: {
   if (mode === 'order_payment') {
     if (!input.orderId) throw new Error('order_id is required for order payment');
 
-    const { data: order, error } = await supaServer
+    let { data: order, error } = await supaServer
       .from('orders')
       .select('id,restaurant_id,total_price,status,order_type,payment_status')
       .eq('id', input.orderId)
       .eq('restaurant_id', input.restaurantId)
       .maybeSingle();
+
+    if (error && isMissingColumnError(error, 'payment_status')) {
+      ({ data: order, error } = await supaServer
+        .from('orders')
+        .select('id,restaurant_id,total_price,status,order_type')
+        .eq('id', input.orderId)
+        .eq('restaurant_id', input.restaurantId)
+        .maybeSingle());
+    }
 
     if (error) throw error;
     if (!order) throw new Error('Order not found');
@@ -140,15 +181,34 @@ export const createInternalSettlementSession = async (input: {
     const orderAmount = Math.max(1, Number(order.total_price || 0));
     if (orderAmount <= 0) throw new Error('Order has no outstanding amount');
 
-    const { error: pendingError } = await supaServer
-      .from('orders')
-      .update({
-        payment_status: 'pending',
-        payment_method: 'card_present',
-        paid_at: null,
-      })
-      .eq('id', order.id)
-      .eq('restaurant_id', input.restaurantId);
+    const pendingPayload: Record<string, unknown> = {
+      payment_status: 'pending',
+      payment_method: 'card_present',
+      paid_at: null,
+    };
+    let pendingError: { message?: string } | null = null;
+    while (true) {
+      const pendingResult = await supaServer
+        .from('orders')
+        .update(pendingPayload)
+        .eq('id', order.id)
+        .eq('restaurant_id', input.restaurantId);
+      pendingError = pendingResult.error;
+      if (!pendingError) break;
+      if (isMissingColumnError(pendingError, 'payment_status') && 'payment_status' in pendingPayload) {
+        delete pendingPayload.payment_status;
+        continue;
+      }
+      if (isMissingColumnError(pendingError, 'payment_method') && 'payment_method' in pendingPayload) {
+        delete pendingPayload.payment_method;
+        continue;
+      }
+      if (isMissingColumnError(pendingError, 'paid_at') && 'paid_at' in pendingPayload) {
+        delete pendingPayload.paid_at;
+        continue;
+      }
+      break;
+    }
 
     if (pendingError) throw pendingError;
 
@@ -262,7 +322,7 @@ export const cancelInternalSettlement = async (input: { sessionId: string; resta
   });
 
   if (canceled.order_id) {
-    const { error } = await supaServer
+    let { error } = await supaServer
       .from('orders')
       .update({
         payment_status: 'failed',
@@ -270,6 +330,10 @@ export const cancelInternalSettlement = async (input: { sessionId: string; resta
       .eq('id', canceled.order_id)
       .eq('restaurant_id', input.restaurantId)
       .neq('payment_status', 'paid');
+
+    if (error && isMissingColumnError(error, 'payment_status')) {
+      error = null;
+    }
 
     if (error) {
       console.error('[internal-settlement] failed to mark order payment failed after cancellation', {
