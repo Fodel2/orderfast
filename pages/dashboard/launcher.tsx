@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '@/lib/supabaseClient';
+import { useTapToPayBootstrap } from '@/hooks/useTapToPayBootstrap';
 
 type RestaurantOption = {
   id: string;
@@ -36,6 +37,49 @@ const APP_MODES: AppMode[] = [
 ];
 const RESTAURANT_SELECTION_KEY = 'orderfast_launcher_restaurant_id';
 const LAST_MODE_KEY = 'orderfast_launcher_last_mode';
+
+const bootstrapCopy: Record<string, { title: string; description: string; tone: string }> = {
+  requesting_permissions: {
+    title: 'Preparing Tap to Pay…',
+    description: 'Checking Android permissions and device setup for card-present payments.',
+    tone: '#0f172a',
+  },
+  permissions_denied: {
+    title: 'Location permission needed',
+    description: 'Allow location permission so Tap to Pay can run before entering Take Payment or Kiosk.',
+    tone: '#b45309',
+  },
+  location_services_disabled: {
+    title: 'Turn on Location services',
+    description: 'Location services are off. Enable them on this device to use Tap to Pay.',
+    tone: '#b45309',
+  },
+  ready: {
+    title: 'Tap to Pay ready',
+    description: 'Required Android permissions and location services are ready for this device.',
+    tone: '#166534',
+  },
+  unsupported_device: {
+    title: 'Tap to Pay unsupported',
+    description: 'This device does not support Tap to Pay requirements (NFC/device support).',
+    tone: '#b91c1c',
+  },
+  error: {
+    title: 'Tap to Pay check failed',
+    description: 'We could not confirm setup right now. Retry before collecting payments.',
+    tone: '#b91c1c',
+  },
+  idle: {
+    title: 'Tap to Pay check pending',
+    description: 'Launcher will run device readiness checks as the app starts.',
+    tone: '#0f172a',
+  },
+  skipped: {
+    title: 'Web mode',
+    description: 'Native Tap to Pay checks run only in the installed Android app.',
+    tone: '#475569',
+  },
+};
 
 type LastLaunchState = {
   restaurantId: string;
@@ -90,6 +134,12 @@ export default function DashboardLauncherPage() {
   const [selectedRestaurantId, setSelectedRestaurantId] = useState<string | null>(null);
   const [launchingMode, setLaunchingMode] = useState<AppMode['key'] | null>(null);
   const [lastLaunchState, setLastLaunchState] = useState<LastLaunchState | null>(null);
+
+  const { loading: bootstrapLoading, snapshot: bootstrapSnapshot, runBootstrap, isNativeAndroid } = useTapToPayBootstrap({
+    enabled: true,
+    promptIfNeeded: true,
+  });
+  const bootstrapUi = bootstrapCopy[bootstrapSnapshot.state] || bootstrapCopy.idle;
 
   useEffect(() => {
     let active = true;
@@ -242,6 +292,47 @@ export default function DashboardLauncherPage() {
             Choose your destination and continue with your current restaurant context.
           </p>
         </header>
+
+        <section
+          style={{
+            background: '#fff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '12px',
+            padding: '0.9rem',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.5rem',
+          }}
+        >
+          <p style={{ margin: 0, fontSize: '0.75rem', letterSpacing: '0.08em', color: '#64748b', textTransform: 'uppercase' }}>
+            Tap to Pay readiness
+          </p>
+          <p style={{ margin: 0, fontWeight: 700, color: bootstrapUi.tone }}>{bootstrapUi.title}</p>
+          <p style={{ margin: 0, color: '#475569', fontSize: '0.86rem' }}>
+            {bootstrapLoading ? 'Requesting required Android permissions…' : bootstrapUi.description}
+          </p>
+          {isNativeAndroid ? (
+            <button
+              type="button"
+              onClick={() => {
+                void runBootstrap();
+              }}
+              style={{
+                width: 'fit-content',
+                border: '1px solid #cbd5e1',
+                background: '#fff',
+                borderRadius: '9999px',
+                padding: '0.35rem 0.75rem',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                color: '#1e293b',
+                cursor: 'pointer',
+              }}
+            >
+              {bootstrapLoading ? 'Checking…' : 'Re-check setup'}
+            </button>
+          ) : null}
+        </section>
 
         {isLoading ? <p style={{ color: '#334155' }}>Loading your access…</p> : null}
         {!isLoading && error ? <p style={{ color: '#b91c1c' }}>{error}</p> : null}
