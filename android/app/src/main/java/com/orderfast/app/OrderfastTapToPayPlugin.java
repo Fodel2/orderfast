@@ -32,6 +32,8 @@ import com.stripe.stripeterminal.external.callable.TapToPayReaderListener;
 import com.stripe.stripeterminal.external.callable.TerminalListener;
 import com.stripe.stripeterminal.external.models.ConnectionConfiguration;
 import com.stripe.stripeterminal.external.models.ConnectionStatus;
+import com.stripe.stripeterminal.external.models.CollectPaymentIntentConfiguration;
+import com.stripe.stripeterminal.external.models.ConfirmPaymentIntentConfiguration;
 import com.stripe.stripeterminal.external.models.DisconnectReason;
 import com.stripe.stripeterminal.external.models.DiscoveryConfiguration;
 import com.stripe.stripeterminal.external.models.PaymentIntent;
@@ -509,7 +511,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
 
                         Terminal.getInstance().collectPaymentMethod(
                             paymentIntent,
-                            new com.stripe.stripeterminal.external.models.CollectConfiguration.Builder().build(),
+                            new CollectPaymentIntentConfiguration.Builder().build(),
                             new PaymentIntentCallback() {
                                 @Override
                                 public void onSuccess(PaymentIntent collectedIntent) {
@@ -533,6 +535,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                     status = "processing";
                                     processCancelable = Terminal.getInstance().processPaymentIntent(
                                         collectedIntent,
+                                        new ConfirmPaymentIntentConfiguration.Builder().build(),
                                         new PaymentIntentCallback() {
                                             @Override
                                             public void onSuccess(PaymentIntent intent) {
