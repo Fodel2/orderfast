@@ -535,6 +535,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                     status = "processing";
                                     processCancelable = Terminal.getInstance().processPaymentIntent(
                                         collectedIntent,
+                                        new CollectPaymentIntentConfiguration.Builder().build(),
                                         new ConfirmPaymentIntentConfiguration.Builder().build(),
                                         new PaymentIntentCallback() {
                                             @Override
