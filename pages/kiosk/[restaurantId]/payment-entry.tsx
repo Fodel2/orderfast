@@ -17,6 +17,7 @@ import {
   type KioskPaymentMethod,
   type KioskPaymentSettingsRow,
 } from '@/lib/kiosk/paymentSettings';
+import { resolveNativeTapToPayReadiness } from '@/lib/kiosk/tapToPayNativeReadiness';
 import { tapToPayBridge, type TapToPayResult, type TapToPayStatus } from '@/lib/kiosk/tapToPayBridge';
 import type { KioskTerminalMode } from '@/lib/kiosk/terminalMode';
 import { setKioskLastRealOrderNumber } from '@/utils/kiosk/orders';
@@ -747,9 +748,9 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         return;
       }
 
-      const support = await tapToPayBridge.isTapToPaySupported();
-      logTapStageResult('native_support_check_result', support.supported ? 'ok' : 'failed', support);
-      if (!support.supported) {
+      const support = await resolveNativeTapToPayReadiness({ promptIfNeeded: true });
+      logTapStageResult('native_support_check_result', support.supported && support.ready ? 'ok' : 'failed', support);
+      if (!support.supported || !support.ready) {
         failAt(
           'native_support_check',
           support.reason || 'Tap to Pay setup is incomplete on this kiosk device.',

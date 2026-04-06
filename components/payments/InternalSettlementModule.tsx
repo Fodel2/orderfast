@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { tapToPayBridge } from '@/lib/kiosk/tapToPayBridge';
 import { formatPrice } from '@/lib/orderDisplay';
+import { resolveNativeTapToPayReadiness } from '@/lib/kiosk/tapToPayNativeReadiness';
 
 type SettlementMode = 'order_payment' | 'quick_charge';
 type CollectionState = 'idle' | 'preparing' | 'collecting' | 'processing' | 'succeeded' | 'failed' | 'canceled' | 'unavailable';
@@ -37,6 +38,9 @@ export default function InternalSettlementModule({
   const [tapAvailabilityLoading, setTapAvailabilityLoading] = useState(true);
   const [tapAvailabilityReady, setTapAvailabilityReady] = useState(false);
   const [tapAvailabilityReason, setTapAvailabilityReason] = useState('');
+  const [nativeReadinessLoading, setNativeReadinessLoading] = useState(false);
+  const [nativeReadinessReady, setNativeReadinessReady] = useState(false);
+  const [nativeReadinessReason, setNativeReadinessReason] = useState('');
 
   const [quickAmount, setQuickAmount] = useState('0.00');
   const [quickNote, setQuickNote] = useState('');
@@ -114,6 +118,57 @@ export default function InternalSettlementModule({
     };
   }, []);
 
+  const refreshNativeReadiness = useCallback(
+    async (promptIfNeeded: boolean) => {
+      if (!nativeRestaurantId) {
+        setNativeReadinessReady(false);
+        setNativeReadinessReason('Restaurant context is missing. Return to launcher and open Take Payment again.');
+        return null;
+      }
+
+      setNativeReadinessLoading(true);
+      try {
+        const readiness = await resolveNativeTapToPayReadiness({ promptIfNeeded });
+        if (!readiness.supported || !readiness.ready) {
+          setNativeReadinessReady(false);
+          setNativeReadinessReason(readiness.reason);
+          return readiness;
+        }
+        setNativeReadinessReady(true);
+        setNativeReadinessReason('');
+        return readiness;
+      } catch (error: any) {
+        const reason = error?.message || 'Tap to Pay setup check failed.';
+        setNativeReadinessReady(false);
+        setNativeReadinessReason(reason);
+        return null;
+      } finally {
+        setNativeReadinessLoading(false);
+      }
+    },
+    [nativeRestaurantId]
+  );
+
+  useEffect(() => {
+    void refreshNativeReadiness(false);
+  }, [refreshNativeReadiness]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const onForeground = () => {
+      if (document.visibilityState !== 'visible') return;
+      void refreshNativeReadiness(false);
+    };
+
+    window.addEventListener('focus', onForeground);
+    document.addEventListener('visibilitychange', onForeground);
+    return () => {
+      window.removeEventListener('focus', onForeground);
+      document.removeEventListener('visibilitychange', onForeground);
+    };
+  }, [refreshNativeReadiness]);
+
   const isUnsupportedDeviceError = (code?: string) => code === 'unsupported' || code === 'unsupported_device';
 
   const handleCollectContactless = useCallback(async () => {
@@ -153,6 +208,13 @@ export default function InternalSettlementModule({
         return;
       }
 
+      const nativeReadiness = await refreshNativeReadiness(true);
+      if (!nativeReadiness || !nativeReadiness.supported || !nativeReadiness.ready) {
+        setState('unavailable');
+        setMessage(nativeReadiness?.reason || 'Tap to Pay setup is incomplete on this device.');
+        return;
+      }
+
       const createRes = await fetch('/api/dashboard/internal-settlement/create-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -189,20 +251,8 @@ export default function InternalSettlementModule({
         throw new Error(intentPayload?.message || `Failed to prepare payment intent (${intentRes.status})`);
       }
 
-      const support = await tapToPayBridge.isTapToPaySupported();
-      if (!support.supported) {
-        setState('unavailable');
-        setMessage(support.reason || 'This device cannot run Tap to Pay.');
-        await fetch('/api/dashboard/internal-settlement/cancel', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ session_id: sessionId }),
-        });
-        return;
-      }
-
-      const setup = await tapToPayBridge.ensureTapToPaySetup({ promptIfNeeded: true });
-      if (!setup.ready) {
+      const setup = await resolveNativeTapToPayReadiness({ promptIfNeeded: true });
+      if (!setup.supported || !setup.ready) {
         setState('unavailable');
         setMessage(setup.reason || 'Tap to Pay setup is incomplete on this device.');
         await fetch('/api/dashboard/internal-settlement/cancel', {
@@ -346,6 +396,7 @@ export default function InternalSettlementModule({
     nativeRestaurantId,
     quickNote,
     quickReference,
+    refreshNativeReadiness,
     selectedOrderId,
     tapAvailabilityReady,
     tapAvailabilityReason,
@@ -470,6 +521,16 @@ export default function InternalSettlementModule({
               Tap to Pay unavailable: {tapAvailabilityReason || 'Tap to Pay is not ready on this account/device.'}
             </p>
           ) : null}
+          {nativeReadinessLoading ? (
+            <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              Checking device Tap to Pay prerequisites…
+            </p>
+          ) : null}
+          {!nativeReadinessLoading && !nativeReadinessReady ? (
+            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              Device setup required: {nativeReadinessReason || 'Location permission and location services are required.'}
+            </p>
+          ) : null}
 
           <div
             className={`rounded-2xl border px-4 py-3 text-sm ${
@@ -496,7 +557,9 @@ export default function InternalSettlementModule({
               disabled={
                 busy ||
                 tapAvailabilityLoading ||
+                nativeReadinessLoading ||
                 !tapAvailabilityReady ||
+                !nativeReadinessReady ||
                 amountCents <= 0 ||
                 (mode === 'order_payment' && !selectedOrderId)
               }
