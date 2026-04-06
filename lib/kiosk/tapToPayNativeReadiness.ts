@@ -1,10 +1,13 @@
-import { tapToPayBridge } from '@/lib/kiosk/tapToPayBridge';
+import { runTapToPaySetupBootstrap, TapToPaySetupState } from '@/lib/kiosk/tapToPaySetupBootstrap';
 
 export type NativeTapToPayReadiness = {
   ready: boolean;
   supported: boolean;
+  state: TapToPaySetupState;
   reason: string;
   permissionState: string | null;
+  permissionStateBeforeRequest: string | null;
+  permissionRequestAttempted: boolean;
   locationServicesEnabled: boolean | null;
   nativeStage: string | null;
 };
@@ -12,14 +15,17 @@ export type NativeTapToPayReadiness = {
 export const resolveNativeTapToPayReadiness = async (options?: {
   promptIfNeeded?: boolean;
 }): Promise<NativeTapToPayReadiness> => {
-  const setup = await tapToPayBridge.ensureTapToPaySetup({ promptIfNeeded: options?.promptIfNeeded ?? true });
+  const setup = await runTapToPaySetupBootstrap({ promptIfNeeded: options?.promptIfNeeded ?? true });
 
   return {
-    ready: setup.ready === true,
-    supported: setup.supported === true,
-    reason: setup.reason || 'Tap to Pay setup is incomplete on this device.',
-    permissionState: setup.permissionState || null,
-    locationServicesEnabled: setup.locationServicesEnabled ?? null,
-    nativeStage: setup.nativeStage || null,
+    ready: setup.ready,
+    supported: setup.supported,
+    state: setup.state,
+    reason: setup.reason,
+    permissionState: setup.permissionState,
+    permissionStateBeforeRequest: setup.permissionStateBeforeRequest,
+    permissionRequestAttempted: setup.permissionRequestAttempted,
+    locationServicesEnabled: setup.locationServicesEnabled,
+    nativeStage: setup.nativeStage,
   };
 };

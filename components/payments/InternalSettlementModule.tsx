@@ -130,6 +130,10 @@ export default function InternalSettlementModule({
 
   const refreshNativeReadiness = useCallback(
     async (promptIfNeeded: boolean) => {
+      console.info('[internal-settlement][tap-to-pay-bootstrap]', {
+        event: 'bootstrap_invoked',
+        promptIfNeeded,
+      });
       if (!nativeRestaurantId) {
         setNativeReadinessReady(false);
         setNativeReadinessReason('Restaurant context is missing. Return to launcher and open Take Payment again.');
@@ -139,13 +143,50 @@ export default function InternalSettlementModule({
       setNativeReadinessLoading(true);
       try {
         const readiness = await resolveNativeTapToPayReadiness({ promptIfNeeded });
+        console.info('[internal-settlement][tap-to-pay-bootstrap]', {
+          event: 'permission_status_before_request',
+          promptIfNeeded,
+          permissionStateBeforeRequest: readiness.permissionStateBeforeRequest,
+        });
+        console.info('[internal-settlement][tap-to-pay-bootstrap]', {
+          event: 'permission_request_attempted',
+          attempted: readiness.permissionRequestAttempted,
+        });
+        console.info('[internal-settlement][tap-to-pay-bootstrap]', {
+          event: 'permission_request_result',
+          permissionState: readiness.permissionState,
+        });
+        console.info('[internal-settlement][tap-to-pay-bootstrap]', {
+          event: 'location_services_check_result',
+          locationServicesEnabled: readiness.locationServicesEnabled,
+        });
+        console.info('[internal-settlement][tap-to-pay-bootstrap]', {
+          event: 'native_readiness_check_result',
+          ready: readiness.ready,
+          supported: readiness.supported,
+          state: readiness.state,
+          nativeStage: readiness.nativeStage,
+          reason: readiness.reason,
+        });
         if (!readiness.supported || !readiness.ready) {
           setNativeReadinessReady(false);
           setNativeReadinessReason(readiness.reason);
+          console.info('[internal-settlement][tap-to-pay-bootstrap]', {
+            event: 'final_readiness_state_used_by_payment_page',
+            ready: false,
+            state: readiness.state,
+            reason: readiness.reason,
+          });
           return readiness;
         }
         setNativeReadinessReady(true);
         setNativeReadinessReason('');
+        console.info('[internal-settlement][tap-to-pay-bootstrap]', {
+          event: 'final_readiness_state_used_by_payment_page',
+          ready: true,
+          state: readiness.state,
+          reason: readiness.reason,
+        });
         return readiness;
       } catch (error: any) {
         const reason = error?.message || 'Tap to Pay setup check failed.';
@@ -160,6 +201,9 @@ export default function InternalSettlementModule({
   );
 
   useEffect(() => {
+    console.info('[internal-settlement][tap-to-pay-bootstrap]', {
+      event: 'payment_page_mounted',
+    });
     void refreshNativeReadiness(false);
   }, [refreshNativeReadiness]);
 
@@ -640,7 +684,8 @@ export default function InternalSettlementModule({
           ) : null}
           {!nativeReadinessLoading && !nativeReadinessReady ? (
             <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              Device setup required: {nativeReadinessReason || 'Location permission and location services are required.'}
+              Device setup required:{' '}
+              {nativeReadinessReason || 'Location permission and location services are required.'}
             </p>
           ) : null}
 
@@ -671,14 +716,13 @@ export default function InternalSettlementModule({
                 tapAvailabilityLoading ||
                 nativeReadinessLoading ||
                 !tapAvailabilityReady ||
-                !nativeReadinessReady ||
                 amountCents <= 0 ||
                 (mode === 'order_payment' && !selectedOrderId)
               }
               onClick={handleCollectContactless}
               className="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
-              {busy ? 'Collecting…' : 'Collect contactless'}
+              {busy ? 'Collecting…' : nativeReadinessReady ? 'Collect contactless' : 'Enable Tap to Pay & collect'}
             </button>
             <button
               type="button"
