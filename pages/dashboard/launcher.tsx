@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '@/lib/supabaseClient';
-import { useTapToPayBootstrap } from '@/hooks/useTapToPayBootstrap';
 
 type RestaurantOption = {
   id: string;
@@ -36,76 +35,6 @@ const APP_MODES: AppMode[] = [
   { key: 'menu', label: 'Menu', description: 'Customer menu preview and ordering.' },
 ];
 const RESTAURANT_SELECTION_KEY = 'orderfast_launcher_restaurant_id';
-const LAST_MODE_KEY = 'orderfast_launcher_last_mode';
-
-const bootstrapCopy: Record<string, { title: string; description: string; tone: string }> = {
-  requesting_permissions: {
-    title: 'Preparing Tap to Pay…',
-    description: 'Checking Android permissions and device setup for card-present payments.',
-    tone: '#0f172a',
-  },
-  permissions_denied: {
-    title: 'Location permission needed',
-    description: 'Allow location permission so Tap to Pay can run before entering Take Payment or Kiosk.',
-    tone: '#b45309',
-  },
-  location_services_disabled: {
-    title: 'Turn on Location services',
-    description: 'Location services are off. Enable them on this device to use Tap to Pay.',
-    tone: '#b45309',
-  },
-  ready: {
-    title: 'Tap to Pay ready',
-    description: 'Required Android permissions and location services are ready for this device.',
-    tone: '#166534',
-  },
-  unsupported_device: {
-    title: 'Tap to Pay unsupported',
-    description: 'This device does not support Tap to Pay requirements (NFC/device support).',
-    tone: '#b91c1c',
-  },
-  error: {
-    title: 'Tap to Pay check failed',
-    description: 'We could not confirm setup right now. Retry before collecting payments.',
-    tone: '#b91c1c',
-  },
-  idle: {
-    title: 'Tap to Pay check pending',
-    description: 'Launcher will run device readiness checks as the app starts.',
-    tone: '#0f172a',
-  },
-  skipped: {
-    title: 'Web mode',
-    description: 'Native Tap to Pay checks run only in the installed Android app.',
-    tone: '#475569',
-  },
-};
-
-type LastLaunchState = {
-  restaurantId: string;
-  mode: AppMode['key'];
-  updatedAt: string;
-};
-
-const isValidMode = (value: string): value is AppMode['key'] =>
-  APP_MODES.some((mode) => mode.key === value);
-
-const parseLastLaunchState = (raw: string | null): LastLaunchState | null => {
-  if (!raw) return null;
-
-  try {
-    const parsed = JSON.parse(raw) as Partial<LastLaunchState>;
-    if (!parsed.restaurantId || !parsed.mode || !parsed.updatedAt) return null;
-    if (!isValidMode(parsed.mode)) return null;
-    return {
-      restaurantId: parsed.restaurantId,
-      mode: parsed.mode,
-      updatedAt: parsed.updatedAt,
-    };
-  } catch {
-    return null;
-  }
-};
 
 const getRestaurantFromMembership = (row: MembershipRow): RestaurantOption | null => {
   if (!row.restaurant_id) return null;
@@ -133,13 +62,6 @@ export default function DashboardLauncherPage() {
   const [restaurants, setRestaurants] = useState<RestaurantOption[]>([]);
   const [selectedRestaurantId, setSelectedRestaurantId] = useState<string | null>(null);
   const [launchingMode, setLaunchingMode] = useState<AppMode['key'] | null>(null);
-  const [lastLaunchState, setLastLaunchState] = useState<LastLaunchState | null>(null);
-
-  const { loading: bootstrapLoading, snapshot: bootstrapSnapshot, runBootstrap, isNativeAndroid } = useTapToPayBootstrap({
-    enabled: true,
-    promptIfNeeded: true,
-  });
-  const bootstrapUi = bootstrapCopy[bootstrapSnapshot.state] || bootstrapCopy.idle;
 
   useEffect(() => {
     let active = true;
@@ -184,14 +106,6 @@ export default function DashboardLauncherPage() {
             setSelectedRestaurantId(persistedId);
           } else if (uniqueRestaurants.length === 1) {
             setSelectedRestaurantId(uniqueRestaurants[0].id);
-          }
-
-          const persistedLastLaunch = parseLastLaunchState(window.localStorage.getItem(LAST_MODE_KEY));
-          if (persistedLastLaunch && uniqueRestaurants.some((restaurant) => restaurant.id === persistedLastLaunch.restaurantId)) {
-            setLastLaunchState(persistedLastLaunch);
-          } else {
-            setLastLaunchState(null);
-            window.localStorage.removeItem(LAST_MODE_KEY);
           }
         } catch {
           // localStorage can be unavailable in some webview contexts
@@ -248,31 +162,12 @@ export default function DashboardLauncherPage() {
     if (!selectedRestaurant) return;
     const href = getModeHref(mode, selectedRestaurant.id);
     setLaunchingMode(mode);
-    const launchState: LastLaunchState = {
-      restaurantId: selectedRestaurant.id,
-      mode,
-      updatedAt: new Date().toISOString(),
-    };
-    if (typeof window !== 'undefined') {
-      try {
-        window.localStorage.setItem(LAST_MODE_KEY, JSON.stringify(launchState));
-        setLastLaunchState(launchState);
-      } catch {
-        // localStorage can be unavailable in some webview contexts
-      }
-    }
     try {
       await router.push(href);
     } finally {
       setLaunchingMode(null);
     }
   };
-
-  const resumeMode = useMemo(() => {
-    if (!selectedRestaurant || !lastLaunchState) return null;
-    if (lastLaunchState.restaurantId !== selectedRestaurant.id) return null;
-    return APP_MODES.find((mode) => mode.key === lastLaunchState.mode) || null;
-  }, [lastLaunchState, selectedRestaurant]);
 
   return (
     <main
@@ -292,47 +187,6 @@ export default function DashboardLauncherPage() {
             Choose your destination and continue with your current restaurant context.
           </p>
         </header>
-
-        <section
-          style={{
-            background: '#fff',
-            border: '1px solid #e2e8f0',
-            borderRadius: '12px',
-            padding: '0.9rem',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '0.5rem',
-          }}
-        >
-          <p style={{ margin: 0, fontSize: '0.75rem', letterSpacing: '0.08em', color: '#64748b', textTransform: 'uppercase' }}>
-            Tap to Pay readiness
-          </p>
-          <p style={{ margin: 0, fontWeight: 700, color: bootstrapUi.tone }}>{bootstrapUi.title}</p>
-          <p style={{ margin: 0, color: '#475569', fontSize: '0.86rem' }}>
-            {bootstrapLoading ? 'Requesting required Android permissions…' : bootstrapUi.description}
-          </p>
-          {isNativeAndroid ? (
-            <button
-              type="button"
-              onClick={() => {
-                void runBootstrap();
-              }}
-              style={{
-                width: 'fit-content',
-                border: '1px solid #cbd5e1',
-                background: '#fff',
-                borderRadius: '9999px',
-                padding: '0.35rem 0.75rem',
-                fontSize: '0.8rem',
-                fontWeight: 600,
-                color: '#1e293b',
-                cursor: 'pointer',
-              }}
-            >
-              {bootstrapLoading ? 'Checking…' : 'Re-check setup'}
-            </button>
-          ) : null}
-        </section>
 
         {isLoading ? <p style={{ color: '#334155' }}>Loading your access…</p> : null}
         {!isLoading && error ? <p style={{ color: '#b91c1c' }}>{error}</p> : null}
@@ -401,32 +255,6 @@ export default function DashboardLauncherPage() {
                 </button>
               ) : null}
             </section>
-
-            {resumeMode ? (
-              <button
-                type="button"
-                onClick={() => {
-                  handleLaunch(resumeMode.key).catch(() => undefined);
-                }}
-                disabled={launchingMode !== null}
-                style={{
-                  textAlign: 'left',
-                  background: '#ecfeff',
-                  border: '1px solid #a5f3fc',
-                  color: '#0f172a',
-                  borderRadius: '12px',
-                  padding: '0.9rem',
-                  opacity: launchingMode && launchingMode !== resumeMode.key ? 0.65 : 1,
-                }}
-              >
-                <span style={{ display: 'block', fontWeight: 700 }}>
-                  {launchingMode === resumeMode.key ? `Opening ${resumeMode.label}…` : `Resume ${resumeMode.label}`}
-                </span>
-                <span style={{ display: 'block', marginTop: '0.25rem', color: '#155e75', fontSize: '0.85rem' }}>
-                  Last used on this device for {selectedRestaurant.name}. Opens only after session access is confirmed.
-                </span>
-              </button>
-            ) : null}
 
             <button
               type="button"

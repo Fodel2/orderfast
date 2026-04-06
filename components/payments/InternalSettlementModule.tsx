@@ -22,11 +22,13 @@ const makeIdempotencyKey = (prefix: string) => `${prefix}:${Date.now()}:${Math.r
 type InternalSettlementModuleProps = {
   title?: string;
   eyebrow?: string;
+  restaurantId?: string | null;
 };
 
 export default function InternalSettlementModule({
   title = 'Internal collection',
   eyebrow = 'Internal settlement module',
+  restaurantId = null,
 }: InternalSettlementModuleProps) {
   const [mode, setMode] = useState<SettlementMode>('order_payment');
   const [orders, setOrders] = useState<UnpaidOrder[]>([]);
@@ -56,6 +58,10 @@ export default function InternalSettlementModule({
   }, [mode, quickAmount, selectedOrder?.total_price]);
 
   const amountLabel = useMemo(() => formatPrice(amountCents / 100), [amountCents]);
+  const nativeRestaurantId = useMemo(() => {
+    const value = restaurantId?.trim();
+    return value ? value : null;
+  }, [restaurantId]);
 
   const loadOrders = useCallback(async () => {
     setLoadingOrders(true);
@@ -127,6 +133,11 @@ export default function InternalSettlementModule({
       setMessage('Amount must be greater than zero.');
       return;
     }
+    if (!nativeRestaurantId) {
+      setState('failed');
+      setMessage('Restaurant context is missing. Return to launcher and open Take Payment again.');
+      return;
+    }
 
     setBusy(true);
     setState('preparing');
@@ -168,11 +179,15 @@ export default function InternalSettlementModule({
       setActiveSessionId(sessionId);
       setActiveTerminalLocationId(terminalLocationId);
 
-      await fetch('/api/dashboard/internal-settlement/payment-intent', {
+      const intentRes = await fetch('/api/dashboard/internal-settlement/payment-intent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: sessionId }),
       });
+      const intentPayload = await intentRes.json().catch(() => ({}));
+      if (!intentRes.ok) {
+        throw new Error(intentPayload?.message || `Failed to prepare payment intent (${intentRes.status})`);
+      }
 
       const support = await tapToPayBridge.isTapToPaySupported();
       if (!support.supported) {
@@ -198,15 +213,66 @@ export default function InternalSettlementModule({
         return;
       }
 
+      setMessage('Preparing Tap to Pay reader…');
+      const backendBaseUrl = window.location.origin;
+      const prepared = await tapToPayBridge.prepareTapToPay({
+        restaurantId: nativeRestaurantId,
+        sessionId,
+        backendBaseUrl,
+        terminalLocationId,
+      });
+      if (prepared.status === 'failed' || prepared.status === 'unavailable') {
+        setState(isUnsupportedDeviceError(prepared.code) ? 'unavailable' : 'failed');
+        setMessage(prepared.message || 'Tap to Pay reader setup failed. Retry to reconnect the reader.');
+        await fetch('/api/dashboard/internal-settlement/cancel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sessionId }),
+        });
+        setActiveSessionId(null);
+        setActiveTerminalLocationId(null);
+        return;
+      }
+
+      const readinessRecheckRes = await fetch('/api/dashboard/internal-settlement/tap-to-pay-availability');
+      const readinessRecheckPayload = await readinessRecheckRes.json().catch(() => ({}));
+      if (!readinessRecheckRes.ok || !readinessRecheckPayload?.tap_to_pay_available) {
+        setState('unavailable');
+        setMessage(readinessRecheckPayload?.reason || 'Tap to Pay availability changed. Retry to start a new payment session.');
+        await fetch('/api/dashboard/internal-settlement/cancel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sessionId }),
+        });
+        setActiveSessionId(null);
+        setActiveTerminalLocationId(null);
+        return;
+      }
+
       setState('collecting');
       setMessage('Present card/phone to collect payment…');
 
-      const nativeResult = await tapToPayBridge.startTapToPayPayment({
-        restaurantId: 'internal-settlement',
+      let nativeResult = await tapToPayBridge.startTapToPayPayment({
+        restaurantId: nativeRestaurantId,
         sessionId,
-        backendBaseUrl: window.location.origin,
+        backendBaseUrl,
         terminalLocationId,
       });
+
+      if (nativeResult.status === 'processing') {
+        const pollDeadline = Date.now() + 120000;
+        while (Date.now() < pollDeadline) {
+          await new Promise<void>((resolve) => {
+            window.setTimeout(() => resolve(), 650);
+          });
+          const polled = await tapToPayBridge.getTapToPayStatus();
+          if (polled.sessionId && polled.sessionId !== sessionId) continue;
+          if (polled.status === 'succeeded' || polled.status === 'failed' || polled.status === 'canceled') {
+            nativeResult = polled;
+            break;
+          }
+        }
+      }
 
       if (nativeResult.status === 'canceled') {
         setState('canceled');
@@ -216,6 +282,8 @@ export default function InternalSettlementModule({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ session_id: sessionId }),
         });
+        setActiveSessionId(null);
+        setActiveTerminalLocationId(null);
         return;
       }
 
@@ -227,6 +295,8 @@ export default function InternalSettlementModule({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ session_id: sessionId }),
         });
+        setActiveSessionId(null);
+        setActiveTerminalLocationId(null);
         return;
       }
 
@@ -243,6 +313,8 @@ export default function InternalSettlementModule({
 
       setState('succeeded');
       setMessage(mode === 'order_payment' ? 'Order payment collected successfully.' : 'Quick charge collected successfully.');
+      setActiveSessionId(null);
+      setActiveTerminalLocationId(null);
 
       if (mode === 'quick_charge') {
         setQuickAmount('0.00');
@@ -261,10 +333,23 @@ export default function InternalSettlementModule({
           body: JSON.stringify({ session_id: sessionIdForCleanup }),
         }).catch(() => undefined);
       }
+      setActiveSessionId(null);
+      setActiveTerminalLocationId(null);
     } finally {
       setBusy(false);
     }
-  }, [amountCents, busy, loadOrders, mode, quickNote, quickReference, selectedOrderId, tapAvailabilityReady, tapAvailabilityReason]);
+  }, [
+    amountCents,
+    busy,
+    loadOrders,
+    mode,
+    nativeRestaurantId,
+    quickNote,
+    quickReference,
+    selectedOrderId,
+    tapAvailabilityReady,
+    tapAvailabilityReason,
+  ]);
 
   const handleCancel = useCallback(async () => {
     if (!activeSessionId) return;
