@@ -14,8 +14,7 @@ export default function PosPaymentEntryPage() {
       promptDescription="Keep POS payment entry immersive while internal settlement is in use."
     >
       <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6">
-        <InternalSettlementModule eyebrow="POS payments" title="Take Payment" />
-        <div className="mt-4 flex flex-wrap gap-3">
+        <div className="mb-4 flex flex-wrap gap-3">
           {source === 'launcher' ? (
             <button
               type="button"
@@ -38,6 +37,7 @@ export default function PosPaymentEntryPage() {
             Back to POS
           </button>
         </div>
+        <InternalSettlementModule eyebrow="POS payments" title="Take Payment" restaurantId={restaurantId || null} />
       </div>
     </FullscreenAppLayout>
   );
