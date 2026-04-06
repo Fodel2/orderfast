@@ -1077,7 +1077,7 @@ export default function PosHomePage() {
                     }}
                     className="mt-2 text-xs font-medium text-gray-500 underline decoration-gray-300 underline-offset-2 hover:text-gray-700"
                   >
-                    Open POS payment entry shell (architecture only)
+                    Open Take Payment
                   </button>
                 ) : null}
                 <div className="mt-4 grid grid-cols-2 gap-3">
