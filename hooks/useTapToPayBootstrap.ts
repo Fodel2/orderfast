@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import { tapToPayBridge } from '@/lib/kiosk/tapToPayBridge';
+import { runTapToPaySetupBootstrap } from '@/lib/kiosk/tapToPaySetupBootstrap';
 
 export const TAP_TO_PAY_SETUP_STORAGE_KEY = 'orderfast_kiosk_tap_to_pay_setup_ready';
 
 export type TapToPayBootstrapState =
   | 'idle'
   | 'requesting_permissions'
-  | 'permissions_denied'
+  | 'permission_not_requested'
+  | 'permission_denied'
   | 'location_services_disabled'
   | 'ready'
   | 'unsupported_device'
@@ -18,6 +19,8 @@ export type TapToPayBootstrapSnapshot = {
   supported: boolean;
   ready: boolean;
   permissionState: string | null;
+  permissionStateBeforeRequest: string | null;
+  permissionRequestAttempted: boolean;
   locationServicesEnabled: boolean | null;
   reason: string | null;
   checkedAt: string | null;
@@ -36,6 +39,8 @@ const INITIAL_SNAPSHOT: TapToPayBootstrapSnapshot = {
   supported: false,
   ready: false,
   permissionState: null,
+  permissionStateBeforeRequest: null,
+  permissionRequestAttempted: false,
   locationServicesEnabled: null,
   reason: null,
   checkedAt: null,
@@ -47,19 +52,6 @@ const isNativeAndroid = () => {
   const capacitor = (window as CapacitorWindow).Capacitor;
   if (!capacitor?.isNativePlatform?.()) return false;
   return capacitor.getPlatform?.() === 'android';
-};
-
-const deriveBootstrapState = (payload: {
-  ready: boolean;
-  supported: boolean;
-  permissionState?: string;
-  locationServicesEnabled?: boolean;
-}) => {
-  if (!payload.supported) return 'unsupported_device' as const;
-  if (payload.permissionState !== 'granted') return 'permissions_denied' as const;
-  if (payload.locationServicesEnabled === false) return 'location_services_disabled' as const;
-  if (payload.ready) return 'ready' as const;
-  return 'error' as const;
 };
 
 const persistSnapshot = (snapshot: TapToPayBootstrapSnapshot) => {
@@ -96,16 +88,18 @@ export function useTapToPayBootstrap(options?: { enabled?: boolean; promptIfNeed
     }));
 
     try {
-      const setup = await tapToPayBridge.ensureTapToPaySetup({ promptIfNeeded });
+      const setup = await runTapToPaySetupBootstrap({ promptIfNeeded });
       const next: TapToPayBootstrapSnapshot = {
-        state: deriveBootstrapState(setup),
-        supported: Boolean(setup.supported),
-        ready: Boolean(setup.ready),
-        permissionState: setup.permissionState || null,
-        locationServicesEnabled: setup.locationServicesEnabled ?? null,
+        state: setup.state,
+        supported: setup.supported,
+        ready: setup.ready,
+        permissionState: setup.permissionState,
+        permissionStateBeforeRequest: setup.permissionStateBeforeRequest,
+        permissionRequestAttempted: setup.permissionRequestAttempted,
+        locationServicesEnabled: setup.locationServicesEnabled,
         reason: setup.reason || null,
         checkedAt: new Date().toISOString(),
-        nativeStage: setup.nativeStage || null,
+        nativeStage: setup.nativeStage,
       };
       setSnapshot(next);
       persistSnapshot(next);
