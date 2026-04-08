@@ -98,6 +98,8 @@ public class OrderfastTapToPayPlugin extends Plugin {
     private volatile long lastPauseAtMs = 0L;
     private volatile long lastStopAtMs = 0L;
     private volatile long lastResumeAtMs = 0L;
+    private volatile JSObject cachedFinalResult = null;
+    private volatile long cachedFinalResultAtMs = 0L;
 
     private void logFlowEvent(String stage, JSObject payload) {
         payload.put("timestampMs", System.currentTimeMillis());
@@ -130,6 +132,26 @@ public class OrderfastTapToPayPlugin extends Plugin {
 
     private void logCancelOrCleanupPath(String event, String path, String reason) {
         logFlowEvent(event, paymentRunGuardPayload(path, reason));
+    }
+
+    private void cacheFinalResult(JSObject payload, String source) {
+        if (payload == null) return;
+        cachedFinalResult = payload;
+        cachedFinalResultAtMs = System.currentTimeMillis();
+        JSObject logPayload = lifecyclePayload("native_final_result_cached");
+        logPayload.put("source", source);
+        logPayload.put("resultStatus", payload.getString("status"));
+        logPayload.put("resultCode", payload.getString("code"));
+        logPayload.put("cachedAtMs", cachedFinalResultAtMs);
+        logFlowEvent("native_final_result_cached", logPayload);
+    }
+
+    private void clearCachedFinalResult(String reason) {
+        cachedFinalResult = null;
+        cachedFinalResultAtMs = 0L;
+        JSObject payload = lifecyclePayload("native_final_result_cache_cleared");
+        payload.put("reason", reason);
+        logFlowEvent("native_final_result_cache_cleared", payload);
     }
 
     private void clearActivePaymentState() {
@@ -535,6 +557,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
         currentBackendBaseUrl = backendBaseUrl;
         currentTerminalLocationId = terminalLocationId;
         currentFlowRunId = flowRunId.isEmpty() ? null : flowRunId;
+        clearCachedFinalResult("new_active_run_started");
         clearOperationTimeout();
         activePaymentIntent = null;
         processCancelable = null;
@@ -632,6 +655,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                                     JSObject payload = result("succeeded", null, "Tap to Pay payment processed by Stripe Terminal SDK.");
                                                     payload.put("detail", detail("native_process_result", "succeeded", intent.getStatus().name()));
                                                     logStartupStage("native_process_result", payload);
+                                                    cacheFinalResult(payload, "process_success");
                                                     clearActivePaymentState();
                                                     resetStatusForNextAttempt();
                                                     resolveOnce(resolveGate, call, payload);
@@ -641,6 +665,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                                     JSObject payload = result("processing", null, "Stripe Terminal returned a pending PaymentIntent state.");
                                                     payload.put("detail", detail("native_process_result", "pending", intent.getStatus().name()));
                                                     logStartupStage("native_process_result", payload);
+                                                    cacheFinalResult(payload, "process_pending");
                                                     clearActivePaymentState();
                                                     resetStatusForNextAttempt();
                                                     resolveOnce(resolveGate, call, payload);
@@ -649,6 +674,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                                     JSObject payload = result("failed", "processing_error", "Unexpected PaymentIntent status: " + intent.getStatus());
                                                     payload.put("detail", detail("native_process_result", "unexpected_status", String.valueOf(intent.getStatus())));
                                                     logStartupStage("native_process_result", payload);
+                                                    cacheFinalResult(payload, "process_unexpected_status");
                                                     clearActivePaymentState();
                                                     resetStatusForNextAttempt();
                                                     resolveOnce(resolveGate, call, payload);
@@ -682,6 +708,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                                 payload.put("cancelRequestedByApp", cancelRequestedByApp);
                                                 payload.put("isProcessCancelableActive", processCancelable != null && !processCancelable.isCompleted());
                                                 logStartupStage("native_process_result", payload);
+                                                cacheFinalResult(payload, "process_failure");
                                                 clearActivePaymentState();
                                                 resetStatusForNextAttempt();
                                                 resolveOnce(resolveGate, call, payload);
@@ -715,6 +742,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                     payload.put("backgroundInterruptionCandidate", backgroundInterruptionCandidate);
                                     payload.put("backgroundInterruptionMs", backgroundInterruptionCandidateAtMs > 0 ? (System.currentTimeMillis() - backgroundInterruptionCandidateAtMs) : 0L);
                                     logStartupStage("native_collect_result", payload);
+                                    cacheFinalResult(payload, "collect_failure");
                                     clearActivePaymentState();
                                     resetStatusForNextAttempt();
                                     resolveOnce(resolveGate, call, payload);
@@ -730,6 +758,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                         JSObject payload = result("failed", normalizeErrorCode(e), buildErrorMessage(e));
                         payload.put("detail", terminalErrorDetail(e, "native_collect_result"));
                         logStartupStage("native_collect_result", payload);
+                        cacheFinalResult(payload, "retrieve_payment_intent_failure");
                         clearActivePaymentState();
                         resetStatusForNextAttempt();
                         resolveOnce(resolveGate, call, payload);
@@ -740,6 +769,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 JSObject payload = result("failed", normalizeErrorCode(ex), ex.getMessage());
                 payload.put("detail", exceptionDetail(ex, "native_collect_result", "start_exception"));
                 logStartupStage("native_collect_result", payload);
+                cacheFinalResult(payload, "start_exception");
                 clearActivePaymentState();
                 resetStatusForNextAttempt();
                 resolveOnce(resolveGate, call, payload);
@@ -767,6 +797,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                             JSObject payload = result("canceled", "canceled", "Tap to Pay canceled.");
                             payload.put("detail", detail("native_cancel_result", "process_cancelable_canceled", null));
                             logStartupStage("native_cancel_result", payload);
+                            cacheFinalResult(payload, "cancel_process_cancelable");
                             clearActivePaymentState();
                             resetStatusForNextAttempt();
                             call.resolve(payload);
@@ -778,6 +809,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                             JSObject payload = result("failed", normalizeErrorCode(e), buildErrorMessage(e));
                             payload.put("detail", terminalErrorDetail(e, "native_cancel_result"));
                             logStartupStage("native_cancel_result", payload);
+                            cacheFinalResult(payload, "cancel_process_failure");
                             clearActivePaymentState();
                             resetStatusForNextAttempt();
                             call.resolve(payload);
@@ -797,6 +829,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                             JSObject payload = result("canceled", "canceled", "Tap to Pay canceled.");
                             payload.put("detail", detail("native_cancel_result", "payment_intent_canceled", null));
                             logStartupStage("native_cancel_result", payload);
+                            cacheFinalResult(payload, "cancel_payment_intent");
                             clearActivePaymentState();
                             resetStatusForNextAttempt();
                             call.resolve(payload);
@@ -808,6 +841,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                             JSObject payload = result("failed", normalizeErrorCode(e), buildErrorMessage(e));
                             payload.put("detail", terminalErrorDetail(e, "native_cancel_result"));
                             logStartupStage("native_cancel_result", payload);
+                            cacheFinalResult(payload, "cancel_payment_intent_failure");
                             clearActivePaymentState();
                             resetStatusForNextAttempt();
                             call.resolve(payload);
@@ -821,6 +855,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 JSObject payload = result("canceled", "canceled", "No active payment was running.");
                 payload.put("detail", detail("native_cancel_result", "no_active_payment", null));
                 logStartupStage("native_cancel_result", payload);
+                cacheFinalResult(payload, "cancel_no_active");
                 clearActivePaymentState();
                 resetStatusForNextAttempt();
                 call.resolve(payload);
@@ -829,6 +864,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 JSObject payload = result("failed", normalizeErrorCode(ex), ex.getMessage());
                 payload.put("detail", exceptionDetail(ex, "native_cancel_result", "cancel_exception"));
                 logStartupStage("native_cancel_result", payload);
+                cacheFinalResult(payload, "cancel_exception");
                 clearActivePaymentState();
                 resetStatusForNextAttempt();
                 call.resolve(payload);
@@ -846,6 +882,29 @@ public class OrderfastTapToPayPlugin extends Plugin {
             result.put("sessionId", currentSessionId);
         }
         call.resolve(result);
+    }
+
+
+    @PluginMethod
+    public void getActivePaymentRunState(PluginCall call) {
+        JSObject payload = new JSObject();
+        boolean connected = connectedReader != null && Terminal.isInitialized() && Terminal.getInstance().getConnectionStatus() == ConnectionStatus.CONNECTED;
+        payload.put("status", status);
+        payload.put("inFlight", inFlight);
+        payload.put("connected", connected);
+        payload.put("activeRun", isCollectOrProcessActive());
+        payload.put("stripeTakeoverActive", stripeTakeoverObserved);
+        payload.put("appBackgrounded", isAppInBackground());
+        if (currentSessionId != null) payload.put("sessionId", currentSessionId);
+        if (currentRestaurantId != null) payload.put("restaurantId", currentRestaurantId);
+        if (currentTerminalLocationId != null) payload.put("terminalLocationId", currentTerminalLocationId);
+        if (currentFlowRunId != null) payload.put("flowRunId", currentFlowRunId);
+        if (cachedFinalResult != null) {
+            payload.put("cachedFinalResult", cachedFinalResult);
+            payload.put("cachedFinalResultAtMs", cachedFinalResultAtMs);
+        }
+        logStartupStage("native_active_run_state_result", payload);
+        call.resolve(payload);
     }
 
     @PluginMethod
@@ -1114,6 +1173,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 payload.put("reasonCategory", "timeout");
                 payload.put("detail", detail("native_process_result", "timeout", null));
                 logStartupStage("native_process_result", payload);
+                cacheFinalResult(payload, "operation_timeout");
                 clearActivePaymentState();
                 resetStatusForNextAttempt();
                 resolveOnce(resolveGate, call, payload);
