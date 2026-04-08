@@ -1,5 +1,5 @@
 import { useRouter } from 'next/router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import FullscreenAppLayout from '@/components/layouts/FullscreenAppLayout';
 import InternalSettlementModule from '@/components/payments/InternalSettlementModule';
 
@@ -8,6 +8,13 @@ export default function PosPaymentEntryPage() {
   const [flowActive, setFlowActive] = useState(false);
   const { restaurantId: routeParam } = router.query;
   const restaurantId = Array.isArray(routeParam) ? routeParam[0] : routeParam;
+
+  useEffect(() => {
+    router.beforePopState(() => !flowActive);
+    return () => {
+      router.beforePopState(() => true);
+    };
+  }, [flowActive, router]);
 
   return (
     <FullscreenAppLayout

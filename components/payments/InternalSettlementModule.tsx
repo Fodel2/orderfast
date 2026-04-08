@@ -9,8 +9,6 @@ type CollectionState = AppFlowState | 'idle';
 type CollectionFailureCategory =
   | 'customer_cancelled'
   | 'app_cancelled'
-  | 'lifecycle_cancelled'
-  | 'server_cancelled'
   | 'timeout'
   | 'process_failed'
   | 'collect_failed'
@@ -34,6 +32,7 @@ type UnpaidOrder = {
 const toCurrencyCode = (value?: string | null) => (value || 'GBP').toUpperCase();
 
 const makeIdempotencyKey = (prefix: string) => `${prefix}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
+const QUICK_CHARGE_MINIMUM_CENTS = 50;
 
 type InternalSettlementModuleProps = {
   title?: string;
@@ -357,20 +356,7 @@ export default function InternalSettlementModule({
       typeof (nativeResult as { reasonCategory?: unknown }).reasonCategory === 'string'
         ? String((nativeResult as { reasonCategory?: string }).reasonCategory)
         : null;
-    const interruptionSource =
-      typeof (nativeResult as { interruptionSource?: unknown }).interruptionSource === 'string'
-        ? String((nativeResult as { interruptionSource?: string }).interruptionSource)
-        : null;
-    const backgroundInterruptionCandidate =
-      (nativeResult as { backgroundInterruptionCandidate?: unknown }).backgroundInterruptionCandidate === true;
-
-    if (reasonCategoryRaw === 'lifecycle_cancelled' && interruptionSource !== 'app_or_device_backgrounded' && !backgroundInterruptionCandidate) {
-      return 'collect_failed';
-    }
-    if (reasonCategoryRaw === 'lifecycle_cancelled' && interruptionSource === 'transient_lifecycle_change') {
-      return 'collect_failed';
-    }
-    if (reasonCategoryRaw) return reasonCategoryRaw as CollectionFailureCategory;
+    if (reasonCategoryRaw === 'customer_cancelled' || reasonCategoryRaw === 'app_cancelled') return reasonCategoryRaw;
     if (nativeResult.status === 'canceled') return 'customer_cancelled';
     if (nativeResult.code === 'canceled') return 'customer_cancelled';
     if (nativeResult.code === 'processing_error' && String(nativeResult.message || '').toLowerCase().includes('timed out')) return 'timeout';
@@ -382,8 +368,6 @@ export default function InternalSettlementModule({
   const failureMessageForCategory = useCallback((category: CollectionFailureCategory, fallback?: string) => {
     if (category === 'customer_cancelled') return 'Customer cancelled payment at the reader.';
     if (category === 'app_cancelled') return 'Payment was cancelled by this app.';
-    if (category === 'lifecycle_cancelled') return 'Payment was interrupted when the app/device changed state. Keep this page in foreground and retry.';
-    if (category === 'server_cancelled') return 'Payment session was cancelled by server reconciliation.';
     if (category === 'timeout') return 'Payment timed out before completion. Please retry.';
     if (category === 'process_failed') return fallback || 'Payment processing failed after card presentation.';
     if (category === 'collect_failed') return fallback || 'Payment collection failed before completion.';
@@ -432,6 +416,11 @@ export default function InternalSettlementModule({
     if (amountCents <= 0) {
       setState('failed');
       setMessage('Amount must be greater than zero.');
+      return;
+    }
+    if (mode === 'quick_charge' && amountCents < QUICK_CHARGE_MINIMUM_CENTS) {
+      setState('failed');
+      setMessage(`Quick charge must be at least ${formatPrice(QUICK_CHARGE_MINIMUM_CENTS / 100)}.`);
       return;
     }
     if (!nativeRestaurantId) {
@@ -639,28 +628,55 @@ export default function InternalSettlementModule({
 
       if (nativeResult.status !== 'succeeded') {
         const category = classifyNativeFailure(nativeResult);
+        const nativeResultDetail = nativeResult.detail && typeof nativeResult.detail === 'object' ? (nativeResult.detail as Record<string, unknown>) : null;
         logCollectionEvent('native_collect_or_process_failed', {
           sessionId,
           category,
-          interruptionSource: (nativeResult as { interruptionSource?: string }).interruptionSource || null,
           result: nativeResult,
         });
 
-        const reconcileRes = await fetch('/api/dashboard/internal-settlement/reconcile', {
+        const verifyRes = await fetch('/api/dashboard/internal-settlement/cancel', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ session_id: sessionId, flow_run_id: flowRunId }),
+          body: JSON.stringify({
+            session_id: sessionId,
+            flow_run_id: flowRunId,
+            outcome: category === 'customer_cancelled' || category === 'app_cancelled' ? 'canceled' : 'failed',
+            reason: failureMessageForCategory(category, nativeResult.message),
+            failure_code: category,
+            source_stage: 'collect_or_process',
+            native_result: {
+              status: nativeResult.status,
+              code: nativeResult.code || null,
+              message: nativeResult.message || null,
+              terminal_code: nativeResultDetail?.terminalCode ?? null,
+              native_stage: nativeResult.nativeStage || nativeResultDetail?.nativeStage || null,
+              stripe_takeover_active: (nativeResult as { stripeTakeoverActive?: unknown }).stripeTakeoverActive === true,
+              app_backgrounded: (nativeResult as { appBackgrounded?: unknown }).appBackgrounded === true,
+              definitive_customer_cancel_signal:
+                (nativeResult as { definitiveCustomerCancelSignal?: unknown }).definitiveCustomerCancelSignal === true,
+            },
+          }),
         });
-        const reconcilePayload = await reconcileRes.json().catch(() => ({}));
-        const reconciledState = reconcilePayload?.session?.state as string | undefined;
-        logCollectionEvent('server_reconcile_during_failure', {
+        const verifyPayload = await verifyRes.json().catch(() => ({}));
+        const verifiedState = verifyPayload?.session?.state ? String(verifyPayload.session.state) : '';
+        const verifiedReason = verifyPayload?.session?.failure_message
+          ? String(verifyPayload.session.failure_message)
+          : verifyPayload?.verification?.resolvedReason
+            ? String(verifyPayload.verification.resolvedReason)
+            : failureMessageForCategory(category, nativeResult.message);
+
+        logCollectionEvent('server_verification_result_from_stripe_before_final_db_write', {
           sessionId,
-          category,
-          reconciledState: reconciledState || null,
-          ok: reconcileRes.ok,
+          ok: verifyRes.ok,
+          verifiedState: verifiedState || null,
+          verifiedReason,
+          correctedByVerification: verifyPayload?.verification?.correctedByVerification === true,
+          decisionMode: verifyPayload?.verification?.decisionMode || null,
+          nativeResult,
         });
 
-        if (reconcileRes.ok && reconciledState === 'finalized') {
+        if (verifyRes.ok && verifiedState === 'finalized') {
           setState('completed');
           setMessage(mode === 'order_payment' ? 'Order payment collected successfully.' : 'Quick charge collected successfully.');
           setActiveSessionId(null);
@@ -669,62 +685,14 @@ export default function InternalSettlementModule({
           return;
         }
 
-        const resolvedCategory: CollectionFailureCategory =
-          reconciledState === 'canceled' && category !== 'customer_cancelled' && category !== 'app_cancelled'
-            ? 'server_cancelled'
-            : category;
-
-        const interruptionSource = (nativeResult as { interruptionSource?: string }).interruptionSource || null;
-        const shouldMarkInterrupted =
-          resolvedCategory === 'lifecycle_cancelled' &&
-          interruptionSource === 'app_or_device_backgrounded' &&
-          (nativeResult as { backgroundInterruptionCandidate?: unknown }).backgroundInterruptionCandidate === true;
-
-        if (shouldMarkInterrupted) {
-          logCollectionEvent('interrupted.transition', {
-            source: 'native_reason_category',
-            reasonCategory: resolvedCategory,
-            interruptionSource,
-          });
-          setState('interrupted');
-        } else if (resolvedCategory === 'customer_cancelled' || resolvedCategory === 'app_cancelled' || resolvedCategory === 'server_cancelled') {
-          setState('failed');
-        } else {
-          setState(isUnsupportedDeviceError(nativeResult.code) ? 'unsupported_device' : 'failed');
-        }
-        setMessage(failureMessageForCategory(resolvedCategory, nativeResult.message));
-
-        if (resolvedCategory === 'customer_cancelled') {
-          await persistFlowOutcome({ sessionId, outcome: 'canceled', reason: 'Canceled by user', failureCode: 'customer_cancelled' });
-        } else if (resolvedCategory === 'app_cancelled' || resolvedCategory === 'server_cancelled') {
-          await persistFlowOutcome({
-            sessionId,
-            outcome: 'canceled',
-            reason: failureMessageForCategory(resolvedCategory, nativeResult.message),
-            failureCode: resolvedCategory,
-          });
-        } else if (shouldMarkInterrupted) {
-          await persistFlowOutcome({
-            sessionId,
-            outcome: 'needs_reconciliation',
-            reason: failureMessageForCategory(resolvedCategory, nativeResult.message),
-            failureCode: 'lifecycle_interruption',
-          });
-        } else if (resolvedCategory === 'lifecycle_cancelled') {
-          await persistFlowOutcome({
-            sessionId,
-            outcome: 'failed',
-            reason: 'Lifecycle cancellation signal was not confirmed as destructive background loss.',
-            failureCode: 'lifecycle_signal_unconfirmed',
-          });
-        } else {
-          await persistFlowOutcome({
-            sessionId,
-            outcome: 'failed',
-            reason: failureMessageForCategory(resolvedCategory, nativeResult.message),
-            failureCode: resolvedCategory,
-          });
-        }
+        setState(isUnsupportedDeviceError(nativeResult.code) ? 'unsupported_device' : 'failed');
+        setMessage(verifiedReason);
+        logCollectionEvent('final_persisted_outcome_and_reason', {
+          sessionId,
+          state: verifiedState || null,
+          reason: verifiedReason,
+          outcomeSource: verifyPayload?.verification?.correctedByVerification ? 'verification_corrected' : 'immediate_native_or_fallback',
+        });
         setActiveSessionId(null);
         setActiveTerminalLocationId(null);
         return;

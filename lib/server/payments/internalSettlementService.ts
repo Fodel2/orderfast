@@ -5,10 +5,12 @@ import {
   createKioskCardPresentSession,
   createOrRetrieveCardPresentPaymentIntentForSession,
   finalizeSuccessfulKioskPaymentSession,
+  getKioskPaymentSession,
   markKioskPaymentSessionState,
   reconcileAbandonedOrUnknownKioskPaymentSession,
   verifyKioskSessionPaymentCompletion,
 } from '@/lib/server/payments/kioskCardPresentService';
+import { getStripeClient } from '@/lib/server/payments/stripeClient';
 
 export type InternalSettlementMode = 'order_payment' | 'quick_charge';
 
@@ -36,6 +38,7 @@ const isCollectionOperationalType = (orderType: string | null | undefined) => {
   if (!orderType) return true;
   return orderType !== 'delivery';
 };
+const QUICK_CHARGE_MINIMUM_CENTS = 50;
 
 const updatePaidOrderWithOptionalStripeIntent = async (input: {
   orderId: string;
@@ -230,6 +233,9 @@ export const createInternalSettlementSession = async (input: {
 
   const customAmount = Math.max(1, Math.floor(Number(input.amountCents || 0)));
   if (!customAmount) throw new Error('amount_cents is required for quick charge');
+  if (currency === 'gbp' && customAmount < QUICK_CHARGE_MINIMUM_CENTS) {
+    throw new Error(`Quick charge must be at least ${(QUICK_CHARGE_MINIMUM_CENTS / 100).toFixed(2)} GBP.`);
+  }
 
   const session = await createKioskCardPresentSession({
     restaurantId: input.restaurantId,
@@ -322,34 +328,119 @@ export const cancelInternalSettlement = async (input: {
   reason?: string | null;
   failureCode?: string | null;
   outcome?: 'canceled' | 'failed' | 'needs_reconciliation';
+  sourceStage?: 'collect_or_process' | 'manual_cancel' | 'unknown';
+  nativeResult?: {
+    status?: string | null;
+    code?: string | null;
+    terminalCode?: string | null;
+    nativeStage?: string | null;
+    stripeTakeoverActive?: boolean;
+    appBackgrounded?: boolean;
+    definitiveCustomerCancelSignal?: boolean;
+  } | null;
 }) => {
   const outcome = input.outcome || 'canceled';
-  const canceled =
-    outcome === 'canceled'
-      ? await cancelKioskPaymentSession({
-          sessionId: input.sessionId,
-          restaurantId: input.restaurantId,
-          reason: input.reason || undefined,
-        })
-      : await markKioskPaymentSessionState({
-          sessionId: input.sessionId,
-          restaurantId: input.restaurantId,
-          nextState: outcome,
-          failureCode: input.failureCode ?? null,
-          failureMessage: input.reason ?? null,
-          eventType: outcome === 'needs_reconciliation' ? 'internal_settlement_interrupted' : 'internal_settlement_failed',
-          eventPayload: {
-            classification: outcome,
-          },
-        });
+  const explicitCustomerCancel = input.nativeResult?.definitiveCustomerCancelSignal === true && outcome === 'canceled';
 
-  if (canceled.order_id) {
+  const verification = {
+    decisionMode: explicitCustomerCancel ? 'immediate_native_explicit_cancel' : 'stripe_verification_gate',
+    correctedByVerification: false,
+    stripePaymentIntentStatus: null as string | null,
+    resolvedReason: input.reason || null,
+  };
+
+  let session;
+  if (explicitCustomerCancel) {
+    session = await cancelKioskPaymentSession({
+      sessionId: input.sessionId,
+      restaurantId: input.restaurantId,
+      reason: input.reason || 'Customer canceled payment at reader',
+    });
+  } else {
+    const currentSession = await getKioskPaymentSession(input.sessionId, input.restaurantId);
+    if (!currentSession) throw new Error('Kiosk payment session not found');
+
+    if (!currentSession.stripe_connected_account_id || !currentSession.stripe_payment_intent_id) {
+      session = await markKioskPaymentSessionState({
+        sessionId: input.sessionId,
+        restaurantId: input.restaurantId,
+        nextState: 'needs_reconciliation',
+        failureCode: input.failureCode ?? 'verification_missing_payment_intent',
+        failureMessage: 'Native returned non-success but Stripe PaymentIntent linkage was missing; reconciliation required.',
+        eventType: 'internal_settlement_verification_indeterminate',
+      });
+      verification.correctedByVerification = outcome !== 'needs_reconciliation';
+      verification.resolvedReason = session.failure_message;
+    } else {
+      const stripe = getStripeClient();
+      const paymentIntent = await stripe.paymentIntents.retrieve(currentSession.stripe_payment_intent_id, {
+        stripeAccount: currentSession.stripe_connected_account_id,
+      });
+      verification.stripePaymentIntentStatus = paymentIntent.status;
+
+      if (paymentIntent.status === 'succeeded') {
+        const finalized = await finalizeSuccessfulKioskPaymentSession({
+          sessionId: input.sessionId,
+          restaurantId: input.restaurantId,
+        });
+        session = finalized.session;
+        verification.correctedByVerification = true;
+        verification.resolvedReason = 'Stripe verification corrected native non-success to finalized.';
+      } else if (paymentIntent.status === 'requires_capture' || paymentIntent.status === 'processing') {
+        session = await markKioskPaymentSessionState({
+          sessionId: input.sessionId,
+          restaurantId: input.restaurantId,
+          nextState: 'needs_reconciliation',
+          failureCode: input.failureCode ?? 'verification_pending',
+          failureMessage: `Stripe PaymentIntent is ${paymentIntent.status}; reconciliation required before terminal outcome.`,
+          eventType: 'internal_settlement_verification_pending',
+          eventPayload: { payment_intent_status: paymentIntent.status },
+        });
+        verification.correctedByVerification = outcome !== 'needs_reconciliation';
+        verification.resolvedReason = session.failure_message;
+      } else if (paymentIntent.status === 'canceled') {
+        session = await cancelKioskPaymentSession({
+          sessionId: input.sessionId,
+          restaurantId: input.restaurantId,
+          reason: input.reason || 'Stripe PaymentIntent is canceled.',
+        });
+        verification.correctedByVerification = outcome !== 'canceled';
+        verification.resolvedReason = session.failure_message;
+      } else if (paymentIntent.status === 'requires_payment_method') {
+        session = await markKioskPaymentSessionState({
+          sessionId: input.sessionId,
+          restaurantId: input.restaurantId,
+          nextState: 'failed',
+          failureCode: input.failureCode ?? 'payment_intent_requires_payment_method',
+          failureMessage: `Stripe PaymentIntent failed (status: ${paymentIntent.status}).`,
+          eventType: 'internal_settlement_verification_failed',
+          eventPayload: { payment_intent_status: paymentIntent.status },
+        });
+        verification.correctedByVerification = outcome !== 'failed';
+        verification.resolvedReason = session.failure_message;
+      } else {
+        session = await markKioskPaymentSessionState({
+          sessionId: input.sessionId,
+          restaurantId: input.restaurantId,
+          nextState: 'needs_reconciliation',
+          failureCode: input.failureCode ?? 'verification_indeterminate',
+          failureMessage: `Stripe PaymentIntent status ${paymentIntent.status} was indeterminate; reconciliation required.`,
+          eventType: 'internal_settlement_verification_indeterminate',
+          eventPayload: { payment_intent_status: paymentIntent.status },
+        });
+        verification.correctedByVerification = outcome !== 'needs_reconciliation';
+        verification.resolvedReason = session.failure_message;
+      }
+    }
+  }
+
+  if (session.order_id) {
     let { error } = await supaServer
       .from('orders')
       .update({
         payment_status: 'failed',
       })
-      .eq('id', canceled.order_id)
+      .eq('id', session.order_id)
       .eq('restaurant_id', input.restaurantId)
       .neq('payment_status', 'paid');
 
@@ -359,14 +450,15 @@ export const cancelInternalSettlement = async (input: {
 
     if (error) {
       console.error('[internal-settlement] failed to mark order payment failed after cancellation', {
-        order_id: canceled.order_id,
+        order_id: session.order_id,
         error: error.message,
       });
     }
   }
 
-  return { session: canceled };
+  return { session, verification };
 };
+
 
 export const reconcileInternalSettlement = async (input: { sessionId: string; restaurantId: string }) => {
   const session = await reconcileAbandonedOrUnknownKioskPaymentSession({
