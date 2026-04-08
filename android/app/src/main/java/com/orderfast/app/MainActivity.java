@@ -3,6 +3,7 @@ package com.orderfast.app;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.view.View;
 import android.view.WindowManager;
 import android.view.WindowInsets;
@@ -31,6 +32,9 @@ public class MainActivity extends BridgeActivity {
                 + " hasSavedState=" + (savedInstanceState != null)
                 + " isChangingConfigurations=" + isChangingConfigurations()
                 + " tsMs=" + System.currentTimeMillis()
+                + " elapsedMs=" + SystemClock.elapsedRealtime()
+                + " bridgeHash=" + (bridge == null ? "null" : System.identityHashCode(bridge))
+                + " webViewHash=" + ((bridge == null || bridge.getWebView() == null) ? "null" : System.identityHashCode(bridge.getWebView()))
         );
     }
 

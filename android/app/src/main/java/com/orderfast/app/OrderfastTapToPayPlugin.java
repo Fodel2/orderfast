@@ -8,6 +8,7 @@ import android.content.pm.PackageManager;
 import android.location.LocationManager;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.util.Log;
 import android.app.ActivityManager;
 
@@ -100,6 +101,19 @@ public class OrderfastTapToPayPlugin extends Plugin {
     private volatile long lastResumeAtMs = 0L;
     private volatile JSObject cachedFinalResult = null;
     private volatile long cachedFinalResultAtMs = 0L;
+    private static int pluginInstanceCounter = 0;
+    private int pluginInstanceId = 0;
+    private volatile long activeRunMonotonicStartNs = 0L;
+    private volatile int activeRunSequence = 0;
+    private volatile long lastReaderDisconnectElapsedMs = 0L;
+    private volatile String lastReaderDisconnectReason = "none";
+
+    @Override
+    public void load() {
+        super.load();
+        pluginInstanceId = ++pluginInstanceCounter;
+        traceTimeline("plugin_load", null);
+    }
 
     private void logFlowEvent(String stage, JSObject payload) {
         payload.put("timestampMs", System.currentTimeMillis());
@@ -144,6 +158,11 @@ public class OrderfastTapToPayPlugin extends Plugin {
         logPayload.put("resultCode", payload.getString("code"));
         logPayload.put("cachedAtMs", cachedFinalResultAtMs);
         logFlowEvent("native_final_result_cached", logPayload);
+        JSObject timelinePayload = new JSObject();
+        timelinePayload.put("source", source);
+        timelinePayload.put("resultStatus", payload.getString("status"));
+        timelinePayload.put("resultCode", payload.getString("code"));
+        traceTimeline("final_cache_write", timelinePayload);
     }
 
     private void clearCachedFinalResult(String reason) {
@@ -168,6 +187,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
         lastStopAtMs = 0L;
         lastResumeAtMs = 0L;
         inFlight = false;
+        activeRunMonotonicStartNs = 0L;
     }
 
     private void resetStatusForNextAttempt() {
@@ -240,6 +260,8 @@ public class OrderfastTapToPayPlugin extends Plugin {
     private final TapToPayReaderListener tapToPayReaderListener = new TapToPayReaderListener() {
         @Override
         public void onDisconnect(DisconnectReason reason) {
+            lastReaderDisconnectElapsedMs = SystemClock.elapsedRealtime();
+            lastReaderDisconnectReason = reason == null ? "UNKNOWN" : reason.name();
             JSObject disconnectPayload = lifecyclePayload("reader_disconnect");
             disconnectPayload.put("disconnectReason", reason == null ? "UNKNOWN" : reason.name());
             disconnectPayload.put("path", "tap_to_pay_reader_listener.onDisconnect");
@@ -250,6 +272,9 @@ public class OrderfastTapToPayPlugin extends Plugin {
             disconnectPayload.put("takeoverActive", stripeTakeoverObserved);
             disconnectPayload.put("appBackgrounded", isAppInBackground());
             logFlowEvent("native_disconnect_invoked", disconnectPayload);
+            JSObject timelinePayload = new JSObject();
+            timelinePayload.put("disconnectReason", lastReaderDisconnectReason);
+            traceTimeline("reader_disconnect_callback", timelinePayload);
             connectedReader = null;
             if (!"canceled".equals(status)) {
                 status = "failed";
@@ -530,6 +555,11 @@ public class OrderfastTapToPayPlugin extends Plugin {
     @PluginMethod
     public void startTapToPayPayment(PluginCall call) {
         logStartupStage("native_start_entered", new JSObject());
+        beginRunTrace("startTapToPayPayment");
+        JSObject startInvokedPayload = new JSObject();
+        startInvokedPayload.put("hasConnectedReader", connectedReader != null);
+        startInvokedPayload.put("terminalInitialized", Terminal.isInitialized());
+        traceTimeline("start_tap_to_pay_invoked", startInvokedPayload);
         if (inFlight) {
             JSObject payload = result("failed", "native_busy", "Another Tap to Pay request is active.");
             payload.put("detail", detail("native_start_entered", "in_flight", null));
@@ -557,6 +587,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
         currentBackendBaseUrl = backendBaseUrl;
         currentTerminalLocationId = terminalLocationId;
         currentFlowRunId = flowRunId.isEmpty() ? null : flowRunId;
+        traceTimeline("run_context_bound", null);
         clearCachedFinalResult("new_active_run_started");
         clearOperationTimeout();
         activePaymentIntent = null;
@@ -609,11 +640,13 @@ public class OrderfastTapToPayPlugin extends Plugin {
                         collectStartPayload.put("paymentIntentId", paymentIntent.getId());
                         collectStartPayload.put("paymentIntentStatus", paymentIntent.getStatus() == null ? "unknown" : paymentIntent.getStatus().name());
                         logStartupStage("native_collect_start", collectStartPayload);
+                        traceTimeline("collect_start_callback", collectStartPayload);
                         postSessionState("collecting", "native_collect_start");
                         status = "collecting";
                         JSObject collectInvokedPayload = lifecyclePayload("collect_payment_method_invoked");
                         collectInvokedPayload.put("paymentIntentId", paymentIntent.getId());
                         logFlowEvent("native_collect_invoked", collectInvokedPayload);
+                        traceTimeline("collect_invoked", collectInvokedPayload);
 
                         Terminal.getInstance().collectPaymentMethod(
                             paymentIntent,
@@ -630,17 +663,20 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                         collectedIntent.getStatus() == null ? "unknown" : collectedIntent.getStatus().name()
                                     );
                                     logStartupStage("native_collect_result", collectPayload);
+                                    traceTimeline("collect_success_callback", collectPayload);
 
                                     JSObject processStartPayload = new JSObject();
                                     processStartPayload.put("result", "started");
                                     processStartPayload.put("nativeStage", "native_process_start");
                                     processStartPayload.put("paymentIntentId", collectedIntent.getId());
                                     logStartupStage("native_process_start", processStartPayload);
+                                    traceTimeline("process_start", processStartPayload);
                                     postSessionState("processing", "native_process_start");
                                     status = "processing";
                                     JSObject processInvokedPayload = lifecyclePayload("process_payment_intent_invoked");
                                     processInvokedPayload.put("paymentIntentId", collectedIntent.getId());
                                     logFlowEvent("native_process_invoked", processInvokedPayload);
+                                    traceTimeline("process_invoked_before_sdk_call", processInvokedPayload);
                                     processCancelable = Terminal.getInstance().processPaymentIntent(
                                         collectedIntent,
                                         new CollectPaymentIntentConfiguration.Builder().build(),
@@ -649,6 +685,9 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                             @Override
                                             public void onSuccess(PaymentIntent intent) {
                                                 activePaymentIntent = intent;
+                                                JSObject processSuccessPayload = new JSObject();
+                                                processSuccessPayload.put("paymentIntentStatus", intent.getStatus() == null ? "unknown" : intent.getStatus().name());
+                                                traceTimeline("process_success_callback", processSuccessPayload);
 
                                                 if (intent.getStatus() == PaymentIntentStatus.SUCCEEDED) {
                                                     postSessionState("processing", "native_process_succeeded");
@@ -684,6 +723,10 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                             @Override
                                             public void onFailure(TerminalException e) {
                                                 String normalizedCode = normalizeErrorCode(e);
+                                                JSObject processFailurePayload = new JSObject();
+                                                processFailurePayload.put("normalizedCode", normalizedCode);
+                                                processFailurePayload.put("terminalCode", e.getErrorCode() == null ? "UNKNOWN" : e.getErrorCode().name());
+                                                traceTimeline("process_failure_callback", processFailurePayload);
                                                 String reasonCategory = classifyTerminalFailureCategory(normalizedCode);
                                                 String mappedSessionState = mapSessionStateForFailureCategory(reasonCategory);
                                                 String mappedPluginStatus = mapPluginStatusForFailureCategory(reasonCategory);
@@ -707,6 +750,10 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                                 payload.put("backgroundInterruptionMs", backgroundInterruptionCandidateAtMs > 0 ? (System.currentTimeMillis() - backgroundInterruptionCandidateAtMs) : 0L);
                                                 payload.put("cancelRequestedByApp", cancelRequestedByApp);
                                                 payload.put("isProcessCancelableActive", processCancelable != null && !processCancelable.isCompleted());
+                                                payload.put("pluginMarkedCanceledBeforeTerminal", cancelRequestedByApp);
+                                                payload.put("readerDisconnectBeforeCallback", readerDisconnectedDuringActiveRun());
+                                                payload.put("readerDisconnectReason", lastReaderDisconnectReason);
+                                                payload.put("cancelClassification", determineCancelClassification(normalizedCode));
                                                 logStartupStage("native_process_result", payload);
                                                 cacheFinalResult(payload, "process_failure");
                                                 clearActivePaymentState();
@@ -720,6 +767,10 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                 @Override
                                 public void onFailure(TerminalException e) {
                                     String normalizedCode = normalizeErrorCode(e);
+                                    JSObject collectFailurePayload = new JSObject();
+                                    collectFailurePayload.put("normalizedCode", normalizedCode);
+                                    collectFailurePayload.put("terminalCode", e.getErrorCode() == null ? "UNKNOWN" : e.getErrorCode().name());
+                                    traceTimeline("collect_failure_callback", collectFailurePayload);
                                     String reasonCategory = classifyTerminalFailureCategory(normalizedCode);
                                     String mappedSessionState = mapSessionStateForFailureCategory(reasonCategory);
                                     String mappedPluginStatus = mapPluginStatusForFailureCategory(reasonCategory);
@@ -754,6 +805,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
 
                     @Override
                     public void onFailure(TerminalException e) {
+                        traceTimeline("retrieve_payment_intent_failure", null);
                         status = "failed";
                         JSObject payload = result("failed", normalizeErrorCode(e), buildErrorMessage(e));
                         payload.put("detail", terminalErrorDetail(e, "native_collect_result"));
@@ -765,6 +817,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                     }
                 }));
             } catch (Exception ex) {
+                traceTimeline("start_exception", null);
                 status = "failed";
                 JSObject payload = result("failed", normalizeErrorCode(ex), ex.getMessage());
                 payload.put("detail", exceptionDetail(ex, "native_collect_result", "start_exception"));
@@ -781,12 +834,14 @@ public class OrderfastTapToPayPlugin extends Plugin {
     public void cancelTapToPayPayment(PluginCall call) {
         clearOperationTimeout();
         cancelRequestedByApp = true;
+        traceTimeline("explicit_cancel_plugin_method_invoked", null);
         logCancelSource("plugin_method:cancelTapToPayPayment");
         logCancelOrCleanupPath("native_cancel_path_observed", "plugin_method:cancelTapToPayPayment", "explicit_staff_cancel_request");
         logStartupStage("native_cancel_result", detail("native_cancel_result", "entered", null));
         mainHandler.post(() -> {
             try {
                 if (processCancelable != null && !processCancelable.isCompleted()) {
+                    traceTimeline("explicit_cancel_processCancelable_cancel_called", null);
                     logCancelSource("plugin_method:processCancelable.cancel");
                     logCancelOrCleanupPath("native_cancel_path_observed", "plugin_method:processCancelable.cancel", "processCancelable_cancel_requested");
                     processCancelable.cancel(new Callback() {
@@ -819,6 +874,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 }
 
                 if (activePaymentIntent != null && Terminal.isInitialized()) {
+                    traceTimeline("explicit_cancel_payment_intent_cancel_called", null);
                     logCancelSource("plugin_method:cancelPaymentIntent");
                     logCancelOrCleanupPath("native_cancel_path_observed", "plugin_method:cancelPaymentIntent", "cancel_payment_intent_requested");
                     Terminal.getInstance().cancelPaymentIntent(activePaymentIntent, new PaymentIntentCallback() {
@@ -967,6 +1023,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
             backgroundInterruptionCandidateAtMs = 0L;
         }
         logLifecycleEvent("onResume");
+        traceTimeline("plugin_handleOnResume", null);
         if (Terminal.isInitialized() && connectedReader != null && Terminal.getInstance().getConnectionStatus() == ConnectionStatus.CONNECTED) {
             if (!inFlight && ("failed".equals(status) || "idle".equals(status))) {
                 status = "ready";
@@ -982,12 +1039,14 @@ public class OrderfastTapToPayPlugin extends Plugin {
             stripeTakeoverObserved = true;
         }
         logLifecycleEvent("onPause");
+        traceTimeline("plugin_handleOnPause", null);
     }
 
     @Override
     protected void handleOnStart() {
         super.handleOnStart();
         logLifecycleEvent("onStart");
+        traceTimeline("plugin_handleOnStart", null);
     }
 
     @Override
@@ -997,6 +1056,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
         boolean appInBackground = isAppInBackground();
         boolean changingConfigurations = getActivity() != null && getActivity().isChangingConfigurations();
         logLifecycleEvent("onStop");
+        traceTimeline("plugin_handleOnStop", null);
         if (inFlight && ("collecting".equals(status) || "processing".equals(status))) {
             stripeTakeoverObserved = true;
             lifecyclePausedDuringActiveFlow = true;
@@ -1024,10 +1084,12 @@ public class OrderfastTapToPayPlugin extends Plugin {
         payload.put("resultCode", resultCode);
         payload.put("hasDataIntent", data != null);
         logStartupStage("native_lifecycle", payload);
+        traceTimeline("plugin_handleOnActivityResult", payload);
     }
 
     @Override
     protected void handleOnDestroy() {
+        traceTimeline("plugin_handleOnDestroy_entered", null);
         logCancelOrCleanupPath("native_cleanup_path_observed", "plugin_handleOnDestroy", "handleOnDestroy_entered");
         if (isCollectOrProcessActive()) {
             JSObject activeRunPayload = paymentRunGuardPayload("plugin_handleOnDestroy", "active_collect_or_process_run_detected");
@@ -1041,6 +1103,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
         }
         clearOperationTimeout();
         if (discoverCancelable != null && !discoverCancelable.isCompleted()) {
+            traceTimeline("discoverCancelable_cancel_called_during_destroy", null);
             logCancelOrCleanupPath("native_cleanup_path_observed", "plugin_handleOnDestroy.discoverCancelable.cancel", "discover_cancelable_cleanup");
             discoverCancelable.cancel(new Callback() {
                 @Override
@@ -1053,6 +1116,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
             JSObject payload = lifecyclePayload("handleOnDestroy_processCancelable_active");
             payload.put("action", "left_active_to_avoid_forced_cancel");
             logFlowEvent("native_cancel_suppressed", payload);
+            traceTimeline("processCancelable_left_active_during_destroy", null);
         }
         discoverCancelable = null;
         processCancelable = null;
@@ -1060,6 +1124,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
         activePaymentIntent = null;
         inFlight = false;
         logCancelOrCleanupPath("native_cleanup_path_observed", "plugin_handleOnDestroy.executor.shutdownNow", "plugin_destroy_cleanup");
+        traceTimeline("plugin_executor_shutdown", null);
         executor.shutdownNow();
         super.handleOnDestroy();
     }
@@ -1162,6 +1227,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 postSessionState("needs_reconciliation", "native_timeout");
                 if (processCancelable != null && !processCancelable.isCompleted()) {
                     logCancelSource("operation_timeout");
+                    traceTimeline("operation_timeout_processCancelable_cancel_called", null);
                     processCancelable.cancel(new Callback() {
                         @Override
                         public void onSuccess() {}
@@ -1321,6 +1387,10 @@ public class OrderfastTapToPayPlugin extends Plugin {
 
     private JSObject lifecyclePayload(String rawEventName) {
         JSObject payload = detail("native_lifecycle", rawEventName, inFlight ? status : "idle");
+        payload.put("pluginInstanceId", pluginInstanceId);
+        payload.put("activeRunSequence", activeRunSequence);
+        payload.put("monotonicElapsedMs", SystemClock.elapsedRealtime());
+        payload.put("runMonotonicDeltaMs", monotonicRunDeltaMs());
         payload.put("rawEventName", rawEventName);
         payload.put("inFlight", inFlight);
         payload.put("status", status);
@@ -1358,6 +1428,8 @@ public class OrderfastTapToPayPlugin extends Plugin {
         detail.put("nativeStage", stage);
         detail.put("terminalCode", terminalCode == null ? "UNKNOWN" : terminalCode.name());
         detail.put("message", buildErrorMessage(e));
+        detail.put("exceptionClass", e.getClass().getName());
+        detail.put("exceptionMessage", e.getMessage());
         if (terminalCode == TerminalErrorCode.TAP_TO_PAY_UNSUPPORTED_DEVICE) {
             detail.put("unsupportedDevice", true);
             detail.put("unsupportedDevicePermanent", true);
@@ -1366,6 +1438,10 @@ public class OrderfastTapToPayPlugin extends Plugin {
         if (e.getCause() != null && e.getCause().getMessage() != null) {
             detail.put("cause", e.getCause().getMessage());
         }
+        if (e.getCause() != null) {
+            detail.put("causeClass", e.getCause().getClass().getName());
+        }
+        detail.put("stackTop", topStack(e, 6));
         return detail;
     }
 
@@ -1412,5 +1488,72 @@ public class OrderfastTapToPayPlugin extends Plugin {
 
     private String escapeJson(String value) {
         return value == null ? "" : value.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
+    private void beginRunTrace(String source) {
+        activeRunSequence += 1;
+        activeRunMonotonicStartNs = SystemClock.elapsedRealtimeNanos();
+        lastReaderDisconnectElapsedMs = 0L;
+        lastReaderDisconnectReason = "none";
+        JSObject payload = new JSObject();
+        payload.put("source", source);
+        traceTimeline("run_trace_started", payload);
+    }
+
+    private void traceTimeline(String event, JSObject extra) {
+        JSObject payload = lifecyclePayload("native_timeline:" + event);
+        payload.put("timelineEvent", event);
+        if (extra != null) {
+            java.util.Iterator<String> keys = extra.keys();
+            while (keys.hasNext()) {
+                String key = keys.next();
+                payload.put(key, extra.opt(key));
+            }
+        }
+        logStartupStage("native_timeline", payload);
+    }
+
+    private long monotonicRunDeltaMs() {
+        if (activeRunMonotonicStartNs <= 0L) return 0L;
+        return (SystemClock.elapsedRealtimeNanos() - activeRunMonotonicStartNs) / 1_000_000L;
+    }
+
+    private boolean readerDisconnectedDuringActiveRun() {
+        if (lastReaderDisconnectElapsedMs <= 0L || activeRunMonotonicStartNs <= 0L) {
+            return false;
+        }
+        long runStartElapsedMs = activeRunMonotonicStartNs / 1_000_000L;
+        return lastReaderDisconnectElapsedMs >= runStartElapsedMs;
+    }
+
+    private String determineCancelClassification(String normalizedCode) {
+        if (!"canceled".equals(normalizedCode)) {
+            return "not_canceled_error";
+        }
+        if (cancelRequestedByApp) {
+            return "explicit_app_cancel";
+        }
+        if (readerDisconnectedDuringActiveRun() || lifecyclePausedDuringActiveFlow || backgroundInterruptionCandidate || confirmedBackgroundInterruption) {
+            return "ambiguous_lifecycle_or_disconnect_before_callback";
+        }
+        return "sdk_or_customer_cancel_without_local_cancel_signal";
+    }
+
+    private String topStack(Throwable throwable, int maxFrames) {
+        if (throwable == null || throwable.getStackTrace() == null || throwable.getStackTrace().length == 0) {
+            return "none";
+        }
+        StackTraceElement[] trace = throwable.getStackTrace();
+        StringBuilder builder = new StringBuilder();
+        int limit = Math.min(maxFrames, trace.length);
+        for (int i = 0; i < limit; i++) {
+            if (i > 0) builder.append(" <- ");
+            builder.append(trace[i].getClassName())
+                .append(".")
+                .append(trace[i].getMethodName())
+                .append(":")
+                .append(trace[i].getLineNumber());
+        }
+        return builder.toString();
     }
 }
