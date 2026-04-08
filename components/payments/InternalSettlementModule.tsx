@@ -238,16 +238,32 @@ export default function InternalSettlementModule({
   }, [busy, onFlowActivityChange]);
 
   const classifyNativeFailure = useCallback((nativeResult: Awaited<ReturnType<typeof tapToPayBridge.startTapToPayPayment>>) => {
+    const detail =
+      nativeResult.detail && typeof nativeResult.detail === 'object'
+        ? (nativeResult.detail as { reasonCategory?: unknown; interruptionReasonCode?: unknown })
+        : null;
     const reasonCategoryRaw =
       typeof (nativeResult as { reasonCategory?: unknown }).reasonCategory === 'string'
         ? String((nativeResult as { reasonCategory?: string }).reasonCategory)
+        : typeof detail?.reasonCategory === 'string'
+          ? String(detail.reasonCategory)
         : null;
     if (reasonCategoryRaw === 'customer_cancelled' || reasonCategoryRaw === 'app_cancelled') return reasonCategoryRaw;
+    if (reasonCategoryRaw === 'lifecycle_interrupted') return 'ambiguous_canceled_after_takeover';
     const canceled = nativeResult.status === 'canceled' || nativeResult.code === 'canceled';
     if (canceled) {
       const takeoverLike = (nativeResult as { stripeTakeoverActive?: unknown }).stripeTakeoverActive === true;
       const backgroundLike = (nativeResult as { appBackgrounded?: unknown }).appBackgrounded === true;
       const explicitCustomerSignal = (nativeResult as { definitiveCustomerCancelSignal?: unknown }).definitiveCustomerCancelSignal === true;
+      const interruptionReasonCode =
+        typeof (nativeResult as { interruptionReasonCode?: unknown }).interruptionReasonCode === 'string'
+          ? String((nativeResult as { interruptionReasonCode?: string }).interruptionReasonCode)
+          : typeof detail?.interruptionReasonCode === 'string'
+            ? String(detail.interruptionReasonCode)
+            : null;
+      if (interruptionReasonCode === 'background_loss_confirmed') {
+        return 'ambiguous_canceled_after_takeover';
+      }
       if ((takeoverLike || backgroundLike) && !explicitCustomerSignal) {
         return 'ambiguous_canceled_after_takeover';
       }
