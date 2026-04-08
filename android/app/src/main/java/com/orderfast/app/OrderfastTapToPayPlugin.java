@@ -610,12 +610,14 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                             public void onFailure(TerminalException e) {
                                                 String normalizedCode = normalizeErrorCode(e);
                                                 String reasonCategory = classifyTerminalFailureCategory(normalizedCode);
-                                                boolean treatAsCanceled = "customer_cancelled".equals(reasonCategory) || "app_cancelled".equals(reasonCategory);
-                                                status = treatAsCanceled ? "canceled" : "failed";
-                                                postSessionState(treatAsCanceled ? "canceled" : "failed", treatAsCanceled ? "native_process_canceled" : "native_process_failed");
-                                                JSObject payload = result(treatAsCanceled ? "canceled" : "failed", normalizedCode, buildErrorMessage(e));
+                                                String mappedSessionState = mapSessionStateForFailureCategory(reasonCategory);
+                                                String mappedPluginStatus = mapPluginStatusForFailureCategory(reasonCategory);
+                                                status = mappedPluginStatus;
+                                                postSessionState(mappedSessionState, "native_process_" + reasonCategory);
+                                                JSObject payload = result(mappedPluginStatus, normalizedCode, buildErrorMessage(e));
                                                 payload.put("reasonCategory", reasonCategory);
-                                                payload.put("interruptionReasonCode", isConfirmedLifecycleInterruption() ? "background_loss_confirmed" : "none");
+                                                payload.put("mappedSessionState", mappedSessionState);
+                                                payload.put("interruptionReasonCode", "lifecycle_interrupted".equals(reasonCategory) ? "background_loss_confirmed" : "none");
                                                 payload.put("detail", terminalErrorDetail(e, "native_process_result"));
                                                 payload.put("interruptionSource", confirmedBackgroundInterruption ? "app_or_device_backgrounded" : (lifecyclePausedDuringActiveFlow ? "transient_lifecycle_change" : "none_detected"));
                                                 payload.put("backgroundInterruptionCandidate", backgroundInterruptionCandidate);
@@ -633,12 +635,14 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                 public void onFailure(TerminalException e) {
                                     String normalizedCode = normalizeErrorCode(e);
                                     String reasonCategory = classifyTerminalFailureCategory(normalizedCode);
-                                    boolean treatAsCanceled = "customer_cancelled".equals(reasonCategory) || "app_cancelled".equals(reasonCategory);
-                                    status = treatAsCanceled ? "canceled" : "failed";
-                                    postSessionState(treatAsCanceled ? "canceled" : "failed", treatAsCanceled ? "native_collect_canceled" : "native_collect_failed");
-                                    JSObject payload = result(treatAsCanceled ? "canceled" : "failed", normalizedCode, buildErrorMessage(e));
+                                    String mappedSessionState = mapSessionStateForFailureCategory(reasonCategory);
+                                    String mappedPluginStatus = mapPluginStatusForFailureCategory(reasonCategory);
+                                    status = mappedPluginStatus;
+                                    postSessionState(mappedSessionState, "native_collect_" + reasonCategory);
+                                    JSObject payload = result(mappedPluginStatus, normalizedCode, buildErrorMessage(e));
                                     payload.put("reasonCategory", reasonCategory);
-                                    payload.put("interruptionReasonCode", isConfirmedLifecycleInterruption() ? "background_loss_confirmed" : "none");
+                                    payload.put("mappedSessionState", mappedSessionState);
+                                    payload.put("interruptionReasonCode", "lifecycle_interrupted".equals(reasonCategory) ? "background_loss_confirmed" : "none");
                                     payload.put("detail", terminalErrorDetail(e, "native_collect_result"));
                                     payload.put("interruptionSource", confirmedBackgroundInterruption ? "app_or_device_backgrounded" : (lifecyclePausedDuringActiveFlow ? "transient_lifecycle_change" : "none_detected"));
                                     payload.put("backgroundInterruptionCandidate", backgroundInterruptionCandidate);
@@ -972,9 +976,15 @@ public class OrderfastTapToPayPlugin extends Plugin {
 
         executor.execute(() -> {
             try {
+                String payloadBody = "{\"session_id\":\"" + escapeJson(currentSessionId) + "\",\"restaurant_id\":\"" + escapeJson(currentRestaurantId) + "\",\"next_state\":\"" + escapeJson(nextState) + "\",\"event_type\":\"" + escapeJson(eventType) + "\"" + flowRunJsonFragment() + "}";
+                JSObject dbWritePayload = lifecyclePayload("native_session_state_post");
+                dbWritePayload.put("nextState", nextState);
+                dbWritePayload.put("eventType", eventType);
+                dbWritePayload.put("requestPayload", payloadBody);
+                logStartupStage("native_session_state_post", dbWritePayload);
                 postJson(
                     currentBackendBaseUrl + "/api/kiosk/payments/card-present/session-state",
-                    "{\"session_id\":\"" + escapeJson(currentSessionId) + "\",\"restaurant_id\":\"" + escapeJson(currentRestaurantId) + "\",\"next_state\":\"" + escapeJson(nextState) + "\",\"event_type\":\"" + escapeJson(eventType) + "\"" + flowRunJsonFragment() + "}"
+                    payloadBody
                 );
             } catch (Exception e) {
                 if (isDebugBuild()) {
@@ -1077,10 +1087,30 @@ public class OrderfastTapToPayPlugin extends Plugin {
     private String classifyTerminalFailureCategory(String normalizedCode) {
         if ("canceled".equals(normalizedCode)) {
             if (cancelRequestedByApp) return "app_cancelled";
-            if (isConfirmedLifecycleInterruption()) return "lifecycle_cancelled";
+            if (isConfirmedLifecycleInterruption()) return "lifecycle_interrupted";
             return "customer_cancelled";
         }
         return "collect_failed";
+    }
+
+    private String mapSessionStateForFailureCategory(String reasonCategory) {
+        if ("customer_cancelled".equals(reasonCategory) || "app_cancelled".equals(reasonCategory)) {
+            return "canceled";
+        }
+        if ("lifecycle_interrupted".equals(reasonCategory)) {
+            return "needs_reconciliation";
+        }
+        return "failed";
+    }
+
+    private String mapPluginStatusForFailureCategory(String reasonCategory) {
+        if ("customer_cancelled".equals(reasonCategory) || "app_cancelled".equals(reasonCategory)) {
+            return "canceled";
+        }
+        if ("lifecycle_interrupted".equals(reasonCategory)) {
+            return "processing";
+        }
+        return "failed";
     }
 
     private boolean isConfirmedLifecycleInterruption() {
