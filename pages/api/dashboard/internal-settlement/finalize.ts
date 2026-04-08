@@ -15,9 +15,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const sessionId = String(req.body?.session_id || '');
     const flowRunId = req.body?.flow_run_id ? String(req.body.flow_run_id) : null;
     if (!sessionId) return res.status(400).json({ message: 'session_id is required' });
-    console.info('[internal-settlement][api]', { route: 'finalize', restaurantId, sessionId, flowRunId });
+    console.info('[internal-settlement][api]', {
+      route: 'finalize',
+      stage: 'finalize.start',
+      at: new Date().toISOString(),
+      restaurantId,
+      sessionId,
+      flowRunId,
+    });
 
     const result = await finalizeInternalSettlement({ sessionId, restaurantId });
+    console.info('[internal-settlement][api]', {
+      route: 'finalize',
+      stage: 'finalize.result',
+      at: new Date().toISOString(),
+      restaurantId,
+      sessionId,
+      flowRunId,
+      state: result?.session?.state || null,
+      verifiedPaid: result?.verification?.verifiedPaid ?? null,
+      paymentIntentStatus: result?.verification?.paymentIntentStatus ?? null,
+    });
     return res.status(200).json(result);
   } catch (error: any) {
     return res.status(400).json({ message: error?.message || 'Failed to finalize settlement' });

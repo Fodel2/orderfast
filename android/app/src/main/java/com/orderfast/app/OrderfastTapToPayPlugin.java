@@ -96,6 +96,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
     private volatile long backgroundInterruptionCandidateAtMs = 0L;
     private volatile long lastPauseAtMs = 0L;
     private volatile long lastStopAtMs = 0L;
+    private volatile long lastResumeAtMs = 0L;
 
     private void clearActivePaymentState() {
         clearOperationTimeout();
@@ -108,6 +109,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
         backgroundInterruptionCandidateAtMs = 0L;
         lastPauseAtMs = 0L;
         lastStopAtMs = 0L;
+        lastResumeAtMs = 0L;
         inFlight = false;
     }
 
@@ -819,25 +821,15 @@ public class OrderfastTapToPayPlugin extends Plugin {
     @Override
     protected void handleOnResume() {
         super.handleOnResume();
-        if (inFlight && backgroundInterruptionCandidate) {
-            long candidateMs = backgroundInterruptionCandidateAtMs > 0 ? (System.currentTimeMillis() - backgroundInterruptionCandidateAtMs) : 0L;
-            if (candidateMs >= BACKGROUND_INTERRUPTION_MIN_MS) {
-                confirmedBackgroundInterruption = true;
-            } else {
-                confirmedBackgroundInterruption = false;
-                backgroundInterruptionCandidate = false;
-                backgroundInterruptionCandidateAtMs = 0L;
-            }
+        lastResumeAtMs = System.currentTimeMillis();
+        if (inFlight) {
+            // Stripe Tap to Pay collection can temporarily pause/stop the host Activity while the SDK takes over.
+            // Returning to onResume means the foreground handoff recovered, so clear candidate interruption state.
+            confirmedBackgroundInterruption = false;
+            backgroundInterruptionCandidate = false;
+            backgroundInterruptionCandidateAtMs = 0L;
         }
-        JSObject payload = detail("native_lifecycle", "resume", inFlight ? status : "idle");
-        payload.put("inFlight", inFlight);
-        payload.put("status", status);
-        payload.put("pauseMsAgo", lastPauseAtMs > 0 ? (System.currentTimeMillis() - lastPauseAtMs) : null);
-        payload.put("stopMsAgo", lastStopAtMs > 0 ? (System.currentTimeMillis() - lastStopAtMs) : null);
-        payload.put("confirmedBackgroundInterruption", confirmedBackgroundInterruption);
-        payload.put("backgroundInterruptionCandidate", backgroundInterruptionCandidate);
-        payload.put("backgroundInterruptionMs", backgroundInterruptionCandidateAtMs > 0 ? (System.currentTimeMillis() - backgroundInterruptionCandidateAtMs) : 0L);
-        logStartupStage("native_lifecycle", payload);
+        logLifecycleEvent("onResume");
         if (Terminal.isInitialized() && connectedReader != null && Terminal.getInstance().getConnectionStatus() == ConnectionStatus.CONNECTED) {
             if (!inFlight && ("failed".equals(status) || "idle".equals(status))) {
                 status = "ready";
@@ -849,29 +841,13 @@ public class OrderfastTapToPayPlugin extends Plugin {
     protected void handleOnPause() {
         super.handleOnPause();
         lastPauseAtMs = System.currentTimeMillis();
-        JSObject payload = detail("native_lifecycle", "pause", inFlight ? status : "idle");
-        payload.put("inFlight", inFlight);
-        payload.put("status", status);
-        payload.put("activityHasWindowFocus", getActivity() != null && getActivity().hasWindowFocus());
-        payload.put("appInBackground", isAppInBackground());
-        payload.put("activityChangingConfigurations", getActivity() != null && getActivity().isChangingConfigurations());
-        payload.put("backgroundInterruptionCandidate", backgroundInterruptionCandidate);
-        payload.put("backgroundInterruptionMs", backgroundInterruptionCandidateAtMs > 0 ? (System.currentTimeMillis() - backgroundInterruptionCandidateAtMs) : 0L);
-        logStartupStage("native_lifecycle", payload);
+        logLifecycleEvent("onPause");
     }
 
     @Override
     protected void handleOnStart() {
         super.handleOnStart();
-        JSObject payload = detail("native_lifecycle", "start", inFlight ? status : "idle");
-        payload.put("inFlight", inFlight);
-        payload.put("status", status);
-        payload.put("appInBackground", isAppInBackground());
-        payload.put("activityChangingConfigurations", getActivity() != null && getActivity().isChangingConfigurations());
-        payload.put("backgroundInterruptionCandidate", backgroundInterruptionCandidate);
-        payload.put("backgroundInterruptionMs", backgroundInterruptionCandidateAtMs > 0 ? (System.currentTimeMillis() - backgroundInterruptionCandidateAtMs) : 0L);
-        payload.put("confirmedBackgroundInterruption", confirmedBackgroundInterruption);
-        logStartupStage("native_lifecycle", payload);
+        logLifecycleEvent("onStart");
     }
 
     @Override
@@ -880,12 +856,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
         lastStopAtMs = System.currentTimeMillis();
         boolean appInBackground = isAppInBackground();
         boolean changingConfigurations = getActivity() != null && getActivity().isChangingConfigurations();
-        JSObject payload = detail("native_lifecycle", "stop", inFlight ? status : "idle");
-        payload.put("inFlight", inFlight);
-        payload.put("status", status);
-        payload.put("appInBackground", appInBackground);
-        payload.put("activityChangingConfigurations", changingConfigurations);
-        logStartupStage("native_lifecycle", payload);
+        logLifecycleEvent("onStop");
         if (inFlight && ("collecting".equals(status) || "processing".equals(status))) {
             lifecyclePausedDuringActiveFlow = true;
             if (appInBackground && !changingConfigurations) {
@@ -895,9 +866,6 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 }
                 long candidateMs = System.currentTimeMillis() - backgroundInterruptionCandidateAtMs;
                 confirmedBackgroundInterruption = candidateMs >= BACKGROUND_INTERRUPTION_MIN_MS;
-                if (confirmedBackgroundInterruption) {
-                    postSessionState("needs_reconciliation", "native_backgrounded_confirmed");
-                }
             } else {
                 confirmedBackgroundInterruption = false;
                 backgroundInterruptionCandidate = false;
@@ -905,6 +873,16 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 logStartupStage("native_lifecycle", detail("native_lifecycle", "transient_stop_during_terminal_takeover", status));
             }
         }
+    }
+
+    @Override
+    protected void handleOnActivityResult(int requestCode, int resultCode, android.content.Intent data) {
+        super.handleOnActivityResult(requestCode, resultCode, data);
+        JSObject payload = lifecyclePayload("onActivityResult");
+        payload.put("requestCode", requestCode);
+        payload.put("resultCode", resultCode);
+        payload.put("hasDataIntent", data != null);
+        logStartupStage("native_lifecycle", payload);
     }
 
     @Override
@@ -1106,7 +1084,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
     }
 
     private boolean isConfirmedLifecycleInterruption() {
-        if (confirmedBackgroundInterruption) {
+        if (confirmedBackgroundInterruption && isAppInBackground()) {
             return true;
         }
         if (!backgroundInterruptionCandidate || backgroundInterruptionCandidateAtMs <= 0L) {
@@ -1147,6 +1125,28 @@ public class OrderfastTapToPayPlugin extends Plugin {
             payload.put("sessionId", currentSessionId);
         }
         Log.i(TAG, "[kiosk][" + stage + "] " + payload.toString());
+    }
+
+    private JSObject lifecyclePayload(String rawEventName) {
+        JSObject payload = detail("native_lifecycle", rawEventName, inFlight ? status : "idle");
+        payload.put("rawEventName", rawEventName);
+        payload.put("inFlight", inFlight);
+        payload.put("status", status);
+        payload.put("timestampMs", System.currentTimeMillis());
+        payload.put("pauseMsAgo", lastPauseAtMs > 0 ? (System.currentTimeMillis() - lastPauseAtMs) : null);
+        payload.put("stopMsAgo", lastStopAtMs > 0 ? (System.currentTimeMillis() - lastStopAtMs) : null);
+        payload.put("resumeMsAgo", lastResumeAtMs > 0 ? (System.currentTimeMillis() - lastResumeAtMs) : null);
+        payload.put("activityHasWindowFocus", getActivity() != null && getActivity().hasWindowFocus());
+        payload.put("appInBackground", isAppInBackground());
+        payload.put("activityChangingConfigurations", getActivity() != null && getActivity().isChangingConfigurations());
+        payload.put("confirmedBackgroundInterruption", confirmedBackgroundInterruption);
+        payload.put("backgroundInterruptionCandidate", backgroundInterruptionCandidate);
+        payload.put("backgroundInterruptionMs", backgroundInterruptionCandidateAtMs > 0 ? (System.currentTimeMillis() - backgroundInterruptionCandidateAtMs) : 0L);
+        return payload;
+    }
+
+    private void logLifecycleEvent(String rawEventName) {
+        logStartupStage("native_lifecycle", lifecyclePayload(rawEventName));
     }
 
     private JSObject terminalFailurePayload(String stage, TerminalException e) {
