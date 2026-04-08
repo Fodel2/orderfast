@@ -72,19 +72,19 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
-    protected void onStart() {
+    public void onStart() {
         super.onStart();
         logLifecycle("onStart", null);
     }
 
     @Override
-    protected void onStop() {
+    public void onStop() {
         super.onStop();
         logLifecycle("onStop", null);
     }
 
     @Override
-    protected void onDestroy() {
+    public void onDestroy() {
         logLifecycle("onDestroy", null);
         super.onDestroy();
     }
