@@ -34,6 +34,9 @@ export type TapToPayResult = {
   stripeTakeoverActive?: boolean;
   appBackgrounded?: boolean;
   definitiveCustomerCancelSignal?: boolean;
+  paymentIntentId?: string;
+  paymentIntentStatus?: string;
+  paymentIntentSource?: string;
 };
 
 export interface TapToPayPlugin {

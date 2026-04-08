@@ -337,6 +337,9 @@ export const cancelInternalSettlement = async (input: {
     stripeTakeoverActive?: boolean;
     appBackgrounded?: boolean;
     definitiveCustomerCancelSignal?: boolean;
+    paymentIntentId?: string | null;
+    paymentIntentStatus?: string | null;
+    paymentIntentSource?: string | null;
   } | null;
 }) => {
   const outcome = input.outcome || 'canceled';
@@ -348,6 +351,21 @@ export const cancelInternalSettlement = async (input: {
     stripePaymentIntentStatus: null as string | null,
     resolvedReason: input.reason || null,
   };
+
+  console.info('[internal-settlement][verification-input]', {
+    at: new Date().toISOString(),
+    sessionId: input.sessionId,
+    restaurantId: input.restaurantId,
+    outcome,
+    sourceStage: input.sourceStage || 'unknown',
+    nativeResultStatus: input.nativeResult?.status || null,
+    nativeResultCode: input.nativeResult?.code || null,
+    nativeResultTerminalCode: input.nativeResult?.terminalCode || null,
+    nativeResultStage: input.nativeResult?.nativeStage || null,
+    nativeReportedPaymentIntentId: input.nativeResult?.paymentIntentId || null,
+    nativeReportedPaymentIntentStatus: input.nativeResult?.paymentIntentStatus || null,
+    nativeReportedPaymentIntentSource: input.nativeResult?.paymentIntentSource || null,
+  });
 
   let session;
   if (explicitCustomerCancel) {
@@ -377,6 +395,15 @@ export const cancelInternalSettlement = async (input: {
         stripeAccount: currentSession.stripe_connected_account_id,
       });
       verification.stripePaymentIntentStatus = paymentIntent.status;
+      console.info('[internal-settlement][verification-stripe-intent]', {
+        at: new Date().toISOString(),
+        sessionId: input.sessionId,
+        restaurantId: input.restaurantId,
+        storedPaymentIntentId: currentSession.stripe_payment_intent_id,
+        nativeReportedPaymentIntentId: input.nativeResult?.paymentIntentId || null,
+        stripeRetrievedPaymentIntentId: paymentIntent.id,
+        stripeRetrievedPaymentIntentStatus: paymentIntent.status,
+      });
 
       if (paymentIntent.status === 'succeeded') {
         const finalized = await finalizeSuccessfulKioskPaymentSession({
@@ -456,6 +483,15 @@ export const cancelInternalSettlement = async (input: {
     }
   }
 
+  console.info('[internal-settlement][verification-outcome]', {
+    at: new Date().toISOString(),
+    sessionId: input.sessionId,
+    restaurantId: input.restaurantId,
+    persistedState: session?.state || null,
+    persistedFailureMessage: session?.failure_message || null,
+    verification,
+  });
+
   return { session, verification };
 };
 
@@ -466,5 +502,14 @@ export const reconcileInternalSettlement = async (input: { sessionId: string; re
     restaurantId: input.restaurantId,
   });
   const verification = await verifyKioskSessionPaymentCompletion(session);
+  console.info('[internal-settlement][verification-outcome]', {
+    at: new Date().toISOString(),
+    sessionId: input.sessionId,
+    restaurantId: input.restaurantId,
+    persistedState: session?.state || null,
+    persistedFailureMessage: session?.failure_message || null,
+    verification,
+  });
+
   return { session, verification };
 };

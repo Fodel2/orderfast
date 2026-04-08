@@ -216,8 +216,20 @@ export default function InternalSettlementModule({
   const isUnsupportedDeviceError = (code?: string) => code === 'unsupported' || code === 'unsupported_device';
 
   const logCollectionEvent = useCallback((event: string, payload?: Record<string, unknown>) => {
+    const prefix = '[internal-settlement][take-payment][quick-charge][tap-to-pay]';
     if (event.includes('error') || event.includes('exception')) {
-      console.error('[internal-settlement]', event, payload);
+      console.error(prefix, event, payload);
+      return;
+    }
+    if (
+      event.includes('native_') ||
+      event.includes('payment_intent') ||
+      event.includes('finalize') ||
+      event.includes('verification') ||
+      event.includes('process') ||
+      event.includes('collect')
+    ) {
+      console.info(prefix, event, payload);
     }
   }, []);
 
@@ -449,6 +461,17 @@ export default function InternalSettlementModule({
         terminalLocationId,
         flowRunId: flowRunId || undefined,
       });
+      logCollectionEvent('native_result_payload_from_bridge', {
+        sessionId,
+        flowRunId,
+        nativeStatus: nativeResult.status,
+        nativeCode: nativeResult.code || null,
+        nativeMessage: nativeResult.message || null,
+        paymentIntentId: nativeResult.paymentIntentId || null,
+        paymentIntentStatus: nativeResult.paymentIntentStatus || null,
+        paymentIntentSource: nativeResult.paymentIntentSource || null,
+        nativeStage: nativeResult.nativeStage || null,
+      });
       logCollectionEvent(nativeResult.status === 'succeeded' ? 'native_collect.success' : 'native_collect.error', { sessionId, result: nativeResult });
       logCollectionEvent(nativeResult.status === 'succeeded' ? 'native_process.success' : 'native_process.error', {
         sessionId,
@@ -490,6 +513,9 @@ export default function InternalSettlementModule({
               app_backgrounded: (nativeResult as { appBackgrounded?: unknown }).appBackgrounded === true,
               definitive_customer_cancel_signal:
                 (nativeResult as { definitiveCustomerCancelSignal?: unknown }).definitiveCustomerCancelSignal === true,
+              payment_intent_id: nativeResult.paymentIntentId || null,
+              payment_intent_status: nativeResult.paymentIntentStatus || null,
+              payment_intent_source: nativeResult.paymentIntentSource || null,
             },
           }),
         });

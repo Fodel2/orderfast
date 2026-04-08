@@ -626,6 +626,14 @@ public class OrderfastTapToPayPlugin extends Plugin {
                     "{\"session_id\":\"" + escapeJson(sessionId) + "\",\"restaurant_id\":\"" + escapeJson(restaurantId) + "\"}"
                 );
                 final String clientSecret = piResponse.optString("clientSecret", "");
+                final String createdPaymentIntentId = piResponse.optString("paymentIntentId", "");
+                final String createdPaymentIntentStatus = piResponse.optString("status", "");
+                JSObject paymentIntentCreatedPayload = new JSObject();
+                paymentIntentCreatedPayload.put("nativeStage", "native_payment_intent_created");
+                paymentIntentCreatedPayload.put("paymentIntentId", createdPaymentIntentId.isEmpty() ? null : createdPaymentIntentId);
+                paymentIntentCreatedPayload.put("paymentIntentStatus", createdPaymentIntentStatus.isEmpty() ? null : createdPaymentIntentStatus);
+                logStartupStage("native_payment_intent_created", paymentIntentCreatedPayload);
+                traceTimeline("payment_intent_created", paymentIntentCreatedPayload);
                 if (clientSecret.isEmpty()) {
                     throw new IllegalStateException("PaymentIntent client secret missing from backend response.");
                 }
@@ -662,6 +670,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                         "paymentIntentStatus",
                                         collectedIntent.getStatus() == null ? "unknown" : collectedIntent.getStatus().name()
                                     );
+                                    collectPayload.put("collectOutcome", "success");
                                     logStartupStage("native_collect_result", collectPayload);
                                     traceTimeline("collect_success_callback", collectPayload);
 
@@ -669,12 +678,15 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                     processStartPayload.put("result", "started");
                                     processStartPayload.put("nativeStage", "native_process_start");
                                     processStartPayload.put("paymentIntentId", collectedIntent.getId());
+                                    processStartPayload.put("paymentIntentStatus", collectedIntent.getStatus() == null ? "unknown" : collectedIntent.getStatus().name());
+                                    processStartPayload.put("processInvoked", true);
                                     logStartupStage("native_process_start", processStartPayload);
                                     traceTimeline("process_start", processStartPayload);
                                     postSessionState("processing", "native_process_start");
                                     status = "processing";
                                     JSObject processInvokedPayload = lifecyclePayload("process_payment_intent_invoked");
                                     processInvokedPayload.put("paymentIntentId", collectedIntent.getId());
+                                    processInvokedPayload.put("paymentIntentStatus", collectedIntent.getStatus() == null ? "unknown" : collectedIntent.getStatus().name());
                                     logFlowEvent("native_process_invoked", processInvokedPayload);
                                     traceTimeline("process_invoked_before_sdk_call", processInvokedPayload);
                                     processCancelable = Terminal.getInstance().processPaymentIntent(
@@ -693,6 +705,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                                     postSessionState("processing", "native_process_succeeded");
                                                     JSObject payload = result("succeeded", null, "Tap to Pay payment processed by Stripe Terminal SDK.");
                                                     payload.put("detail", detail("native_process_result", "succeeded", intent.getStatus().name()));
+                                                    attachPaymentIntentSnapshot(payload, intent, "process_success");
                                                     logStartupStage("native_process_result", payload);
                                                     cacheFinalResult(payload, "process_success");
                                                     clearActivePaymentState();
@@ -703,6 +716,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                                     postSessionState("needs_reconciliation", "native_process_pending");
                                                     JSObject payload = result("processing", null, "Stripe Terminal returned a pending PaymentIntent state.");
                                                     payload.put("detail", detail("native_process_result", "pending", intent.getStatus().name()));
+                                                    attachPaymentIntentSnapshot(payload, intent, "process_pending");
                                                     logStartupStage("native_process_result", payload);
                                                     cacheFinalResult(payload, "process_pending");
                                                     clearActivePaymentState();
@@ -712,6 +726,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                                     status = "failed";
                                                     JSObject payload = result("failed", "processing_error", "Unexpected PaymentIntent status: " + intent.getStatus());
                                                     payload.put("detail", detail("native_process_result", "unexpected_status", String.valueOf(intent.getStatus())));
+                                                    attachPaymentIntentSnapshot(payload, intent, "process_unexpected_status");
                                                     logStartupStage("native_process_result", payload);
                                                     cacheFinalResult(payload, "process_unexpected_status");
                                                     clearActivePaymentState();
@@ -754,6 +769,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                                 payload.put("readerDisconnectBeforeCallback", readerDisconnectedDuringActiveRun());
                                                 payload.put("readerDisconnectReason", lastReaderDisconnectReason);
                                                 payload.put("cancelClassification", determineCancelClassification(normalizedCode));
+                                                attachPaymentIntentSnapshot(payload, activePaymentIntent, "process_failure_active_intent");
                                                 logStartupStage("native_process_result", payload);
                                                 cacheFinalResult(payload, "process_failure");
                                                 clearActivePaymentState();
@@ -792,6 +808,8 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                     payload.put("interruptionSource", confirmedBackgroundInterruption ? "app_or_device_backgrounded" : (lifecyclePausedDuringActiveFlow ? "transient_lifecycle_change" : "none_detected"));
                                     payload.put("backgroundInterruptionCandidate", backgroundInterruptionCandidate);
                                     payload.put("backgroundInterruptionMs", backgroundInterruptionCandidateAtMs > 0 ? (System.currentTimeMillis() - backgroundInterruptionCandidateAtMs) : 0L);
+                                    payload.put("collectOutcome", "failure");
+                                    attachPaymentIntentSnapshot(payload, activePaymentIntent, "collect_failure_active_intent");
                                     logStartupStage("native_collect_result", payload);
                                     cacheFinalResult(payload, "collect_failure");
                                     clearActivePaymentState();
@@ -1152,6 +1170,14 @@ public class OrderfastTapToPayPlugin extends Plugin {
         payload.put("stripeTakeoverActive", stripeTakeoverObserved);
         payload.put("appBackgrounded", isAppInBackground());
         payload.put("definitiveCustomerCancelSignal", definitiveCustomerCancelSignal);
+    }
+
+
+    private void attachPaymentIntentSnapshot(JSObject payload, PaymentIntent intent, String source) {
+        if (payload == null || intent == null) return;
+        payload.put("paymentIntentSource", source);
+        payload.put("paymentIntentId", intent.getId());
+        payload.put("paymentIntentStatus", intent.getStatus() == null ? "unknown" : intent.getStatus().name());
     }
 
     private void ensureTerminalInitialized() throws TerminalException {
