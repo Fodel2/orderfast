@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { tapToPayBridge } from '@/lib/kiosk/tapToPayBridge';
 import { formatPrice } from '@/lib/orderDisplay';
 import { resolveNativeTapToPayReadiness } from '@/lib/kiosk/tapToPayNativeReadiness';
-import { readLauncherBootstrapSnapshot, type AppFlowState } from '@/lib/app/launcherBootstrap';
+import { type AppFlowState } from '@/lib/app/launcherBootstrap';
 import { internalSettlementActiveRunStore } from '@/lib/payments/internalSettlementActiveRunStore';
 
 type SettlementMode = 'order_payment' | 'quick_charge';
@@ -15,11 +15,6 @@ type CollectionFailureCategory =
   | 'collect_failed'
   | 'ambiguous_canceled_after_takeover'
   | 'unknown_native_error';
-type FlowTraceEntry = {
-  at: string;
-  event: string;
-  payload?: Record<string, unknown>;
-};
 
 type UnpaidOrder = {
   id: string;
@@ -69,9 +64,6 @@ export default function InternalSettlementModule({
   const [message, setMessage] = useState('Ready to collect payment.');
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [activeTerminalLocationId, setActiveTerminalLocationId] = useState<string | null>(null);
-  const [latestNativeStage, setLatestNativeStage] = useState<string | null>(null);
-  const [latestNativeLifecycleReason, setLatestNativeLifecycleReason] = useState<string | null>(null);
-  const [flowTrace, setFlowTrace] = useState<FlowTraceEntry[]>([]);
   const flowActiveRef = useRef(false);
   const flowRunIdRef = useRef<string | null>(null);
 
@@ -167,19 +159,6 @@ export default function InternalSettlementModule({
 
   const refreshNativeReadiness = useCallback(
     async (promptIfNeeded: boolean) => {
-      console.info('[internal-settlement][payment-entry]', {
-        event: 'payment_entry_readiness_refresh_start',
-        promptIfNeeded,
-      });
-      console.info('[internal-settlement][collection]', {
-        event: 'readiness_refresh.start',
-        promptIfNeeded,
-        source: 'native_readiness',
-      });
-      console.info('[internal-settlement][tap-to-pay-bootstrap]', {
-        event: 'bootstrap_invoked',
-        promptIfNeeded,
-      });
       if (!nativeRestaurantId) {
         setNativeReadinessReady(false);
         setNativeReadinessReason('Restaurant context is missing. Return to launcher and open Take Payment again.');
@@ -190,97 +169,21 @@ export default function InternalSettlementModule({
       setNativeReadinessLoading(true);
       try {
         const readiness = await resolveNativeTapToPayReadiness({ promptIfNeeded });
-        console.info('[internal-settlement][tap-to-pay-bootstrap]', {
-          event: 'permission_status_before_request',
-          promptIfNeeded,
-          permissionStateBeforeRequest: readiness.permissionStateBeforeRequest,
-        });
-        console.info('[internal-settlement][tap-to-pay-bootstrap]', {
-          event: 'permission_request_attempted',
-          attempted: readiness.permissionRequestAttempted,
-        });
-        console.info('[internal-settlement][tap-to-pay-bootstrap]', {
-          event: 'permission_request_result',
-          permissionState: readiness.permissionState,
-        });
-        console.info('[internal-settlement][tap-to-pay-bootstrap]', {
-          event: 'location_services_check_result',
-          locationServicesEnabled: readiness.locationServicesEnabled,
-        });
-        console.info('[internal-settlement][tap-to-pay-bootstrap]', {
-          event: 'native_readiness_check_result',
-          ready: readiness.ready,
-          supported: readiness.supported,
-          state: readiness.state,
-          nativeStage: readiness.nativeStage,
-          reason: readiness.reason,
-        });
         if (!readiness.supported || !readiness.ready) {
           setNativeReadinessReady(false);
           setNativeReadinessReason(readiness.reason);
           applyBootstrapState(readiness);
-          console.info('[internal-settlement][tap-to-pay-bootstrap]', {
-            event: 'final_readiness_state_used_by_payment_page',
-            ready: false,
-            state: readiness.state,
-            reason: readiness.reason,
-          });
-          console.info('[internal-settlement][payment-entry]', {
-            event: 'payment_entry_readiness_refresh_result',
-            ok: false,
-            state: readiness.state,
-            reason: readiness.reason,
-          });
-          console.info('[internal-settlement][collection]', {
-            event: 'readiness_refresh.result',
-            ok: false,
-            source: 'native_readiness',
-            state: readiness.state,
-            reason: readiness.reason,
-          });
           return readiness;
         }
         setNativeReadinessReady(true);
         setNativeReadinessReason('');
         setState('ready');
-        console.info('[internal-settlement][tap-to-pay-bootstrap]', {
-          event: 'final_readiness_state_used_by_payment_page',
-          ready: true,
-          state: readiness.state,
-          reason: readiness.reason,
-        });
-        console.info('[internal-settlement][payment-entry]', {
-          event: 'payment_entry_readiness_refresh_result',
-          ok: true,
-          state: readiness.state,
-          reason: readiness.reason,
-        });
-        console.info('[internal-settlement][collection]', {
-          event: 'readiness_refresh.result',
-          ok: true,
-          source: 'native_readiness',
-          state: readiness.state,
-          reason: readiness.reason,
-        });
         return readiness;
       } catch (error: any) {
         const reason = error?.message || 'Tap to Pay setup check failed.';
         setNativeReadinessReady(false);
         setNativeReadinessReason(reason);
         setState('failed');
-        console.info('[internal-settlement][payment-entry]', {
-          event: 'payment_entry_readiness_refresh_result',
-          ok: false,
-          state: 'error',
-          reason,
-        });
-        console.info('[internal-settlement][collection]', {
-          event: 'readiness_refresh.result',
-          ok: false,
-          source: 'native_readiness',
-          state: 'error',
-          reason,
-        });
         return null;
       } finally {
         setNativeReadinessLoading(false);
@@ -290,15 +193,6 @@ export default function InternalSettlementModule({
   );
 
   useEffect(() => {
-    const launcherSnapshot = readLauncherBootstrapSnapshot();
-    console.info('[internal-settlement][payment-entry]', {
-      event: 'payment_entry.mount',
-      launcherSnapshot,
-    });
-    console.info('[internal-settlement][tap-to-pay-bootstrap]', {
-      event: 'payment_entry_mounted_and_readiness_state_read',
-      launcherSnapshot,
-    });
     void refreshNativeReadiness(false);
   }, [refreshNativeReadiness]);
 
@@ -321,33 +215,11 @@ export default function InternalSettlementModule({
 
   const isUnsupportedDeviceError = (code?: string) => code === 'unsupported' || code === 'unsupported_device';
 
-  const logCollectionEvent = useCallback(
-    (event: string, payload?: Record<string, unknown>) => {
-      const entry: FlowTraceEntry = {
-        at: new Date().toISOString(),
-        event,
-        payload,
-      };
-      setFlowTrace((prev) => [...prev.slice(-29), entry]);
-      const logPayload = {
-        event,
-        flowRunId: flowRunIdRef.current,
-        at: entry.at,
-        mode,
-        state,
-        busy,
-        activeSessionId,
-        activeTerminalLocationId,
-        ...payload,
-      };
-      console.info('[internal-settlement][collection]', logPayload);
-    },
-    [activeSessionId, activeTerminalLocationId, busy, mode, state]
-  );
-
-  useEffect(() => {
-    logCollectionEvent('final_ui_state_chosen', { state, message });
-  }, [logCollectionEvent, message, state]);
+  const logCollectionEvent = useCallback((event: string, payload?: Record<string, unknown>) => {
+    if (event.includes('error') || event.includes('exception')) {
+      console.error('[internal-settlement]', event, payload);
+    }
+  }, []);
 
   useEffect(() => {
     onFlowActivityChange?.(busy || flowActiveRef.current);
@@ -385,35 +257,6 @@ export default function InternalSettlementModule({
     return fallback || 'Unknown Tap to Pay error. Please retry.';
   }, []);
 
-  useEffect(() => {
-    if (typeof document === 'undefined') return;
-
-    const onVisibility = () => {
-      if (!flowActiveRef.current) return;
-      logCollectionEvent('exact_interruption_source_details', { visibility: document.visibilityState, source: 'document_visibility_or_window_focus_change' });
-    };
-
-    window.addEventListener('focus', onVisibility);
-    window.addEventListener('blur', onVisibility);
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => {
-      window.removeEventListener('focus', onVisibility);
-      window.removeEventListener('blur', onVisibility);
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-  }, [logCollectionEvent]);
-
-  useEffect(() => {
-    internalSettlementActiveRunStore.setUiAttached(true);
-    return () => {
-      if (!flowActiveRef.current) return;
-      internalSettlementActiveRunStore.setUiAttached(false);
-      logCollectionEvent('ui_detached_run_still_active', {
-        reason: 'component_unmount',
-      });
-    };
-  }, [logCollectionEvent]);
-
   const handleCollectContactless = useCallback(async () => {
     if (busy) return;
     if (!tapAvailabilityReady) {
@@ -444,26 +287,18 @@ export default function InternalSettlementModule({
 
     setBusy(true);
     flowActiveRef.current = true;
-      flowRunIdRef.current = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      setFlowTrace([]);
-      setLatestNativeStage(null);
-      setLatestNativeLifecycleReason(null);
-      setState('bootstrapping');
+    flowRunIdRef.current = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setState('bootstrapping');
     setMessage('Checking Tap to Pay readiness…');
-    logCollectionEvent('payment_page_opened');
-    logCollectionEvent('launcher_bootstrap_result_snapshot_used', {
-      launcherSnapshot: readLauncherBootstrapSnapshot(),
-    });
 
     let sessionIdForCleanup: string | null = null;
     const flowRunId = flowRunIdRef.current;
-      const persistFlowOutcome = async (input: {
+    const persistFlowOutcome = async (input: {
       sessionId: string;
       outcome: 'canceled' | 'failed' | 'needs_reconciliation';
       reason: string;
       failureCode?: string;
     }) => {
-      logCollectionEvent('server_state_write.start', { sessionId: input.sessionId, ...input });
       await fetch('/api/dashboard/internal-settlement/cancel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -475,7 +310,6 @@ export default function InternalSettlementModule({
           flow_run_id: flowRunId,
         }),
       }).catch(() => undefined);
-      logCollectionEvent('server_state_write.done', { sessionId: input.sessionId, ...input });
     };
     try {
       logCollectionEvent('readiness_refresh.start');
@@ -575,7 +409,6 @@ export default function InternalSettlementModule({
         terminalLocationId,
         flowRunId: flowRunId || undefined,
       });
-      setLatestNativeStage(prepared.nativeStage || (prepared.detail && typeof prepared.detail === 'object' ? String((prepared.detail as { nativeStage?: unknown }).nativeStage || '') : null));
       if (prepared.status === 'failed' || prepared.status === 'unavailable') {
         logCollectionEvent('prepare_result', { stage: 'native_prepare', ok: false, sessionId, result: prepared });
         setState(isUnsupportedDeviceError(prepared.code) ? 'unsupported_device' : 'failed');
@@ -607,7 +440,6 @@ export default function InternalSettlementModule({
 
       setState('collecting');
       setMessage('Present card/phone to collect payment…');
-      internalSettlementActiveRunStore.setNativeStatus('collecting');
       logCollectionEvent('native_collect.start', { sessionId });
 
       let nativeResult = await tapToPayBridge.startTapToPayPayment({
@@ -617,35 +449,7 @@ export default function InternalSettlementModule({
         terminalLocationId,
         flowRunId: flowRunId || undefined,
       });
-      setLatestNativeStage(nativeResult.nativeStage || (nativeResult.detail && typeof nativeResult.detail === 'object' ? String((nativeResult.detail as { nativeStage?: unknown }).nativeStage || '') : null));
-      const nativeLifecycleReason =
-        nativeResult.detail && typeof nativeResult.detail === 'object'
-          ? (nativeResult.detail as { reason?: unknown; rawEventName?: unknown }).rawEventName ||
-            (nativeResult.detail as { reason?: unknown }).reason
-          : null;
-      if (typeof nativeLifecycleReason === 'string' && nativeLifecycleReason) {
-        setLatestNativeLifecycleReason(nativeLifecycleReason);
-      }
       logCollectionEvent(nativeResult.status === 'succeeded' ? 'native_collect.success' : 'native_collect.error', { sessionId, result: nativeResult });
-      internalSettlementActiveRunStore.setNativeStatus(nativeResult.status);
-
-      if (nativeResult.status === 'processing') {
-        logCollectionEvent('native_process.start', { sessionId });
-        const pollDeadline = Date.now() + 120000;
-        while (Date.now() < pollDeadline) {
-          await new Promise<void>((resolve) => {
-            window.setTimeout(() => resolve(), 650);
-          });
-          const polled = await tapToPayBridge.getTapToPayStatus();
-          if (polled.sessionId && polled.sessionId !== sessionId) continue;
-          if (polled.status === 'succeeded' || polled.status === 'failed' || polled.status === 'canceled') {
-            nativeResult = polled;
-            setLatestNativeStage(polled.nativeStage || (polled.detail && typeof polled.detail === 'object' ? String((polled.detail as { nativeStage?: unknown }).nativeStage || '') : null));
-            logCollectionEvent(polled.status === 'succeeded' ? 'native_process.success' : 'native_process.error', { sessionId, result: polled });
-            break;
-          }
-        }
-      }
       logCollectionEvent(nativeResult.status === 'succeeded' ? 'native_process.success' : 'native_process.error', {
         sessionId,
         status: nativeResult.status,
@@ -653,7 +457,6 @@ export default function InternalSettlementModule({
       });
 
       if (nativeResult.status !== 'succeeded') {
-        internalSettlementActiveRunStore.cacheFinalNativeResult(nativeResult as unknown as Record<string, unknown>);
         const category = classifyNativeFailure(nativeResult);
         const nativeResultDetail = nativeResult.detail && typeof nativeResult.detail === 'object' ? (nativeResult.detail as Record<string, unknown>) : null;
         logCollectionEvent('native_collect_or_process_failed', {
@@ -732,7 +535,6 @@ export default function InternalSettlementModule({
         return;
       }
 
-      internalSettlementActiveRunStore.cacheFinalNativeResult(nativeResult as unknown as Record<string, unknown>);
       setState('processing');
       setMessage('Finalizing settlement…');
       setState('finalizing');
@@ -821,7 +623,7 @@ export default function InternalSettlementModule({
         setState('collecting');
         setMessage('Rehydrated active Tap to Pay run after resume.');
       }
-      const cached = (nativeState.cachedFinalResult as Record<string, unknown> | undefined) || activeRun?.finalNativeResult || null;
+      const cached = (nativeState.cachedFinalResult as Record<string, unknown> | undefined) || null;
       if (cached && activeRun?.sessionId) {
         logCollectionEvent('ui_recovered_final_result', { sessionId: activeRun.sessionId, cachedStatus: cached.status || null });
       }
@@ -955,26 +757,6 @@ export default function InternalSettlementModule({
             <p className="mt-1 text-2xl font-semibold text-slate-900">{amountLabel}</p>
           </div>
         </div>
-
-        {(state === 'failed' || state === 'interrupted') && flowTrace.length > 0 ? (
-          <div className="space-y-2 rounded-2xl border border-amber-200 bg-amber-50/50 p-4">
-            <h3 className="text-sm font-semibold text-amber-900">Temporary Tap to Pay debug trace</h3>
-            <p className="text-xs text-amber-800">
-              flowRunId: <span className="font-mono">{flowRunIdRef.current || 'n/a'}</span> · latest native stage:{' '}
-              <span className="font-mono">{latestNativeStage || 'n/a'}</span> · lifecycle hint:{' '}
-              <span className="font-mono">{latestNativeLifecycleReason || 'n/a'}</span>
-            </p>
-            <div className="max-h-52 space-y-1 overflow-auto rounded-lg border border-amber-200 bg-white p-2">
-              {flowTrace.slice(-12).map((entry, index) => (
-                <p key={`${entry.at}-${index}`} className="text-[11px] text-slate-700">
-                  <span className="font-mono text-slate-500">{new Date(entry.at).toLocaleTimeString()}</span> ·{' '}
-                  <span className="font-semibold">{entry.event}</span>
-                  {entry.payload ? ` · ${JSON.stringify(entry.payload)}` : ''}
-                </p>
-              ))}
-            </div>
-          </div>
-        ) : null}
 
         <div className="space-y-4 rounded-2xl border border-slate-200 p-4">
           <h2 className="text-sm font-semibold text-slate-900">Payment method</h2>
