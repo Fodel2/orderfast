@@ -13,7 +13,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     const flowRunId = req.body?.flow_run_id ? String(req.body.flow_run_id) : null;
-    console.info('[internal-settlement][api]', { route: 'create-session', restaurantId, mode: req.body?.mode || 'order_payment', flowRunId });
+    console.info('[internal-settlement][api]', {
+      route: 'create-session',
+      stage: 'session_create.start',
+      at: new Date().toISOString(),
+      restaurantId,
+      mode: req.body?.mode || 'order_payment',
+      flowRunId,
+    });
     const mode = (req.body?.mode || 'order_payment') as InternalSettlementMode;
     const result = await createInternalSettlementSession({
       restaurantId,
@@ -26,6 +33,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       reference: req.body?.reference ? String(req.body.reference) : null,
     });
 
+    console.info('[internal-settlement][api]', {
+      route: 'create-session',
+      stage: 'session_create.result',
+      at: new Date().toISOString(),
+      restaurantId,
+      flowRunId,
+      sessionId: result?.session?.id || null,
+      state: result?.session?.state || null,
+    });
     return res.status(200).json(result);
   } catch (error: any) {
     return res.status(400).json({ message: error?.message || 'Failed to create settlement session' });

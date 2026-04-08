@@ -19,7 +19,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const outcomeRaw = req.body?.outcome ? String(req.body.outcome) : 'canceled';
     const outcome = outcomeRaw === 'failed' || outcomeRaw === 'needs_reconciliation' ? outcomeRaw : 'canceled';
     if (!sessionId) return res.status(400).json({ message: 'session_id is required' });
-    console.info('[internal-settlement][api]', { route: 'cancel', restaurantId, sessionId, flowRunId, outcome, reason, failureCode });
+    console.info('[internal-settlement][api]', {
+      route: 'cancel',
+      stage: 'cancel_or_outcome_write',
+      at: new Date().toISOString(),
+      restaurantId,
+      sessionId,
+      flowRunId,
+      outcome,
+      reason,
+      failureCode,
+    });
 
     const result = await cancelInternalSettlement({ sessionId, restaurantId, reason, failureCode, outcome });
     return res.status(200).json(result);

@@ -15,6 +15,11 @@ type CollectionFailureCategory =
   | 'process_failed'
   | 'collect_failed'
   | 'unknown_native_error';
+type FlowTraceEntry = {
+  at: string;
+  event: string;
+  payload?: Record<string, unknown>;
+};
 
 type UnpaidOrder = {
   id: string;
@@ -63,6 +68,9 @@ export default function InternalSettlementModule({
   const [message, setMessage] = useState('Ready to collect payment.');
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [activeTerminalLocationId, setActiveTerminalLocationId] = useState<string | null>(null);
+  const [latestNativeStage, setLatestNativeStage] = useState<string | null>(null);
+  const [latestNativeLifecycleReason, setLatestNativeLifecycleReason] = useState<string | null>(null);
+  const [flowTrace, setFlowTrace] = useState<FlowTraceEntry[]>([]);
   const flowActiveRef = useRef(false);
   const flowRunIdRef = useRef<string | null>(null);
 
@@ -314,16 +322,24 @@ export default function InternalSettlementModule({
 
   const logCollectionEvent = useCallback(
     (event: string, payload?: Record<string, unknown>) => {
-      console.info('[internal-settlement][collection]', {
+      const entry: FlowTraceEntry = {
+        at: new Date().toISOString(),
+        event,
+        payload,
+      };
+      setFlowTrace((prev) => [...prev.slice(-29), entry]);
+      const logPayload = {
         event,
         flowRunId: flowRunIdRef.current,
+        at: entry.at,
         mode,
         state,
         busy,
         activeSessionId,
         activeTerminalLocationId,
         ...payload,
-      });
+      };
+      console.info('[internal-settlement][collection]', logPayload);
     },
     [activeSessionId, activeTerminalLocationId, busy, mode, state]
   );
@@ -349,6 +365,9 @@ export default function InternalSettlementModule({
       (nativeResult as { backgroundInterruptionCandidate?: unknown }).backgroundInterruptionCandidate === true;
 
     if (reasonCategoryRaw === 'lifecycle_cancelled' && interruptionSource !== 'app_or_device_backgrounded' && !backgroundInterruptionCandidate) {
+      return 'collect_failed';
+    }
+    if (reasonCategoryRaw === 'lifecycle_cancelled' && interruptionSource === 'transient_lifecycle_change') {
       return 'collect_failed';
     }
     if (reasonCategoryRaw) return reasonCategoryRaw as CollectionFailureCategory;
@@ -423,8 +442,11 @@ export default function InternalSettlementModule({
 
     setBusy(true);
     flowActiveRef.current = true;
-    flowRunIdRef.current = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    setState('bootstrapping');
+      flowRunIdRef.current = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      setFlowTrace([]);
+      setLatestNativeStage(null);
+      setLatestNativeLifecycleReason(null);
+      setState('bootstrapping');
     setMessage('Checking Tap to Pay readiness…');
     logCollectionEvent('payment_page_opened');
     logCollectionEvent('launcher_bootstrap_result_snapshot_used', {
@@ -433,7 +455,7 @@ export default function InternalSettlementModule({
 
     let sessionIdForCleanup: string | null = null;
     const flowRunId = flowRunIdRef.current;
-    const persistFlowOutcome = async (input: {
+      const persistFlowOutcome = async (input: {
       sessionId: string;
       outcome: 'canceled' | 'failed' | 'needs_reconciliation';
       reason: string;
@@ -542,6 +564,7 @@ export default function InternalSettlementModule({
         terminalLocationId,
         flowRunId: flowRunId || undefined,
       });
+      setLatestNativeStage(prepared.nativeStage || (prepared.detail && typeof prepared.detail === 'object' ? String((prepared.detail as { nativeStage?: unknown }).nativeStage || '') : null));
       if (prepared.status === 'failed' || prepared.status === 'unavailable') {
         logCollectionEvent('prepare_result', { stage: 'native_prepare', ok: false, sessionId, result: prepared });
         setState(isUnsupportedDeviceError(prepared.code) ? 'unsupported_device' : 'failed');
@@ -580,6 +603,15 @@ export default function InternalSettlementModule({
         terminalLocationId,
         flowRunId: flowRunId || undefined,
       });
+      setLatestNativeStage(nativeResult.nativeStage || (nativeResult.detail && typeof nativeResult.detail === 'object' ? String((nativeResult.detail as { nativeStage?: unknown }).nativeStage || '') : null));
+      const nativeLifecycleReason =
+        nativeResult.detail && typeof nativeResult.detail === 'object'
+          ? (nativeResult.detail as { reason?: unknown; rawEventName?: unknown }).rawEventName ||
+            (nativeResult.detail as { reason?: unknown }).reason
+          : null;
+      if (typeof nativeLifecycleReason === 'string' && nativeLifecycleReason) {
+        setLatestNativeLifecycleReason(nativeLifecycleReason);
+      }
       logCollectionEvent(nativeResult.status === 'succeeded' ? 'native_collect.success' : 'native_collect.error', { sessionId, result: nativeResult });
 
       if (nativeResult.status === 'processing') {
@@ -593,6 +625,7 @@ export default function InternalSettlementModule({
           if (polled.sessionId && polled.sessionId !== sessionId) continue;
           if (polled.status === 'succeeded' || polled.status === 'failed' || polled.status === 'canceled') {
             nativeResult = polled;
+            setLatestNativeStage(polled.nativeStage || (polled.detail && typeof polled.detail === 'object' ? String((polled.detail as { nativeStage?: unknown }).nativeStage || '') : null));
             logCollectionEvent(polled.status === 'succeeded' ? 'native_process.success' : 'native_process.error', { sessionId, result: polled });
             break;
           }
@@ -641,11 +674,17 @@ export default function InternalSettlementModule({
             ? 'server_cancelled'
             : category;
 
-        if (resolvedCategory === 'lifecycle_cancelled') {
+        const interruptionSource = (nativeResult as { interruptionSource?: string }).interruptionSource || null;
+        const shouldMarkInterrupted =
+          resolvedCategory === 'lifecycle_cancelled' &&
+          interruptionSource === 'app_or_device_backgrounded' &&
+          (nativeResult as { backgroundInterruptionCandidate?: unknown }).backgroundInterruptionCandidate === true;
+
+        if (shouldMarkInterrupted) {
           logCollectionEvent('interrupted.transition', {
             source: 'native_reason_category',
             reasonCategory: resolvedCategory,
-            interruptionSource: (nativeResult as { interruptionSource?: string }).interruptionSource || null,
+            interruptionSource,
           });
           setState('interrupted');
         } else if (resolvedCategory === 'customer_cancelled' || resolvedCategory === 'app_cancelled' || resolvedCategory === 'server_cancelled') {
@@ -664,12 +703,19 @@ export default function InternalSettlementModule({
             reason: failureMessageForCategory(resolvedCategory, nativeResult.message),
             failureCode: resolvedCategory,
           });
-        } else if (resolvedCategory === 'lifecycle_cancelled') {
+        } else if (shouldMarkInterrupted) {
           await persistFlowOutcome({
             sessionId,
             outcome: 'needs_reconciliation',
             reason: failureMessageForCategory(resolvedCategory, nativeResult.message),
             failureCode: 'lifecycle_interruption',
+          });
+        } else if (resolvedCategory === 'lifecycle_cancelled') {
+          await persistFlowOutcome({
+            sessionId,
+            outcome: 'failed',
+            reason: 'Lifecycle cancellation signal was not confirmed as destructive background loss.',
+            failureCode: 'lifecycle_signal_unconfirmed',
           });
         } else {
           await persistFlowOutcome({
@@ -865,6 +911,26 @@ export default function InternalSettlementModule({
             <p className="mt-1 text-2xl font-semibold text-slate-900">{amountLabel}</p>
           </div>
         </div>
+
+        {(state === 'failed' || state === 'interrupted') && flowTrace.length > 0 ? (
+          <div className="space-y-2 rounded-2xl border border-amber-200 bg-amber-50/50 p-4">
+            <h3 className="text-sm font-semibold text-amber-900">Temporary Tap to Pay debug trace</h3>
+            <p className="text-xs text-amber-800">
+              flowRunId: <span className="font-mono">{flowRunIdRef.current || 'n/a'}</span> · latest native stage:{' '}
+              <span className="font-mono">{latestNativeStage || 'n/a'}</span> · lifecycle hint:{' '}
+              <span className="font-mono">{latestNativeLifecycleReason || 'n/a'}</span>
+            </p>
+            <div className="max-h-52 space-y-1 overflow-auto rounded-lg border border-amber-200 bg-white p-2">
+              {flowTrace.slice(-12).map((entry, index) => (
+                <p key={`${entry.at}-${index}`} className="text-[11px] text-slate-700">
+                  <span className="font-mono text-slate-500">{new Date(entry.at).toLocaleTimeString()}</span> ·{' '}
+                  <span className="font-semibold">{entry.event}</span>
+                  {entry.payload ? ` · ${JSON.stringify(entry.payload)}` : ''}
+                </p>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         <div className="space-y-4 rounded-2xl border border-slate-200 p-4">
           <h2 className="text-sm font-semibold text-slate-900">Payment method</h2>
