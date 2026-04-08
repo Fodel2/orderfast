@@ -3,6 +3,7 @@ import { tapToPayBridge } from '@/lib/kiosk/tapToPayBridge';
 import { formatPrice } from '@/lib/orderDisplay';
 import { resolveNativeTapToPayReadiness } from '@/lib/kiosk/tapToPayNativeReadiness';
 import { readLauncherBootstrapSnapshot, type AppFlowState } from '@/lib/app/launcherBootstrap';
+import { internalSettlementActiveRunStore } from '@/lib/payments/internalSettlementActiveRunStore';
 
 type SettlementMode = 'order_payment' | 'quick_charge';
 type CollectionState = AppFlowState | 'idle';
@@ -12,6 +13,7 @@ type CollectionFailureCategory =
   | 'timeout'
   | 'process_failed'
   | 'collect_failed'
+  | 'ambiguous_canceled_after_takeover'
   | 'unknown_native_error';
 type FlowTraceEntry = {
   at: string;
@@ -357,8 +359,16 @@ export default function InternalSettlementModule({
         ? String((nativeResult as { reasonCategory?: string }).reasonCategory)
         : null;
     if (reasonCategoryRaw === 'customer_cancelled' || reasonCategoryRaw === 'app_cancelled') return reasonCategoryRaw;
-    if (nativeResult.status === 'canceled') return 'customer_cancelled';
-    if (nativeResult.code === 'canceled') return 'customer_cancelled';
+    const canceled = nativeResult.status === 'canceled' || nativeResult.code === 'canceled';
+    if (canceled) {
+      const takeoverLike = (nativeResult as { stripeTakeoverActive?: unknown }).stripeTakeoverActive === true;
+      const backgroundLike = (nativeResult as { appBackgrounded?: unknown }).appBackgrounded === true;
+      const explicitCustomerSignal = (nativeResult as { definitiveCustomerCancelSignal?: unknown }).definitiveCustomerCancelSignal === true;
+      if ((takeoverLike || backgroundLike) && !explicitCustomerSignal) {
+        return 'ambiguous_canceled_after_takeover';
+      }
+      return 'customer_cancelled';
+    }
     if (nativeResult.code === 'processing_error' && String(nativeResult.message || '').toLowerCase().includes('timed out')) return 'timeout';
     if (nativeResult.status === 'failed' && nativeResult.code === 'processing_error') return 'process_failed';
     if (nativeResult.status === 'failed') return 'collect_failed';
@@ -368,6 +378,7 @@ export default function InternalSettlementModule({
   const failureMessageForCategory = useCallback((category: CollectionFailureCategory, fallback?: string) => {
     if (category === 'customer_cancelled') return 'Customer cancelled payment at the reader.';
     if (category === 'app_cancelled') return 'Payment was cancelled by this app.';
+    if (category === 'ambiguous_canceled_after_takeover') return 'Tap to Pay ended as canceled after app takeover/backgrounding. Outcome is ambiguous until Stripe verification.';
     if (category === 'timeout') return 'Payment timed out before completion. Please retry.';
     if (category === 'process_failed') return fallback || 'Payment processing failed after card presentation.';
     if (category === 'collect_failed') return fallback || 'Payment collection failed before completion.';
@@ -393,9 +404,11 @@ export default function InternalSettlementModule({
   }, [logCollectionEvent]);
 
   useEffect(() => {
+    internalSettlementActiveRunStore.setUiAttached(true);
     return () => {
       if (!flowActiveRef.current) return;
-      logCollectionEvent('payment_entry.unmount_while_payment_active', {
+      internalSettlementActiveRunStore.setUiAttached(false);
+      logCollectionEvent('ui_detached_run_still_active', {
         reason: 'component_unmount',
       });
     };
@@ -524,6 +537,15 @@ export default function InternalSettlementModule({
       sessionIdForCleanup = sessionId;
       setActiveSessionId(sessionId);
       setActiveTerminalLocationId(terminalLocationId);
+      internalSettlementActiveRunStore.create({
+        flowRunId: flowRunId || `${Date.now()}`,
+        sessionId,
+        terminalLocationId,
+        restaurantId: nativeRestaurantId,
+        mode,
+        amountCents,
+      });
+      logCollectionEvent('active_run_created', { sessionId, terminalLocationId, flowRunId });
 
       logCollectionEvent('prepare_start', { stage: 'create_payment_intent' });
       const intentRes = await fetch('/api/dashboard/internal-settlement/payment-intent', {
@@ -561,6 +583,7 @@ export default function InternalSettlementModule({
         await persistFlowOutcome({ sessionId, outcome: 'failed', reason: 'Native Tap to Pay preparation failed.', failureCode: 'native_prepare_failed' });
         setActiveSessionId(null);
         setActiveTerminalLocationId(null);
+        internalSettlementActiveRunStore.clear();
         return;
       }
       logCollectionEvent('prepare_result', { stage: 'native_prepare', ok: true, sessionId, result: prepared });
@@ -578,11 +601,13 @@ export default function InternalSettlementModule({
         });
         setActiveSessionId(null);
         setActiveTerminalLocationId(null);
+        internalSettlementActiveRunStore.clear();
         return;
       }
 
       setState('collecting');
       setMessage('Present card/phone to collect payment…');
+      internalSettlementActiveRunStore.setNativeStatus('collecting');
       logCollectionEvent('native_collect.start', { sessionId });
 
       let nativeResult = await tapToPayBridge.startTapToPayPayment({
@@ -602,6 +627,7 @@ export default function InternalSettlementModule({
         setLatestNativeLifecycleReason(nativeLifecycleReason);
       }
       logCollectionEvent(nativeResult.status === 'succeeded' ? 'native_collect.success' : 'native_collect.error', { sessionId, result: nativeResult });
+      internalSettlementActiveRunStore.setNativeStatus(nativeResult.status);
 
       if (nativeResult.status === 'processing') {
         logCollectionEvent('native_process.start', { sessionId });
@@ -627,6 +653,7 @@ export default function InternalSettlementModule({
       });
 
       if (nativeResult.status !== 'succeeded') {
+        internalSettlementActiveRunStore.cacheFinalNativeResult(nativeResult as unknown as Record<string, unknown>);
         const category = classifyNativeFailure(nativeResult);
         const nativeResultDetail = nativeResult.detail && typeof nativeResult.detail === 'object' ? (nativeResult.detail as Record<string, unknown>) : null;
         logCollectionEvent('native_collect_or_process_failed', {
@@ -641,7 +668,12 @@ export default function InternalSettlementModule({
           body: JSON.stringify({
             session_id: sessionId,
             flow_run_id: flowRunId,
-            outcome: category === 'customer_cancelled' || category === 'app_cancelled' ? 'canceled' : 'failed',
+            outcome:
+              category === 'customer_cancelled' || category === 'app_cancelled'
+                ? 'canceled'
+                : category === 'ambiguous_canceled_after_takeover'
+                  ? 'needs_reconciliation'
+                  : 'failed',
             reason: failureMessageForCategory(category, nativeResult.message),
             failure_code: category,
             source_stage: 'collect_or_process',
@@ -681,6 +713,7 @@ export default function InternalSettlementModule({
           setMessage(mode === 'order_payment' ? 'Order payment collected successfully.' : 'Quick charge collected successfully.');
           setActiveSessionId(null);
           setActiveTerminalLocationId(null);
+          internalSettlementActiveRunStore.clear();
           await loadOrders();
           return;
         }
@@ -695,9 +728,11 @@ export default function InternalSettlementModule({
         });
         setActiveSessionId(null);
         setActiveTerminalLocationId(null);
+        internalSettlementActiveRunStore.clear();
         return;
       }
 
+      internalSettlementActiveRunStore.cacheFinalNativeResult(nativeResult as unknown as Record<string, unknown>);
       setState('processing');
       setMessage('Finalizing settlement…');
       setState('finalizing');
@@ -720,6 +755,7 @@ export default function InternalSettlementModule({
       setMessage(mode === 'order_payment' ? 'Order payment collected successfully.' : 'Quick charge collected successfully.');
       setActiveSessionId(null);
       setActiveTerminalLocationId(null);
+      internalSettlementActiveRunStore.clear();
 
       if (mode === 'quick_charge') {
         setQuickAmount('0.00');
@@ -764,6 +800,45 @@ export default function InternalSettlementModule({
     tapAvailabilityReason,
   ]);
 
+
+
+  useEffect(() => {
+    if (!nativeRestaurantId) return;
+    const recover = async (source: 'mount' | 'resume') => {
+      const activeRun = internalSettlementActiveRunStore.get();
+      const nativeState = await tapToPayBridge.getActivePaymentRunState();
+      if (nativeState.activeRun && activeRun?.sessionId) {
+        logCollectionEvent('app_resume_rehydrated_active_run', {
+          source,
+          sessionId: activeRun.sessionId,
+          nativeStatus: nativeState.status,
+          nativeFlowRunId: nativeState.flowRunId || null,
+        });
+        setBusy(true);
+        flowActiveRef.current = true;
+        setActiveSessionId(activeRun.sessionId);
+        setActiveTerminalLocationId(activeRun.terminalLocationId);
+        setState('collecting');
+        setMessage('Rehydrated active Tap to Pay run after resume.');
+      }
+      const cached = (nativeState.cachedFinalResult as Record<string, unknown> | undefined) || activeRun?.finalNativeResult || null;
+      if (cached && activeRun?.sessionId) {
+        logCollectionEvent('ui_recovered_final_result', { sessionId: activeRun.sessionId, cachedStatus: cached.status || null });
+      }
+    };
+    void recover('mount');
+    const onResume = () => {
+      if (document.visibilityState !== 'visible') return;
+      void recover('resume');
+    };
+    document.addEventListener('visibilitychange', onResume);
+    window.addEventListener('focus', onResume);
+    return () => {
+      document.removeEventListener('visibilitychange', onResume);
+      window.removeEventListener('focus', onResume);
+    };
+  }, [logCollectionEvent, nativeRestaurantId]);
+
   const handleCancel = useCallback(async () => {
     if (!activeSessionId) return;
     setBusy(true);
@@ -785,6 +860,7 @@ export default function InternalSettlementModule({
       setMessage('Payment canceled.');
       setActiveSessionId(null);
       setActiveTerminalLocationId(null);
+      internalSettlementActiveRunStore.clear();
       await loadOrders();
     } finally {
       setBusy(false);

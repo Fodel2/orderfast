@@ -79,6 +79,19 @@ export interface TapToPayPlugin {
   }): Promise<TapToPayResult>;
   cancelTapToPayPayment(): Promise<TapToPayResult>;
   getTapToPayStatus(): Promise<TapToPayResult>;
+  getActivePaymentRunState(): Promise<{
+    status: string;
+    inFlight: boolean;
+    connected: boolean;
+    sessionId?: string;
+    restaurantId?: string;
+    terminalLocationId?: string;
+    flowRunId?: string;
+    activeRun: boolean;
+    stripeTakeoverActive?: boolean;
+    appBackgrounded?: boolean;
+    cachedFinalResult?: TapToPayResult | null;
+  }>;
   lockPaymentOrientationToPortrait(): Promise<{ locked: boolean; reason?: string }>;
   unlockPaymentOrientation(): Promise<{ unlocked: boolean; reason?: string }>;
 }
@@ -237,6 +250,20 @@ export const tapToPayBridge: TapToPayPlugin = {
         message: `Tap to Pay native bridge unavailable: ${readErrorMessage(error)}`,
         detail: { nativeStage: 'bridge', reason: 'status_bridge_unavailable' },
         nativeStage: 'bridge',
+      };
+    }
+  },
+
+  async getActivePaymentRunState() {
+    try {
+      return await TapToPayNative.getActivePaymentRunState();
+    } catch (error) {
+      return {
+        status: 'unavailable',
+        inFlight: false,
+        connected: false,
+        activeRun: false,
+        cachedFinalResult: null,
       };
     }
   },
