@@ -30,6 +30,10 @@ export type TapToPayResult = {
   sessionId?: string;
   detail?: unknown;
   nativeStage?: string;
+  terminalCode?: string;
+  stripeTakeoverActive?: boolean;
+  appBackgrounded?: boolean;
+  definitiveCustomerCancelSignal?: boolean;
 };
 
 export interface TapToPayPlugin {

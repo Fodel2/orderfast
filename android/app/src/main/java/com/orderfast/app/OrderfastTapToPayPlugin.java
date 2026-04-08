@@ -93,6 +93,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
     private volatile boolean lifecyclePausedDuringActiveFlow = false;
     private volatile boolean confirmedBackgroundInterruption = false;
     private volatile boolean backgroundInterruptionCandidate = false;
+    private volatile boolean stripeTakeoverObserved = false;
     private volatile long backgroundInterruptionCandidateAtMs = 0L;
     private volatile long lastPauseAtMs = 0L;
     private volatile long lastStopAtMs = 0L;
@@ -106,6 +107,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
         lifecyclePausedDuringActiveFlow = false;
         confirmedBackgroundInterruption = false;
         backgroundInterruptionCandidate = false;
+        stripeTakeoverObserved = false;
         backgroundInterruptionCandidateAtMs = 0L;
         lastPauseAtMs = 0L;
         lastStopAtMs = 0L;
@@ -510,6 +512,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
         status = "collecting";
         confirmedBackgroundInterruption = false;
         backgroundInterruptionCandidate = false;
+        stripeTakeoverObserved = false;
         backgroundInterruptionCandidateAtMs = 0L;
         lifecyclePausedDuringActiveFlow = false;
         lastPauseAtMs = 0L;
@@ -615,6 +618,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                                 status = mappedPluginStatus;
                                                 postSessionState(mappedSessionState, "native_process_" + reasonCategory);
                                                 JSObject payload = result(mappedPluginStatus, normalizedCode, buildErrorMessage(e));
+                                                enrichOutcomePayload(payload, "native_process_result", e.getErrorCode(), "customer_cancelled".equals(reasonCategory));
                                                 payload.put("reasonCategory", reasonCategory);
                                                 payload.put("mappedSessionState", mappedSessionState);
                                                 payload.put("interruptionReasonCode", "lifecycle_interrupted".equals(reasonCategory) ? "background_loss_confirmed" : "none");
@@ -640,6 +644,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                     status = mappedPluginStatus;
                                     postSessionState(mappedSessionState, "native_collect_" + reasonCategory);
                                     JSObject payload = result(mappedPluginStatus, normalizedCode, buildErrorMessage(e));
+                                    enrichOutcomePayload(payload, "native_collect_result", e.getErrorCode(), "customer_cancelled".equals(reasonCategory));
                                     payload.put("reasonCategory", reasonCategory);
                                     payload.put("mappedSessionState", mappedSessionState);
                                     payload.put("interruptionReasonCode", "lifecycle_interrupted".equals(reasonCategory) ? "background_loss_confirmed" : "none");
@@ -845,6 +850,9 @@ public class OrderfastTapToPayPlugin extends Plugin {
     protected void handleOnPause() {
         super.handleOnPause();
         lastPauseAtMs = System.currentTimeMillis();
+        if (inFlight && ("collecting".equals(status) || "processing".equals(status))) {
+            stripeTakeoverObserved = true;
+        }
         logLifecycleEvent("onPause");
     }
 
@@ -862,6 +870,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
         boolean changingConfigurations = getActivity() != null && getActivity().isChangingConfigurations();
         logLifecycleEvent("onStop");
         if (inFlight && ("collecting".equals(status) || "processing".equals(status))) {
+            stripeTakeoverObserved = true;
             lifecyclePausedDuringActiveFlow = true;
             if (appInBackground && !changingConfigurations) {
                 backgroundInterruptionCandidate = true;
@@ -920,13 +929,26 @@ public class OrderfastTapToPayPlugin extends Plugin {
     private JSObject result(String status, String code, String message) {
         JSObject obj = new JSObject();
         obj.put("status", status);
+        obj.put("terminalStatus", status);
         if (code != null) {
             obj.put("code", code);
         }
         if (message != null) {
             obj.put("message", message);
         }
+        obj.put("stripeTakeoverActive", stripeTakeoverObserved);
+        obj.put("appBackgrounded", isAppInBackground());
+        obj.put("definitiveCustomerCancelSignal", false);
         return obj;
+    }
+
+    private void enrichOutcomePayload(JSObject payload, String nativeStage, TerminalErrorCode terminalCode, boolean definitiveCustomerCancelSignal) {
+        payload.put("nativeStage", nativeStage);
+        payload.put("terminalCode", terminalCode == null ? "UNKNOWN" : terminalCode.name());
+        payload.put("terminalStatus", payload.getString("status"));
+        payload.put("stripeTakeoverActive", stripeTakeoverObserved);
+        payload.put("appBackgrounded", isAppInBackground());
+        payload.put("definitiveCustomerCancelSignal", definitiveCustomerCancelSignal);
     }
 
     private void ensureTerminalInitialized() throws TerminalException {
