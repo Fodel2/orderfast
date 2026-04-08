@@ -80,21 +80,26 @@ export const runTapToPaySetupBootstrap = async (options?: {
   const promptIfNeeded = options?.promptIfNeeded ?? true;
 
   const supportCheck = await tapToPayBridge.isTapToPaySupported();
-  const permissionStateBeforeRequest = normalizePermissionState(supportCheck.permissionState);
+  const permissionBefore = await tapToPayBridge.getLocationPermissionState();
+  const permissionStateBeforeRequest = normalizePermissionState(permissionBefore.permissionState ?? supportCheck.permissionState);
 
-  const shouldRequestPermission =
-    promptIfNeeded &&
-    supportCheck.supported !== false &&
-    permissionStateBeforeRequest !== 'granted';
+  let permissionState = permissionStateBeforeRequest;
+  const shouldRequestPermission = promptIfNeeded && permissionStateBeforeRequest !== 'granted';
+  let requestNativeStage: string | null = null;
 
-  const setup = await tapToPayBridge.ensureTapToPaySetup({ promptIfNeeded: shouldRequestPermission });
+  if (shouldRequestPermission) {
+    const permissionRequest = await tapToPayBridge.requestLocationPermission();
+    permissionState = normalizePermissionState(permissionRequest.permissionState) ?? permissionState;
+    requestNativeStage = permissionRequest.nativeStage || null;
+  }
 
-  const permissionState = normalizePermissionState(setup.permissionState ?? supportCheck.permissionState);
-  const locationServicesEnabled =
-    setup.locationServicesEnabled ?? supportCheck.locationServicesEnabled ?? null;
-  const supported = setup.supported === true;
-  const ready = setup.ready === true;
-  const fallbackReason = setup.reason || supportCheck.reason || 'Tap to Pay setup is incomplete on this device.';
+  const locationCheck = await tapToPayBridge.getLocationServicesStatus();
+  const readiness = await tapToPayBridge.checkTapToPayReadiness();
+
+  const locationServicesEnabled = readiness.locationServicesEnabled ?? locationCheck.enabled ?? supportCheck.locationServicesEnabled ?? null;
+  const supported = readiness.supported === true;
+  const ready = readiness.ready === true;
+  const fallbackReason = readiness.reason || supportCheck.reason || 'Tap to Pay setup is incomplete on this device.';
   const state = deriveState({
     ready,
     supported,
@@ -114,7 +119,7 @@ export const runTapToPaySetupBootstrap = async (options?: {
     permissionState,
     permissionStateBeforeRequest,
     locationServicesEnabled,
-    nativeStage: setup.nativeStage || supportCheck.nativeStage || null,
+    nativeStage: readiness.nativeStage || requestNativeStage || locationCheck.nativeStage || supportCheck.nativeStage || null,
     permissionRequestAttempted: shouldRequestPermission,
   };
 };

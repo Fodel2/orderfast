@@ -33,6 +33,17 @@ export type TapToPayResult = {
 };
 
 export interface TapToPayPlugin {
+  getLocationPermissionState(): Promise<{ permissionState: string; nativeStage?: string }>;
+  requestLocationPermission(): Promise<{ permissionState: string; granted: boolean; nativeStage?: string; reason?: string }>;
+  getLocationServicesStatus(): Promise<{ enabled: boolean; nativeStage?: string }>;
+  checkTapToPayReadiness(): Promise<{
+    ready: boolean;
+    supported: boolean;
+    reason?: string;
+    permissionState?: string;
+    locationServicesEnabled?: boolean;
+    nativeStage?: string;
+  }>;
   isTapToPaySupported(): Promise<{
     supported: boolean;
     reason?: string;
@@ -100,6 +111,50 @@ const webUnavailable = async (): Promise<TapToPayResult> => ({
 });
 
 export const tapToPayBridge: TapToPayPlugin = {
+  async getLocationPermissionState() {
+    try {
+      return await TapToPayNative.getLocationPermissionState();
+    } catch (error) {
+      return {
+        permissionState: 'unknown',
+        nativeStage: `bridge:getLocationPermissionState:${readErrorMessage(error)}`,
+      };
+    }
+  },
+  async requestLocationPermission() {
+    try {
+      return await TapToPayNative.requestLocationPermission();
+    } catch (error) {
+      return {
+        permissionState: 'unknown',
+        granted: false,
+        reason: `Tap to Pay native bridge unavailable: ${readErrorMessage(error)}`,
+        nativeStage: 'bridge',
+      };
+    }
+  },
+  async getLocationServicesStatus() {
+    try {
+      return await TapToPayNative.getLocationServicesStatus();
+    } catch (error) {
+      return {
+        enabled: false,
+        nativeStage: `bridge:getLocationServicesStatus:${readErrorMessage(error)}`,
+      };
+    }
+  },
+  async checkTapToPayReadiness() {
+    try {
+      return await TapToPayNative.checkTapToPayReadiness();
+    } catch (error) {
+      return {
+        ready: false,
+        supported: false,
+        reason: `Tap to Pay native bridge unavailable: ${readErrorMessage(error)}`,
+        nativeStage: 'bridge',
+      };
+    }
+  },
   async isTapToPaySupported() {
     try {
       return await TapToPayNative.isTapToPaySupported();
