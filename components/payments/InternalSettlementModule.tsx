@@ -4,7 +4,7 @@ import { formatPrice } from '@/lib/orderDisplay';
 import { resolveNativeTapToPayReadiness } from '@/lib/kiosk/tapToPayNativeReadiness';
 
 type SettlementMode = 'order_payment' | 'quick_charge';
-type CollectionState = 'idle' | 'preparing' | 'collecting' | 'processing' | 'succeeded' | 'failed' | 'canceled' | 'unavailable';
+type CollectionState = 'idle' | 'bootstrapping' | 'permission_required_requestable' | 'permission_denied' | 'location_services_disabled' | 'unsupported_device' | 'ready' | 'preparing' | 'collecting' | 'processing' | 'completed' | 'failed';
 type CollectionFailureCategory =
   | 'customer_cancelled'
   | 'app_cancelled'
@@ -128,6 +128,30 @@ export default function InternalSettlementModule({
     };
   }, []);
 
+  const applyBootstrapState = useCallback((readiness: Awaited<ReturnType<typeof resolveNativeTapToPayReadiness>>) => {
+    if (!readiness.supported) {
+      setState('unsupported_device');
+      return;
+    }
+    if (readiness.state === 'permission_not_requested') {
+      setState('permission_required_requestable');
+      return;
+    }
+    if (readiness.state === 'permission_denied') {
+      setState('permission_denied');
+      return;
+    }
+    if (readiness.state === 'location_services_disabled') {
+      setState('location_services_disabled');
+      return;
+    }
+    if (readiness.ready) {
+      setState('ready');
+      return;
+    }
+    setState('failed');
+  }, []);
+
   const refreshNativeReadiness = useCallback(
     async (promptIfNeeded: boolean) => {
       console.info('[internal-settlement][tap-to-pay-bootstrap]', {
@@ -137,6 +161,7 @@ export default function InternalSettlementModule({
       if (!nativeRestaurantId) {
         setNativeReadinessReady(false);
         setNativeReadinessReason('Restaurant context is missing. Return to launcher and open Take Payment again.');
+        setState('failed');
         return null;
       }
 
@@ -171,6 +196,7 @@ export default function InternalSettlementModule({
         if (!readiness.supported || !readiness.ready) {
           setNativeReadinessReady(false);
           setNativeReadinessReason(readiness.reason);
+          applyBootstrapState(readiness);
           console.info('[internal-settlement][tap-to-pay-bootstrap]', {
             event: 'final_readiness_state_used_by_payment_page',
             ready: false,
@@ -181,6 +207,7 @@ export default function InternalSettlementModule({
         }
         setNativeReadinessReady(true);
         setNativeReadinessReason('');
+        setState('ready');
         console.info('[internal-settlement][tap-to-pay-bootstrap]', {
           event: 'final_readiness_state_used_by_payment_page',
           ready: true,
@@ -192,12 +219,13 @@ export default function InternalSettlementModule({
         const reason = error?.message || 'Tap to Pay setup check failed.';
         setNativeReadinessReady(false);
         setNativeReadinessReason(reason);
+        setState('failed');
         return null;
       } finally {
         setNativeReadinessLoading(false);
       }
     },
-    [nativeRestaurantId]
+    [applyBootstrapState, nativeRestaurantId]
   );
 
   useEffect(() => {
@@ -240,6 +268,10 @@ export default function InternalSettlementModule({
     },
     [activeSessionId, activeTerminalLocationId, busy, mode, state]
   );
+
+  useEffect(() => {
+    logCollectionEvent('final_ui_state_chosen', { state, message });
+  }, [logCollectionEvent, message, state]);
 
   const classifyNativeFailure = useCallback((nativeResult: Awaited<ReturnType<typeof tapToPayBridge.startTapToPayPayment>>) => {
     const reasonCategoryRaw =
@@ -288,7 +320,7 @@ export default function InternalSettlementModule({
   const handleCollectContactless = useCallback(async () => {
     if (busy) return;
     if (!tapAvailabilityReady) {
-      setState('unavailable');
+      setState('failed');
       setMessage(tapAvailabilityReason || 'Tap to Pay is not available for this restaurant.');
       return;
     }
@@ -310,7 +342,7 @@ export default function InternalSettlementModule({
 
     setBusy(true);
     flowActiveRef.current = true;
-    setState('preparing');
+    setState('bootstrapping');
     setMessage('Checking Tap to Pay readiness…');
     logCollectionEvent('payment_page_opened');
 
@@ -319,14 +351,14 @@ export default function InternalSettlementModule({
       const readinessRes = await fetch('/api/dashboard/internal-settlement/tap-to-pay-availability');
       const readinessPayload = await readinessRes.json().catch(() => ({}));
       if (!readinessRes.ok || !readinessPayload?.tap_to_pay_available) {
-        setState('unavailable');
+        setState('failed');
         setMessage(readinessPayload?.reason || 'Tap to Pay is not available for this restaurant.');
         return;
       }
 
       const nativeReadiness = await refreshNativeReadiness(true);
       if (!nativeReadiness || !nativeReadiness.supported || !nativeReadiness.ready) {
-        setState('unavailable');
+        setState('failed');
         setMessage(nativeReadiness?.reason || 'Tap to Pay setup is incomplete on this device.');
         return;
       }
@@ -371,7 +403,7 @@ export default function InternalSettlementModule({
 
       const setup = await resolveNativeTapToPayReadiness({ promptIfNeeded: true });
       if (!setup.supported || !setup.ready) {
-        setState('unavailable');
+        setState('failed');
         setMessage(setup.reason || 'Tap to Pay setup is incomplete on this device.');
         await fetch('/api/dashboard/internal-settlement/cancel', {
           method: 'POST',
@@ -381,6 +413,7 @@ export default function InternalSettlementModule({
         return;
       }
 
+      setState('preparing');
       setMessage('Preparing Tap to Pay reader…');
       logCollectionEvent('native_prepare_started', { sessionId });
       const backendBaseUrl = window.location.origin;
@@ -392,7 +425,7 @@ export default function InternalSettlementModule({
       });
       if (prepared.status === 'failed' || prepared.status === 'unavailable') {
         logCollectionEvent('native_prepare_failed', { sessionId, result: prepared });
-        setState(isUnsupportedDeviceError(prepared.code) ? 'unavailable' : 'failed');
+        setState(isUnsupportedDeviceError(prepared.code) ? 'unsupported_device' : 'failed');
         setMessage(prepared.message || 'Tap to Pay reader setup failed. Retry to reconnect the reader.');
         await fetch('/api/dashboard/internal-settlement/cancel', {
           method: 'POST',
@@ -408,7 +441,7 @@ export default function InternalSettlementModule({
       const readinessRecheckRes = await fetch('/api/dashboard/internal-settlement/tap-to-pay-availability');
       const readinessRecheckPayload = await readinessRecheckRes.json().catch(() => ({}));
       if (!readinessRecheckRes.ok || !readinessRecheckPayload?.tap_to_pay_available) {
-        setState('unavailable');
+        setState('failed');
         setMessage(readinessRecheckPayload?.reason || 'Tap to Pay availability changed. Retry to start a new payment session.');
         await fetch('/api/dashboard/internal-settlement/cancel', {
           method: 'POST',
@@ -448,6 +481,7 @@ export default function InternalSettlementModule({
           }
         }
       }
+      logCollectionEvent('native_process_result', { sessionId, status: nativeResult.status, code: nativeResult.code || null });
 
       if (nativeResult.status !== 'succeeded') {
         const category = classifyNativeFailure(nativeResult);
@@ -468,7 +502,7 @@ export default function InternalSettlementModule({
         });
 
         if (reconcileRes.ok && reconciledState === 'finalized') {
-          setState('succeeded');
+          setState('completed');
           setMessage(mode === 'order_payment' ? 'Order payment collected successfully.' : 'Quick charge collected successfully.');
           setActiveSessionId(null);
           setActiveTerminalLocationId(null);
@@ -482,9 +516,9 @@ export default function InternalSettlementModule({
             : category;
 
         if (resolvedCategory === 'customer_cancelled' || resolvedCategory === 'app_cancelled' || resolvedCategory === 'server_cancelled') {
-          setState('canceled');
+          setState('failed');
         } else {
-          setState(isUnsupportedDeviceError(nativeResult.code) ? 'unavailable' : 'failed');
+          setState(isUnsupportedDeviceError(nativeResult.code) ? 'unsupported_device' : 'failed');
         }
         setMessage(failureMessageForCategory(resolvedCategory, nativeResult.message));
 
@@ -500,6 +534,7 @@ export default function InternalSettlementModule({
 
       setState('processing');
       setMessage('Finalizing settlement…');
+      logCollectionEvent('finalize_started', { sessionId });
 
       const finalizeRes = await fetch('/api/dashboard/internal-settlement/finalize', {
         method: 'POST',
@@ -509,8 +544,9 @@ export default function InternalSettlementModule({
       const finalizePayload = await finalizeRes.json().catch(() => ({}));
       if (!finalizeRes.ok) throw new Error(finalizePayload?.message || `Failed to finalize settlement (${finalizeRes.status})`);
       logCollectionEvent('server_finalize_called', { sessionId, ok: finalizeRes.ok });
+      logCollectionEvent('finalize_result', { sessionId, ok: finalizeRes.ok });
 
-      setState('succeeded');
+      setState('completed');
       setMessage(mode === 'order_payment' ? 'Order payment collected successfully.' : 'Quick charge collected successfully.');
       setActiveSessionId(null);
       setActiveTerminalLocationId(null);
@@ -567,7 +603,7 @@ export default function InternalSettlementModule({
         body: JSON.stringify({ session_id: activeSessionId }),
       });
       logCollectionEvent('app_cancel_requested', { sessionId: activeSessionId });
-      setState('canceled');
+      setState('failed');
       setMessage('Payment canceled.');
       setActiveSessionId(null);
       setActiveTerminalLocationId(null);
@@ -691,11 +727,11 @@ export default function InternalSettlementModule({
 
           <div
             className={`rounded-2xl border px-4 py-3 text-sm ${
-              state === 'succeeded'
+              state === 'completed'
                 ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                : state === 'failed' || state === 'canceled'
+                : state === 'failed' || state === 'permission_denied'
                   ? 'border-rose-200 bg-rose-50 text-rose-700'
-                  : state === 'unavailable'
+                  : state === 'unsupported_device' || state === 'location_services_disabled' || state === 'permission_required_requestable'
                     ? 'border-amber-200 bg-amber-50 text-amber-700'
                     : 'border-slate-200 bg-slate-50 text-slate-700'
             }`}
@@ -722,7 +758,7 @@ export default function InternalSettlementModule({
               onClick={handleCollectContactless}
               className="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
-              {busy ? 'Collecting…' : nativeReadinessReady ? 'Collect contactless' : 'Enable Tap to Pay & collect'}
+              {busy ? 'Collecting…' : state === 'permission_required_requestable' ? 'Enable Tap to Pay & collect' : 'Collect contactless'}
             </button>
             <button
               type="button"

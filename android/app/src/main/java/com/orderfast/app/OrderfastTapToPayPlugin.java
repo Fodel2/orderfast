@@ -183,67 +183,65 @@ public class OrderfastTapToPayPlugin extends Plugin {
         logStartupStage("native_support_check_entered", new JSObject());
         JSObject result = new JSObject();
         boolean hasNfc = getContext().getPackageManager().hasSystemFeature(PackageManager.FEATURE_NFC);
-        boolean hasLocationPermission = ContextCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
-        boolean locationServicesEnabled = isLocationServicesEnabled();
-        PermissionState locationPermissionState = getPermissionState("location");
 
         if (!hasNfc) {
             result.put("supported", false);
             result.put("reason", "NFC is not available on this device.");
-        } else if (!hasLocationPermission) {
-            result.put("supported", false);
-            result.put("reason", "Location permission is required for Tap to Pay.");
-        } else if (!locationServicesEnabled) {
-            result.put("supported", false);
-            result.put("reason", "Location services must be enabled for Tap to Pay.");
         } else {
             result.put("supported", true);
-            result.put("reason", "Tap to Pay prerequisites satisfied.");
+            result.put("reason", "Tap to Pay hardware prerequisites satisfied.");
         }
-        result.put("permissionState", permissionStateToString(locationPermissionState));
+        result.put("permissionState", permissionStateToString(getPermissionState("location")));
         result.put("hasNfc", hasNfc);
-        result.put("locationServicesEnabled", locationServicesEnabled);
+        result.put("locationServicesEnabled", isLocationServicesEnabled());
         result.put("nativeStage", "native_support_check_result");
         logStartupStage("native_support_check_result", result);
         call.resolve(result);
     }
 
     @PluginMethod
+    public void getLocationPermissionState(PluginCall call) {
+        JSObject payload = new JSObject();
+        payload.put("permissionState", permissionStateToString(getPermissionState("location")));
+        payload.put("nativeStage", "native_permission_state_result");
+        logStartupStage("native_permission_state_result", payload);
+        call.resolve(payload);
+    }
+
+    @PluginMethod
+    public void requestLocationPermission(PluginCall call) {
+        pendingSetupPermissionCall = call;
+        logStartupStage("native_permission_request_started", detail("native_permission_request_started", "requesting", null));
+        requestPermissionForAlias("location", call, "setupPermissionCallback");
+    }
+
+    @PluginMethod
+    public void getLocationServicesStatus(PluginCall call) {
+        JSObject payload = new JSObject();
+        payload.put("enabled", isLocationServicesEnabled());
+        payload.put("nativeStage", "native_location_services_result");
+        logStartupStage("native_location_services_result", payload);
+        call.resolve(payload);
+    }
+
+    @PluginMethod
+    public void checkTapToPayReadiness(PluginCall call) {
+        JSObject payload = buildReadinessPayload();
+        payload.put("nativeStage", "native_readiness_result");
+        logStartupStage("native_readiness_result", payload);
+        call.resolve(payload);
+    }
+
+    @PluginMethod
     public void ensureTapToPaySetup(PluginCall call) {
         boolean promptIfNeeded = call.getBoolean("promptIfNeeded", false);
-        boolean hasNfc = getContext().getPackageManager().hasSystemFeature(PackageManager.FEATURE_NFC);
-        boolean hasLocationPermission = ContextCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
-        boolean locationServicesEnabled = isLocationServicesEnabled();
-        PermissionState permissionState = getPermissionState("location");
-
-        if (!hasNfc) {
-            JSObject payload = new JSObject();
-            payload.put("ready", false);
-            payload.put("supported", false);
-            payload.put("reason", "NFC is not available on this device.");
-            payload.put("permissionState", permissionStateToString(permissionState));
-            payload.put("locationServicesEnabled", locationServicesEnabled);
-            payload.put("nativeStage", "native_setup_result");
-            call.resolve(payload);
-            return;
-        }
-
+        boolean hasLocationPermission = getPermissionState("location") == PermissionState.GRANTED;
         if (!hasLocationPermission && promptIfNeeded) {
             pendingSetupPermissionCall = call;
             requestPermissionForAlias("location", call, "setupPermissionCallback");
             return;
         }
-
-        JSObject payload = new JSObject();
-        payload.put("ready", hasLocationPermission && locationServicesEnabled);
-        payload.put("supported", hasNfc);
-        payload.put("reason", !hasLocationPermission
-            ? "Location permission is required for Tap to Pay."
-            : (locationServicesEnabled
-                ? "Tap to Pay device prerequisites satisfied."
-                : "Location services must be enabled for Tap to Pay."));
-        payload.put("permissionState", permissionStateToString(permissionState));
-        payload.put("locationServicesEnabled", locationServicesEnabled);
+        JSObject payload = buildReadinessPayload();
         payload.put("nativeStage", "native_setup_result");
         call.resolve(payload);
     }
@@ -256,22 +254,33 @@ public class OrderfastTapToPayPlugin extends Plugin {
             return;
         }
 
-        boolean hasLocationPermission = ContextCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
-        boolean locationServicesEnabled = isLocationServicesEnabled();
+        JSObject payload = buildReadinessPayload();
+        payload.put("permissionState", permissionStateToString(getPermissionState("location")));
+        payload.put("granted", getPermissionState("location") == PermissionState.GRANTED);
+        payload.put("nativeStage", "native_permission_request_result");
+        logStartupStage("native_permission_request_result", payload);
+        call.resolve(payload);
+    }
+
+    private JSObject buildReadinessPayload() {
+        boolean hasNfc = getContext().getPackageManager().hasSystemFeature(PackageManager.FEATURE_NFC);
         PermissionState permissionState = getPermissionState("location");
+        boolean hasLocationPermission = permissionState == PermissionState.GRANTED;
+        boolean locationServicesEnabled = isLocationServicesEnabled();
 
         JSObject payload = new JSObject();
-        payload.put("ready", hasLocationPermission && locationServicesEnabled);
-        payload.put("supported", true);
-        payload.put("reason", !hasLocationPermission
-            ? "Location permission is required for Tap to Pay."
-            : (locationServicesEnabled
-                ? "Tap to Pay device prerequisites satisfied."
-                : "Location services must be enabled for Tap to Pay."));
+        payload.put("ready", hasNfc && hasLocationPermission && locationServicesEnabled);
+        payload.put("supported", hasNfc);
+        payload.put("reason", !hasNfc
+            ? "NFC is not available on this device."
+            : (!hasLocationPermission
+                ? "Location permission is required for Tap to Pay."
+                : (locationServicesEnabled
+                    ? "Tap to Pay device prerequisites satisfied."
+                    : "Location services must be enabled for Tap to Pay.")));
         payload.put("permissionState", permissionStateToString(permissionState));
         payload.put("locationServicesEnabled", locationServicesEnabled);
-        payload.put("nativeStage", "native_setup_result");
-        call.resolve(payload);
+        return payload;
     }
 
     @PluginMethod
