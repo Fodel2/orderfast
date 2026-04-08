@@ -623,11 +623,14 @@ public class OrderfastTapToPayPlugin extends Plugin {
 
                 JSONObject piResponse = postJson(
                     backendBaseUrl + "/api/kiosk/payments/card-present/payment-intent",
-                    "{\"session_id\":\"" + escapeJson(sessionId) + "\",\"restaurant_id\":\"" + escapeJson(restaurantId) + "\"}"
+                    "{\"session_id\":\"" + escapeJson(sessionId) + "\",\"restaurant_id\":\"" + escapeJson(restaurantId) + "\"" + flowRunJsonFragment() + "}"
                 );
                 final String clientSecret = piResponse.optString("clientSecret", "");
                 final String createdPaymentIntentId = piResponse.optString("paymentIntentId", "");
                 final String createdPaymentIntentStatus = piResponse.optString("status", "");
+                final boolean paymentIntentLiveMode = piResponse.optBoolean("livemode", false);
+                final String paymentIntentMethodTypes = piResponse.has("paymentMethodTypes") ? String.valueOf(piResponse.opt("paymentMethodTypes")) : null;
+                final boolean runtimeDebuggable = isDebugBuild();
                 JSObject paymentIntentCreatedPayload = new JSObject();
                 paymentIntentCreatedPayload.put("nativeStage", "native_payment_intent_created");
                 paymentIntentCreatedPayload.put("paymentIntentId", createdPaymentIntentId.isEmpty() ? null : createdPaymentIntentId);
@@ -643,6 +646,18 @@ public class OrderfastTapToPayPlugin extends Plugin {
                     public void onSuccess(PaymentIntent paymentIntent) {
                         final PaymentIntent retrievedIntent = paymentIntent;
                         activePaymentIntent = paymentIntent;
+                        JSObject quickChargeClientSecretConsumedPayload = new JSObject();
+                        quickChargeClientSecretConsumedPayload.put("sessionId", currentSessionId);
+                        quickChargeClientSecretConsumedPayload.put("flowRunId", currentFlowRunId);
+                        quickChargeClientSecretConsumedPayload.put("connectedAccountId", JSONObject.NULL);
+                        quickChargeClientSecretConsumedPayload.put("terminalLocationId", currentTerminalLocationId);
+                        quickChargeClientSecretConsumedPayload.put("mode", paymentIntentLiveMode ? "live" : "test");
+                        quickChargeClientSecretConsumedPayload.put("paymentIntentId", paymentIntent.getId());
+                        quickChargeClientSecretConsumedPayload.put("paymentIntentStatus", paymentIntent.getStatus() == null ? "unknown" : paymentIntent.getStatus().name());
+                        quickChargeClientSecretConsumedPayload.put("paymentMethodTypes", paymentIntentMethodTypes == null ? JSONObject.NULL : paymentIntentMethodTypes);
+                        quickChargeClientSecretConsumedPayload.put("runtimeDebuggable", runtimeDebuggable);
+                        quickChargeClientSecretConsumedPayload.put("runtimePotentiallyIneligible", runtimeDebuggable);
+                        logFlowEvent("quick_charge_native_client_secret_consumed", quickChargeClientSecretConsumedPayload);
                         JSObject collectStartPayload = new JSObject();
                         collectStartPayload.put("result", "started");
                         collectStartPayload.put("nativeStage", "native_collect_start");

@@ -24,7 +24,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       flowRunId,
     });
 
-    const paymentIntent = await createInternalSettlementPaymentIntent({ sessionId, restaurantId });
+    const paymentIntent = await createInternalSettlementPaymentIntent({ sessionId, restaurantId, flowRunId });
     console.info('[internal-settlement][api]', {
       route: 'payment-intent',
       stage: 'payment_intent.result',
