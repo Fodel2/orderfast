@@ -24,7 +24,6 @@ import {
 } from '@/utils/kiosk/debug';
 import { getExpressSession } from '@/utils/express/session';
 import { useCustomerAvailability } from '@/hooks/useCustomerAvailability';
-import { useTapToPayBootstrap } from '@/hooks/useTapToPayBootstrap';
 
 export const FULL_HEADER_HEIGHT = 136;
 export const COLLAPSED_HEADER_HEIGHT = 88;
@@ -213,10 +212,6 @@ export default function KioskLayout({
 
   const isExpressActive = isExpressRoute || hasExpressQueryFlag || isExpressSession;
 
-  useTapToPayBootstrap({
-    enabled: isNativeShell && !isExpressActive,
-    promptIfNeeded: true,
-  });
 
   useEffect(() => {
     if (typeof window === 'undefined') return;

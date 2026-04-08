@@ -2,9 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { tapToPayBridge } from '@/lib/kiosk/tapToPayBridge';
 import { formatPrice } from '@/lib/orderDisplay';
 import { resolveNativeTapToPayReadiness } from '@/lib/kiosk/tapToPayNativeReadiness';
+import { readLauncherBootstrapSnapshot, type AppFlowState } from '@/lib/app/launcherBootstrap';
 
 type SettlementMode = 'order_payment' | 'quick_charge';
-type CollectionState = 'idle' | 'bootstrapping' | 'permission_required_requestable' | 'permission_denied' | 'location_services_disabled' | 'unsupported_device' | 'ready' | 'preparing' | 'collecting' | 'processing' | 'completed' | 'failed';
+type CollectionState = AppFlowState | 'idle';
 type CollectionFailureCategory =
   | 'customer_cancelled'
   | 'app_cancelled'
@@ -134,7 +135,7 @@ export default function InternalSettlementModule({
       return;
     }
     if (readiness.state === 'permission_not_requested') {
-      setState('permission_required_requestable');
+      setState('setup_failed');
       return;
     }
     if (readiness.state === 'permission_denied') {
@@ -229,8 +230,10 @@ export default function InternalSettlementModule({
   );
 
   useEffect(() => {
+    const launcherSnapshot = readLauncherBootstrapSnapshot();
     console.info('[internal-settlement][tap-to-pay-bootstrap]', {
-      event: 'payment_page_mounted',
+      event: 'payment_entry_mounted_and_readiness_state_read',
+      launcherSnapshot,
     });
     void refreshNativeReadiness(false);
   }, [refreshNativeReadiness]);
@@ -304,7 +307,7 @@ export default function InternalSettlementModule({
 
     const onVisibility = () => {
       if (!flowActiveRef.current) return;
-      logCollectionEvent('lifecycle_visibility_changed', { visibility: document.visibilityState });
+      logCollectionEvent('exact_interruption_source_details', { visibility: document.visibilityState, source: 'document_visibility_or_window_focus_change' });
     };
 
     window.addEventListener('focus', onVisibility);
@@ -356,13 +359,14 @@ export default function InternalSettlementModule({
         return;
       }
 
-      const nativeReadiness = await refreshNativeReadiness(true);
+      const nativeReadiness = await refreshNativeReadiness(false);
       if (!nativeReadiness || !nativeReadiness.supported || !nativeReadiness.ready) {
         setState('failed');
         setMessage(nativeReadiness?.reason || 'Tap to Pay setup is incomplete on this device.');
         return;
       }
 
+      logCollectionEvent('session_create_start');
       const createRes = await fetch('/api/dashboard/internal-settlement/create-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -378,7 +382,7 @@ export default function InternalSettlementModule({
       });
       const createPayload = await createRes.json().catch(() => ({}));
       if (!createRes.ok) throw new Error(createPayload?.message || `Failed to create payment session (${createRes.status})`);
-      logCollectionEvent('session_created', { sessionId: createPayload?.session?.id || null });
+      logCollectionEvent('session_create_result', { ok: createRes.ok, sessionId: createPayload?.session?.id || null });
 
       const sessionId = createPayload?.session?.id ? String(createPayload.session.id) : '';
       const terminalLocationId = createPayload?.session?.stripe_terminal_location_id
@@ -390,6 +394,7 @@ export default function InternalSettlementModule({
       setActiveSessionId(sessionId);
       setActiveTerminalLocationId(terminalLocationId);
 
+      logCollectionEvent('prepare_start', { stage: 'create_payment_intent' });
       const intentRes = await fetch('/api/dashboard/internal-settlement/payment-intent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -399,23 +404,11 @@ export default function InternalSettlementModule({
       if (!intentRes.ok) {
         throw new Error(intentPayload?.message || `Failed to prepare payment intent (${intentRes.status})`);
       }
-      logCollectionEvent('payment_intent_created', { sessionId, paymentIntentId: intentPayload?.paymentIntentId || null });
-
-      const setup = await resolveNativeTapToPayReadiness({ promptIfNeeded: true });
-      if (!setup.supported || !setup.ready) {
-        setState('failed');
-        setMessage(setup.reason || 'Tap to Pay setup is incomplete on this device.');
-        await fetch('/api/dashboard/internal-settlement/cancel', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ session_id: sessionId }),
-        });
-        return;
-      }
+      logCollectionEvent('prepare_result', { stage: 'create_payment_intent', ok: intentRes.ok, sessionId, paymentIntentId: intentPayload?.paymentIntentId || null });
 
       setState('preparing');
       setMessage('Preparing Tap to Pay reader…');
-      logCollectionEvent('native_prepare_started', { sessionId });
+      logCollectionEvent('prepare_start', { stage: 'native_prepare', sessionId });
       const backendBaseUrl = window.location.origin;
       const prepared = await tapToPayBridge.prepareTapToPay({
         restaurantId: nativeRestaurantId,
@@ -424,7 +417,7 @@ export default function InternalSettlementModule({
         terminalLocationId,
       });
       if (prepared.status === 'failed' || prepared.status === 'unavailable') {
-        logCollectionEvent('native_prepare_failed', { sessionId, result: prepared });
+        logCollectionEvent('prepare_result', { stage: 'native_prepare', ok: false, sessionId, result: prepared });
         setState(isUnsupportedDeviceError(prepared.code) ? 'unsupported_device' : 'failed');
         setMessage(prepared.message || 'Tap to Pay reader setup failed. Retry to reconnect the reader.');
         await fetch('/api/dashboard/internal-settlement/cancel', {
@@ -436,7 +429,7 @@ export default function InternalSettlementModule({
         setActiveTerminalLocationId(null);
         return;
       }
-      logCollectionEvent('native_prepare_succeeded', { sessionId, result: prepared });
+      logCollectionEvent('prepare_result', { stage: 'native_prepare', ok: true, sessionId, result: prepared });
 
       const readinessRecheckRes = await fetch('/api/dashboard/internal-settlement/tap-to-pay-availability');
       const readinessRecheckPayload = await readinessRecheckRes.json().catch(() => ({}));
@@ -455,7 +448,7 @@ export default function InternalSettlementModule({
 
       setState('collecting');
       setMessage('Present card/phone to collect payment…');
-      logCollectionEvent('native_collect_started', { sessionId });
+      logCollectionEvent('collect_start', { sessionId });
 
       let nativeResult = await tapToPayBridge.startTapToPayPayment({
         restaurantId: nativeRestaurantId,
@@ -463,10 +456,10 @@ export default function InternalSettlementModule({
         backendBaseUrl,
         terminalLocationId,
       });
-      logCollectionEvent('native_collect_callback_returned', { sessionId, result: nativeResult });
+      logCollectionEvent('collect_result', { sessionId, result: nativeResult });
 
       if (nativeResult.status === 'processing') {
-        logCollectionEvent('native_process_started', { sessionId });
+        logCollectionEvent('process_start', { sessionId });
         const pollDeadline = Date.now() + 120000;
         while (Date.now() < pollDeadline) {
           await new Promise<void>((resolve) => {
@@ -476,12 +469,12 @@ export default function InternalSettlementModule({
           if (polled.sessionId && polled.sessionId !== sessionId) continue;
           if (polled.status === 'succeeded' || polled.status === 'failed' || polled.status === 'canceled') {
             nativeResult = polled;
-            logCollectionEvent('native_process_callback_returned', { sessionId, result: polled });
+            logCollectionEvent('process_result', { sessionId, result: polled });
             break;
           }
         }
       }
-      logCollectionEvent('native_process_result', { sessionId, status: nativeResult.status, code: nativeResult.code || null });
+      logCollectionEvent('process_result', { sessionId, status: nativeResult.status, code: nativeResult.code || null });
 
       if (nativeResult.status !== 'succeeded') {
         const category = classifyNativeFailure(nativeResult);
@@ -515,7 +508,9 @@ export default function InternalSettlementModule({
             ? 'server_cancelled'
             : category;
 
-        if (resolvedCategory === 'customer_cancelled' || resolvedCategory === 'app_cancelled' || resolvedCategory === 'server_cancelled') {
+        if (resolvedCategory === 'lifecycle_cancelled') {
+          setState('interrupted');
+        } else if (resolvedCategory === 'customer_cancelled' || resolvedCategory === 'app_cancelled' || resolvedCategory === 'server_cancelled') {
           setState('failed');
         } else {
           setState(isUnsupportedDeviceError(nativeResult.code) ? 'unsupported_device' : 'failed');
@@ -534,7 +529,8 @@ export default function InternalSettlementModule({
 
       setState('processing');
       setMessage('Finalizing settlement…');
-      logCollectionEvent('finalize_started', { sessionId });
+      setState('finalizing');
+      logCollectionEvent('finalize_start', { sessionId });
 
       const finalizeRes = await fetch('/api/dashboard/internal-settlement/finalize', {
         method: 'POST',
@@ -731,7 +727,7 @@ export default function InternalSettlementModule({
                 ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                 : state === 'failed' || state === 'permission_denied'
                   ? 'border-rose-200 bg-rose-50 text-rose-700'
-                  : state === 'unsupported_device' || state === 'location_services_disabled' || state === 'permission_required_requestable'
+                  : state === 'unsupported_device' || state === 'location_services_disabled' || state === 'setup_failed' || state === 'interrupted'
                     ? 'border-amber-200 bg-amber-50 text-amber-700'
                     : 'border-slate-200 bg-slate-50 text-slate-700'
             }`}
@@ -758,7 +754,7 @@ export default function InternalSettlementModule({
               onClick={handleCollectContactless}
               className="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
-              {busy ? 'Collecting…' : state === 'permission_required_requestable' ? 'Enable Tap to Pay & collect' : 'Collect contactless'}
+              {busy ? 'Collecting…' : state === 'setup_failed' ? 'Resolve setup & collect' : 'Collect contactless'}
             </button>
             <button
               type="button"
