@@ -592,6 +592,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                                 JSObject payload = result(treatAsCanceled ? "canceled" : "failed", normalizedCode, buildErrorMessage(e));
                                                 payload.put("reasonCategory", reasonCategory);
                                                 payload.put("detail", terminalErrorDetail(e, "native_process_result"));
+                                                payload.put("interruptionSource", lifecyclePausedDuringActiveFlow ? "app_or_device_backgrounded" : "none_detected");
                                                 logStartupStage("native_process_result", payload);
                                                 clearActivePaymentState();
                                                 resetStatusForNextAttempt();
@@ -611,6 +612,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                     JSObject payload = result(treatAsCanceled ? "canceled" : "failed", normalizedCode, buildErrorMessage(e));
                                     payload.put("reasonCategory", reasonCategory);
                                     payload.put("detail", terminalErrorDetail(e, "native_collect_result"));
+                                    payload.put("interruptionSource", lifecyclePausedDuringActiveFlow ? "app_or_device_backgrounded" : "none_detected");
                                     logStartupStage("native_collect_result", payload);
                                     clearActivePaymentState();
                                     resetStatusForNextAttempt();
@@ -803,7 +805,20 @@ public class OrderfastTapToPayPlugin extends Plugin {
     @Override
     protected void handleOnPause() {
         super.handleOnPause();
-        logStartupStage("native_lifecycle", detail("native_lifecycle", "pause", inFlight ? status : "idle"));
+        JSObject payload = detail("native_lifecycle", "pause", inFlight ? status : "idle");
+        payload.put("inFlight", inFlight);
+        payload.put("status", status);
+        payload.put("activityHasWindowFocus", getActivity() != null && getActivity().hasWindowFocus());
+        logStartupStage("native_lifecycle", payload);
+    }
+
+    @Override
+    protected void handleOnStop() {
+        super.handleOnStop();
+        JSObject payload = detail("native_lifecycle", "stop", inFlight ? status : "idle");
+        payload.put("inFlight", inFlight);
+        payload.put("status", status);
+        logStartupStage("native_lifecycle", payload);
         if (inFlight && ("collecting".equals(status) || "processing".equals(status))) {
             lifecyclePausedDuringActiveFlow = true;
             postSessionState("needs_reconciliation", "native_backgrounded");

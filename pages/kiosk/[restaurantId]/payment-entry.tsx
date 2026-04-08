@@ -748,7 +748,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         return;
       }
 
-      const support = await resolveNativeTapToPayReadiness({ promptIfNeeded: true });
+      const support = await resolveNativeTapToPayReadiness({ promptIfNeeded: false });
       logTapStageResult('native_support_check_result', support.supported && support.ready ? 'ok' : 'failed', support);
       if (!support.supported || !support.ready) {
         failAt(

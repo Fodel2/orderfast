@@ -1,6 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '@/lib/supabaseClient';
+import {
+  readLauncherBootstrapSnapshot,
+  runLauncherBootstrap,
+  type LauncherBootstrapSnapshot,
+} from '@/lib/app/launcherBootstrap';
 
 type RestaurantOption = {
   id: string;
@@ -62,6 +67,8 @@ export default function DashboardLauncherPage() {
   const [restaurants, setRestaurants] = useState<RestaurantOption[]>([]);
   const [selectedRestaurantId, setSelectedRestaurantId] = useState<string | null>(null);
   const [launchingMode, setLaunchingMode] = useState<AppMode['key'] | null>(null);
+  const [bootstrapSnapshot, setBootstrapSnapshot] = useState<LauncherBootstrapSnapshot | null>(null);
+  const [bootstrapRunning, setBootstrapRunning] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -149,6 +156,31 @@ export default function DashboardLauncherPage() {
     }
   }, [restaurants, selectedRestaurantId]);
 
+  const runBootstrap = useCallback(
+    async (promptIfNeeded: boolean) => {
+      if (!selectedRestaurant) return null;
+      setBootstrapRunning(true);
+      const snapshot = await runLauncherBootstrap({
+        restaurantId: selectedRestaurant.id,
+        promptIfNeeded,
+      });
+      setBootstrapSnapshot(snapshot);
+      setBootstrapRunning(false);
+      return snapshot;
+    },
+    [selectedRestaurant]
+  );
+
+  useEffect(() => {
+    const existing = readLauncherBootstrapSnapshot();
+    if (selectedRestaurant && existing?.restaurantId === selectedRestaurant.id) {
+      setBootstrapSnapshot(existing);
+      if (existing.state === 'ready') return;
+    }
+    if (!selectedRestaurant) return;
+    void runBootstrap(true);
+  }, [runBootstrap, selectedRestaurant]);
+
   useEffect(() => {
     if (!selectedRestaurant) return;
 
@@ -160,9 +192,13 @@ export default function DashboardLauncherPage() {
 
   const handleLaunch = async (mode: AppMode['key']) => {
     if (!selectedRestaurant) return;
-    const href = getModeHref(mode, selectedRestaurant.id);
+    if (bootstrapRunning) return;
+
     setLaunchingMode(mode);
     try {
+      const latestSnapshot = await runBootstrap(true);
+      if (!latestSnapshot) return;
+      const href = getModeHref(mode, selectedRestaurant.id);
       await router.push(href);
     } finally {
       setLaunchingMode(null);
@@ -190,6 +226,7 @@ export default function DashboardLauncherPage() {
 
         {isLoading ? <p style={{ color: '#334155' }}>Loading your access…</p> : null}
         {!isLoading && error ? <p style={{ color: '#b91c1c' }}>{error}</p> : null}
+        {!isLoading && !error && bootstrapRunning ? <p style={{ color: '#334155' }}>Running launcher bootstrap…</p> : null}
 
         {!isLoading && !error && !selectedRestaurant && restaurants.length > 1 ? (
           <section
@@ -256,10 +293,26 @@ export default function DashboardLauncherPage() {
               ) : null}
             </section>
 
+            {bootstrapSnapshot && bootstrapSnapshot.state !== 'ready' ? (
+              <section
+                style={{
+                  background: '#fffbeb',
+                  border: '1px solid #fde68a',
+                  borderRadius: '12px',
+                  padding: '0.85rem',
+                }}
+              >
+                <p style={{ margin: 0, fontWeight: 700, color: '#92400e', fontSize: '0.9rem' }}>
+                  Setup required: {bootstrapSnapshot.state.replace(/_/g, ' ')}
+                </p>
+                <p style={{ margin: '0.35rem 0 0', color: '#92400e', fontSize: '0.82rem' }}>{bootstrapSnapshot.reason}</p>
+              </section>
+            ) : null}
+
             <button
               type="button"
               onClick={() => handleLaunch('kiosk')}
-              disabled={launchingMode !== null}
+              disabled={launchingMode !== null || bootstrapRunning}
               style={{
                 textAlign: 'left',
                 background: 'linear-gradient(135deg, #0f172a, #1e293b)',
@@ -293,7 +346,7 @@ export default function DashboardLauncherPage() {
                   onClick={() => {
                     handleLaunch(mode.key).catch(() => undefined);
                   }}
-                  disabled={launchingMode !== null}
+                  disabled={launchingMode !== null || bootstrapRunning}
                   style={{
                     textAlign: 'left',
                     background: '#fff',
