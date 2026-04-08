@@ -30,6 +30,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       stripeTakeoverActive: nativeResultRaw?.stripe_takeover_active === true,
       appBackgrounded: nativeResultRaw?.app_backgrounded === true,
       definitiveCustomerCancelSignal: nativeResultRaw?.definitive_customer_cancel_signal === true,
+      paymentIntentId: nativeResultRaw?.payment_intent_id ? String(nativeResultRaw.payment_intent_id) : null,
+      paymentIntentStatus: nativeResultRaw?.payment_intent_status ? String(nativeResultRaw.payment_intent_status) : null,
+      paymentIntentSource: nativeResultRaw?.payment_intent_source ? String(nativeResultRaw.payment_intent_source) : null,
     };
     if (!sessionId) return res.status(400).json({ message: 'session_id is required' });
     console.info('[internal-settlement][api]', {
