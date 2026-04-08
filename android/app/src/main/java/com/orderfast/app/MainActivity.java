@@ -8,18 +8,38 @@ import android.view.WindowManager;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.webkit.WebBackForwardList;
+import android.content.res.Configuration;
+import android.util.Log;
 
 import com.getcapacitor.BridgeActivity;
 import android.webkit.WebView;
 
 public class MainActivity extends BridgeActivity {
+    private static final String TAG = "OrderfastMainActivity";
+    private static int activityInstanceCounter = 0;
     private final Handler immersiveHandler = new Handler(Looper.getMainLooper());
     private final Runnable immersiveRunnable = this::applyImmersiveMode;
+    private int activityInstanceId = 0;
+
+    private void logLifecycle(String event, Bundle savedInstanceState) {
+        Log.i(
+            TAG,
+            "[kiosk][activity_lifecycle] event=" + event
+                + " instanceId=" + activityInstanceId
+                + " instanceHash=" + System.identityHashCode(this)
+                + " hasBridge=" + (bridge != null)
+                + " hasSavedState=" + (savedInstanceState != null)
+                + " isChangingConfigurations=" + isChangingConfigurations()
+                + " tsMs=" + System.currentTimeMillis()
+        );
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        activityInstanceId = ++activityInstanceCounter;
         registerPlugin(OrderfastTapToPayPlugin.class);
         super.onCreate(savedInstanceState);
+        logLifecycle("onCreate", savedInstanceState);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         applyImmersiveMode();
         configureWebViewPresentation();
@@ -47,7 +67,39 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onResume() {
         super.onResume();
+        logLifecycle("onResume", null);
         immersiveHandler.postDelayed(immersiveRunnable, 120);
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        logLifecycle("onStart", null);
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        logLifecycle("onStop", null);
+    }
+
+    @Override
+    protected void onDestroy() {
+        logLifecycle("onDestroy", null);
+        super.onDestroy();
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        Log.i(
+            TAG,
+            "[kiosk][activity_lifecycle] event=onConfigurationChanged"
+                + " instanceId=" + activityInstanceId
+                + " orientation=" + newConfig.orientation
+                + " uiMode=" + newConfig.uiMode
+                + " tsMs=" + System.currentTimeMillis()
+        );
     }
 
     @Override
