@@ -1341,7 +1341,14 @@ public class OrderfastTapToPayPlugin extends Plugin {
     private String classifyTerminalFailureCategory(String normalizedCode) {
         if ("canceled".equals(normalizedCode)) {
             if (cancelRequestedByApp) return "app_cancelled";
-            if (isConfirmedLifecycleInterruption()) return "lifecycle_interrupted";
+            if (
+                isConfirmedLifecycleInterruption()
+                    || stripeTakeoverObserved
+                    || lifecyclePausedDuringActiveFlow
+                    || backgroundInterruptionCandidate
+            ) {
+                return "lifecycle_interrupted";
+            }
             return "customer_cancelled";
         }
         return "collect_failed";
