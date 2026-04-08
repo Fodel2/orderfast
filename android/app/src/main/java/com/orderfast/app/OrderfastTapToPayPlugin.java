@@ -99,6 +99,17 @@ public class OrderfastTapToPayPlugin extends Plugin {
     private volatile long lastStopAtMs = 0L;
     private volatile long lastResumeAtMs = 0L;
 
+    private void logFlowEvent(String stage, JSObject payload) {
+        payload.put("timestampMs", System.currentTimeMillis());
+        logStartupStage(stage, payload);
+    }
+
+    private void logCancelSource(String source) {
+        JSObject payload = lifecyclePayload("cancel_invoked");
+        payload.put("source", source);
+        logFlowEvent("native_cancel_invoked", payload);
+    }
+
     private void clearActivePaymentState() {
         clearOperationTimeout();
         activePaymentIntent = null;
@@ -185,9 +196,9 @@ public class OrderfastTapToPayPlugin extends Plugin {
     private final TapToPayReaderListener tapToPayReaderListener = new TapToPayReaderListener() {
         @Override
         public void onDisconnect(DisconnectReason reason) {
-            if (isDebugBuild()) {
-                Log.d(TAG, "Reader disconnected: " + reason);
-            }
+            JSObject disconnectPayload = lifecyclePayload("reader_disconnect");
+            disconnectPayload.put("disconnectReason", reason == null ? "UNKNOWN" : reason.name());
+            logFlowEvent("native_disconnect_invoked", disconnectPayload);
             connectedReader = null;
             if (!"canceled".equals(status)) {
                 status = "failed";
@@ -548,6 +559,9 @@ public class OrderfastTapToPayPlugin extends Plugin {
                         logStartupStage("native_collect_start", collectStartPayload);
                         postSessionState("collecting", "native_collect_start");
                         status = "collecting";
+                        JSObject collectInvokedPayload = lifecyclePayload("collect_payment_method_invoked");
+                        collectInvokedPayload.put("paymentIntentId", paymentIntent.getId());
+                        logFlowEvent("native_collect_invoked", collectInvokedPayload);
 
                         Terminal.getInstance().collectPaymentMethod(
                             paymentIntent,
@@ -572,6 +586,9 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                     logStartupStage("native_process_start", processStartPayload);
                                     postSessionState("processing", "native_process_start");
                                     status = "processing";
+                                    JSObject processInvokedPayload = lifecyclePayload("process_payment_intent_invoked");
+                                    processInvokedPayload.put("paymentIntentId", collectedIntent.getId());
+                                    logFlowEvent("native_process_invoked", processInvokedPayload);
                                     processCancelable = Terminal.getInstance().processPaymentIntent(
                                         collectedIntent,
                                         new CollectPaymentIntentConfiguration.Builder().build(),
@@ -626,6 +643,8 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                                 payload.put("interruptionSource", confirmedBackgroundInterruption ? "app_or_device_backgrounded" : (lifecyclePausedDuringActiveFlow ? "transient_lifecycle_change" : "none_detected"));
                                                 payload.put("backgroundInterruptionCandidate", backgroundInterruptionCandidate);
                                                 payload.put("backgroundInterruptionMs", backgroundInterruptionCandidateAtMs > 0 ? (System.currentTimeMillis() - backgroundInterruptionCandidateAtMs) : 0L);
+                                                payload.put("cancelRequestedByApp", cancelRequestedByApp);
+                                                payload.put("isProcessCancelableActive", processCancelable != null && !processCancelable.isCompleted());
                                                 logStartupStage("native_process_result", payload);
                                                 clearActivePaymentState();
                                                 resetStatusForNextAttempt();
@@ -689,10 +708,12 @@ public class OrderfastTapToPayPlugin extends Plugin {
     public void cancelTapToPayPayment(PluginCall call) {
         clearOperationTimeout();
         cancelRequestedByApp = true;
+        logCancelSource("plugin_method:cancelTapToPayPayment");
         logStartupStage("native_cancel_result", detail("native_cancel_result", "entered", null));
         mainHandler.post(() -> {
             try {
                 if (processCancelable != null && !processCancelable.isCompleted()) {
+                    logCancelSource("plugin_method:processCancelable.cancel");
                     processCancelable.cancel(new Callback() {
                         @Override
                         public void onSuccess() {
@@ -721,6 +742,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 }
 
                 if (activePaymentIntent != null && Terminal.isInitialized()) {
+                    logCancelSource("plugin_method:cancelPaymentIntent");
                     Terminal.getInstance().cancelPaymentIntent(activePaymentIntent, new PaymentIntentCallback() {
                         @Override
                         public void onSuccess(PaymentIntent paymentIntent) {
@@ -910,12 +932,9 @@ public class OrderfastTapToPayPlugin extends Plugin {
             });
         }
         if (processCancelable != null && !processCancelable.isCompleted()) {
-            processCancelable.cancel(new Callback() {
-                @Override
-                public void onSuccess() {}
-                @Override
-                public void onFailure(TerminalException e) {}
-            });
+            JSObject payload = lifecyclePayload("handleOnDestroy_processCancelable_active");
+            payload.put("action", "left_active_to_avoid_forced_cancel");
+            logFlowEvent("native_cancel_suppressed", payload);
         }
         discoverCancelable = null;
         processCancelable = null;
@@ -1023,6 +1042,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 status = "failed";
                 postSessionState("needs_reconciliation", "native_timeout");
                 if (processCancelable != null && !processCancelable.isCompleted()) {
+                    logCancelSource("operation_timeout");
                     processCancelable.cancel(new Callback() {
                         @Override
                         public void onSuccess() {}
