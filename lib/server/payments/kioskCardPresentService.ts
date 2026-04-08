@@ -67,7 +67,6 @@ export const createKioskCardPresentSession = async (input: {
   }
   const connectedAccountId = context.connectedAccountId;
   const terminalLocationId = context.terminalLocationId;
-
   const { data: existing, error: existingError } = await supaServer
     .from('kiosk_card_present_sessions')
     .select(SESSION_SELECT)
@@ -192,7 +191,11 @@ export const createTerminalConnectionTokenForSession = async (input: { sessionId
   return { session, secret: token.secret };
 };
 
-export const createOrRetrieveCardPresentPaymentIntentForSession = async (input: { sessionId: string; restaurantId?: string | null }) => {
+export const createOrRetrieveCardPresentPaymentIntentForSession = async (input: {
+  sessionId: string;
+  restaurantId?: string | null;
+  flowRunId?: string | null;
+}) => {
   const session = await getKioskPaymentSession(input.sessionId, input.restaurantId);
   if (!session) throw new Error('Kiosk payment session not found');
   if (!session.stripe_connected_account_id) throw new Error('Stripe account is not configured for this session');
@@ -208,11 +211,17 @@ export const createOrRetrieveCardPresentPaymentIntentForSession = async (input: 
       paymentIntentId: finalizedIntent.id,
       clientSecret: finalizedIntent.client_secret,
       status: finalizedIntent.status,
+      livemode: finalizedIntent.livemode,
+      paymentMethodTypes: finalizedIntent.payment_method_types,
     };
   }
 
   const stripe = getStripeClient();
   const stripeAccount = session.stripe_connected_account_id;
+  const settlementMode =
+    session.metadata && typeof session.metadata === 'object'
+      ? ((session.metadata as Record<string, unknown>).settlement_mode as string | undefined) || null
+      : null;
   const paymentIntentParams: Stripe.PaymentIntentCreateParams = {
     amount: session.amount_cents,
     currency: session.currency,
@@ -226,6 +235,25 @@ export const createOrRetrieveCardPresentPaymentIntentForSession = async (input: 
   if (mode === 'simulated_terminal') {
     paymentIntentParams.confirm = true;
     paymentIntentParams.payment_method = 'pm_card_visa';
+  }
+  if (settlementMode === 'quick_charge') {
+    console.info('[internal-settlement][quick-charge][sequence]', 'quick_charge_terminal_account_location_context', {
+      sessionId: session.id,
+      flowRunId: input.flowRunId || null,
+      connectedAccountId: stripeAccount,
+      terminalLocationId: session.stripe_terminal_location_id,
+      mode: mode === 'simulated_terminal' ? 'test' : 'live',
+    });
+    console.info('[internal-settlement][quick-charge][sequence]', 'quick_charge_payment_intent_create_request', {
+      sessionId: session.id,
+      flowRunId: input.flowRunId || null,
+      connectedAccountId: stripeAccount,
+      terminalLocationId: session.stripe_terminal_location_id,
+      mode: mode === 'simulated_terminal' ? 'test' : 'live',
+      paymentMethodTypes: paymentIntentParams.payment_method_types || null,
+      captureMethod: paymentIntentParams.capture_method || null,
+      confirm: paymentIntentParams.confirm === true,
+    });
   }
 
   let paymentIntent: Stripe.PaymentIntent;
@@ -293,11 +321,25 @@ export const createOrRetrieveCardPresentPaymentIntentForSession = async (input: 
       payment_intent_status: paymentIntent.status,
     },
   });
+  if (settlementMode === 'quick_charge') {
+    console.info('[internal-settlement][quick-charge][sequence]', 'quick_charge_payment_intent_create_result', {
+      sessionId: session.id,
+      flowRunId: input.flowRunId || null,
+      connectedAccountId: stripeAccount,
+      terminalLocationId: session.stripe_terminal_location_id,
+      mode: paymentIntent.livemode ? 'live' : 'test',
+      paymentIntentId: paymentIntent.id,
+      paymentIntentStatus: paymentIntent.status,
+      paymentMethodTypes: paymentIntent.payment_method_types || null,
+    });
+  }
 
   return {
     paymentIntentId: paymentIntent.id,
     clientSecret: paymentIntent.client_secret,
     status: paymentIntent.status,
+    livemode: paymentIntent.livemode,
+    paymentMethodTypes: paymentIntent.payment_method_types,
   };
 };
 
