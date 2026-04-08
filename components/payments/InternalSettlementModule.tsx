@@ -162,6 +162,11 @@ export default function InternalSettlementModule({
         event: 'payment_entry_readiness_refresh_start',
         promptIfNeeded,
       });
+      console.info('[internal-settlement][collection]', {
+        event: 'readiness_refresh.start',
+        promptIfNeeded,
+        source: 'native_readiness',
+      });
       console.info('[internal-settlement][tap-to-pay-bootstrap]', {
         event: 'bootstrap_invoked',
         promptIfNeeded,
@@ -217,6 +222,13 @@ export default function InternalSettlementModule({
             state: readiness.state,
             reason: readiness.reason,
           });
+          console.info('[internal-settlement][collection]', {
+            event: 'readiness_refresh.result',
+            ok: false,
+            source: 'native_readiness',
+            state: readiness.state,
+            reason: readiness.reason,
+          });
           return readiness;
         }
         setNativeReadinessReady(true);
@@ -234,6 +246,13 @@ export default function InternalSettlementModule({
           state: readiness.state,
           reason: readiness.reason,
         });
+        console.info('[internal-settlement][collection]', {
+          event: 'readiness_refresh.result',
+          ok: true,
+          source: 'native_readiness',
+          state: readiness.state,
+          reason: readiness.reason,
+        });
         return readiness;
       } catch (error: any) {
         const reason = error?.message || 'Tap to Pay setup check failed.';
@@ -243,6 +262,13 @@ export default function InternalSettlementModule({
         console.info('[internal-settlement][payment-entry]', {
           event: 'payment_entry_readiness_refresh_result',
           ok: false,
+          state: 'error',
+          reason,
+        });
+        console.info('[internal-settlement][collection]', {
+          event: 'readiness_refresh.result',
+          ok: false,
+          source: 'native_readiness',
           state: 'error',
           reason,
         });
@@ -256,6 +282,10 @@ export default function InternalSettlementModule({
 
   useEffect(() => {
     const launcherSnapshot = readLauncherBootstrapSnapshot();
+    console.info('[internal-settlement][payment-entry]', {
+      event: 'payment_entry.mount',
+      launcherSnapshot,
+    });
     console.info('[internal-settlement][tap-to-pay-bootstrap]', {
       event: 'payment_entry_mounted_and_readiness_state_read',
       launcherSnapshot,
@@ -315,8 +345,12 @@ export default function InternalSettlementModule({
       typeof (nativeResult as { interruptionSource?: unknown }).interruptionSource === 'string'
         ? String((nativeResult as { interruptionSource?: string }).interruptionSource)
         : null;
+    const backgroundInterruptionCandidate =
+      (nativeResult as { backgroundInterruptionCandidate?: unknown }).backgroundInterruptionCandidate === true;
 
-    if (reasonCategoryRaw === 'lifecycle_cancelled' && interruptionSource !== 'app_or_device_backgrounded') return 'collect_failed';
+    if (reasonCategoryRaw === 'lifecycle_cancelled' && interruptionSource !== 'app_or_device_backgrounded' && !backgroundInterruptionCandidate) {
+      return 'collect_failed';
+    }
     if (reasonCategoryRaw) return reasonCategoryRaw as CollectionFailureCategory;
     if (nativeResult.status === 'canceled') return 'customer_cancelled';
     if (nativeResult.code === 'canceled') return 'customer_cancelled';
@@ -355,6 +389,15 @@ export default function InternalSettlementModule({
     };
   }, [logCollectionEvent]);
 
+  useEffect(() => {
+    return () => {
+      if (!flowActiveRef.current) return;
+      logCollectionEvent('payment_entry.unmount_while_payment_active', {
+        reason: 'component_unmount',
+      });
+    };
+  }, [logCollectionEvent]);
+
   const handleCollectContactless = useCallback(async () => {
     if (busy) return;
     if (!tapAvailabilityReady) {
@@ -390,11 +433,12 @@ export default function InternalSettlementModule({
 
     let sessionIdForCleanup: string | null = null;
     try {
-      logCollectionEvent('readiness_refresh_start');
+      logCollectionEvent('readiness_refresh.start');
       const readinessRes = await fetch('/api/dashboard/internal-settlement/tap-to-pay-availability');
       const readinessPayload = await readinessRes.json().catch(() => ({}));
       if (!readinessRes.ok || !readinessPayload?.tap_to_pay_available) {
-        logCollectionEvent('readiness_refresh_error', {
+        logCollectionEvent('readiness_refresh.result', {
+          ok: false,
           httpStatus: readinessRes.status,
           reason: readinessPayload?.reason || null,
         });
@@ -402,7 +446,8 @@ export default function InternalSettlementModule({
         setMessage(readinessPayload?.reason || 'Tap to Pay is not available for this restaurant.');
         return;
       }
-      logCollectionEvent('readiness_refresh_success', {
+      logCollectionEvent('readiness_refresh.result', {
+        ok: true,
         terminalLocationId: readinessPayload?.terminal_location_id || null,
       });
 
@@ -413,7 +458,7 @@ export default function InternalSettlementModule({
         return;
       }
 
-      logCollectionEvent('session_create_start');
+      logCollectionEvent('session_create.start');
       const createRes = await fetch('/api/dashboard/internal-settlement/create-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -429,13 +474,13 @@ export default function InternalSettlementModule({
       });
       const createPayload = await createRes.json().catch(() => ({}));
       if (!createRes.ok) {
-        logCollectionEvent('session_create_error', {
+        logCollectionEvent('session_create.error', {
           httpStatus: createRes.status,
           message: createPayload?.message || null,
         });
         throw new Error(createPayload?.message || `Failed to create payment session (${createRes.status})`);
       }
-      logCollectionEvent('session_create_result', { ok: createRes.ok, sessionId: createPayload?.session?.id || null });
+      logCollectionEvent('session_create.success', { ok: createRes.ok, sessionId: createPayload?.session?.id || null });
 
       const sessionId = createPayload?.session?.id ? String(createPayload.session.id) : '';
       const terminalLocationId = createPayload?.session?.stripe_terminal_location_id
@@ -506,7 +551,7 @@ export default function InternalSettlementModule({
 
       setState('collecting');
       setMessage('Present card/phone to collect payment…');
-      logCollectionEvent('collect_start', { sessionId });
+      logCollectionEvent('native_collect.start', { sessionId });
 
       let nativeResult = await tapToPayBridge.startTapToPayPayment({
         restaurantId: nativeRestaurantId,
@@ -514,10 +559,10 @@ export default function InternalSettlementModule({
         backendBaseUrl,
         terminalLocationId,
       });
-      logCollectionEvent('collect_result', { sessionId, result: nativeResult });
+      logCollectionEvent(nativeResult.status === 'succeeded' ? 'native_collect.success' : 'native_collect.error', { sessionId, result: nativeResult });
 
       if (nativeResult.status === 'processing') {
-        logCollectionEvent('process_start', { sessionId });
+        logCollectionEvent('native_process.start', { sessionId });
         const pollDeadline = Date.now() + 120000;
         while (Date.now() < pollDeadline) {
           await new Promise<void>((resolve) => {
@@ -527,12 +572,16 @@ export default function InternalSettlementModule({
           if (polled.sessionId && polled.sessionId !== sessionId) continue;
           if (polled.status === 'succeeded' || polled.status === 'failed' || polled.status === 'canceled') {
             nativeResult = polled;
-            logCollectionEvent('process_result', { sessionId, result: polled });
+            logCollectionEvent(polled.status === 'succeeded' ? 'native_process.success' : 'native_process.error', { sessionId, result: polled });
             break;
           }
         }
       }
-      logCollectionEvent('process_result', { sessionId, status: nativeResult.status, code: nativeResult.code || null });
+      logCollectionEvent(nativeResult.status === 'succeeded' ? 'native_process.success' : 'native_process.error', {
+        sessionId,
+        status: nativeResult.status,
+        code: nativeResult.code || null,
+      });
 
       if (nativeResult.status !== 'succeeded') {
         const category = classifyNativeFailure(nativeResult);
@@ -572,6 +621,11 @@ export default function InternalSettlementModule({
             : category;
 
         if (resolvedCategory === 'lifecycle_cancelled') {
+          logCollectionEvent('interrupted.transition', {
+            source: 'native_reason_category',
+            reasonCategory: resolvedCategory,
+            interruptionSource: (nativeResult as { interruptionSource?: string }).interruptionSource || null,
+          });
           setState('interrupted');
         } else if (resolvedCategory === 'customer_cancelled' || resolvedCategory === 'app_cancelled' || resolvedCategory === 'server_cancelled') {
           setState('failed');
@@ -593,7 +647,7 @@ export default function InternalSettlementModule({
       setState('processing');
       setMessage('Finalizing settlement…');
       setState('finalizing');
-      logCollectionEvent('finalize_start', { sessionId });
+      logCollectionEvent('finalize.start', { sessionId });
 
       const finalizeRes = await fetch('/api/dashboard/internal-settlement/finalize', {
         method: 'POST',
@@ -602,11 +656,11 @@ export default function InternalSettlementModule({
       });
       const finalizePayload = await finalizeRes.json().catch(() => ({}));
       if (!finalizeRes.ok) {
-        logCollectionEvent('finalize_error', { sessionId, httpStatus: finalizeRes.status, message: finalizePayload?.message || null });
+        logCollectionEvent('finalize.error', { sessionId, httpStatus: finalizeRes.status, message: finalizePayload?.message || null });
         throw new Error(finalizePayload?.message || `Failed to finalize settlement (${finalizeRes.status})`);
       }
       logCollectionEvent('server_finalize_called', { sessionId, ok: finalizeRes.ok });
-      logCollectionEvent('finalize_result', { sessionId, ok: finalizeRes.ok });
+      logCollectionEvent('finalize.success', { sessionId, ok: finalizeRes.ok });
 
       setState('completed');
       setMessage(mode === 'order_payment' ? 'Order payment collected successfully.' : 'Quick charge collected successfully.');
