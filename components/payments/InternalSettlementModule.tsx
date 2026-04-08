@@ -432,6 +432,27 @@ export default function InternalSettlementModule({
     });
 
     let sessionIdForCleanup: string | null = null;
+    const flowRunId = flowRunIdRef.current;
+    const persistFlowOutcome = async (input: {
+      sessionId: string;
+      outcome: 'canceled' | 'failed' | 'needs_reconciliation';
+      reason: string;
+      failureCode?: string;
+    }) => {
+      logCollectionEvent('server_state_write.start', { sessionId: input.sessionId, ...input });
+      await fetch('/api/dashboard/internal-settlement/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: input.sessionId,
+          outcome: input.outcome,
+          reason: input.reason,
+          failure_code: input.failureCode,
+          flow_run_id: flowRunId,
+        }),
+      }).catch(() => undefined);
+      logCollectionEvent('server_state_write.done', { sessionId: input.sessionId, ...input });
+    };
     try {
       logCollectionEvent('readiness_refresh.start');
       const readinessRes = await fetch('/api/dashboard/internal-settlement/tap-to-pay-availability');
@@ -465,6 +486,7 @@ export default function InternalSettlementModule({
         body: JSON.stringify({
           mode,
           idempotency_key: makeIdempotencyKey('internal_settlement'),
+          flow_run_id: flowRunId,
           order_id: mode === 'order_payment' ? selectedOrderId : null,
           amount_cents: mode === 'quick_charge' ? amountCents : undefined,
           currency: 'gbp',
@@ -496,7 +518,7 @@ export default function InternalSettlementModule({
       const intentRes = await fetch('/api/dashboard/internal-settlement/payment-intent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId }),
+        body: JSON.stringify({ session_id: sessionId, flow_run_id: flowRunId }),
       });
       const intentPayload = await intentRes.json().catch(() => ({}));
       if (!intentRes.ok) {
@@ -518,16 +540,13 @@ export default function InternalSettlementModule({
         sessionId,
         backendBaseUrl,
         terminalLocationId,
+        flowRunId: flowRunId || undefined,
       });
       if (prepared.status === 'failed' || prepared.status === 'unavailable') {
         logCollectionEvent('prepare_result', { stage: 'native_prepare', ok: false, sessionId, result: prepared });
         setState(isUnsupportedDeviceError(prepared.code) ? 'unsupported_device' : 'failed');
         setMessage(prepared.message || 'Tap to Pay reader setup failed. Retry to reconnect the reader.');
-        await fetch('/api/dashboard/internal-settlement/cancel', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ session_id: sessionId }),
-        });
+        await persistFlowOutcome({ sessionId, outcome: 'failed', reason: 'Native Tap to Pay preparation failed.', failureCode: 'native_prepare_failed' });
         setActiveSessionId(null);
         setActiveTerminalLocationId(null);
         return;
@@ -539,10 +558,11 @@ export default function InternalSettlementModule({
       if (!readinessRecheckRes.ok || !readinessRecheckPayload?.tap_to_pay_available) {
         setState('failed');
         setMessage(readinessRecheckPayload?.reason || 'Tap to Pay availability changed. Retry to start a new payment session.');
-        await fetch('/api/dashboard/internal-settlement/cancel', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ session_id: sessionId }),
+        await persistFlowOutcome({
+          sessionId,
+          outcome: 'needs_reconciliation',
+          reason: readinessRecheckPayload?.reason || 'Tap to Pay availability changed during active collection setup.',
+          failureCode: 'availability_changed_mid_flow',
         });
         setActiveSessionId(null);
         setActiveTerminalLocationId(null);
@@ -558,6 +578,7 @@ export default function InternalSettlementModule({
         sessionId,
         backendBaseUrl,
         terminalLocationId,
+        flowRunId: flowRunId || undefined,
       });
       logCollectionEvent(nativeResult.status === 'succeeded' ? 'native_collect.success' : 'native_collect.error', { sessionId, result: nativeResult });
 
@@ -595,7 +616,7 @@ export default function InternalSettlementModule({
         const reconcileRes = await fetch('/api/dashboard/internal-settlement/reconcile', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ session_id: sessionId }),
+          body: JSON.stringify({ session_id: sessionId, flow_run_id: flowRunId }),
         });
         const reconcilePayload = await reconcileRes.json().catch(() => ({}));
         const reconciledState = reconcilePayload?.session?.state as string | undefined;
@@ -634,11 +655,30 @@ export default function InternalSettlementModule({
         }
         setMessage(failureMessageForCategory(resolvedCategory, nativeResult.message));
 
-        await fetch('/api/dashboard/internal-settlement/cancel', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ session_id: sessionId }),
-        }).catch(() => undefined);
+        if (resolvedCategory === 'customer_cancelled') {
+          await persistFlowOutcome({ sessionId, outcome: 'canceled', reason: 'Canceled by user', failureCode: 'customer_cancelled' });
+        } else if (resolvedCategory === 'app_cancelled' || resolvedCategory === 'server_cancelled') {
+          await persistFlowOutcome({
+            sessionId,
+            outcome: 'canceled',
+            reason: failureMessageForCategory(resolvedCategory, nativeResult.message),
+            failureCode: resolvedCategory,
+          });
+        } else if (resolvedCategory === 'lifecycle_cancelled') {
+          await persistFlowOutcome({
+            sessionId,
+            outcome: 'needs_reconciliation',
+            reason: failureMessageForCategory(resolvedCategory, nativeResult.message),
+            failureCode: 'lifecycle_interruption',
+          });
+        } else {
+          await persistFlowOutcome({
+            sessionId,
+            outcome: 'failed',
+            reason: failureMessageForCategory(resolvedCategory, nativeResult.message),
+            failureCode: resolvedCategory,
+          });
+        }
         setActiveSessionId(null);
         setActiveTerminalLocationId(null);
         return;
@@ -652,7 +692,7 @@ export default function InternalSettlementModule({
       const finalizeRes = await fetch('/api/dashboard/internal-settlement/finalize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId }),
+        body: JSON.stringify({ session_id: sessionId, flow_run_id: flowRunId }),
       });
       const finalizePayload = await finalizeRes.json().catch(() => ({}));
       if (!finalizeRes.ok) {
@@ -679,11 +719,12 @@ export default function InternalSettlementModule({
       setMessage(error?.message || 'Payment failed.');
       logCollectionEvent('collection_exception', { message: error?.message || 'unknown_exception' });
       if (sessionIdForCleanup) {
-        await fetch('/api/dashboard/internal-settlement/cancel', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ session_id: sessionIdForCleanup }),
-        }).catch(() => undefined);
+        await persistFlowOutcome({
+          sessionId: sessionIdForCleanup,
+          outcome: 'failed',
+          reason: `Flow exception before finalize: ${error?.message || 'unknown_exception'}`,
+          failureCode: 'flow_exception',
+        });
       }
       setActiveSessionId(null);
       setActiveTerminalLocationId(null);
@@ -717,7 +758,13 @@ export default function InternalSettlementModule({
       await fetch('/api/dashboard/internal-settlement/cancel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: activeSessionId }),
+        body: JSON.stringify({
+          session_id: activeSessionId,
+          outcome: 'canceled',
+          reason: 'Canceled by app operator',
+          failure_code: 'app_cancelled',
+          flow_run_id: flowRunIdRef.current,
+        }),
       });
       logCollectionEvent('app_cancel_requested', { sessionId: activeSessionId });
       setState('failed');

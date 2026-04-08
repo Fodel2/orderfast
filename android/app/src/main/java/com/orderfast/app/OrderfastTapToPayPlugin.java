@@ -81,6 +81,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
     private volatile String currentRestaurantId = null;
     private volatile String currentBackendBaseUrl = null;
     private volatile String currentTerminalLocationId = null;
+    private volatile String currentFlowRunId = null;
     private volatile Reader connectedReader = null;
     private volatile PaymentIntent activePaymentIntent = null;
     private volatile Cancelable discoverCancelable = null;
@@ -311,6 +312,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
         currentRestaurantId = call.getString("restaurantId");
         currentBackendBaseUrl = call.getString("backendBaseUrl");
         currentTerminalLocationId = call.getString("terminalLocationId");
+        currentFlowRunId = call.getString("flowRunId");
 
         if (isBlank(currentSessionId) || isBlank(currentRestaurantId) || isBlank(currentBackendBaseUrl) || isBlank(currentTerminalLocationId)) {
             inFlight = false;
@@ -474,6 +476,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
         final String restaurantId = call.getString("restaurantId", "");
         final String backendBaseUrl = call.getString("backendBaseUrl", "");
         final String terminalLocationId = call.getString("terminalLocationId", "");
+        final String flowRunId = call.getString("flowRunId", "");
 
         if (sessionId.isEmpty() || restaurantId.isEmpty() || backendBaseUrl.isEmpty() || terminalLocationId.isEmpty()) {
             JSObject payload = result("failed", "session_error", "Missing required Tap to Pay parameters.");
@@ -487,6 +490,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
         currentRestaurantId = restaurantId;
         currentBackendBaseUrl = backendBaseUrl;
         currentTerminalLocationId = terminalLocationId;
+        currentFlowRunId = flowRunId.isEmpty() ? null : flowRunId;
         clearOperationTimeout();
         activePaymentIntent = null;
         processCancelable = null;
@@ -515,7 +519,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
             try {
                 postJson(
                     backendBaseUrl + "/api/kiosk/payments/card-present/session-state",
-                    "{\"session_id\":\"" + escapeJson(sessionId) + "\",\"restaurant_id\":\"" + escapeJson(restaurantId) + "\",\"next_state\":\"collecting\",\"event_type\":\"native_collect_start\"}"
+                    "{\"session_id\":\"" + escapeJson(sessionId) + "\",\"restaurant_id\":\"" + escapeJson(restaurantId) + "\",\"next_state\":\"collecting\",\"event_type\":\"native_collect_start\"" + flowRunJsonFragment() + "}"
                 );
 
                 JSONObject piResponse = postJson(
@@ -992,7 +996,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
             try {
                 postJson(
                     currentBackendBaseUrl + "/api/kiosk/payments/card-present/session-state",
-                    "{\"session_id\":\"" + escapeJson(currentSessionId) + "\",\"restaurant_id\":\"" + escapeJson(currentRestaurantId) + "\",\"next_state\":\"" + escapeJson(nextState) + "\",\"event_type\":\"" + escapeJson(eventType) + "\"}"
+                    "{\"session_id\":\"" + escapeJson(currentSessionId) + "\",\"restaurant_id\":\"" + escapeJson(currentRestaurantId) + "\",\"next_state\":\"" + escapeJson(nextState) + "\",\"event_type\":\"" + escapeJson(eventType) + "\"" + flowRunJsonFragment() + "}"
                 );
             } catch (Exception e) {
                 if (isDebugBuild()) {
@@ -1131,7 +1135,17 @@ public class OrderfastTapToPayPlugin extends Plugin {
         return value == null || value.trim().isEmpty();
     }
 
+    private String flowRunJsonFragment() {
+        return isBlank(currentFlowRunId) ? "" : ",\"flow_run_id\":\"" + escapeJson(currentFlowRunId) + "\"";
+    }
+
     private void logStartupStage(String stage, JSObject payload) {
+        if (!isBlank(currentFlowRunId) && !payload.has("flowRunId")) {
+            payload.put("flowRunId", currentFlowRunId);
+        }
+        if (!isBlank(currentSessionId) && !payload.has("sessionId")) {
+            payload.put("sessionId", currentSessionId);
+        }
         Log.i(TAG, "[kiosk][" + stage + "] " + payload.toString());
     }
 

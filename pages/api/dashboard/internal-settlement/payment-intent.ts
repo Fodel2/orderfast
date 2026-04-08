@@ -13,8 +13,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     const sessionId = String(req.body?.session_id || '');
+    const flowRunId = req.body?.flow_run_id ? String(req.body.flow_run_id) : null;
     if (!sessionId) return res.status(400).json({ message: 'session_id is required' });
-    console.info('[internal-settlement][api]', { route: 'payment-intent', restaurantId, sessionId });
+    console.info('[internal-settlement][api]', { route: 'payment-intent', restaurantId, sessionId, flowRunId });
 
     const paymentIntent = await createInternalSettlementPaymentIntent({ sessionId, restaurantId });
     return res.status(200).json(paymentIntent);
