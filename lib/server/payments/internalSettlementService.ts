@@ -492,6 +492,33 @@ export const cancelInternalSettlement = async (input: {
     verification,
   });
 
+  const settlementMode =
+    session?.metadata && typeof session.metadata === 'object'
+      ? ((session.metadata as Record<string, unknown>).settlement_mode as string | undefined) || null
+      : null;
+  if (settlementMode === 'quick_charge') {
+    const paymentIntentStatus = verification.stripePaymentIntentStatus || input.nativeResult?.paymentIntentStatus || null;
+    const paymentIntentId = input.nativeResult?.paymentIntentId || session?.stripe_payment_intent_id || null;
+    console.info('[internal-settlement][quick-charge][sequence]', 'quick_charge_server_verify_result', {
+      sessionId: input.sessionId,
+      flowRunId: null,
+      paymentIntentId,
+      paymentIntentStatus,
+      verificationDecisionMode: verification.decisionMode,
+      correctedByVerification: verification.correctedByVerification,
+    });
+    if (session?.state !== 'finalized') {
+      console.info('[internal-settlement][quick-charge][sequence]', 'quick_charge_final_failure_reason', {
+        sessionId: input.sessionId,
+        flowRunId: null,
+        paymentIntentId,
+        paymentIntentStatus,
+        finalState: session?.state || null,
+        failureReason: session?.failure_message || verification.resolvedReason || null,
+      });
+    }
+  }
+
   return { session, verification };
 };
 

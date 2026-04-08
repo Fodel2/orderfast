@@ -233,6 +233,21 @@ export default function InternalSettlementModule({
     }
   }, []);
 
+  const logQuickChargeSequenceEvent = useCallback(
+    (
+      event:
+        | 'quick_charge_payment_intent_created'
+        | 'quick_charge_native_result_returned_to_js'
+        | 'quick_charge_server_verify_result'
+        | 'quick_charge_final_failure_reason',
+      payload: Record<string, unknown>
+    ) => {
+      if (mode !== 'quick_charge') return;
+      console.info('[internal-settlement][quick-charge][sequence]', event, payload);
+    },
+    [mode]
+  );
+
   useEffect(() => {
     onFlowActivityChange?.(busy || flowActiveRef.current);
   }, [busy, onFlowActivityChange]);
@@ -425,6 +440,13 @@ export default function InternalSettlementModule({
         throw new Error(intentPayload?.message || `Failed to prepare payment intent (${intentRes.status})`);
       }
       logCollectionEvent('prepare_result', { stage: 'create_payment_intent', ok: intentRes.ok, sessionId, paymentIntentId: intentPayload?.paymentIntentId || null });
+      logQuickChargeSequenceEvent('quick_charge_payment_intent_created', {
+        sessionId,
+        flowRunId,
+        paymentIntentId: intentPayload?.paymentIntentId || null,
+        paymentIntentStatus: intentPayload?.status || null,
+        webStripeLayerInvolved: false,
+      });
 
       setState('preparing');
       setMessage('Preparing Tap to Pay reader…');
@@ -487,6 +509,21 @@ export default function InternalSettlementModule({
         paymentIntentStatus: nativeResult.paymentIntentStatus || null,
         paymentIntentSource: nativeResult.paymentIntentSource || null,
         nativeStage: nativeResult.nativeStage || null,
+      });
+      logQuickChargeSequenceEvent('quick_charge_native_result_returned_to_js', {
+        sessionId,
+        flowRunId,
+        paymentIntentId: nativeResult.paymentIntentId || null,
+        paymentIntentStatus: nativeResult.paymentIntentStatus || null,
+        processPaymentIntentInvoked:
+          (nativeResult.detail && typeof nativeResult.detail === 'object'
+            ? (nativeResult.detail as { processInvoked?: unknown }).processInvoked === true
+            : false) || nativeResult.nativeStage === 'native_process_result',
+        usedPostCollectPaymentIntent:
+          nativeResult.detail && typeof nativeResult.detail === 'object'
+            ? (nativeResult.detail as { usedPostCollectPaymentIntent?: unknown }).usedPostCollectPaymentIntent === true
+            : null,
+        webStripeLayerInvolved: false,
       });
       logCollectionEvent(nativeResult.status === 'succeeded' ? 'native_collect.success' : 'native_collect.error', { sessionId, result: nativeResult });
       logCollectionEvent(nativeResult.status === 'succeeded' ? 'native_process.success' : 'native_process.error', {
@@ -552,6 +589,14 @@ export default function InternalSettlementModule({
           decisionMode: verifyPayload?.verification?.decisionMode || null,
           nativeResult,
         });
+        logQuickChargeSequenceEvent('quick_charge_server_verify_result', {
+          sessionId,
+          flowRunId,
+          paymentIntentId: nativeResult.paymentIntentId || null,
+          paymentIntentStatus: verifyPayload?.verification?.stripePaymentIntentStatus || nativeResult.paymentIntentStatus || null,
+          verificationDecisionMode: verifyPayload?.verification?.decisionMode || null,
+          correctedByVerification: verifyPayload?.verification?.correctedByVerification === true,
+        });
 
         if (verifyRes.ok && verifiedState === 'finalized') {
           setState('completed');
@@ -570,6 +615,14 @@ export default function InternalSettlementModule({
           state: verifiedState || null,
           reason: verifiedReason,
           outcomeSource: verifyPayload?.verification?.correctedByVerification ? 'verification_corrected' : 'immediate_native_or_fallback',
+        });
+        logQuickChargeSequenceEvent('quick_charge_final_failure_reason', {
+          sessionId,
+          flowRunId,
+          paymentIntentId: nativeResult.paymentIntentId || null,
+          paymentIntentStatus: verifyPayload?.verification?.stripePaymentIntentStatus || nativeResult.paymentIntentStatus || null,
+          failureReason: verifiedReason,
+          finalState: verifiedState || null,
         });
         setActiveSessionId(null);
         setActiveTerminalLocationId(null);
