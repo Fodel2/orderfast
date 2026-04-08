@@ -12,7 +12,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!restaurantId) return res.status(401).json({ message: 'Unauthorized' });
 
   try {
-    console.info('[internal-settlement][api]', { route: 'create-session', restaurantId, mode: req.body?.mode || 'order_payment' });
+    const flowRunId = req.body?.flow_run_id ? String(req.body.flow_run_id) : null;
+    console.info('[internal-settlement][api]', { route: 'create-session', restaurantId, mode: req.body?.mode || 'order_payment', flowRunId });
     const mode = (req.body?.mode || 'order_payment') as InternalSettlementMode;
     const result = await createInternalSettlementSession({
       restaurantId,

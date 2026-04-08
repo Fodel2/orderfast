@@ -59,8 +59,20 @@ export interface TapToPayPlugin {
     locationServicesEnabled?: boolean;
     nativeStage?: string;
   }>;
-  prepareTapToPay(options: { restaurantId: string; sessionId: string; backendBaseUrl: string; terminalLocationId: string }): Promise<TapToPayResult>;
-  startTapToPayPayment(options: { restaurantId: string; sessionId: string; backendBaseUrl: string; terminalLocationId: string }): Promise<TapToPayResult>;
+  prepareTapToPay(options: {
+    restaurantId: string;
+    sessionId: string;
+    backendBaseUrl: string;
+    terminalLocationId: string;
+    flowRunId?: string;
+  }): Promise<TapToPayResult>;
+  startTapToPayPayment(options: {
+    restaurantId: string;
+    sessionId: string;
+    backendBaseUrl: string;
+    terminalLocationId: string;
+    flowRunId?: string;
+  }): Promise<TapToPayResult>;
   cancelTapToPayPayment(): Promise<TapToPayResult>;
   getTapToPayStatus(): Promise<TapToPayResult>;
   lockPaymentOrientationToPortrait(): Promise<{ locked: boolean; reason?: string }>;

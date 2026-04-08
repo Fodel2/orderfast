@@ -316,11 +316,32 @@ export const finalizeInternalSettlement = async (input: { sessionId: string; res
   };
 };
 
-export const cancelInternalSettlement = async (input: { sessionId: string; restaurantId: string }) => {
-  const canceled = await cancelKioskPaymentSession({
-    sessionId: input.sessionId,
-    restaurantId: input.restaurantId,
-  });
+export const cancelInternalSettlement = async (input: {
+  sessionId: string;
+  restaurantId: string;
+  reason?: string | null;
+  failureCode?: string | null;
+  outcome?: 'canceled' | 'failed' | 'needs_reconciliation';
+}) => {
+  const outcome = input.outcome || 'canceled';
+  const canceled =
+    outcome === 'canceled'
+      ? await cancelKioskPaymentSession({
+          sessionId: input.sessionId,
+          restaurantId: input.restaurantId,
+          reason: input.reason || undefined,
+        })
+      : await markKioskPaymentSessionState({
+          sessionId: input.sessionId,
+          restaurantId: input.restaurantId,
+          nextState: outcome,
+          failureCode: input.failureCode ?? null,
+          failureMessage: input.reason ?? null,
+          eventType: outcome === 'needs_reconciliation' ? 'internal_settlement_interrupted' : 'internal_settlement_failed',
+          eventPayload: {
+            classification: outcome,
+          },
+        });
 
   if (canceled.order_id) {
     let { error } = await supaServer
