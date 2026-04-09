@@ -1,6 +1,5 @@
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
-import FullscreenAppLayout from '@/components/layouts/FullscreenAppLayout';
 import InternalSettlementModule from '@/components/payments/InternalSettlementModule';
 
 export default function PosPaymentEntryPage() {
@@ -17,10 +16,7 @@ export default function PosPaymentEntryPage() {
   }, [flowActive, router]);
 
   return (
-    <FullscreenAppLayout
-      promptTitle="Tap to enter fullscreen"
-      promptDescription="Keep POS payment entry immersive while internal settlement is in use."
-    >
+    <div className="min-h-screen w-full bg-gradient-to-b from-[#fafafa] via-white to-white text-neutral-900">
       <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6">
         <div className="mb-4 flex flex-wrap gap-3">
           <button
@@ -54,6 +50,6 @@ export default function PosPaymentEntryPage() {
           onFlowActivityChange={setFlowActive}
         />
       </div>
-    </FullscreenAppLayout>
+    </div>
   );
 }

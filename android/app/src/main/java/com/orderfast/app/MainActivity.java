@@ -17,7 +17,11 @@ public class MainActivity extends BridgeActivity {
     private final Runnable immersiveRunnable = this::applyImmersiveMode;
 
     private boolean shouldSuppressHostUiChurn() {
-        return OrderfastTapToPayPlugin.isNativeTapToPayTakeoverActive();
+        if (OrderfastTapToPayPlugin.isNativeTapToPayTakeoverActive()) {
+            return true;
+        }
+        WebView webView = bridge != null ? bridge.getWebView() : null;
+        return isPosPaymentEntryRoute(webView);
     }
 
     @Override
@@ -149,5 +153,29 @@ public class MainActivity extends BridgeActivity {
 
         String historyUrl = history.getItemAtIndex(currentIndex).getUrl();
         return historyUrl != null && historyUrl.contains("/kiosk/");
+    }
+
+    private boolean isPosPaymentEntryRoute(WebView webView) {
+        if (webView == null) {
+            return false;
+        }
+
+        String currentUrl = webView.getUrl();
+        if (currentUrl != null && currentUrl.contains("/payment-entry")) {
+            return true;
+        }
+
+        WebBackForwardList history = webView.copyBackForwardList();
+        if (history == null) {
+            return false;
+        }
+
+        int currentIndex = history.getCurrentIndex();
+        if (currentIndex < 0) {
+            return false;
+        }
+
+        String historyUrl = history.getItemAtIndex(currentIndex).getUrl();
+        return historyUrl != null && historyUrl.contains("/payment-entry");
     }
 }
