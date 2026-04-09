@@ -525,6 +525,10 @@ export default function InternalSettlementModule({
             : null,
         webStripeLayerInvolved: false,
       });
+      const nativeTraceSnapshot =
+        nativeResult && typeof nativeResult === 'object' && (nativeResult as { quickChargeTraceSnapshot?: unknown }).quickChargeTraceSnapshot
+          ? ((nativeResult as { quickChargeTraceSnapshot?: unknown }).quickChargeTraceSnapshot as Record<string, unknown>)
+          : null;
       logCollectionEvent(nativeResult.status === 'succeeded' ? 'native_collect.success' : 'native_collect.error', { sessionId, result: nativeResult });
       logCollectionEvent(nativeResult.status === 'succeeded' ? 'native_process.success' : 'native_process.error', {
         sessionId,
@@ -597,6 +601,23 @@ export default function InternalSettlementModule({
           verificationDecisionMode: verifyPayload?.verification?.decisionMode || null,
           correctedByVerification: verifyPayload?.verification?.correctedByVerification === true,
         });
+        if (mode === 'quick_charge') {
+          console.info('[internal-settlement][quick-charge][failure-snapshot]', {
+            sessionId,
+            flowRunId,
+            paymentIntentId: nativeResult.paymentIntentId || nativeTraceSnapshot?.paymentIntentId || null,
+            retrieveSucceeded: nativeTraceSnapshot?.retrieveSucceeded ?? 'unknown',
+            collectInvoked: nativeTraceSnapshot?.collectInvoked ?? 'unknown',
+            collectCallbackStatus: nativeTraceSnapshot?.collectCallbackStatus ?? 'unknown',
+            collectReturnedUpdatedIntent: nativeTraceSnapshot?.collectReturnedUpdatedIntent ?? 'unknown',
+            collectReturnedPaymentMethodAttached: nativeTraceSnapshot?.collectReturnedPaymentMethodAttached ?? 'unknown',
+            processInvoked: nativeTraceSnapshot?.processInvoked ?? 'unknown',
+            processCallbackStatus: nativeTraceSnapshot?.processCallbackStatus ?? 'unknown',
+            nativeFailurePoint: nativeTraceSnapshot?.nativeFailurePoint || nativeResult.nativeStage || null,
+            finalServerVerifiedStatus: verifiedState || null,
+            finalFailureReason: verifiedReason || nativeTraceSnapshot?.finalFailureReason || nativeResult.message || null,
+          });
+        }
 
         if (verifyRes.ok && verifiedState === 'finalized') {
           setState('completed');
