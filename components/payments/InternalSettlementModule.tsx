@@ -352,7 +352,6 @@ export default function InternalSettlementModule({
 
     let sessionIdForCleanup: string | null = null;
     let keepFlowActiveAfterError = false;
-    let orientationLockedForRun = false;
     const flowRunId = flowRunIdRef.current;
     const persistFlowOutcome = async (input: {
       sessionId: string;
@@ -373,17 +372,6 @@ export default function InternalSettlementModule({
       }).catch(() => undefined);
     };
     try {
-      if (mode === 'quick_charge') {
-        const orientationLock = await tapToPayBridge
-          .lockPaymentOrientationToPortrait()
-          .catch(() => ({ locked: false as const, reason: undefined as string | undefined }));
-        orientationLockedForRun = orientationLock.locked === true;
-        logCollectionEvent('quick_charge_orientation_lock', {
-          locked: orientationLock.locked === true,
-          reason: orientationLock.reason || null,
-        });
-      }
-
       logCollectionEvent('readiness_refresh.start');
       const readinessRes = await fetch('/api/dashboard/internal-settlement/tap-to-pay-availability');
       const readinessPayload = await readinessRes.json().catch(() => ({}));
@@ -806,9 +794,6 @@ export default function InternalSettlementModule({
       setActiveSessionId(null);
       setActiveTerminalLocationId(null);
     } finally {
-      if (orientationLockedForRun && !keepFlowActiveAfterError) {
-        await tapToPayBridge.unlockPaymentOrientation().catch(() => undefined);
-      }
       if (keepFlowActiveAfterError) {
         setBusy(true);
         flowActiveRef.current = true;
@@ -897,7 +882,6 @@ export default function InternalSettlementModule({
     setBusy(true);
     try {
       await tapToPayBridge.cancelTapToPayPayment().catch(() => undefined);
-      await tapToPayBridge.unlockPaymentOrientation().catch(() => undefined);
       await fetch('/api/dashboard/internal-settlement/cancel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
