@@ -53,6 +53,7 @@ type QuickChargeFailureSnapshot = {
   processFailureMessage: string | null;
   processFailureExceptionClass: string | null;
   processFailureReasonCategory: string | null;
+  appResumedDuringProcessInFlight: boolean | null;
   nativeFailurePoint: string | null;
   finalServerVerifiedStatus: string | null;
   finalFailureReason: string | null;
@@ -222,8 +223,20 @@ export default function InternalSettlementModule({
 
     const onForeground = () => {
       if (document.visibilityState !== 'visible') return;
-      if (flowActiveRef.current) return;
-      void refreshNativeReadiness(false);
+      void (async () => {
+        const nativeState = await tapToPayBridge.getActivePaymentRunState().catch(() => null);
+        const nativeFlowInFlight = nativeState != null && (nativeState.activeRun === true || nativeState.inFlight === true);
+        if (nativeFlowInFlight) {
+          console.info('[internal-settlement][take-payment][quick-charge][tap-to-pay]', 'foreground_readiness_refresh_skipped_native_flow_in_flight', {
+            nativeStatus: nativeState?.status || null,
+            nativeActiveRun: nativeState?.activeRun === true,
+            nativeInFlight: nativeState?.inFlight === true,
+          });
+          return;
+        }
+        if (flowActiveRef.current) return;
+        await refreshNativeReadiness(false);
+      })();
     };
 
     window.addEventListener('focus', onForeground);
@@ -669,6 +682,12 @@ export default function InternalSettlementModule({
               typeof nativeTraceSnapshot?.processFailureExceptionClass === 'string' ? nativeTraceSnapshot.processFailureExceptionClass : null,
             processFailureReasonCategory:
               typeof nativeTraceSnapshot?.processFailureReasonCategory === 'string' ? nativeTraceSnapshot.processFailureReasonCategory : null,
+            appResumedDuringProcessInFlight:
+              typeof nativeTraceSnapshot?.appResumedDuringProcessInFlight === 'boolean'
+                ? nativeTraceSnapshot.appResumedDuringProcessInFlight
+                : typeof (nativeResult as { appResumedDuringProcessInFlight?: unknown }).appResumedDuringProcessInFlight === 'boolean'
+                  ? Boolean((nativeResult as { appResumedDuringProcessInFlight?: unknown }).appResumedDuringProcessInFlight)
+                  : null,
             nativeFailurePoint:
               (typeof nativeTraceSnapshot?.nativeFailurePoint === 'string' && nativeTraceSnapshot.nativeFailurePoint) || nativeResult.nativeStage || null,
             finalServerVerifiedStatus: verifiedState || null,
@@ -831,6 +850,15 @@ export default function InternalSettlementModule({
       }
       const activeRun = internalSettlementActiveRunStore.get();
       const nativeState = await tapToPayBridge.getActivePaymentRunState();
+      if (source === 'resume' && nativeState.inFlight === true && nativeState.status === 'processing') {
+        logCollectionEvent('app_resume_recovery_skipped_process_in_flight', {
+          source,
+          nativeStatus: nativeState.status,
+          nativeActiveRun: nativeState.activeRun,
+          nativeInFlight: nativeState.inFlight,
+        });
+        return;
+      }
       if (source === 'resume' && flowActiveRef.current) {
         logCollectionEvent('app_resume_recovery_skipped_after_native_check', {
           source,

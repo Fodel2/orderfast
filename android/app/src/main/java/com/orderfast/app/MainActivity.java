@@ -20,6 +20,9 @@ public class MainActivity extends BridgeActivity {
         if (OrderfastTapToPayPlugin.isNativeTapToPayTakeoverActive()) {
             return true;
         }
+        if (OrderfastTapToPayPlugin.isNativeTapToPayProcessInFlight()) {
+            return true;
+        }
         WebView webView = bridge != null ? bridge.getWebView() : null;
         return isPosPaymentEntryRoute(webView);
     }
