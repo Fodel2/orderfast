@@ -250,13 +250,26 @@ export const createInternalSettlementSession = async (input: {
     },
   });
 
+  console.info('[internal-settlement][quick-charge][sequence]', 'quick_charge_stripe_context', {
+    sessionId: session.id,
+    flowRunId: null,
+    connectedAccountId: session.stripe_connected_account_id,
+    terminalLocationId: session.stripe_terminal_location_id,
+    mode: (session.metadata as Record<string, unknown> | null)?.terminal_mode === 'simulated_terminal' ? 'test' : 'live',
+  });
+
   return { session, amountCents: customAmount, currency };
 };
 
-export const createInternalSettlementPaymentIntent = async (input: { sessionId: string; restaurantId: string }) => {
+export const createInternalSettlementPaymentIntent = async (input: {
+  sessionId: string;
+  restaurantId: string;
+  flowRunId?: string | null;
+}) => {
   return createOrRetrieveCardPresentPaymentIntentForSession({
     sessionId: input.sessionId,
     restaurantId: input.restaurantId,
+    flowRunId: input.flowRunId || null,
   });
 };
 
@@ -395,6 +408,29 @@ export const cancelInternalSettlement = async (input: {
         stripeAccount: currentSession.stripe_connected_account_id,
       });
       verification.stripePaymentIntentStatus = paymentIntent.status;
+      const verifySnapshotMode = paymentIntent.livemode ? 'live' : 'test';
+      const verifySnapshotPaymentMethodTypes = paymentIntent.payment_method_types || [];
+      const verifySnapshotTerminalContext = verifySnapshotPaymentMethodTypes.includes('card_present');
+      const verifyFailureCategory =
+        paymentIntent.status === 'requires_payment_method'
+          ? !verifySnapshotTerminalContext
+            ? 'wrong_intent_creation'
+            : verifySnapshotMode !== 'live'
+              ? 'test_live_mismatch'
+              : 'native_collection_or_processing_failure'
+          : null;
+      console.info('[internal-settlement][quick-charge][sequence]', 'quick_charge_server_verify_payment_intent_snapshot', {
+        sessionId: input.sessionId,
+        flowRunId: null,
+        connectedAccountId: currentSession.stripe_connected_account_id,
+        terminalLocationId: currentSession.stripe_terminal_location_id,
+        mode: verifySnapshotMode,
+        paymentIntentId: paymentIntent.id,
+        paymentIntentStatus: paymentIntent.status,
+        paymentMethodTypes: verifySnapshotPaymentMethodTypes,
+        terminalCardPresentContext: verifySnapshotTerminalContext,
+        verificationFailureCategory: verifyFailureCategory,
+      });
       console.info('[internal-settlement][verification-stripe-intent]', {
         at: new Date().toISOString(),
         sessionId: input.sessionId,
@@ -499,6 +535,16 @@ export const cancelInternalSettlement = async (input: {
   if (settlementMode === 'quick_charge') {
     const paymentIntentStatus = verification.stripePaymentIntentStatus || input.nativeResult?.paymentIntentStatus || null;
     const paymentIntentId = input.nativeResult?.paymentIntentId || session?.stripe_payment_intent_id || null;
+    const finalFailureCategory =
+      paymentIntentStatus === 'requires_payment_method'
+        ? verification.decisionMode === 'stripe_verification_gate'
+          ? 'native_collection_or_processing_failure'
+          : 'stale_verification_state'
+        : session?.state === 'needs_reconciliation'
+          ? 'stale_verification_state'
+          : session?.state === 'failed'
+            ? 'wrong_intent_creation'
+            : null;
     console.info('[internal-settlement][quick-charge][sequence]', 'quick_charge_server_verify_result', {
       sessionId: input.sessionId,
       flowRunId: null,
@@ -515,6 +561,7 @@ export const cancelInternalSettlement = async (input: {
         paymentIntentStatus,
         finalState: session?.state || null,
         failureReason: session?.failure_message || verification.resolvedReason || null,
+        finalFailureCategory,
       });
     }
   }
