@@ -580,6 +580,9 @@ public class OrderfastTapToPayPlugin extends Plugin {
         final String backendBaseUrl = call.getString("backendBaseUrl", "");
         final String terminalLocationId = call.getString("terminalLocationId", "");
         final String flowRunId = call.getString("flowRunId", "");
+        final String providedPaymentIntentClientSecret = call.getString("paymentIntentClientSecret", "");
+        final String providedPaymentIntentId = call.getString("paymentIntentId", "");
+        final String providedPaymentIntentStatus = call.getString("paymentIntentStatus", "");
 
         if (sessionId.isEmpty() || restaurantId.isEmpty() || backendBaseUrl.isEmpty() || terminalLocationId.isEmpty()) {
             JSObject payload = result("failed", "session_error", "Missing required Tap to Pay parameters.");
@@ -643,15 +646,35 @@ public class OrderfastTapToPayPlugin extends Plugin {
                     "{\"session_id\":\"" + escapeJson(sessionId) + "\",\"restaurant_id\":\"" + escapeJson(restaurantId) + "\",\"next_state\":\"collecting\",\"event_type\":\"native_collect_start\"" + flowRunJsonFragment() + "}"
                 );
 
-                JSONObject piResponse = postJson(
-                    backendBaseUrl + "/api/kiosk/payments/card-present/payment-intent",
-                    "{\"session_id\":\"" + escapeJson(sessionId) + "\",\"restaurant_id\":\"" + escapeJson(restaurantId) + "\"" + flowRunJsonFragment() + "}"
-                );
-                final String clientSecret = piResponse.optString("clientSecret", "");
-                final String createdPaymentIntentId = piResponse.optString("paymentIntentId", "");
-                final String createdPaymentIntentStatus = piResponse.optString("status", "");
-                final boolean paymentIntentLiveMode = piResponse.optBoolean("livemode", false);
-                final String paymentIntentMethodTypes = piResponse.has("paymentMethodTypes") ? String.valueOf(piResponse.opt("paymentMethodTypes")) : null;
+                final boolean usingProvidedPaymentIntent = !isBlank(providedPaymentIntentClientSecret);
+                final String clientSecret;
+                final String createdPaymentIntentId;
+                final String createdPaymentIntentStatus;
+                final boolean paymentIntentLiveMode;
+                final String paymentIntentMethodTypes;
+                if (usingProvidedPaymentIntent) {
+                    clientSecret = providedPaymentIntentClientSecret;
+                    createdPaymentIntentId = providedPaymentIntentId;
+                    createdPaymentIntentStatus = providedPaymentIntentStatus;
+                    paymentIntentLiveMode = !isDebugBuild();
+                    paymentIntentMethodTypes = "[\"card_present\"]";
+                    JSObject paymentIntentProvidedPayload = new JSObject();
+                    paymentIntentProvidedPayload.put("nativeStage", "native_payment_intent_provided");
+                    paymentIntentProvidedPayload.put("paymentIntentId", isBlank(createdPaymentIntentId) ? null : createdPaymentIntentId);
+                    paymentIntentProvidedPayload.put("paymentIntentStatus", isBlank(createdPaymentIntentStatus) ? null : createdPaymentIntentStatus);
+                    logStartupStage("native_payment_intent_provided", paymentIntentProvidedPayload);
+                    traceTimeline("payment_intent_provided", paymentIntentProvidedPayload);
+                } else {
+                    JSONObject piResponse = postJson(
+                        backendBaseUrl + "/api/kiosk/payments/card-present/payment-intent",
+                        "{\"session_id\":\"" + escapeJson(sessionId) + "\",\"restaurant_id\":\"" + escapeJson(restaurantId) + "\"" + flowRunJsonFragment() + "}"
+                    );
+                    clientSecret = piResponse.optString("clientSecret", "");
+                    createdPaymentIntentId = piResponse.optString("paymentIntentId", "");
+                    createdPaymentIntentStatus = piResponse.optString("status", "");
+                    paymentIntentLiveMode = piResponse.optBoolean("livemode", false);
+                    paymentIntentMethodTypes = piResponse.has("paymentMethodTypes") ? String.valueOf(piResponse.opt("paymentMethodTypes")) : null;
+                }
                 final boolean runtimeDebuggable = isDebugBuild();
                 JSObject paymentIntentCreatedPayload = new JSObject();
                 paymentIntentCreatedPayload.put("nativeStage", "native_payment_intent_created");

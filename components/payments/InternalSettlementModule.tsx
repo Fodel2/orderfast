@@ -448,6 +448,12 @@ export default function InternalSettlementModule({
         paymentIntentStatus: intentPayload?.status || null,
         webStripeLayerInvolved: false,
       });
+      const paymentIntentClientSecret = intentPayload?.clientSecret ? String(intentPayload.clientSecret) : '';
+      const paymentIntentId = intentPayload?.paymentIntentId ? String(intentPayload.paymentIntentId) : '';
+      const paymentIntentStatus = intentPayload?.status ? String(intentPayload.status) : '';
+      if (!paymentIntentClientSecret) {
+        throw new Error('Payment intent client secret missing from settlement response.');
+      }
 
       setState('preparing');
       setMessage('Preparing Tap to Pay reader…');
@@ -499,6 +505,9 @@ export default function InternalSettlementModule({
         backendBaseUrl,
         terminalLocationId,
         flowRunId: flowRunId || undefined,
+        paymentIntentClientSecret,
+        paymentIntentId: paymentIntentId || undefined,
+        paymentIntentStatus: paymentIntentStatus || undefined,
       });
       logCollectionEvent('native_result_payload_from_bridge', {
         sessionId,
