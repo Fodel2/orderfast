@@ -58,19 +58,19 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
-    protected void onPause() {
+    public void onPause() {
         immersiveHandler.removeCallbacks(immersiveRunnable);
         super.onPause();
     }
 
     @Override
-    protected void onStop() {
+    public void onStop() {
         immersiveHandler.removeCallbacks(immersiveRunnable);
         super.onStop();
     }
 
     @Override
-    protected void onDestroy() {
+    public void onDestroy() {
         immersiveHandler.removeCallbacks(immersiveRunnable);
         super.onDestroy();
     }
