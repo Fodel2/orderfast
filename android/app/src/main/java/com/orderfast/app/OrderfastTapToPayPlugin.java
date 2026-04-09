@@ -51,6 +51,7 @@ import org.json.JSONObject;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.lang.reflect.Method;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -616,6 +617,20 @@ public class OrderfastTapToPayPlugin extends Plugin {
 
         executor.execute(() -> {
             try {
+                final JSObject quickChargeTraceSnapshot = new JSObject();
+                quickChargeTraceSnapshot.put("sessionId", sessionId);
+                quickChargeTraceSnapshot.put("flowRunId", isBlank(currentFlowRunId) ? JSONObject.NULL : currentFlowRunId);
+                quickChargeTraceSnapshot.put("paymentIntentId", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("retrieveSucceeded", false);
+                quickChargeTraceSnapshot.put("collectInvoked", false);
+                quickChargeTraceSnapshot.put("collectCallbackStatus", "not_called");
+                quickChargeTraceSnapshot.put("collectReturnedUpdatedIntent", false);
+                quickChargeTraceSnapshot.put("collectReturnedPaymentMethodAttached", "unknown");
+                quickChargeTraceSnapshot.put("processInvoked", false);
+                quickChargeTraceSnapshot.put("processCallbackStatus", "not_called");
+                quickChargeTraceSnapshot.put("nativeFailurePoint", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("finalFailureReason", JSONObject.NULL);
+
                 postJson(
                     backendBaseUrl + "/api/kiosk/payments/card-present/session-state",
                     "{\"session_id\":\"" + escapeJson(sessionId) + "\",\"restaurant_id\":\"" + escapeJson(restaurantId) + "\",\"next_state\":\"collecting\",\"event_type\":\"native_collect_start\"" + flowRunJsonFragment() + "}"
@@ -644,6 +659,8 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 mainHandler.post(() -> Terminal.getInstance().retrievePaymentIntent(clientSecret, new PaymentIntentCallback() {
                     @Override
                     public void onSuccess(PaymentIntent paymentIntent) {
+                        quickChargeTraceSnapshot.put("retrieveSucceeded", true);
+                        quickChargeTraceSnapshot.put("paymentIntentId", paymentIntent.getId());
                         final PaymentIntent retrievedIntent = paymentIntent;
                         activePaymentIntent = paymentIntent;
                         JSObject quickChargeClientSecretConsumedPayload = new JSObject();
@@ -678,6 +695,8 @@ public class OrderfastTapToPayPlugin extends Plugin {
                         quickChargeCollectInvokedPayload.put("webStripeLayerInvolved", false);
                         logFlowEvent("quick_charge_native_collect_invoked", quickChargeCollectInvokedPayload);
                         traceTimeline("collect_invoked", collectInvokedPayload);
+                        quickChargeTraceSnapshot.put("collectInvoked", true);
+                        quickChargeTraceSnapshot.put("nativeFailurePoint", "awaiting_collect_callback");
 
                         Terminal.getInstance().collectPaymentMethod(
                             paymentIntent,
@@ -686,6 +705,10 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                 public void onSuccess(PaymentIntent collectedIntent) {
                                     activePaymentIntent = collectedIntent;
                                     final boolean collectedIntentMatchesRetrieved = retrievedIntent == collectedIntent;
+                                    quickChargeTraceSnapshot.put("collectCallbackStatus", "success");
+                                    quickChargeTraceSnapshot.put("collectReturnedUpdatedIntent", !collectedIntentMatchesRetrieved);
+                                    quickChargeTraceSnapshot.put("collectReturnedPaymentMethodAttached", paymentMethodAttachmentState(collectedIntent));
+                                    quickChargeTraceSnapshot.put("nativeFailurePoint", "collect_succeeded");
                                     JSObject collectPayload = new JSObject();
                                     collectPayload.put("result", "success");
                                     collectPayload.put("nativeStage", "native_collect_result");
@@ -730,6 +753,8 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                     quickChargeProcessInvokedPayload.put("usedStaleOriginalPaymentIntent", false);
                                     logFlowEvent("quick_charge_native_process_invoked", quickChargeProcessInvokedPayload);
                                     traceTimeline("process_invoked_before_sdk_call", processInvokedPayload);
+                                    quickChargeTraceSnapshot.put("processInvoked", true);
+                                    quickChargeTraceSnapshot.put("nativeFailurePoint", "awaiting_process_callback");
                                     processCancelable = Terminal.getInstance().processPaymentIntent(
                                         collectedIntent,
                                         new CollectPaymentIntentConfiguration.Builder().build(),
@@ -738,6 +763,8 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                             @Override
                                             public void onSuccess(PaymentIntent intent) {
                                                 activePaymentIntent = intent;
+                                                quickChargeTraceSnapshot.put("processCallbackStatus", "success");
+                                                quickChargeTraceSnapshot.put("nativeFailurePoint", "process_succeeded");
                                                 JSObject quickChargeProcessCallbackPayload = new JSObject();
                                                 quickChargeProcessCallbackPayload.put("sessionId", currentSessionId);
                                                 quickChargeProcessCallbackPayload.put("flowRunId", currentFlowRunId);
@@ -757,6 +784,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                                     detailPayload.put("usedPostCollectPaymentIntent", true);
                                                     payload.put("detail", detailPayload);
                                                     attachPaymentIntentSnapshot(payload, intent, "process_success");
+                                                    payload.put("quickChargeTraceSnapshot", quickChargeTraceSnapshot);
                                                     logStartupStage("native_process_result", payload);
                                                     cacheFinalResult(payload, "process_success");
                                                     clearActivePaymentState();
@@ -771,6 +799,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                                     detailPayload.put("usedPostCollectPaymentIntent", true);
                                                     payload.put("detail", detailPayload);
                                                     attachPaymentIntentSnapshot(payload, intent, "process_pending");
+                                                    payload.put("quickChargeTraceSnapshot", quickChargeTraceSnapshot);
                                                     logStartupStage("native_process_result", payload);
                                                     cacheFinalResult(payload, "process_pending");
                                                     clearActivePaymentState();
@@ -784,6 +813,9 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                                     detailPayload.put("usedPostCollectPaymentIntent", true);
                                                     payload.put("detail", detailPayload);
                                                     attachPaymentIntentSnapshot(payload, intent, "process_unexpected_status");
+                                                    quickChargeTraceSnapshot.put("nativeFailurePoint", "process_unexpected_status");
+                                                    quickChargeTraceSnapshot.put("finalFailureReason", "Unexpected PaymentIntent status after process callback.");
+                                                    payload.put("quickChargeTraceSnapshot", quickChargeTraceSnapshot);
                                                     logStartupStage("native_process_result", payload);
                                                     cacheFinalResult(payload, "process_unexpected_status");
                                                     clearActivePaymentState();
@@ -795,6 +827,9 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                             @Override
                                             public void onFailure(TerminalException e) {
                                                 String normalizedCode = normalizeErrorCode(e);
+                                                quickChargeTraceSnapshot.put("processCallbackStatus", "failure");
+                                                quickChargeTraceSnapshot.put("nativeFailurePoint", "process_callback_failure");
+                                                quickChargeTraceSnapshot.put("finalFailureReason", buildErrorMessage(e));
                                                 JSObject processFailurePayload = new JSObject();
                                                 processFailurePayload.put("normalizedCode", normalizedCode);
                                                 processFailurePayload.put("terminalCode", e.getErrorCode() == null ? "UNKNOWN" : e.getErrorCode().name());
@@ -830,6 +865,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                                 payload.put("readerDisconnectReason", lastReaderDisconnectReason);
                                                 payload.put("cancelClassification", determineCancelClassification(normalizedCode));
                                                 attachPaymentIntentSnapshot(payload, activePaymentIntent, "process_failure_active_intent");
+                                                payload.put("quickChargeTraceSnapshot", quickChargeTraceSnapshot);
                                                 JSObject quickChargeProcessCallbackPayload = new JSObject();
                                                 quickChargeProcessCallbackPayload.put("sessionId", currentSessionId);
                                                 quickChargeProcessCallbackPayload.put("flowRunId", currentFlowRunId);
@@ -851,6 +887,9 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                 @Override
                                 public void onFailure(TerminalException e) {
                                     String normalizedCode = normalizeErrorCode(e);
+                                    quickChargeTraceSnapshot.put("collectCallbackStatus", "failure");
+                                    quickChargeTraceSnapshot.put("nativeFailurePoint", "collect_callback_failure");
+                                    quickChargeTraceSnapshot.put("finalFailureReason", buildErrorMessage(e));
                                     JSObject collectFailurePayload = new JSObject();
                                     collectFailurePayload.put("normalizedCode", normalizedCode);
                                     collectFailurePayload.put("terminalCode", e.getErrorCode() == null ? "UNKNOWN" : e.getErrorCode().name());
@@ -886,6 +925,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                     quickChargeCollectCallbackPayload.put("terminalCode", e.getErrorCode() == null ? "UNKNOWN" : e.getErrorCode().name());
                                     logFlowEvent("quick_charge_native_collect_callback", quickChargeCollectCallbackPayload);
                                     attachPaymentIntentSnapshot(payload, activePaymentIntent, "collect_failure_active_intent");
+                                    payload.put("quickChargeTraceSnapshot", quickChargeTraceSnapshot);
                                     logStartupStage("native_collect_result", payload);
                                     cacheFinalResult(payload, "collect_failure");
                                     clearActivePaymentState();
@@ -901,8 +941,11 @@ public class OrderfastTapToPayPlugin extends Plugin {
                     public void onFailure(TerminalException e) {
                         traceTimeline("retrieve_payment_intent_failure", null);
                         status = "failed";
+                        quickChargeTraceSnapshot.put("nativeFailurePoint", "retrieve_payment_intent_failure");
+                        quickChargeTraceSnapshot.put("finalFailureReason", buildErrorMessage(e));
                         JSObject payload = result("failed", normalizeErrorCode(e), buildErrorMessage(e));
                         payload.put("detail", terminalErrorDetail(e, "native_collect_result"));
+                        payload.put("quickChargeTraceSnapshot", quickChargeTraceSnapshot);
                         logStartupStage("native_collect_result", payload);
                         cacheFinalResult(payload, "retrieve_payment_intent_failure");
                         clearActivePaymentState();
@@ -915,6 +958,20 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 status = "failed";
                 JSObject payload = result("failed", normalizeErrorCode(ex), ex.getMessage());
                 payload.put("detail", exceptionDetail(ex, "native_collect_result", "start_exception"));
+                JSObject quickChargeTraceSnapshot = new JSObject();
+                quickChargeTraceSnapshot.put("sessionId", sessionId);
+                quickChargeTraceSnapshot.put("flowRunId", isBlank(currentFlowRunId) ? JSONObject.NULL : currentFlowRunId);
+                quickChargeTraceSnapshot.put("paymentIntentId", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("retrieveSucceeded", false);
+                quickChargeTraceSnapshot.put("collectInvoked", false);
+                quickChargeTraceSnapshot.put("collectCallbackStatus", "not_called");
+                quickChargeTraceSnapshot.put("collectReturnedUpdatedIntent", false);
+                quickChargeTraceSnapshot.put("collectReturnedPaymentMethodAttached", "unknown");
+                quickChargeTraceSnapshot.put("processInvoked", false);
+                quickChargeTraceSnapshot.put("processCallbackStatus", "not_called");
+                quickChargeTraceSnapshot.put("nativeFailurePoint", "start_exception");
+                quickChargeTraceSnapshot.put("finalFailureReason", ex.getMessage() == null ? "start_exception" : ex.getMessage());
+                payload.put("quickChargeTraceSnapshot", quickChargeTraceSnapshot);
                 logStartupStage("native_collect_result", payload);
                 cacheFinalResult(payload, "start_exception");
                 clearActivePaymentState();
@@ -1254,6 +1311,18 @@ public class OrderfastTapToPayPlugin extends Plugin {
         payload.put("paymentIntentSource", source);
         payload.put("paymentIntentId", intent.getId());
         payload.put("paymentIntentStatus", intent.getStatus() == null ? "unknown" : intent.getStatus().name());
+        payload.put("paymentMethodAttached", paymentMethodAttachmentState(intent));
+    }
+
+    private Object paymentMethodAttachmentState(PaymentIntent intent) {
+        if (intent == null) return "unknown";
+        try {
+            Method getPaymentMethod = intent.getClass().getMethod("getPaymentMethod");
+            Object paymentMethod = getPaymentMethod.invoke(intent);
+            return paymentMethod != null;
+        } catch (Exception ignored) {
+            return "unknown";
+        }
     }
 
     private void ensureTerminalInitialized() throws TerminalException {
