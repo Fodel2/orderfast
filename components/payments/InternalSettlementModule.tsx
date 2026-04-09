@@ -754,10 +754,12 @@ export default function InternalSettlementModule({
     } catch (error: any) {
       logCollectionEvent('collection_exception', { message: error?.message || 'unknown_exception' });
       let nativeRunStillActive = false;
+      let nativeRunStatus: string | null = null;
       if (sessionIdForCleanup) {
         try {
           const nativeState = await tapToPayBridge.getActivePaymentRunState();
           nativeRunStillActive = nativeState.activeRun === true || nativeState.inFlight === true;
+          nativeRunStatus = typeof nativeState.status === 'string' ? nativeState.status : null;
           logCollectionEvent('collection_exception_native_state_check', {
             sessionId: sessionIdForCleanup,
             activeRun: nativeState.activeRun,
@@ -770,8 +772,13 @@ export default function InternalSettlementModule({
       }
       if (nativeRunStillActive) {
         keepFlowActiveAfterError = true;
-        setState('collecting');
-        setMessage('Tap to Pay remains active on device. Waiting for native completion callback…');
+        const processingInFlight = nativeRunStatus === 'processing';
+        setState(processingInFlight ? 'processing' : 'collecting');
+        setMessage(
+          processingInFlight
+            ? 'Tap to Pay is still processing on device. Waiting for native process callback…'
+            : 'Tap to Pay remains active on device. Waiting for native completion callback…'
+        );
         return;
       }
       setState('failed');
@@ -833,18 +840,24 @@ export default function InternalSettlementModule({
         return;
       }
       if (nativeState.activeRun && activeRun?.sessionId) {
+        const processingInFlight = nativeState.status === 'processing';
         logCollectionEvent('app_resume_rehydrated_active_run', {
           source,
           sessionId: activeRun.sessionId,
           nativeStatus: nativeState.status,
           nativeFlowRunId: nativeState.flowRunId || null,
+          processStageInFlight: processingInFlight,
         });
         setBusy(true);
         flowActiveRef.current = true;
         setActiveSessionId(activeRun.sessionId);
         setActiveTerminalLocationId(activeRun.terminalLocationId);
-        setState('collecting');
-        setMessage('Rehydrated active Tap to Pay run after resume.');
+        setState(processingInFlight ? 'processing' : 'collecting');
+        setMessage(
+          processingInFlight
+            ? 'Rehydrated active Tap to Pay run while processPaymentIntent is in progress.'
+            : 'Rehydrated active Tap to Pay run after resume.'
+        );
       }
       const cached = (nativeState.cachedFinalResult as Record<string, unknown> | undefined) || null;
       if (cached && activeRun?.sessionId) {
