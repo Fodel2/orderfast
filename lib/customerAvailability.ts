@@ -1,3 +1,11 @@
+import {
+  formatClockTime,
+  formatTimeInTimeZone,
+  formatWeekdayInTimeZone,
+  getZonedDateParts,
+  toIsoDateInTimeZone,
+} from '@/lib/timezone';
+
 export type OpeningPeriod = {
   open_time: string;
   close_time: string;
@@ -12,6 +20,7 @@ export type OpeningException = {
 
 export type AvailabilityInputs = {
   now: Date;
+  timeZone: string;
   overrideMode?: 'none' | 'manual_closed' | 'on_break' | null;
   overrideUntil?: string | null;
   isOpen?: boolean;
@@ -43,22 +52,8 @@ function minutesFromTime(value: string): number {
   return h * 60 + m;
 }
 
-function formatTime(value: string) {
-  const [h, m] = value.split(':').map((part) => Number(part));
-  const dt = new Date();
-  dt.setHours(Number.isFinite(h) ? h : 0, Number.isFinite(m) ? m : 0, 0, 0);
-  return dt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-}
-
-function toIsoLocalDate(date: Date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
 function getScheduleForDate(inputs: AvailabilityInputs, date: Date): ScheduleDay {
-  const isoDate = toIsoLocalDate(date);
+  const isoDate = toIsoDateInTimeZone(date, inputs.timeZone);
   const exception = inputs.exceptions.find((row) => row.exception_date === isoDate);
 
   if (exception) {
@@ -69,7 +64,7 @@ function getScheduleForDate(inputs: AvailabilityInputs, date: Date): ScheduleDay
     };
   }
 
-  const day = date.getDay();
+  const day = getZonedDateParts(date, inputs.timeZone).weekday;
   const periods = inputs.weeklyPeriods
     .filter((row) => row.day_of_week === day)
     .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
@@ -81,30 +76,35 @@ function getScheduleForDate(inputs: AvailabilityInputs, date: Date): ScheduleDay
   };
 }
 
-function findNextOpening(inputs: AvailabilityInputs, now: Date): { when: Date; label: string } | null {
+function findNextOpening(inputs: AvailabilityInputs, now: Date): { label: string } | null {
+  const nowParts = getZonedDateParts(now, inputs.timeZone);
+  const nowMinutes = nowParts.hour * 60 + nowParts.minute;
+
   for (let dayOffset = 0; dayOffset < 8; dayOffset += 1) {
     const date = new Date(now.getTime() + dayOffset * DAY_MS);
     const schedule = getScheduleForDate(inputs, date);
     if (schedule.isClosedException) continue;
     if (!schedule.periods.length) continue;
 
-    const nowMinutes = now.getHours() * 60 + now.getMinutes();
     const candidate = schedule.periods
       .map((period) => minutesFromTime(period.open_time))
       .find((openMinutes) => dayOffset > 0 || openMinutes > nowMinutes);
 
     if (candidate === undefined) continue;
 
-    const when = new Date(date);
-    when.setHours(Math.floor(candidate / 60), candidate % 60, 0, 0);
+    const openingTime = formatClockTime(
+      `${String(Math.floor(candidate / 60)).padStart(2, '0')}:${String(candidate % 60).padStart(2, '0')}`,
+      inputs.timeZone
+    );
 
-    const label = dayOffset === 0
-      ? `Opens at ${formatTime(String(Math.floor(candidate / 60)).padStart(2, '0') + ':' + String(candidate % 60).padStart(2, '0'))}`
-      : dayOffset === 1
-      ? `Opens tomorrow at ${formatTime(String(Math.floor(candidate / 60)).padStart(2, '0') + ':' + String(candidate % 60).padStart(2, '0'))}`
-      : `Opens ${when.toLocaleDateString([], { weekday: 'long' })} at ${when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+    const label =
+      dayOffset === 0
+        ? `Opens at ${openingTime}`
+        : dayOffset === 1
+        ? `Opens tomorrow at ${openingTime}`
+        : `Opens ${formatWeekdayInTimeZone(date, inputs.timeZone)} at ${openingTime}`;
 
-    return { when, label };
+    return { label };
   }
   return null;
 }
@@ -123,7 +123,8 @@ export function evaluateAvailability(inputs: AvailabilityInputs): AvailabilitySn
     };
   }
 
-  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const nowParts = getZonedDateParts(now, inputs.timeZone);
+  const nowMinutes = nowParts.hour * 60 + nowParts.minute;
   const periods = todaySchedule.periods || [];
 
   let activePeriod: OpeningPeriod | null = null;
@@ -175,7 +176,7 @@ export function evaluateAvailability(inputs: AvailabilityInputs): AvailabilitySn
         blocksNewSessions: true,
         reason: 'on_break',
         primaryLabel: 'Temporarily closed',
-        secondaryLabel: `Back at ${breakDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`,
+        secondaryLabel: `Back at ${formatTimeInTimeZone(breakDate, inputs.timeZone)}`,
       };
     }
   }
@@ -185,6 +186,6 @@ export function evaluateAvailability(inputs: AvailabilityInputs): AvailabilitySn
     blocksNewSessions: false,
     reason: 'open',
     primaryLabel: 'Open now',
-    secondaryLabel: `Closes at ${formatTime(activePeriod.close_time)}`,
+    secondaryLabel: `Closes at ${formatClockTime(activePeriod.close_time, inputs.timeZone)}`,
   };
 }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { evaluateAvailability, type OpeningException, type OpeningPeriod } from '@/lib/customerAvailability';
+import { addDaysToIsoDate, resolveRestaurantTimeZone, toIsoDateInTimeZone } from '@/lib/timezone';
 
 const WEBSITE_GRACE_MESSAGES = [
   'We just closed. Speed run your order.',
@@ -36,6 +37,7 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
   const [legacyBreakUntil, setLegacyBreakUntil] = useState<string | null>(null);
   const [weeklyPeriods, setWeeklyPeriods] = useState<Array<OpeningPeriod & { day_of_week: number }>>([]);
   const [exceptions, setExceptions] = useState<OpeningException[]>([]);
+  const [restaurantTimeZone, setRestaurantTimeZone] = useState('UTC');
   const [tick, setTick] = useState(Date.now());
   const [graceEndAt, setGraceEndAt] = useState<number | null>(null);
   const [graceMessage, setGraceMessage] = useState('');
@@ -68,19 +70,20 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
         setLoading(true);
       }
 
-      const today = new Date();
-      const start = new Date(today);
-      start.setDate(today.getDate() - 1);
-      const end = new Date(today);
-      end.setDate(today.getDate() + 7);
-      const toIso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const now = new Date();
 
-      const [restaurantRes, weeklyRes, exceptionRes] = await Promise.all([
-        supabase
-          .from('restaurants')
-          .select('availability_override_mode, availability_override_until, is_open, break_until')
-          .eq('id', restaurantId)
-          .maybeSingle(),
+      const { data: restaurantData } = await supabase
+        .from('restaurants')
+        .select('availability_override_mode, availability_override_until, is_open, break_until, timezone')
+        .eq('id', restaurantId)
+        .maybeSingle();
+
+      const timeZone = resolveRestaurantTimeZone(restaurantData?.timezone);
+      const todayIso = toIsoDateInTimeZone(now, timeZone);
+      const startIso = addDaysToIsoDate(todayIso, -1);
+      const endIso = addDaysToIsoDate(todayIso, 7);
+
+      const [weeklyRes, exceptionRes] = await Promise.all([
         supabase
           .from('opening_hours_weekly_periods')
           .select('day_of_week,open_time,close_time,sort_order')
@@ -89,21 +92,22 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
           .from('opening_hours_exceptions')
           .select('exception_date,is_closed,opening_hours_exception_periods(open_time,close_time,sort_order)')
           .eq('restaurant_id', restaurantId)
-          .gte('exception_date', toIso(start))
-          .lte('exception_date', toIso(end)),
+          .gte('exception_date', startIso)
+          .lte('exception_date', endIso),
       ]);
 
       if (!active) return;
 
       const mode =
-        restaurantRes.data?.availability_override_mode === 'manual_closed' ||
-        restaurantRes.data?.availability_override_mode === 'on_break'
-          ? restaurantRes.data.availability_override_mode
+        restaurantData?.availability_override_mode === 'manual_closed' ||
+        restaurantData?.availability_override_mode === 'on_break'
+          ? restaurantData.availability_override_mode
           : 'none';
       setOverrideMode(mode);
-      setOverrideUntil(restaurantRes.data?.availability_override_until || null);
-      setLegacyIsOpen(typeof restaurantRes.data?.is_open === 'boolean' ? restaurantRes.data.is_open : true);
-      setLegacyBreakUntil(restaurantRes.data?.break_until || null);
+      setOverrideUntil(restaurantData?.availability_override_until || null);
+      setLegacyIsOpen(typeof restaurantData?.is_open === 'boolean' ? restaurantData.is_open : true);
+      setLegacyBreakUntil(restaurantData?.break_until || null);
+      setRestaurantTimeZone(timeZone);
       setWeeklyPeriods((weeklyRes.data || []) as Array<OpeningPeriod & { day_of_week: number }>);
       setExceptions(
         ((exceptionRes.data || []) as any[]).map((row) => ({
@@ -133,6 +137,7 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
             availability_override_until?: string | null;
             is_open?: boolean;
             break_until?: string | null;
+            timezone?: string | null;
           };
           setOverrideMode(
             next.availability_override_mode === 'manual_closed' || next.availability_override_mode === 'on_break'
@@ -142,6 +147,7 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
           if (typeof next.availability_override_until !== 'undefined') setOverrideUntil(next.availability_override_until || null);
           if (typeof next.is_open === 'boolean') setLegacyIsOpen(next.is_open);
           if (typeof next.break_until !== 'undefined') setLegacyBreakUntil(next.break_until || null);
+          if (typeof next.timezone !== 'undefined') setRestaurantTimeZone(resolveRestaurantTimeZone(next.timezone));
         }
       )
       .subscribe((status) => {
@@ -195,6 +201,7 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
     () =>
       evaluateAvailability({
         now: new Date(tick),
+        timeZone: restaurantTimeZone,
         overrideMode,
         overrideUntil,
         isOpen: legacyIsOpen,
@@ -202,7 +209,7 @@ export function useCustomerAvailability({ restaurantId, channel, sessionActive, 
         weeklyPeriods,
         exceptions,
       }),
-    [exceptions, legacyBreakUntil, legacyIsOpen, overrideMode, overrideUntil, tick, weeklyPeriods]
+    [exceptions, legacyBreakUntil, legacyIsOpen, overrideMode, overrideUntil, restaurantTimeZone, tick, weeklyPeriods]
   );
 
   useEffect(() => {
