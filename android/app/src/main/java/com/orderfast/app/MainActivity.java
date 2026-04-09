@@ -32,7 +32,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(OrderfastTapToPayPlugin.class);
         super.onCreate(savedInstanceState);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        applyImmersiveMode();
+        immersiveHandler.postDelayed(immersiveRunnable, 220);
         configureWebViewPresentation();
     }
 
