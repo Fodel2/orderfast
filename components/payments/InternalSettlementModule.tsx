@@ -80,6 +80,7 @@ type QuickChargeFailureSnapshot = {
   immersiveReappliedDuringPayment: boolean | null;
   orientationChangedDuringPayment: boolean | null;
   windowFocusChangedDuringPayment: boolean | null;
+  processDeferredForForegroundFocus: boolean | null;
   timedEventTrail: string[] | null;
   appResumedDuringProcessInFlight: boolean | null;
   nativeFailurePoint: string | null;
@@ -791,6 +792,10 @@ export default function InternalSettlementModule({
             windowFocusChangedDuringPayment:
               typeof nativeTraceSnapshot?.windowFocusChangedDuringPayment === 'boolean'
                 ? nativeTraceSnapshot.windowFocusChangedDuringPayment
+                : null,
+            processDeferredForForegroundFocus:
+              typeof nativeTraceSnapshot?.processDeferredForForegroundFocus === 'boolean'
+                ? nativeTraceSnapshot.processDeferredForForegroundFocus
                 : null,
             timedEventTrail:
               Array.isArray(nativeTraceSnapshot?.timedEventTrail) && nativeTraceSnapshot.timedEventTrail.every((event) => typeof event === 'string')
