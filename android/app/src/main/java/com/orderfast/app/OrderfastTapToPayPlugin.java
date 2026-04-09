@@ -108,6 +108,11 @@ public class OrderfastTapToPayPlugin extends Plugin {
     private volatile int activeRunSequence = 0;
     private volatile long lastReaderDisconnectElapsedMs = 0L;
     private volatile String lastReaderDisconnectReason = "none";
+    private static final AtomicBoolean nativeTapToPayTakeoverActive = new AtomicBoolean(false);
+
+    public static boolean isNativeTapToPayTakeoverActive() {
+        return nativeTapToPayTakeoverActive.get();
+    }
 
     @Override
     public void load() {
@@ -189,6 +194,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
         lastResumeAtMs = 0L;
         inFlight = false;
         activeRunMonotonicStartNs = 0L;
+        nativeTapToPayTakeoverActive.set(false);
     }
 
     private void resetStatusForNextAttempt() {
@@ -605,6 +611,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
 
         inFlight = true;
         status = "collecting";
+        nativeTapToPayTakeoverActive.set(true);
         confirmedBackgroundInterruption = false;
         backgroundInterruptionCandidate = false;
         stripeTakeoverObserved = false;
@@ -1486,12 +1493,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
     private String classifyTerminalFailureCategory(String normalizedCode) {
         if ("canceled".equals(normalizedCode)) {
             if (cancelRequestedByApp) return "app_cancelled";
-            if (
-                isConfirmedLifecycleInterruption()
-                    || stripeTakeoverObserved
-                    || lifecyclePausedDuringActiveFlow
-                    || backgroundInterruptionCandidate
-            ) {
+            if (isConfirmedLifecycleInterruption()) {
                 return "lifecycle_interrupted";
             }
             return "customer_cancelled";
