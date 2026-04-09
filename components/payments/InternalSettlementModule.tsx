@@ -267,9 +267,6 @@ export default function InternalSettlementModule({
     if (reasonCategoryRaw === 'lifecycle_interrupted') return 'ambiguous_canceled_after_takeover';
     const canceled = nativeResult.status === 'canceled' || nativeResult.code === 'canceled';
     if (canceled) {
-      const takeoverLike = (nativeResult as { stripeTakeoverActive?: unknown }).stripeTakeoverActive === true;
-      const backgroundLike = (nativeResult as { appBackgrounded?: unknown }).appBackgrounded === true;
-      const explicitCustomerSignal = (nativeResult as { definitiveCustomerCancelSignal?: unknown }).definitiveCustomerCancelSignal === true;
       const interruptionReasonCode =
         typeof (nativeResult as { interruptionReasonCode?: unknown }).interruptionReasonCode === 'string'
           ? String((nativeResult as { interruptionReasonCode?: string }).interruptionReasonCode)
@@ -277,9 +274,6 @@ export default function InternalSettlementModule({
             ? String(detail.interruptionReasonCode)
             : null;
       if (interruptionReasonCode === 'background_loss_confirmed') {
-        return 'ambiguous_canceled_after_takeover';
-      }
-      if ((takeoverLike || backgroundLike) && !explicitCustomerSignal) {
         return 'ambiguous_canceled_after_takeover';
       }
       return 'customer_cancelled';

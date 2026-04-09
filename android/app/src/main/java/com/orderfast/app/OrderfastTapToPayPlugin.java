@@ -1199,6 +1199,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
         if (inFlight) {
             // Stripe Tap to Pay collection can temporarily pause/stop the host Activity while the SDK takes over.
             // Returning to onResume means the foreground handoff recovered, so clear candidate interruption state.
+            lifecyclePausedDuringActiveFlow = false;
             confirmedBackgroundInterruption = false;
             backgroundInterruptionCandidate = false;
             backgroundInterruptionCandidateAtMs = 0L;
@@ -1240,8 +1241,8 @@ public class OrderfastTapToPayPlugin extends Plugin {
         traceTimeline("plugin_handleOnStop", null);
         if (inFlight && ("collecting".equals(status) || "processing".equals(status))) {
             stripeTakeoverObserved = true;
-            lifecyclePausedDuringActiveFlow = true;
             if (appInBackground && !changingConfigurations) {
+                lifecyclePausedDuringActiveFlow = true;
                 backgroundInterruptionCandidate = true;
                 if (backgroundInterruptionCandidateAtMs <= 0L) {
                     backgroundInterruptionCandidateAtMs = System.currentTimeMillis();
@@ -1249,6 +1250,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 long candidateMs = System.currentTimeMillis() - backgroundInterruptionCandidateAtMs;
                 confirmedBackgroundInterruption = candidateMs >= BACKGROUND_INTERRUPTION_MIN_MS;
             } else {
+                lifecyclePausedDuringActiveFlow = false;
                 confirmedBackgroundInterruption = false;
                 backgroundInterruptionCandidate = false;
                 backgroundInterruptionCandidateAtMs = 0L;
