@@ -137,6 +137,10 @@ public class OrderfastTapToPayPlugin extends Plugin {
         return inFlight && ("collecting".equals(status) || "processing".equals(status));
     }
 
+    private boolean isProcessStageActive() {
+        return inFlight && "processing".equals(status);
+    }
+
     private JSObject paymentRunGuardPayload(String path, String reason) {
         JSObject payload = lifecyclePayload("payment_run_guard");
         payload.put("path", path);
@@ -1255,6 +1259,14 @@ public class OrderfastTapToPayPlugin extends Plugin {
         traceTimeline("plugin_handleOnStop", null);
         if (inFlight && ("collecting".equals(status) || "processing".equals(status))) {
             stripeTakeoverObserved = true;
+            if ("processing".equals(status)) {
+                lifecyclePausedDuringActiveFlow = false;
+                confirmedBackgroundInterruption = false;
+                backgroundInterruptionCandidate = false;
+                backgroundInterruptionCandidateAtMs = 0L;
+                logStartupStage("native_lifecycle", detail("native_lifecycle", "transient_stop_during_process_takeover", status));
+                return;
+            }
             if (appInBackground && !changingConfigurations) {
                 lifecyclePausedDuringActiveFlow = true;
                 backgroundInterruptionCandidate = true;
@@ -1561,6 +1573,9 @@ public class OrderfastTapToPayPlugin extends Plugin {
     }
 
     private boolean isConfirmedLifecycleInterruption() {
+        if (isProcessStageActive() && stripeTakeoverObserved) {
+            return false;
+        }
         if (confirmedBackgroundInterruption && isAppInBackground()) {
             return true;
         }

@@ -352,6 +352,7 @@ export default function InternalSettlementModule({
 
     let sessionIdForCleanup: string | null = null;
     let keepFlowActiveAfterError = false;
+    let orientationLockedForRun = false;
     const flowRunId = flowRunIdRef.current;
     const persistFlowOutcome = async (input: {
       sessionId: string;
@@ -372,6 +373,17 @@ export default function InternalSettlementModule({
       }).catch(() => undefined);
     };
     try {
+      if (mode === 'quick_charge') {
+        const orientationLock = await tapToPayBridge
+          .lockPaymentOrientationToPortrait()
+          .catch(() => ({ locked: false as const, reason: undefined as string | undefined }));
+        orientationLockedForRun = orientationLock.locked === true;
+        logCollectionEvent('quick_charge_orientation_lock', {
+          locked: orientationLock.locked === true,
+          reason: orientationLock.reason || null,
+        });
+      }
+
       logCollectionEvent('readiness_refresh.start');
       const readinessRes = await fetch('/api/dashboard/internal-settlement/tap-to-pay-availability');
       const readinessPayload = await readinessRes.json().catch(() => ({}));
@@ -754,10 +766,12 @@ export default function InternalSettlementModule({
     } catch (error: any) {
       logCollectionEvent('collection_exception', { message: error?.message || 'unknown_exception' });
       let nativeRunStillActive = false;
+      let nativeRunStatus: string | null = null;
       if (sessionIdForCleanup) {
         try {
           const nativeState = await tapToPayBridge.getActivePaymentRunState();
           nativeRunStillActive = nativeState.activeRun === true || nativeState.inFlight === true;
+          nativeRunStatus = typeof nativeState.status === 'string' ? nativeState.status : null;
           logCollectionEvent('collection_exception_native_state_check', {
             sessionId: sessionIdForCleanup,
             activeRun: nativeState.activeRun,
@@ -770,8 +784,13 @@ export default function InternalSettlementModule({
       }
       if (nativeRunStillActive) {
         keepFlowActiveAfterError = true;
-        setState('collecting');
-        setMessage('Tap to Pay remains active on device. Waiting for native completion callback…');
+        const processingInFlight = nativeRunStatus === 'processing';
+        setState(processingInFlight ? 'processing' : 'collecting');
+        setMessage(
+          processingInFlight
+            ? 'Tap to Pay is still processing on device. Waiting for native process callback…'
+            : 'Tap to Pay remains active on device. Waiting for native completion callback…'
+        );
         return;
       }
       setState('failed');
@@ -787,6 +806,9 @@ export default function InternalSettlementModule({
       setActiveSessionId(null);
       setActiveTerminalLocationId(null);
     } finally {
+      if (orientationLockedForRun && !keepFlowActiveAfterError) {
+        await tapToPayBridge.unlockPaymentOrientation().catch(() => undefined);
+      }
       if (keepFlowActiveAfterError) {
         setBusy(true);
         flowActiveRef.current = true;
@@ -833,18 +855,24 @@ export default function InternalSettlementModule({
         return;
       }
       if (nativeState.activeRun && activeRun?.sessionId) {
+        const processingInFlight = nativeState.status === 'processing';
         logCollectionEvent('app_resume_rehydrated_active_run', {
           source,
           sessionId: activeRun.sessionId,
           nativeStatus: nativeState.status,
           nativeFlowRunId: nativeState.flowRunId || null,
+          processStageInFlight: processingInFlight,
         });
         setBusy(true);
         flowActiveRef.current = true;
         setActiveSessionId(activeRun.sessionId);
         setActiveTerminalLocationId(activeRun.terminalLocationId);
-        setState('collecting');
-        setMessage('Rehydrated active Tap to Pay run after resume.');
+        setState(processingInFlight ? 'processing' : 'collecting');
+        setMessage(
+          processingInFlight
+            ? 'Rehydrated active Tap to Pay run while processPaymentIntent is in progress.'
+            : 'Rehydrated active Tap to Pay run after resume.'
+        );
       }
       const cached = (nativeState.cachedFinalResult as Record<string, unknown> | undefined) || null;
       if (cached && activeRun?.sessionId) {
@@ -869,6 +897,7 @@ export default function InternalSettlementModule({
     setBusy(true);
     try {
       await tapToPayBridge.cancelTapToPayPayment().catch(() => undefined);
+      await tapToPayBridge.unlockPaymentOrientation().catch(() => undefined);
       await fetch('/api/dashboard/internal-settlement/cancel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
