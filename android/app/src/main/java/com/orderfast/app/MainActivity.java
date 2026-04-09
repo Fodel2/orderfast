@@ -16,6 +16,10 @@ public class MainActivity extends BridgeActivity {
     private final Handler immersiveHandler = new Handler(Looper.getMainLooper());
     private final Runnable immersiveRunnable = this::applyImmersiveMode;
 
+    private boolean shouldSuppressHostUiChurn() {
+        return OrderfastTapToPayPlugin.isNativeTapToPayTakeoverActive();
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(OrderfastTapToPayPlugin.class);
@@ -47,22 +51,44 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onResume() {
         super.onResume();
-        if (OrderfastTapToPayPlugin.isNativeTapToPayTakeoverActive()) {
+        if (shouldSuppressHostUiChurn()) {
             return;
         }
         immersiveHandler.postDelayed(immersiveRunnable, 120);
     }
 
     @Override
+    public void onPause() {
+        immersiveHandler.removeCallbacks(immersiveRunnable);
+        super.onPause();
+    }
+
+    @Override
+    public void onStop() {
+        immersiveHandler.removeCallbacks(immersiveRunnable);
+        super.onStop();
+    }
+
+    @Override
+    public void onDestroy() {
+        immersiveHandler.removeCallbacks(immersiveRunnable);
+        super.onDestroy();
+    }
+
+    @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
-        if (hasFocus && !OrderfastTapToPayPlugin.isNativeTapToPayTakeoverActive()) {
+        if (!hasFocus) {
+            immersiveHandler.removeCallbacks(immersiveRunnable);
+            return;
+        }
+        if (!shouldSuppressHostUiChurn()) {
             immersiveHandler.post(immersiveRunnable);
         }
     }
 
     private void applyImmersiveMode() {
-        if (OrderfastTapToPayPlugin.isNativeTapToPayTakeoverActive()) {
+        if (shouldSuppressHostUiChurn()) {
             return;
         }
         if (getWindow() == null || getWindow().getDecorView() == null) {
