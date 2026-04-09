@@ -1010,7 +1010,7 @@ export default function InternalSettlementModule({
           >
             <p className="font-semibold">Collection state: {state.replace('_', ' ')}</p>
             <p className="mt-1 text-xs">{message}</p>
-            {mode === 'quick_charge' && quickChargeFailureSnapshot ? (
+            {mode === 'quick_charge' && state === 'failed' && quickChargeFailureSnapshot ? (
               <div className="mt-3 rounded-xl border border-rose-300 bg-white/90 p-3 text-[11px] text-rose-900">
                 <div className="flex items-center justify-between gap-3">
                   <p className="font-semibold uppercase tracking-[0.08em]">Tap to Pay failure snapshot</p>
