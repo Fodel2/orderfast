@@ -38,6 +38,22 @@ type InternalSettlementModuleProps = {
   onFlowActivityChange?: (active: boolean) => void;
 };
 
+type QuickChargeFailureSnapshot = {
+  mode: 'quick_charge';
+  runtimeDebuggable: boolean | null;
+  paymentIntentId: string | null;
+  retrieveSucceeded: boolean | null;
+  collectInvoked: boolean | null;
+  collectCallbackStatus: string | null;
+  collectReturnedUpdatedIntent: boolean | null;
+  collectReturnedPaymentMethodAttached: string | null;
+  processInvoked: boolean | null;
+  processCallbackStatus: string | null;
+  nativeFailurePoint: string | null;
+  finalServerVerifiedStatus: string | null;
+  finalFailureReason: string | null;
+};
+
 export default function InternalSettlementModule({
   title = 'Internal collection',
   eyebrow = 'Internal settlement module',
@@ -62,6 +78,7 @@ export default function InternalSettlementModule({
   const [busy, setBusy] = useState(false);
   const [state, setState] = useState<CollectionState>('idle');
   const [message, setMessage] = useState('Ready to collect payment.');
+  const [quickChargeFailureSnapshot, setQuickChargeFailureSnapshot] = useState<QuickChargeFailureSnapshot | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [activeTerminalLocationId, setActiveTerminalLocationId] = useState<string | null>(null);
   const flowActiveRef = useRef(false);
@@ -296,6 +313,7 @@ export default function InternalSettlementModule({
 
   const handleCollectContactless = useCallback(async () => {
     if (busy) return;
+    setQuickChargeFailureSnapshot(null);
     if (!tapAvailabilityReady) {
       setState('failed');
       setMessage(tapAvailabilityReason || 'Tap to Pay is not available for this restaurant.');
@@ -606,20 +624,40 @@ export default function InternalSettlementModule({
           correctedByVerification: verifyPayload?.verification?.correctedByVerification === true,
         });
         if (mode === 'quick_charge') {
+          const nativeDetail = nativeResult.detail && typeof nativeResult.detail === 'object' ? (nativeResult.detail as Record<string, unknown>) : null;
+          const runtimeDebuggable =
+            typeof nativeTraceSnapshot?.runtimeDebuggable === 'boolean'
+              ? nativeTraceSnapshot.runtimeDebuggable
+              : typeof nativeDetail?.runtimeDebuggable === 'boolean'
+                ? nativeDetail.runtimeDebuggable
+                : null;
+          const failureSnapshot: QuickChargeFailureSnapshot = {
+            mode: 'quick_charge',
+            runtimeDebuggable,
+            paymentIntentId: nativeResult.paymentIntentId || (typeof nativeTraceSnapshot?.paymentIntentId === 'string' ? nativeTraceSnapshot.paymentIntentId : null),
+            retrieveSucceeded: typeof nativeTraceSnapshot?.retrieveSucceeded === 'boolean' ? nativeTraceSnapshot.retrieveSucceeded : null,
+            collectInvoked: typeof nativeTraceSnapshot?.collectInvoked === 'boolean' ? nativeTraceSnapshot.collectInvoked : null,
+            collectCallbackStatus: typeof nativeTraceSnapshot?.collectCallbackStatus === 'string' ? nativeTraceSnapshot.collectCallbackStatus : null,
+            collectReturnedUpdatedIntent:
+              typeof nativeTraceSnapshot?.collectReturnedUpdatedIntent === 'boolean' ? nativeTraceSnapshot.collectReturnedUpdatedIntent : null,
+            collectReturnedPaymentMethodAttached:
+              typeof nativeTraceSnapshot?.collectReturnedPaymentMethodAttached === 'string' ? nativeTraceSnapshot.collectReturnedPaymentMethodAttached : null,
+            processInvoked: typeof nativeTraceSnapshot?.processInvoked === 'boolean' ? nativeTraceSnapshot.processInvoked : null,
+            processCallbackStatus: typeof nativeTraceSnapshot?.processCallbackStatus === 'string' ? nativeTraceSnapshot.processCallbackStatus : null,
+            nativeFailurePoint:
+              (typeof nativeTraceSnapshot?.nativeFailurePoint === 'string' && nativeTraceSnapshot.nativeFailurePoint) || nativeResult.nativeStage || null,
+            finalServerVerifiedStatus: verifiedState || null,
+            finalFailureReason:
+              verifiedReason ||
+              (typeof nativeTraceSnapshot?.finalFailureReason === 'string' ? nativeTraceSnapshot.finalFailureReason : null) ||
+              nativeResult.message ||
+              null,
+          };
+          setQuickChargeFailureSnapshot(failureSnapshot);
           console.info('[internal-settlement][quick-charge][failure-snapshot]', {
             sessionId,
             flowRunId,
-            paymentIntentId: nativeResult.paymentIntentId || nativeTraceSnapshot?.paymentIntentId || null,
-            retrieveSucceeded: nativeTraceSnapshot?.retrieveSucceeded ?? 'unknown',
-            collectInvoked: nativeTraceSnapshot?.collectInvoked ?? 'unknown',
-            collectCallbackStatus: nativeTraceSnapshot?.collectCallbackStatus ?? 'unknown',
-            collectReturnedUpdatedIntent: nativeTraceSnapshot?.collectReturnedUpdatedIntent ?? 'unknown',
-            collectReturnedPaymentMethodAttached: nativeTraceSnapshot?.collectReturnedPaymentMethodAttached ?? 'unknown',
-            processInvoked: nativeTraceSnapshot?.processInvoked ?? 'unknown',
-            processCallbackStatus: nativeTraceSnapshot?.processCallbackStatus ?? 'unknown',
-            nativeFailurePoint: nativeTraceSnapshot?.nativeFailurePoint || nativeResult.nativeStage || null,
-            finalServerVerifiedStatus: verifiedState || null,
-            finalFailureReason: verifiedReason || nativeTraceSnapshot?.finalFailureReason || nativeResult.message || null,
+            ...failureSnapshot,
           });
         }
 
@@ -675,6 +713,7 @@ export default function InternalSettlementModule({
 
       setState('completed');
       setMessage(mode === 'order_payment' ? 'Order payment collected successfully.' : 'Quick charge collected successfully.');
+      setQuickChargeFailureSnapshot(null);
       setActiveSessionId(null);
       setActiveTerminalLocationId(null);
       internalSettlementActiveRunStore.clear();
@@ -818,6 +857,7 @@ export default function InternalSettlementModule({
       logCollectionEvent('app_cancel_requested', { sessionId: activeSessionId });
       setState('failed');
       setMessage('Payment canceled.');
+      setQuickChargeFailureSnapshot(null);
       setActiveSessionId(null);
       setActiveTerminalLocationId(null);
       internalSettlementActiveRunStore.clear();
@@ -954,6 +994,30 @@ export default function InternalSettlementModule({
           >
             <p className="font-semibold">Collection state: {state.replace('_', ' ')}</p>
             <p className="mt-1 text-xs">{message}</p>
+            {mode === 'quick_charge' && state === 'failed' && quickChargeFailureSnapshot ? (
+              <div className="mt-3 rounded-xl border border-rose-300 bg-white/90 p-3 text-[11px] text-rose-900">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-semibold uppercase tracking-[0.08em]">Tap to Pay failure snapshot</p>
+                  <button
+                    type="button"
+                    className="rounded-md border border-rose-300 bg-rose-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-rose-800"
+                    onClick={async () => {
+                      const serialized = JSON.stringify(quickChargeFailureSnapshot, null, 2);
+                      try {
+                        await navigator.clipboard.writeText(serialized);
+                      } catch {
+                        // no-op: snapshot remains visible on screen for manual copy.
+                      }
+                    }}
+                  >
+                    Copy
+                  </button>
+                </div>
+                <pre className="mt-2 whitespace-pre-wrap break-all rounded-md bg-rose-50 p-2 text-[10px] leading-4">
+                  {JSON.stringify(quickChargeFailureSnapshot, null, 2)}
+                </pre>
+              </div>
+            ) : null}
             {activeSessionId ? <p className="mt-2 text-[11px] text-slate-500">Session: {activeSessionId}</p> : null}
             {activeTerminalLocationId ? (
               <p className="mt-1 text-[11px] text-slate-500">Terminal location: {activeTerminalLocationId}</p>
