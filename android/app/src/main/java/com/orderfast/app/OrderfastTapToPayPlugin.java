@@ -640,6 +640,8 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 quickChargeTraceSnapshot.put("processCallbackStatus", "not_called");
                 quickChargeTraceSnapshot.put("nativeFailurePoint", JSONObject.NULL);
                 quickChargeTraceSnapshot.put("finalFailureReason", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("mode", "quick_charge");
+                quickChargeTraceSnapshot.put("runtimeDebuggable", isDebugBuild());
 
                 postJson(
                     backendBaseUrl + "/api/kiosk/payments/card-present/session-state",
