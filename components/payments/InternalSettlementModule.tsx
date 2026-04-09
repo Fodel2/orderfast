@@ -335,6 +335,7 @@ export default function InternalSettlementModule({
     setMessage('Checking Tap to Pay readiness…');
 
     let sessionIdForCleanup: string | null = null;
+    let keepFlowActiveAfterError = false;
     const flowRunId = flowRunIdRef.current;
     const persistFlowOutcome = async (input: {
       sessionId: string;
@@ -683,9 +684,30 @@ export default function InternalSettlementModule({
 
       await loadOrders();
     } catch (error: any) {
+      logCollectionEvent('collection_exception', { message: error?.message || 'unknown_exception' });
+      let nativeRunStillActive = false;
+      if (sessionIdForCleanup) {
+        try {
+          const nativeState = await tapToPayBridge.getActivePaymentRunState();
+          nativeRunStillActive = nativeState.activeRun === true || nativeState.inFlight === true;
+          logCollectionEvent('collection_exception_native_state_check', {
+            sessionId: sessionIdForCleanup,
+            activeRun: nativeState.activeRun,
+            inFlight: nativeState.inFlight,
+            status: nativeState.status,
+          });
+        } catch {
+          nativeRunStillActive = false;
+        }
+      }
+      if (nativeRunStillActive) {
+        keepFlowActiveAfterError = true;
+        setState('collecting');
+        setMessage('Tap to Pay remains active on device. Waiting for native completion callback…');
+        return;
+      }
       setState('failed');
       setMessage(error?.message || 'Payment failed.');
-      logCollectionEvent('collection_exception', { message: error?.message || 'unknown_exception' });
       if (sessionIdForCleanup) {
         await persistFlowOutcome({
           sessionId: sessionIdForCleanup,
@@ -697,9 +719,14 @@ export default function InternalSettlementModule({
       setActiveSessionId(null);
       setActiveTerminalLocationId(null);
     } finally {
-      setBusy(false);
-      flowActiveRef.current = false;
-      flowRunIdRef.current = null;
+      if (keepFlowActiveAfterError) {
+        setBusy(true);
+        flowActiveRef.current = true;
+      } else {
+        setBusy(false);
+        flowActiveRef.current = false;
+        flowRunIdRef.current = null;
+      }
     }
   }, [
     classifyNativeFailure,
@@ -723,8 +750,20 @@ export default function InternalSettlementModule({
   useEffect(() => {
     if (!nativeRestaurantId) return;
     const recover = async (source: 'mount' | 'resume') => {
+      if (source === 'resume' && flowActiveRef.current) {
+        logCollectionEvent('app_resume_recovery_skipped_local_active_run', { source });
+        return;
+      }
       const activeRun = internalSettlementActiveRunStore.get();
       const nativeState = await tapToPayBridge.getActivePaymentRunState();
+      if (source === 'resume' && flowActiveRef.current) {
+        logCollectionEvent('app_resume_recovery_skipped_after_native_check', {
+          source,
+          nativeActiveRun: nativeState.activeRun,
+          nativeInFlight: nativeState.inFlight,
+        });
+        return;
+      }
       if (nativeState.activeRun && activeRun?.sessionId) {
         logCollectionEvent('app_resume_rehydrated_active_run', {
           source,

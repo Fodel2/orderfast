@@ -47,18 +47,24 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onResume() {
         super.onResume();
+        if (OrderfastTapToPayPlugin.isNativeTapToPayTakeoverActive()) {
+            return;
+        }
         immersiveHandler.postDelayed(immersiveRunnable, 120);
     }
 
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
-        if (hasFocus) {
+        if (hasFocus && !OrderfastTapToPayPlugin.isNativeTapToPayTakeoverActive()) {
             immersiveHandler.post(immersiveRunnable);
         }
     }
 
     private void applyImmersiveMode() {
+        if (OrderfastTapToPayPlugin.isNativeTapToPayTakeoverActive()) {
+            return;
+        }
         if (getWindow() == null || getWindow().getDecorView() == null) {
             return;
         }
