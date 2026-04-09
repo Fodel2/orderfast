@@ -638,6 +638,10 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 quickChargeTraceSnapshot.put("collectReturnedPaymentMethodAttached", "unknown");
                 quickChargeTraceSnapshot.put("processInvoked", false);
                 quickChargeTraceSnapshot.put("processCallbackStatus", "not_called");
+                quickChargeTraceSnapshot.put("processFailureCode", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("processFailureMessage", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("processFailureExceptionClass", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("processFailureReasonCategory", JSONObject.NULL);
                 quickChargeTraceSnapshot.put("nativeFailurePoint", JSONObject.NULL);
                 quickChargeTraceSnapshot.put("finalFailureReason", JSONObject.NULL);
                 quickChargeTraceSnapshot.put("mode", "quick_charge");
@@ -796,6 +800,10 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                             public void onSuccess(PaymentIntent intent) {
                                                 activePaymentIntent = intent;
                                                 quickChargeTraceSnapshot.put("processCallbackStatus", "success");
+                                                quickChargeTraceSnapshot.put("processFailureCode", JSONObject.NULL);
+                                                quickChargeTraceSnapshot.put("processFailureMessage", JSONObject.NULL);
+                                                quickChargeTraceSnapshot.put("processFailureExceptionClass", JSONObject.NULL);
+                                                quickChargeTraceSnapshot.put("processFailureReasonCategory", JSONObject.NULL);
                                                 quickChargeTraceSnapshot.put("nativeFailurePoint", "process_succeeded");
                                                 JSObject quickChargeProcessCallbackPayload = new JSObject();
                                                 quickChargeProcessCallbackPayload.put("sessionId", currentSessionId);
@@ -862,11 +870,15 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                                 quickChargeTraceSnapshot.put("processCallbackStatus", "failure");
                                                 quickChargeTraceSnapshot.put("nativeFailurePoint", "process_callback_failure");
                                                 quickChargeTraceSnapshot.put("finalFailureReason", buildErrorMessage(e));
+                                                quickChargeTraceSnapshot.put("processFailureCode", normalizedCode);
+                                                quickChargeTraceSnapshot.put("processFailureMessage", buildErrorMessage(e));
+                                                quickChargeTraceSnapshot.put("processFailureExceptionClass", e.getClass().getName());
                                                 JSObject processFailurePayload = new JSObject();
                                                 processFailurePayload.put("normalizedCode", normalizedCode);
                                                 processFailurePayload.put("terminalCode", e.getErrorCode() == null ? "UNKNOWN" : e.getErrorCode().name());
                                                 traceTimeline("process_failure_callback", processFailurePayload);
                                                 String reasonCategory = classifyTerminalFailureCategory(normalizedCode);
+                                                quickChargeTraceSnapshot.put("processFailureReasonCategory", reasonCategory);
                                                 String mappedSessionState = mapSessionStateForFailureCategory(reasonCategory);
                                                 String mappedPluginStatus = mapPluginStatusForFailureCategory(reasonCategory);
                                                 status = mappedPluginStatus;

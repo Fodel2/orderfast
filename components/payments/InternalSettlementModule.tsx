@@ -49,6 +49,10 @@ type QuickChargeFailureSnapshot = {
   collectReturnedPaymentMethodAttached: string | null;
   processInvoked: boolean | null;
   processCallbackStatus: string | null;
+  processFailureCode: string | null;
+  processFailureMessage: string | null;
+  processFailureExceptionClass: string | null;
+  processFailureReasonCategory: string | null;
   nativeFailurePoint: string | null;
   finalServerVerifiedStatus: string | null;
   finalFailureReason: string | null;
@@ -659,6 +663,12 @@ export default function InternalSettlementModule({
               typeof nativeTraceSnapshot?.collectReturnedPaymentMethodAttached === 'string' ? nativeTraceSnapshot.collectReturnedPaymentMethodAttached : null,
             processInvoked: typeof nativeTraceSnapshot?.processInvoked === 'boolean' ? nativeTraceSnapshot.processInvoked : null,
             processCallbackStatus: typeof nativeTraceSnapshot?.processCallbackStatus === 'string' ? nativeTraceSnapshot.processCallbackStatus : null,
+            processFailureCode: typeof nativeTraceSnapshot?.processFailureCode === 'string' ? nativeTraceSnapshot.processFailureCode : null,
+            processFailureMessage: typeof nativeTraceSnapshot?.processFailureMessage === 'string' ? nativeTraceSnapshot.processFailureMessage : null,
+            processFailureExceptionClass:
+              typeof nativeTraceSnapshot?.processFailureExceptionClass === 'string' ? nativeTraceSnapshot.processFailureExceptionClass : null,
+            processFailureReasonCategory:
+              typeof nativeTraceSnapshot?.processFailureReasonCategory === 'string' ? nativeTraceSnapshot.processFailureReasonCategory : null,
             nativeFailurePoint:
               (typeof nativeTraceSnapshot?.nativeFailurePoint === 'string' && nativeTraceSnapshot.nativeFailurePoint) || nativeResult.nativeStage || null,
             finalServerVerifiedStatus: verifiedState || null,
