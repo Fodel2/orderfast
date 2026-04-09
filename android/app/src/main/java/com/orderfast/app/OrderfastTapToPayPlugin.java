@@ -108,10 +108,16 @@ public class OrderfastTapToPayPlugin extends Plugin {
     private volatile int activeRunSequence = 0;
     private volatile long lastReaderDisconnectElapsedMs = 0L;
     private volatile String lastReaderDisconnectReason = "none";
+    private volatile boolean appResumedDuringProcessInFlight = false;
     private static final AtomicBoolean nativeTapToPayTakeoverActive = new AtomicBoolean(false);
+    private static final AtomicBoolean nativeTapToPayProcessInFlight = new AtomicBoolean(false);
 
     public static boolean isNativeTapToPayTakeoverActive() {
         return nativeTapToPayTakeoverActive.get();
+    }
+
+    public static boolean isNativeTapToPayProcessInFlight() {
+        return nativeTapToPayProcessInFlight.get();
     }
 
     @Override
@@ -192,6 +198,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
         confirmedBackgroundInterruption = false;
         backgroundInterruptionCandidate = false;
         stripeTakeoverObserved = false;
+        appResumedDuringProcessInFlight = false;
         backgroundInterruptionCandidateAtMs = 0L;
         lastPauseAtMs = 0L;
         lastStopAtMs = 0L;
@@ -199,6 +206,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
         inFlight = false;
         activeRunMonotonicStartNs = 0L;
         nativeTapToPayTakeoverActive.set(false);
+        nativeTapToPayProcessInFlight.set(false);
     }
 
     private void resetStatusForNextAttempt() {
@@ -622,10 +630,12 @@ public class OrderfastTapToPayPlugin extends Plugin {
         confirmedBackgroundInterruption = false;
         backgroundInterruptionCandidate = false;
         stripeTakeoverObserved = false;
+        appResumedDuringProcessInFlight = false;
         backgroundInterruptionCandidateAtMs = 0L;
         lifecyclePausedDuringActiveFlow = false;
         lastPauseAtMs = 0L;
         lastStopAtMs = 0L;
+        nativeTapToPayProcessInFlight.set(false);
         AtomicBoolean resolveGate = new AtomicBoolean(false);
         startOperationTimeout(call, resolveGate);
 
@@ -795,6 +805,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                     traceTimeline("process_invoked_before_sdk_call", processInvokedPayload);
                                     quickChargeTraceSnapshot.put("processInvoked", true);
                                     quickChargeTraceSnapshot.put("nativeFailurePoint", "awaiting_process_callback");
+                                    nativeTapToPayProcessInFlight.set(true);
                                     processCancelable = Terminal.getInstance().processPaymentIntent(
                                         collectedIntent,
                                         new CollectPaymentIntentConfiguration.Builder().build(),
@@ -877,6 +888,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                                 quickChargeTraceSnapshot.put("processFailureCode", normalizedCode);
                                                 quickChargeTraceSnapshot.put("processFailureMessage", buildErrorMessage(e));
                                                 quickChargeTraceSnapshot.put("processFailureExceptionClass", e.getClass().getName());
+                                                quickChargeTraceSnapshot.put("appResumedDuringProcessInFlight", appResumedDuringProcessInFlight);
                                                 JSObject processFailurePayload = new JSObject();
                                                 processFailurePayload.put("normalizedCode", normalizedCode);
                                                 processFailurePayload.put("terminalCode", e.getErrorCode() == null ? "UNKNOWN" : e.getErrorCode().name());
@@ -909,6 +921,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                                 payload.put("cancelRequestedByApp", cancelRequestedByApp);
                                                 payload.put("isProcessCancelableActive", processCancelable != null && !processCancelable.isCompleted());
                                                 payload.put("pluginMarkedCanceledBeforeTerminal", cancelRequestedByApp);
+                                                payload.put("appResumedDuringProcessInFlight", appResumedDuringProcessInFlight);
                                                 payload.put("readerDisconnectBeforeCallback", readerDisconnectedDuringActiveRun());
                                                 payload.put("readerDisconnectReason", lastReaderDisconnectReason);
                                                 payload.put("cancelClassification", determineCancelClassification(normalizedCode));
@@ -1214,6 +1227,12 @@ public class OrderfastTapToPayPlugin extends Plugin {
     protected void handleOnResume() {
         super.handleOnResume();
         lastResumeAtMs = System.currentTimeMillis();
+        if (isProcessStageActive()) {
+            appResumedDuringProcessInFlight = true;
+            JSObject resumePayload = lifecyclePayload("onResume_process_in_flight");
+            resumePayload.put("appResumedDuringProcessInFlight", true);
+            logFlowEvent("native_resume_during_process_in_flight", resumePayload);
+        }
         if (inFlight) {
             // Stripe Tap to Pay collection can temporarily pause/stop the host Activity while the SDK takes over.
             // Returning to onResume means the foreground handoff recovered, so clear candidate interruption state.
@@ -1640,6 +1659,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
         payload.put("backgroundInterruptionMs", backgroundInterruptionCandidateAtMs > 0 ? (System.currentTimeMillis() - backgroundInterruptionCandidateAtMs) : 0L);
         payload.put("collectOrProcessActive", isCollectOrProcessActive());
         payload.put("takeoverActive", stripeTakeoverObserved);
+        payload.put("appResumedDuringProcessInFlight", appResumedDuringProcessInFlight);
         return payload;
     }
 
