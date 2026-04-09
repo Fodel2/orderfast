@@ -660,6 +660,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 quickChargeTraceSnapshot.put("finalFailureReason", JSONObject.NULL);
                 quickChargeTraceSnapshot.put("mode", "quick_charge");
                 quickChargeTraceSnapshot.put("runtimeDebuggable", isDebugBuild());
+                quickChargeTraceSnapshot.put("hostActivityRequestedOrientation", getActivityRequestedOrientationName());
 
                 postJson(
                     backendBaseUrl + "/api/kiosk/payments/card-present/session-state",
@@ -1032,6 +1033,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 quickChargeTraceSnapshot.put("processCallbackStatus", "not_called");
                 quickChargeTraceSnapshot.put("nativeFailurePoint", "start_exception");
                 quickChargeTraceSnapshot.put("finalFailureReason", ex.getMessage() == null ? "start_exception" : ex.getMessage());
+                quickChargeTraceSnapshot.put("hostActivityRequestedOrientation", getActivityRequestedOrientationName());
                 payload.put("quickChargeTraceSnapshot", quickChargeTraceSnapshot);
                 logStartupStage("native_collect_result", payload);
                 cacheFinalResult(payload, "start_exception");
@@ -1507,6 +1509,18 @@ public class OrderfastTapToPayPlugin extends Plugin {
             timeoutHandler.removeCallbacks(timeoutRunnable);
             timeoutRunnable = null;
         }
+    }
+
+    private String getActivityRequestedOrientationName() {
+        if (getActivity() == null) return "activity_unavailable";
+        int requested = getActivity().getRequestedOrientation();
+        if (requested == ActivityInfo.SCREEN_ORIENTATION_PORTRAIT) return "portrait";
+        if (requested == ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE) return "landscape";
+        if (requested == ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED) return "unspecified";
+        if (requested == ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE) return "sensor_landscape";
+        if (requested == ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT) return "sensor_portrait";
+        if (requested == ActivityInfo.SCREEN_ORIENTATION_LOCKED) return "locked";
+        return "other:" + requested;
     }
 
     private String readBody(InputStream inputStream) throws Exception {
