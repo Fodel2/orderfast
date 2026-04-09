@@ -79,6 +79,9 @@ export interface TapToPayPlugin {
     backendBaseUrl: string;
     terminalLocationId: string;
     flowRunId?: string;
+    paymentIntentClientSecret?: string;
+    paymentIntentId?: string;
+    paymentIntentStatus?: string;
   }): Promise<TapToPayResult>;
   cancelTapToPayPayment(): Promise<TapToPayResult>;
   getTapToPayStatus(): Promise<TapToPayResult>;
