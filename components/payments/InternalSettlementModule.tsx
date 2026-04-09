@@ -567,52 +567,67 @@ export default function InternalSettlementModule({
           result: nativeResult,
         });
 
-        const verifyRes = await fetch('/api/dashboard/internal-settlement/cancel', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            session_id: sessionId,
-            flow_run_id: flowRunId,
-            outcome:
-              category === 'customer_cancelled' || category === 'app_cancelled'
-                ? 'canceled'
-                : category === 'ambiguous_canceled_after_takeover'
-                  ? 'needs_reconciliation'
-                  : 'failed',
-            reason: failureMessageForCategory(category, nativeResult.message),
-            failure_code: category,
-            source_stage: 'collect_or_process',
-            native_result: {
-              status: nativeResult.status,
-              code: nativeResult.code || null,
-              message: nativeResult.message || null,
-              terminal_code: nativeResultDetail?.terminalCode ?? null,
-              native_stage: nativeResult.nativeStage || nativeResultDetail?.nativeStage || null,
-              stripe_takeover_active: (nativeResult as { stripeTakeoverActive?: unknown }).stripeTakeoverActive === true,
-              app_backgrounded: (nativeResult as { appBackgrounded?: unknown }).appBackgrounded === true,
-              definitive_customer_cancel_signal:
-                (nativeResult as { definitiveCustomerCancelSignal?: unknown }).definitiveCustomerCancelSignal === true,
-              payment_intent_id: nativeResult.paymentIntentId || null,
-              payment_intent_status: nativeResult.paymentIntentStatus || null,
-              payment_intent_source: nativeResult.paymentIntentSource || null,
-            },
-          }),
-        });
-        const verifyPayload = await verifyRes.json().catch(() => ({}));
-        const verifiedState = verifyPayload?.session?.state ? String(verifyPayload.session.state) : '';
+        let verifyRes: Response | null = null;
+        let verifyPayload: any = {};
+        let verifyRequestError: string | null = null;
+        try {
+          verifyRes = await fetch('/api/dashboard/internal-settlement/cancel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              session_id: sessionId,
+              flow_run_id: flowRunId,
+              outcome:
+                category === 'customer_cancelled' || category === 'app_cancelled'
+                  ? 'canceled'
+                  : category === 'ambiguous_canceled_after_takeover'
+                    ? 'needs_reconciliation'
+                    : 'failed',
+              reason: failureMessageForCategory(category, nativeResult.message),
+              failure_code: category,
+              source_stage: 'collect_or_process',
+              native_result: {
+                status: nativeResult.status,
+                code: nativeResult.code || null,
+                message: nativeResult.message || null,
+                terminal_code: nativeResultDetail?.terminalCode ?? null,
+                native_stage: nativeResult.nativeStage || nativeResultDetail?.nativeStage || null,
+                stripe_takeover_active: (nativeResult as { stripeTakeoverActive?: unknown }).stripeTakeoverActive === true,
+                app_backgrounded: (nativeResult as { appBackgrounded?: unknown }).appBackgrounded === true,
+                definitive_customer_cancel_signal:
+                  (nativeResult as { definitiveCustomerCancelSignal?: unknown }).definitiveCustomerCancelSignal === true,
+                payment_intent_id: nativeResult.paymentIntentId || null,
+                payment_intent_status: nativeResult.paymentIntentStatus || null,
+                payment_intent_source: nativeResult.paymentIntentSource || null,
+              },
+            }),
+          });
+          verifyPayload = await verifyRes.json().catch(() => ({}));
+        } catch (verifyError: any) {
+          verifyRequestError = verifyError?.message || 'verification_request_failed';
+        }
+
+        const verifiedState = verifyPayload?.session?.state
+          ? String(verifyPayload.session.state)
+          : verifyRequestError
+            ? 'verification_unavailable'
+            : '';
         const verifiedReason = verifyPayload?.session?.failure_message
           ? String(verifyPayload.session.failure_message)
           : verifyPayload?.verification?.resolvedReason
             ? String(verifyPayload.verification.resolvedReason)
-            : failureMessageForCategory(category, nativeResult.message);
+            : verifyRequestError
+              ? `Server verification unavailable: ${verifyRequestError}`
+              : failureMessageForCategory(category, nativeResult.message);
 
         logCollectionEvent('server_verification_result_from_stripe_before_final_db_write', {
           sessionId,
-          ok: verifyRes.ok,
+          ok: verifyRes?.ok === true,
           verifiedState: verifiedState || null,
           verifiedReason,
           correctedByVerification: verifyPayload?.verification?.correctedByVerification === true,
           decisionMode: verifyPayload?.verification?.decisionMode || null,
+          verifyRequestError,
           nativeResult,
         });
         logQuickChargeSequenceEvent('quick_charge_server_verify_result', {
@@ -661,7 +676,7 @@ export default function InternalSettlementModule({
           });
         }
 
-        if (verifyRes.ok && verifiedState === 'finalized') {
+        if (verifyRes?.ok === true && verifiedState === 'finalized') {
           setState('completed');
           setMessage(mode === 'order_payment' ? 'Order payment collected successfully.' : 'Quick charge collected successfully.');
           setActiveSessionId(null);
@@ -686,6 +701,7 @@ export default function InternalSettlementModule({
           paymentIntentStatus: verifyPayload?.verification?.stripePaymentIntentStatus || nativeResult.paymentIntentStatus || null,
           failureReason: verifiedReason,
           finalState: verifiedState || null,
+          verifyRequestError,
         });
         setActiveSessionId(null);
         setActiveTerminalLocationId(null);
