@@ -53,6 +53,34 @@ type QuickChargeFailureSnapshot = {
   processFailureMessage: string | null;
   processFailureExceptionClass: string | null;
   processFailureReasonCategory: string | null;
+  rawProcessCallbackPayload: Record<string, unknown> | null;
+  processFailureStackTop: string | null;
+  processFailureDetailReason: string | null;
+  processFailureTerminalCode: string | null;
+  processFailureNativeStage: string | null;
+  pluginInFlight: boolean | null;
+  pluginStatus: string | null;
+  stripeTakeoverObserved: boolean | null;
+  backgroundInterruptionCandidate: boolean | null;
+  confirmedBackgroundInterruption: boolean | null;
+  lifecyclePausedDuringActiveFlow: boolean | null;
+  lastPauseAtMs: number | null;
+  lastStopAtMs: number | null;
+  lastResumeAtMs: number | null;
+  lastLifecycleEvents: string[] | null;
+  hostActivityRequestedOrientation: string | null;
+  hostActivityCurrentOrientation: string | null;
+  hostActivityChangingConfigurations: boolean | null;
+  hostActivityWindowFocus: boolean | null;
+  hostActivityWasPaused: boolean | null;
+  hostActivityWasStopped: boolean | null;
+  hostActivityWasDestroyed: boolean | null;
+  appInBackgroundAtFailure: boolean | null;
+  immersiveModeActive: boolean | null;
+  immersiveReappliedDuringPayment: boolean | null;
+  orientationChangedDuringPayment: boolean | null;
+  windowFocusChangedDuringPayment: boolean | null;
+  timedEventTrail: string[] | null;
   appResumedDuringProcessInFlight: boolean | null;
   nativeFailurePoint: string | null;
   finalServerVerifiedStatus: string | null;
@@ -663,6 +691,12 @@ export default function InternalSettlementModule({
               : typeof nativeDetail?.runtimeDebuggable === 'boolean'
                 ? nativeDetail.runtimeDebuggable
                 : null;
+          const rawProcessCallbackPayload =
+            nativeTraceSnapshot?.rawProcessCallbackPayload && typeof nativeTraceSnapshot.rawProcessCallbackPayload === 'object'
+              ? (nativeTraceSnapshot.rawProcessCallbackPayload as Record<string, unknown>)
+              : nativeResult.detail && typeof nativeResult.detail === 'object'
+                ? (nativeResult.detail as Record<string, unknown>)
+                : null;
           const failureSnapshot: QuickChargeFailureSnapshot = {
             mode: 'quick_charge',
             runtimeDebuggable,
@@ -682,6 +716,86 @@ export default function InternalSettlementModule({
               typeof nativeTraceSnapshot?.processFailureExceptionClass === 'string' ? nativeTraceSnapshot.processFailureExceptionClass : null,
             processFailureReasonCategory:
               typeof nativeTraceSnapshot?.processFailureReasonCategory === 'string' ? nativeTraceSnapshot.processFailureReasonCategory : null,
+            rawProcessCallbackPayload,
+            processFailureStackTop:
+              typeof nativeTraceSnapshot?.processFailureStackTop === 'string'
+                ? nativeTraceSnapshot.processFailureStackTop
+                : typeof (nativeResult.detail as { stackTop?: unknown })?.stackTop === 'string'
+                  ? String((nativeResult.detail as { stackTop?: string }).stackTop)
+                  : null,
+            processFailureDetailReason:
+              typeof nativeTraceSnapshot?.processFailureDetailReason === 'string'
+                ? nativeTraceSnapshot.processFailureDetailReason
+                : typeof (nativeResult.detail as { reason?: unknown })?.reason === 'string'
+                  ? String((nativeResult.detail as { reason?: string }).reason)
+                  : null,
+            processFailureTerminalCode:
+              typeof nativeTraceSnapshot?.processFailureTerminalCode === 'string'
+                ? nativeTraceSnapshot.processFailureTerminalCode
+                : typeof nativeDetail?.terminalCode === 'string'
+                  ? String(nativeDetail.terminalCode)
+                  : null,
+            processFailureNativeStage:
+              typeof nativeTraceSnapshot?.processFailureNativeStage === 'string'
+                ? nativeTraceSnapshot.processFailureNativeStage
+                : typeof nativeResult.nativeStage === 'string'
+                  ? nativeResult.nativeStage
+                  : typeof nativeDetail?.nativeStage === 'string'
+                    ? String(nativeDetail.nativeStage)
+                    : null,
+            pluginInFlight: typeof nativeTraceSnapshot?.pluginInFlight === 'boolean' ? nativeTraceSnapshot.pluginInFlight : null,
+            pluginStatus: typeof nativeTraceSnapshot?.pluginStatus === 'string' ? nativeTraceSnapshot.pluginStatus : null,
+            stripeTakeoverObserved:
+              typeof nativeTraceSnapshot?.stripeTakeoverObserved === 'boolean'
+                ? nativeTraceSnapshot.stripeTakeoverObserved
+                : (nativeResult as { stripeTakeoverActive?: unknown }).stripeTakeoverActive === true,
+            backgroundInterruptionCandidate:
+              typeof nativeTraceSnapshot?.backgroundInterruptionCandidate === 'boolean' ? nativeTraceSnapshot.backgroundInterruptionCandidate : null,
+            confirmedBackgroundInterruption:
+              typeof nativeTraceSnapshot?.confirmedBackgroundInterruption === 'boolean' ? nativeTraceSnapshot.confirmedBackgroundInterruption : null,
+            lifecyclePausedDuringActiveFlow:
+              typeof nativeTraceSnapshot?.lifecyclePausedDuringActiveFlow === 'boolean' ? nativeTraceSnapshot.lifecyclePausedDuringActiveFlow : null,
+            lastPauseAtMs: typeof nativeTraceSnapshot?.lastPauseAtMs === 'number' ? nativeTraceSnapshot.lastPauseAtMs : null,
+            lastStopAtMs: typeof nativeTraceSnapshot?.lastStopAtMs === 'number' ? nativeTraceSnapshot.lastStopAtMs : null,
+            lastResumeAtMs: typeof nativeTraceSnapshot?.lastResumeAtMs === 'number' ? nativeTraceSnapshot.lastResumeAtMs : null,
+            lastLifecycleEvents:
+              Array.isArray(nativeTraceSnapshot?.lastLifecycleEvents) && nativeTraceSnapshot.lastLifecycleEvents.every((event) => typeof event === 'string')
+                ? (nativeTraceSnapshot.lastLifecycleEvents as string[])
+                : null,
+            hostActivityRequestedOrientation:
+              typeof nativeTraceSnapshot?.hostActivityRequestedOrientation === 'string' ? nativeTraceSnapshot.hostActivityRequestedOrientation : null,
+            hostActivityCurrentOrientation:
+              typeof nativeTraceSnapshot?.hostActivityCurrentOrientation === 'string' ? nativeTraceSnapshot.hostActivityCurrentOrientation : null,
+            hostActivityChangingConfigurations:
+              typeof nativeTraceSnapshot?.hostActivityChangingConfigurations === 'boolean'
+                ? nativeTraceSnapshot.hostActivityChangingConfigurations
+                : null,
+            hostActivityWindowFocus: typeof nativeTraceSnapshot?.hostActivityWindowFocus === 'boolean' ? nativeTraceSnapshot.hostActivityWindowFocus : null,
+            hostActivityWasPaused: typeof nativeTraceSnapshot?.hostActivityWasPaused === 'boolean' ? nativeTraceSnapshot.hostActivityWasPaused : null,
+            hostActivityWasStopped: typeof nativeTraceSnapshot?.hostActivityWasStopped === 'boolean' ? nativeTraceSnapshot.hostActivityWasStopped : null,
+            hostActivityWasDestroyed:
+              typeof nativeTraceSnapshot?.hostActivityWasDestroyed === 'boolean' ? nativeTraceSnapshot.hostActivityWasDestroyed : null,
+            appInBackgroundAtFailure:
+              typeof nativeTraceSnapshot?.appInBackgroundAtFailure === 'boolean'
+                ? nativeTraceSnapshot.appInBackgroundAtFailure
+                : (nativeResult as { appBackgrounded?: unknown }).appBackgrounded === true,
+            immersiveModeActive: typeof nativeTraceSnapshot?.immersiveModeActive === 'boolean' ? nativeTraceSnapshot.immersiveModeActive : null,
+            immersiveReappliedDuringPayment:
+              typeof nativeTraceSnapshot?.immersiveReappliedDuringPayment === 'boolean'
+                ? nativeTraceSnapshot.immersiveReappliedDuringPayment
+                : null,
+            orientationChangedDuringPayment:
+              typeof nativeTraceSnapshot?.orientationChangedDuringPayment === 'boolean'
+                ? nativeTraceSnapshot.orientationChangedDuringPayment
+                : null,
+            windowFocusChangedDuringPayment:
+              typeof nativeTraceSnapshot?.windowFocusChangedDuringPayment === 'boolean'
+                ? nativeTraceSnapshot.windowFocusChangedDuringPayment
+                : null,
+            timedEventTrail:
+              Array.isArray(nativeTraceSnapshot?.timedEventTrail) && nativeTraceSnapshot.timedEventTrail.every((event) => typeof event === 'string')
+                ? (nativeTraceSnapshot.timedEventTrail as string[])
+                : null,
             appResumedDuringProcessInFlight:
               typeof nativeTraceSnapshot?.appResumedDuringProcessInFlight === 'boolean'
                 ? nativeTraceSnapshot.appResumedDuringProcessInFlight

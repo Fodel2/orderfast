@@ -3,6 +3,7 @@ package com.orderfast.app;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.content.res.Configuration;
 import android.view.View;
 import android.view.WindowManager;
 import android.view.WindowInsets;
@@ -15,6 +16,40 @@ import android.webkit.WebView;
 public class MainActivity extends BridgeActivity {
     private final Handler immersiveHandler = new Handler(Looper.getMainLooper());
     private final Runnable immersiveRunnable = this::applyImmersiveMode;
+    private static volatile boolean hostActivityWasPaused = false;
+    private static volatile boolean hostActivityWasStopped = false;
+    private static volatile boolean hostActivityWasDestroyed = false;
+    private static volatile boolean immersiveModeActive = false;
+    private static volatile boolean immersiveReappliedDuringPayment = false;
+    private static volatile boolean orientationChangedDuringPayment = false;
+    private static volatile boolean windowFocusChangedDuringPayment = false;
+    private static volatile Boolean hostActivityWindowFocus = null;
+    private static volatile String hostActivityCurrentOrientation = "unknown";
+    private static volatile long lastHostLifecycleUpdateAtMs = 0L;
+    private static volatile int lastKnownOrientationValue = Configuration.ORIENTATION_UNDEFINED;
+
+    public static boolean getHostActivityWasPaused() { return hostActivityWasPaused; }
+    public static boolean getHostActivityWasStopped() { return hostActivityWasStopped; }
+    public static boolean getHostActivityWasDestroyed() { return hostActivityWasDestroyed; }
+    public static boolean getImmersiveModeActive() { return immersiveModeActive; }
+    public static boolean getImmersiveReappliedDuringPayment() { return immersiveReappliedDuringPayment; }
+    public static boolean getOrientationChangedDuringPayment() { return orientationChangedDuringPayment; }
+    public static boolean getWindowFocusChangedDuringPayment() { return windowFocusChangedDuringPayment; }
+    public static Boolean getHostActivityWindowFocus() { return hostActivityWindowFocus; }
+    public static String getHostActivityCurrentOrientation() { return hostActivityCurrentOrientation; }
+    public static long getLastHostLifecycleUpdateAtMs() { return lastHostLifecycleUpdateAtMs; }
+
+    public static void resetPaymentHostTelemetry() {
+        hostActivityWasPaused = false;
+        hostActivityWasStopped = false;
+        hostActivityWasDestroyed = false;
+        immersiveModeActive = false;
+        immersiveReappliedDuringPayment = false;
+        orientationChangedDuringPayment = false;
+        windowFocusChangedDuringPayment = false;
+        hostActivityWindowFocus = null;
+        lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
+    }
 
     private boolean shouldSuppressHostUiChurn() {
         if (OrderfastTapToPayPlugin.isNativeTapToPayTakeoverActive()) {
@@ -31,6 +66,9 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(OrderfastTapToPayPlugin.class);
         super.onCreate(savedInstanceState);
+        hostActivityCurrentOrientation = orientationToName(getResources().getConfiguration().orientation);
+        lastKnownOrientationValue = getResources().getConfiguration().orientation;
+        lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         immersiveHandler.postDelayed(immersiveRunnable, 220);
         configureWebViewPresentation();
@@ -58,6 +96,8 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onResume() {
         super.onResume();
+        hostActivityCurrentOrientation = orientationToName(getResources().getConfiguration().orientation);
+        lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
         if (shouldSuppressHostUiChurn()) {
             return;
         }
@@ -66,18 +106,26 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onPause() {
+        hostActivityWasPaused = true;
+        immersiveModeActive = false;
+        lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
         immersiveHandler.removeCallbacks(immersiveRunnable);
         super.onPause();
     }
 
     @Override
     public void onStop() {
+        hostActivityWasStopped = true;
+        lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
         immersiveHandler.removeCallbacks(immersiveRunnable);
         super.onStop();
     }
 
     @Override
     public void onDestroy() {
+        hostActivityWasDestroyed = true;
+        immersiveModeActive = false;
+        lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
         immersiveHandler.removeCallbacks(immersiveRunnable);
         super.onDestroy();
     }
@@ -85,13 +133,33 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
+        hostActivityWindowFocus = hasFocus;
+        lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
+        if (OrderfastTapToPayPlugin.isNativeTapToPayTakeoverActive() || OrderfastTapToPayPlugin.isNativeTapToPayProcessInFlight()) {
+            windowFocusChangedDuringPayment = true;
+        }
         if (!hasFocus) {
+            immersiveModeActive = false;
             immersiveHandler.removeCallbacks(immersiveRunnable);
             return;
         }
         if (!shouldSuppressHostUiChurn()) {
             immersiveHandler.post(immersiveRunnable);
         }
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        int nextOrientation = newConfig.orientation;
+        if (lastKnownOrientationValue != Configuration.ORIENTATION_UNDEFINED && lastKnownOrientationValue != nextOrientation) {
+            if (OrderfastTapToPayPlugin.isNativeTapToPayTakeoverActive() || OrderfastTapToPayPlugin.isNativeTapToPayProcessInFlight()) {
+                orientationChangedDuringPayment = true;
+            }
+        }
+        lastKnownOrientationValue = nextOrientation;
+        hostActivityCurrentOrientation = orientationToName(nextOrientation);
+        lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
     }
 
     private void applyImmersiveMode() {
@@ -101,6 +169,11 @@ public class MainActivity extends BridgeActivity {
         if (getWindow() == null || getWindow().getDecorView() == null) {
             return;
         }
+        immersiveModeActive = true;
+        if (OrderfastTapToPayPlugin.isNativeTapToPayTakeoverActive() || OrderfastTapToPayPlugin.isNativeTapToPayProcessInFlight()) {
+            immersiveReappliedDuringPayment = true;
+        }
+        lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
 
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
             getWindow().setDecorFitsSystemWindows(false);
@@ -121,6 +194,14 @@ public class MainActivity extends BridgeActivity {
             | View.SYSTEM_UI_FLAG_FULLSCREEN
             | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
         getWindow().getDecorView().setSystemUiVisibility(flags);
+    }
+
+    private String orientationToName(int orientation) {
+        if (orientation == Configuration.ORIENTATION_PORTRAIT) return "portrait";
+        if (orientation == Configuration.ORIENTATION_LANDSCAPE) return "landscape";
+        if (orientation == Configuration.ORIENTATION_SQUARE) return "square";
+        if (orientation == Configuration.ORIENTATION_UNDEFINED) return "undefined";
+        return "other:" + orientation;
     }
 
     private void configureWebViewPresentation() {

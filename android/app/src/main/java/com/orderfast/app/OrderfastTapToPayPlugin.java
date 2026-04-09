@@ -46,6 +46,7 @@ import com.stripe.stripeterminal.external.models.TerminalErrorCode;
 import com.stripe.stripeterminal.external.models.TerminalException;
 import com.stripe.stripeterminal.log.LogLevel;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -57,6 +58,9 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -109,6 +113,8 @@ public class OrderfastTapToPayPlugin extends Plugin {
     private volatile long lastReaderDisconnectElapsedMs = 0L;
     private volatile String lastReaderDisconnectReason = "none";
     private volatile boolean appResumedDuringProcessInFlight = false;
+    private final Deque<String> recentLifecycleEvents = new ArrayDeque<>();
+    private final Object recentLifecycleEventsLock = new Object();
     private static final AtomicBoolean nativeTapToPayTakeoverActive = new AtomicBoolean(false);
     private static final AtomicBoolean nativeTapToPayProcessInFlight = new AtomicBoolean(false);
 
@@ -207,6 +213,13 @@ public class OrderfastTapToPayPlugin extends Plugin {
         activeRunMonotonicStartNs = 0L;
         nativeTapToPayTakeoverActive.set(false);
         nativeTapToPayProcessInFlight.set(false);
+    }
+
+    private void resetRunVisibilityTrail() {
+        synchronized (recentLifecycleEventsLock) {
+            recentLifecycleEvents.clear();
+        }
+        MainActivity.resetPaymentHostTelemetry();
     }
 
     private void resetStatusForNextAttempt() {
@@ -656,11 +669,38 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 quickChargeTraceSnapshot.put("processFailureMessage", JSONObject.NULL);
                 quickChargeTraceSnapshot.put("processFailureExceptionClass", JSONObject.NULL);
                 quickChargeTraceSnapshot.put("processFailureReasonCategory", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("rawProcessCallbackPayload", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("processFailureStackTop", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("processFailureDetailReason", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("processFailureTerminalCode", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("processFailureNativeStage", JSONObject.NULL);
                 quickChargeTraceSnapshot.put("nativeFailurePoint", JSONObject.NULL);
                 quickChargeTraceSnapshot.put("finalFailureReason", JSONObject.NULL);
                 quickChargeTraceSnapshot.put("mode", "quick_charge");
                 quickChargeTraceSnapshot.put("runtimeDebuggable", isDebugBuild());
                 quickChargeTraceSnapshot.put("hostActivityRequestedOrientation", getActivityRequestedOrientationName());
+                quickChargeTraceSnapshot.put("pluginInFlight", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("pluginStatus", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("stripeTakeoverObserved", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("backgroundInterruptionCandidate", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("confirmedBackgroundInterruption", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("lifecyclePausedDuringActiveFlow", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("lastPauseAtMs", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("lastStopAtMs", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("lastResumeAtMs", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("lastLifecycleEvents", new JSONArray());
+                quickChargeTraceSnapshot.put("hostActivityCurrentOrientation", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("hostActivityChangingConfigurations", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("hostActivityWindowFocus", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("hostActivityWasPaused", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("hostActivityWasStopped", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("hostActivityWasDestroyed", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("appInBackgroundAtFailure", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("immersiveModeActive", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("immersiveReappliedDuringPayment", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("orientationChangedDuringPayment", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("windowFocusChangedDuringPayment", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("timedEventTrail", new JSONArray());
 
                 postJson(
                     backendBaseUrl + "/api/kiosk/payments/card-present/session-state",
@@ -895,10 +935,10 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                                 processFailurePayload.put("terminalCode", e.getErrorCode() == null ? "UNKNOWN" : e.getErrorCode().name());
                                                 traceTimeline("process_failure_callback", processFailurePayload);
                                                 String reasonCategory = classifyTerminalFailureCategory(normalizedCode);
-                                                quickChargeTraceSnapshot.put("processFailureReasonCategory", reasonCategory);
                                                 String mappedSessionState = mapSessionStateForFailureCategory(reasonCategory);
                                                 String mappedPluginStatus = mapPluginStatusForFailureCategory(reasonCategory);
                                                 status = mappedPluginStatus;
+                                                enrichQuickChargeFailureSnapshot(quickChargeTraceSnapshot, e, normalizedCode, reasonCategory);
                                                 if ("canceled".equals(normalizedCode)) {
                                                     logCancelOrCleanupPath(
                                                         "native_cancel_inevitable",
@@ -1763,6 +1803,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
         activeRunMonotonicStartNs = SystemClock.elapsedRealtimeNanos();
         lastReaderDisconnectElapsedMs = 0L;
         lastReaderDisconnectReason = "none";
+        resetRunVisibilityTrail();
         JSObject payload = new JSObject();
         payload.put("source", source);
         traceTimeline("run_trace_started", payload);
@@ -1771,6 +1812,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
     private void traceTimeline(String event, JSObject extra) {
         JSObject payload = lifecyclePayload("native_timeline:" + event);
         payload.put("timelineEvent", event);
+        recordRecentLifecycleEvent(event, payload);
         if (extra != null) {
             java.util.Iterator<String> keys = extra.keys();
             while (keys.hasNext()) {
@@ -1779,6 +1821,94 @@ public class OrderfastTapToPayPlugin extends Plugin {
             }
         }
         logStartupStage("native_timeline", payload);
+    }
+
+    private void recordRecentLifecycleEvent(String event, JSObject payload) {
+        long runDeltaMs = payload != null ? payload.optLong("runMonotonicDeltaMs", monotonicRunDeltaMs()) : monotonicRunDeltaMs();
+        String compact = runDeltaMs + "ms:" + event;
+        synchronized (recentLifecycleEventsLock) {
+            recentLifecycleEvents.addLast(compact);
+            while (recentLifecycleEvents.size() > 10) {
+                recentLifecycleEvents.removeFirst();
+            }
+        }
+    }
+
+    private JSONArray recentLifecycleEventsPayload() {
+        JSONArray array = new JSONArray();
+        synchronized (recentLifecycleEventsLock) {
+            for (String event : new ArrayList<>(recentLifecycleEvents)) {
+                array.put(event);
+            }
+        }
+        return array;
+    }
+
+    private JSONArray quickChargeEventTrailPayload(JSObject snapshot) {
+        JSONArray events = new JSONArray();
+        if (snapshot == null) return events;
+        if (snapshot.optBoolean("retrieveSucceeded", false)) {
+            events.put("retrieve_success");
+        }
+        if ("success".equals(snapshot.optString("collectCallbackStatus", ""))) {
+            events.put("collect_success");
+        }
+        if (snapshot.optBoolean("processInvoked", false)) {
+            events.put("process_start");
+        }
+        JSONArray lifecycle = recentLifecycleEventsPayload();
+        for (int i = 0; i < lifecycle.length(); i++) {
+            String row = lifecycle.optString(i, "");
+            if (!row.isEmpty() && (row.contains("plugin_handleOnPause")
+                || row.contains("plugin_handleOnStop")
+                || row.contains("plugin_handleOnResume")
+                || row.contains("plugin_handleOnActivityResult")
+                || row.contains("reader_disconnect_callback"))) {
+                events.put("lifecycle:" + row);
+            }
+        }
+        String point = snapshot.optString("nativeFailurePoint", "");
+        if (!point.isEmpty()) {
+            events.put("process_failure:" + point);
+        } else if ("failure".equals(snapshot.optString("processCallbackStatus", ""))) {
+            events.put("process_failure:callback_failure");
+        }
+        return events;
+    }
+
+    private void enrichQuickChargeFailureSnapshot(JSObject quickChargeTraceSnapshot, TerminalException failure, String normalizedCode, String reasonCategory) {
+        if (quickChargeTraceSnapshot == null) return;
+        JSObject failureDetail = terminalErrorDetail(failure, "native_process_result");
+        quickChargeTraceSnapshot.put("rawProcessCallbackPayload", failureDetail);
+        quickChargeTraceSnapshot.put("processFailureStackTop", failureDetail.optString("stackTop", "none"));
+        quickChargeTraceSnapshot.put("processFailureDetailReason", determineCancelClassification(normalizedCode));
+        quickChargeTraceSnapshot.put("processFailureTerminalCode", failure.getErrorCode() == null ? JSONObject.NULL : failure.getErrorCode().name());
+        quickChargeTraceSnapshot.put("processFailureNativeStage", "native_process_result");
+        quickChargeTraceSnapshot.put("pluginInFlight", inFlight);
+        quickChargeTraceSnapshot.put("pluginStatus", status);
+        quickChargeTraceSnapshot.put("stripeTakeoverObserved", stripeTakeoverObserved);
+        quickChargeTraceSnapshot.put("backgroundInterruptionCandidate", backgroundInterruptionCandidate);
+        quickChargeTraceSnapshot.put("confirmedBackgroundInterruption", confirmedBackgroundInterruption);
+        quickChargeTraceSnapshot.put("lifecyclePausedDuringActiveFlow", lifecyclePausedDuringActiveFlow);
+        quickChargeTraceSnapshot.put("lastPauseAtMs", lastPauseAtMs > 0L ? lastPauseAtMs : JSONObject.NULL);
+        quickChargeTraceSnapshot.put("lastStopAtMs", lastStopAtMs > 0L ? lastStopAtMs : JSONObject.NULL);
+        quickChargeTraceSnapshot.put("lastResumeAtMs", lastResumeAtMs > 0L ? lastResumeAtMs : JSONObject.NULL);
+        quickChargeTraceSnapshot.put("lastLifecycleEvents", recentLifecycleEventsPayload());
+        quickChargeTraceSnapshot.put("hostActivityRequestedOrientation", getActivityRequestedOrientationName());
+        quickChargeTraceSnapshot.put("hostActivityCurrentOrientation", MainActivity.getHostActivityCurrentOrientation());
+        quickChargeTraceSnapshot.put("hostActivityChangingConfigurations", getActivity() != null && getActivity().isChangingConfigurations());
+        Boolean hasFocus = MainActivity.getHostActivityWindowFocus();
+        quickChargeTraceSnapshot.put("hostActivityWindowFocus", hasFocus == null ? JSONObject.NULL : hasFocus);
+        quickChargeTraceSnapshot.put("hostActivityWasPaused", MainActivity.getHostActivityWasPaused());
+        quickChargeTraceSnapshot.put("hostActivityWasStopped", MainActivity.getHostActivityWasStopped());
+        quickChargeTraceSnapshot.put("hostActivityWasDestroyed", MainActivity.getHostActivityWasDestroyed());
+        quickChargeTraceSnapshot.put("appInBackgroundAtFailure", isAppInBackground());
+        quickChargeTraceSnapshot.put("immersiveModeActive", MainActivity.getImmersiveModeActive());
+        quickChargeTraceSnapshot.put("immersiveReappliedDuringPayment", MainActivity.getImmersiveReappliedDuringPayment());
+        quickChargeTraceSnapshot.put("orientationChangedDuringPayment", MainActivity.getOrientationChangedDuringPayment());
+        quickChargeTraceSnapshot.put("windowFocusChangedDuringPayment", MainActivity.getWindowFocusChangedDuringPayment());
+        quickChargeTraceSnapshot.put("timedEventTrail", quickChargeEventTrailPayload(quickChargeTraceSnapshot));
+        quickChargeTraceSnapshot.put("processFailureReasonCategory", reasonCategory);
     }
 
     private long monotonicRunDeltaMs() {
