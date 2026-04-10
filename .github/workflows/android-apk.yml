@@ -101,21 +101,27 @@ jobs:
             echo "has_release_keystore=true" >> "$GITHUB_ENV"
             echo "Loaded release keystore from ANDROID_KEYSTORE_BASE64 secret"
           else
-            echo "ANDROID_KEYSTORE_BASE64 is not set; refusing to build a release APK with a non-release signing key."
-            exit 1
+            echo "has_release_keystore=false" >> "$GITHUB_ENV"
+            echo "ANDROID_KEYSTORE_BASE64 is not set; using debug signing key for release testing APK"
           fi
 
       - name: Build release APK
         run: |
           cd android
           BUILD_VERSION_NAME="kiosk-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}"
-          ./gradlew assembleRelease \
-            -PORDERFAST_VERSION_CODE="$GITHUB_RUN_NUMBER" \
-            -PORDERFAST_VERSION_NAME="$BUILD_VERSION_NAME" \
-            -PORDERFAST_UPLOAD_STORE_FILE="$GITHUB_WORKSPACE/$ANDROID_KEYSTORE_PATH" \
-            -PORDERFAST_UPLOAD_KEY_ALIAS="$ANDROID_KEY_ALIAS" \
-            -PORDERFAST_UPLOAD_STORE_PASSWORD="$ANDROID_KEYSTORE_PASSWORD" \
-            -PORDERFAST_UPLOAD_KEY_PASSWORD="$ANDROID_KEY_PASSWORD"
+          if [ "$has_release_keystore" = "true" ]; then
+            ./gradlew assembleRelease \
+              -PORDERFAST_VERSION_CODE="$GITHUB_RUN_NUMBER" \
+              -PORDERFAST_VERSION_NAME="$BUILD_VERSION_NAME" \
+              -PORDERFAST_UPLOAD_STORE_FILE="$GITHUB_WORKSPACE/$ANDROID_KEYSTORE_PATH" \
+              -PORDERFAST_UPLOAD_KEY_ALIAS="$ANDROID_KEY_ALIAS" \
+              -PORDERFAST_UPLOAD_STORE_PASSWORD="$ANDROID_KEYSTORE_PASSWORD" \
+              -PORDERFAST_UPLOAD_KEY_PASSWORD="$ANDROID_KEY_PASSWORD"
+          else
+            ./gradlew assembleRelease \
+              -PORDERFAST_VERSION_CODE="$GITHUB_RUN_NUMBER" \
+              -PORDERFAST_VERSION_NAME="$BUILD_VERSION_NAME"
+          fi
 
       - name: Verify release manifest is non-debuggable
         run: |
