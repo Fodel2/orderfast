@@ -4,6 +4,7 @@ def hasReleaseSigningProps = project.hasProperty('ORDERFAST_UPLOAD_STORE_FILE') 
     project.hasProperty('ORDERFAST_UPLOAD_KEY_ALIAS') &&
     project.hasProperty('ORDERFAST_UPLOAD_STORE_PASSWORD') &&
     project.hasProperty('ORDERFAST_UPLOAD_KEY_PASSWORD')
+def hasReleaseStoreFile = hasReleaseSigningProps && file(project.property('ORDERFAST_UPLOAD_STORE_FILE')).exists()
 def orderfastVersionCode = (project.findProperty('ORDERFAST_VERSION_CODE') ?: "1").toInteger()
 def orderfastVersionName = project.findProperty('ORDERFAST_VERSION_NAME') ?: "1.0"
 
@@ -28,7 +29,7 @@ android {
     }
     signingConfigs {
         release {
-            if (hasReleaseSigningProps) {
+            if (hasReleaseStoreFile) {
                 storeFile file(project.property('ORDERFAST_UPLOAD_STORE_FILE'))
                 storePassword project.property('ORDERFAST_UPLOAD_STORE_PASSWORD')
                 keyAlias project.property('ORDERFAST_UPLOAD_KEY_ALIAS')
@@ -44,10 +45,10 @@ android {
             debuggable false
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            if (hasReleaseSigningProps) {
+            if (hasReleaseStoreFile) {
                 signingConfig signingConfigs.release
             } else {
-                signingConfig signingConfigs.debug
+                throw new GradleException("Release signing is required: provide ORDERFAST_UPLOAD_STORE_FILE/ALIAS/PASSWORD properties with a valid keystore file.")
             }
         }
     }
