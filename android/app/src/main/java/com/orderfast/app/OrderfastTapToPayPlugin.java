@@ -78,6 +78,8 @@ public class OrderfastTapToPayPlugin extends Plugin {
     private static final String TAG = "OrderfastTapToPay";
     private static final long OPERATION_TIMEOUT_MS = 120_000L;
     private static final long BACKGROUND_INTERRUPTION_MIN_MS = 4_000L;
+    private static final long PROCESS_FOREGROUND_WAIT_TIMEOUT_MS = 2_500L;
+    private static final long PROCESS_FOREGROUND_WAIT_POLL_MS = 100L;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Handler timeoutHandler = new Handler(Looper.getMainLooper());
@@ -151,6 +153,19 @@ public class OrderfastTapToPayPlugin extends Plugin {
 
     private boolean isProcessStageActive() {
         return inFlight && "processing".equals(status);
+    }
+
+    private boolean isHostForegroundAndFocusedForProcess() {
+        boolean appInBackground = isAppInBackground();
+        boolean activityHasFocus = getActivity() != null && getActivity().hasWindowFocus();
+        Boolean hostFocus = MainActivity.getHostActivityWindowFocus();
+        boolean resolvedFocus = hostFocus != null ? hostFocus : activityHasFocus;
+        // During Stripe Tap to Pay takeover the host Activity can temporarily lose window focus
+        // even while the app is still foregrounded and collect already succeeded.
+        // Treat that transient focus loss as safe for process handoff so we don't defer process
+        // long enough to require card re-presentment.
+        boolean transientTakeoverFocusLoss = stripeTakeoverObserved && !appInBackground;
+        return !appInBackground && (resolvedFocus || transientTakeoverFocusLoss);
     }
 
     private JSObject paymentRunGuardPayload(String path, String reason) {
@@ -992,55 +1007,91 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                     );
                                     };
 
-                                    if (isAppInBackground()) {
-                                        backgroundInterruptionCandidate = true;
-                                        lifecyclePausedDuringActiveFlow = true;
-                                        if (backgroundInterruptionCandidateAtMs <= 0L) {
-                                            backgroundInterruptionCandidateAtMs = System.currentTimeMillis();
-                                        }
-                                        confirmedBackgroundInterruption = true;
-                                        String reasonCategory = "lifecycle_interrupted";
-                                        String mappedSessionState = mapSessionStateForFailureCategory(reasonCategory);
-                                        String mappedPluginStatus = mapPluginStatusForFailureCategory(reasonCategory);
-                                        status = mappedPluginStatus;
-
-                                        quickChargeTraceSnapshot.put("processInvoked", false);
-                                        quickChargeTraceSnapshot.put("processCallbackStatus", "not_invoked_backgrounded_before_process");
-                                        quickChargeTraceSnapshot.put("processFailureCode", "canceled");
-                                        quickChargeTraceSnapshot.put("processFailureMessage", "Tap to Pay was backgrounded before processPaymentIntent could start.");
-                                        quickChargeTraceSnapshot.put("processFailureExceptionClass", "backgrounded_before_process");
-                                        quickChargeTraceSnapshot.put("processFailureReasonCategory", reasonCategory);
-                                        quickChargeTraceSnapshot.put("nativeFailurePoint", "process_not_started_due_to_background_loss");
-                                        quickChargeTraceSnapshot.put("finalFailureReason", "App/background loss detected after collect success and before process invocation.");
-
-                                        JSObject backgroundedPayload = lifecyclePayload("process_not_started_backgrounded_before_process");
-                                        backgroundedPayload.put("paymentIntentId", collectedIntent.getId());
-                                        logFlowEvent("native_process_skipped_backgrounded", backgroundedPayload);
-                                        traceTimeline("process_not_started_backgrounded", backgroundedPayload);
-
-                                        postSessionState(mappedSessionState, "native_process_not_started_backgrounded");
-                                        JSObject payload = result(mappedPluginStatus, "canceled", "Tap to Pay was interrupted before processing could start.");
-                                        payload.put("reasonCategory", reasonCategory);
-                                        payload.put("mappedSessionState", mappedSessionState);
-                                        payload.put("interruptionReasonCode", "background_loss_confirmed");
-                                        payload.put("interruptionSource", "app_or_device_backgrounded");
-                                        payload.put("backgroundInterruptionCandidate", true);
-                                        payload.put("backgroundInterruptionMs", backgroundInterruptionCandidateAtMs > 0 ? (System.currentTimeMillis() - backgroundInterruptionCandidateAtMs) : 0L);
-                                        payload.put("appResumedDuringProcessInFlight", appResumedDuringProcessInFlight);
-                                        payload.put("processDeferredForForegroundFocus", false);
-                                        payload.put("detail", detail("native_process_result", "backgrounded_before_process_invocation", null));
-                                        attachPaymentIntentSnapshot(payload, activePaymentIntent, "process_not_started_backgrounded");
-                                        payload.put("quickChargeTraceSnapshot", quickChargeTraceSnapshot);
-                                        logStartupStage("native_process_result", payload);
-                                        cacheFinalResult(payload, "process_not_started_backgrounded");
-                                        clearActivePaymentState();
-                                        resetStatusForNextAttempt();
-                                        resolveOnce(resolveGate, call, payload);
+                                    if (isHostForegroundAndFocusedForProcess()) {
+                                        invokeProcessPaymentIntent.run();
                                         return;
                                     }
 
-                                    quickChargeTraceSnapshot.put("processDeferredForForegroundFocus", false);
-                                    invokeProcessPaymentIntent.run();
+                                    quickChargeTraceSnapshot.put("processDeferredForForegroundFocus", true);
+                                    JSObject deferredPayload = lifecyclePayload("process_deferred_waiting_for_foreground_focus");
+                                    deferredPayload.put("paymentIntentId", collectedIntent.getId());
+                                    deferredPayload.put("waitTimeoutMs", PROCESS_FOREGROUND_WAIT_TIMEOUT_MS);
+                                    logFlowEvent("native_process_deferred_wait", deferredPayload);
+                                    traceTimeline("process_deferred_wait_start", deferredPayload);
+
+                                    final long deferredWaitStartedAtMs = System.currentTimeMillis();
+                                    final Runnable[] waitForForegroundRunnableHolder = new Runnable[1];
+                                    waitForForegroundRunnableHolder[0] = new Runnable() {
+                                        @Override
+                                        public void run() {
+                                            if (resolveGate.get()) {
+                                                return;
+                                            }
+
+                                            if (isHostForegroundAndFocusedForProcess()) {
+                                                JSObject resumedPayload = lifecyclePayload("process_deferred_wait_ready");
+                                                resumedPayload.put("paymentIntentId", collectedIntent.getId());
+                                                resumedPayload.put("deferredMs", System.currentTimeMillis() - deferredWaitStartedAtMs);
+                                                logFlowEvent("native_process_deferred_wait_ready", resumedPayload);
+                                                traceTimeline("process_deferred_wait_ready", resumedPayload);
+                                                invokeProcessPaymentIntent.run();
+                                                return;
+                                            }
+
+                                            long elapsedMs = System.currentTimeMillis() - deferredWaitStartedAtMs;
+                                            if (elapsedMs >= PROCESS_FOREGROUND_WAIT_TIMEOUT_MS) {
+                                                backgroundInterruptionCandidate = true;
+                                                lifecyclePausedDuringActiveFlow = true;
+                                                if (backgroundInterruptionCandidateAtMs <= 0L) {
+                                                    backgroundInterruptionCandidateAtMs = deferredWaitStartedAtMs;
+                                                }
+                                                confirmedBackgroundInterruption = true;
+                                                String reasonCategory = "lifecycle_interrupted";
+                                                String mappedSessionState = mapSessionStateForFailureCategory(reasonCategory);
+                                                String mappedPluginStatus = mapPluginStatusForFailureCategory(reasonCategory);
+                                                status = mappedPluginStatus;
+
+                                                quickChargeTraceSnapshot.put("processInvoked", false);
+                                                quickChargeTraceSnapshot.put("processCallbackStatus", "not_invoked_background_timeout");
+                                                quickChargeTraceSnapshot.put("processFailureCode", "canceled");
+                                                quickChargeTraceSnapshot.put("processFailureMessage", "Host activity did not return to foreground before processPaymentIntent.");
+                                                quickChargeTraceSnapshot.put("processFailureExceptionClass", "foreground_wait_timeout");
+                                                quickChargeTraceSnapshot.put("processFailureReasonCategory", reasonCategory);
+                                                quickChargeTraceSnapshot.put("nativeFailurePoint", "process_deferred_wait_timeout_before_sdk_call");
+                                                quickChargeTraceSnapshot.put("finalFailureReason", "Foreground/focus was not restored before bounded process handoff wait expired.");
+                                                quickChargeTraceSnapshot.put("appResumedDuringProcessInFlight", appResumedDuringProcessInFlight);
+
+                                                JSObject timeoutPayload = lifecyclePayload("process_deferred_wait_timeout");
+                                                timeoutPayload.put("paymentIntentId", collectedIntent.getId());
+                                                timeoutPayload.put("deferredMs", elapsedMs);
+                                                traceTimeline("process_deferred_wait_timeout", timeoutPayload);
+
+                                                postSessionState(mappedSessionState, "native_process_deferred_wait_timeout");
+                                                JSObject payload = result(mappedPluginStatus, "canceled", "Tap to Pay was interrupted before processing could start.");
+                                                payload.put("reasonCategory", reasonCategory);
+                                                payload.put("mappedSessionState", mappedSessionState);
+                                                payload.put("interruptionReasonCode", "background_loss_confirmed");
+                                                payload.put("interruptionSource", "app_or_device_backgrounded");
+                                                payload.put("backgroundInterruptionCandidate", true);
+                                                payload.put("backgroundInterruptionMs", elapsedMs);
+                                                payload.put("appResumedDuringProcessInFlight", appResumedDuringProcessInFlight);
+                                                payload.put("processDeferredForForegroundFocus", true);
+                                                payload.put("detail", detail("native_process_result", "deferred_wait_timeout_before_process_invocation", null));
+                                                attachPaymentIntentSnapshot(payload, activePaymentIntent, "process_deferred_wait_timeout_active_intent");
+                                                payload.put("quickChargeTraceSnapshot", quickChargeTraceSnapshot);
+                                                logStartupStage("native_process_result", payload);
+                                                cacheFinalResult(payload, "process_deferred_wait_timeout");
+                                                clearActivePaymentState();
+                                                resetStatusForNextAttempt();
+                                                resolveOnce(resolveGate, call, payload);
+                                                return;
+                                            }
+
+                                            mainHandler.postDelayed(waitForForegroundRunnableHolder[0], PROCESS_FOREGROUND_WAIT_POLL_MS);
+                                        }
+                                    };
+
+                                    mainHandler.post(waitForForegroundRunnableHolder[0]);
                                 }
 
                                 @Override
