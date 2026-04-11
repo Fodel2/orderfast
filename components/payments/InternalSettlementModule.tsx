@@ -88,6 +88,27 @@ type QuickChargeFailureSnapshot = {
   finalFailureReason: string | null;
 };
 
+type QuickChargeSuccessSnapshot = {
+  mode: 'quick_charge';
+  paymentIntentId: string | null;
+  retrieveCallbackCount: number | null;
+  collectSuccessCallbackCount: number | null;
+  collectFailureCallbackCount: number | null;
+  processInvocationCount: number | null;
+  processSuccessCallbackCount: number | null;
+  processFailureCallbackCount: number | null;
+  processCallbackCount: number | null;
+  retrievedPaymentIntentId: string | null;
+  lastCollectCallbackPaymentIntentId: string | null;
+  lastProcessCallbackPaymentIntentId: string | null;
+  samePaymentIntentIdAcrossRetrieveCollectProcess: boolean | null;
+  collectIntentReferenceChanged: boolean | null;
+  intermediateCallbackObserved: boolean | null;
+  repeatedCollectSignalDetected: boolean | null;
+  suspectedSecondPresentment: boolean | null;
+  timedEventTrail: string[] | null;
+};
+
 export default function InternalSettlementModule({
   title = 'Internal collection',
   eyebrow = 'Internal settlement module',
@@ -113,6 +134,7 @@ export default function InternalSettlementModule({
   const [state, setState] = useState<CollectionState>('idle');
   const [message, setMessage] = useState('Ready to collect payment.');
   const [quickChargeFailureSnapshot, setQuickChargeFailureSnapshot] = useState<QuickChargeFailureSnapshot | null>(null);
+  const [quickChargeSuccessSnapshot, setQuickChargeSuccessSnapshot] = useState<QuickChargeSuccessSnapshot | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [activeTerminalLocationId, setActiveTerminalLocationId] = useState<string | null>(null);
   const flowActiveRef = useRef(false);
@@ -360,6 +382,7 @@ export default function InternalSettlementModule({
   const handleCollectContactless = useCallback(async () => {
     if (busy) return;
     setQuickChargeFailureSnapshot(null);
+    setQuickChargeSuccessSnapshot(null);
     if (!tapAvailabilityReady) {
       setState('failed');
       setMessage(tapAvailabilityReason || 'Tap to Pay is not available for this restaurant.');
@@ -857,6 +880,49 @@ export default function InternalSettlementModule({
         return;
       }
 
+      if (mode === 'quick_charge') {
+        const successSnapshot: QuickChargeSuccessSnapshot = {
+          mode: 'quick_charge',
+          paymentIntentId:
+            nativeResult.paymentIntentId ||
+            (typeof nativeTraceSnapshot?.paymentIntentId === 'string' ? nativeTraceSnapshot.paymentIntentId : null),
+          retrieveCallbackCount: typeof nativeTraceSnapshot?.retrieveCallbackCount === 'number' ? nativeTraceSnapshot.retrieveCallbackCount : null,
+          collectSuccessCallbackCount:
+            typeof nativeTraceSnapshot?.collectSuccessCallbackCount === 'number' ? nativeTraceSnapshot.collectSuccessCallbackCount : null,
+          collectFailureCallbackCount:
+            typeof nativeTraceSnapshot?.collectFailureCallbackCount === 'number' ? nativeTraceSnapshot.collectFailureCallbackCount : null,
+          processInvocationCount: typeof nativeTraceSnapshot?.processInvocationCount === 'number' ? nativeTraceSnapshot.processInvocationCount : null,
+          processSuccessCallbackCount:
+            typeof nativeTraceSnapshot?.processSuccessCallbackCount === 'number' ? nativeTraceSnapshot.processSuccessCallbackCount : null,
+          processFailureCallbackCount:
+            typeof nativeTraceSnapshot?.processFailureCallbackCount === 'number' ? nativeTraceSnapshot.processFailureCallbackCount : null,
+          processCallbackCount: typeof nativeTraceSnapshot?.processCallbackCount === 'number' ? nativeTraceSnapshot.processCallbackCount : null,
+          retrievedPaymentIntentId:
+            typeof nativeTraceSnapshot?.retrievedPaymentIntentId === 'string' ? nativeTraceSnapshot.retrievedPaymentIntentId : null,
+          lastCollectCallbackPaymentIntentId:
+            typeof nativeTraceSnapshot?.lastCollectCallbackPaymentIntentId === 'string' ? nativeTraceSnapshot.lastCollectCallbackPaymentIntentId : null,
+          lastProcessCallbackPaymentIntentId:
+            typeof nativeTraceSnapshot?.lastProcessCallbackPaymentIntentId === 'string' ? nativeTraceSnapshot.lastProcessCallbackPaymentIntentId : null,
+          samePaymentIntentIdAcrossRetrieveCollectProcess:
+            typeof nativeTraceSnapshot?.samePaymentIntentIdAcrossRetrieveCollectProcess === 'boolean'
+              ? nativeTraceSnapshot.samePaymentIntentIdAcrossRetrieveCollectProcess
+              : null,
+          collectIntentReferenceChanged:
+            typeof nativeTraceSnapshot?.collectIntentReferenceChanged === 'boolean' ? nativeTraceSnapshot.collectIntentReferenceChanged : null,
+          intermediateCallbackObserved:
+            typeof nativeTraceSnapshot?.intermediateCallbackObserved === 'boolean' ? nativeTraceSnapshot.intermediateCallbackObserved : null,
+          repeatedCollectSignalDetected:
+            typeof nativeTraceSnapshot?.repeatedCollectSignalDetected === 'boolean' ? nativeTraceSnapshot.repeatedCollectSignalDetected : null,
+          suspectedSecondPresentment:
+            typeof nativeTraceSnapshot?.suspectedSecondPresentment === 'boolean' ? nativeTraceSnapshot.suspectedSecondPresentment : null,
+          timedEventTrail:
+            Array.isArray(nativeTraceSnapshot?.timedEventTrail) && nativeTraceSnapshot.timedEventTrail.every((event) => typeof event === 'string')
+              ? (nativeTraceSnapshot.timedEventTrail as string[])
+              : null,
+        };
+        setQuickChargeSuccessSnapshot(successSnapshot);
+      }
+
       setState('processing');
       setMessage('Finalizing settlement…');
       setState('finalizing');
@@ -1044,6 +1110,7 @@ export default function InternalSettlementModule({
       setState('failed');
       setMessage('Payment canceled.');
       setQuickChargeFailureSnapshot(null);
+      setQuickChargeSuccessSnapshot(null);
       setActiveSessionId(null);
       setActiveTerminalLocationId(null);
       internalSettlementActiveRunStore.clear();
@@ -1180,6 +1247,30 @@ export default function InternalSettlementModule({
           >
             <p className="font-semibold">Collection state: {state.replace('_', ' ')}</p>
             <p className="mt-1 text-xs">{message}</p>
+            {mode === 'quick_charge' && state === 'completed' && quickChargeSuccessSnapshot ? (
+              <div className="mt-3 rounded-xl border border-emerald-300 bg-white/90 p-3 text-[11px] text-emerald-900">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-semibold uppercase tracking-[0.08em]">Tap to Pay success snapshot</p>
+                  <button
+                    type="button"
+                    className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-emerald-800"
+                    onClick={async () => {
+                      const serialized = JSON.stringify(quickChargeSuccessSnapshot, null, 2);
+                      try {
+                        await navigator.clipboard.writeText(serialized);
+                      } catch {
+                        // no-op: snapshot remains visible on screen for manual copy.
+                      }
+                    }}
+                  >
+                    Copy
+                  </button>
+                </div>
+                <pre className="mt-2 whitespace-pre-wrap break-all rounded-md bg-emerald-50 p-2 text-[10px] leading-4">
+                  {JSON.stringify(quickChargeSuccessSnapshot, null, 2)}
+                </pre>
+              </div>
+            ) : null}
             {mode === 'quick_charge' && state === 'failed' && quickChargeFailureSnapshot ? (
               <div className="mt-3 rounded-xl border border-rose-300 bg-white/90 p-3 text-[11px] text-rose-900">
                 <div className="flex items-center justify-between gap-3">
