@@ -166,12 +166,13 @@ public class OrderfastTapToPayPlugin extends Plugin {
         boolean activityHasFocus = getActivity() != null && getActivity().hasWindowFocus();
         Boolean hostFocus = MainActivity.getHostActivityWindowFocus();
         boolean resolvedFocus = hostFocus != null ? hostFocus : activityHasFocus;
+        boolean definitelyBackgroundInterrupted = confirmedBackgroundInterruption || cancelRequestedByApp;
         // During Stripe Tap to Pay takeover the host Activity can temporarily lose window focus
-        // even while the app is still foregrounded and collect already succeeded.
-        // Treat that transient focus loss as safe for process handoff so we don't defer process
-        // long enough to require card re-presentment.
-        boolean transientTakeoverFocusLoss = stripeTakeoverObserved && !appInBackground;
-        return !appInBackground && (resolvedFocus || transientTakeoverFocusLoss);
+        // and can briefly look backgrounded during handoff immediately after collect success.
+        // Treat takeover churn as safe for direct process handoff unless we have a confirmed
+        // real interruption/cancel signal.
+        boolean transientTakeoverLifecycleChurn = stripeTakeoverObserved && !definitelyBackgroundInterrupted;
+        return (!appInBackground && resolvedFocus) || transientTakeoverLifecycleChurn;
     }
 
     private JSObject paymentRunGuardPayload(String path, String reason) {
