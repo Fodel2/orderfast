@@ -106,6 +106,15 @@ type QuickChargeSuccessSnapshot = {
   intermediateCallbackObserved: boolean | null;
   repeatedCollectSignalDetected: boolean | null;
   suspectedSecondPresentment: boolean | null;
+  paymentStatusChangeCountBeforeCollectSuccess: number | null;
+  paymentStatusWaitingForInputCountBeforeCollectSuccess: number | null;
+  paymentStatusProcessingCountBeforeCollectSuccess: number | null;
+  paymentStatusReadyCountBeforeCollectSuccess: number | null;
+  paymentStatusTrailBeforeCollectSuccess: string[] | null;
+  repeatedWaitingForInputBeforeCollectSuccess: boolean | null;
+  repeatedReadyBeforeCollectSuccess: boolean | null;
+  repeatedProcessingBeforeCollectSuccess: boolean | null;
+  nativeStatusBouncedBackToInputWaitingBeforeCollectSuccess: boolean | null;
   timedEventTrail: string[] | null;
 };
 
@@ -881,6 +890,37 @@ export default function InternalSettlementModule({
       }
 
       if (mode === 'quick_charge') {
+        const paymentStatusWaitingForInputCountBeforeCollectSuccess =
+          typeof nativeTraceSnapshot?.paymentStatusWaitingForInputCountBeforeCollectSuccess === 'number'
+            ? nativeTraceSnapshot.paymentStatusWaitingForInputCountBeforeCollectSuccess
+            : null;
+        const paymentStatusProcessingCountBeforeCollectSuccess =
+          typeof nativeTraceSnapshot?.paymentStatusProcessingCountBeforeCollectSuccess === 'number'
+            ? nativeTraceSnapshot.paymentStatusProcessingCountBeforeCollectSuccess
+            : null;
+        const paymentStatusReadyCountBeforeCollectSuccess =
+          typeof nativeTraceSnapshot?.paymentStatusReadyCountBeforeCollectSuccess === 'number'
+            ? nativeTraceSnapshot.paymentStatusReadyCountBeforeCollectSuccess
+            : null;
+        const paymentStatusTrailBeforeCollectSuccess =
+          Array.isArray(nativeTraceSnapshot?.paymentStatusTrailBeforeCollectSuccess) &&
+          nativeTraceSnapshot.paymentStatusTrailBeforeCollectSuccess.every((event) => typeof event === 'string')
+            ? (nativeTraceSnapshot.paymentStatusTrailBeforeCollectSuccess as string[])
+            : null;
+        const repeatedWaitingForInputBeforeCollectSuccess =
+          paymentStatusWaitingForInputCountBeforeCollectSuccess != null
+            ? paymentStatusWaitingForInputCountBeforeCollectSuccess > 1
+            : null;
+        const repeatedReadyBeforeCollectSuccess =
+          paymentStatusReadyCountBeforeCollectSuccess != null ? paymentStatusReadyCountBeforeCollectSuccess > 1 : null;
+        const repeatedProcessingBeforeCollectSuccess =
+          paymentStatusProcessingCountBeforeCollectSuccess != null
+            ? paymentStatusProcessingCountBeforeCollectSuccess > 1
+            : null;
+        const nativeStatusBouncedBackToInputWaitingBeforeCollectSuccess =
+          repeatedWaitingForInputBeforeCollectSuccess === null
+            ? null
+            : repeatedWaitingForInputBeforeCollectSuccess && (paymentStatusReadyCountBeforeCollectSuccess ?? 0) > 0;
         const successSnapshot: QuickChargeSuccessSnapshot = {
           mode: 'quick_charge',
           paymentIntentId:
@@ -915,6 +955,18 @@ export default function InternalSettlementModule({
             typeof nativeTraceSnapshot?.repeatedCollectSignalDetected === 'boolean' ? nativeTraceSnapshot.repeatedCollectSignalDetected : null,
           suspectedSecondPresentment:
             typeof nativeTraceSnapshot?.suspectedSecondPresentment === 'boolean' ? nativeTraceSnapshot.suspectedSecondPresentment : null,
+          paymentStatusChangeCountBeforeCollectSuccess:
+            typeof nativeTraceSnapshot?.paymentStatusChangeCountBeforeCollectSuccess === 'number'
+              ? nativeTraceSnapshot.paymentStatusChangeCountBeforeCollectSuccess
+              : null,
+          paymentStatusWaitingForInputCountBeforeCollectSuccess,
+          paymentStatusProcessingCountBeforeCollectSuccess,
+          paymentStatusReadyCountBeforeCollectSuccess,
+          paymentStatusTrailBeforeCollectSuccess,
+          repeatedWaitingForInputBeforeCollectSuccess,
+          repeatedReadyBeforeCollectSuccess,
+          repeatedProcessingBeforeCollectSuccess,
+          nativeStatusBouncedBackToInputWaitingBeforeCollectSuccess,
           timedEventTrail:
             Array.isArray(nativeTraceSnapshot?.timedEventTrail) && nativeTraceSnapshot.timedEventTrail.every((event) => typeof event === 'string')
               ? (nativeTraceSnapshot.timedEventTrail as string[])
