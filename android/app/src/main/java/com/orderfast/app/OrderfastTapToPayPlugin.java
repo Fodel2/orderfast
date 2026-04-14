@@ -23,6 +23,7 @@ import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.stripe.stripeterminal.Terminal;
+import com.stripe.stripeterminal.TerminalApplicationDelegate;
 import com.stripe.stripeterminal.external.callable.Callback;
 import com.stripe.stripeterminal.external.callable.Cancelable;
 import com.stripe.stripeterminal.external.callable.ConnectionTokenCallback;
@@ -166,13 +167,16 @@ public class OrderfastTapToPayPlugin extends Plugin {
         boolean activityHasFocus = getActivity() != null && getActivity().hasWindowFocus();
         Boolean hostFocus = MainActivity.getHostActivityWindowFocus();
         boolean resolvedFocus = hostFocus != null ? hostFocus : activityHasFocus;
-        boolean definitelyBackgroundInterrupted = confirmedBackgroundInterruption || cancelRequestedByApp;
-        // During Stripe Tap to Pay takeover the host Activity can temporarily lose window focus
-        // and can briefly look backgrounded during handoff immediately after collect success.
-        // Treat takeover churn as safe for direct process handoff unless we have a confirmed
-        // real interruption/cancel signal.
-        boolean transientTakeoverLifecycleChurn = stripeTakeoverObserved && !definitelyBackgroundInterrupted;
-        return (!appInBackground && resolvedFocus) || transientTakeoverLifecycleChurn;
+        if (!appInBackground && resolvedFocus) {
+            return true;
+        }
+        JSObject processAwareness = resolveTapToPayProcessAwarenessPayload();
+        boolean processAwareConfirmed = processAwareness.optBoolean("supported", false)
+            && processAwareness.optBoolean("isTapToPayProcess", false);
+        // Stripe Tap to Pay may run in its dedicated process while host focus/background
+        // temporarily changes. Allow process handoff only when Stripe process-awareness
+        // explicitly confirms that process context.
+        return processAwareConfirmed && stripeTakeoverObserved && !cancelRequestedByApp;
     }
 
     private JSObject paymentRunGuardPayload(String path, String reason) {
@@ -1427,6 +1431,13 @@ public class OrderfastTapToPayPlugin extends Plugin {
         payload.put("activeRun", isCollectOrProcessActive());
         payload.put("stripeTakeoverActive", stripeTakeoverObserved);
         payload.put("appBackgrounded", isAppInBackground());
+        payload.put("tapToPayProcessAwareness", resolveTapToPayProcessAwarenessPayload());
+        payload.put("hostActivityClassName", MainActivity.getHostActivityClassName());
+        payload.put("hostActivityIdentityHash", MainActivity.getHostActivityIdentityHash());
+        payload.put("hostActivityTaskId", MainActivity.getHostActivityTaskId());
+        payload.put("hostActivityIntentAction", MainActivity.getHostActivityIntentAction());
+        payload.put("hostActivityIntentFlags", MainActivity.getHostActivityIntentFlags());
+        payload.put("hostProcessName", MainActivity.getHostProcessName());
         if (currentSessionId != null) payload.put("sessionId", currentSessionId);
         if (currentRestaurantId != null) payload.put("restaurantId", currentRestaurantId);
         if (currentTerminalLocationId != null) payload.put("terminalLocationId", currentTerminalLocationId);
@@ -1944,6 +1955,13 @@ public class OrderfastTapToPayPlugin extends Plugin {
         payload.put("collectOrProcessActive", isCollectOrProcessActive());
         payload.put("takeoverActive", stripeTakeoverObserved);
         payload.put("appResumedDuringProcessInFlight", appResumedDuringProcessInFlight);
+        payload.put("tapToPayProcessAwareness", resolveTapToPayProcessAwarenessPayload());
+        payload.put("hostActivityClassName", MainActivity.getHostActivityClassName());
+        payload.put("hostActivityIdentityHash", MainActivity.getHostActivityIdentityHash());
+        payload.put("hostActivityTaskId", MainActivity.getHostActivityTaskId());
+        payload.put("hostActivityIntentAction", MainActivity.getHostActivityIntentAction());
+        payload.put("hostActivityIntentFlags", MainActivity.getHostActivityIntentFlags());
+        payload.put("hostProcessName", MainActivity.getHostProcessName());
         return payload;
     }
 
@@ -2164,6 +2182,11 @@ public class OrderfastTapToPayPlugin extends Plugin {
         quickChargeTraceSnapshot.put("hostActivityRequestedOrientation", getActivityRequestedOrientationName());
         quickChargeTraceSnapshot.put("hostActivityCurrentOrientation", MainActivity.getHostActivityCurrentOrientation());
         quickChargeTraceSnapshot.put("hostActivityChangingConfigurations", getActivity() != null && getActivity().isChangingConfigurations());
+        quickChargeTraceSnapshot.put("hostActivityClassName", MainActivity.getHostActivityClassName());
+        quickChargeTraceSnapshot.put("hostActivityIdentityHash", MainActivity.getHostActivityIdentityHash());
+        quickChargeTraceSnapshot.put("hostActivityTaskId", MainActivity.getHostActivityTaskId());
+        quickChargeTraceSnapshot.put("hostActivityIntentAction", MainActivity.getHostActivityIntentAction());
+        quickChargeTraceSnapshot.put("hostActivityIntentFlags", MainActivity.getHostActivityIntentFlags());
         Boolean hasFocus = MainActivity.getHostActivityWindowFocus();
         quickChargeTraceSnapshot.put("hostActivityWindowFocus", hasFocus == null ? JSONObject.NULL : hasFocus);
         quickChargeTraceSnapshot.put("hostActivityWasPaused", MainActivity.getHostActivityWasPaused());
@@ -2174,8 +2197,47 @@ public class OrderfastTapToPayPlugin extends Plugin {
         quickChargeTraceSnapshot.put("immersiveReappliedDuringPayment", MainActivity.getImmersiveReappliedDuringPayment());
         quickChargeTraceSnapshot.put("orientationChangedDuringPayment", MainActivity.getOrientationChangedDuringPayment());
         quickChargeTraceSnapshot.put("windowFocusChangedDuringPayment", MainActivity.getWindowFocusChangedDuringPayment());
+        quickChargeTraceSnapshot.put("hostProcessName", MainActivity.getHostProcessName());
+        quickChargeTraceSnapshot.put("tapToPayProcessAwareness", resolveTapToPayProcessAwarenessPayload());
         quickChargeTraceSnapshot.put("timedEventTrail", quickChargeEventTrailPayload(quickChargeTraceSnapshot));
         quickChargeTraceSnapshot.put("processFailureReasonCategory", reasonCategory);
+    }
+
+    private JSObject resolveTapToPayProcessAwarenessPayload() {
+        JSObject payload = new JSObject();
+        payload.put("supported", false);
+        payload.put("isTapToPayProcess", JSONObject.NULL);
+        payload.put("sourceMethod", JSONObject.NULL);
+        payload.put("error", JSONObject.NULL);
+        try {
+            Class<?> delegateClass = TerminalApplicationDelegate.class;
+            String[] candidateMethods = new String[] {
+                "isInStripeProcess",
+                "isStripeProcess",
+                "isInTapToPayProcess",
+                "isTapToPayProcess"
+            };
+            for (String methodName : candidateMethods) {
+                try {
+                    Method method = delegateClass.getMethod(methodName);
+                    Object value = method.invoke(null);
+                    if (value instanceof Boolean) {
+                        payload.put("supported", true);
+                        payload.put("isTapToPayProcess", ((Boolean) value).booleanValue());
+                        payload.put("sourceMethod", methodName);
+                        payload.put("error", JSONObject.NULL);
+                        return payload;
+                    }
+                } catch (NoSuchMethodException ignored) {
+                    // Method name differs by SDK version; continue searching.
+                }
+            }
+            payload.put("error", "process_aware_method_not_found");
+            return payload;
+        } catch (Exception ex) {
+            payload.put("error", ex.getClass().getSimpleName() + ":" + (ex.getMessage() == null ? "unknown" : ex.getMessage()));
+            return payload;
+        }
     }
 
     private long monotonicRunDeltaMs() {
