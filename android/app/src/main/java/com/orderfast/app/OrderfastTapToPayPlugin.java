@@ -106,6 +106,12 @@ public class OrderfastTapToPayPlugin extends Plugin {
     private volatile long lastPauseAtMs = 0L;
     private volatile long lastStopAtMs = 0L;
     private volatile long lastResumeAtMs = 0L;
+    private final Object paymentStatusTelemetryLock = new Object();
+    private final ArrayDeque<String> recentPaymentStatuses = new ArrayDeque<>();
+    private volatile int paymentStatusChangeCount = 0;
+    private volatile int paymentStatusWaitingForInputCount = 0;
+    private volatile int paymentStatusProcessingCount = 0;
+    private volatile int paymentStatusReadyCount = 0;
     private volatile JSObject cachedFinalResult = null;
     private volatile long cachedFinalResultAtMs = 0L;
     private static int pluginInstanceCounter = 0;
@@ -160,12 +166,13 @@ public class OrderfastTapToPayPlugin extends Plugin {
         boolean activityHasFocus = getActivity() != null && getActivity().hasWindowFocus();
         Boolean hostFocus = MainActivity.getHostActivityWindowFocus();
         boolean resolvedFocus = hostFocus != null ? hostFocus : activityHasFocus;
+        boolean definitelyBackgroundInterrupted = confirmedBackgroundInterruption || cancelRequestedByApp;
         // During Stripe Tap to Pay takeover the host Activity can temporarily lose window focus
-        // even while the app is still foregrounded and collect already succeeded.
-        // Treat that transient focus loss as safe for process handoff so we don't defer process
-        // long enough to require card re-presentment.
-        boolean transientTakeoverFocusLoss = stripeTakeoverObserved && !appInBackground;
-        return !appInBackground && (resolvedFocus || transientTakeoverFocusLoss);
+        // and can briefly look backgrounded during handoff immediately after collect success.
+        // Treat takeover churn as safe for direct process handoff unless we have a confirmed
+        // real interruption/cancel signal.
+        boolean transientTakeoverLifecycleChurn = stripeTakeoverObserved && !definitelyBackgroundInterrupted;
+        return (!appInBackground && resolvedFocus) || transientTakeoverLifecycleChurn;
     }
 
     private JSObject paymentRunGuardPayload(String path, String reason) {
@@ -245,6 +252,44 @@ public class OrderfastTapToPayPlugin extends Plugin {
         }
     }
 
+    private void resetPaymentStatusTelemetry() {
+        synchronized (paymentStatusTelemetryLock) {
+            recentPaymentStatuses.clear();
+        }
+        paymentStatusChangeCount = 0;
+        paymentStatusWaitingForInputCount = 0;
+        paymentStatusProcessingCount = 0;
+        paymentStatusReadyCount = 0;
+    }
+
+    private void recordPaymentStatusTelemetry(PaymentStatus paymentStatus) {
+        String next = paymentStatus == null ? "UNKNOWN" : paymentStatus.name();
+        synchronized (paymentStatusTelemetryLock) {
+            recentPaymentStatuses.addLast(SystemClock.elapsedRealtime() + ":" + next);
+            while (recentPaymentStatuses.size() > 8) {
+                recentPaymentStatuses.removeFirst();
+            }
+        }
+        paymentStatusChangeCount += 1;
+        if (paymentStatus == PaymentStatus.WAITING_FOR_INPUT) {
+            paymentStatusWaitingForInputCount += 1;
+        } else if (paymentStatus == PaymentStatus.PROCESSING) {
+            paymentStatusProcessingCount += 1;
+        } else if (paymentStatus == PaymentStatus.READY) {
+            paymentStatusReadyCount += 1;
+        }
+    }
+
+    private JSONArray paymentStatusTrailPayload() {
+        JSONArray trail = new JSONArray();
+        synchronized (paymentStatusTelemetryLock) {
+            for (String row : new ArrayList<>(recentPaymentStatuses)) {
+                trail.put(row);
+            }
+        }
+        return trail;
+    }
+
     private boolean isDebugBuild() {
         return (getContext().getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
     }
@@ -294,6 +339,11 @@ public class OrderfastTapToPayPlugin extends Plugin {
             if (isDebugBuild()) {
                 Log.d(TAG, "Payment status: " + paymentStatus);
             }
+            recordPaymentStatusTelemetry(paymentStatus);
+            JSObject statusPayload = new JSObject();
+            statusPayload.put("paymentStatus", paymentStatus == null ? "UNKNOWN" : paymentStatus.name());
+            statusPayload.put("paymentStatusChangeCount", paymentStatusChangeCount);
+            traceTimeline("terminal_payment_status_change", statusPayload);
             if (paymentStatus == PaymentStatus.WAITING_FOR_INPUT) {
                 status = "collecting";
             } else if (paymentStatus == PaymentStatus.PROCESSING) {
@@ -642,6 +692,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
         clearOperationTimeout();
         activePaymentIntent = null;
         processCancelable = null;
+        resetPaymentStatusTelemetry();
 
         if (connectedReader == null || !Terminal.isInitialized() || Terminal.getInstance().getConnectionStatus() != ConnectionStatus.CONNECTED) {
             JSObject payload = result("failed", "session_error", "Tap to Pay reader is not connected. Prepare Tap to Pay first.");
@@ -732,6 +783,11 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 quickChargeTraceSnapshot.put("windowFocusChangedDuringPayment", JSONObject.NULL);
                 quickChargeTraceSnapshot.put("processDeferredForForegroundFocus", false);
                 quickChargeTraceSnapshot.put("timedEventTrail", new JSONArray());
+                quickChargeTraceSnapshot.put("paymentStatusChangeCountBeforeCollectSuccess", 0);
+                quickChargeTraceSnapshot.put("paymentStatusWaitingForInputCountBeforeCollectSuccess", 0);
+                quickChargeTraceSnapshot.put("paymentStatusProcessingCountBeforeCollectSuccess", 0);
+                quickChargeTraceSnapshot.put("paymentStatusReadyCountBeforeCollectSuccess", 0);
+                quickChargeTraceSnapshot.put("paymentStatusTrailBeforeCollectSuccess", new JSONArray());
 
                 postJson(
                     backendBaseUrl + "/api/kiosk/payments/card-present/session-state",
@@ -828,6 +884,11 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                 @Override
                                 public void onSuccess(PaymentIntent collectedIntent) {
                                     activePaymentIntent = collectedIntent;
+                                    // Collect success means Stripe Terminal takeover already progressed far enough
+                                    // to safely continue directly into processPaymentIntent while still foregrounded.
+                                    // Some devices briefly report window-focus loss here without firing onPause/onStop,
+                                    // which can wrongly defer process and force a second presentment.
+                                    stripeTakeoverObserved = true;
                                     final boolean collectedIntentMatchesRetrieved = retrievedIntent == collectedIntent;
                                     quickChargeTraceSnapshot.put("collectCallbackStatus", "success");
                                     quickChargeTraceSnapshot.put("collectSuccessCallbackCount", quickChargeTraceSnapshot.optInt("collectSuccessCallbackCount", 0) + 1);
@@ -835,6 +896,11 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                     quickChargeTraceSnapshot.put("collectIntentReferenceChanged", !collectedIntentMatchesRetrieved);
                                     quickChargeTraceSnapshot.put("lastCollectCallbackPaymentIntentId", collectedIntent.getId());
                                     quickChargeTraceSnapshot.put("collectReturnedPaymentMethodAttached", paymentMethodAttachmentState(collectedIntent));
+                                    quickChargeTraceSnapshot.put("paymentStatusChangeCountBeforeCollectSuccess", paymentStatusChangeCount);
+                                    quickChargeTraceSnapshot.put("paymentStatusWaitingForInputCountBeforeCollectSuccess", paymentStatusWaitingForInputCount);
+                                    quickChargeTraceSnapshot.put("paymentStatusProcessingCountBeforeCollectSuccess", paymentStatusProcessingCount);
+                                    quickChargeTraceSnapshot.put("paymentStatusReadyCountBeforeCollectSuccess", paymentStatusReadyCount);
+                                    quickChargeTraceSnapshot.put("paymentStatusTrailBeforeCollectSuccess", paymentStatusTrailPayload());
                                     quickChargeTraceSnapshot.put(
                                         "samePaymentIntentIdAcrossRetrieveCollectProcess",
                                         paymentIntentIdsMatch(
@@ -1141,6 +1207,11 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                     String normalizedCode = normalizeErrorCode(e);
                                     quickChargeTraceSnapshot.put("collectCallbackStatus", "failure");
                                     quickChargeTraceSnapshot.put("collectFailureCallbackCount", quickChargeTraceSnapshot.optInt("collectFailureCallbackCount", 0) + 1);
+                                    quickChargeTraceSnapshot.put("paymentStatusChangeCountBeforeCollectSuccess", paymentStatusChangeCount);
+                                    quickChargeTraceSnapshot.put("paymentStatusWaitingForInputCountBeforeCollectSuccess", paymentStatusWaitingForInputCount);
+                                    quickChargeTraceSnapshot.put("paymentStatusProcessingCountBeforeCollectSuccess", paymentStatusProcessingCount);
+                                    quickChargeTraceSnapshot.put("paymentStatusReadyCountBeforeCollectSuccess", paymentStatusReadyCount);
+                                    quickChargeTraceSnapshot.put("paymentStatusTrailBeforeCollectSuccess", paymentStatusTrailPayload());
                                     quickChargeTraceSnapshot.put("nativeFailurePoint", "collect_callback_failure");
                                     quickChargeTraceSnapshot.put("finalFailureReason", buildErrorMessage(e));
                                     JSObject collectFailurePayload = new JSObject();
@@ -1477,6 +1548,14 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 backgroundInterruptionCandidate = false;
                 backgroundInterruptionCandidateAtMs = 0L;
                 logStartupStage("native_lifecycle", detail("native_lifecycle", "transient_stop_during_process_takeover", status));
+                return;
+            }
+            if ("collecting".equals(status) && paymentStatusWaitingForInputCount > 0 && !cancelRequestedByApp) {
+                lifecyclePausedDuringActiveFlow = false;
+                confirmedBackgroundInterruption = false;
+                backgroundInterruptionCandidate = false;
+                backgroundInterruptionCandidateAtMs = 0L;
+                logStartupStage("native_lifecycle", detail("native_lifecycle", "transient_stop_during_collect_takeover_waiting_for_input", status));
                 return;
             }
             if (appInBackground && !changingConfigurations) {

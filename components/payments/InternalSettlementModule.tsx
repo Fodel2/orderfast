@@ -106,6 +106,15 @@ type QuickChargeSuccessSnapshot = {
   intermediateCallbackObserved: boolean | null;
   repeatedCollectSignalDetected: boolean | null;
   suspectedSecondPresentment: boolean | null;
+  paymentStatusChangeCountBeforeCollectSuccess: number | null;
+  paymentStatusWaitingForInputCountBeforeCollectSuccess: number | null;
+  paymentStatusProcessingCountBeforeCollectSuccess: number | null;
+  paymentStatusReadyCountBeforeCollectSuccess: number | null;
+  paymentStatusTrailBeforeCollectSuccess: string[] | null;
+  repeatedWaitingForInputBeforeCollectSuccess: boolean | null;
+  repeatedReadyBeforeCollectSuccess: boolean | null;
+  repeatedProcessingBeforeCollectSuccess: boolean | null;
+  nativeStatusBouncedBackToInputWaitingBeforeCollectSuccess: boolean | null;
   timedEventTrail: string[] | null;
 };
 
@@ -135,6 +144,8 @@ export default function InternalSettlementModule({
   const [message, setMessage] = useState('Ready to collect payment.');
   const [quickChargeFailureSnapshot, setQuickChargeFailureSnapshot] = useState<QuickChargeFailureSnapshot | null>(null);
   const [quickChargeSuccessSnapshot, setQuickChargeSuccessSnapshot] = useState<QuickChargeSuccessSnapshot | null>(null);
+  const [quickChargeRawNativePayload, setQuickChargeRawNativePayload] = useState<Record<string, unknown> | null>(null);
+  const [quickChargeRawServerVerificationPayload, setQuickChargeRawServerVerificationPayload] = useState<Record<string, unknown> | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [activeTerminalLocationId, setActiveTerminalLocationId] = useState<string | null>(null);
   const flowActiveRef = useRef(false);
@@ -383,6 +394,8 @@ export default function InternalSettlementModule({
     if (busy) return;
     setQuickChargeFailureSnapshot(null);
     setQuickChargeSuccessSnapshot(null);
+    setQuickChargeRawNativePayload(null);
+    setQuickChargeRawServerVerificationPayload(null);
     if (!tapAvailabilityReady) {
       setState('failed');
       setMessage(tapAvailabilityReason || 'Tap to Pay is not available for this restaurant.');
@@ -620,6 +633,9 @@ export default function InternalSettlementModule({
         nativeResult && typeof nativeResult === 'object' && (nativeResult as { quickChargeTraceSnapshot?: unknown }).quickChargeTraceSnapshot
           ? ((nativeResult as { quickChargeTraceSnapshot?: unknown }).quickChargeTraceSnapshot as Record<string, unknown>)
           : null;
+      if (mode === 'quick_charge') {
+        setQuickChargeRawNativePayload(nativeResult && typeof nativeResult === 'object' ? (nativeResult as Record<string, unknown>) : null);
+      }
       logCollectionEvent(nativeResult.status === 'succeeded' ? 'native_collect.success' : 'native_collect.error', { sessionId, result: nativeResult });
       logCollectionEvent(nativeResult.status === 'succeeded' ? 'native_process.success' : 'native_process.error', {
         sessionId,
@@ -708,6 +724,9 @@ export default function InternalSettlementModule({
           correctedByVerification: verifyPayload?.verification?.correctedByVerification === true,
         });
         if (mode === 'quick_charge') {
+          setQuickChargeRawServerVerificationPayload(
+            verifyPayload && typeof verifyPayload === 'object' ? (verifyPayload as Record<string, unknown>) : null
+          );
           const nativeDetail = nativeResult.detail && typeof nativeResult.detail === 'object' ? (nativeResult.detail as Record<string, unknown>) : null;
           const runtimeDebuggable =
             typeof nativeTraceSnapshot?.runtimeDebuggable === 'boolean'
@@ -881,6 +900,37 @@ export default function InternalSettlementModule({
       }
 
       if (mode === 'quick_charge') {
+        const paymentStatusWaitingForInputCountBeforeCollectSuccess =
+          typeof nativeTraceSnapshot?.paymentStatusWaitingForInputCountBeforeCollectSuccess === 'number'
+            ? nativeTraceSnapshot.paymentStatusWaitingForInputCountBeforeCollectSuccess
+            : null;
+        const paymentStatusProcessingCountBeforeCollectSuccess =
+          typeof nativeTraceSnapshot?.paymentStatusProcessingCountBeforeCollectSuccess === 'number'
+            ? nativeTraceSnapshot.paymentStatusProcessingCountBeforeCollectSuccess
+            : null;
+        const paymentStatusReadyCountBeforeCollectSuccess =
+          typeof nativeTraceSnapshot?.paymentStatusReadyCountBeforeCollectSuccess === 'number'
+            ? nativeTraceSnapshot.paymentStatusReadyCountBeforeCollectSuccess
+            : null;
+        const paymentStatusTrailBeforeCollectSuccess =
+          Array.isArray(nativeTraceSnapshot?.paymentStatusTrailBeforeCollectSuccess) &&
+          nativeTraceSnapshot.paymentStatusTrailBeforeCollectSuccess.every((event) => typeof event === 'string')
+            ? (nativeTraceSnapshot.paymentStatusTrailBeforeCollectSuccess as string[])
+            : null;
+        const repeatedWaitingForInputBeforeCollectSuccess =
+          paymentStatusWaitingForInputCountBeforeCollectSuccess != null
+            ? paymentStatusWaitingForInputCountBeforeCollectSuccess > 1
+            : null;
+        const repeatedReadyBeforeCollectSuccess =
+          paymentStatusReadyCountBeforeCollectSuccess != null ? paymentStatusReadyCountBeforeCollectSuccess > 1 : null;
+        const repeatedProcessingBeforeCollectSuccess =
+          paymentStatusProcessingCountBeforeCollectSuccess != null
+            ? paymentStatusProcessingCountBeforeCollectSuccess > 1
+            : null;
+        const nativeStatusBouncedBackToInputWaitingBeforeCollectSuccess =
+          repeatedWaitingForInputBeforeCollectSuccess === null
+            ? null
+            : repeatedWaitingForInputBeforeCollectSuccess && (paymentStatusReadyCountBeforeCollectSuccess ?? 0) > 0;
         const successSnapshot: QuickChargeSuccessSnapshot = {
           mode: 'quick_charge',
           paymentIntentId:
@@ -915,6 +965,18 @@ export default function InternalSettlementModule({
             typeof nativeTraceSnapshot?.repeatedCollectSignalDetected === 'boolean' ? nativeTraceSnapshot.repeatedCollectSignalDetected : null,
           suspectedSecondPresentment:
             typeof nativeTraceSnapshot?.suspectedSecondPresentment === 'boolean' ? nativeTraceSnapshot.suspectedSecondPresentment : null,
+          paymentStatusChangeCountBeforeCollectSuccess:
+            typeof nativeTraceSnapshot?.paymentStatusChangeCountBeforeCollectSuccess === 'number'
+              ? nativeTraceSnapshot.paymentStatusChangeCountBeforeCollectSuccess
+              : null,
+          paymentStatusWaitingForInputCountBeforeCollectSuccess,
+          paymentStatusProcessingCountBeforeCollectSuccess,
+          paymentStatusReadyCountBeforeCollectSuccess,
+          paymentStatusTrailBeforeCollectSuccess,
+          repeatedWaitingForInputBeforeCollectSuccess,
+          repeatedReadyBeforeCollectSuccess,
+          repeatedProcessingBeforeCollectSuccess,
+          nativeStatusBouncedBackToInputWaitingBeforeCollectSuccess,
           timedEventTrail:
             Array.isArray(nativeTraceSnapshot?.timedEventTrail) && nativeTraceSnapshot.timedEventTrail.every((event) => typeof event === 'string')
               ? (nativeTraceSnapshot.timedEventTrail as string[])
@@ -934,6 +996,11 @@ export default function InternalSettlementModule({
         body: JSON.stringify({ session_id: sessionId, flow_run_id: flowRunId }),
       });
       const finalizePayload = await finalizeRes.json().catch(() => ({}));
+      if (mode === 'quick_charge') {
+        setQuickChargeRawServerVerificationPayload(
+          finalizePayload && typeof finalizePayload === 'object' ? (finalizePayload as Record<string, unknown>) : null
+        );
+      }
       if (!finalizeRes.ok) {
         logCollectionEvent('finalize.error', { sessionId, httpStatus: finalizeRes.status, message: finalizePayload?.message || null });
         throw new Error(finalizePayload?.message || `Failed to finalize settlement (${finalizeRes.status})`);
@@ -1111,6 +1178,8 @@ export default function InternalSettlementModule({
       setMessage('Payment canceled.');
       setQuickChargeFailureSnapshot(null);
       setQuickChargeSuccessSnapshot(null);
+      setQuickChargeRawNativePayload(null);
+      setQuickChargeRawServerVerificationPayload(null);
       setActiveSessionId(null);
       setActiveTerminalLocationId(null);
       internalSettlementActiveRunStore.clear();
@@ -1255,7 +1324,15 @@ export default function InternalSettlementModule({
                     type="button"
                     className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-emerald-800"
                     onClick={async () => {
-                      const serialized = JSON.stringify(quickChargeSuccessSnapshot, null, 2);
+                      const serialized = JSON.stringify(
+                        {
+                          ...quickChargeSuccessSnapshot,
+                          rawNativePayload: quickChargeRawNativePayload,
+                          rawServerVerificationPayload: quickChargeRawServerVerificationPayload,
+                        },
+                        null,
+                        2
+                      );
                       try {
                         await navigator.clipboard.writeText(serialized);
                       } catch {
@@ -1269,6 +1346,14 @@ export default function InternalSettlementModule({
                 <pre className="mt-2 whitespace-pre-wrap break-all rounded-md bg-emerald-50 p-2 text-[10px] leading-4">
                   {JSON.stringify(quickChargeSuccessSnapshot, null, 2)}
                 </pre>
+                <p className="mt-2 font-semibold uppercase tracking-[0.08em]">rawNativePayload</p>
+                <pre className="mt-1 whitespace-pre-wrap break-all rounded-md bg-emerald-50 p-2 text-[10px] leading-4">
+                  {JSON.stringify(quickChargeRawNativePayload, null, 2)}
+                </pre>
+                <p className="mt-2 font-semibold uppercase tracking-[0.08em]">rawServerVerificationPayload</p>
+                <pre className="mt-1 whitespace-pre-wrap break-all rounded-md bg-emerald-50 p-2 text-[10px] leading-4">
+                  {JSON.stringify(quickChargeRawServerVerificationPayload, null, 2)}
+                </pre>
               </div>
             ) : null}
             {mode === 'quick_charge' && state === 'failed' && quickChargeFailureSnapshot ? (
@@ -1279,7 +1364,15 @@ export default function InternalSettlementModule({
                     type="button"
                     className="rounded-md border border-rose-300 bg-rose-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-rose-800"
                     onClick={async () => {
-                      const serialized = JSON.stringify(quickChargeFailureSnapshot, null, 2);
+                      const serialized = JSON.stringify(
+                        {
+                          ...quickChargeFailureSnapshot,
+                          rawNativePayload: quickChargeRawNativePayload,
+                          rawServerVerificationPayload: quickChargeRawServerVerificationPayload,
+                        },
+                        null,
+                        2
+                      );
                       try {
                         await navigator.clipboard.writeText(serialized);
                       } catch {
@@ -1292,6 +1385,14 @@ export default function InternalSettlementModule({
                 </div>
                 <pre className="mt-2 whitespace-pre-wrap break-all rounded-md bg-rose-50 p-2 text-[10px] leading-4">
                   {JSON.stringify(quickChargeFailureSnapshot, null, 2)}
+                </pre>
+                <p className="mt-2 font-semibold uppercase tracking-[0.08em]">rawNativePayload</p>
+                <pre className="mt-1 whitespace-pre-wrap break-all rounded-md bg-rose-50 p-2 text-[10px] leading-4">
+                  {JSON.stringify(quickChargeRawNativePayload, null, 2)}
+                </pre>
+                <p className="mt-2 font-semibold uppercase tracking-[0.08em]">rawServerVerificationPayload</p>
+                <pre className="mt-1 whitespace-pre-wrap break-all rounded-md bg-rose-50 p-2 text-[10px] leading-4">
+                  {JSON.stringify(quickChargeRawServerVerificationPayload, null, 2)}
                 </pre>
               </div>
             ) : null}
