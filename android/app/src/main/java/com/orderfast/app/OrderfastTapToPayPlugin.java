@@ -167,7 +167,16 @@ public class OrderfastTapToPayPlugin extends Plugin {
         boolean activityHasFocus = getActivity() != null && getActivity().hasWindowFocus();
         Boolean hostFocus = MainActivity.getHostActivityWindowFocus();
         boolean resolvedFocus = hostFocus != null ? hostFocus : activityHasFocus;
-        return !appInBackground && resolvedFocus;
+        if (!appInBackground && resolvedFocus) {
+            return true;
+        }
+        JSObject processAwareness = resolveTapToPayProcessAwarenessPayload();
+        boolean processAwareConfirmed = processAwareness.optBoolean("supported", false)
+            && processAwareness.optBoolean("isTapToPayProcess", false);
+        // Stripe Tap to Pay may run in its dedicated process while host focus/background
+        // temporarily changes. Allow process handoff only when Stripe process-awareness
+        // explicitly confirms that process context.
+        return processAwareConfirmed && stripeTakeoverObserved && !cancelRequestedByApp;
     }
 
     private JSObject paymentRunGuardPayload(String path, String reason) {
