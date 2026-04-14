@@ -23,7 +23,6 @@ import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.stripe.stripeterminal.Terminal;
-import com.stripe.stripeterminal.TerminalApplicationDelegate;
 import com.stripe.stripeterminal.external.callable.Callback;
 import com.stripe.stripeterminal.external.callable.Cancelable;
 import com.stripe.stripeterminal.external.callable.ConnectionTokenCallback;
@@ -53,7 +52,6 @@ import org.json.JSONObject;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.lang.reflect.Method;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -79,8 +77,6 @@ public class OrderfastTapToPayPlugin extends Plugin {
     private static final String TAG = "OrderfastTapToPay";
     private static final long OPERATION_TIMEOUT_MS = 120_000L;
     private static final long BACKGROUND_INTERRUPTION_MIN_MS = 4_000L;
-    private static final long PROCESS_FOREGROUND_WAIT_TIMEOUT_MS = 2_500L;
-    private static final long PROCESS_FOREGROUND_WAIT_POLL_MS = 100L;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Handler timeoutHandler = new Handler(Looper.getMainLooper());
@@ -160,23 +156,6 @@ public class OrderfastTapToPayPlugin extends Plugin {
 
     private boolean isProcessStageActive() {
         return inFlight && "processing".equals(status);
-    }
-
-    private boolean isHostForegroundAndFocusedForProcess() {
-        boolean appInBackground = isAppInBackground();
-        boolean activityHasFocus = getActivity() != null && getActivity().hasWindowFocus();
-        Boolean hostFocus = MainActivity.getHostActivityWindowFocus();
-        boolean resolvedFocus = hostFocus != null ? hostFocus : activityHasFocus;
-        if (!appInBackground && resolvedFocus) {
-            return true;
-        }
-        JSObject processAwareness = resolveTapToPayProcessAwarenessPayload();
-        boolean processAwareConfirmed = processAwareness.optBoolean("supported", false)
-            && processAwareness.optBoolean("isTapToPayProcess", false);
-        // Stripe Tap to Pay may run in its dedicated process while host focus/background
-        // temporarily changes. Allow process handoff only when Stripe process-awareness
-        // explicitly confirms that process context.
-        return processAwareConfirmed && stripeTakeoverObserved && !cancelRequestedByApp;
     }
 
     private JSObject paymentRunGuardPayload(String path, String reason) {
@@ -738,6 +717,11 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 quickChargeTraceSnapshot.put("collectReturnedPaymentMethodAttached", "unknown");
                 quickChargeTraceSnapshot.put("processInvoked", false);
                 quickChargeTraceSnapshot.put("processInvocationCount", 0);
+                quickChargeTraceSnapshot.put("processStartGateBranch", "not_evaluated");
+                quickChargeTraceSnapshot.put("processStartAllowedReason", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("processStartBlockedReason", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("processAwarenessFallbackUsed", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("processAwarenessFallbackReason", JSONObject.NULL);
                 quickChargeTraceSnapshot.put("processCallbackStatus", "not_called");
                 quickChargeTraceSnapshot.put("processSuccessCallbackCount", 0);
                 quickChargeTraceSnapshot.put("processFailureCallbackCount", 0);
@@ -786,6 +770,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 quickChargeTraceSnapshot.put("orientationChangedDuringPayment", JSONObject.NULL);
                 quickChargeTraceSnapshot.put("windowFocusChangedDuringPayment", JSONObject.NULL);
                 quickChargeTraceSnapshot.put("processDeferredForForegroundFocus", false);
+                quickChargeTraceSnapshot.put("processDeferredWaitPathRan", false);
                 quickChargeTraceSnapshot.put("timedEventTrail", new JSONArray());
                 quickChargeTraceSnapshot.put("paymentStatusChangeCountBeforeCollectSuccess", 0);
                 quickChargeTraceSnapshot.put("paymentStatusWaitingForInputCountBeforeCollectSuccess", 0);
@@ -934,12 +919,50 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                     traceTimeline("collect_success_callback", collectPayload);
 
                                     Runnable invokeProcessPaymentIntent = () -> {
+                                        boolean readerDisconnected = readerDisconnectedDuringActiveRun();
+                                        String processStartBlockedReason = null;
+                                        if (!inFlight) {
+                                            processStartBlockedReason = "payment_flow_no_longer_in_flight";
+                                        } else if (quickChargeTraceSnapshot.optBoolean("processInvoked", false)) {
+                                            processStartBlockedReason = "process_already_invoked";
+                                        } else if (cancelRequestedByApp) {
+                                            processStartBlockedReason = "explicit_local_cancel_requested";
+                                        } else if (readerDisconnected) {
+                                            processStartBlockedReason = "reader_disconnected_before_process";
+                                        }
+                                        if (processStartBlockedReason != null) {
+                                            quickChargeTraceSnapshot.put("processStartGateBranch", "collect_success_blocked");
+                                            quickChargeTraceSnapshot.put("processStartBlockedReason", processStartBlockedReason);
+                                            quickChargeTraceSnapshot.put("nativeFailurePoint", "process_not_invoked_after_collect");
+                                            quickChargeTraceSnapshot.put("finalFailureReason", processStartBlockedReason);
+                                            status = "canceled";
+                                            postSessionState("canceled", "native_process_not_invoked_after_collect");
+                                            JSObject blockedPayload = result("canceled", "canceled", "Tap to Pay processing was not started.");
+                                            blockedPayload.put("reasonCategory", "app_cancelled");
+                                            blockedPayload.put("processDeferredForForegroundFocus", false);
+                                            blockedPayload.put("cancelClassification", determineCancelClassification("canceled"));
+                                            blockedPayload.put("detail", detail("native_process_result", processStartBlockedReason, null));
+                                            blockedPayload.put("quickChargeTraceSnapshot", quickChargeTraceSnapshot);
+                                            logStartupStage("native_process_result", blockedPayload);
+                                            cacheFinalResult(blockedPayload, "process_not_invoked_after_collect");
+                                            clearActivePaymentState();
+                                            resetStatusForNextAttempt();
+                                            resolveOnce(resolveGate, call, blockedPayload);
+                                            return;
+                                        }
+
                                         quickChargeTraceSnapshot.put("processInvocationCount", quickChargeTraceSnapshot.optInt("processInvocationCount", 0) + 1);
+                                        quickChargeTraceSnapshot.put("processStartGateBranch", "collect_success_immediate");
+                                        quickChargeTraceSnapshot.put("processStartAllowedReason", "collect_succeeded_and_flow_active_no_local_cancel_no_reader_disconnect");
                                         JSObject processStartPayload = new JSObject();
                                         processStartPayload.put("result", "started");
                                         processStartPayload.put("nativeStage", "native_process_start");
                                         processStartPayload.put("paymentIntentId", collectedIntent.getId());
                                         processStartPayload.put("paymentIntentStatus", collectedIntent.getStatus() == null ? "unknown" : collectedIntent.getStatus().name());
+                                        processStartPayload.put("processStartGateBranch", quickChargeTraceSnapshot.optString("processStartGateBranch", "collect_success_immediate"));
+                                        processStartPayload.put("processStartAllowedReason", quickChargeTraceSnapshot.optString("processStartAllowedReason", "collect_succeeded_and_flow_active_no_local_cancel_no_reader_disconnect"));
+                                        processStartPayload.put("processAwarenessFallbackUsed", quickChargeTraceSnapshot.optBoolean("processAwarenessFallbackUsed", false));
+                                        processStartPayload.put("processAwarenessFallbackReason", quickChargeTraceSnapshot.optString("processAwarenessFallbackReason", null));
                                         processStartPayload.put("processInvoked", true);
                                         processStartPayload.put("processDeferredForForegroundFocus", quickChargeTraceSnapshot.optBoolean("processDeferredForForegroundFocus", false));
                                         logStartupStage("native_process_start", processStartPayload);
@@ -949,6 +972,10 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                         JSObject processInvokedPayload = lifecyclePayload("process_payment_intent_invoked");
                                         processInvokedPayload.put("paymentIntentId", collectedIntent.getId());
                                         processInvokedPayload.put("paymentIntentStatus", collectedIntent.getStatus() == null ? "unknown" : collectedIntent.getStatus().name());
+                                        processInvokedPayload.put("processStartGateBranch", quickChargeTraceSnapshot.optString("processStartGateBranch", "collect_success_immediate"));
+                                        processInvokedPayload.put("processStartAllowedReason", quickChargeTraceSnapshot.optString("processStartAllowedReason", "collect_succeeded_and_flow_active_no_local_cancel_no_reader_disconnect"));
+                                        processInvokedPayload.put("processAwarenessFallbackUsed", quickChargeTraceSnapshot.optBoolean("processAwarenessFallbackUsed", false));
+                                        processInvokedPayload.put("processAwarenessFallbackReason", quickChargeTraceSnapshot.optString("processAwarenessFallbackReason", null));
                                         processInvokedPayload.put("processDeferredForForegroundFocus", quickChargeTraceSnapshot.optBoolean("processDeferredForForegroundFocus", false));
                                         logFlowEvent("native_process_invoked", processInvokedPayload);
                                         JSObject quickChargeProcessInvokedPayload = new JSObject();
@@ -959,6 +986,10 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                         quickChargeProcessInvokedPayload.put("processPaymentIntentInvoked", true);
                                         quickChargeProcessInvokedPayload.put("usedPostCollectPaymentIntent", true);
                                         quickChargeProcessInvokedPayload.put("usedStaleOriginalPaymentIntent", false);
+                                        quickChargeProcessInvokedPayload.put("processStartGateBranch", quickChargeTraceSnapshot.optString("processStartGateBranch", "collect_success_immediate"));
+                                        quickChargeProcessInvokedPayload.put("processStartAllowedReason", quickChargeTraceSnapshot.optString("processStartAllowedReason", "collect_succeeded_and_flow_active_no_local_cancel_no_reader_disconnect"));
+                                        quickChargeProcessInvokedPayload.put("processAwarenessFallbackUsed", quickChargeTraceSnapshot.optBoolean("processAwarenessFallbackUsed", false));
+                                        quickChargeProcessInvokedPayload.put("processAwarenessFallbackReason", quickChargeTraceSnapshot.optString("processAwarenessFallbackReason", null));
                                         quickChargeProcessInvokedPayload.put("processDeferredForForegroundFocus", quickChargeTraceSnapshot.optBoolean("processDeferredForForegroundFocus", false));
                                         logFlowEvent("quick_charge_native_process_invoked", quickChargeProcessInvokedPayload);
                                         traceTimeline("process_invoked_before_sdk_call", processInvokedPayload);
@@ -1119,91 +1150,15 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                     );
                                     };
 
-                                    if (isHostForegroundAndFocusedForProcess()) {
-                                        invokeProcessPaymentIntent.run();
-                                        return;
-                                    }
-
-                                    quickChargeTraceSnapshot.put("processDeferredForForegroundFocus", true);
-                                    JSObject deferredPayload = lifecyclePayload("process_deferred_waiting_for_foreground_focus");
-                                    deferredPayload.put("paymentIntentId", collectedIntent.getId());
-                                    deferredPayload.put("waitTimeoutMs", PROCESS_FOREGROUND_WAIT_TIMEOUT_MS);
-                                    logFlowEvent("native_process_deferred_wait", deferredPayload);
-                                    traceTimeline("process_deferred_wait_start", deferredPayload);
-
-                                    final long deferredWaitStartedAtMs = System.currentTimeMillis();
-                                    final Runnable[] waitForForegroundRunnableHolder = new Runnable[1];
-                                    waitForForegroundRunnableHolder[0] = new Runnable() {
-                                        @Override
-                                        public void run() {
-                                            if (resolveGate.get()) {
-                                                return;
-                                            }
-
-                                            if (isHostForegroundAndFocusedForProcess()) {
-                                                JSObject resumedPayload = lifecyclePayload("process_deferred_wait_ready");
-                                                resumedPayload.put("paymentIntentId", collectedIntent.getId());
-                                                resumedPayload.put("deferredMs", System.currentTimeMillis() - deferredWaitStartedAtMs);
-                                                logFlowEvent("native_process_deferred_wait_ready", resumedPayload);
-                                                traceTimeline("process_deferred_wait_ready", resumedPayload);
-                                                invokeProcessPaymentIntent.run();
-                                                return;
-                                            }
-
-                                            long elapsedMs = System.currentTimeMillis() - deferredWaitStartedAtMs;
-                                            if (elapsedMs >= PROCESS_FOREGROUND_WAIT_TIMEOUT_MS) {
-                                                backgroundInterruptionCandidate = true;
-                                                lifecyclePausedDuringActiveFlow = true;
-                                                if (backgroundInterruptionCandidateAtMs <= 0L) {
-                                                    backgroundInterruptionCandidateAtMs = deferredWaitStartedAtMs;
-                                                }
-                                                confirmedBackgroundInterruption = true;
-                                                String reasonCategory = "lifecycle_interrupted";
-                                                String mappedSessionState = mapSessionStateForFailureCategory(reasonCategory);
-                                                String mappedPluginStatus = mapPluginStatusForFailureCategory(reasonCategory);
-                                                status = mappedPluginStatus;
-
-                                                quickChargeTraceSnapshot.put("processInvoked", false);
-                                                quickChargeTraceSnapshot.put("processCallbackStatus", "not_invoked_background_timeout");
-                                                quickChargeTraceSnapshot.put("processFailureCode", "canceled");
-                                                quickChargeTraceSnapshot.put("processFailureMessage", "Host activity did not return to foreground before processPaymentIntent.");
-                                                quickChargeTraceSnapshot.put("processFailureExceptionClass", "foreground_wait_timeout");
-                                                quickChargeTraceSnapshot.put("processFailureReasonCategory", reasonCategory);
-                                                quickChargeTraceSnapshot.put("nativeFailurePoint", "process_deferred_wait_timeout_before_sdk_call");
-                                                quickChargeTraceSnapshot.put("finalFailureReason", "Foreground/focus was not restored before bounded process handoff wait expired.");
-                                                quickChargeTraceSnapshot.put("appResumedDuringProcessInFlight", appResumedDuringProcessInFlight);
-
-                                                JSObject timeoutPayload = lifecyclePayload("process_deferred_wait_timeout");
-                                                timeoutPayload.put("paymentIntentId", collectedIntent.getId());
-                                                timeoutPayload.put("deferredMs", elapsedMs);
-                                                traceTimeline("process_deferred_wait_timeout", timeoutPayload);
-
-                                                postSessionState(mappedSessionState, "native_process_deferred_wait_timeout");
-                                                JSObject payload = result(mappedPluginStatus, "canceled", "Tap to Pay was interrupted before processing could start.");
-                                                payload.put("reasonCategory", reasonCategory);
-                                                payload.put("mappedSessionState", mappedSessionState);
-                                                payload.put("interruptionReasonCode", "background_loss_confirmed");
-                                                payload.put("interruptionSource", "app_or_device_backgrounded");
-                                                payload.put("backgroundInterruptionCandidate", true);
-                                                payload.put("backgroundInterruptionMs", elapsedMs);
-                                                payload.put("appResumedDuringProcessInFlight", appResumedDuringProcessInFlight);
-                                                payload.put("processDeferredForForegroundFocus", true);
-                                                payload.put("detail", detail("native_process_result", "deferred_wait_timeout_before_process_invocation", null));
-                                                attachPaymentIntentSnapshot(payload, activePaymentIntent, "process_deferred_wait_timeout_active_intent");
-                                                payload.put("quickChargeTraceSnapshot", quickChargeTraceSnapshot);
-                                                logStartupStage("native_process_result", payload);
-                                                cacheFinalResult(payload, "process_deferred_wait_timeout");
-                                                clearActivePaymentState();
-                                                resetStatusForNextAttempt();
-                                                resolveOnce(resolveGate, call, payload);
-                                                return;
-                                            }
-
-                                            mainHandler.postDelayed(waitForForegroundRunnableHolder[0], PROCESS_FOREGROUND_WAIT_POLL_MS);
-                                        }
-                                    };
-
-                                    mainHandler.post(waitForForegroundRunnableHolder[0]);
+                                    JSObject processAwareness = resolveTapToPayProcessAwarenessPayload();
+                                    boolean processAwarenessSupported = processAwareness.optBoolean("supported", false);
+                                    quickChargeTraceSnapshot.put("processAwarenessFallbackUsed", !processAwarenessSupported);
+                                    quickChargeTraceSnapshot.put("processAwarenessFallbackReason", processAwarenessSupported
+                                        ? JSONObject.NULL
+                                        : processAwareness.optString("error", "process_awareness_unavailable"));
+                                    quickChargeTraceSnapshot.put("processDeferredForForegroundFocus", false);
+                                    quickChargeTraceSnapshot.put("processDeferredWaitPathRan", false);
+                                    invokeProcessPaymentIntent.run();
                                 }
 
                                 @Override
@@ -2208,36 +2163,10 @@ public class OrderfastTapToPayPlugin extends Plugin {
         payload.put("supported", false);
         payload.put("isTapToPayProcess", JSONObject.NULL);
         payload.put("sourceMethod", JSONObject.NULL);
-        payload.put("error", JSONObject.NULL);
-        try {
-            Class<?> delegateClass = TerminalApplicationDelegate.class;
-            String[] candidateMethods = new String[] {
-                "isInStripeProcess",
-                "isStripeProcess",
-                "isInTapToPayProcess",
-                "isTapToPayProcess"
-            };
-            for (String methodName : candidateMethods) {
-                try {
-                    Method method = delegateClass.getMethod(methodName);
-                    Object value = method.invoke(null);
-                    if (value instanceof Boolean) {
-                        payload.put("supported", true);
-                        payload.put("isTapToPayProcess", ((Boolean) value).booleanValue());
-                        payload.put("sourceMethod", methodName);
-                        payload.put("error", JSONObject.NULL);
-                        return payload;
-                    }
-                } catch (NoSuchMethodException ignored) {
-                    // Method name differs by SDK version; continue searching.
-                }
-            }
-            payload.put("error", "process_aware_method_not_found");
-            return payload;
-        } catch (Exception ex) {
-            payload.put("error", ex.getClass().getSimpleName() + ":" + (ex.getMessage() == null ? "unknown" : ex.getMessage()));
-            return payload;
-        }
+        payload.put("error", "process_awareness_api_not_available_in_sdk_5_3_0");
+        payload.put("sdkVersion", "5.3.0");
+        payload.put("checkStrategy", "no_reflection_guessing");
+        return payload;
     }
 
     private long monotonicRunDeltaMs() {
