@@ -828,6 +828,11 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                 @Override
                                 public void onSuccess(PaymentIntent collectedIntent) {
                                     activePaymentIntent = collectedIntent;
+                                    // Collect success means Stripe Terminal takeover already progressed far enough
+                                    // to safely continue directly into processPaymentIntent while still foregrounded.
+                                    // Some devices briefly report window-focus loss here without firing onPause/onStop,
+                                    // which can wrongly defer process and force a second presentment.
+                                    stripeTakeoverObserved = true;
                                     final boolean collectedIntentMatchesRetrieved = retrievedIntent == collectedIntent;
                                     quickChargeTraceSnapshot.put("collectCallbackStatus", "success");
                                     quickChargeTraceSnapshot.put("collectSuccessCallbackCount", quickChargeTraceSnapshot.optInt("collectSuccessCallbackCount", 0) + 1);
