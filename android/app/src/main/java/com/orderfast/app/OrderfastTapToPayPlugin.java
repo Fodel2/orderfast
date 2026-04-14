@@ -1550,6 +1550,14 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 logStartupStage("native_lifecycle", detail("native_lifecycle", "transient_stop_during_process_takeover", status));
                 return;
             }
+            if ("collecting".equals(status) && paymentStatusWaitingForInputCount > 0 && !cancelRequestedByApp) {
+                lifecyclePausedDuringActiveFlow = false;
+                confirmedBackgroundInterruption = false;
+                backgroundInterruptionCandidate = false;
+                backgroundInterruptionCandidateAtMs = 0L;
+                logStartupStage("native_lifecycle", detail("native_lifecycle", "transient_stop_during_collect_takeover_waiting_for_input", status));
+                return;
+            }
             if (appInBackground && !changingConfigurations) {
                 lifecyclePausedDuringActiveFlow = true;
                 backgroundInterruptionCandidate = true;
