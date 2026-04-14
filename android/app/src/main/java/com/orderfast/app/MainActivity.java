@@ -3,7 +3,9 @@ package com.orderfast.app;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.app.Application;
 import android.content.res.Configuration;
+import android.content.Intent;
 import android.view.View;
 import android.view.WindowManager;
 import android.view.WindowInsets;
@@ -25,6 +27,12 @@ public class MainActivity extends BridgeActivity {
     private static volatile boolean windowFocusChangedDuringPayment = false;
     private static volatile Boolean hostActivityWindowFocus = null;
     private static volatile String hostActivityCurrentOrientation = "unknown";
+    private static volatile String hostActivityClassName = "unknown";
+    private static volatile int hostActivityIdentityHash = -1;
+    private static volatile int hostActivityTaskId = -1;
+    private static volatile String hostActivityIntentAction = null;
+    private static volatile int hostActivityIntentFlags = 0;
+    private static volatile String hostProcessName = "unknown";
     private static volatile long lastHostLifecycleUpdateAtMs = 0L;
     private static volatile int lastKnownOrientationValue = Configuration.ORIENTATION_UNDEFINED;
 
@@ -37,6 +45,12 @@ public class MainActivity extends BridgeActivity {
     public static boolean getWindowFocusChangedDuringPayment() { return windowFocusChangedDuringPayment; }
     public static Boolean getHostActivityWindowFocus() { return hostActivityWindowFocus; }
     public static String getHostActivityCurrentOrientation() { return hostActivityCurrentOrientation; }
+    public static String getHostActivityClassName() { return hostActivityClassName; }
+    public static int getHostActivityIdentityHash() { return hostActivityIdentityHash; }
+    public static int getHostActivityTaskId() { return hostActivityTaskId; }
+    public static String getHostActivityIntentAction() { return hostActivityIntentAction; }
+    public static int getHostActivityIntentFlags() { return hostActivityIntentFlags; }
+    public static String getHostProcessName() { return hostProcessName; }
     public static long getLastHostLifecycleUpdateAtMs() { return lastHostLifecycleUpdateAtMs; }
 
     public static void resetPaymentHostTelemetry() {
@@ -48,6 +62,8 @@ public class MainActivity extends BridgeActivity {
         orientationChangedDuringPayment = false;
         windowFocusChangedDuringPayment = false;
         hostActivityWindowFocus = null;
+        hostActivityIntentAction = null;
+        hostActivityIntentFlags = 0;
         lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
     }
 
@@ -66,6 +82,8 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(OrderfastTapToPayPlugin.class);
         super.onCreate(savedInstanceState);
+        updateHostIdentity();
+        updateHostIntentTelemetry(getIntent());
         hostActivityCurrentOrientation = orientationToName(getResources().getConfiguration().orientation);
         lastKnownOrientationValue = getResources().getConfiguration().orientation;
         lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
@@ -96,12 +114,23 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onResume() {
         super.onResume();
+        updateHostIdentity();
+        updateHostIntentTelemetry(getIntent());
         hostActivityCurrentOrientation = orientationToName(getResources().getConfiguration().orientation);
         lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
         if (shouldSuppressHostUiChurn()) {
             return;
         }
         immersiveHandler.postDelayed(immersiveRunnable, 120);
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        updateHostIdentity();
+        updateHostIntentTelemetry(intent);
+        lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
     }
 
     @Override
@@ -261,5 +290,22 @@ public class MainActivity extends BridgeActivity {
 
         String historyUrl = history.getItemAtIndex(currentIndex).getUrl();
         return historyUrl != null && historyUrl.contains("/payment-entry");
+    }
+
+    private void updateHostIdentity() {
+        hostActivityClassName = getClass().getName();
+        hostActivityIdentityHash = System.identityHashCode(this);
+        hostActivityTaskId = getTaskId();
+        hostProcessName = getApplication() != null ? getApplication().getPackageName() : "unknown";
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            hostProcessName = Application.getProcessName();
+        } else {
+            hostProcessName = getApplication() != null ? getApplication().getPackageName() : "unknown";
+        }
+    }
+
+    private void updateHostIntentTelemetry(Intent intent) {
+        hostActivityIntentAction = intent != null ? intent.getAction() : null;
+        hostActivityIntentFlags = intent != null ? intent.getFlags() : 0;
     }
 }
