@@ -196,6 +196,7 @@ public class MainActivity extends BridgeActivity {
         super.onWindowFocusChanged(hasFocus);
         hostActivityWindowFocus = hasFocus;
         lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
+        OrderfastTapToPayPlugin.notifyHostWindowFocusChanged(hasFocus);
         if (OrderfastTapToPayPlugin.isNativeTapToPayTakeoverActive() || OrderfastTapToPayPlugin.isNativeTapToPayProcessInFlight()) {
             windowFocusChangedDuringPayment = true;
         }

@@ -62,6 +62,7 @@ import java.util.List;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.Collections;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -127,6 +128,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
     private final Object recentLifecycleEventsLock = new Object();
     private static final AtomicBoolean nativeTapToPayTakeoverActive = new AtomicBoolean(false);
     private static final AtomicBoolean nativeTapToPayProcessInFlight = new AtomicBoolean(false);
+    private static volatile OrderfastTapToPayPlugin activePluginInstance = null;
 
     public static boolean isNativeTapToPayTakeoverActive() {
         return nativeTapToPayTakeoverActive.get();
@@ -136,10 +138,19 @@ public class OrderfastTapToPayPlugin extends Plugin {
         return nativeTapToPayProcessInFlight.get();
     }
 
+    public static void notifyHostWindowFocusChanged(boolean hasFocus) {
+        OrderfastTapToPayPlugin plugin = activePluginInstance;
+        if (plugin == null) {
+            return;
+        }
+        plugin.mainHandler.post(() -> plugin.tryRunDeferredProcessStart("mainActivity_onWindowFocusChanged:" + hasFocus));
+    }
+
     @Override
     public void load() {
         super.load();
         pluginInstanceId = ++pluginInstanceCounter;
+        activePluginInstance = this;
         traceTimeline("plugin_load", null);
     }
 
@@ -1191,6 +1202,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                         addHostContextTruth(deferredPayload, "collect_success_deferred");
                                         logStartupStage("native_process_deferred", deferredPayload);
                                         traceTimeline("process_deferred_for_host_lifecycle", deferredPayload);
+                                        tryRunDeferredProcessStart("collect_success_direct_post_register");
                                     }
                                 }
 
@@ -1639,6 +1651,9 @@ public class OrderfastTapToPayPlugin extends Plugin {
         logCancelOrCleanupPath("native_cleanup_path_observed", "plugin_handleOnDestroy.executor.shutdownNow", "plugin_destroy_cleanup");
         traceTimeline("plugin_executor_shutdown", null);
         executor.shutdownNow();
+        if (activePluginInstance == this) {
+            activePluginInstance = null;
+        }
         super.handleOnDestroy();
     }
 
@@ -2021,38 +2036,61 @@ public class OrderfastTapToPayPlugin extends Plugin {
         payload.put("takeoverBoundaryAtMs", takeoverBoundaryAtMs > 0L ? takeoverBoundaryAtMs : JSONObject.NULL);
         payload.put("processName", MainActivity.getHostProcessName());
         payload.put("appInBackground", isAppInBackground());
-        payload.put("lifecycleSafeForProcessNow", isHostLifecycleSafeForProcess());
+        HostLifecycleSafetyEvaluation safety = evaluateHostLifecycleSafety();
+        payload.put("lifecycleSafeForProcessNow", safety.safe);
+        payload.put("lifecycleSafeBlockedReason", safety.primaryBlockedReason);
+        payload.put("lifecycleSafeBlockedReasons", safety.blockedReasonsJson);
     }
 
     private boolean isHostLifecycleSafeForProcess() {
+        return evaluateHostLifecycleSafety().safe;
+    }
+
+    private static final class HostLifecycleSafetyEvaluation {
+        final boolean safe;
+        final String primaryBlockedReason;
+        final JSONArray blockedReasonsJson;
+
+        HostLifecycleSafetyEvaluation(boolean safe, String primaryBlockedReason, JSONArray blockedReasonsJson) {
+            this.safe = safe;
+            this.primaryBlockedReason = primaryBlockedReason;
+            this.blockedReasonsJson = blockedReasonsJson;
+        }
+    }
+
+    private HostLifecycleSafetyEvaluation evaluateHostLifecycleSafety() {
         Activity pluginActivity = getActivity();
         Activity bridgeActivity = bridge != null ? bridge.getActivity() : null;
         int hostIdentity = MainActivity.getHostActivityIdentityHash();
         int pluginIdentity = pluginActivity == null ? -1 : System.identityHashCode(pluginActivity);
         int bridgeIdentity = bridgeActivity == null ? -1 : System.identityHashCode(bridgeActivity);
+        ArrayList<String> blockedReasons = new ArrayList<>();
         boolean hostIdentityConsistent = hostIdentity != -1
             && pluginIdentity != -1
             && bridgeIdentity != -1
             && hostIdentity == pluginIdentity
             && hostIdentity == bridgeIdentity;
         if (!hostIdentityConsistent) {
-            return false;
+            blockedReasons.add("host_identity_mismatch");
         }
         if (pluginActivity == null || bridgeActivity == null) {
-            return false;
+            blockedReasons.add("plugin_or_bridge_activity_missing");
         }
-        if (pluginActivity.isFinishing() || pluginActivity.isDestroyed() || bridgeActivity.isFinishing() || bridgeActivity.isDestroyed()) {
-            return false;
+        if (pluginActivity != null && bridgeActivity != null
+            && (pluginActivity.isFinishing() || pluginActivity.isDestroyed() || bridgeActivity.isFinishing() || bridgeActivity.isDestroyed())) {
+            blockedReasons.add("activity_finishing_or_destroyed");
         }
         if (isAppInBackground()) {
-            return false;
+            blockedReasons.add("app_in_background");
         }
         long takeoverBoundaryAtMs = Math.max(lastPauseAtMs, lastStopAtMs);
         if (takeoverBoundaryAtMs > 0L && MainActivity.getHostActivityLastResumedAtMs() < takeoverBoundaryAtMs) {
-            return false;
+            blockedReasons.add("host_not_resumed_after_takeover_boundary");
         }
-        Boolean hostFocus = MainActivity.getHostActivityWindowFocus();
-        return Boolean.TRUE.equals(hostFocus) && pluginActivity.hasWindowFocus() && bridgeActivity.hasWindowFocus();
+        boolean safe = blockedReasons.isEmpty();
+        JSONArray blockedReasonsJson = new JSONArray(blockedReasons.isEmpty() ? Collections.singletonList("none") : blockedReasons);
+        String primaryBlockedReason = blockedReasons.isEmpty() ? "none" : blockedReasons.get(0);
+        return new HostLifecycleSafetyEvaluation(safe, primaryBlockedReason, blockedReasonsJson);
     }
 
     private void registerDeferredProcessStart(Runnable processStartRunnable, String reason, JSObject snapshot) {
@@ -2093,8 +2131,11 @@ public class OrderfastTapToPayPlugin extends Plugin {
         payload.put("deferredReason", deferredProcessStartReason == null ? JSONObject.NULL : deferredProcessStartReason);
         payload.put("deferredElapsedMs", deferredProcessStartRegisteredAtMs > 0L ? (System.currentTimeMillis() - deferredProcessStartRegisteredAtMs) : JSONObject.NULL);
         addHostContextTruth(payload, "deferred_process_check");
-        boolean safeNow = isHostLifecycleSafeForProcess();
+        HostLifecycleSafetyEvaluation safety = evaluateHostLifecycleSafety();
+        boolean safeNow = safety.safe;
         payload.put("safeToRun", safeNow);
+        payload.put("blockedReason", safety.primaryBlockedReason);
+        payload.put("blockedReasons", safety.blockedReasonsJson);
         traceTimeline("deferred_process_start_check", payload);
         if (!safeNow) {
             return;
