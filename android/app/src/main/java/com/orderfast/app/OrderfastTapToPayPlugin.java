@@ -112,33 +112,9 @@ public class OrderfastTapToPayPlugin extends Plugin {
     private volatile int paymentStatusWaitingForInputCount = 0;
     private volatile int paymentStatusProcessingCount = 0;
     private volatile int paymentStatusReadyCount = 0;
-    private volatile Runnable deferredProcessStartRunnable = null;
-    private volatile String deferredProcessStartReason = null;
-    private volatile long deferredProcessStartRegisteredAtMs = 0L;
-    private volatile long collectSuccessAtMs = 0L;
-    private volatile String deferredProcessTokenId = null;
-    private volatile String deferredSessionId = null;
-    private volatile String deferredFlowRunId = null;
-    private volatile String deferredPaymentIntentId = null;
-    private volatile boolean deferredReleaseCommitted = false;
-    private volatile boolean continuationArmed = false;
-    private volatile String continuationReleaseTrigger = null;
-    private volatile int continuationHostActivityIdentityHash = -1;
-    private final Object continuationLock = new Object();
     private volatile int collectSuccessCallbackCount = 0;
-    private volatile int deferredProcessRegistrationCount = 0;
-    private volatile int deferredProcessRecheckCount = 0;
-    private volatile int deferredProcessReleaseAttemptCount = 0;
     private volatile int processInvokeAttemptCount = 0;
     private volatile int processInvokeCommittedCount = 0;
-    private volatile int deferredAlreadyClearedCount = 0;
-    private volatile int deferredRearmedCount = 0;
-    private volatile int postCollectDirectRecheckCount = 0;
-    private volatile int onStartRecheckCount = 0;
-    private volatile int onResumeRecheckCount = 0;
-    private volatile int onWindowFocusChangedRecheckCount = 0;
-    private volatile int onNewIntentRecheckCount = 0;
-    private volatile int deferredTokenSequence = 0;
     private volatile JSObject cachedFinalResult = null;
     private volatile long cachedFinalResultAtMs = 0L;
     private static int pluginInstanceCounter = 0;
@@ -167,7 +143,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
     }
 
     public static void notifyHostWindowFocusChanged(boolean hasFocus) {
-        // Host window focus is intentionally ignored for Tap to Pay continuation ownership.
+        // Host window focus changes are telemetry-only for unified processPaymentIntent flow.
     }
 
     @Override
@@ -244,20 +220,6 @@ public class OrderfastTapToPayPlugin extends Plugin {
         clearOperationTimeout();
         activePaymentIntent = null;
         processCancelable = null;
-        synchronized (continuationLock) {
-            deferredProcessStartRunnable = null;
-            deferredProcessStartReason = null;
-            deferredProcessStartRegisteredAtMs = 0L;
-            deferredProcessTokenId = null;
-            deferredSessionId = null;
-            deferredFlowRunId = null;
-            deferredPaymentIntentId = null;
-            collectSuccessAtMs = 0L;
-            deferredReleaseCommitted = false;
-            continuationArmed = false;
-            continuationReleaseTrigger = null;
-            continuationHostActivityIdentityHash = -1;
-        }
         cancelRequestedByApp = false;
         lifecyclePausedDuringActiveFlow = false;
         confirmedBackgroundInterruption = false;
@@ -742,7 +704,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
         }
 
         inFlight = true;
-        status = "collecting";
+        status = "processing";
         nativeTapToPayTakeoverActive.set(true);
         confirmedBackgroundInterruption = false;
         backgroundInterruptionCandidate = false;
@@ -825,28 +787,12 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 quickChargeTraceSnapshot.put("orientationChangedDuringPayment", JSONObject.NULL);
                 quickChargeTraceSnapshot.put("windowFocusChangedDuringPayment", JSONObject.NULL);
                 quickChargeTraceSnapshot.put("processDeferredForForegroundFocus", false);
-                quickChargeTraceSnapshot.put("processDeferredForHostLifecycleReattach", false);
-                quickChargeTraceSnapshot.put("processDeferredWaitPathRan", false);
-                quickChargeTraceSnapshot.put("deferredProcessRegistrationCount", 0);
-                quickChargeTraceSnapshot.put("deferredProcessRecheckCount", 0);
-                quickChargeTraceSnapshot.put("deferredProcessReleaseAttemptCount", 0);
+                quickChargeTraceSnapshot.put("processPath", "unified_process_payment_intent");
                 quickChargeTraceSnapshot.put("processInvokeAttemptCount", 0);
                 quickChargeTraceSnapshot.put("processInvokeCommittedCount", 0);
-                quickChargeTraceSnapshot.put("deferredAlreadyClearedCount", 0);
-                quickChargeTraceSnapshot.put("deferredRearmedCount", 0);
-                quickChargeTraceSnapshot.put("postCollectDirectRecheckCount", 0);
-                quickChargeTraceSnapshot.put("onStartRecheckCount", 0);
-                quickChargeTraceSnapshot.put("onResumeRecheckCount", 0);
-                quickChargeTraceSnapshot.put("onWindowFocusChangedRecheckCount", 0);
-                quickChargeTraceSnapshot.put("onNewIntentRecheckCount", 0);
-                quickChargeTraceSnapshot.put("currentDeferredTokenId", JSONObject.NULL);
-                quickChargeTraceSnapshot.put("collectSuccessAtMs", JSONObject.NULL);
-                quickChargeTraceSnapshot.put("continuationArmed", false);
-                quickChargeTraceSnapshot.put("continuationReleaseTrigger", JSONObject.NULL);
                 quickChargeTraceSnapshot.put("hostOnStartAtMs", JSONObject.NULL);
                 quickChargeTraceSnapshot.put("hostOnResumeAtMs", JSONObject.NULL);
                 quickChargeTraceSnapshot.put("currentActivityIdentityHash", JSONObject.NULL);
-                quickChargeTraceSnapshot.put("continuationReleaseConditionPassed", JSONObject.NULL);
                 quickChargeTraceSnapshot.put("timedEventTrail", new JSONArray());
                 quickChargeTraceSnapshot.put("attemptStartTimestampMs", runTraceStartWallClockMs > 0L ? runTraceStartWallClockMs : System.currentTimeMillis());
                 quickChargeTraceSnapshot.put("attemptEndTimestampMs", JSONObject.NULL);
@@ -859,7 +805,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
 
                 postJson(
                     backendBaseUrl + "/api/kiosk/payments/card-present/session-state",
-                    "{\"session_id\":\"" + escapeJson(sessionId) + "\",\"restaurant_id\":\"" + escapeJson(restaurantId) + "\",\"next_state\":\"collecting\",\"event_type\":\"native_collect_start\"" + flowRunJsonFragment() + "}"
+                    "{\"session_id\":\"" + escapeJson(sessionId) + "\",\"restaurant_id\":\"" + escapeJson(restaurantId) + "\",\"next_state\":\"processing\",\"event_type\":\"native_process_start_unified\"" + flowRunJsonFragment() + "}"
                 );
 
                 final boolean usingProvidedPaymentIntent = !isBlank(providedPaymentIntentClientSecret);
@@ -923,412 +869,208 @@ public class OrderfastTapToPayPlugin extends Plugin {
                         quickChargeClientSecretConsumedPayload.put("runtimeDebuggable", runtimeDebuggable);
                         quickChargeClientSecretConsumedPayload.put("runtimePotentiallyIneligible", runtimeDebuggable);
                         logFlowEvent("quick_charge_native_client_secret_consumed", quickChargeClientSecretConsumedPayload);
-                        JSObject collectStartPayload = new JSObject();
-                        collectStartPayload.put("result", "started");
-                        collectStartPayload.put("nativeStage", "native_collect_start");
-                        collectStartPayload.put("paymentIntentId", paymentIntent.getId());
-                        collectStartPayload.put("paymentIntentStatus", paymentIntent.getStatus() == null ? "unknown" : paymentIntent.getStatus().name());
-                        logStartupStage("native_collect_start", collectStartPayload);
-                        traceTimeline("collect_start_callback", collectStartPayload);
-                        postSessionState("collecting", "native_collect_start");
-                        status = "collecting";
-                        JSObject collectInvokedPayload = lifecyclePayload("collect_payment_method_invoked");
-                        collectInvokedPayload.put("paymentIntentId", paymentIntent.getId());
-                        logFlowEvent("native_collect_invoked", collectInvokedPayload);
-                        JSObject quickChargeCollectInvokedPayload = new JSObject();
-                        quickChargeCollectInvokedPayload.put("sessionId", currentSessionId);
-                        quickChargeCollectInvokedPayload.put("flowRunId", currentFlowRunId);
-                        quickChargeCollectInvokedPayload.put("paymentIntentId", paymentIntent.getId());
-                        quickChargeCollectInvokedPayload.put("paymentIntentStatus", paymentIntent.getStatus() == null ? "unknown" : paymentIntent.getStatus().name());
-                        quickChargeCollectInvokedPayload.put("webStripeLayerInvolved", false);
-                        logFlowEvent("quick_charge_native_collect_invoked", quickChargeCollectInvokedPayload);
-                        traceTimeline("collect_invoked", collectInvokedPayload);
-                        quickChargeTraceSnapshot.put("collectInvoked", true);
-                        quickChargeTraceSnapshot.put("nativeFailurePoint", "awaiting_collect_callback");
+                        JSObject processStartPayload = new JSObject();
+                        processStartPayload.put("result", "started");
+                        processStartPayload.put("nativeStage", "native_process_start");
+                        processStartPayload.put("paymentIntentId", paymentIntent.getId());
+                        processStartPayload.put("paymentIntentStatus", paymentIntent.getStatus() == null ? "unknown" : paymentIntent.getStatus().name());
+                        processStartPayload.put("processPath", "unified_process_payment_intent");
+                        logStartupStage("native_process_start", processStartPayload);
+                        traceTimeline("process_start_callback", processStartPayload);
+                        postSessionState("processing", "native_process_start_unified");
+                        status = "processing";
 
-                        Terminal.getInstance().collectPaymentMethod(
+                        processInvokeAttemptCount += 1;
+                        processInvokeCommittedCount += 1;
+                        quickChargeTraceSnapshot.put("collectInvoked", false);
+                        quickChargeTraceSnapshot.put("collectCallbackStatus", "skipped_unified_path");
+                        quickChargeTraceSnapshot.put("processInvoked", true);
+                        quickChargeTraceSnapshot.put("processInvocationCount", quickChargeTraceSnapshot.optInt("processInvocationCount", 0) + 1);
+                        quickChargeTraceSnapshot.put("processInvokeAttemptCount", processInvokeAttemptCount);
+                        quickChargeTraceSnapshot.put("processInvokeCommittedCount", processInvokeCommittedCount);
+                        quickChargeTraceSnapshot.put("processStartGateBranch", "unified_process_payment_intent");
+                        quickChargeTraceSnapshot.put("processStartAllowedReason", "single_sdk_process_call");
+                        quickChargeTraceSnapshot.put("processDeferredForForegroundFocus", false);
+                        quickChargeTraceSnapshot.put("processDeferredWaitPathRan", false);
+                        quickChargeTraceSnapshot.put("nativeFailurePoint", "awaiting_process_callback");
+                        quickChargeTraceSnapshot.put("lastCollectCallbackPaymentIntentId", JSONObject.NULL);
+                        quickChargeTraceSnapshot.put("samePaymentIntentIdAcrossRetrieveCollectProcess", paymentIntentIdsMatch(
+                            quickChargeTraceSnapshot.optString("retrievedPaymentIntentId", ""),
+                            paymentIntent.getId()
+                        ));
+
+                        JSObject processInvokedPayload = lifecyclePayload("process_payment_intent_unified_invoked");
+                        processInvokedPayload.put("paymentIntentId", paymentIntent.getId());
+                        processInvokedPayload.put("paymentIntentStatus", paymentIntent.getStatus() == null ? "unknown" : paymentIntent.getStatus().name());
+                        processInvokedPayload.put("processPath", "unified_process_payment_intent");
+                        logFlowEvent("native_process_unified_invoked", processInvokedPayload);
+
+                        JSObject quickChargeProcessInvokedPayload = new JSObject();
+                        quickChargeProcessInvokedPayload.put("sessionId", currentSessionId);
+                        quickChargeProcessInvokedPayload.put("flowRunId", currentFlowRunId);
+                        quickChargeProcessInvokedPayload.put("paymentIntentId", paymentIntent.getId());
+                        quickChargeProcessInvokedPayload.put("paymentIntentStatus", paymentIntent.getStatus() == null ? "unknown" : paymentIntent.getStatus().name());
+                        quickChargeProcessInvokedPayload.put("processPath", "unified_process_payment_intent");
+                        logFlowEvent("quick_charge_native_process_unified_invoked", quickChargeProcessInvokedPayload);
+
+                        nativeTapToPayProcessInFlight.set(true);
+                        processCancelable = Terminal.getInstance().processPaymentIntent(
                             paymentIntent,
+                            new CollectPaymentIntentConfiguration.Builder().build(),
+                            new ConfirmPaymentIntentConfiguration.Builder().build(),
                             new PaymentIntentCallback() {
                                 @Override
-                                public void onSuccess(PaymentIntent collectedIntent) {
-                                    activePaymentIntent = collectedIntent;
-                                    // Collect success means Stripe Terminal takeover already progressed far enough
-                                    // to safely continue directly into processPaymentIntent while still foregrounded.
-                                    // Some devices briefly report window-focus loss here without firing onPause/onStop,
-                                    // which can wrongly defer process and force a second presentment.
-                                    stripeTakeoverObserved = true;
-                                    final boolean collectedIntentMatchesRetrieved = retrievedIntent == collectedIntent;
-                                    collectSuccessCallbackCount += 1;
-                                    quickChargeTraceSnapshot.put("collectCallbackStatus", "success");
-                                    quickChargeTraceSnapshot.put("collectSuccessCallbackCount", collectSuccessCallbackCount);
-                                    quickChargeTraceSnapshot.put("collectReturnedUpdatedIntent", !collectedIntentMatchesRetrieved);
-                                    quickChargeTraceSnapshot.put("collectIntentReferenceChanged", !collectedIntentMatchesRetrieved);
-                                    quickChargeTraceSnapshot.put("lastCollectCallbackPaymentIntentId", collectedIntent.getId());
-                                    quickChargeTraceSnapshot.put("collectReturnedPaymentMethodAttached", paymentMethodAttachmentState(collectedIntent));
-                                    quickChargeTraceSnapshot.put("paymentStatusChangeCountBeforeCollectSuccess", paymentStatusChangeCount);
-                                    quickChargeTraceSnapshot.put("paymentStatusWaitingForInputCountBeforeCollectSuccess", paymentStatusWaitingForInputCount);
-                                    quickChargeTraceSnapshot.put("paymentStatusProcessingCountBeforeCollectSuccess", paymentStatusProcessingCount);
-                                    quickChargeTraceSnapshot.put("paymentStatusReadyCountBeforeCollectSuccess", paymentStatusReadyCount);
-                                    quickChargeTraceSnapshot.put("paymentStatusTrailBeforeCollectSuccess", paymentStatusTrailPayload());
-                                    quickChargeTraceSnapshot.put(
-                                        "samePaymentIntentIdAcrossRetrieveCollectProcess",
-                                        paymentIntentIdsMatch(
-                                            quickChargeTraceSnapshot.optString("retrievedPaymentIntentId", ""),
-                                            collectedIntent.getId()
-                                        )
-                                    );
-                                    quickChargeTraceSnapshot.put("nativeFailurePoint", "collect_succeeded");
-                                    JSObject collectPayload = new JSObject();
-                                    collectPayload.put("result", "success");
-                                    collectPayload.put("nativeStage", "native_collect_result");
-                                    collectPayload.put("paymentIntentId", collectedIntent.getId());
-                                    collectPayload.put(
-                                        "paymentIntentStatus",
-                                        collectedIntent.getStatus() == null ? "unknown" : collectedIntent.getStatus().name()
-                                    );
-                                    collectPayload.put("collectOutcome", "success");
-                                    logStartupStage("native_collect_result", collectPayload);
-                                    JSObject quickChargeCollectCallbackPayload = new JSObject();
-                                    quickChargeCollectCallbackPayload.put("sessionId", currentSessionId);
-                                    quickChargeCollectCallbackPayload.put("flowRunId", currentFlowRunId);
-                                    quickChargeCollectCallbackPayload.put("paymentIntentId", collectedIntent.getId());
-                                    quickChargeCollectCallbackPayload.put("paymentIntentStatus", collectedIntent.getStatus() == null ? "unknown" : collectedIntent.getStatus().name());
-                                    quickChargeCollectCallbackPayload.put("collectOutcome", "succeeded");
-                                    quickChargeCollectCallbackPayload.put("isUpdatedPostCollectPaymentIntent", !collectedIntentMatchesRetrieved);
-                                    logFlowEvent("quick_charge_native_collect_callback", quickChargeCollectCallbackPayload);
-                                    traceTimeline("collect_success_callback", collectPayload);
-                                    JSObject collectSuccessHostContext = lifecyclePayload("collect_success_host_context");
-                                    collectSuccessHostContext.put("paymentIntentId", collectedIntent.getId());
-                                    collectSuccessHostContext.put("paymentIntentStatus", collectedIntent.getStatus() == null ? "unknown" : collectedIntent.getStatus().name());
-                                    addHostContextTruth(collectSuccessHostContext, "collect_success");
-                                    logStartupStage("native_collect_success_host_context", collectSuccessHostContext);
-                                    traceTimeline("collect_success_host_context", collectSuccessHostContext);
+                                public void onSuccess(PaymentIntent intent) {
+                                    activePaymentIntent = intent;
+                                    quickChargeTraceSnapshot.put("processCallbackStatus", "success");
+                                    quickChargeTraceSnapshot.put("processSuccessCallbackCount", quickChargeTraceSnapshot.optInt("processSuccessCallbackCount", 0) + 1);
+                                    quickChargeTraceSnapshot.put("processCallbackCount", quickChargeTraceSnapshot.optInt("processCallbackCount", 0) + 1);
+                                    quickChargeTraceSnapshot.put("lastProcessCallbackPaymentIntentId", intent.getId());
+                                    quickChargeTraceSnapshot.put("processFailureCode", JSONObject.NULL);
+                                    quickChargeTraceSnapshot.put("processFailureMessage", JSONObject.NULL);
+                                    quickChargeTraceSnapshot.put("processFailureExceptionClass", JSONObject.NULL);
+                                    quickChargeTraceSnapshot.put("processFailureReasonCategory", JSONObject.NULL);
+                                    quickChargeTraceSnapshot.put("nativeFailurePoint", "process_succeeded");
+                                    JSObject quickChargeProcessCallbackPayload = new JSObject();
+                                    quickChargeProcessCallbackPayload.put("sessionId", currentSessionId);
+                                    quickChargeProcessCallbackPayload.put("flowRunId", currentFlowRunId);
+                                    quickChargeProcessCallbackPayload.put("paymentIntentId", intent.getId());
+                                    quickChargeProcessCallbackPayload.put("paymentIntentStatus", intent.getStatus() == null ? "unknown" : intent.getStatus().name());
+                                    quickChargeProcessCallbackPayload.put("processOutcome", "succeeded");
+                                    quickChargeProcessCallbackPayload.put("processPath", "unified_process_payment_intent");
+                                    logFlowEvent("quick_charge_native_process_callback", quickChargeProcessCallbackPayload);
+                                    JSObject processSuccessPayload = new JSObject();
+                                    processSuccessPayload.put("paymentIntentStatus", intent.getStatus() == null ? "unknown" : intent.getStatus().name());
+                                    traceTimeline("process_success_callback", processSuccessPayload);
 
-                                    Runnable invokeProcessPaymentIntent = () -> {
-                                        processInvokeAttemptCount += 1;
-                                        quickChargeTraceSnapshot.put("processInvokeAttemptCount", processInvokeAttemptCount);
-                                        boolean readerDisconnected = readerDisconnectedDuringActiveRun();
-                                        String processStartBlockedReason = null;
-                                        if (!inFlight) {
-                                            processStartBlockedReason = "payment_flow_no_longer_in_flight";
-                                        } else if (quickChargeTraceSnapshot.optBoolean("processInvoked", false)) {
-                                            processStartBlockedReason = "process_already_invoked";
-                                        } else if (cancelRequestedByApp) {
-                                            processStartBlockedReason = "explicit_local_cancel_requested";
-                                        } else if (readerDisconnected) {
-                                            processStartBlockedReason = "reader_disconnected_before_process";
-                                        }
-                                        if (processStartBlockedReason != null) {
-                                            quickChargeTraceSnapshot.put("processStartGateBranch", "collect_success_blocked");
-                                            quickChargeTraceSnapshot.put("processStartBlockedReason", processStartBlockedReason);
-                                            quickChargeTraceSnapshot.put("nativeFailurePoint", "process_not_invoked_after_collect");
-                                            quickChargeTraceSnapshot.put("finalFailureReason", processStartBlockedReason);
-                                            status = "canceled";
-                                            postSessionState("canceled", "native_process_not_invoked_after_collect");
-                                            JSObject blockedPayload = result("canceled", "canceled", "Tap to Pay processing was not started.");
-                                            blockedPayload.put("reasonCategory", "app_cancelled");
-                                            blockedPayload.put("processDeferredForForegroundFocus", false);
-                                            blockedPayload.put("cancelClassification", determineCancelClassification("canceled"));
-                                            blockedPayload.put("detail", detail("native_process_result", processStartBlockedReason, null));
-                                            attachDeferredAuditCounters(blockedPayload);
-                                            finalizeQuickChargeTraceSnapshot(quickChargeTraceSnapshot);
-                                            blockedPayload.put("quickChargeTraceSnapshot", quickChargeTraceSnapshot);
-                                            logStartupStage("native_process_result", blockedPayload);
-                                            cacheFinalResult(blockedPayload, "process_not_invoked_after_collect");
-                                            clearActivePaymentState();
-                                            resetStatusForNextAttempt();
-                                            resolveOnce(resolveGate, call, blockedPayload);
-                                            return;
-                                        }
-
-                                        quickChargeTraceSnapshot.put("processInvocationCount", quickChargeTraceSnapshot.optInt("processInvocationCount", 0) + 1);
-                                        processInvokeCommittedCount += 1;
-                                        quickChargeTraceSnapshot.put("processInvokeCommittedCount", processInvokeCommittedCount);
-                                        quickChargeTraceSnapshot.put("processStartAllowedReason", "collect_succeeded_with_stripe_process_truth");
-                                        JSObject processStartPayload = new JSObject();
-                                        processStartPayload.put("result", "started");
-                                        processStartPayload.put("nativeStage", "native_process_start");
-                                        processStartPayload.put("paymentIntentId", collectedIntent.getId());
-                                        processStartPayload.put("paymentIntentStatus", collectedIntent.getStatus() == null ? "unknown" : collectedIntent.getStatus().name());
-                                        processStartPayload.put("processStartGateBranch", quickChargeTraceSnapshot.optString("processStartGateBranch", "collect_success_immediate"));
-                                        processStartPayload.put("processStartAllowedReason", quickChargeTraceSnapshot.optString("processStartAllowedReason", "collect_succeeded_and_flow_active_no_local_cancel_no_reader_disconnect"));
-                                        processStartPayload.put("processAwarenessFallbackUsed", quickChargeTraceSnapshot.optBoolean("processAwarenessFallbackUsed", false));
-                                        processStartPayload.put("processAwarenessFallbackReason", quickChargeTraceSnapshot.optString("processAwarenessFallbackReason", null));
-                                        processStartPayload.put("processInvoked", true);
-                                        processStartPayload.put("processDeferredForForegroundFocus", false);
-                                        processStartPayload.put("processDeferredForHostLifecycleReattach", false);
-                                        addHostContextTruth(processStartPayload, "process_start");
-                                        logStartupStage("native_process_start", processStartPayload);
-                                        traceTimeline("process_start", processStartPayload);
-                                        postSessionState("processing", "native_process_start");
+                                    if (intent.getStatus() == PaymentIntentStatus.SUCCEEDED) {
+                                        postSessionState("processing", "native_process_succeeded");
+                                        enrichQuickChargeSuccessSnapshot(quickChargeTraceSnapshot);
+                                        JSObject payload = result("succeeded", null, "Tap to Pay payment processed by Stripe Terminal SDK.");
+                                        JSObject detailPayload = detail("native_process_result", "succeeded", intent.getStatus().name());
+                                        detailPayload.put("processInvoked", true);
+                                        detailPayload.put("processPath", "unified_process_payment_intent");
+                                        payload.put("detail", detailPayload);
+                                        attachDeferredAuditCounters(payload);
+                                        attachDeferredRunIdentity(payload);
+                                        attachPaymentIntentSnapshot(payload, intent, "process_success");
+                                        finalizeQuickChargeTraceSnapshot(quickChargeTraceSnapshot);
+                                        payload.put("quickChargeTraceSnapshot", quickChargeTraceSnapshot);
+                                        logStartupStage("native_process_result", payload);
+                                        cacheFinalResult(payload, "process_success");
+                                        clearActivePaymentState();
+                                        resetStatusForNextAttempt();
+                                        resolveOnce(resolveGate, call, payload);
+                                    } else if (intent.getStatus() == PaymentIntentStatus.PROCESSING || intent.getStatus() == PaymentIntentStatus.REQUIRES_CAPTURE) {
                                         status = "processing";
-                                        JSObject processInvokedPayload = lifecyclePayload("process_payment_intent_invoked");
-                                        processInvokedPayload.put("paymentIntentId", collectedIntent.getId());
-                                        processInvokedPayload.put("paymentIntentStatus", collectedIntent.getStatus() == null ? "unknown" : collectedIntent.getStatus().name());
-                                        processInvokedPayload.put("processStartGateBranch", quickChargeTraceSnapshot.optString("processStartGateBranch", "collect_success_immediate"));
-                                        processInvokedPayload.put("processStartAllowedReason", quickChargeTraceSnapshot.optString("processStartAllowedReason", "collect_succeeded_and_flow_active_no_local_cancel_no_reader_disconnect"));
-                                        processInvokedPayload.put("processAwarenessFallbackUsed", quickChargeTraceSnapshot.optBoolean("processAwarenessFallbackUsed", false));
-                                        processInvokedPayload.put("processAwarenessFallbackReason", quickChargeTraceSnapshot.optString("processAwarenessFallbackReason", null));
-                                        processInvokedPayload.put("processDeferredForForegroundFocus", false);
-                                        processInvokedPayload.put("processDeferredForHostLifecycleReattach", false);
-                                        attachDeferredAuditCounters(processInvokedPayload);
-                                        attachDeferredRunIdentity(processInvokedPayload);
-                                        addHostContextTruth(processInvokedPayload, "process_invoked_before_sdk_call");
-                                        logFlowEvent("native_process_invoked", processInvokedPayload);
-                                        JSObject quickChargeProcessInvokedPayload = new JSObject();
-                                        quickChargeProcessInvokedPayload.put("sessionId", currentSessionId);
-                                        quickChargeProcessInvokedPayload.put("flowRunId", currentFlowRunId);
-                                        quickChargeProcessInvokedPayload.put("paymentIntentId", collectedIntent.getId());
-                                        quickChargeProcessInvokedPayload.put("paymentIntentStatus", collectedIntent.getStatus() == null ? "unknown" : collectedIntent.getStatus().name());
-                                        quickChargeProcessInvokedPayload.put("processPaymentIntentInvoked", true);
-                                        quickChargeProcessInvokedPayload.put("usedPostCollectPaymentIntent", true);
-                                        quickChargeProcessInvokedPayload.put("usedStaleOriginalPaymentIntent", false);
-                                        quickChargeProcessInvokedPayload.put("processStartGateBranch", quickChargeTraceSnapshot.optString("processStartGateBranch", "collect_success_immediate"));
-                                        quickChargeProcessInvokedPayload.put("processStartAllowedReason", quickChargeTraceSnapshot.optString("processStartAllowedReason", "collect_succeeded_and_flow_active_no_local_cancel_no_reader_disconnect"));
-                                        quickChargeProcessInvokedPayload.put("processAwarenessFallbackUsed", quickChargeTraceSnapshot.optBoolean("processAwarenessFallbackUsed", false));
-                                        quickChargeProcessInvokedPayload.put("processAwarenessFallbackReason", quickChargeTraceSnapshot.optString("processAwarenessFallbackReason", null));
-                                        quickChargeProcessInvokedPayload.put("processDeferredForForegroundFocus", false);
-                                        quickChargeProcessInvokedPayload.put("processDeferredForHostLifecycleReattach", false);
-                                        logFlowEvent("quick_charge_native_process_invoked", quickChargeProcessInvokedPayload);
-                                        traceTimeline("process_invoked_before_sdk_call", processInvokedPayload);
-                                        quickChargeTraceSnapshot.put("processInvoked", true);
-                                        quickChargeTraceSnapshot.put("nativeFailurePoint", "awaiting_process_callback");
-                                        nativeTapToPayProcessInFlight.set(true);
-                                        processCancelable = Terminal.getInstance().processPaymentIntent(
-                                            collectedIntent,
-                                            new CollectPaymentIntentConfiguration.Builder().build(),
-                                            new ConfirmPaymentIntentConfiguration.Builder().build(),
-                                            new PaymentIntentCallback() {
-                                            @Override
-                                            public void onSuccess(PaymentIntent intent) {
-                                                activePaymentIntent = intent;
-                                                quickChargeTraceSnapshot.put("processCallbackStatus", "success");
-                                                quickChargeTraceSnapshot.put("processSuccessCallbackCount", quickChargeTraceSnapshot.optInt("processSuccessCallbackCount", 0) + 1);
-                                                quickChargeTraceSnapshot.put("processCallbackCount", quickChargeTraceSnapshot.optInt("processCallbackCount", 0) + 1);
-                                                quickChargeTraceSnapshot.put("lastProcessCallbackPaymentIntentId", intent.getId());
-                                                quickChargeTraceSnapshot.put("processFailureCode", JSONObject.NULL);
-                                                quickChargeTraceSnapshot.put("processFailureMessage", JSONObject.NULL);
-                                                quickChargeTraceSnapshot.put("processFailureExceptionClass", JSONObject.NULL);
-                                                quickChargeTraceSnapshot.put("processFailureReasonCategory", JSONObject.NULL);
-                                                quickChargeTraceSnapshot.put("nativeFailurePoint", "process_succeeded");
-                                                JSObject quickChargeProcessCallbackPayload = new JSObject();
-                                                quickChargeProcessCallbackPayload.put("sessionId", currentSessionId);
-                                                quickChargeProcessCallbackPayload.put("flowRunId", currentFlowRunId);
-                                                quickChargeProcessCallbackPayload.put("paymentIntentId", intent.getId());
-                                                quickChargeProcessCallbackPayload.put("paymentIntentStatus", intent.getStatus() == null ? "unknown" : intent.getStatus().name());
-                                                quickChargeProcessCallbackPayload.put("processOutcome", "succeeded");
-                                                logFlowEvent("quick_charge_native_process_callback", quickChargeProcessCallbackPayload);
-                                                JSObject processSuccessPayload = new JSObject();
-                                                processSuccessPayload.put("paymentIntentStatus", intent.getStatus() == null ? "unknown" : intent.getStatus().name());
-                                                traceTimeline("process_success_callback", processSuccessPayload);
-
-                                                if (intent.getStatus() == PaymentIntentStatus.SUCCEEDED) {
-                                                    postSessionState("processing", "native_process_succeeded");
-                                                    quickChargeTraceSnapshot.put(
-                                                        "samePaymentIntentIdAcrossRetrieveCollectProcess",
-                                                        paymentIntentIdsMatch(
-                                                            quickChargeTraceSnapshot.optString("retrievedPaymentIntentId", ""),
-                                                            quickChargeTraceSnapshot.optString("lastCollectCallbackPaymentIntentId", ""),
-                                                            intent.getId()
-                                                        )
-                                                    );
-                                                    enrichQuickChargeSuccessSnapshot(quickChargeTraceSnapshot);
-                                                    JSObject payload = result("succeeded", null, "Tap to Pay payment processed by Stripe Terminal SDK.");
-                                                    JSObject detailPayload = detail("native_process_result", "succeeded", intent.getStatus().name());
-                                                    detailPayload.put("processInvoked", true);
-                                                    detailPayload.put("usedPostCollectPaymentIntent", true);
-                                                    payload.put("detail", detailPayload);
-                                                    attachDeferredAuditCounters(payload);
-                                                    attachDeferredRunIdentity(payload);
-                                                    attachPaymentIntentSnapshot(payload, intent, "process_success");
-                                                    finalizeQuickChargeTraceSnapshot(quickChargeTraceSnapshot);
-                                                    payload.put("quickChargeTraceSnapshot", quickChargeTraceSnapshot);
-                                                    logStartupStage("native_process_result", payload);
-                                                    cacheFinalResult(payload, "process_success");
-                                                    clearActivePaymentState();
-                                                    resetStatusForNextAttempt();
-                                                    resolveOnce(resolveGate, call, payload);
-                                                } else if (intent.getStatus() == PaymentIntentStatus.PROCESSING || intent.getStatus() == PaymentIntentStatus.REQUIRES_CAPTURE) {
-                                                    status = "processing";
-                                                    postSessionState("needs_reconciliation", "native_process_pending");
-                                                    JSObject payload = result("processing", null, "Stripe Terminal returned a pending PaymentIntent state.");
-                                                    JSObject detailPayload = detail("native_process_result", "pending", intent.getStatus().name());
-                                                    detailPayload.put("processInvoked", true);
-                                                    detailPayload.put("usedPostCollectPaymentIntent", true);
-                                                    payload.put("detail", detailPayload);
-                                                    attachDeferredAuditCounters(payload);
-                                                    attachDeferredRunIdentity(payload);
-                                                    attachPaymentIntentSnapshot(payload, intent, "process_pending");
-                                                    finalizeQuickChargeTraceSnapshot(quickChargeTraceSnapshot);
-                                                    payload.put("quickChargeTraceSnapshot", quickChargeTraceSnapshot);
-                                                    logStartupStage("native_process_result", payload);
-                                                    cacheFinalResult(payload, "process_pending");
-                                                    clearActivePaymentState();
-                                                    resetStatusForNextAttempt();
-                                                    resolveOnce(resolveGate, call, payload);
-                                                } else {
-                                                    status = "failed";
-                                                    JSObject payload = result("failed", "processing_error", "Unexpected PaymentIntent status: " + intent.getStatus());
-                                                    JSObject detailPayload = detail("native_process_result", "unexpected_status", String.valueOf(intent.getStatus()));
-                                                    detailPayload.put("processInvoked", true);
-                                                    detailPayload.put("usedPostCollectPaymentIntent", true);
-                                                    payload.put("detail", detailPayload);
-                                                    attachDeferredAuditCounters(payload);
-                                                    attachDeferredRunIdentity(payload);
-                                                    attachPaymentIntentSnapshot(payload, intent, "process_unexpected_status");
-                                                    quickChargeTraceSnapshot.put("nativeFailurePoint", "process_unexpected_status");
-                                                    quickChargeTraceSnapshot.put("finalFailureReason", "Unexpected PaymentIntent status after process callback.");
-                                                    finalizeQuickChargeTraceSnapshot(quickChargeTraceSnapshot);
-                                                    payload.put("quickChargeTraceSnapshot", quickChargeTraceSnapshot);
-                                                    logStartupStage("native_process_result", payload);
-                                                    cacheFinalResult(payload, "process_unexpected_status");
-                                                    clearActivePaymentState();
-                                                    resetStatusForNextAttempt();
-                                                    resolveOnce(resolveGate, call, payload);
-                                                }
-                                            }
-
-                                            @Override
-                                            public void onFailure(TerminalException e) {
-                                                String normalizedCode = normalizeErrorCode(e);
-                                                quickChargeTraceSnapshot.put("processCallbackStatus", "failure");
-                                                quickChargeTraceSnapshot.put("processFailureCallbackCount", quickChargeTraceSnapshot.optInt("processFailureCallbackCount", 0) + 1);
-                                                quickChargeTraceSnapshot.put("processCallbackCount", quickChargeTraceSnapshot.optInt("processCallbackCount", 0) + 1);
-                                                quickChargeTraceSnapshot.put("nativeFailurePoint", "process_callback_failure");
-                                                quickChargeTraceSnapshot.put("finalFailureReason", buildErrorMessage(e));
-                                                quickChargeTraceSnapshot.put("processFailureCode", normalizedCode);
-                                                quickChargeTraceSnapshot.put("processFailureMessage", buildErrorMessage(e));
-                                                quickChargeTraceSnapshot.put("processFailureExceptionClass", e.getClass().getName());
-                                                quickChargeTraceSnapshot.put("appResumedDuringProcessInFlight", appResumedDuringProcessInFlight);
-                                                JSObject processFailurePayload = new JSObject();
-                                                processFailurePayload.put("normalizedCode", normalizedCode);
-                                                processFailurePayload.put("terminalCode", e.getErrorCode() == null ? "UNKNOWN" : e.getErrorCode().name());
-                                                traceTimeline("process_failure_callback", processFailurePayload);
-                                                String reasonCategory = classifyTerminalFailureCategory(normalizedCode);
-                                                String mappedSessionState = mapSessionStateForFailureCategory(reasonCategory);
-                                                String mappedPluginStatus = mapPluginStatusForFailureCategory(reasonCategory);
-                                                status = mappedPluginStatus;
-                                                enrichQuickChargeFailureSnapshot(quickChargeTraceSnapshot, e, normalizedCode, reasonCategory);
-                                                if ("canceled".equals(normalizedCode)) {
-                                                    logCancelOrCleanupPath(
-                                                        "native_cancel_inevitable",
-                                                        "startTapToPayPayment.processPaymentIntent.onFailure",
-                                                        "terminal_reported_canceled"
-                                                    );
-                                                }
-                                                postSessionState(mappedSessionState, "native_process_" + reasonCategory);
-                                                JSObject payload = result(mappedPluginStatus, normalizedCode, buildErrorMessage(e));
-                                                enrichOutcomePayload(payload, "native_process_result", e.getErrorCode(), "customer_cancelled".equals(reasonCategory));
-                                                payload.put("reasonCategory", reasonCategory);
-                                                payload.put("mappedSessionState", mappedSessionState);
-                                                payload.put("interruptionReasonCode", "lifecycle_interrupted".equals(reasonCategory) ? "background_loss_confirmed" : "none");
-                                                JSObject detailPayload = terminalErrorDetail(e, "native_process_result");
-                                                detailPayload.put("processInvoked", true);
-                                                detailPayload.put("usedPostCollectPaymentIntent", true);
-                                                payload.put("detail", detailPayload);
-                                                payload.put("interruptionSource", confirmedBackgroundInterruption ? "app_or_device_backgrounded" : (lifecyclePausedDuringActiveFlow ? "transient_lifecycle_change" : "none_detected"));
-                                                payload.put("backgroundInterruptionCandidate", backgroundInterruptionCandidate);
-                                                payload.put("backgroundInterruptionMs", backgroundInterruptionCandidateAtMs > 0 ? (System.currentTimeMillis() - backgroundInterruptionCandidateAtMs) : 0L);
-                                                payload.put("cancelRequestedByApp", cancelRequestedByApp);
-                                                payload.put("isProcessCancelableActive", processCancelable != null && !processCancelable.isCompleted());
-                                                payload.put("pluginMarkedCanceledBeforeTerminal", cancelRequestedByApp);
-                                                payload.put("appResumedDuringProcessInFlight", appResumedDuringProcessInFlight);
-                                                payload.put("processDeferredForForegroundFocus", quickChargeTraceSnapshot.optBoolean("processDeferredForForegroundFocus", false));
-                                                payload.put("readerDisconnectBeforeCallback", readerDisconnectedDuringActiveRun());
-                                                payload.put("readerDisconnectReason", lastReaderDisconnectReason);
-                                                payload.put("cancelClassification", determineCancelClassification(normalizedCode));
-                                                attachDeferredAuditCounters(payload);
-                                                attachDeferredRunIdentity(payload);
-                                                attachPaymentIntentSnapshot(payload, activePaymentIntent, "process_failure_active_intent");
-                                                finalizeQuickChargeTraceSnapshot(quickChargeTraceSnapshot);
-                                                payload.put("quickChargeTraceSnapshot", quickChargeTraceSnapshot);
-                                                JSObject quickChargeProcessCallbackPayload = new JSObject();
-                                                quickChargeProcessCallbackPayload.put("sessionId", currentSessionId);
-                                                quickChargeProcessCallbackPayload.put("flowRunId", currentFlowRunId);
-                                                quickChargeProcessCallbackPayload.put("paymentIntentId", activePaymentIntent != null ? activePaymentIntent.getId() : null);
-                                                quickChargeProcessCallbackPayload.put("paymentIntentStatus", activePaymentIntent != null && activePaymentIntent.getStatus() != null ? activePaymentIntent.getStatus().name() : null);
-                                                quickChargeProcessCallbackPayload.put("processOutcome", "failed");
-                                                quickChargeProcessCallbackPayload.put("terminalCode", e.getErrorCode() == null ? "UNKNOWN" : e.getErrorCode().name());
-                                                logFlowEvent("quick_charge_native_process_callback", quickChargeProcessCallbackPayload);
-                                                logStartupStage("native_process_result", payload);
-                                                cacheFinalResult(payload, "process_failure");
-                                                clearActivePaymentState();
-                                                resetStatusForNextAttempt();
-                                                resolveOnce(resolveGate, call, payload);
-                                            }
-                                        }
-                                    );
-                                    };
-
-                                    quickChargeTraceSnapshot.put("processAwarenessFallbackUsed", false);
-                                    quickChargeTraceSnapshot.put("processAwarenessFallbackReason", JSONObject.NULL);
-                                    quickChargeTraceSnapshot.put("processDeferredForForegroundFocus", false);
-                                    quickChargeTraceSnapshot.put("processDeferredWaitPathRan", false);
-                                    quickChargeTraceSnapshot.put("hostLifecycleSafeAtCollectSuccess", JSONObject.NULL);
-                                    quickChargeTraceSnapshot.put("processStartGateBranch", "collect_success_wait_for_host_reattach");
-                                    quickChargeTraceSnapshot.put("processStartAllowedReason", "awaiting_host_reattach_after_collect_success");
-
-                                    armCollectSuccessContinuation(invokeProcessPaymentIntent, collectedIntent.getId(), quickChargeTraceSnapshot);
-                                    tryReleaseArmedCollectSuccessContinuation("collect_success_direct_post_register", quickChargeTraceSnapshot);
+                                        postSessionState("needs_reconciliation", "native_process_pending");
+                                        JSObject payload = result("processing", null, "Stripe Terminal returned a pending PaymentIntent state.");
+                                        JSObject detailPayload = detail("native_process_result", "pending", intent.getStatus().name());
+                                        detailPayload.put("processInvoked", true);
+                                        detailPayload.put("processPath", "unified_process_payment_intent");
+                                        payload.put("detail", detailPayload);
+                                        attachDeferredAuditCounters(payload);
+                                        attachDeferredRunIdentity(payload);
+                                        attachPaymentIntentSnapshot(payload, intent, "process_pending");
+                                        finalizeQuickChargeTraceSnapshot(quickChargeTraceSnapshot);
+                                        payload.put("quickChargeTraceSnapshot", quickChargeTraceSnapshot);
+                                        logStartupStage("native_process_result", payload);
+                                        cacheFinalResult(payload, "process_pending");
+                                        clearActivePaymentState();
+                                        resetStatusForNextAttempt();
+                                        resolveOnce(resolveGate, call, payload);
+                                    } else {
+                                        status = "failed";
+                                        JSObject payload = result("failed", "processing_error", "Unexpected PaymentIntent status: " + intent.getStatus());
+                                        JSObject detailPayload = detail("native_process_result", "unexpected_status", String.valueOf(intent.getStatus()));
+                                        detailPayload.put("processInvoked", true);
+                                        detailPayload.put("processPath", "unified_process_payment_intent");
+                                        payload.put("detail", detailPayload);
+                                        attachDeferredAuditCounters(payload);
+                                        attachDeferredRunIdentity(payload);
+                                        attachPaymentIntentSnapshot(payload, intent, "process_unexpected_status");
+                                        quickChargeTraceSnapshot.put("nativeFailurePoint", "process_unexpected_status");
+                                        quickChargeTraceSnapshot.put("finalFailureReason", "Unexpected PaymentIntent status after process callback.");
+                                        finalizeQuickChargeTraceSnapshot(quickChargeTraceSnapshot);
+                                        payload.put("quickChargeTraceSnapshot", quickChargeTraceSnapshot);
+                                        logStartupStage("native_process_result", payload);
+                                        cacheFinalResult(payload, "process_unexpected_status");
+                                        clearActivePaymentState();
+                                        resetStatusForNextAttempt();
+                                        resolveOnce(resolveGate, call, payload);
+                                    }
                                 }
 
                                 @Override
                                 public void onFailure(TerminalException e) {
                                     String normalizedCode = normalizeErrorCode(e);
-                                    quickChargeTraceSnapshot.put("collectCallbackStatus", "failure");
-                                    quickChargeTraceSnapshot.put("collectFailureCallbackCount", quickChargeTraceSnapshot.optInt("collectFailureCallbackCount", 0) + 1);
-                                    quickChargeTraceSnapshot.put("paymentStatusChangeCountBeforeCollectSuccess", paymentStatusChangeCount);
-                                    quickChargeTraceSnapshot.put("paymentStatusWaitingForInputCountBeforeCollectSuccess", paymentStatusWaitingForInputCount);
-                                    quickChargeTraceSnapshot.put("paymentStatusProcessingCountBeforeCollectSuccess", paymentStatusProcessingCount);
-                                    quickChargeTraceSnapshot.put("paymentStatusReadyCountBeforeCollectSuccess", paymentStatusReadyCount);
-                                    quickChargeTraceSnapshot.put("paymentStatusTrailBeforeCollectSuccess", paymentStatusTrailPayload());
-                                    quickChargeTraceSnapshot.put("nativeFailurePoint", "collect_callback_failure");
+                                    quickChargeTraceSnapshot.put("processCallbackStatus", "failure");
+                                    quickChargeTraceSnapshot.put("processFailureCallbackCount", quickChargeTraceSnapshot.optInt("processFailureCallbackCount", 0) + 1);
+                                    quickChargeTraceSnapshot.put("processCallbackCount", quickChargeTraceSnapshot.optInt("processCallbackCount", 0) + 1);
+                                    quickChargeTraceSnapshot.put("nativeFailurePoint", "process_callback_failure");
                                     quickChargeTraceSnapshot.put("finalFailureReason", buildErrorMessage(e));
-                                    JSObject collectFailurePayload = new JSObject();
-                                    collectFailurePayload.put("normalizedCode", normalizedCode);
-                                    collectFailurePayload.put("terminalCode", e.getErrorCode() == null ? "UNKNOWN" : e.getErrorCode().name());
-                                    traceTimeline("collect_failure_callback", collectFailurePayload);
+                                    quickChargeTraceSnapshot.put("processFailureCode", normalizedCode);
+                                    quickChargeTraceSnapshot.put("processFailureMessage", buildErrorMessage(e));
+                                    quickChargeTraceSnapshot.put("processFailureExceptionClass", e.getClass().getName());
+                                    quickChargeTraceSnapshot.put("appResumedDuringProcessInFlight", appResumedDuringProcessInFlight);
+                                    JSObject processFailurePayload = new JSObject();
+                                    processFailurePayload.put("normalizedCode", normalizedCode);
+                                    processFailurePayload.put("terminalCode", e.getErrorCode() == null ? "UNKNOWN" : e.getErrorCode().name());
+                                    traceTimeline("process_failure_callback", processFailurePayload);
                                     String reasonCategory = classifyTerminalFailureCategory(normalizedCode);
                                     String mappedSessionState = mapSessionStateForFailureCategory(reasonCategory);
                                     String mappedPluginStatus = mapPluginStatusForFailureCategory(reasonCategory);
                                     status = mappedPluginStatus;
+                                    enrichQuickChargeFailureSnapshot(quickChargeTraceSnapshot, e, normalizedCode, reasonCategory);
                                     if ("canceled".equals(normalizedCode)) {
                                         logCancelOrCleanupPath(
                                             "native_cancel_inevitable",
-                                            "startTapToPayPayment.collectPaymentMethod.onFailure",
+                                            "startTapToPayPayment.processPaymentIntent.onFailure",
                                             "terminal_reported_canceled"
                                         );
                                     }
-                                    postSessionState(mappedSessionState, "native_collect_" + reasonCategory);
+                                    postSessionState(mappedSessionState, "native_process_" + reasonCategory);
                                     JSObject payload = result(mappedPluginStatus, normalizedCode, buildErrorMessage(e));
-                                    enrichOutcomePayload(payload, "native_collect_result", e.getErrorCode(), "customer_cancelled".equals(reasonCategory));
+                                    enrichOutcomePayload(payload, "native_process_result", e.getErrorCode(), "customer_cancelled".equals(reasonCategory));
                                     payload.put("reasonCategory", reasonCategory);
                                     payload.put("mappedSessionState", mappedSessionState);
                                     payload.put("interruptionReasonCode", "lifecycle_interrupted".equals(reasonCategory) ? "background_loss_confirmed" : "none");
-                                    payload.put("detail", terminalErrorDetail(e, "native_collect_result"));
+                                    JSObject detailPayload = terminalErrorDetail(e, "native_process_result");
+                                    detailPayload.put("processInvoked", true);
+                                    detailPayload.put("processPath", "unified_process_payment_intent");
+                                    payload.put("detail", detailPayload);
                                     payload.put("interruptionSource", confirmedBackgroundInterruption ? "app_or_device_backgrounded" : (lifecyclePausedDuringActiveFlow ? "transient_lifecycle_change" : "none_detected"));
                                     payload.put("backgroundInterruptionCandidate", backgroundInterruptionCandidate);
                                     payload.put("backgroundInterruptionMs", backgroundInterruptionCandidateAtMs > 0 ? (System.currentTimeMillis() - backgroundInterruptionCandidateAtMs) : 0L);
-                                    payload.put("collectOutcome", "failure");
-                                    JSObject quickChargeCollectCallbackPayload = new JSObject();
-                                    quickChargeCollectCallbackPayload.put("sessionId", currentSessionId);
-                                    quickChargeCollectCallbackPayload.put("flowRunId", currentFlowRunId);
-                                    quickChargeCollectCallbackPayload.put("paymentIntentId", activePaymentIntent != null ? activePaymentIntent.getId() : null);
-                                    quickChargeCollectCallbackPayload.put("paymentIntentStatus", activePaymentIntent != null && activePaymentIntent.getStatus() != null ? activePaymentIntent.getStatus().name() : null);
-                                    quickChargeCollectCallbackPayload.put("collectOutcome", "failed");
-                                    quickChargeCollectCallbackPayload.put("terminalCode", e.getErrorCode() == null ? "UNKNOWN" : e.getErrorCode().name());
-                                    logFlowEvent("quick_charge_native_collect_callback", quickChargeCollectCallbackPayload);
-                                    attachPaymentIntentSnapshot(payload, activePaymentIntent, "collect_failure_active_intent");
+                                    payload.put("cancelRequestedByApp", cancelRequestedByApp);
+                                    payload.put("isProcessCancelableActive", processCancelable != null && !processCancelable.isCompleted());
+                                    payload.put("pluginMarkedCanceledBeforeTerminal", cancelRequestedByApp);
+                                    payload.put("appResumedDuringProcessInFlight", appResumedDuringProcessInFlight);
+                                    payload.put("processDeferredForForegroundFocus", false);
+                                    payload.put("readerDisconnectBeforeCallback", readerDisconnectedDuringActiveRun());
+                                    payload.put("readerDisconnectReason", lastReaderDisconnectReason);
+                                    payload.put("cancelClassification", determineCancelClassification(normalizedCode));
+                                    attachDeferredAuditCounters(payload);
+                                    attachDeferredRunIdentity(payload);
+                                    attachPaymentIntentSnapshot(payload, activePaymentIntent, "process_failure_active_intent");
                                     finalizeQuickChargeTraceSnapshot(quickChargeTraceSnapshot);
                                     payload.put("quickChargeTraceSnapshot", quickChargeTraceSnapshot);
-                                    logStartupStage("native_collect_result", payload);
-                                    cacheFinalResult(payload, "collect_failure");
+                                    JSObject quickChargeProcessCallbackPayload = new JSObject();
+                                    quickChargeProcessCallbackPayload.put("sessionId", currentSessionId);
+                                    quickChargeProcessCallbackPayload.put("flowRunId", currentFlowRunId);
+                                    quickChargeProcessCallbackPayload.put("paymentIntentId", activePaymentIntent != null ? activePaymentIntent.getId() : null);
+                                    quickChargeProcessCallbackPayload.put("paymentIntentStatus", activePaymentIntent != null && activePaymentIntent.getStatus() != null ? activePaymentIntent.getStatus().name() : null);
+                                    quickChargeProcessCallbackPayload.put("processOutcome", "failed");
+                                    quickChargeProcessCallbackPayload.put("terminalCode", e.getErrorCode() == null ? "UNKNOWN" : e.getErrorCode().name());
+                                    quickChargeProcessCallbackPayload.put("processPath", "unified_process_payment_intent");
+                                    logFlowEvent("quick_charge_native_process_callback", quickChargeProcessCallbackPayload);
+                                    logStartupStage("native_process_result", payload);
+                                    cacheFinalResult(payload, "process_failure");
                                     clearActivePaymentState();
                                     resetStatusForNextAttempt();
                                     resolveOnce(resolveGate, call, payload);
                                 }
-                            },
-                            new CollectPaymentIntentConfiguration.Builder().build()
+                            }
                         );
                     }
 
@@ -1587,7 +1329,6 @@ public class OrderfastTapToPayPlugin extends Plugin {
         }
         logLifecycleEvent("onResume");
         traceTimeline("plugin_handleOnResume", null);
-        tryReleaseArmedCollectSuccessContinuation("handleOnResume", null);
         if (Terminal.isInitialized() && connectedReader != null && Terminal.getInstance().getConnectionStatus() == ConnectionStatus.CONNECTED) {
             if (!inFlight && ("failed".equals(status) || "idle".equals(status))) {
                 status = "ready";
@@ -1611,7 +1352,6 @@ public class OrderfastTapToPayPlugin extends Plugin {
         super.handleOnStart();
         logLifecycleEvent("onStart");
         traceTimeline("plugin_handleOnStart", null);
-        tryReleaseArmedCollectSuccessContinuation("handleOnStart", null);
     }
 
     @Override
@@ -2005,50 +1745,15 @@ public class OrderfastTapToPayPlugin extends Plugin {
 
     private void resetDeferredProcessAuditCounters() {
         collectSuccessCallbackCount = 0;
-        deferredProcessRegistrationCount = 0;
-        deferredProcessRecheckCount = 0;
-        deferredProcessReleaseAttemptCount = 0;
         processInvokeAttemptCount = 0;
         processInvokeCommittedCount = 0;
-        deferredAlreadyClearedCount = 0;
-        deferredRearmedCount = 0;
-        postCollectDirectRecheckCount = 0;
-        onStartRecheckCount = 0;
-        onResumeRecheckCount = 0;
-        onWindowFocusChangedRecheckCount = 0;
-        onNewIntentRecheckCount = 0;
-        collectSuccessAtMs = 0L;
-        deferredProcessTokenId = null;
-        deferredSessionId = null;
-        deferredFlowRunId = null;
-        deferredPaymentIntentId = null;
-        deferredReleaseCommitted = false;
-        continuationArmed = false;
-        continuationReleaseTrigger = null;
-        continuationHostActivityIdentityHash = -1;
-        deferredProcessStartRunnable = null;
-        deferredProcessStartReason = null;
-        deferredProcessStartRegisteredAtMs = 0L;
     }
 
     private void attachDeferredAuditCounters(JSObject payload) {
         if (payload == null) return;
         payload.put("collectSuccessCallbackCount", collectSuccessCallbackCount);
-        payload.put("deferredProcessRegistrationCount", deferredProcessRegistrationCount);
-        payload.put("deferredProcessRecheckCount", deferredProcessRecheckCount);
-        payload.put("deferredProcessReleaseAttemptCount", deferredProcessReleaseAttemptCount);
         payload.put("processInvokeAttemptCount", processInvokeAttemptCount);
         payload.put("processInvokeCommittedCount", processInvokeCommittedCount);
-        payload.put("deferredAlreadyClearedCount", deferredAlreadyClearedCount);
-        payload.put("deferredRearmedCount", deferredRearmedCount);
-        payload.put("postCollectDirectRecheckCount", postCollectDirectRecheckCount);
-        payload.put("onStartRecheckCount", onStartRecheckCount);
-        payload.put("onResumeRecheckCount", onResumeRecheckCount);
-        payload.put("onWindowFocusChangedRecheckCount", onWindowFocusChangedRecheckCount);
-        payload.put("onNewIntentRecheckCount", onNewIntentRecheckCount);
-        payload.put("collectSuccessAtMs", collectSuccessAtMs > 0L ? collectSuccessAtMs : JSONObject.NULL);
-        payload.put("continuationArmed", continuationArmed);
-        payload.put("continuationReleaseTrigger", continuationReleaseTrigger == null ? JSONObject.NULL : continuationReleaseTrigger);
         payload.put("hostOnStartAtMs", MainActivity.getHostActivityLastStartedAtMs() > 0L ? MainActivity.getHostActivityLastStartedAtMs() : JSONObject.NULL);
         payload.put("hostOnResumeAtMs", MainActivity.getHostActivityLastResumedAtMs() > 0L ? MainActivity.getHostActivityLastResumedAtMs() : JSONObject.NULL);
         payload.put("currentActivityIdentityHash", MainActivity.getHostActivityIdentityHash());
@@ -2059,191 +1764,6 @@ public class OrderfastTapToPayPlugin extends Plugin {
         payload.put("sessionId", isBlank(currentSessionId) ? JSONObject.NULL : currentSessionId);
         payload.put("flowRunId", isBlank(currentFlowRunId) ? JSONObject.NULL : currentFlowRunId);
         payload.put("paymentIntentId", activePaymentIntent != null ? activePaymentIntent.getId() : JSONObject.NULL);
-        payload.put("deferredTokenId", deferredProcessTokenId == null ? JSONObject.NULL : deferredProcessTokenId);
-        payload.put("deferredSessionId", isBlank(deferredSessionId) ? JSONObject.NULL : deferredSessionId);
-        payload.put("deferredFlowRunId", isBlank(deferredFlowRunId) ? JSONObject.NULL : deferredFlowRunId);
-        payload.put("deferredPaymentIntentId", isBlank(deferredPaymentIntentId) ? JSONObject.NULL : deferredPaymentIntentId);
-    }
-
-    private boolean doesCurrentRunMatchDeferredContinuation() {
-        String activePaymentIntentId = activePaymentIntent == null ? null : activePaymentIntent.getId();
-        boolean sessionMatches = valueEqualsOrBothBlank(currentSessionId, deferredSessionId);
-        boolean flowMatches = valueEqualsOrBothBlank(currentFlowRunId, deferredFlowRunId);
-        boolean intentMatches = valueEqualsOrBothBlank(activePaymentIntentId, deferredPaymentIntentId);
-        return sessionMatches && flowMatches && intentMatches;
-    }
-
-    private boolean valueEqualsOrBothBlank(String left, String right) {
-        if (isBlank(left) && isBlank(right)) {
-            return true;
-        }
-        if (left == null) {
-            return right == null;
-        }
-        return left.equals(right);
-    }
-
-    private void incrementRecheckTriggerCounter(String trigger) {
-        if ("collect_success_direct_post_register".equals(trigger)) {
-            postCollectDirectRecheckCount += 1;
-            return;
-        }
-        if ("handleOnStart".equals(trigger)) {
-            onStartRecheckCount += 1;
-            return;
-        }
-        if ("handleOnResume".equals(trigger)) {
-            onResumeRecheckCount += 1;
-            return;
-        }
-        if (trigger != null && trigger.startsWith("mainActivity_onWindowFocusChanged:")) {
-            onWindowFocusChangedRecheckCount += 1;
-            return;
-        }
-        if ("handleOnNewIntent".equals(trigger)) {
-            onNewIntentRecheckCount += 1;
-        }
-    }
-
-    private void appendContinuationTelemetry(JSObject payload, String trigger, boolean releaseConditionPassed) {
-        if (payload == null) return;
-        payload.put("collectSuccessAtMs", collectSuccessAtMs > 0L ? collectSuccessAtMs : JSONObject.NULL);
-        payload.put("continuationArmed", continuationArmed);
-        payload.put("continuationReleaseTrigger", continuationReleaseTrigger == null ? JSONObject.NULL : continuationReleaseTrigger);
-        payload.put("hostOnStartAtMs", MainActivity.getHostActivityLastStartedAtMs() > 0L ? MainActivity.getHostActivityLastStartedAtMs() : JSONObject.NULL);
-        payload.put("hostOnResumeAtMs", MainActivity.getHostActivityLastResumedAtMs() > 0L ? MainActivity.getHostActivityLastResumedAtMs() : JSONObject.NULL);
-        payload.put("currentActivityIdentityHash", MainActivity.getHostActivityIdentityHash());
-        payload.put("continuationReleaseConditionPassed", releaseConditionPassed);
-        payload.put("continuationCheckTrigger", trigger == null ? JSONObject.NULL : trigger);
-        payload.put("processInvokeCommittedCount", processInvokeCommittedCount);
-    }
-
-    private boolean isHostReattachedAfterCollectSuccess() {
-        if (collectSuccessAtMs <= 0L) {
-            return false;
-        }
-        long hostOnStartAtMs = MainActivity.getHostActivityLastStartedAtMs();
-        long hostOnResumeAtMs = MainActivity.getHostActivityLastResumedAtMs();
-        return hostOnStartAtMs > collectSuccessAtMs || hostOnResumeAtMs > collectSuccessAtMs;
-    }
-
-    private void armCollectSuccessContinuation(Runnable continuation, String paymentIntentId, JSObject quickChargeTraceSnapshot) {
-        if (continuation == null) {
-            return;
-        }
-        synchronized (continuationLock) {
-            if (continuationArmed) {
-                deferredRearmedCount += 1;
-                return;
-            }
-            deferredProcessStartRunnable = continuation;
-            deferredProcessStartReason = "collect_success_wait_for_host_reattach";
-            deferredProcessStartRegisteredAtMs = System.currentTimeMillis();
-            collectSuccessAtMs = deferredProcessStartRegisteredAtMs;
-            deferredProcessRegistrationCount += 1;
-            deferredProcessTokenId = "collect_success_" + (++deferredTokenSequence);
-            deferredSessionId = currentSessionId;
-            deferredFlowRunId = currentFlowRunId;
-            deferredPaymentIntentId = paymentIntentId;
-            continuationHostActivityIdentityHash = MainActivity.getHostActivityIdentityHash();
-            deferredReleaseCommitted = false;
-            continuationArmed = true;
-            continuationReleaseTrigger = null;
-            if (quickChargeTraceSnapshot != null) {
-                quickChargeTraceSnapshot.put("collectSuccessAtMs", collectSuccessAtMs);
-                quickChargeTraceSnapshot.put("continuationArmed", true);
-                quickChargeTraceSnapshot.put("continuationReleaseTrigger", JSONObject.NULL);
-                quickChargeTraceSnapshot.put("hostOnStartAtMs", MainActivity.getHostActivityLastStartedAtMs() > 0L ? MainActivity.getHostActivityLastStartedAtMs() : JSONObject.NULL);
-                quickChargeTraceSnapshot.put("hostOnResumeAtMs", MainActivity.getHostActivityLastResumedAtMs() > 0L ? MainActivity.getHostActivityLastResumedAtMs() : JSONObject.NULL);
-                quickChargeTraceSnapshot.put("currentActivityIdentityHash", MainActivity.getHostActivityIdentityHash());
-                quickChargeTraceSnapshot.put("continuationReleaseConditionPassed", false);
-                quickChargeTraceSnapshot.put("currentDeferredTokenId", deferredProcessTokenId == null ? JSONObject.NULL : deferredProcessTokenId);
-            }
-        }
-    }
-
-    private void tryReleaseArmedCollectSuccessContinuation(String trigger, JSObject quickChargeTraceSnapshot) {
-        mainHandler.post(() -> {
-            Runnable continuationToInvoke = null;
-            boolean releaseConditionPassed;
-            synchronized (continuationLock) {
-                incrementRecheckTriggerCounter(trigger);
-                deferredProcessRecheckCount += 1;
-                boolean runMatches = doesCurrentRunMatchDeferredContinuation();
-                boolean sameActivityInstance = continuationHostActivityIdentityHash != -1
-                    && continuationHostActivityIdentityHash == MainActivity.getHostActivityIdentityHash();
-                Activity pluginActivity = getActivity();
-                boolean activityUsable = pluginActivity != null
-                    && !pluginActivity.isFinishing()
-                    && !pluginActivity.isDestroyed()
-                    && !MainActivity.getHostActivityWasDestroyed();
-                boolean hostReattachedAfterCollect = isHostReattachedAfterCollectSuccess();
-                boolean appForegrounded = !isAppInBackground();
-                releaseConditionPassed = continuationArmed
-                    && !deferredReleaseCommitted
-                    && runMatches
-                    && sameActivityInstance
-                    && activityUsable
-                    && appForegrounded
-                    && hostReattachedAfterCollect
-                    && inFlight
-                    && processInvokeCommittedCount == 0;
-
-                JSObject recheckPayload = lifecyclePayload("collect_success_continuation_recheck");
-                recheckPayload.put("trigger", trigger);
-                recheckPayload.put("runMatches", runMatches);
-                recheckPayload.put("sameActivityInstance", sameActivityInstance);
-                recheckPayload.put("activityUsable", activityUsable);
-                recheckPayload.put("appForegrounded", appForegrounded);
-                recheckPayload.put("hostReattachedAfterCollect", hostReattachedAfterCollect);
-                appendContinuationTelemetry(recheckPayload, trigger, releaseConditionPassed);
-                attachDeferredRunIdentity(recheckPayload);
-                attachDeferredAuditCounters(recheckPayload);
-                logFlowEvent("native_collect_success_continuation_recheck", recheckPayload);
-
-                if (!releaseConditionPassed) {
-                    if (quickChargeTraceSnapshot != null) {
-                        quickChargeTraceSnapshot.put("continuationArmed", continuationArmed);
-                        quickChargeTraceSnapshot.put("hostOnStartAtMs", MainActivity.getHostActivityLastStartedAtMs() > 0L ? MainActivity.getHostActivityLastStartedAtMs() : JSONObject.NULL);
-                        quickChargeTraceSnapshot.put("hostOnResumeAtMs", MainActivity.getHostActivityLastResumedAtMs() > 0L ? MainActivity.getHostActivityLastResumedAtMs() : JSONObject.NULL);
-                        quickChargeTraceSnapshot.put("currentActivityIdentityHash", MainActivity.getHostActivityIdentityHash());
-                        quickChargeTraceSnapshot.put("continuationReleaseConditionPassed", false);
-                    }
-                    return;
-                }
-
-                deferredProcessReleaseAttemptCount += 1;
-                deferredReleaseCommitted = true;
-                continuationArmed = false;
-                continuationReleaseTrigger = trigger;
-                continuationToInvoke = deferredProcessStartRunnable;
-                deferredProcessStartRunnable = null;
-                deferredProcessStartReason = null;
-                deferredProcessStartRegisteredAtMs = 0L;
-                deferredProcessTokenId = null;
-                deferredSessionId = null;
-                deferredFlowRunId = null;
-                deferredPaymentIntentId = null;
-                continuationHostActivityIdentityHash = -1;
-                if (continuationToInvoke == null) {
-                    deferredAlreadyClearedCount += 1;
-                }
-                if (quickChargeTraceSnapshot != null) {
-                    quickChargeTraceSnapshot.put("continuationArmed", false);
-                    quickChargeTraceSnapshot.put("continuationReleaseTrigger", trigger);
-                    quickChargeTraceSnapshot.put("hostOnStartAtMs", MainActivity.getHostActivityLastStartedAtMs() > 0L ? MainActivity.getHostActivityLastStartedAtMs() : JSONObject.NULL);
-                    quickChargeTraceSnapshot.put("hostOnResumeAtMs", MainActivity.getHostActivityLastResumedAtMs() > 0L ? MainActivity.getHostActivityLastResumedAtMs() : JSONObject.NULL);
-                    quickChargeTraceSnapshot.put("currentActivityIdentityHash", MainActivity.getHostActivityIdentityHash());
-                    quickChargeTraceSnapshot.put("continuationReleaseConditionPassed", true);
-                    quickChargeTraceSnapshot.put("currentDeferredTokenId", JSONObject.NULL);
-                    quickChargeTraceSnapshot.put("processStartGateBranch", "collect_success_host_reattach_released");
-                    quickChargeTraceSnapshot.put("processStartAllowedReason", "host_reattached_after_collect_success");
-                }
-            }
-            if (continuationToInvoke != null) {
-                continuationToInvoke.run();
-            }
-        });
     }
 
     private String flowRunJsonFragment() {
