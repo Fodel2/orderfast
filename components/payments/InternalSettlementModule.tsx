@@ -5,9 +5,11 @@ import { resolveNativeTapToPayReadiness } from '@/lib/kiosk/tapToPayNativeReadin
 import { type AppFlowState } from '@/lib/app/launcherBootstrap';
 import { internalSettlementActiveRunStore } from '@/lib/payments/internalSettlementActiveRunStore';
 import { buildCombinedTapToPayDiagnosticsPayload } from '@/lib/payments/tapToPayDiagnostics';
+import NativeTapToPayPreHandoverOverlay from '@/components/payments/NativeTapToPayPreHandoverOverlay';
+import { isNativeTapToPayPreHandoverPhase, resolveNativeTapToPayUiPhase } from '@/lib/payments/nativeTapToPayUiPhases';
 
 type SettlementMode = 'order_payment' | 'quick_charge';
-type CollectionState = AppFlowState | 'idle';
+type CollectionState = AppFlowState | 'idle' | 'handover';
 type CollectionFailureCategory =
   | 'customer_cancelled'
   | 'app_cancelled'
@@ -149,6 +151,7 @@ export default function InternalSettlementModule({
   const [quickChargeRawServerVerificationPayload, setQuickChargeRawServerVerificationPayload] = useState<Record<string, unknown> | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [activeTerminalLocationId, setActiveTerminalLocationId] = useState<string | null>(null);
+  const [preHandoverMessageIndex, setPreHandoverMessageIndex] = useState(0);
   const flowActiveRef = useRef(false);
   const flowRunIdRef = useRef<string | null>(null);
   const quickChargeAttemptStartMsRef = useRef<number | null>(null);
@@ -158,6 +161,8 @@ export default function InternalSettlementModule({
   const quickChargePaymentIntentIdRef = useRef<string | null>(null);
 
   const selectedOrder = useMemo(() => orders.find((order) => order.id === selectedOrderId) || null, [orders, selectedOrderId]);
+  const uiPhase = useMemo(() => resolveNativeTapToPayUiPhase(state), [state]);
+  const showPreHandoverOverlay = useMemo(() => isNativeTapToPayPreHandoverPhase(state), [state]);
 
   const amountCents = useMemo(() => {
     if (mode === 'order_payment') return Number(selectedOrder?.total_price || 0);
@@ -414,6 +419,17 @@ export default function InternalSettlementModule({
     onFlowActivityChange?.(busy || flowActiveRef.current);
   }, [busy, onFlowActivityChange]);
 
+  useEffect(() => {
+    if (!showPreHandoverOverlay) {
+      setPreHandoverMessageIndex(0);
+      return;
+    }
+    const interval = window.setInterval(() => {
+      setPreHandoverMessageIndex((previous) => previous + 1);
+    }, 2200);
+    return () => window.clearInterval(interval);
+  }, [showPreHandoverOverlay]);
+
   const classifyNativeFailure = useCallback((nativeResult: Awaited<ReturnType<typeof tapToPayBridge.startTapToPayPayment>>) => {
     const detail =
       nativeResult.detail && typeof nativeResult.detail === 'object'
@@ -664,8 +680,8 @@ export default function InternalSettlementModule({
         return;
       }
 
-      setState('collecting');
-      setMessage('Present card/phone to collect payment…');
+      setState('handover');
+      setMessage('Handing over to Stripe Tap to Pay…');
       logCollectionEvent('native_collect.start', { sessionId });
 
       let nativeResult = await tapToPayBridge.startTapToPayPayment({
@@ -945,6 +961,18 @@ export default function InternalSettlementModule({
         }
 
         if (verifyRes?.ok === true && verifiedState === 'finalized') {
+          const verificationPaid = verifyPayload?.verification?.verifiedPaid === true;
+          if (!verificationPaid) {
+            setState('failed');
+            setMessage(
+              verifyPayload?.verification?.reason ||
+                'Payment did not complete successfully. Please retry or choose another method.'
+            );
+            setActiveSessionId(null);
+            setActiveTerminalLocationId(null);
+            internalSettlementActiveRunStore.clear();
+            return;
+          }
           if (mode === 'quick_charge') {
             quickChargeAttemptEndMsRef.current = Date.now();
           }
@@ -1283,7 +1311,14 @@ export default function InternalSettlementModule({
   }, [activeSessionId, loadOrders, logCollectionEvent]);
 
   return (
-    <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+    <section className="relative rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+      <NativeTapToPayPreHandoverOverlay
+        visible={showPreHandoverOverlay}
+        phaseLabel="Preparing payment mode"
+        title="Contactless payments"
+        message={message}
+        lineIndex={preHandoverMessageIndex}
+      />
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{eyebrow}</p>
       <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">{title}</h1>
 
@@ -1371,28 +1406,6 @@ export default function InternalSettlementModule({
 
         <div className="space-y-4 rounded-2xl border border-slate-200 p-4">
           <h2 className="text-sm font-semibold text-slate-900">Payment method</h2>
-          <p className="text-sm text-slate-600">Contactless card-present via Tap to Pay</p>
-          {tapAvailabilityLoading ? (
-            <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-              Checking Tap to Pay availability…
-            </p>
-          ) : null}
-          {!tapAvailabilityLoading && !tapAvailabilityReady ? (
-            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              Tap to Pay unavailable: {tapAvailabilityReason || 'Tap to Pay is not ready on this account/device.'}
-            </p>
-          ) : null}
-          {nativeReadinessLoading ? (
-            <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-              Checking device Tap to Pay prerequisites…
-            </p>
-          ) : null}
-          {!nativeReadinessLoading && !nativeReadinessReady ? (
-            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              Device setup required:{' '}
-              {nativeReadinessReason || 'Location permission and location services are required.'}
-            </p>
-          ) : null}
 
           <div
             className={`rounded-2xl border px-4 py-3 text-sm ${
@@ -1405,8 +1418,18 @@ export default function InternalSettlementModule({
                     : 'border-slate-200 bg-slate-50 text-slate-700'
             }`}
           >
-            <p className="font-semibold">Collection state: {state.replace('_', ' ')}</p>
+            <p className="font-semibold">Collection state: {uiPhase.replaceAll('_', ' ')}</p>
             <p className="mt-1 text-xs">{message}</p>
+            {!tapAvailabilityLoading && !tapAvailabilityReady ? (
+              <p className="mt-2 text-xs text-amber-700">
+                Tap to Pay unavailable: {tapAvailabilityReason || 'Tap to Pay is not ready on this account/device.'}
+              </p>
+            ) : null}
+            {!nativeReadinessLoading && !nativeReadinessReady ? (
+              <p className="mt-2 text-xs text-amber-700">
+                Device setup required: {nativeReadinessReason || 'Location permission and location services are required.'}
+              </p>
+            ) : null}
             {quickChargeAttemptDiagnosticsSerialized ? (
               <div
                 className={`mt-3 rounded-xl border bg-white/90 p-3 text-[11px] ${
@@ -1443,10 +1466,6 @@ export default function InternalSettlementModule({
                   {quickChargeAttemptDiagnosticsSerialized}
                 </pre>
               </div>
-            ) : null}
-            {activeSessionId ? <p className="mt-2 text-[11px] text-slate-500">Session: {activeSessionId}</p> : null}
-            {activeTerminalLocationId ? (
-              <p className="mt-1 text-[11px] text-slate-500">Terminal location: {activeTerminalLocationId}</p>
             ) : null}
           </div>
 
