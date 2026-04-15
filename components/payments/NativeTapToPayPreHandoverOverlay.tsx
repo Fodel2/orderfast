@@ -1,28 +1,28 @@
+import { CheckCircleIcon, XMarkIcon } from '@heroicons/react/24/solid';
 import { useMemo } from 'react';
 
 type NativeTapToPayPreHandoverOverlayProps = {
   visible: boolean;
-  title?: string;
-  message?: string;
-  phaseLabel?: string;
   lines?: string[];
   lineIndex?: number;
+  showSuccessTick?: boolean;
+  canClose?: boolean;
+  onClose?: () => void;
+  recoveryActionLabel?: string;
+  onRecoveryAction?: () => void;
 };
 
-const DEFAULT_LINES = [
-  'Activating contactless payments…',
-  'Preparing Tap to Pay…',
-  'Waking up the payment magic…',
-  'Getting ready for contactless…',
-];
+const DEFAULT_LINES = ['Preparing payment…'];
 
 export default function NativeTapToPayPreHandoverOverlay({
   visible,
-  title = 'Contactless payments',
-  message,
-  phaseLabel = 'Preparing payment mode',
   lines = DEFAULT_LINES,
   lineIndex = 0,
+  showSuccessTick = false,
+  canClose = false,
+  onClose,
+  recoveryActionLabel,
+  onRecoveryAction,
 }: NativeTapToPayPreHandoverOverlayProps) {
   const activeLine = useMemo(() => {
     if (!lines.length) return '';
@@ -33,13 +33,34 @@ export default function NativeTapToPayPreHandoverOverlay({
   if (!visible) return null;
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-500/45 px-4 py-6 backdrop-blur-[2px]">
-      <section className="w-full max-w-xl rounded-[2rem] border border-slate-200/70 bg-slate-100/95 p-7 text-center shadow-2xl sm:p-9">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{phaseLabel}</p>
-        <div className="mx-auto mt-5 h-11 w-11 animate-spin rounded-full border-4 border-white/80 border-t-slate-600" />
-        <h2 className="mt-5 text-2xl font-semibold tracking-tight text-slate-900">{title}</h2>
-        <p className="mt-3 text-base font-medium text-slate-700">{message || activeLine}</p>
-      </section>
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/45 px-6 py-8 backdrop-blur-md">
+      {canClose ? (
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-5 top-5 rounded-full border border-white/40 bg-white/15 p-2 text-white transition hover:bg-white/25"
+          aria-label="Close payment transition"
+        >
+          <XMarkIcon className="h-5 w-5" />
+        </button>
+      ) : null}
+      <div className="flex flex-col items-center gap-5 text-center text-white">
+        {showSuccessTick ? (
+          <CheckCircleIcon className="h-16 w-16 text-emerald-300" />
+        ) : (
+          <div className="h-14 w-14 animate-spin rounded-full border-4 border-white/45 border-t-white" />
+        )}
+        <p className="text-base font-medium tracking-wide text-white/95">{showSuccessTick ? 'Payment confirmed' : activeLine}</p>
+        {recoveryActionLabel && onRecoveryAction ? (
+          <button
+            type="button"
+            onClick={onRecoveryAction}
+            className="rounded-full border border-white/40 bg-white/15 px-5 py-2 text-sm font-semibold text-white transition hover:bg-white/25"
+          >
+            {recoveryActionLabel}
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }

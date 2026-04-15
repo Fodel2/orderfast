@@ -8,6 +8,7 @@ export default function DashboardTakePaymentPage() {
         <InternalSettlementModule
           eyebrow="Payments"
           title="Take Payment"
+          entryPoint="take_payment"
         />
       </div>
     </DashboardLayout>

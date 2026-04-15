@@ -48,6 +48,7 @@ export default function PosPaymentEntryPage() {
           title="Take Payment"
           restaurantId={restaurantId || null}
           onFlowActivityChange={setFlowActive}
+          entryPoint="pos"
         />
       </div>
     </div>

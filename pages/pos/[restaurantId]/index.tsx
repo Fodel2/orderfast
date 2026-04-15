@@ -88,6 +88,7 @@ const orderTypeLabel: Record<OrderType, string> = {
 export default function PosHomePage() {
   const router = useRouter();
   const { restaurantId: routeParam } = router.query;
+  const stageParam = Array.isArray(router.query.stage) ? router.query.stage[0] : router.query.stage;
   const restaurantId = Array.isArray(routeParam) ? routeParam[0] : routeParam;
   const storageKey = useMemo(
     () => (restaurantId ? `orderfast_pos_cart_${restaurantId}` : null),
@@ -95,8 +96,13 @@ export default function PosHomePage() {
   );
 
   const [stage, setStage] = useState<'orderType' | 'deliveryDetails' | 'sell' | 'checkout' | 'paymentComplete'>(
-    'orderType'
+    stageParam === 'paymentComplete' ? 'paymentComplete' : 'orderType'
   );
+  useEffect(() => {
+    if (stageParam === 'paymentComplete') {
+      setStage('paymentComplete');
+    }
+  }, [stageParam]);
   const [orderType, setOrderType] = useState<OrderType | null>(null);
   const [deliveryDetails, setDeliveryDetails] = useState<DeliveryDetails>(emptyDeliveryDetails);
   const [orderNote, setOrderNote] = useState('');
