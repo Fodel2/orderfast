@@ -115,11 +115,16 @@ public class OrderfastTapToPayPlugin extends Plugin {
     private volatile Runnable deferredProcessStartRunnable = null;
     private volatile String deferredProcessStartReason = null;
     private volatile long deferredProcessStartRegisteredAtMs = 0L;
+    private volatile long collectSuccessAtMs = 0L;
     private volatile String deferredProcessTokenId = null;
     private volatile String deferredSessionId = null;
     private volatile String deferredFlowRunId = null;
     private volatile String deferredPaymentIntentId = null;
     private volatile boolean deferredReleaseCommitted = false;
+    private volatile boolean continuationArmed = false;
+    private volatile String continuationReleaseTrigger = null;
+    private volatile int continuationHostActivityIdentityHash = -1;
+    private final Object continuationLock = new Object();
     private volatile int collectSuccessCallbackCount = 0;
     private volatile int deferredProcessRegistrationCount = 0;
     private volatile int deferredProcessRecheckCount = 0;
@@ -235,6 +240,20 @@ public class OrderfastTapToPayPlugin extends Plugin {
         clearOperationTimeout();
         activePaymentIntent = null;
         processCancelable = null;
+        synchronized (continuationLock) {
+            deferredProcessStartRunnable = null;
+            deferredProcessStartReason = null;
+            deferredProcessStartRegisteredAtMs = 0L;
+            deferredProcessTokenId = null;
+            deferredSessionId = null;
+            deferredFlowRunId = null;
+            deferredPaymentIntentId = null;
+            collectSuccessAtMs = 0L;
+            deferredReleaseCommitted = false;
+            continuationArmed = false;
+            continuationReleaseTrigger = null;
+            continuationHostActivityIdentityHash = -1;
+        }
         cancelRequestedByApp = false;
         lifecyclePausedDuringActiveFlow = false;
         confirmedBackgroundInterruption = false;
@@ -817,6 +836,13 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 quickChargeTraceSnapshot.put("onWindowFocusChangedRecheckCount", 0);
                 quickChargeTraceSnapshot.put("onNewIntentRecheckCount", 0);
                 quickChargeTraceSnapshot.put("currentDeferredTokenId", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("collectSuccessAtMs", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("continuationArmed", false);
+                quickChargeTraceSnapshot.put("continuationReleaseTrigger", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("hostOnStartAtMs", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("hostOnResumeAtMs", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("currentActivityIdentityHash", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("continuationReleaseConditionPassed", JSONObject.NULL);
                 quickChargeTraceSnapshot.put("timedEventTrail", new JSONArray());
                 quickChargeTraceSnapshot.put("paymentStatusChangeCountBeforeCollectSuccess", 0);
                 quickChargeTraceSnapshot.put("paymentStatusWaitingForInputCountBeforeCollectSuccess", 0);
@@ -1222,30 +1248,16 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                     );
                                     };
 
-                                    JSObject processAwareness = resolveTapToPayProcessAwarenessPayload();
-                                    boolean inTapToPayProcess = processAwareness.optBoolean("isTapToPayProcess", false);
                                     quickChargeTraceSnapshot.put("processAwarenessFallbackUsed", false);
                                     quickChargeTraceSnapshot.put("processAwarenessFallbackReason", JSONObject.NULL);
                                     quickChargeTraceSnapshot.put("processDeferredForForegroundFocus", false);
                                     quickChargeTraceSnapshot.put("processDeferredWaitPathRan", false);
                                     quickChargeTraceSnapshot.put("hostLifecycleSafeAtCollectSuccess", JSONObject.NULL);
-                                    if (inTapToPayProcess) {
-                                        quickChargeTraceSnapshot.put("processStartGateBranch", "collect_success_blocked_in_taptopay_process");
-                                        quickChargeTraceSnapshot.put("processStartBlockedReason", "stripe_taptopay_process_owns_payment_flow");
-                                        quickChargeTraceSnapshot.put("nativeFailurePoint", "process_not_invoked_after_collect");
-                                        quickChargeTraceSnapshot.put("finalFailureReason", "stripe_taptopay_process_owns_payment_flow");
-                                        JSObject blockedPayload = result("failed", "processing_error", "Tap to Pay process ownership did not return to Orderfast process.");
-                                        blockedPayload.put("detail", detail("native_process_result", "stripe_taptopay_process_owns_payment_flow", null));
-                                        blockedPayload.put("quickChargeTraceSnapshot", quickChargeTraceSnapshot);
-                                        logStartupStage("native_process_result", blockedPayload);
-                                        cacheFinalResult(blockedPayload, "blocked_in_taptopay_process");
-                                        clearActivePaymentState();
-                                        resetStatusForNextAttempt();
-                                        resolveOnce(resolveGate, call, blockedPayload);
-                                        return;
-                                    }
-                                    quickChargeTraceSnapshot.put("processStartGateBranch", "collect_success_process_truth_immediate");
-                                    invokeProcessPaymentIntent.run();
+                                    quickChargeTraceSnapshot.put("processStartGateBranch", "collect_success_wait_for_host_reattach");
+                                    quickChargeTraceSnapshot.put("processStartAllowedReason", "awaiting_host_reattach_after_collect_success");
+
+                                    armCollectSuccessContinuation(invokeProcessPaymentIntent, collectedIntent.getId(), quickChargeTraceSnapshot);
+                                    tryReleaseArmedCollectSuccessContinuation("collect_success_direct_post_register", quickChargeTraceSnapshot);
                                 }
 
                                 @Override
@@ -1560,6 +1572,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
         }
         logLifecycleEvent("onResume");
         traceTimeline("plugin_handleOnResume", null);
+        tryReleaseArmedCollectSuccessContinuation("handleOnResume", null);
         if (Terminal.isInitialized() && connectedReader != null && Terminal.getInstance().getConnectionStatus() == ConnectionStatus.CONNECTED) {
             if (!inFlight && ("failed".equals(status) || "idle".equals(status))) {
                 status = "ready";
@@ -1583,6 +1596,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
         super.handleOnStart();
         logLifecycleEvent("onStart");
         traceTimeline("plugin_handleOnStart", null);
+        tryReleaseArmedCollectSuccessContinuation("handleOnStart", null);
     }
 
     @Override
@@ -1988,11 +2002,18 @@ public class OrderfastTapToPayPlugin extends Plugin {
         onResumeRecheckCount = 0;
         onWindowFocusChangedRecheckCount = 0;
         onNewIntentRecheckCount = 0;
+        collectSuccessAtMs = 0L;
         deferredProcessTokenId = null;
         deferredSessionId = null;
         deferredFlowRunId = null;
         deferredPaymentIntentId = null;
         deferredReleaseCommitted = false;
+        continuationArmed = false;
+        continuationReleaseTrigger = null;
+        continuationHostActivityIdentityHash = -1;
+        deferredProcessStartRunnable = null;
+        deferredProcessStartReason = null;
+        deferredProcessStartRegisteredAtMs = 0L;
     }
 
     private void attachDeferredAuditCounters(JSObject payload) {
@@ -2010,6 +2031,12 @@ public class OrderfastTapToPayPlugin extends Plugin {
         payload.put("onResumeRecheckCount", onResumeRecheckCount);
         payload.put("onWindowFocusChangedRecheckCount", onWindowFocusChangedRecheckCount);
         payload.put("onNewIntentRecheckCount", onNewIntentRecheckCount);
+        payload.put("collectSuccessAtMs", collectSuccessAtMs > 0L ? collectSuccessAtMs : JSONObject.NULL);
+        payload.put("continuationArmed", continuationArmed);
+        payload.put("continuationReleaseTrigger", continuationReleaseTrigger == null ? JSONObject.NULL : continuationReleaseTrigger);
+        payload.put("hostOnStartAtMs", MainActivity.getHostActivityLastStartedAtMs() > 0L ? MainActivity.getHostActivityLastStartedAtMs() : JSONObject.NULL);
+        payload.put("hostOnResumeAtMs", MainActivity.getHostActivityLastResumedAtMs() > 0L ? MainActivity.getHostActivityLastResumedAtMs() : JSONObject.NULL);
+        payload.put("currentActivityIdentityHash", MainActivity.getHostActivityIdentityHash());
     }
 
     private void attachDeferredRunIdentity(JSObject payload) {
@@ -2061,6 +2088,147 @@ public class OrderfastTapToPayPlugin extends Plugin {
         if ("handleOnNewIntent".equals(trigger)) {
             onNewIntentRecheckCount += 1;
         }
+    }
+
+    private void appendContinuationTelemetry(JSObject payload, String trigger, boolean releaseConditionPassed) {
+        if (payload == null) return;
+        payload.put("collectSuccessAtMs", collectSuccessAtMs > 0L ? collectSuccessAtMs : JSONObject.NULL);
+        payload.put("continuationArmed", continuationArmed);
+        payload.put("continuationReleaseTrigger", continuationReleaseTrigger == null ? JSONObject.NULL : continuationReleaseTrigger);
+        payload.put("hostOnStartAtMs", MainActivity.getHostActivityLastStartedAtMs() > 0L ? MainActivity.getHostActivityLastStartedAtMs() : JSONObject.NULL);
+        payload.put("hostOnResumeAtMs", MainActivity.getHostActivityLastResumedAtMs() > 0L ? MainActivity.getHostActivityLastResumedAtMs() : JSONObject.NULL);
+        payload.put("currentActivityIdentityHash", MainActivity.getHostActivityIdentityHash());
+        payload.put("continuationReleaseConditionPassed", releaseConditionPassed);
+        payload.put("continuationCheckTrigger", trigger == null ? JSONObject.NULL : trigger);
+        payload.put("processInvokeCommittedCount", processInvokeCommittedCount);
+    }
+
+    private boolean isHostReattachedAfterCollectSuccess() {
+        if (collectSuccessAtMs <= 0L) {
+            return false;
+        }
+        long hostOnStartAtMs = MainActivity.getHostActivityLastStartedAtMs();
+        long hostOnResumeAtMs = MainActivity.getHostActivityLastResumedAtMs();
+        return hostOnStartAtMs > collectSuccessAtMs || hostOnResumeAtMs > collectSuccessAtMs;
+    }
+
+    private void armCollectSuccessContinuation(Runnable continuation, String paymentIntentId, JSObject quickChargeTraceSnapshot) {
+        if (continuation == null) {
+            return;
+        }
+        synchronized (continuationLock) {
+            if (continuationArmed) {
+                deferredRearmedCount += 1;
+                return;
+            }
+            deferredProcessStartRunnable = continuation;
+            deferredProcessStartReason = "collect_success_wait_for_host_reattach";
+            deferredProcessStartRegisteredAtMs = System.currentTimeMillis();
+            collectSuccessAtMs = deferredProcessStartRegisteredAtMs;
+            deferredProcessRegistrationCount += 1;
+            deferredProcessTokenId = "collect_success_" + (++deferredTokenSequence);
+            deferredSessionId = currentSessionId;
+            deferredFlowRunId = currentFlowRunId;
+            deferredPaymentIntentId = paymentIntentId;
+            continuationHostActivityIdentityHash = MainActivity.getHostActivityIdentityHash();
+            deferredReleaseCommitted = false;
+            continuationArmed = true;
+            continuationReleaseTrigger = null;
+            if (quickChargeTraceSnapshot != null) {
+                quickChargeTraceSnapshot.put("collectSuccessAtMs", collectSuccessAtMs);
+                quickChargeTraceSnapshot.put("continuationArmed", true);
+                quickChargeTraceSnapshot.put("continuationReleaseTrigger", JSONObject.NULL);
+                quickChargeTraceSnapshot.put("hostOnStartAtMs", MainActivity.getHostActivityLastStartedAtMs() > 0L ? MainActivity.getHostActivityLastStartedAtMs() : JSONObject.NULL);
+                quickChargeTraceSnapshot.put("hostOnResumeAtMs", MainActivity.getHostActivityLastResumedAtMs() > 0L ? MainActivity.getHostActivityLastResumedAtMs() : JSONObject.NULL);
+                quickChargeTraceSnapshot.put("currentActivityIdentityHash", MainActivity.getHostActivityIdentityHash());
+                quickChargeTraceSnapshot.put("continuationReleaseConditionPassed", false);
+                quickChargeTraceSnapshot.put("currentDeferredTokenId", deferredProcessTokenId == null ? JSONObject.NULL : deferredProcessTokenId);
+            }
+        }
+    }
+
+    private void tryReleaseArmedCollectSuccessContinuation(String trigger, JSObject quickChargeTraceSnapshot) {
+        mainHandler.post(() -> {
+            Runnable continuationToInvoke = null;
+            boolean releaseConditionPassed;
+            synchronized (continuationLock) {
+                incrementRecheckTriggerCounter(trigger);
+                deferredProcessRecheckCount += 1;
+                boolean runMatches = doesCurrentRunMatchDeferredContinuation();
+                boolean sameActivityInstance = continuationHostActivityIdentityHash != -1
+                    && continuationHostActivityIdentityHash == MainActivity.getHostActivityIdentityHash();
+                Activity pluginActivity = getActivity();
+                boolean activityUsable = pluginActivity != null
+                    && !pluginActivity.isFinishing()
+                    && !pluginActivity.isDestroyed()
+                    && !MainActivity.getHostActivityWasDestroyed();
+                boolean hostReattachedAfterCollect = isHostReattachedAfterCollectSuccess();
+                boolean appForegrounded = !isAppInBackground();
+                releaseConditionPassed = continuationArmed
+                    && !deferredReleaseCommitted
+                    && runMatches
+                    && sameActivityInstance
+                    && activityUsable
+                    && appForegrounded
+                    && hostReattachedAfterCollect
+                    && inFlight
+                    && processInvokeCommittedCount == 0;
+
+                JSObject recheckPayload = lifecyclePayload("collect_success_continuation_recheck");
+                recheckPayload.put("trigger", trigger);
+                recheckPayload.put("runMatches", runMatches);
+                recheckPayload.put("sameActivityInstance", sameActivityInstance);
+                recheckPayload.put("activityUsable", activityUsable);
+                recheckPayload.put("appForegrounded", appForegrounded);
+                recheckPayload.put("hostReattachedAfterCollect", hostReattachedAfterCollect);
+                appendContinuationTelemetry(recheckPayload, trigger, releaseConditionPassed);
+                attachDeferredRunIdentity(recheckPayload);
+                attachDeferredAuditCounters(recheckPayload);
+                logFlowEvent("native_collect_success_continuation_recheck", recheckPayload);
+
+                if (!releaseConditionPassed) {
+                    if (quickChargeTraceSnapshot != null) {
+                        quickChargeTraceSnapshot.put("continuationArmed", continuationArmed);
+                        quickChargeTraceSnapshot.put("hostOnStartAtMs", MainActivity.getHostActivityLastStartedAtMs() > 0L ? MainActivity.getHostActivityLastStartedAtMs() : JSONObject.NULL);
+                        quickChargeTraceSnapshot.put("hostOnResumeAtMs", MainActivity.getHostActivityLastResumedAtMs() > 0L ? MainActivity.getHostActivityLastResumedAtMs() : JSONObject.NULL);
+                        quickChargeTraceSnapshot.put("currentActivityIdentityHash", MainActivity.getHostActivityIdentityHash());
+                        quickChargeTraceSnapshot.put("continuationReleaseConditionPassed", false);
+                    }
+                    return;
+                }
+
+                deferredProcessReleaseAttemptCount += 1;
+                deferredReleaseCommitted = true;
+                continuationArmed = false;
+                continuationReleaseTrigger = trigger;
+                continuationToInvoke = deferredProcessStartRunnable;
+                deferredProcessStartRunnable = null;
+                deferredProcessStartReason = null;
+                deferredProcessStartRegisteredAtMs = 0L;
+                deferredProcessTokenId = null;
+                deferredSessionId = null;
+                deferredFlowRunId = null;
+                deferredPaymentIntentId = null;
+                continuationHostActivityIdentityHash = -1;
+                if (continuationToInvoke == null) {
+                    deferredAlreadyClearedCount += 1;
+                }
+                if (quickChargeTraceSnapshot != null) {
+                    quickChargeTraceSnapshot.put("continuationArmed", false);
+                    quickChargeTraceSnapshot.put("continuationReleaseTrigger", trigger);
+                    quickChargeTraceSnapshot.put("hostOnStartAtMs", MainActivity.getHostActivityLastStartedAtMs() > 0L ? MainActivity.getHostActivityLastStartedAtMs() : JSONObject.NULL);
+                    quickChargeTraceSnapshot.put("hostOnResumeAtMs", MainActivity.getHostActivityLastResumedAtMs() > 0L ? MainActivity.getHostActivityLastResumedAtMs() : JSONObject.NULL);
+                    quickChargeTraceSnapshot.put("currentActivityIdentityHash", MainActivity.getHostActivityIdentityHash());
+                    quickChargeTraceSnapshot.put("continuationReleaseConditionPassed", true);
+                    quickChargeTraceSnapshot.put("currentDeferredTokenId", JSONObject.NULL);
+                    quickChargeTraceSnapshot.put("processStartGateBranch", "collect_success_host_reattach_released");
+                    quickChargeTraceSnapshot.put("processStartAllowedReason", "host_reattached_after_collect_success");
+                }
+            }
+            if (continuationToInvoke != null) {
+                continuationToInvoke.run();
+            }
+        });
     }
 
     private String flowRunJsonFragment() {

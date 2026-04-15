@@ -36,6 +36,7 @@ public class MainActivity extends BridgeActivity {
     private static volatile String hostProcessName = "unknown";
     private static volatile long lastHostLifecycleUpdateAtMs = 0L;
     private static volatile long hostActivityLastResumedAtMs = 0L;
+    private static volatile long hostActivityLastStartedAtMs = 0L;
     private static volatile long hostActivityLastPausedAtMs = 0L;
     private static volatile long hostActivityLastStoppedAtMs = 0L;
     private static volatile long hostActivityLastDestroyedAtMs = 0L;
@@ -62,6 +63,7 @@ public class MainActivity extends BridgeActivity {
     public static String getHostProcessName() { return hostProcessName; }
     public static long getLastHostLifecycleUpdateAtMs() { return lastHostLifecycleUpdateAtMs; }
     public static long getHostActivityLastResumedAtMs() { return hostActivityLastResumedAtMs; }
+    public static long getHostActivityLastStartedAtMs() { return hostActivityLastStartedAtMs; }
     public static long getHostActivityLastPausedAtMs() { return hostActivityLastPausedAtMs; }
     public static long getHostActivityLastStoppedAtMs() { return hostActivityLastStoppedAtMs; }
     public static long getHostActivityLastDestroyedAtMs() { return hostActivityLastDestroyedAtMs; }
@@ -82,6 +84,7 @@ public class MainActivity extends BridgeActivity {
         hostActivityIntentAction = null;
         hostActivityIntentFlags = 0;
         hostActivityLastResumedAtMs = 0L;
+        hostActivityLastStartedAtMs = 0L;
         hostActivityLastPausedAtMs = 0L;
         hostActivityLastStoppedAtMs = 0L;
         hostActivityLastDestroyedAtMs = 0L;
@@ -149,6 +152,16 @@ public class MainActivity extends BridgeActivity {
             return;
         }
         immersiveHandler.postDelayed(immersiveRunnable, 120);
+    }
+
+    @Override
+    public void onStart() {
+        super.onStart();
+        hostActivityLastStartedAtMs = System.currentTimeMillis();
+        updateHostIdentity();
+        updateHostIntentTelemetry(getIntent());
+        hostActivityCurrentOrientation = orientationToName(getResources().getConfiguration().orientation);
+        lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
     }
 
     @Override
