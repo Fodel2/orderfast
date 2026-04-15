@@ -1,6 +1,7 @@
 package com.orderfast.app;
 
 import android.Manifest;
+import android.app.Activity;
 import android.content.Context;
 import android.content.pm.ActivityInfo;
 import android.content.pm.ApplicationInfo;
@@ -110,6 +111,9 @@ public class OrderfastTapToPayPlugin extends Plugin {
     private volatile int paymentStatusWaitingForInputCount = 0;
     private volatile int paymentStatusProcessingCount = 0;
     private volatile int paymentStatusReadyCount = 0;
+    private volatile Runnable deferredProcessStartRunnable = null;
+    private volatile String deferredProcessStartReason = null;
+    private volatile long deferredProcessStartRegisteredAtMs = 0L;
     private volatile JSObject cachedFinalResult = null;
     private volatile long cachedFinalResultAtMs = 0L;
     private static int pluginInstanceCounter = 0;
@@ -203,6 +207,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
 
     private void clearActivePaymentState() {
         clearOperationTimeout();
+        clearDeferredProcessStart("clear_active_payment_state");
         activePaymentIntent = null;
         processCancelable = null;
         cancelRequestedByApp = false;
@@ -771,6 +776,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 quickChargeTraceSnapshot.put("orientationChangedDuringPayment", JSONObject.NULL);
                 quickChargeTraceSnapshot.put("windowFocusChangedDuringPayment", JSONObject.NULL);
                 quickChargeTraceSnapshot.put("processDeferredForForegroundFocus", false);
+                quickChargeTraceSnapshot.put("processDeferredForHostLifecycleReattach", false);
                 quickChargeTraceSnapshot.put("processDeferredWaitPathRan", false);
                 quickChargeTraceSnapshot.put("timedEventTrail", new JSONArray());
                 quickChargeTraceSnapshot.put("paymentStatusChangeCountBeforeCollectSuccess", 0);
@@ -918,6 +924,12 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                     quickChargeCollectCallbackPayload.put("isUpdatedPostCollectPaymentIntent", !collectedIntentMatchesRetrieved);
                                     logFlowEvent("quick_charge_native_collect_callback", quickChargeCollectCallbackPayload);
                                     traceTimeline("collect_success_callback", collectPayload);
+                                    JSObject collectSuccessHostContext = lifecyclePayload("collect_success_host_context");
+                                    collectSuccessHostContext.put("paymentIntentId", collectedIntent.getId());
+                                    collectSuccessHostContext.put("paymentIntentStatus", collectedIntent.getStatus() == null ? "unknown" : collectedIntent.getStatus().name());
+                                    addHostContextTruth(collectSuccessHostContext, "collect_success");
+                                    logStartupStage("native_collect_success_host_context", collectSuccessHostContext);
+                                    traceTimeline("collect_success_host_context", collectSuccessHostContext);
 
                                     Runnable invokeProcessPaymentIntent = () -> {
                                         boolean readerDisconnected = readerDisconnectedDuringActiveRun();
@@ -953,8 +965,8 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                         }
 
                                         quickChargeTraceSnapshot.put("processInvocationCount", quickChargeTraceSnapshot.optInt("processInvocationCount", 0) + 1);
-                                        quickChargeTraceSnapshot.put("processStartGateBranch", "collect_success_immediate");
-                                        quickChargeTraceSnapshot.put("processStartAllowedReason", "collect_succeeded_and_flow_active_no_local_cancel_no_reader_disconnect");
+                                        quickChargeTraceSnapshot.put("processStartAllowedReason", "collect_succeeded_and_host_lifecycle_safe");
+                                        quickChargeTraceSnapshot.put("processDeferredForHostLifecycleReattach", false);
                                         JSObject processStartPayload = new JSObject();
                                         processStartPayload.put("result", "started");
                                         processStartPayload.put("nativeStage", "native_process_start");
@@ -966,6 +978,8 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                         processStartPayload.put("processAwarenessFallbackReason", quickChargeTraceSnapshot.optString("processAwarenessFallbackReason", null));
                                         processStartPayload.put("processInvoked", true);
                                         processStartPayload.put("processDeferredForForegroundFocus", quickChargeTraceSnapshot.optBoolean("processDeferredForForegroundFocus", false));
+                                        processStartPayload.put("processDeferredForHostLifecycleReattach", quickChargeTraceSnapshot.optBoolean("processDeferredForHostLifecycleReattach", false));
+                                        addHostContextTruth(processStartPayload, "process_start");
                                         logStartupStage("native_process_start", processStartPayload);
                                         traceTimeline("process_start", processStartPayload);
                                         postSessionState("processing", "native_process_start");
@@ -978,6 +992,8 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                         processInvokedPayload.put("processAwarenessFallbackUsed", quickChargeTraceSnapshot.optBoolean("processAwarenessFallbackUsed", false));
                                         processInvokedPayload.put("processAwarenessFallbackReason", quickChargeTraceSnapshot.optString("processAwarenessFallbackReason", null));
                                         processInvokedPayload.put("processDeferredForForegroundFocus", quickChargeTraceSnapshot.optBoolean("processDeferredForForegroundFocus", false));
+                                        processInvokedPayload.put("processDeferredForHostLifecycleReattach", quickChargeTraceSnapshot.optBoolean("processDeferredForHostLifecycleReattach", false));
+                                        addHostContextTruth(processInvokedPayload, "process_invoked_before_sdk_call");
                                         logFlowEvent("native_process_invoked", processInvokedPayload);
                                         JSObject quickChargeProcessInvokedPayload = new JSObject();
                                         quickChargeProcessInvokedPayload.put("sessionId", currentSessionId);
@@ -992,6 +1008,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                         quickChargeProcessInvokedPayload.put("processAwarenessFallbackUsed", quickChargeTraceSnapshot.optBoolean("processAwarenessFallbackUsed", false));
                                         quickChargeProcessInvokedPayload.put("processAwarenessFallbackReason", quickChargeTraceSnapshot.optString("processAwarenessFallbackReason", null));
                                         quickChargeProcessInvokedPayload.put("processDeferredForForegroundFocus", quickChargeTraceSnapshot.optBoolean("processDeferredForForegroundFocus", false));
+                                        quickChargeProcessInvokedPayload.put("processDeferredForHostLifecycleReattach", quickChargeTraceSnapshot.optBoolean("processDeferredForHostLifecycleReattach", false));
                                         logFlowEvent("quick_charge_native_process_invoked", quickChargeProcessInvokedPayload);
                                         traceTimeline("process_invoked_before_sdk_call", processInvokedPayload);
                                         quickChargeTraceSnapshot.put("processInvoked", true);
@@ -1159,7 +1176,22 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                         : processAwareness.optString("error", "process_awareness_unavailable"));
                                     quickChargeTraceSnapshot.put("processDeferredForForegroundFocus", false);
                                     quickChargeTraceSnapshot.put("processDeferredWaitPathRan", false);
-                                    invokeProcessPaymentIntent.run();
+                                    boolean hostLifecycleSafeNow = isHostLifecycleSafeForProcess();
+                                    quickChargeTraceSnapshot.put("hostLifecycleSafeAtCollectSuccess", hostLifecycleSafeNow);
+                                    if (hostLifecycleSafeNow) {
+                                        quickChargeTraceSnapshot.put("processStartGateBranch", "collect_success_host_lifecycle_safe_immediate");
+                                        invokeProcessPaymentIntent.run();
+                                    } else {
+                                        registerDeferredProcessStart(invokeProcessPaymentIntent, "await_host_lifecycle_reattach_after_stripe_takeover", quickChargeTraceSnapshot);
+                                        JSObject deferredPayload = lifecyclePayload("process_deferred_for_host_lifecycle");
+                                        deferredPayload.put("paymentIntentId", collectedIntent.getId());
+                                        deferredPayload.put("paymentIntentStatus", collectedIntent.getStatus() == null ? "unknown" : collectedIntent.getStatus().name());
+                                        deferredPayload.put("deferredReason", "await_host_lifecycle_reattach_after_stripe_takeover");
+                                        deferredPayload.put("processStartGateBranch", quickChargeTraceSnapshot.optString("processStartGateBranch", "collect_success_waiting_for_host_lifecycle"));
+                                        addHostContextTruth(deferredPayload, "collect_success_deferred");
+                                        logStartupStage("native_process_deferred", deferredPayload);
+                                        traceTimeline("process_deferred_for_host_lifecycle", deferredPayload);
+                                    }
                                 }
 
                                 @Override
@@ -1474,6 +1506,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
         }
         logLifecycleEvent("onResume");
         traceTimeline("plugin_handleOnResume", null);
+        tryRunDeferredProcessStart("handleOnResume");
         if (Terminal.isInitialized() && connectedReader != null && Terminal.getInstance().getConnectionStatus() == ConnectionStatus.CONNECTED) {
             if (!inFlight && ("failed".equals(status) || "idle".equals(status))) {
                 status = "ready";
@@ -1497,6 +1530,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
         super.handleOnStart();
         logLifecycleEvent("onStart");
         traceTimeline("plugin_handleOnStart", null);
+        tryRunDeferredProcessStart("handleOnStart");
     }
 
     @Override
@@ -1552,6 +1586,18 @@ public class OrderfastTapToPayPlugin extends Plugin {
         payload.put("hasDataIntent", data != null);
         logStartupStage("native_lifecycle", payload);
         traceTimeline("plugin_handleOnActivityResult", payload);
+        tryRunDeferredProcessStart("handleOnActivityResult");
+    }
+
+    @Override
+    protected void handleOnNewIntent(android.content.Intent intent) {
+        super.handleOnNewIntent(intent);
+        JSObject payload = lifecyclePayload("onNewIntent");
+        payload.put("hasIntent", intent != null);
+        addHostContextTruth(payload, "plugin_handleOnNewIntent");
+        logStartupStage("native_lifecycle", payload);
+        traceTimeline("plugin_handleOnNewIntent", payload);
+        tryRunDeferredProcessStart("handleOnNewIntent");
     }
 
     @Override
@@ -1923,6 +1969,138 @@ public class OrderfastTapToPayPlugin extends Plugin {
 
     private void logLifecycleEvent(String rawEventName) {
         logStartupStage("native_lifecycle", lifecyclePayload(rawEventName));
+    }
+
+    private void addHostContextTruth(JSObject payload, String stage) {
+        if (payload == null) return;
+        Activity pluginActivity = getActivity();
+        Activity bridgeActivity = bridge != null ? bridge.getActivity() : null;
+        int pluginActivityIdentity = pluginActivity == null ? -1 : System.identityHashCode(pluginActivity);
+        int bridgeActivityIdentity = bridgeActivity == null ? -1 : System.identityHashCode(bridgeActivity);
+        int hostActivityIdentity = MainActivity.getHostActivityIdentityHash();
+        long now = System.currentTimeMillis();
+        long takeoverBoundaryAtMs = Math.max(lastPauseAtMs, lastStopAtMs);
+        long hostLastResumedAtMs = MainActivity.getHostActivityLastResumedAtMs();
+        long hostLastNewIntentAtMs = MainActivity.getHostActivityLastNewIntentAtMs();
+
+        payload.put("hostContextStage", stage);
+        payload.put("hostContextTimestampMs", now);
+        payload.put("threadName", Thread.currentThread().getName());
+        payload.put("isMainThread", Looper.myLooper() == Looper.getMainLooper());
+        payload.put("pluginGetActivityClassName", pluginActivity == null ? "null" : pluginActivity.getClass().getName());
+        payload.put("pluginGetActivityIdentityHash", pluginActivityIdentity);
+        payload.put("pluginGetActivityTaskId", pluginActivity == null ? -1 : pluginActivity.getTaskId());
+        payload.put("pluginGetActivityWindowFocus", pluginActivity != null && pluginActivity.hasWindowFocus());
+        payload.put("pluginGetActivityIsFinishing", pluginActivity != null && pluginActivity.isFinishing());
+        payload.put("pluginGetActivityIsDestroyed", pluginActivity != null && pluginActivity.isDestroyed());
+        payload.put("bridgeActivityClassName", bridgeActivity == null ? "null" : bridgeActivity.getClass().getName());
+        payload.put("bridgeActivityIdentityHash", bridgeActivityIdentity);
+        payload.put("bridgeActivityTaskId", bridgeActivity == null ? -1 : bridgeActivity.getTaskId());
+        payload.put("bridgeActivityWindowFocus", bridgeActivity != null && bridgeActivity.hasWindowFocus());
+        payload.put("bridgeActivityIsFinishing", bridgeActivity != null && bridgeActivity.isFinishing());
+        payload.put("bridgeActivityIsDestroyed", bridgeActivity != null && bridgeActivity.isDestroyed());
+        payload.put("pluginActivityEqualsBridgeActivity", pluginActivity != null && pluginActivity == bridgeActivity);
+        payload.put("pluginGetActivityMatchesHostIdentity", pluginActivityIdentity != -1 && pluginActivityIdentity == hostActivityIdentity);
+        payload.put("bridgeActivityMatchesHostIdentity", bridgeActivityIdentity != -1 && bridgeActivityIdentity == hostActivityIdentity);
+        payload.put("mainActivityClassName", MainActivity.getHostActivityClassName());
+        payload.put("mainActivityIdentityHash", hostActivityIdentity);
+        payload.put("mainActivityTaskId", MainActivity.getHostActivityTaskId());
+        Boolean hostFocus = MainActivity.getHostActivityWindowFocus();
+        payload.put("mainActivityWindowFocus", hostFocus == null ? JSONObject.NULL : hostFocus);
+        payload.put("mainActivityWasResumed", MainActivity.getHostActivityWasResumed());
+        payload.put("mainActivityWasPaused", MainActivity.getHostActivityWasPaused());
+        payload.put("mainActivityWasStopped", MainActivity.getHostActivityWasStopped());
+        payload.put("mainActivityWasDestroyed", MainActivity.getHostActivityWasDestroyed());
+        payload.put("mainActivityResumeCount", MainActivity.getHostActivityResumeCount());
+        payload.put("mainActivityNewIntentCount", MainActivity.getHostActivityNewIntentCount());
+        payload.put("mainActivityLastResumedAtMs", hostLastResumedAtMs > 0L ? hostLastResumedAtMs : JSONObject.NULL);
+        payload.put("mainActivityLastNewIntentAtMs", hostLastNewIntentAtMs > 0L ? hostLastNewIntentAtMs : JSONObject.NULL);
+        payload.put("mainActivityLastLifecycleUpdateAtMs", MainActivity.getLastHostLifecycleUpdateAtMs());
+        payload.put("mainActivityResumeAfterTakeoverBoundary", takeoverBoundaryAtMs > 0L && hostLastResumedAtMs >= takeoverBoundaryAtMs);
+        payload.put("mainActivityNewIntentAfterTakeoverBoundary", takeoverBoundaryAtMs > 0L && hostLastNewIntentAtMs >= takeoverBoundaryAtMs);
+        payload.put("takeoverBoundaryAtMs", takeoverBoundaryAtMs > 0L ? takeoverBoundaryAtMs : JSONObject.NULL);
+        payload.put("processName", MainActivity.getHostProcessName());
+        payload.put("appInBackground", isAppInBackground());
+        payload.put("lifecycleSafeForProcessNow", isHostLifecycleSafeForProcess());
+    }
+
+    private boolean isHostLifecycleSafeForProcess() {
+        Activity pluginActivity = getActivity();
+        Activity bridgeActivity = bridge != null ? bridge.getActivity() : null;
+        int hostIdentity = MainActivity.getHostActivityIdentityHash();
+        int pluginIdentity = pluginActivity == null ? -1 : System.identityHashCode(pluginActivity);
+        int bridgeIdentity = bridgeActivity == null ? -1 : System.identityHashCode(bridgeActivity);
+        boolean hostIdentityConsistent = hostIdentity != -1
+            && pluginIdentity != -1
+            && bridgeIdentity != -1
+            && hostIdentity == pluginIdentity
+            && hostIdentity == bridgeIdentity;
+        if (!hostIdentityConsistent) {
+            return false;
+        }
+        if (pluginActivity == null || bridgeActivity == null) {
+            return false;
+        }
+        if (pluginActivity.isFinishing() || pluginActivity.isDestroyed() || bridgeActivity.isFinishing() || bridgeActivity.isDestroyed()) {
+            return false;
+        }
+        if (isAppInBackground()) {
+            return false;
+        }
+        long takeoverBoundaryAtMs = Math.max(lastPauseAtMs, lastStopAtMs);
+        if (takeoverBoundaryAtMs > 0L && MainActivity.getHostActivityLastResumedAtMs() < takeoverBoundaryAtMs) {
+            return false;
+        }
+        Boolean hostFocus = MainActivity.getHostActivityWindowFocus();
+        return Boolean.TRUE.equals(hostFocus) && pluginActivity.hasWindowFocus() && bridgeActivity.hasWindowFocus();
+    }
+
+    private void registerDeferredProcessStart(Runnable processStartRunnable, String reason, JSObject snapshot) {
+        deferredProcessStartRunnable = processStartRunnable;
+        deferredProcessStartReason = reason;
+        deferredProcessStartRegisteredAtMs = System.currentTimeMillis();
+        if (snapshot != null) {
+            snapshot.put("processDeferredForForegroundFocus", false);
+            snapshot.put("processDeferredForHostLifecycleReattach", true);
+            snapshot.put("processDeferredWaitPathRan", true);
+            snapshot.put("processDeferredReason", reason);
+            snapshot.put("processStartGateBranch", "collect_success_waiting_for_host_lifecycle");
+        }
+    }
+
+    private void clearDeferredProcessStart(String reason) {
+        if (deferredProcessStartRunnable != null) {
+            JSObject payload = lifecyclePayload("deferred_process_start_cleared");
+            payload.put("clearReason", reason);
+            payload.put("deferredRegisteredAtMs", deferredProcessStartRegisteredAtMs > 0L ? deferredProcessStartRegisteredAtMs : JSONObject.NULL);
+            payload.put("deferredReason", deferredProcessStartReason == null ? JSONObject.NULL : deferredProcessStartReason);
+            addHostContextTruth(payload, "deferred_process_clear");
+            traceTimeline("deferred_process_start_cleared", payload);
+        }
+        deferredProcessStartRunnable = null;
+        deferredProcessStartReason = null;
+        deferredProcessStartRegisteredAtMs = 0L;
+    }
+
+    private void tryRunDeferredProcessStart(String trigger) {
+        Runnable pending = deferredProcessStartRunnable;
+        if (pending == null) {
+            return;
+        }
+        JSObject payload = lifecyclePayload("deferred_process_start_check");
+        payload.put("trigger", trigger);
+        payload.put("deferredRegisteredAtMs", deferredProcessStartRegisteredAtMs > 0L ? deferredProcessStartRegisteredAtMs : JSONObject.NULL);
+        payload.put("deferredReason", deferredProcessStartReason == null ? JSONObject.NULL : deferredProcessStartReason);
+        payload.put("deferredElapsedMs", deferredProcessStartRegisteredAtMs > 0L ? (System.currentTimeMillis() - deferredProcessStartRegisteredAtMs) : JSONObject.NULL);
+        addHostContextTruth(payload, "deferred_process_check");
+        boolean safeNow = isHostLifecycleSafeForProcess();
+        payload.put("safeToRun", safeNow);
+        traceTimeline("deferred_process_start_check", payload);
+        if (!safeNow) {
+            return;
+        }
+        clearDeferredProcessStart("safe_to_run:" + trigger);
+        pending.run();
     }
 
     private JSObject terminalFailurePayload(String stage, TerminalException e) {

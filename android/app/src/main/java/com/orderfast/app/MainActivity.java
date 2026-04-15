@@ -21,6 +21,7 @@ public class MainActivity extends BridgeActivity {
     private static volatile boolean hostActivityWasPaused = false;
     private static volatile boolean hostActivityWasStopped = false;
     private static volatile boolean hostActivityWasDestroyed = false;
+    private static volatile boolean hostActivityWasResumed = false;
     private static volatile boolean immersiveModeActive = false;
     private static volatile boolean immersiveReappliedDuringPayment = false;
     private static volatile boolean orientationChangedDuringPayment = false;
@@ -34,11 +35,19 @@ public class MainActivity extends BridgeActivity {
     private static volatile int hostActivityIntentFlags = 0;
     private static volatile String hostProcessName = "unknown";
     private static volatile long lastHostLifecycleUpdateAtMs = 0L;
+    private static volatile long hostActivityLastResumedAtMs = 0L;
+    private static volatile long hostActivityLastPausedAtMs = 0L;
+    private static volatile long hostActivityLastStoppedAtMs = 0L;
+    private static volatile long hostActivityLastDestroyedAtMs = 0L;
+    private static volatile long hostActivityLastNewIntentAtMs = 0L;
+    private static volatile int hostActivityResumeCount = 0;
+    private static volatile int hostActivityNewIntentCount = 0;
     private static volatile int lastKnownOrientationValue = Configuration.ORIENTATION_UNDEFINED;
 
     public static boolean getHostActivityWasPaused() { return hostActivityWasPaused; }
     public static boolean getHostActivityWasStopped() { return hostActivityWasStopped; }
     public static boolean getHostActivityWasDestroyed() { return hostActivityWasDestroyed; }
+    public static boolean getHostActivityWasResumed() { return hostActivityWasResumed; }
     public static boolean getImmersiveModeActive() { return immersiveModeActive; }
     public static boolean getImmersiveReappliedDuringPayment() { return immersiveReappliedDuringPayment; }
     public static boolean getOrientationChangedDuringPayment() { return orientationChangedDuringPayment; }
@@ -52,11 +61,19 @@ public class MainActivity extends BridgeActivity {
     public static int getHostActivityIntentFlags() { return hostActivityIntentFlags; }
     public static String getHostProcessName() { return hostProcessName; }
     public static long getLastHostLifecycleUpdateAtMs() { return lastHostLifecycleUpdateAtMs; }
+    public static long getHostActivityLastResumedAtMs() { return hostActivityLastResumedAtMs; }
+    public static long getHostActivityLastPausedAtMs() { return hostActivityLastPausedAtMs; }
+    public static long getHostActivityLastStoppedAtMs() { return hostActivityLastStoppedAtMs; }
+    public static long getHostActivityLastDestroyedAtMs() { return hostActivityLastDestroyedAtMs; }
+    public static long getHostActivityLastNewIntentAtMs() { return hostActivityLastNewIntentAtMs; }
+    public static int getHostActivityResumeCount() { return hostActivityResumeCount; }
+    public static int getHostActivityNewIntentCount() { return hostActivityNewIntentCount; }
 
     public static void resetPaymentHostTelemetry() {
         hostActivityWasPaused = false;
         hostActivityWasStopped = false;
         hostActivityWasDestroyed = false;
+        hostActivityWasResumed = false;
         immersiveModeActive = false;
         immersiveReappliedDuringPayment = false;
         orientationChangedDuringPayment = false;
@@ -64,6 +81,13 @@ public class MainActivity extends BridgeActivity {
         hostActivityWindowFocus = null;
         hostActivityIntentAction = null;
         hostActivityIntentFlags = 0;
+        hostActivityLastResumedAtMs = 0L;
+        hostActivityLastPausedAtMs = 0L;
+        hostActivityLastStoppedAtMs = 0L;
+        hostActivityLastDestroyedAtMs = 0L;
+        hostActivityLastNewIntentAtMs = 0L;
+        hostActivityResumeCount = 0;
+        hostActivityNewIntentCount = 0;
         lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
     }
 
@@ -114,6 +138,9 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onResume() {
         super.onResume();
+        hostActivityWasResumed = true;
+        hostActivityLastResumedAtMs = System.currentTimeMillis();
+        hostActivityResumeCount += 1;
         updateHostIdentity();
         updateHostIntentTelemetry(getIntent());
         hostActivityCurrentOrientation = orientationToName(getResources().getConfiguration().orientation);
@@ -128,6 +155,8 @@ public class MainActivity extends BridgeActivity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
+        hostActivityLastNewIntentAtMs = System.currentTimeMillis();
+        hostActivityNewIntentCount += 1;
         updateHostIdentity();
         updateHostIntentTelemetry(intent);
         lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
@@ -136,6 +165,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onPause() {
         hostActivityWasPaused = true;
+        hostActivityLastPausedAtMs = System.currentTimeMillis();
         immersiveModeActive = false;
         lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
         immersiveHandler.removeCallbacks(immersiveRunnable);
@@ -145,6 +175,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onStop() {
         hostActivityWasStopped = true;
+        hostActivityLastStoppedAtMs = System.currentTimeMillis();
         lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
         immersiveHandler.removeCallbacks(immersiveRunnable);
         super.onStop();
@@ -153,6 +184,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onDestroy() {
         hostActivityWasDestroyed = true;
+        hostActivityLastDestroyedAtMs = System.currentTimeMillis();
         immersiveModeActive = false;
         lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
         immersiveHandler.removeCallbacks(immersiveRunnable);
