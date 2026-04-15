@@ -22,6 +22,8 @@ import { tapToPayBridge, type TapToPayResult, type TapToPayStatus } from '@/lib/
 import type { KioskTerminalMode } from '@/lib/kiosk/terminalMode';
 import { setKioskLastRealOrderNumber } from '@/utils/kiosk/orders';
 import { requestPrintJobCreation } from '@/lib/print-jobs/request';
+import NativeTapToPayPreHandoverOverlay from '@/components/payments/NativeTapToPayPreHandoverOverlay';
+import { isNativeTapToPayPreHandoverPhase } from '@/lib/payments/nativeTapToPayUiPhases';
 
 type Restaurant = {
   id: string;
@@ -222,9 +224,9 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   const [orderSubmitError, setOrderSubmitError] = useState('');
   const [currentOrderMethod, setCurrentOrderMethod] = useState<'cash' | 'pay_at_counter' | 'contactless' | null>(null);
   const [autoSubmitAttemptedMethod, setAutoSubmitAttemptedMethod] = useState<'cash' | 'pay_at_counter' | 'contactless' | null>(null);
+  const [suppressStageAutoSubmit, setSuppressStageAutoSubmit] = useState(false);
   const [prepMessageIndex, setPrepMessageIndex] = useState(0);
   const [collectMessageIndex, setCollectMessageIndex] = useState(0);
-  const [readerHint, setReaderHint] = useState('');
   const [terminalMode, setTerminalMode] = useState<KioskTerminalMode>('real_tap_to_pay');
   const isVerifiedPaidPayload = useCallback((verification: PaymentVerification | null | undefined) => {
     if (!verification || verification.verifiedPaid !== true) return false;
@@ -385,7 +387,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       setContactlessDebug('idle');
       setTapStartupTrace(createStartupTrace());
       setContactlessTerminalLocationId(null);
-      setReaderHint('');
+      setSuppressStageAutoSubmit(false);
       if (typeof window !== 'undefined') {
         window.localStorage.removeItem(CONTACTLESS_SESSION_STORAGE_KEY);
       }
@@ -536,12 +538,8 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       }
     };
 
-    const updateReaderHintFromDetail = (detail: unknown) => {
-      if (!detail || typeof detail !== 'object') return;
-      const maybeReaderLabel = (detail as { readerLabel?: unknown }).readerLabel;
-      if (typeof maybeReaderLabel === 'string' && maybeReaderLabel.trim()) {
-        setReaderHint(`Reader connected: ${maybeReaderLabel}. If unclear, tap near the center of this device.`);
-      }
+    const updateReaderHintFromDetail = (_detail: unknown) => {
+      return;
     };
 
     const logNativeOutcome = (label: string, payload: unknown) => {
@@ -1120,9 +1118,11 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       setContactlessDebug('fallback');
       setContactlessDebugDetail('');
       setAutoSubmitAttemptedMethod(null);
+      setSuppressStageAutoSubmit(true);
       flowLockRef.current = false;
       cancelLockRef.current = false;
-      setStage(enabledMethods.length > 1 ? 'method_picker' : 'pay_at_counter');
+      const nonContactlessMethod = enabledMethods.find((method) => method !== 'contactless');
+      setStage(nonContactlessMethod ?? 'method_picker');
       if (typeof window !== 'undefined') {
         window.localStorage.removeItem(CONTACTLESS_SESSION_STORAGE_KEY);
       }
@@ -1351,6 +1351,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   useEffect(() => {
     if (settingsLoading) return;
     if (orderSubmitting) return;
+    if (suppressStageAutoSubmit) return;
     if (stage === 'cash' && autoSubmitAttemptedMethod !== 'cash') {
       setAutoSubmitAttemptedMethod('cash');
       void submitOrderAndRedirect('cash');
@@ -1358,7 +1359,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       setAutoSubmitAttemptedMethod('pay_at_counter');
       void submitOrderAndRedirect('pay_at_counter');
     }
-  }, [autoSubmitAttemptedMethod, orderSubmitting, settingsLoading, stage, submitOrderAndRedirect]);
+  }, [autoSubmitAttemptedMethod, orderSubmitting, settingsLoading, stage, submitOrderAndRedirect, suppressStageAutoSubmit]);
 
   useEffect(() => {
     if (contactlessStatus !== 'succeeded' || orderSubmitting || autoSubmitAttemptedMethod === 'contactless') return;
@@ -1500,10 +1501,8 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         >
           <DevicePhoneMobileIcon className="h-9 w-9 text-white" />
         </div>
-        <p className="mt-5 text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">Tap card or phone near the reader</p>
-        <p className="mx-auto mt-2 max-w-lg text-sm text-slate-700 sm:text-base">
-          {readerHint || 'If the reader location is unclear, tap near the center of this device to continue.'}
-        </p>
+        <p className="mt-5 text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">Contactless payment</p>
+        <p className="mx-auto mt-2 max-w-lg text-sm text-slate-700 sm:text-base">Complete the payment flow to place your order.</p>
         {contactlessStatus === 'preparing' || contactlessStatus === 'idle' ? (
           <p className="mt-5 text-base font-medium text-slate-800">{PAYMENT_PREP_MESSAGES[prepMessageIndex]}</p>
         ) : null}
@@ -1683,6 +1682,15 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
 
           {!settingsLoading && stage === 'method_picker' ? renderMethodPicker() : null}
           {!settingsLoading && stage === 'contactless' ? renderContactlessOverlay() : null}
+          {!settingsLoading && stage === 'contactless' ? (
+            <NativeTapToPayPreHandoverOverlay
+              visible={isNativeTapToPayPreHandoverPhase(contactlessStatus)}
+              phaseLabel="Preparing payment mode"
+              title="Contactless payments"
+              message={PAYMENT_PREP_MESSAGES[prepMessageIndex]}
+              lineIndex={prepMessageIndex}
+            />
+          ) : null}
           {!settingsLoading && orderSubmitting ? renderOrderSubmittingOverlay() : null}
         </div>
       </div>
