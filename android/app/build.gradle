@@ -71,7 +71,7 @@ dependencies {
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
-    implementation "com.stripe:stripeterminal:5.3.0"
+    implementation "com.stripe:stripeterminal-core:5.3.0"
     implementation "com.stripe:stripeterminal-taptopay:5.3.0"
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
