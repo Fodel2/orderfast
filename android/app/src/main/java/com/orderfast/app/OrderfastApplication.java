@@ -9,6 +9,7 @@ import com.stripe.stripeterminal.taptopay.TapToPay;
 
 public class OrderfastApplication extends Application {
     private static final String TAG = "OrderfastApplication";
+    private static final String SKIPPED_INITIALIZERS = "firebase,analytics,crash_reporting,remote_config,plugin_global_listeners,custom_singletons";
 
     @Override
     public void onCreate() {
@@ -21,12 +22,18 @@ public class OrderfastApplication extends Application {
         if (isTapToPayProcess) {
             // Stripe Tap to Pay process: skip non-essential global app initialization.
             TerminalApplicationDelegate.onCreate(this);
-            Log.i(TAG, "TapToPay process detected; skipped Orderfast main-process initializers.");
+            Log.i(
+                TAG,
+                "TapToPay process detected; shortCircuit=true skippedInitializers=[" + SKIPPED_INITIALIZERS + "] terminalDelegateInitialized=true"
+            );
             return;
         }
 
         TerminalApplicationDelegate.onCreate(this);
-        Log.i(TAG, "Main app process detected; full Orderfast initialization path allowed.");
+        Log.i(
+            TAG,
+            "Main app process detected; shortCircuit=false skippedInitializers=[] terminalDelegateInitialized=true"
+        );
     }
 
     private String resolveProcessName() {
