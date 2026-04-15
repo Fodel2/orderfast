@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/router';
 import { tapToPayBridge } from '@/lib/kiosk/tapToPayBridge';
 import { formatPrice } from '@/lib/orderDisplay';
 import { resolveNativeTapToPayReadiness } from '@/lib/kiosk/tapToPayNativeReadiness';
@@ -6,10 +7,16 @@ import { type AppFlowState } from '@/lib/app/launcherBootstrap';
 import { internalSettlementActiveRunStore } from '@/lib/payments/internalSettlementActiveRunStore';
 import { buildCombinedTapToPayDiagnosticsPayload } from '@/lib/payments/tapToPayDiagnostics';
 import NativeTapToPayPreHandoverOverlay from '@/components/payments/NativeTapToPayPreHandoverOverlay';
-import { isNativeTapToPayPreHandoverPhase, resolveNativeTapToPayUiPhase } from '@/lib/payments/nativeTapToPayUiPhases';
+import {
+  isNativeTapToPayCancelableOverlayPhase,
+  isNativeTapToPayOverlayVisiblePhase,
+  POST_HANDOVER_PROGRESS_LINES,
+  PRE_HANDOVER_PROGRESS_LINES,
+  resolveNativeTapToPayUiPhase,
+} from '@/lib/payments/nativeTapToPayUiPhases';
 
 type SettlementMode = 'order_payment' | 'quick_charge';
-type CollectionState = AppFlowState | 'idle' | 'handover';
+type CollectionState = AppFlowState | 'idle' | 'handover' | 'canceled';
 type CollectionFailureCategory =
   | 'customer_cancelled'
   | 'app_cancelled'
@@ -39,6 +46,7 @@ type InternalSettlementModuleProps = {
   eyebrow?: string;
   restaurantId?: string | null;
   onFlowActivityChange?: (active: boolean) => void;
+  entryPoint?: 'pos' | 'take_payment';
 };
 
 type QuickChargeFailureSnapshot = {
@@ -126,7 +134,9 @@ export default function InternalSettlementModule({
   eyebrow = 'Internal settlement module',
   restaurantId = null,
   onFlowActivityChange,
+  entryPoint = 'take_payment',
 }: InternalSettlementModuleProps) {
+  const router = useRouter();
   const [mode, setMode] = useState<SettlementMode>('order_payment');
   const [orders, setOrders] = useState<UnpaidOrder[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
@@ -151,9 +161,13 @@ export default function InternalSettlementModule({
   const [quickChargeRawServerVerificationPayload, setQuickChargeRawServerVerificationPayload] = useState<Record<string, unknown> | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [activeTerminalLocationId, setActiveTerminalLocationId] = useState<string | null>(null);
-  const [preHandoverMessageIndex, setPreHandoverMessageIndex] = useState(0);
+  const [overlayMessageIndex, setOverlayMessageIndex] = useState(0);
+  const [cancelInFlight, setCancelInFlight] = useState(false);
+  const [showSuccessTick, setShowSuccessTick] = useState(false);
+  const [successRouteLock, setSuccessRouteLock] = useState(false);
   const flowActiveRef = useRef(false);
   const flowRunIdRef = useRef<string | null>(null);
+  const overlayPhaseEnteredAtMsRef = useRef<number | null>(null);
   const quickChargeAttemptStartMsRef = useRef<number | null>(null);
   const quickChargeAttemptEndMsRef = useRef<number | null>(null);
   const quickChargeEventSequenceRef = useRef(0);
@@ -162,7 +176,18 @@ export default function InternalSettlementModule({
 
   const selectedOrder = useMemo(() => orders.find((order) => order.id === selectedOrderId) || null, [orders, selectedOrderId]);
   const uiPhase = useMemo(() => resolveNativeTapToPayUiPhase(state), [state]);
-  const showPreHandoverOverlay = useMemo(() => isNativeTapToPayPreHandoverPhase(state), [state]);
+  const showTransitionOverlay = useMemo(() => isNativeTapToPayOverlayVisiblePhase(state) || showSuccessTick, [showSuccessTick, state]);
+  const canCloseOverlay = useMemo(
+    () => isNativeTapToPayCancelableOverlayPhase(state) && !cancelInFlight && !showSuccessTick,
+    [cancelInFlight, showSuccessTick, state]
+  );
+  const overlayLines = useMemo(
+    () =>
+      uiPhase === 'processing_returned_result' || uiPhase === 'verifying_paid_outcome' || uiPhase === 'finalizing_session'
+        ? POST_HANDOVER_PROGRESS_LINES
+        : PRE_HANDOVER_PROGRESS_LINES,
+    [uiPhase]
+  );
 
   const amountCents = useMemo(() => {
     if (mode === 'order_payment') return Number(selectedOrder?.total_price || 0);
@@ -420,15 +445,41 @@ export default function InternalSettlementModule({
   }, [busy, onFlowActivityChange]);
 
   useEffect(() => {
-    if (!showPreHandoverOverlay) {
-      setPreHandoverMessageIndex(0);
+    logCollectionEvent('phase_entered', { phase: uiPhase, state });
+    return () => {
+      logCollectionEvent('phase_exited', { phase: uiPhase, state });
+    };
+  }, [logCollectionEvent, state, uiPhase]);
+
+  useEffect(() => {
+    if (!showTransitionOverlay) {
+      setOverlayMessageIndex(0);
+      overlayPhaseEnteredAtMsRef.current = null;
+      logCollectionEvent('overlay_hidden', { phase: uiPhase });
       return;
     }
+    overlayPhaseEnteredAtMsRef.current = Date.now();
+    logCollectionEvent('overlay_shown', { phase: uiPhase });
     const interval = window.setInterval(() => {
-      setPreHandoverMessageIndex((previous) => previous + 1);
-    }, 2200);
+      setOverlayMessageIndex((previous) => {
+        const next = previous + 1;
+        logCollectionEvent('joke_line_changed', { index: next % overlayLines.length, phase: uiPhase });
+        return next;
+      });
+    }, 3600);
     return () => window.clearInterval(interval);
-  }, [showPreHandoverOverlay]);
+  }, [logCollectionEvent, overlayLines.length, showTransitionOverlay, uiPhase]);
+
+  useEffect(() => {
+    if (!isNativeTapToPayOverlayVisiblePhase(state)) return;
+    const timeout = window.setTimeout(() => {
+      if (!isNativeTapToPayOverlayVisiblePhase(state)) return;
+      logCollectionEvent('watchdog_triggered', { phase: uiPhase, state });
+      setState('failed');
+      setMessage('Payment transition took too long. Please close and try again.');
+    }, 60000);
+    return () => window.clearTimeout(timeout);
+  }, [logCollectionEvent, state, uiPhase]);
 
   const classifyNativeFailure = useCallback((nativeResult: Awaited<ReturnType<typeof tapToPayBridge.startTapToPayPayment>>) => {
     const detail =
@@ -1275,9 +1326,38 @@ export default function InternalSettlementModule({
     };
   }, [logCollectionEvent, nativeRestaurantId]);
 
+  useEffect(() => {
+    if (state !== 'completed' || successRouteLock) return;
+    setSuccessRouteLock(true);
+    setShowSuccessTick(true);
+    logCollectionEvent('success_tick_shown', { entryPoint, restaurantId: nativeRestaurantId });
+    const timeout = window.setTimeout(() => {
+      setShowSuccessTick(false);
+      if (!nativeRestaurantId) return;
+      const target = `/pos/${nativeRestaurantId}?stage=paymentComplete&source=${entryPoint === 'pos' ? 'pos-contactless' : 'take-payment'}`;
+      logCollectionEvent('success_route_target_selected', { target, entryPoint });
+      router.push(target).catch(() => undefined);
+    }, 900);
+    return () => window.clearTimeout(timeout);
+  }, [entryPoint, logCollectionEvent, nativeRestaurantId, router, state, successRouteLock]);
+
+  useEffect(() => {
+    if (state === 'completed') return;
+    setShowSuccessTick(false);
+    setSuccessRouteLock(false);
+  }, [state]);
+
   const handleCancel = useCallback(async () => {
-    if (!activeSessionId) return;
+    if (cancelInFlight) return;
+    if (!activeSessionId) {
+      setState('canceled');
+      setMessage('Payment closed.');
+      logCollectionEvent('overlay_dismissed_reason', { reason: 'no_active_session' });
+      return;
+    }
+    setCancelInFlight(true);
     setBusy(true);
+    logCollectionEvent('cancel_requested', { sessionId: activeSessionId });
     try {
       await tapToPayBridge.cancelTapToPayPayment().catch(() => undefined);
       await fetch('/api/dashboard/internal-settlement/cancel', {
@@ -1291,8 +1371,8 @@ export default function InternalSettlementModule({
           flow_run_id: flowRunIdRef.current,
         }),
       });
-      logCollectionEvent('app_cancel_requested', { sessionId: activeSessionId });
-      setState('failed');
+      logCollectionEvent('cancel_succeeded', { sessionId: activeSessionId });
+      setState('canceled');
       quickChargeAttemptEndMsRef.current = Date.now();
       setMessage('Payment canceled.');
       setQuickChargeFailureSnapshot(null);
@@ -1303,21 +1383,28 @@ export default function InternalSettlementModule({
       setActiveTerminalLocationId(null);
       internalSettlementActiveRunStore.clear();
       await loadOrders();
+    } catch (error: any) {
+      logCollectionEvent('cancel_blocked_or_failed', { sessionId: activeSessionId, error: error?.message || 'unknown_error' });
+      setMessage('Unable to cancel right now. Please wait for the current payment phase.');
     } finally {
+      setCancelInFlight(false);
       setBusy(false);
       flowActiveRef.current = false;
       flowRunIdRef.current = null;
     }
-  }, [activeSessionId, loadOrders, logCollectionEvent]);
+  }, [activeSessionId, cancelInFlight, loadOrders, logCollectionEvent]);
 
   return (
     <section className="relative rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
       <NativeTapToPayPreHandoverOverlay
-        visible={showPreHandoverOverlay}
-        phaseLabel="Preparing payment mode"
-        title="Contactless payments"
-        message={message}
-        lineIndex={preHandoverMessageIndex}
+        visible={showTransitionOverlay}
+        lines={overlayLines}
+        lineIndex={overlayMessageIndex}
+        showSuccessTick={showSuccessTick}
+        canClose={canCloseOverlay}
+        onClose={() => {
+          void handleCancel();
+        }}
       />
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{eyebrow}</p>
       <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">{title}</h1>
@@ -1407,29 +1494,14 @@ export default function InternalSettlementModule({
         <div className="space-y-4 rounded-2xl border border-slate-200 p-4">
           <h2 className="text-sm font-semibold text-slate-900">Payment method</h2>
 
-          <div
-            className={`rounded-2xl border px-4 py-3 text-sm ${
-              state === 'completed'
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                : state === 'failed' || state === 'permission_denied'
-                  ? 'border-rose-200 bg-rose-50 text-rose-700'
-                  : state === 'unsupported_device' || state === 'location_services_disabled' || state === 'setup_failed' || state === 'interrupted'
-                    ? 'border-amber-200 bg-amber-50 text-amber-700'
-                    : 'border-slate-200 bg-slate-50 text-slate-700'
-            }`}
-          >
-            <p className="font-semibold">Collection state: {uiPhase.replaceAll('_', ' ')}</p>
-            <p className="mt-1 text-xs">{message}</p>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
             {!tapAvailabilityLoading && !tapAvailabilityReady ? (
-              <p className="mt-2 text-xs text-amber-700">
-                Tap to Pay unavailable: {tapAvailabilityReason || 'Tap to Pay is not ready on this account/device.'}
-              </p>
+              <p className="text-xs text-amber-700">{tapAvailabilityReason || 'Tap to Pay is not ready on this account/device.'}</p>
             ) : null}
             {!nativeReadinessLoading && !nativeReadinessReady ? (
-              <p className="mt-2 text-xs text-amber-700">
-                Device setup required: {nativeReadinessReason || 'Location permission and location services are required.'}
-              </p>
+              <p className="mt-2 text-xs text-amber-700">{nativeReadinessReason || 'Location permission and location services are required.'}</p>
             ) : null}
+            {state === 'failed' || state === 'canceled' ? <p className="mt-2 text-xs text-rose-700">{message}</p> : null}
             {quickChargeAttemptDiagnosticsSerialized ? (
               <div
                 className={`mt-3 rounded-xl border bg-white/90 p-3 text-[11px] ${

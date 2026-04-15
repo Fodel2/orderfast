@@ -3,7 +3,6 @@ import { useRouter } from 'next/router';
 import {
   BanknotesIcon,
   BuildingStorefrontIcon,
-  CheckCircleIcon,
   CreditCardIcon,
   DevicePhoneMobileIcon,
   ExclamationTriangleIcon,
@@ -23,7 +22,13 @@ import type { KioskTerminalMode } from '@/lib/kiosk/terminalMode';
 import { setKioskLastRealOrderNumber } from '@/utils/kiosk/orders';
 import { requestPrintJobCreation } from '@/lib/print-jobs/request';
 import NativeTapToPayPreHandoverOverlay from '@/components/payments/NativeTapToPayPreHandoverOverlay';
-import { isNativeTapToPayPreHandoverPhase } from '@/lib/payments/nativeTapToPayUiPhases';
+import {
+  isNativeTapToPayCancelableOverlayPhase,
+  isNativeTapToPayOverlayVisiblePhase,
+  POST_HANDOVER_PROGRESS_LINES,
+  PRE_HANDOVER_PROGRESS_LINES,
+  resolveNativeTapToPayUiPhase,
+} from '@/lib/payments/nativeTapToPayUiPhases';
 
 type Restaurant = {
   id: string;
@@ -100,19 +105,6 @@ const OPERATOR_DEBUG_STORAGE_KEY = 'orderfast_kiosk_operator_debug';
 const KIOSK_CHECKOUT_CONTEXT_STORAGE_KEY = 'orderfast_kiosk_checkout_context';
 const OPERATOR_DEBUG_TAP_THRESHOLD = 7;
 const OPERATOR_DEBUG_TAP_WINDOW_MS = 8000;
-const PAYMENT_PREP_MESSAGES = [
-  'Loading up the payment magic...',
-  'Deliciousness secured... now time to secure the payment.',
-  'Waking up the card goblins...',
-  'Getting the tap ready...',
-  'One tiny beep away from greatness...',
-];
-const PAYMENT_COLLECT_MESSAGES = [
-  'Ready when you are — tap to pay.',
-  'One quick tap and we are done.',
-  'Phones, cards, watches — all welcome.',
-  'Tap now and we will fire your order.',
-];
 const STARTUP_TRACE_LABELS: Record<StartupTraceKey, string> = {
   availability: 'availability',
   session_create: 'session create',
@@ -226,7 +218,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   const [autoSubmitAttemptedMethod, setAutoSubmitAttemptedMethod] = useState<'cash' | 'pay_at_counter' | 'contactless' | null>(null);
   const [suppressStageAutoSubmit, setSuppressStageAutoSubmit] = useState(false);
   const [prepMessageIndex, setPrepMessageIndex] = useState(0);
-  const [collectMessageIndex, setCollectMessageIndex] = useState(0);
+  const [successTickVisible, setSuccessTickVisible] = useState(false);
   const [terminalMode, setTerminalMode] = useState<KioskTerminalMode>('real_tap_to_pay');
   const isVerifiedPaidPayload = useCallback((verification: PaymentVerification | null | undefined) => {
     if (!verification || verification.verifiedPaid !== true) return false;
@@ -395,17 +387,16 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   }, [CONTACTLESS_SESSION_STORAGE_KEY, stage]);
 
   useEffect(() => {
-    if (!orderSubmitting && !contactlessBusy && contactlessStatus !== 'preparing' && contactlessStatus !== 'collecting') {
+    const overlayVisible = isNativeTapToPayOverlayVisiblePhase(contactlessStatus) || successTickVisible;
+    if (!overlayVisible) {
       setPrepMessageIndex(0);
-      setCollectMessageIndex(0);
       return;
     }
     const interval = window.setInterval(() => {
-      setPrepMessageIndex((prev) => (prev + 1) % PAYMENT_PREP_MESSAGES.length);
-      setCollectMessageIndex((prev) => (prev + 1) % PAYMENT_COLLECT_MESSAGES.length);
-    }, 1800);
+      setPrepMessageIndex((prev) => prev + 1);
+    }, 3400);
     return () => window.clearInterval(interval);
-  }, [contactlessBusy, contactlessStatus, orderSubmitting]);
+  }, [contactlessStatus, successTickVisible]);
 
   const reconcileSession = useCallback(
     async (sessionId: string, reason: string) => {
@@ -1263,6 +1254,20 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       ring: hexToRgba(primary, 0.28),
     };
   }, [restaurant?.brand_primary_color, restaurant?.brand_secondary_color]);
+  const contactlessUiPhase = useMemo(() => resolveNativeTapToPayUiPhase(contactlessStatus), [contactlessStatus]);
+  const showSharedTransitionOverlay = useMemo(
+    () => isNativeTapToPayOverlayVisiblePhase(contactlessStatus) || successTickVisible,
+    [contactlessStatus, successTickVisible]
+  );
+  const transitionLines = useMemo(
+    () =>
+      contactlessUiPhase === 'processing_returned_result' ||
+      contactlessUiPhase === 'verifying_paid_outcome' ||
+      contactlessUiPhase === 'finalizing_session'
+        ? POST_HANDOVER_PROGRESS_LINES
+        : PRE_HANDOVER_PROGRESS_LINES,
+    [contactlessUiPhase]
+  );
 
   useEffect(() => {
     const shouldLock =
@@ -1312,22 +1317,8 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
 
   useEffect(() => {
     if (stage !== 'contactless') return;
-    if (contactlessBusy) return;
-    if (contactlessStatus !== 'failed' && contactlessStatus !== 'canceled') return;
-    const timeout = window.setTimeout(() => {
-      returnToFallback(
-        contactlessStatus === 'canceled'
-          ? 'Payment cancelled'
-          : contactlessError || 'Contactless payment is unavailable right now. Please choose another payment method.'
-      );
-    }, 900);
-    return () => window.clearTimeout(timeout);
-  }, [contactlessBusy, contactlessError, contactlessStatus, returnToFallback, stage]);
-
-  useEffect(() => {
-    if (stage !== 'contactless') return;
     if (!contactlessSessionId || !restaurantId) return;
-    if (contactlessStatus !== 'processing' && contactlessStatus !== 'collecting') return;
+    if (!isNativeTapToPayOverlayVisiblePhase(contactlessStatus)) return;
 
     const watchdog = window.setTimeout(() => {
       void (async () => {
@@ -1335,7 +1326,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         await reconcileSession(contactlessSessionId, 'watchdog');
         window.setTimeout(() => {
           setContactlessStatus((current) => {
-            if (current === 'processing' || current === 'collecting') {
+            if (isNativeTapToPayOverlayVisiblePhase(current)) {
               setContactlessError('Payment did not complete. Please choose another payment method and try again.');
               return 'failed';
             }
@@ -1363,8 +1354,15 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
 
   useEffect(() => {
     if (contactlessStatus !== 'succeeded' || orderSubmitting || autoSubmitAttemptedMethod === 'contactless') return;
-    setAutoSubmitAttemptedMethod('contactless');
-    void submitOrderAndRedirect('contactless');
+    setSuccessTickVisible(true);
+    const timeout = window.setTimeout(() => {
+      setAutoSubmitAttemptedMethod('contactless');
+      void submitOrderAndRedirect('contactless');
+    }, 900);
+    return () => {
+      window.clearTimeout(timeout);
+      setSuccessTickVisible(false);
+    };
   }, [autoSubmitAttemptedMethod, contactlessStatus, orderSubmitting, submitOrderAndRedirect]);
 
   useEffect(() => {
@@ -1485,39 +1483,19 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   );
 
   const renderContactlessOverlay = () => (
-    <div
-      className="fixed inset-0 z-[75] flex items-center justify-center px-4 py-6 backdrop-blur-[3px] sm:px-6"
-      style={{
-        background: `linear-gradient(165deg, rgba(148, 163, 184, 0.42), ${hexToRgba(paymentTheme.primary, 0.2)} 55%, ${hexToRgba(paymentTheme.secondary, 0.18)})`,
-      }}
-    >
-      <section className="w-full max-w-3xl text-center">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-600">Contactless payment</p>
-        <div className="mx-auto mt-4 h-12 w-12 animate-spin rounded-full border-4 border-white/70" style={{ borderTopColor: paymentTheme.primary }} />
+    <div className="rounded-[2rem] border border-slate-200 bg-white/95 p-6 shadow-xl">
+      <section className="text-center">
         <div
-          className="mx-auto mt-6 inline-flex h-16 w-16 items-center justify-center rounded-3xl shadow-lg"
+          className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl text-white shadow-lg"
           style={{ background: `linear-gradient(135deg, ${paymentTheme.primary}, ${paymentTheme.secondary})` }}
           aria-hidden="true"
         >
-          <DevicePhoneMobileIcon className="h-9 w-9 text-white" />
+          <DevicePhoneMobileIcon className="h-7 w-7 text-white" />
         </div>
-        <p className="mt-5 text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">Contactless payment</p>
-        <p className="mx-auto mt-2 max-w-lg text-sm text-slate-700 sm:text-base">Complete the payment flow to place your order.</p>
-        {contactlessStatus === 'preparing' || contactlessStatus === 'idle' ? (
-          <p className="mt-5 text-base font-medium text-slate-800">{PAYMENT_PREP_MESSAGES[prepMessageIndex]}</p>
-        ) : null}
-        {contactlessStatus === 'collecting' ? (
-          <p className="mt-5 text-base font-medium text-slate-800">{PAYMENT_COLLECT_MESSAGES[collectMessageIndex]}</p>
-        ) : null}
-        {contactlessStatus === 'processing' ? <p className="mt-3 text-base font-medium text-amber-700">Finalizing payment result...</p> : null}
-        {contactlessStatus === 'succeeded' ? (
-          <p className="mt-4 flex items-center justify-center gap-2 text-base font-medium text-emerald-700">
-            <CheckCircleIcon className="h-5 w-5 shrink-0" />
-            Payment approved. Sending your order now...
-          </p>
-        ) : null}
+        <p className="mt-3 text-lg font-semibold text-slate-900">Tap when prompted on Stripe</p>
+        {contactlessStatus === 'collecting' ? <p className="mt-2 text-sm text-slate-600">Card/phone collection is active.</p> : null}
         {contactlessStatus === 'failed' || contactlessStatus === 'canceled' ? (
-          <p className="mx-auto mt-4 flex max-w-xl items-center justify-center gap-2 text-base font-medium text-rose-700">
+          <p className="mx-auto mt-4 flex max-w-xl items-center justify-center gap-2 text-sm font-medium text-rose-700">
             <ExclamationTriangleIcon className="h-5 w-5 shrink-0" />
             {contactlessStatus === 'canceled'
               ? 'Payment was canceled. Please choose a payment method to continue.'
@@ -1527,11 +1505,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
                   : 'Payment failed, please try again or choose another payment method.')}
           </p>
         ) : null}
-        {showOperatorDetails ? <p className="mt-2 text-[11px] font-medium uppercase tracking-[0.12em] text-slate-500">Debug: {contactlessDebug}</p> : null}
-        {showOperatorDetails && contactlessDebugDetail ? (
-          <p className="mt-1 text-xs font-medium text-slate-600">Detail: {contactlessDebugDetail}</p>
-        ) : null}
-        {showOperatorDetails ? (
+        {showOperatorDetails && (contactlessStatus === 'failed' || contactlessStatus === 'canceled') ? (
           <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Tap to Pay startup diagnostics</p>
             <p className="mt-1 text-xs text-slate-700">
@@ -1547,7 +1521,9 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
             </div>
           </div>
         ) : null}
-        <div className="mx-auto mt-7 grid max-w-md grid-cols-1 gap-3 sm:grid-cols-2">
+        {showOperatorDetails ? <p className="mt-2 text-[11px] font-medium uppercase tracking-[0.12em] text-slate-500">Debug: {contactlessDebug}</p> : null}
+        {showOperatorDetails && contactlessDebugDetail ? <p className="mt-1 text-xs font-medium text-slate-600">Detail: {contactlessDebugDetail}</p> : null}
+        <div className="mx-auto mt-6 grid max-w-md grid-cols-1 gap-3 sm:grid-cols-2">
           <button
             type="button"
             onClick={() => {
@@ -1684,11 +1660,14 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
           {!settingsLoading && stage === 'contactless' ? renderContactlessOverlay() : null}
           {!settingsLoading && stage === 'contactless' ? (
             <NativeTapToPayPreHandoverOverlay
-              visible={isNativeTapToPayPreHandoverPhase(contactlessStatus)}
-              phaseLabel="Preparing payment mode"
-              title="Contactless payments"
-              message={PAYMENT_PREP_MESSAGES[prepMessageIndex]}
+              visible={showSharedTransitionOverlay}
+              lines={transitionLines}
               lineIndex={prepMessageIndex}
+              showSuccessTick={successTickVisible}
+              canClose={isNativeTapToPayCancelableOverlayPhase(contactlessStatus) && !contactlessBusy}
+              onClose={() => {
+                void cancelTapToPay();
+              }}
             />
           ) : null}
           {!settingsLoading && orderSubmitting ? renderOrderSubmittingOverlay() : null}
