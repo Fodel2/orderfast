@@ -2202,13 +2202,19 @@ public class OrderfastTapToPayPlugin extends Plugin {
         int hostIdentity = MainActivity.getHostActivityIdentityHash();
         int pluginIdentity = pluginActivity == null ? -1 : System.identityHashCode(pluginActivity);
         int bridgeIdentity = bridgeActivity == null ? -1 : System.identityHashCode(bridgeActivity);
+        boolean appInBackground = isAppInBackground();
+        boolean pluginHasWindowFocus = pluginActivity != null && pluginActivity.hasWindowFocus();
+        boolean bridgeHasWindowFocus = bridgeActivity != null && bridgeActivity.hasWindowFocus();
         ArrayList<String> blockedReasons = new ArrayList<>();
         boolean hostIdentityConsistent = hostIdentity != -1
             && pluginIdentity != -1
             && bridgeIdentity != -1
             && hostIdentity == pluginIdentity
             && hostIdentity == bridgeIdentity;
-        if (!hostIdentityConsistent) {
+        // During Stripe's Tap to Pay takeover Android can briefly report stale/mismatched Activity identities
+        // even when the app is still foregrounded and safe to continue processPaymentIntent.
+        // Keep this as diagnostic context, but do not hard-block process start on identity mismatch alone.
+        if (!hostIdentityConsistent && appInBackground) {
             blockedReasons.add("host_identity_mismatch");
         }
         if (pluginActivity == null || bridgeActivity == null) {
@@ -2218,11 +2224,13 @@ public class OrderfastTapToPayPlugin extends Plugin {
             && (pluginActivity.isFinishing() || pluginActivity.isDestroyed() || bridgeActivity.isFinishing() || bridgeActivity.isDestroyed())) {
             blockedReasons.add("activity_finishing_or_destroyed");
         }
-        if (isAppInBackground()) {
+        if (appInBackground) {
             blockedReasons.add("app_in_background");
         }
         long takeoverBoundaryAtMs = Math.max(lastPauseAtMs, lastStopAtMs);
-        if (takeoverBoundaryAtMs > 0L && MainActivity.getHostActivityLastResumedAtMs() < takeoverBoundaryAtMs) {
+        if (takeoverBoundaryAtMs > 0L
+            && MainActivity.getHostActivityLastResumedAtMs() < takeoverBoundaryAtMs
+            && (appInBackground || (!pluginHasWindowFocus && !bridgeHasWindowFocus))) {
             blockedReasons.add("host_not_resumed_after_takeover_boundary");
         }
         boolean safe = blockedReasons.isEmpty();
