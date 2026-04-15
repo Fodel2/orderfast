@@ -4,6 +4,7 @@ import { formatPrice } from '@/lib/orderDisplay';
 import { resolveNativeTapToPayReadiness } from '@/lib/kiosk/tapToPayNativeReadiness';
 import { type AppFlowState } from '@/lib/app/launcherBootstrap';
 import { internalSettlementActiveRunStore } from '@/lib/payments/internalSettlementActiveRunStore';
+import { buildCombinedTapToPayDiagnosticsPayload } from '@/lib/payments/tapToPayDiagnostics';
 
 type SettlementMode = 'order_payment' | 'quick_charge';
 type CollectionState = AppFlowState | 'idle';
@@ -150,6 +151,11 @@ export default function InternalSettlementModule({
   const [activeTerminalLocationId, setActiveTerminalLocationId] = useState<string | null>(null);
   const flowActiveRef = useRef(false);
   const flowRunIdRef = useRef<string | null>(null);
+  const quickChargeAttemptStartMsRef = useRef<number | null>(null);
+  const quickChargeAttemptEndMsRef = useRef<number | null>(null);
+  const quickChargeEventSequenceRef = useRef(0);
+  const quickChargeUiEventHistoryRef = useRef<Record<string, unknown>[]>([]);
+  const quickChargePaymentIntentIdRef = useRef<string | null>(null);
 
   const selectedOrder = useMemo(() => orders.find((order) => order.id === selectedOrderId) || null, [orders, selectedOrderId]);
 
@@ -161,6 +167,10 @@ export default function InternalSettlementModule({
   }, [mode, quickAmount, selectedOrder?.total_price]);
 
   const amountLabel = useMemo(() => formatPrice(amountCents / 100), [amountCents]);
+  const nativeRestaurantId = useMemo(() => {
+    const value = restaurantId?.trim();
+    return value ? value : null;
+  }, [restaurantId]);
   const quickChargeAttemptDiagnosticsPayload = useMemo(() => {
     if (mode !== 'quick_charge') return null;
     const attemptSummary =
@@ -170,23 +180,30 @@ export default function InternalSettlementModule({
           ? quickChargeFailureSnapshot
           : null;
     if (!attemptSummary) return null;
-    return {
-      attemptSummary,
+    return buildCombinedTapToPayDiagnosticsPayload({
+      attemptSummary: attemptSummary as unknown as Record<string, unknown>,
       rawNativePayload: quickChargeRawNativePayload,
       rawServerVerificationPayload: quickChargeRawServerVerificationPayload,
+      uiEventHistory: quickChargeUiEventHistoryRef.current,
       uiContext: {
         collectionState: state,
         message,
-        activeSessionId,
-        activeTerminalLocationId,
+        sessionId: activeSessionId,
+        flowRunId: flowRunIdRef.current,
+        paymentIntentId: quickChargePaymentIntentIdRef.current,
+        terminalLocationId: activeTerminalLocationId,
+        restaurantId: nativeRestaurantId,
+        attemptStartTimestampMs: quickChargeAttemptStartMsRef.current,
+        attemptEndTimestampMs: quickChargeAttemptEndMsRef.current,
       },
-    };
+    });
   }, [
     mode,
     state,
     message,
     activeSessionId,
     activeTerminalLocationId,
+    nativeRestaurantId,
     quickChargeSuccessSnapshot,
     quickChargeFailureSnapshot,
     quickChargeRawNativePayload,
@@ -196,10 +213,6 @@ export default function InternalSettlementModule({
     () => (quickChargeAttemptDiagnosticsPayload ? JSON.stringify(quickChargeAttemptDiagnosticsPayload, null, 2) : null),
     [quickChargeAttemptDiagnosticsPayload]
   );
-  const nativeRestaurantId = useMemo(() => {
-    const value = restaurantId?.trim();
-    return value ? value : null;
-  }, [restaurantId]);
 
   const loadOrders = useCallback(async () => {
     setLoadingOrders(true);
@@ -348,6 +361,24 @@ export default function InternalSettlementModule({
 
   const logCollectionEvent = useCallback((event: string, payload?: Record<string, unknown>) => {
     const prefix = '[internal-settlement][take-payment][quick-charge][tap-to-pay]';
+    if (mode === 'quick_charge' && quickChargeAttemptStartMsRef.current != null) {
+      const now = Date.now();
+      quickChargeEventSequenceRef.current += 1;
+      const context = payload && typeof payload === 'object' ? payload : {};
+      quickChargeUiEventHistoryRef.current.push({
+        sequence: quickChargeEventSequenceRef.current,
+        absoluteTimestamp: new Date(now).toISOString(),
+        timestampMs: now,
+        elapsedMsSinceAttemptStart: Math.max(0, now - (quickChargeAttemptStartMsRef.current || now)),
+        eventName: `ui.${event}`,
+        sessionId: activeSessionId,
+        flowRunId: flowRunIdRef.current,
+        paymentIntentId: quickChargePaymentIntentIdRef.current,
+        processName: typeof context?.processName === 'string' ? context.processName : null,
+        activityIdentityHash: null,
+        context,
+      });
+    }
     if (event.includes('error') || event.includes('exception')) {
       console.error(prefix, event, payload);
       return;
@@ -362,7 +393,7 @@ export default function InternalSettlementModule({
     ) {
       console.info(prefix, event, payload);
     }
-  }, []);
+  }, [activeSessionId, mode]);
 
   const logQuickChargeSequenceEvent = useCallback(
     (
@@ -431,6 +462,14 @@ export default function InternalSettlementModule({
     setQuickChargeSuccessSnapshot(null);
     setQuickChargeRawNativePayload(null);
     setQuickChargeRawServerVerificationPayload(null);
+    if (mode === 'quick_charge') {
+      const now = Date.now();
+      quickChargeAttemptStartMsRef.current = now;
+      quickChargeAttemptEndMsRef.current = null;
+      quickChargeEventSequenceRef.current = 0;
+      quickChargeUiEventHistoryRef.current = [];
+      quickChargePaymentIntentIdRef.current = null;
+    }
     if (!tapAvailabilityReady) {
       setState('failed');
       setMessage(tapAvailabilityReason || 'Tap to Pay is not available for this restaurant.');
@@ -580,6 +619,7 @@ export default function InternalSettlementModule({
       const paymentIntentClientSecret = intentPayload?.clientSecret ? String(intentPayload.clientSecret) : '';
       const paymentIntentId = intentPayload?.paymentIntentId ? String(intentPayload.paymentIntentId) : '';
       const paymentIntentStatus = intentPayload?.status ? String(intentPayload.status) : '';
+      quickChargePaymentIntentIdRef.current = paymentIntentId || null;
       if (!paymentIntentClientSecret) {
         throw new Error('Payment intent client secret missing from settlement response.');
       }
@@ -670,6 +710,9 @@ export default function InternalSettlementModule({
           : null;
       if (mode === 'quick_charge') {
         setQuickChargeRawNativePayload(nativeResult && typeof nativeResult === 'object' ? (nativeResult as Record<string, unknown>) : null);
+      }
+      if (nativeResult.paymentIntentId) {
+        quickChargePaymentIntentIdRef.current = nativeResult.paymentIntentId;
       }
       logCollectionEvent(nativeResult.status === 'succeeded' ? 'native_collect.success' : 'native_collect.error', { sessionId, result: nativeResult });
       logCollectionEvent(nativeResult.status === 'succeeded' ? 'native_process.success' : 'native_process.error', {
@@ -902,6 +945,9 @@ export default function InternalSettlementModule({
         }
 
         if (verifyRes?.ok === true && verifiedState === 'finalized') {
+          if (mode === 'quick_charge') {
+            quickChargeAttemptEndMsRef.current = Date.now();
+          }
           setState('completed');
           setMessage(mode === 'order_payment' ? 'Order payment collected successfully.' : 'Quick charge collected successfully.');
           setActiveSessionId(null);
@@ -912,6 +958,9 @@ export default function InternalSettlementModule({
         }
 
         setState(isUnsupportedDeviceError(nativeResult.code) ? 'unsupported_device' : 'failed');
+        if (mode === 'quick_charge') {
+          quickChargeAttemptEndMsRef.current = Date.now();
+        }
         setMessage(verifiedReason);
         logCollectionEvent('final_persisted_outcome_and_reason', {
           sessionId,
@@ -1044,6 +1093,9 @@ export default function InternalSettlementModule({
       logCollectionEvent('finalize.success', { sessionId, ok: finalizeRes.ok });
 
       setState('completed');
+      if (mode === 'quick_charge') {
+        quickChargeAttemptEndMsRef.current = Date.now();
+      }
       setMessage(mode === 'order_payment' ? 'Order payment collected successfully.' : 'Quick charge collected successfully.');
       setQuickChargeFailureSnapshot(null);
       setActiveSessionId(null);
@@ -1088,6 +1140,9 @@ export default function InternalSettlementModule({
         return;
       }
       setState('failed');
+      if (mode === 'quick_charge') {
+        quickChargeAttemptEndMsRef.current = Date.now();
+      }
       setMessage(error?.message || 'Payment failed.');
       if (sessionIdForCleanup) {
         await persistFlowOutcome({
@@ -1210,6 +1265,7 @@ export default function InternalSettlementModule({
       });
       logCollectionEvent('app_cancel_requested', { sessionId: activeSessionId });
       setState('failed');
+      quickChargeAttemptEndMsRef.current = Date.now();
       setMessage('Payment canceled.');
       setQuickChargeFailureSnapshot(null);
       setQuickChargeSuccessSnapshot(null);
