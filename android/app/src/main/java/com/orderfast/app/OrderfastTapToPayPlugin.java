@@ -115,6 +115,25 @@ public class OrderfastTapToPayPlugin extends Plugin {
     private volatile Runnable deferredProcessStartRunnable = null;
     private volatile String deferredProcessStartReason = null;
     private volatile long deferredProcessStartRegisteredAtMs = 0L;
+    private volatile String deferredProcessTokenId = null;
+    private volatile String deferredSessionId = null;
+    private volatile String deferredFlowRunId = null;
+    private volatile String deferredPaymentIntentId = null;
+    private volatile boolean deferredReleaseCommitted = false;
+    private volatile int collectSuccessCallbackCount = 0;
+    private volatile int deferredProcessRegistrationCount = 0;
+    private volatile int deferredProcessRecheckCount = 0;
+    private volatile int deferredProcessReleaseAttemptCount = 0;
+    private volatile int processInvokeAttemptCount = 0;
+    private volatile int processInvokeCommittedCount = 0;
+    private volatile int deferredAlreadyClearedCount = 0;
+    private volatile int deferredRearmedCount = 0;
+    private volatile int postCollectDirectRecheckCount = 0;
+    private volatile int onStartRecheckCount = 0;
+    private volatile int onResumeRecheckCount = 0;
+    private volatile int onWindowFocusChangedRecheckCount = 0;
+    private volatile int onNewIntentRecheckCount = 0;
+    private volatile int deferredTokenSequence = 0;
     private volatile JSObject cachedFinalResult = null;
     private volatile long cachedFinalResultAtMs = 0L;
     private static int pluginInstanceCounter = 0;
@@ -688,6 +707,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
         currentTerminalLocationId = terminalLocationId;
         currentFlowRunId = flowRunId.isEmpty() ? null : flowRunId;
         traceTimeline("run_context_bound", null);
+        resetDeferredProcessAuditCounters();
         clearCachedFinalResult("new_active_run_started");
         clearOperationTimeout();
         activePaymentIntent = null;
@@ -789,6 +809,19 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 quickChargeTraceSnapshot.put("processDeferredForForegroundFocus", false);
                 quickChargeTraceSnapshot.put("processDeferredForHostLifecycleReattach", false);
                 quickChargeTraceSnapshot.put("processDeferredWaitPathRan", false);
+                quickChargeTraceSnapshot.put("deferredProcessRegistrationCount", 0);
+                quickChargeTraceSnapshot.put("deferredProcessRecheckCount", 0);
+                quickChargeTraceSnapshot.put("deferredProcessReleaseAttemptCount", 0);
+                quickChargeTraceSnapshot.put("processInvokeAttemptCount", 0);
+                quickChargeTraceSnapshot.put("processInvokeCommittedCount", 0);
+                quickChargeTraceSnapshot.put("deferredAlreadyClearedCount", 0);
+                quickChargeTraceSnapshot.put("deferredRearmedCount", 0);
+                quickChargeTraceSnapshot.put("postCollectDirectRecheckCount", 0);
+                quickChargeTraceSnapshot.put("onStartRecheckCount", 0);
+                quickChargeTraceSnapshot.put("onResumeRecheckCount", 0);
+                quickChargeTraceSnapshot.put("onWindowFocusChangedRecheckCount", 0);
+                quickChargeTraceSnapshot.put("onNewIntentRecheckCount", 0);
+                quickChargeTraceSnapshot.put("currentDeferredTokenId", JSONObject.NULL);
                 quickChargeTraceSnapshot.put("timedEventTrail", new JSONArray());
                 quickChargeTraceSnapshot.put("paymentStatusChangeCountBeforeCollectSuccess", 0);
                 quickChargeTraceSnapshot.put("paymentStatusWaitingForInputCountBeforeCollectSuccess", 0);
@@ -897,8 +930,9 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                     // which can wrongly defer process and force a second presentment.
                                     stripeTakeoverObserved = true;
                                     final boolean collectedIntentMatchesRetrieved = retrievedIntent == collectedIntent;
+                                    collectSuccessCallbackCount += 1;
                                     quickChargeTraceSnapshot.put("collectCallbackStatus", "success");
-                                    quickChargeTraceSnapshot.put("collectSuccessCallbackCount", quickChargeTraceSnapshot.optInt("collectSuccessCallbackCount", 0) + 1);
+                                    quickChargeTraceSnapshot.put("collectSuccessCallbackCount", collectSuccessCallbackCount);
                                     quickChargeTraceSnapshot.put("collectReturnedUpdatedIntent", !collectedIntentMatchesRetrieved);
                                     quickChargeTraceSnapshot.put("collectIntentReferenceChanged", !collectedIntentMatchesRetrieved);
                                     quickChargeTraceSnapshot.put("lastCollectCallbackPaymentIntentId", collectedIntent.getId());
@@ -943,6 +977,8 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                     traceTimeline("collect_success_host_context", collectSuccessHostContext);
 
                                     Runnable invokeProcessPaymentIntent = () -> {
+                                        processInvokeAttemptCount += 1;
+                                        quickChargeTraceSnapshot.put("processInvokeAttemptCount", processInvokeAttemptCount);
                                         boolean readerDisconnected = readerDisconnectedDuringActiveRun();
                                         String processStartBlockedReason = null;
                                         if (!inFlight) {
@@ -966,6 +1002,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                             blockedPayload.put("processDeferredForForegroundFocus", false);
                                             blockedPayload.put("cancelClassification", determineCancelClassification("canceled"));
                                             blockedPayload.put("detail", detail("native_process_result", processStartBlockedReason, null));
+                                            attachDeferredAuditCounters(blockedPayload);
                                             blockedPayload.put("quickChargeTraceSnapshot", quickChargeTraceSnapshot);
                                             logStartupStage("native_process_result", blockedPayload);
                                             cacheFinalResult(blockedPayload, "process_not_invoked_after_collect");
@@ -976,6 +1013,8 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                         }
 
                                         quickChargeTraceSnapshot.put("processInvocationCount", quickChargeTraceSnapshot.optInt("processInvocationCount", 0) + 1);
+                                        processInvokeCommittedCount += 1;
+                                        quickChargeTraceSnapshot.put("processInvokeCommittedCount", processInvokeCommittedCount);
                                         quickChargeTraceSnapshot.put("processStartAllowedReason", "collect_succeeded_and_host_lifecycle_safe");
                                         quickChargeTraceSnapshot.put("processDeferredForHostLifecycleReattach", false);
                                         JSObject processStartPayload = new JSObject();
@@ -1004,6 +1043,8 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                         processInvokedPayload.put("processAwarenessFallbackReason", quickChargeTraceSnapshot.optString("processAwarenessFallbackReason", null));
                                         processInvokedPayload.put("processDeferredForForegroundFocus", quickChargeTraceSnapshot.optBoolean("processDeferredForForegroundFocus", false));
                                         processInvokedPayload.put("processDeferredForHostLifecycleReattach", quickChargeTraceSnapshot.optBoolean("processDeferredForHostLifecycleReattach", false));
+                                        attachDeferredAuditCounters(processInvokedPayload);
+                                        attachDeferredRunIdentity(processInvokedPayload);
                                         addHostContextTruth(processInvokedPayload, "process_invoked_before_sdk_call");
                                         logFlowEvent("native_process_invoked", processInvokedPayload);
                                         JSObject quickChargeProcessInvokedPayload = new JSObject();
@@ -1069,6 +1110,8 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                                     detailPayload.put("processInvoked", true);
                                                     detailPayload.put("usedPostCollectPaymentIntent", true);
                                                     payload.put("detail", detailPayload);
+                                                    attachDeferredAuditCounters(payload);
+                                                    attachDeferredRunIdentity(payload);
                                                     attachPaymentIntentSnapshot(payload, intent, "process_success");
                                                     payload.put("quickChargeTraceSnapshot", quickChargeTraceSnapshot);
                                                     logStartupStage("native_process_result", payload);
@@ -1084,6 +1127,8 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                                     detailPayload.put("processInvoked", true);
                                                     detailPayload.put("usedPostCollectPaymentIntent", true);
                                                     payload.put("detail", detailPayload);
+                                                    attachDeferredAuditCounters(payload);
+                                                    attachDeferredRunIdentity(payload);
                                                     attachPaymentIntentSnapshot(payload, intent, "process_pending");
                                                     payload.put("quickChargeTraceSnapshot", quickChargeTraceSnapshot);
                                                     logStartupStage("native_process_result", payload);
@@ -1098,6 +1143,8 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                                     detailPayload.put("processInvoked", true);
                                                     detailPayload.put("usedPostCollectPaymentIntent", true);
                                                     payload.put("detail", detailPayload);
+                                                    attachDeferredAuditCounters(payload);
+                                                    attachDeferredRunIdentity(payload);
                                                     attachPaymentIntentSnapshot(payload, intent, "process_unexpected_status");
                                                     quickChargeTraceSnapshot.put("nativeFailurePoint", "process_unexpected_status");
                                                     quickChargeTraceSnapshot.put("finalFailureReason", "Unexpected PaymentIntent status after process callback.");
@@ -1159,6 +1206,8 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                                 payload.put("readerDisconnectBeforeCallback", readerDisconnectedDuringActiveRun());
                                                 payload.put("readerDisconnectReason", lastReaderDisconnectReason);
                                                 payload.put("cancelClassification", determineCancelClassification(normalizedCode));
+                                                attachDeferredAuditCounters(payload);
+                                                attachDeferredRunIdentity(payload);
                                                 attachPaymentIntentSnapshot(payload, activePaymentIntent, "process_failure_active_intent");
                                                 payload.put("quickChargeTraceSnapshot", quickChargeTraceSnapshot);
                                                 JSObject quickChargeProcessCallbackPayload = new JSObject();
@@ -1936,6 +1985,95 @@ public class OrderfastTapToPayPlugin extends Plugin {
         return value == null || value.trim().isEmpty();
     }
 
+    private void resetDeferredProcessAuditCounters() {
+        collectSuccessCallbackCount = 0;
+        deferredProcessRegistrationCount = 0;
+        deferredProcessRecheckCount = 0;
+        deferredProcessReleaseAttemptCount = 0;
+        processInvokeAttemptCount = 0;
+        processInvokeCommittedCount = 0;
+        deferredAlreadyClearedCount = 0;
+        deferredRearmedCount = 0;
+        postCollectDirectRecheckCount = 0;
+        onStartRecheckCount = 0;
+        onResumeRecheckCount = 0;
+        onWindowFocusChangedRecheckCount = 0;
+        onNewIntentRecheckCount = 0;
+        deferredProcessTokenId = null;
+        deferredSessionId = null;
+        deferredFlowRunId = null;
+        deferredPaymentIntentId = null;
+        deferredReleaseCommitted = false;
+    }
+
+    private void attachDeferredAuditCounters(JSObject payload) {
+        if (payload == null) return;
+        payload.put("collectSuccessCallbackCount", collectSuccessCallbackCount);
+        payload.put("deferredProcessRegistrationCount", deferredProcessRegistrationCount);
+        payload.put("deferredProcessRecheckCount", deferredProcessRecheckCount);
+        payload.put("deferredProcessReleaseAttemptCount", deferredProcessReleaseAttemptCount);
+        payload.put("processInvokeAttemptCount", processInvokeAttemptCount);
+        payload.put("processInvokeCommittedCount", processInvokeCommittedCount);
+        payload.put("deferredAlreadyClearedCount", deferredAlreadyClearedCount);
+        payload.put("deferredRearmedCount", deferredRearmedCount);
+        payload.put("postCollectDirectRecheckCount", postCollectDirectRecheckCount);
+        payload.put("onStartRecheckCount", onStartRecheckCount);
+        payload.put("onResumeRecheckCount", onResumeRecheckCount);
+        payload.put("onWindowFocusChangedRecheckCount", onWindowFocusChangedRecheckCount);
+        payload.put("onNewIntentRecheckCount", onNewIntentRecheckCount);
+    }
+
+    private void attachDeferredRunIdentity(JSObject payload) {
+        if (payload == null) return;
+        payload.put("sessionId", isBlank(currentSessionId) ? JSONObject.NULL : currentSessionId);
+        payload.put("flowRunId", isBlank(currentFlowRunId) ? JSONObject.NULL : currentFlowRunId);
+        payload.put("paymentIntentId", activePaymentIntent != null ? activePaymentIntent.getId() : JSONObject.NULL);
+        payload.put("deferredTokenId", deferredProcessTokenId == null ? JSONObject.NULL : deferredProcessTokenId);
+        payload.put("deferredSessionId", isBlank(deferredSessionId) ? JSONObject.NULL : deferredSessionId);
+        payload.put("deferredFlowRunId", isBlank(deferredFlowRunId) ? JSONObject.NULL : deferredFlowRunId);
+        payload.put("deferredPaymentIntentId", isBlank(deferredPaymentIntentId) ? JSONObject.NULL : deferredPaymentIntentId);
+    }
+
+    private boolean doesCurrentRunMatchDeferredContinuation() {
+        String activePaymentIntentId = activePaymentIntent == null ? null : activePaymentIntent.getId();
+        boolean sessionMatches = valueEqualsOrBothBlank(currentSessionId, deferredSessionId);
+        boolean flowMatches = valueEqualsOrBothBlank(currentFlowRunId, deferredFlowRunId);
+        boolean intentMatches = valueEqualsOrBothBlank(activePaymentIntentId, deferredPaymentIntentId);
+        return sessionMatches && flowMatches && intentMatches;
+    }
+
+    private boolean valueEqualsOrBothBlank(String left, String right) {
+        if (isBlank(left) && isBlank(right)) {
+            return true;
+        }
+        if (left == null) {
+            return right == null;
+        }
+        return left.equals(right);
+    }
+
+    private void incrementRecheckTriggerCounter(String trigger) {
+        if ("collect_success_direct_post_register".equals(trigger)) {
+            postCollectDirectRecheckCount += 1;
+            return;
+        }
+        if ("handleOnStart".equals(trigger)) {
+            onStartRecheckCount += 1;
+            return;
+        }
+        if ("handleOnResume".equals(trigger)) {
+            onResumeRecheckCount += 1;
+            return;
+        }
+        if (trigger != null && trigger.startsWith("mainActivity_onWindowFocusChanged:")) {
+            onWindowFocusChangedRecheckCount += 1;
+            return;
+        }
+        if ("handleOnNewIntent".equals(trigger)) {
+            onNewIntentRecheckCount += 1;
+        }
+    }
+
     private String flowRunJsonFragment() {
         return isBlank(currentFlowRunId) ? "" : ",\"flow_run_id\":\"" + escapeJson(currentFlowRunId) + "\"";
     }
@@ -2094,6 +2232,16 @@ public class OrderfastTapToPayPlugin extends Plugin {
     }
 
     private void registerDeferredProcessStart(Runnable processStartRunnable, String reason, JSObject snapshot) {
+        if (deferredProcessStartRunnable != null) {
+            deferredRearmedCount += 1;
+        }
+        deferredProcessRegistrationCount += 1;
+        deferredTokenSequence += 1;
+        deferredProcessTokenId = "deferred-" + pluginInstanceId + "-" + activeRunSequence + "-" + deferredTokenSequence;
+        deferredSessionId = currentSessionId;
+        deferredFlowRunId = currentFlowRunId;
+        deferredPaymentIntentId = activePaymentIntent == null ? null : activePaymentIntent.getId();
+        deferredReleaseCommitted = false;
         deferredProcessStartRunnable = processStartRunnable;
         deferredProcessStartReason = reason;
         deferredProcessStartRegisteredAtMs = System.currentTimeMillis();
@@ -2103,7 +2251,17 @@ public class OrderfastTapToPayPlugin extends Plugin {
             snapshot.put("processDeferredWaitPathRan", true);
             snapshot.put("processDeferredReason", reason);
             snapshot.put("processStartGateBranch", "collect_success_waiting_for_host_lifecycle");
+            snapshot.put("deferredProcessRegistrationCount", deferredProcessRegistrationCount);
+            snapshot.put("deferredRearmedCount", deferredRearmedCount);
+            snapshot.put("currentDeferredTokenId", deferredProcessTokenId == null ? JSONObject.NULL : deferredProcessTokenId);
         }
+        JSObject payload = lifecyclePayload("deferred_process_start_registered");
+        payload.put("deferredTokenId", deferredProcessTokenId == null ? JSONObject.NULL : deferredProcessTokenId);
+        payload.put("deferredReason", reason);
+        attachDeferredAuditCounters(payload);
+        attachDeferredRunIdentity(payload);
+        addHostContextTruth(payload, "deferred_process_register");
+        traceTimeline("deferred_process_start_registered", payload);
     }
 
     private void clearDeferredProcessStart(String reason) {
@@ -2112,19 +2270,29 @@ public class OrderfastTapToPayPlugin extends Plugin {
             payload.put("clearReason", reason);
             payload.put("deferredRegisteredAtMs", deferredProcessStartRegisteredAtMs > 0L ? deferredProcessStartRegisteredAtMs : JSONObject.NULL);
             payload.put("deferredReason", deferredProcessStartReason == null ? JSONObject.NULL : deferredProcessStartReason);
+            payload.put("deferredTokenId", deferredProcessTokenId == null ? JSONObject.NULL : deferredProcessTokenId);
+            attachDeferredAuditCounters(payload);
+            attachDeferredRunIdentity(payload);
             addHostContextTruth(payload, "deferred_process_clear");
             traceTimeline("deferred_process_start_cleared", payload);
         }
         deferredProcessStartRunnable = null;
         deferredProcessStartReason = null;
         deferredProcessStartRegisteredAtMs = 0L;
+        deferredProcessTokenId = null;
+        deferredSessionId = null;
+        deferredFlowRunId = null;
+        deferredPaymentIntentId = null;
+        deferredReleaseCommitted = false;
     }
 
     private void tryRunDeferredProcessStart(String trigger) {
+        incrementRecheckTriggerCounter(trigger);
         Runnable pending = deferredProcessStartRunnable;
         if (pending == null) {
             return;
         }
+        deferredProcessRecheckCount += 1;
         JSObject payload = lifecyclePayload("deferred_process_start_check");
         payload.put("trigger", trigger);
         payload.put("deferredRegisteredAtMs", deferredProcessStartRegisteredAtMs > 0L ? deferredProcessStartRegisteredAtMs : JSONObject.NULL);
@@ -2136,10 +2304,41 @@ public class OrderfastTapToPayPlugin extends Plugin {
         payload.put("safeToRun", safeNow);
         payload.put("blockedReason", safety.primaryBlockedReason);
         payload.put("blockedReasons", safety.blockedReasonsJson);
+        payload.put("deferredArmed", deferredProcessStartRunnable != null);
+        payload.put("processAlreadyInvoked", processInvokeCommittedCount > 0);
+        payload.put("deferredReleaseCommitted", deferredReleaseCommitted);
+        payload.put("runMatchesDeferredContinuation", doesCurrentRunMatchDeferredContinuation());
+        payload.put("deferredTokenId", deferredProcessTokenId == null ? JSONObject.NULL : deferredProcessTokenId);
+        attachDeferredAuditCounters(payload);
+        attachDeferredRunIdentity(payload);
         traceTimeline("deferred_process_start_check", payload);
         if (!safeNow) {
             return;
         }
+        deferredProcessReleaseAttemptCount += 1;
+        JSObject releasePayload = lifecyclePayload("deferred_process_start_release_attempt");
+        releasePayload.put("trigger", trigger);
+        releasePayload.put("safeToRun", true);
+        releasePayload.put("blockedReason", safety.primaryBlockedReason);
+        releasePayload.put("blockedReasons", safety.blockedReasonsJson);
+        releasePayload.put("deferredArmed", deferredProcessStartRunnable != null);
+        releasePayload.put("processAlreadyInvoked", processInvokeCommittedCount > 0);
+        releasePayload.put("deferredReleaseCommitted", deferredReleaseCommitted);
+        releasePayload.put("runMatchesDeferredContinuation", doesCurrentRunMatchDeferredContinuation());
+        releasePayload.put("deferredTokenId", deferredProcessTokenId == null ? JSONObject.NULL : deferredProcessTokenId);
+        attachDeferredAuditCounters(releasePayload);
+        attachDeferredRunIdentity(releasePayload);
+        addHostContextTruth(releasePayload, "deferred_process_release_attempt");
+        traceTimeline("deferred_process_start_release_attempt", releasePayload);
+        if (deferredReleaseCommitted) {
+            deferredAlreadyClearedCount += 1;
+            return;
+        }
+        if (deferredProcessStartRunnable == null || pending != deferredProcessStartRunnable) {
+            deferredAlreadyClearedCount += 1;
+            return;
+        }
+        deferredReleaseCommitted = true;
         clearDeferredProcessStart("safe_to_run:" + trigger);
         pending.run();
     }
