@@ -161,6 +161,41 @@ export default function InternalSettlementModule({
   }, [mode, quickAmount, selectedOrder?.total_price]);
 
   const amountLabel = useMemo(() => formatPrice(amountCents / 100), [amountCents]);
+  const quickChargeAttemptDiagnosticsPayload = useMemo(() => {
+    if (mode !== 'quick_charge') return null;
+    const attemptSummary =
+      state === 'completed' && quickChargeSuccessSnapshot
+        ? quickChargeSuccessSnapshot
+        : state === 'failed' && quickChargeFailureSnapshot
+          ? quickChargeFailureSnapshot
+          : null;
+    if (!attemptSummary) return null;
+    return {
+      attemptSummary,
+      rawNativePayload: quickChargeRawNativePayload,
+      rawServerVerificationPayload: quickChargeRawServerVerificationPayload,
+      uiContext: {
+        collectionState: state,
+        message,
+        activeSessionId,
+        activeTerminalLocationId,
+      },
+    };
+  }, [
+    mode,
+    state,
+    message,
+    activeSessionId,
+    activeTerminalLocationId,
+    quickChargeSuccessSnapshot,
+    quickChargeFailureSnapshot,
+    quickChargeRawNativePayload,
+    quickChargeRawServerVerificationPayload,
+  ]);
+  const quickChargeAttemptDiagnosticsSerialized = useMemo(
+    () => (quickChargeAttemptDiagnosticsPayload ? JSON.stringify(quickChargeAttemptDiagnosticsPayload, null, 2) : null),
+    [quickChargeAttemptDiagnosticsPayload]
+  );
   const nativeRestaurantId = useMemo(() => {
     const value = restaurantId?.trim();
     return value ? value : null;
@@ -1316,25 +1351,26 @@ export default function InternalSettlementModule({
           >
             <p className="font-semibold">Collection state: {state.replace('_', ' ')}</p>
             <p className="mt-1 text-xs">{message}</p>
-            {mode === 'quick_charge' && state === 'completed' && quickChargeSuccessSnapshot ? (
-              <div className="mt-3 rounded-xl border border-emerald-300 bg-white/90 p-3 text-[11px] text-emerald-900">
+            {quickChargeAttemptDiagnosticsSerialized ? (
+              <div
+                className={`mt-3 rounded-xl border bg-white/90 p-3 text-[11px] ${
+                  state === 'completed' ? 'border-emerald-300 text-emerald-900' : 'border-rose-300 text-rose-900'
+                }`}
+              >
                 <div className="flex items-center justify-between gap-3">
-                  <p className="font-semibold uppercase tracking-[0.08em]">Tap to Pay success snapshot</p>
+                  <p className="font-semibold uppercase tracking-[0.08em]">
+                    Tap to Pay {state === 'completed' ? 'success' : 'failure'} diagnostics
+                  </p>
                   <button
                     type="button"
-                    className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-emerald-800"
+                    className={`rounded-md px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] ${
+                      state === 'completed'
+                        ? 'border border-emerald-300 bg-emerald-50 text-emerald-800'
+                        : 'border border-rose-300 bg-rose-50 text-rose-800'
+                    }`}
                     onClick={async () => {
-                      const serialized = JSON.stringify(
-                        {
-                          ...quickChargeSuccessSnapshot,
-                          rawNativePayload: quickChargeRawNativePayload,
-                          rawServerVerificationPayload: quickChargeRawServerVerificationPayload,
-                        },
-                        null,
-                        2
-                      );
                       try {
-                        await navigator.clipboard.writeText(serialized);
+                        await navigator.clipboard.writeText(quickChargeAttemptDiagnosticsSerialized);
                       } catch {
                         // no-op: snapshot remains visible on screen for manual copy.
                       }
@@ -1343,56 +1379,12 @@ export default function InternalSettlementModule({
                     Copy
                   </button>
                 </div>
-                <pre className="mt-2 whitespace-pre-wrap break-all rounded-md bg-emerald-50 p-2 text-[10px] leading-4">
-                  {JSON.stringify(quickChargeSuccessSnapshot, null, 2)}
-                </pre>
-                <p className="mt-2 font-semibold uppercase tracking-[0.08em]">rawNativePayload</p>
-                <pre className="mt-1 whitespace-pre-wrap break-all rounded-md bg-emerald-50 p-2 text-[10px] leading-4">
-                  {JSON.stringify(quickChargeRawNativePayload, null, 2)}
-                </pre>
-                <p className="mt-2 font-semibold uppercase tracking-[0.08em]">rawServerVerificationPayload</p>
-                <pre className="mt-1 whitespace-pre-wrap break-all rounded-md bg-emerald-50 p-2 text-[10px] leading-4">
-                  {JSON.stringify(quickChargeRawServerVerificationPayload, null, 2)}
-                </pre>
-              </div>
-            ) : null}
-            {mode === 'quick_charge' && state === 'failed' && quickChargeFailureSnapshot ? (
-              <div className="mt-3 rounded-xl border border-rose-300 bg-white/90 p-3 text-[11px] text-rose-900">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="font-semibold uppercase tracking-[0.08em]">Tap to Pay failure snapshot</p>
-                  <button
-                    type="button"
-                    className="rounded-md border border-rose-300 bg-rose-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-rose-800"
-                    onClick={async () => {
-                      const serialized = JSON.stringify(
-                        {
-                          ...quickChargeFailureSnapshot,
-                          rawNativePayload: quickChargeRawNativePayload,
-                          rawServerVerificationPayload: quickChargeRawServerVerificationPayload,
-                        },
-                        null,
-                        2
-                      );
-                      try {
-                        await navigator.clipboard.writeText(serialized);
-                      } catch {
-                        // no-op: snapshot remains visible on screen for manual copy.
-                      }
-                    }}
-                  >
-                    Copy
-                  </button>
-                </div>
-                <pre className="mt-2 whitespace-pre-wrap break-all rounded-md bg-rose-50 p-2 text-[10px] leading-4">
-                  {JSON.stringify(quickChargeFailureSnapshot, null, 2)}
-                </pre>
-                <p className="mt-2 font-semibold uppercase tracking-[0.08em]">rawNativePayload</p>
-                <pre className="mt-1 whitespace-pre-wrap break-all rounded-md bg-rose-50 p-2 text-[10px] leading-4">
-                  {JSON.stringify(quickChargeRawNativePayload, null, 2)}
-                </pre>
-                <p className="mt-2 font-semibold uppercase tracking-[0.08em]">rawServerVerificationPayload</p>
-                <pre className="mt-1 whitespace-pre-wrap break-all rounded-md bg-rose-50 p-2 text-[10px] leading-4">
-                  {JSON.stringify(quickChargeRawServerVerificationPayload, null, 2)}
+                <pre
+                  className={`mt-2 whitespace-pre-wrap break-all rounded-md p-2 font-mono text-[10px] leading-4 ${
+                    state === 'completed' ? 'bg-emerald-50' : 'bg-rose-50'
+                  }`}
+                >
+                  {quickChargeAttemptDiagnosticsSerialized}
                 </pre>
               </div>
             ) : null}
