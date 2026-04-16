@@ -164,7 +164,7 @@ export default function InternalSettlementModule({
   const [overlayMessageIndex, setOverlayMessageIndex] = useState(0);
   const [cancelInFlight, setCancelInFlight] = useState(false);
   const [showSuccessTick, setShowSuccessTick] = useState(false);
-  const [successRouteLock, setSuccessRouteLock] = useState(false);
+  const successRouteCommittedRef = useRef(false);
   const flowActiveRef = useRef(false);
   const flowRunIdRef = useRef<string | null>(null);
   const overlayPhaseEnteredAtMsRef = useRef<number | null>(null);
@@ -1327,24 +1327,40 @@ export default function InternalSettlementModule({
   }, [logCollectionEvent, nativeRestaurantId]);
 
   useEffect(() => {
-    if (state !== 'completed' || successRouteLock) return;
-    setSuccessRouteLock(true);
+    if (state !== 'completed' || successRouteCommittedRef.current) return;
+    successRouteCommittedRef.current = true;
     setShowSuccessTick(true);
-    logCollectionEvent('success_tick_shown', { entryPoint, restaurantId: nativeRestaurantId });
+    logCollectionEvent('terminal_route_selected', {
+      terminalType: 'success',
+      entryPoint,
+      restaurantId: nativeRestaurantId,
+    });
     const timeout = window.setTimeout(() => {
+      const target = nativeRestaurantId
+        ? `/pos/${nativeRestaurantId}?stage=paymentComplete&source=${entryPoint === 'pos' ? 'pos-contactless' : 'take-payment'}`
+        : null;
+      logCollectionEvent('success_tick_shown', { entryPoint, restaurantId: nativeRestaurantId, target });
       setShowSuccessTick(false);
-      if (!nativeRestaurantId) return;
-      const target = `/pos/${nativeRestaurantId}?stage=paymentComplete&source=${entryPoint === 'pos' ? 'pos-contactless' : 'take-payment'}`;
-      logCollectionEvent('success_route_target_selected', { target, entryPoint });
+      if (!target) {
+        logCollectionEvent('terminal_route_committed', {
+          terminalType: 'success',
+          entryPoint,
+          route: 'stay_on_take_payment_reset_to_ready',
+        });
+        setState('idle');
+        setMessage('Ready to collect payment.');
+        return;
+      }
+      logCollectionEvent('terminal_route_committed', { terminalType: 'success', entryPoint, route: target });
       router.push(target).catch(() => undefined);
     }, 900);
     return () => window.clearTimeout(timeout);
-  }, [entryPoint, logCollectionEvent, nativeRestaurantId, router, state, successRouteLock]);
+  }, [entryPoint, logCollectionEvent, nativeRestaurantId, router, state]);
 
   useEffect(() => {
     if (state === 'completed') return;
     setShowSuccessTick(false);
-    setSuccessRouteLock(false);
+    successRouteCommittedRef.current = false;
   }, [state]);
 
   const handleCancel = useCallback(async () => {

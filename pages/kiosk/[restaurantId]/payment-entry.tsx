@@ -4,8 +4,6 @@ import {
   BanknotesIcon,
   BuildingStorefrontIcon,
   CreditCardIcon,
-  DevicePhoneMobileIcon,
-  ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 import KioskLayout from '@/components/layouts/KioskLayout';
 import { KioskSessionProvider } from '@/context/KioskSessionContext';
@@ -228,6 +226,9 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   const flowLockRef = useRef(false);
   const orderSubmitLockRef = useRef(false);
   const cancelLockRef = useRef(false);
+  const contactlessOwnerRef = useRef<{ id: string; active: boolean } | null>(null);
+  const contactlessTerminalRouteCommittedRef = useRef(false);
+  const stageRef = useRef<PaymentStage>('method_picker');
   const operatorTapTimeoutRef = useRef<number | null>(null);
   const stageParam = Array.isArray(router.query.stage) ? router.query.stage[0] : router.query.stage;
   const showOperatorDetails = operatorDebugEnabled;
@@ -240,6 +241,48 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   const currencyParam = Array.isArray(router.query.currency) ? router.query.currency[0] : router.query.currency;
   const amountCents = Number(amountParam || 0);
   const currency = (currencyParam || 'usd').toLowerCase();
+
+  const logContactlessState = useCallback((event: string, payload?: Record<string, unknown>) => {
+    console.info('[kiosk][contactless_state_machine]', event, {
+      ownerId: contactlessOwnerRef.current?.id || null,
+      ownerActive: contactlessOwnerRef.current?.active === true,
+      stage: stageRef.current,
+      route: router.asPath,
+      ...payload,
+    });
+  }, [router.asPath]);
+
+  const establishContactlessOwner = useCallback(
+    (reason: string) => {
+      const ownerId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      contactlessOwnerRef.current = { id: ownerId, active: true };
+      contactlessTerminalRouteCommittedRef.current = false;
+      logContactlessState('payment_owner_established', { reason, ownerId });
+      return ownerId;
+    },
+    [logContactlessState]
+  );
+
+  const releaseContactlessOwner = useCallback(
+    (reason: string) => {
+      const ownerId = contactlessOwnerRef.current?.id || null;
+      if (ownerId) {
+        logContactlessState('payment_owner_released', { reason, ownerId });
+      }
+      contactlessOwnerRef.current = null;
+      contactlessTerminalRouteCommittedRef.current = false;
+    },
+    [logContactlessState]
+  );
+
+  const isActiveContactlessOwner = useCallback(
+    (ownerId: string | null) => {
+      if (!ownerId) return false;
+      const owner = contactlessOwnerRef.current;
+      return owner?.active === true && owner.id === ownerId && stageRef.current === 'contactless';
+    },
+    []
+  );
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -371,7 +414,45 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   }, [preferredStageFromQuery, restaurantId]);
 
   useEffect(() => {
+    stageRef.current = stage;
+  }, [stage]);
+
+  useEffect(() => {
+    const handleRouteChangeStart = (url: string) => {
+      if (!restaurantId) return;
+      const ownPathPrefix = `/kiosk/${restaurantId}/payment-entry`;
+      if (url.startsWith(ownPathPrefix)) return;
+      if (contactlessOwnerRef.current?.active) {
+        logContactlessState('navigation_away_invalidated_payment_owner', { to: url });
+      }
+      releaseContactlessOwner('navigation_away');
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem(CONTACTLESS_SESSION_STORAGE_KEY);
+      }
+    };
+
+    router.events.on('routeChangeStart', handleRouteChangeStart);
+    return () => {
+      router.events.off('routeChangeStart', handleRouteChangeStart);
+    };
+  }, [CONTACTLESS_SESSION_STORAGE_KEY, logContactlessState, releaseContactlessOwner, restaurantId, router.events]);
+
+  useEffect(
+    () => () => {
+      releaseContactlessOwner('component_unmount');
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem(CONTACTLESS_SESSION_STORAGE_KEY);
+      }
+    },
+    [CONTACTLESS_SESSION_STORAGE_KEY, releaseContactlessOwner]
+  );
+
+  useEffect(() => {
     if (stage !== 'contactless') {
+      if (contactlessOwnerRef.current?.active) {
+        logContactlessState('navigation_away_invalidated_payment_owner', { reason: 'stage_exit_contactless' });
+      }
+      releaseContactlessOwner('stage_exit_contactless');
       setContactlessStatus('idle');
       setContactlessSessionId(null);
       setContactlessBusy(false);
@@ -384,7 +465,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         window.localStorage.removeItem(CONTACTLESS_SESSION_STORAGE_KEY);
       }
     }
-  }, [CONTACTLESS_SESSION_STORAGE_KEY, stage]);
+  }, [CONTACTLESS_SESSION_STORAGE_KEY, logContactlessState, releaseContactlessOwner, stage]);
 
   useEffect(() => {
     const overlayVisible = isNativeTapToPayOverlayVisiblePhase(contactlessStatus) || successTickVisible;
@@ -513,12 +594,18 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   const runTapToPay = useCallback(async () => {
     if (!restaurantId || amountCents <= 0 || contactlessBusy || flowLockRef.current) return;
     flowLockRef.current = true;
+    const ownerId = establishContactlessOwner('contactless_started');
     setContactlessBusy(true);
     setContactlessError('');
     setContactlessUnsupportedDevice(false);
     setContactlessDebug('starting');
     setContactlessDebugDetail('');
     setTapStartupTrace(createStartupTrace());
+    const isStaleOwner = (label: string) => {
+      if (isActiveContactlessOwner(ownerId)) return false;
+      logContactlessState('stale_callback_ignored_owner_mismatch', { label, ownerId });
+      return true;
+    };
 
     const formatDetail = (detail: unknown) => {
       if (typeof detail === 'string') return detail;
@@ -600,6 +687,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
 
       const readinessRes = await fetch(`/api/kiosk/payments/tap-to-pay-availability?restaurant_id=${encodeURIComponent(restaurantId)}`);
       const readiness = await readinessRes.json();
+      if (isStaleOwner('availability_result')) return;
       logTapStageResult('availability_result', readinessRes.ok && readiness?.tap_to_pay_available ? 'ok' : 'failed', {
         http_status: readinessRes.status,
         payload: readiness,
@@ -628,6 +716,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         }),
       });
       const created = await createRes.json();
+      if (isStaleOwner('session_create_result')) return;
       logTapStageResult('session_create_result', createRes.ok && created?.session?.id ? 'ok' : 'failed', {
         http_status: createRes.status,
         payload: created,
@@ -676,6 +765,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         body: JSON.stringify({ session_id: sessionId, restaurant_id: restaurantId }),
       });
       const paymentIntentPayload = await paymentIntentRes.json().catch(() => ({}));
+      if (isStaleOwner('payment_intent_result')) return;
       logTapStageResult('payment_intent_result', paymentIntentRes.ok ? 'ok' : 'failed', {
         http_status: paymentIntentRes.status,
         payload: paymentIntentPayload,
@@ -710,6 +800,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
           body: JSON.stringify({ session_id: sessionId, restaurant_id: restaurantId }),
         });
         const simulatedCompletePayload = await simulatedCompleteRes.json().catch(() => ({}));
+        if (isStaleOwner('simulated_complete_result')) return;
         const simulatedVerified = isVerifiedPaidPayload(simulatedCompletePayload?.verification);
         logTapStageResult('simulated_complete_result', simulatedCompleteRes.ok && simulatedVerified ? 'ok' : 'failed', {
           http_status: simulatedCompleteRes.status,
@@ -747,6 +838,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       }
 
       const support = await resolveNativeTapToPayReadiness({ promptIfNeeded: false });
+      if (isStaleOwner('native_support_check_result')) return;
       logTapStageResult('native_support_check_result', support.supported && support.ready ? 'ok' : 'failed', support);
       if (!support.supported || !support.ready) {
         failAt(
@@ -804,6 +896,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         native_connection: { status: 'pending', detail: 'Connecting Tap to Pay reader.' },
       }));
       const prepared = await tapToPayBridge.prepareTapToPay({ restaurantId, sessionId, backendBaseUrl, terminalLocationId });
+      if (isStaleOwner('native_prepare_result')) return;
       updateReaderHintFromDetail(prepared.detail);
       logTapStageResult('native_prepare_result', prepared.status === 'ready' || prepared.status === 'preparing' ? 'ok' : 'failed', prepared);
       const preparedDetail = prepared.detail && typeof prepared.detail === 'object' ? (prepared.detail as { stage?: unknown; nativeStage?: unknown }) : null;
@@ -888,6 +981,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       const readinessCheckRes = await fetch(`/api/kiosk/payments/tap-to-pay-availability?restaurant_id=${encodeURIComponent(restaurantId)}`);
       setContactlessDebug('readiness_recheck');
       const readinessCheck = await readinessCheckRes.json().catch(() => ({}));
+      if (isStaleOwner('readiness_recheck')) return;
       if (!readinessCheckRes.ok || !readinessCheck?.tap_to_pay_available) {
         setContactlessStatus('failed');
         setContactlessError('Contactless payment is unavailable right now. Please choose another payment method.');
@@ -911,6 +1005,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       console.info('[kiosk][tap_to_pay_collect_start]', { sessionId, restaurantId, terminalLocationId });
       setTapStartupTrace((prev) => ({ ...prev, native_start: { status: 'pending', detail: 'Starting native collection flow.' } }));
       const started = await tapToPayBridge.startTapToPayPayment({ restaurantId, sessionId, backendBaseUrl, terminalLocationId });
+      if (isStaleOwner('native_start_result')) return;
       console.info('[kiosk][tap_to_pay_native_collect_raw_result]', { sessionId, restaurantId, result: started });
       updateReaderHintFromDetail(started.detail);
       const isNativeSuccessOrProcessing = started.status === 'succeeded' || started.status === 'processing';
@@ -996,6 +1091,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
             window.setTimeout(() => resolve(), 700);
           });
           const polledStatus = await tapToPayBridge.getTapToPayStatus();
+          if (isStaleOwner('native_poll_result')) return;
           console.info('[kiosk][tap_to_pay_native_process_raw_result]', { sessionId, restaurantId, polledStatus });
           updateReaderHintFromDetail(polledStatus.detail);
           if (polledStatus.sessionId && polledStatus.sessionId !== sessionId) {
@@ -1028,6 +1124,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         body: JSON.stringify({ session_id: sessionId, restaurant_id: restaurantId }),
       });
       const finalized = await finalizeRes.json();
+      if (isStaleOwner('finalize_result')) return;
       const verifiedPaid = isVerifiedPaidPayload(finalized?.verification);
       if (!finalizeRes.ok || finalized?.session?.state !== 'finalized' || !verifiedPaid) {
         setContactlessStatus('processing');
@@ -1050,16 +1147,24 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
 
       setContactlessStatus('succeeded');
       setContactlessDebug('finalized');
+      logContactlessState('success_cleanup_completed', { ownerId, sessionId });
+      releaseContactlessOwner('success');
       if (typeof window !== 'undefined') {
         window.localStorage.removeItem(CONTACTLESS_SESSION_STORAGE_KEY);
       }
     } catch (error) {
+      if (!isActiveContactlessOwner(ownerId)) {
+        logContactlessState('late_native_result_after_owner_invalidation', { ownerId, error: error instanceof Error ? error.message : String(error) });
+        return;
+      }
       setContactlessStatus('failed');
       setContactlessError('Payment failed, please try again or choose another payment method.');
       setContactlessUnsupportedDevice(false);
       setContactlessDebug('startup_exception');
       setContactlessDebugDetail(error instanceof Error ? error.message : 'Unexpected startup exception');
       console.error('[kiosk] tap to pay flow failed', error);
+      logContactlessState('failure_cleanup_completed', { ownerId });
+      releaseContactlessOwner('failed');
     } finally {
       setContactlessBusy(false);
       flowLockRef.current = false;
@@ -1068,12 +1173,16 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     CONTACTLESS_SESSION_STORAGE_KEY,
     TAP_TO_PAY_SETUP_STORAGE_KEY,
     amountCents,
+    establishContactlessOwner,
     contactlessBusy,
     currency,
     enabledMethods.length,
+    isActiveContactlessOwner,
     isVerifiedPaidPayload,
     loadServerSessionTruth,
+    logContactlessState,
     reconcileSession,
+    releaseContactlessOwner,
     restaurantId,
   ]);
 
@@ -1100,6 +1209,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
 
   const returnToFallback = useCallback(
     (message: string) => {
+      logContactlessState('terminal_route_selected', { terminalType: 'cancel_or_failure', destination: 'method_picker' });
       setPaymentNotice(message);
       setContactlessBusy(false);
       setContactlessStatus('idle');
@@ -1112,13 +1222,16 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       setSuppressStageAutoSubmit(true);
       flowLockRef.current = false;
       cancelLockRef.current = false;
+      releaseContactlessOwner('return_to_method_picker');
+      contactlessTerminalRouteCommittedRef.current = true;
+      logContactlessState('terminal_route_committed', { terminalType: 'cancel_or_failure', destination: 'method_picker' });
       const nonContactlessMethod = enabledMethods.find((method) => method !== 'contactless');
       setStage(nonContactlessMethod ?? 'method_picker');
       if (typeof window !== 'undefined') {
         window.localStorage.removeItem(CONTACTLESS_SESSION_STORAGE_KEY);
       }
     },
-    [CONTACTLESS_SESSION_STORAGE_KEY, enabledMethods]
+    [CONTACTLESS_SESSION_STORAGE_KEY, enabledMethods, logContactlessState, releaseContactlessOwner]
   );
 
   const submitOrderAndRedirect = useCallback(
@@ -1215,6 +1328,10 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         }
         const params = new URLSearchParams({ orderNumber: String(order.short_order_number ?? 0) });
         if (isExpressFlow) params.set('express', '1');
+        if (method === 'contactless') {
+          logContactlessState('success_cleanup_completed', { method, orderId: order.id });
+          releaseContactlessOwner('order_confirmed');
+        }
         await router.replace(`/kiosk/${restaurantId}/confirm?${params.toString()}`);
       } catch (error) {
         console.error('[kiosk] failed to submit order from payment entry', error);
@@ -1223,6 +1340,8 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         }
         setOrderSubmitError('We could not place your order. Please choose a method and try again.');
         if (method === 'contactless') {
+          logContactlessState('failure_cleanup_completed', { method, reason: 'order_submit_failed_after_payment_capture' });
+          releaseContactlessOwner('order_submit_failed_after_payment_capture');
           setStage(enabledMethods.length > 1 ? 'method_picker' : 'contactless');
           setPaymentNotice('Payment was successful, but order submission failed. Please ask staff for help.');
         } else {
@@ -1233,7 +1352,18 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         orderSubmitLockRef.current = false;
       }
     },
-    [amountCents, cart.items, checkoutContext, clearCart, enabledMethods.length, restaurant?.auto_accept_kiosk_orders, restaurantId, router]
+    [
+      amountCents,
+      cart.items,
+      checkoutContext,
+      clearCart,
+      enabledMethods.length,
+      logContactlessState,
+      releaseContactlessOwner,
+      restaurant?.auto_accept_kiosk_orders,
+      restaurantId,
+      router,
+    ]
   );
 
   const stageLabel = useMemo(() => {
@@ -1294,6 +1424,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   useEffect(() => {
     if (stage !== 'contactless' || !restaurantId) return;
     if (terminalMode === 'simulated_terminal') return;
+    logContactlessState('old_kiosk_contactless_path_invoked', { action: 'bypassed_to_shared_overlay' });
     const statusPoll = async () => {
       const nativeStatus = await tapToPayBridge.getTapToPayStatus();
       setContactlessDebug(`native:${nativeStatus.status}`);
@@ -1305,7 +1436,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       }
     };
     void statusPoll();
-  }, [contactlessSessionId, restaurantId, stage, terminalMode]);
+  }, [contactlessSessionId, logContactlessState, restaurantId, stage, terminalMode]);
 
   useEffect(() => {
     if (stage !== 'contactless') return;
@@ -1354,16 +1485,38 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
 
   useEffect(() => {
     if (contactlessStatus !== 'succeeded' || orderSubmitting || autoSubmitAttemptedMethod === 'contactless') return;
+    if (contactlessTerminalRouteCommittedRef.current) return;
+    contactlessTerminalRouteCommittedRef.current = true;
+    logContactlessState('terminal_route_selected', { terminalType: 'success', destination: 'order_confirmation' });
     setSuccessTickVisible(true);
     const timeout = window.setTimeout(() => {
       setAutoSubmitAttemptedMethod('contactless');
+      logContactlessState('terminal_route_committed', { terminalType: 'success', destination: 'order_confirmation' });
       void submitOrderAndRedirect('contactless');
     }, 900);
     return () => {
       window.clearTimeout(timeout);
       setSuccessTickVisible(false);
     };
-  }, [autoSubmitAttemptedMethod, contactlessStatus, orderSubmitting, submitOrderAndRedirect]);
+  }, [autoSubmitAttemptedMethod, contactlessStatus, logContactlessState, orderSubmitting, submitOrderAndRedirect]);
+
+  useEffect(() => {
+    if (contactlessStatus === 'succeeded') return;
+    contactlessTerminalRouteCommittedRef.current = false;
+  }, [contactlessStatus]);
+
+  useEffect(() => {
+    if (stage !== 'contactless') return;
+    if (contactlessBusy) return;
+    if (contactlessStatus !== 'failed' && contactlessStatus !== 'canceled') return;
+    const message =
+      contactlessStatus === 'canceled'
+        ? 'Payment cancelled'
+        : contactlessUnsupportedDevice
+          ? 'This kiosk device does not support Tap to Pay on this hardware. Please use another payment method.'
+          : contactlessError || 'Payment failed, please try again or choose another payment method.';
+    returnToFallback(message);
+  }, [contactlessBusy, contactlessError, contactlessStatus, contactlessUnsupportedDevice, returnToFallback, stage]);
 
   useEffect(() => {
     if (stage !== 'contactless' || !restaurantId) return;
@@ -1408,6 +1561,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     cancelLockRef.current = true;
     setContactlessBusy(true);
     setContactlessDebug('canceling');
+    logContactlessState('terminal_route_selected', { terminalType: 'cancel', sessionId: contactlessSessionId });
     try {
       await tapToPayBridge.cancelTapToPayPayment();
       await fetch('/api/kiosk/payments/card-present/cancel', {
@@ -1418,6 +1572,8 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       setContactlessStatus('canceled');
       setContactlessError('Payment cancelled');
       setContactlessUnsupportedDevice(false);
+      logContactlessState('cancel_cleanup_completed', { sessionId: contactlessSessionId });
+      releaseContactlessOwner('canceled');
       if (typeof window !== 'undefined') {
         window.localStorage.removeItem(CONTACTLESS_SESSION_STORAGE_KEY);
       }
@@ -1426,7 +1582,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       cancelLockRef.current = false;
       flowLockRef.current = false;
     }
-  }, [CONTACTLESS_SESSION_STORAGE_KEY, contactlessSessionId, restaurantId]);
+  }, [CONTACTLESS_SESSION_STORAGE_KEY, contactlessSessionId, logContactlessState, releaseContactlessOwner, restaurantId]);
 
   const renderMethodPicker = () => (
     <section
@@ -1480,85 +1636,6 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         })}
       </div>
     </section>
-  );
-
-  const renderContactlessOverlay = () => (
-    <div className="rounded-[2rem] border border-slate-200 bg-white/95 p-6 shadow-xl">
-      <section className="text-center">
-        <div
-          className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl text-white shadow-lg"
-          style={{ background: `linear-gradient(135deg, ${paymentTheme.primary}, ${paymentTheme.secondary})` }}
-          aria-hidden="true"
-        >
-          <DevicePhoneMobileIcon className="h-7 w-7 text-white" />
-        </div>
-        <p className="mt-3 text-lg font-semibold text-slate-900">Tap when prompted on Stripe</p>
-        {contactlessStatus === 'collecting' ? <p className="mt-2 text-sm text-slate-600">Card/phone collection is active.</p> : null}
-        {contactlessStatus === 'failed' || contactlessStatus === 'canceled' ? (
-          <p className="mx-auto mt-4 flex max-w-xl items-center justify-center gap-2 text-sm font-medium text-rose-700">
-            <ExclamationTriangleIcon className="h-5 w-5 shrink-0" />
-            {contactlessStatus === 'canceled'
-              ? 'Payment was canceled. Please choose a payment method to continue.'
-              : contactlessError ||
-                (contactlessUnsupportedDevice
-                  ? 'This device cannot use Tap to Pay. Please choose another payment method.'
-                  : 'Payment failed, please try again or choose another payment method.')}
-          </p>
-        ) : null}
-        {showOperatorDetails && (contactlessStatus === 'failed' || contactlessStatus === 'canceled') ? (
-          <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Tap to Pay startup diagnostics</p>
-            <p className="mt-1 text-xs text-slate-700">
-              <span className="font-semibold">mode:</span> {terminalMode}
-            </p>
-            <div className="mt-2 space-y-1">
-              {(Object.keys(STARTUP_TRACE_LABELS) as StartupTraceKey[]).map((key) => (
-                <p key={key} className="text-xs text-slate-700">
-                  <span className="font-semibold">{STARTUP_TRACE_LABELS[key]}:</span> {tapStartupTrace[key].status}
-                  {tapStartupTrace[key].detail ? ` — ${tapStartupTrace[key].detail}` : ''}
-                </p>
-              ))}
-            </div>
-          </div>
-        ) : null}
-        {showOperatorDetails ? <p className="mt-2 text-[11px] font-medium uppercase tracking-[0.12em] text-slate-500">Debug: {contactlessDebug}</p> : null}
-        {showOperatorDetails && contactlessDebugDetail ? <p className="mt-1 text-xs font-medium text-slate-600">Detail: {contactlessDebugDetail}</p> : null}
-        <div className="mx-auto mt-6 grid max-w-md grid-cols-1 gap-3 sm:grid-cols-2">
-          <button
-            type="button"
-            onClick={() => {
-              if (contactlessStatus === 'failed' || contactlessStatus === 'canceled') {
-                returnToFallback(
-                  contactlessStatus === 'canceled'
-                    ? 'Payment cancelled'
-                    : contactlessUnsupportedDevice
-                      ? 'This kiosk device does not support Tap to Pay on this hardware. Please use another payment method.'
-                      : 'Payment failed, please try again or choose another payment method.'
-                );
-                return;
-              }
-              void cancelTapToPay().then(() => returnToFallback('Payment cancelled'));
-            }}
-            className="rounded-2xl border bg-white/90 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-white"
-            style={{ borderColor: paymentTheme.ring }}
-          >
-            {contactlessStatus === 'failed' || contactlessStatus === 'canceled' ? 'Choose another method' : 'Cancel payment'}
-          </button>
-          {(contactlessStatus === 'failed' || contactlessStatus === 'canceled') &&
-          enabledMethods.includes('contactless') &&
-          !contactlessUnsupportedDevice ? (
-            <button
-              type="button"
-              onClick={() => void runTapToPay()}
-              className="rounded-2xl px-4 py-3 text-sm font-semibold text-white transition"
-              style={{ background: `linear-gradient(135deg, ${paymentTheme.primary}, ${paymentTheme.secondary})` }}
-            >
-              Retry Tap to Pay
-            </button>
-          ) : null}
-        </div>
-      </section>
-    </div>
   );
 
   const renderOrderSubmittingOverlay = () => (
@@ -1655,9 +1732,32 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
               ) : null}
             </section>
           ) : null}
+          {!settingsLoading && stage === 'contactless' && showOperatorDetails ? (
+            <section className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-700">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Tap to Pay startup diagnostics</p>
+              <p className="mt-1">
+                <span className="font-semibold">mode:</span> {terminalMode}
+              </p>
+              <p className="mt-1">
+                <span className="font-semibold">debug:</span> {contactlessDebug}
+              </p>
+              {contactlessDebugDetail ? (
+                <p className="mt-1">
+                  <span className="font-semibold">detail:</span> {contactlessDebugDetail}
+                </p>
+              ) : null}
+              <div className="mt-2 space-y-1">
+                {(Object.keys(STARTUP_TRACE_LABELS) as StartupTraceKey[]).map((key) => (
+                  <p key={key}>
+                    <span className="font-semibold">{STARTUP_TRACE_LABELS[key]}:</span> {tapStartupTrace[key].status}
+                    {tapStartupTrace[key].detail ? ` — ${tapStartupTrace[key].detail}` : ''}
+                  </p>
+                ))}
+              </div>
+            </section>
+          ) : null}
 
-          {!settingsLoading && stage === 'method_picker' ? renderMethodPicker() : null}
-          {!settingsLoading && stage === 'contactless' ? renderContactlessOverlay() : null}
+          {!settingsLoading && (stage === 'method_picker' || stage === 'contactless') ? renderMethodPicker() : null}
           {!settingsLoading && stage === 'contactless' ? (
             <NativeTapToPayPreHandoverOverlay
               visible={showSharedTransitionOverlay}
@@ -1666,7 +1766,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
               showSuccessTick={successTickVisible}
               canClose={isNativeTapToPayCancelableOverlayPhase(contactlessStatus) && !contactlessBusy}
               onClose={() => {
-                void cancelTapToPay();
+                void cancelTapToPay().then(() => returnToFallback('Payment cancelled'));
               }}
             />
           ) : null}
