@@ -8,7 +8,7 @@ import { internalSettlementActiveRunStore } from '@/lib/payments/internalSettlem
 import { buildCombinedTapToPayDiagnosticsPayload } from '@/lib/payments/tapToPayDiagnostics';
 import NativeTapToPayPreHandoverOverlay from '@/components/payments/NativeTapToPayPreHandoverOverlay';
 import {
-  isNativeTapToPayCancelableOverlayPhase,
+  canCloseNativeTapToPayPreHandoverOverlay,
   isNativeTapToPayOverlayVisiblePhase,
   POST_HANDOVER_PROGRESS_LINES,
   PRE_HANDOVER_PROGRESS_LINES,
@@ -164,12 +164,14 @@ export default function InternalSettlementModule({
   const [overlayMessageIndex, setOverlayMessageIndex] = useState(0);
   const [cancelInFlight, setCancelInFlight] = useState(false);
   const [showSuccessTick, setShowSuccessTick] = useState(false);
+  const [terminalVisualState, setTerminalVisualState] = useState<'success' | 'canceled' | 'failed' | null>(null);
   const [preHandoverOverlayOwned, setPreHandoverOverlayOwned] = useState(false);
   const successRouteCommittedRef = useRef(false);
   const flowActiveRef = useRef(false);
   const flowRunIdRef = useRef<string | null>(null);
   const handoverOwnerRef = useRef<{ flowRunId: string; active: boolean; cancelRequested: boolean } | null>(null);
   const cancelBarrierRef = useRef<{ flowRunId: string; requestedAt: number } | null>(null);
+  const suppressRecoveryRef = useRef<{ reason: 'canceled' | 'failed'; at: number } | null>(null);
   const overlayPhaseEnteredAtMsRef = useRef<number | null>(null);
   const quickChargeAttemptStartMsRef = useRef<number | null>(null);
   const quickChargeAttemptEndMsRef = useRef<number | null>(null);
@@ -180,12 +182,23 @@ export default function InternalSettlementModule({
   const selectedOrder = useMemo(() => orders.find((order) => order.id === selectedOrderId) || null, [orders, selectedOrderId]);
   const uiPhase = useMemo(() => resolveNativeTapToPayUiPhase(state), [state]);
   const showTransitionOverlay = useMemo(
-    () => isNativeTapToPayOverlayVisiblePhase(state) || showSuccessTick || preHandoverOverlayOwned,
-    [preHandoverOverlayOwned, showSuccessTick, state]
+    () =>
+      isNativeTapToPayOverlayVisiblePhase(state) ||
+      showSuccessTick ||
+      preHandoverOverlayOwned ||
+      terminalVisualState === 'canceled' ||
+      terminalVisualState === 'failed',
+    [preHandoverOverlayOwned, showSuccessTick, state, terminalVisualState]
   );
   const canCloseOverlay = useMemo(
-    () => isNativeTapToPayCancelableOverlayPhase(state) && !cancelInFlight && !showSuccessTick,
-    [cancelInFlight, showSuccessTick, state]
+    () =>
+      canCloseNativeTapToPayPreHandoverOverlay({
+        state,
+        inCancelTransition: cancelInFlight,
+        inSuccessTransition: showSuccessTick || terminalVisualState === 'canceled' || terminalVisualState === 'failed',
+        preHandoverOverlayOwned,
+      }),
+    [cancelInFlight, preHandoverOverlayOwned, showSuccessTick, state, terminalVisualState]
   );
   const overlayLines = useMemo(
     () =>
@@ -442,6 +455,14 @@ export default function InternalSettlementModule({
 
   const establishHandoverOwner = useCallback(
     (flowRunId: string, reason: string) => {
+      if (suppressRecoveryRef.current) {
+        logCollectionEvent('owner_recreated_after_terminal_cancel', {
+          flowRunId,
+          reason,
+          priorTerminalReason: suppressRecoveryRef.current.reason,
+          priorTerminalAt: suppressRecoveryRef.current.at,
+        });
+      }
       handoverOwnerRef.current = { flowRunId, active: true, cancelRequested: false };
       cancelBarrierRef.current = null;
       setPreHandoverOverlayOwned(true);
@@ -533,6 +554,13 @@ export default function InternalSettlementModule({
     }
     overlayPhaseEnteredAtMsRef.current = Date.now();
     logCollectionEvent('overlay_shown', { phase: uiPhase });
+    if (suppressRecoveryRef.current) {
+      logCollectionEvent('overlay_shown_after_terminal_cancel', {
+        phase: uiPhase,
+        terminalReason: suppressRecoveryRef.current.reason,
+        terminalAt: suppressRecoveryRef.current.at,
+      });
+    }
     const interval = window.setInterval(() => {
       setOverlayMessageIndex((previous) => {
         const next = previous + 1;
@@ -561,6 +589,12 @@ export default function InternalSettlementModule({
   }, [releaseHandoverOwner, state]);
 
   useEffect(() => {
+    if (state !== 'canceled' && state !== 'failed') return;
+    suppressRecoveryRef.current = { reason: state, at: Date.now() };
+    logCollectionEvent('cancel_terminal_committed', { reason: state });
+  }, [logCollectionEvent, state]);
+
+  useEffect(() => {
     if ((state === 'idle' || state === 'ready') && handoverOwnerRef.current?.active) {
       logCollectionEvent('payment_options_revealed_while_handover_active', {
         state,
@@ -586,6 +620,19 @@ export default function InternalSettlementModule({
       flowRunId: handoverOwnerRef.current?.flowRunId || null,
     });
   }, [logCollectionEvent, preHandoverOverlayOwned, showTransitionOverlay, state, uiPhase]);
+
+  useEffect(() => {
+    if (!showTransitionOverlay) return;
+    logCollectionEvent('close_affordance_eligibility_evaluated', {
+      entryPoint,
+      phase: uiPhase,
+      canCloseOverlay,
+      preHandoverOverlayOwned,
+      cancelInFlight,
+      showSuccessTick,
+      terminalVisualState,
+    });
+  }, [cancelInFlight, canCloseOverlay, entryPoint, logCollectionEvent, preHandoverOverlayOwned, showSuccessTick, showTransitionOverlay, terminalVisualState, uiPhase]);
 
   const classifyNativeFailure = useCallback((nativeResult: Awaited<ReturnType<typeof tapToPayBridge.startTapToPayPayment>>) => {
     const detail =
@@ -631,6 +678,7 @@ export default function InternalSettlementModule({
 
   const handleCollectContactless = useCallback(async () => {
     if (busy) return;
+    suppressRecoveryRef.current = null;
     setQuickChargeFailureSnapshot(null);
     setQuickChargeSuccessSnapshot(null);
     setQuickChargeRawNativePayload(null);
@@ -1401,6 +1449,14 @@ export default function InternalSettlementModule({
   useEffect(() => {
     if (!nativeRestaurantId) return;
     const recover = async (source: 'mount' | 'resume') => {
+      if (suppressRecoveryRef.current) {
+        logCollectionEvent('overlay_recovery_blocked_after_terminal_cancel', {
+          source,
+          reason: suppressRecoveryRef.current.reason,
+          suppressedAt: suppressRecoveryRef.current.at,
+        });
+        return;
+      }
       if (source === 'resume' && flowActiveRef.current) {
         logCollectionEvent('app_resume_recovery_skipped_local_active_run', { source });
         return;
@@ -1466,6 +1522,7 @@ export default function InternalSettlementModule({
     if (state !== 'completed' || successRouteCommittedRef.current) return;
     successRouteCommittedRef.current = true;
     setShowSuccessTick(true);
+    setTerminalVisualState('success');
     logCollectionEvent('terminal_route_selected', {
       terminalType: 'success',
       entryPoint,
@@ -1477,6 +1534,7 @@ export default function InternalSettlementModule({
         : null;
       logCollectionEvent('success_tick_shown', { entryPoint, restaurantId: nativeRestaurantId, target });
       setShowSuccessTick(false);
+      setTerminalVisualState(null);
       if (!target) {
         logCollectionEvent('terminal_route_committed', {
           terminalType: 'success',
@@ -1496,8 +1554,33 @@ export default function InternalSettlementModule({
   useEffect(() => {
     if (state === 'completed') return;
     setShowSuccessTick(false);
+    if (terminalVisualState === 'success') {
+      setTerminalVisualState(null);
+    }
     successRouteCommittedRef.current = false;
-  }, [state]);
+  }, [state, terminalVisualState]);
+
+  useEffect(() => {
+    if (state !== 'canceled' && state !== 'failed') return;
+    const visualState = state === 'canceled' ? 'canceled' : 'failed';
+    setTerminalVisualState(visualState);
+    logCollectionEvent('terminal_route_selected', {
+      terminalType: visualState,
+      entryPoint,
+      restaurantId: nativeRestaurantId,
+    });
+    const timeout = window.setTimeout(() => {
+      logCollectionEvent('terminal_route_committed', {
+        terminalType: visualState,
+        entryPoint,
+        route: 'stay_on_take_payment_reset_to_ready',
+      });
+      setTerminalVisualState(null);
+      setState('idle');
+      setMessage('Ready to collect payment.');
+    }, 900);
+    return () => window.clearTimeout(timeout);
+  }, [entryPoint, logCollectionEvent, nativeRestaurantId, state]);
 
   const handleCancel = useCallback(async () => {
     if (cancelInFlight) return;
@@ -1577,6 +1660,7 @@ export default function InternalSettlementModule({
         lines={overlayLines}
         lineIndex={overlayMessageIndex}
         showSuccessTick={showSuccessTick}
+        terminalState={terminalVisualState}
         canClose={canCloseOverlay}
         onClose={() => {
           void handleCancel();
