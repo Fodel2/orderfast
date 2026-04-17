@@ -164,9 +164,12 @@ export default function InternalSettlementModule({
   const [overlayMessageIndex, setOverlayMessageIndex] = useState(0);
   const [cancelInFlight, setCancelInFlight] = useState(false);
   const [showSuccessTick, setShowSuccessTick] = useState(false);
+  const [preHandoverOverlayOwned, setPreHandoverOverlayOwned] = useState(false);
   const successRouteCommittedRef = useRef(false);
   const flowActiveRef = useRef(false);
   const flowRunIdRef = useRef<string | null>(null);
+  const handoverOwnerRef = useRef<{ flowRunId: string; active: boolean; cancelRequested: boolean } | null>(null);
+  const cancelBarrierRef = useRef<{ flowRunId: string; requestedAt: number } | null>(null);
   const overlayPhaseEnteredAtMsRef = useRef<number | null>(null);
   const quickChargeAttemptStartMsRef = useRef<number | null>(null);
   const quickChargeAttemptEndMsRef = useRef<number | null>(null);
@@ -176,7 +179,10 @@ export default function InternalSettlementModule({
 
   const selectedOrder = useMemo(() => orders.find((order) => order.id === selectedOrderId) || null, [orders, selectedOrderId]);
   const uiPhase = useMemo(() => resolveNativeTapToPayUiPhase(state), [state]);
-  const showTransitionOverlay = useMemo(() => isNativeTapToPayOverlayVisiblePhase(state) || showSuccessTick, [showSuccessTick, state]);
+  const showTransitionOverlay = useMemo(
+    () => isNativeTapToPayOverlayVisiblePhase(state) || showSuccessTick || preHandoverOverlayOwned,
+    [preHandoverOverlayOwned, showSuccessTick, state]
+  );
   const canCloseOverlay = useMemo(
     () => isNativeTapToPayCancelableOverlayPhase(state) && !cancelInFlight && !showSuccessTick,
     [cancelInFlight, showSuccessTick, state]
@@ -425,6 +431,50 @@ export default function InternalSettlementModule({
     }
   }, [activeSessionId, mode]);
 
+  const establishHandoverOwner = useCallback(
+    (flowRunId: string, reason: string) => {
+      handoverOwnerRef.current = { flowRunId, active: true, cancelRequested: false };
+      cancelBarrierRef.current = null;
+      setPreHandoverOverlayOwned(true);
+      logCollectionEvent('handover_owner_established', { flowRunId, reason });
+    },
+    [logCollectionEvent]
+  );
+
+  const releaseHandoverOwner = useCallback(
+    (reason: string) => {
+      if (handoverOwnerRef.current) {
+        logCollectionEvent('handover_owner_released', { flowRunId: handoverOwnerRef.current.flowRunId, reason });
+      }
+      handoverOwnerRef.current = null;
+      setPreHandoverOverlayOwned(false);
+    },
+    [logCollectionEvent]
+  );
+
+  const shouldBlockRunContinuation = useCallback(
+    (flowRunId: string | null | undefined, label: string) => {
+      if (!flowRunId) return true;
+      const owner = handoverOwnerRef.current;
+      const barrier = cancelBarrierRef.current;
+      const blocked =
+        !owner ||
+        owner.flowRunId !== flowRunId ||
+        owner.active !== true ||
+        owner.cancelRequested === true ||
+        (barrier != null && barrier.flowRunId === flowRunId);
+      if (blocked) {
+        if ((owner?.cancelRequested === true && owner.flowRunId === flowRunId) || barrier?.flowRunId === flowRunId) {
+          logCollectionEvent('late_handover_callback_ignored_after_cancel', { flowRunId, label });
+        } else {
+          logCollectionEvent('stripe_handover_attempt_blocked_due_to_cancel', { flowRunId, label });
+        }
+      }
+      return blocked;
+    },
+    [logCollectionEvent]
+  );
+
   const logQuickChargeSequenceEvent = useCallback(
     (
       event:
@@ -456,6 +506,9 @@ export default function InternalSettlementModule({
       setOverlayMessageIndex(0);
       overlayPhaseEnteredAtMsRef.current = null;
       logCollectionEvent('overlay_hidden', { phase: uiPhase });
+      if (preHandoverOverlayOwned) {
+        logCollectionEvent('overlay_hidden_while_handover_active', { phase: uiPhase, state });
+      }
       return;
     }
     overlayPhaseEnteredAtMsRef.current = Date.now();
@@ -468,7 +521,7 @@ export default function InternalSettlementModule({
       });
     }, 3600);
     return () => window.clearInterval(interval);
-  }, [logCollectionEvent, overlayLines.length, showTransitionOverlay, uiPhase]);
+  }, [logCollectionEvent, overlayLines.length, preHandoverOverlayOwned, showTransitionOverlay, state, uiPhase]);
 
   useEffect(() => {
     if (!isNativeTapToPayOverlayVisiblePhase(state)) return;
@@ -480,6 +533,30 @@ export default function InternalSettlementModule({
     }, 60000);
     return () => window.clearTimeout(timeout);
   }, [logCollectionEvent, state, uiPhase]);
+
+  useEffect(() => {
+    if (state === 'idle' || state === 'ready' || state === 'failed' || state === 'canceled' || state === 'completed') {
+      releaseHandoverOwner(`state_${state}`);
+    }
+  }, [releaseHandoverOwner, state]);
+
+  useEffect(() => {
+    if ((state === 'idle' || state === 'ready') && handoverOwnerRef.current?.active) {
+      logCollectionEvent('payment_options_revealed_while_handover_active', {
+        state,
+        flowRunId: handoverOwnerRef.current.flowRunId,
+      });
+    }
+  }, [logCollectionEvent, state]);
+
+  useEffect(() => {
+    if (!showTransitionOverlay || !preHandoverOverlayOwned) return;
+    logCollectionEvent('duplicate_prehandover_render_attempt', {
+      state,
+      phase: uiPhase,
+      flowRunId: handoverOwnerRef.current?.flowRunId || null,
+    });
+  }, [logCollectionEvent, preHandoverOverlayOwned, showTransitionOverlay, state, uiPhase]);
 
   const classifyNativeFailure = useCallback((nativeResult: Awaited<ReturnType<typeof tapToPayBridge.startTapToPayPayment>>) => {
     const detail =
@@ -566,12 +643,16 @@ export default function InternalSettlementModule({
     setBusy(true);
     flowActiveRef.current = true;
     flowRunIdRef.current = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    cancelBarrierRef.current = null;
     setState('bootstrapping');
     setMessage('Checking Tap to Pay readiness…');
 
     let sessionIdForCleanup: string | null = null;
     let keepFlowActiveAfterError = false;
     const flowRunId = flowRunIdRef.current;
+    if (flowRunId) {
+      establishHandoverOwner(flowRunId, 'collect_contactless_started');
+    }
     const persistFlowOutcome = async (input: {
       sessionId: string;
       outcome: 'canceled' | 'failed' | 'needs_reconciliation';
@@ -602,6 +683,7 @@ export default function InternalSettlementModule({
         });
         setState('failed');
         setMessage(readinessPayload?.reason || 'Tap to Pay is not available for this restaurant.');
+        releaseHandoverOwner('readiness_unavailable');
         return;
       }
       logCollectionEvent('readiness_refresh.result', {
@@ -613,6 +695,7 @@ export default function InternalSettlementModule({
       if (!nativeReadiness || !nativeReadiness.supported || !nativeReadiness.ready) {
         setState('failed');
         setMessage(nativeReadiness?.reason || 'Tap to Pay setup is incomplete on this device.');
+        releaseHandoverOwner('native_readiness_unavailable');
         return;
       }
 
@@ -710,6 +793,7 @@ export default function InternalSettlementModule({
         setActiveSessionId(null);
         setActiveTerminalLocationId(null);
         internalSettlementActiveRunStore.clear();
+        releaseHandoverOwner('native_prepare_failed');
         return;
       }
       logCollectionEvent('prepare_result', { stage: 'native_prepare', ok: true, sessionId, result: prepared });
@@ -728,12 +812,17 @@ export default function InternalSettlementModule({
         setActiveSessionId(null);
         setActiveTerminalLocationId(null);
         internalSettlementActiveRunStore.clear();
+        releaseHandoverOwner('readiness_changed_before_handover');
         return;
       }
 
       setState('handover');
       setMessage('Handing over to Stripe Tap to Pay…');
       logCollectionEvent('native_collect.start', { sessionId });
+      if (shouldBlockRunContinuation(flowRunId, 'before_stripe_handover')) {
+        releaseHandoverOwner('stripe_handover_blocked_due_to_cancel');
+        return;
+      }
 
       let nativeResult = await tapToPayBridge.startTapToPayPayment({
         restaurantId: nativeRestaurantId,
@@ -756,6 +845,16 @@ export default function InternalSettlementModule({
         paymentIntentSource: nativeResult.paymentIntentSource || null,
         nativeStage: nativeResult.nativeStage || null,
       });
+      releaseHandoverOwner('stripe_handover_returned');
+      if (shouldBlockRunContinuation(flowRunId, 'after_stripe_handover_result')) {
+        setState('canceled');
+        setMessage('Payment canceled.');
+        setActiveSessionId(null);
+        setActiveTerminalLocationId(null);
+        internalSettlementActiveRunStore.clear();
+        cancelBarrierRef.current = null;
+        return;
+      }
       logQuickChargeSequenceEvent('quick_charge_native_result_returned_to_js', {
         sessionId,
         flowRunId,
@@ -1032,6 +1131,7 @@ export default function InternalSettlementModule({
           setActiveSessionId(null);
           setActiveTerminalLocationId(null);
           internalSettlementActiveRunStore.clear();
+          releaseHandoverOwner('verified_finalized');
           await loadOrders();
           return;
         }
@@ -1059,6 +1159,7 @@ export default function InternalSettlementModule({
         setActiveSessionId(null);
         setActiveTerminalLocationId(null);
         internalSettlementActiveRunStore.clear();
+        releaseHandoverOwner('native_failure_terminal');
         return;
       }
 
@@ -1180,6 +1281,7 @@ export default function InternalSettlementModule({
       setActiveSessionId(null);
       setActiveTerminalLocationId(null);
       internalSettlementActiveRunStore.clear();
+      releaseHandoverOwner('completed');
 
       if (mode === 'quick_charge') {
         setQuickAmount('0.00');
@@ -1233,6 +1335,7 @@ export default function InternalSettlementModule({
       }
       setActiveSessionId(null);
       setActiveTerminalLocationId(null);
+      releaseHandoverOwner('collection_exception');
     } finally {
       if (keepFlowActiveAfterError) {
         setBusy(true);
@@ -1255,9 +1358,12 @@ export default function InternalSettlementModule({
     quickNote,
     quickReference,
     refreshNativeReadiness,
+    releaseHandoverOwner,
     selectedOrderId,
+    shouldBlockRunContinuation,
     tapAvailabilityReady,
     tapAvailabilityReason,
+    establishHandoverOwner,
   ]);
 
 
@@ -1365,16 +1471,25 @@ export default function InternalSettlementModule({
 
   const handleCancel = useCallback(async () => {
     if (cancelInFlight) return;
+    logCollectionEvent('exit_cross_clicked', { sessionId: activeSessionId });
     if (!activeSessionId) {
-      setState('canceled');
-      setMessage('Payment closed.');
-      logCollectionEvent('overlay_dismissed_reason', { reason: 'no_active_session' });
+      logCollectionEvent('native_cancel_failed_or_unavailable', { reason: 'no_active_session' });
       return;
+    }
+    const activeFlowRunId = flowRunIdRef.current;
+    if (activeFlowRunId) {
+      cancelBarrierRef.current = { flowRunId: activeFlowRunId, requestedAt: Date.now() };
+      if (handoverOwnerRef.current?.flowRunId === activeFlowRunId) {
+        handoverOwnerRef.current = { ...handoverOwnerRef.current, active: false, cancelRequested: true };
+      }
+      logCollectionEvent('cancel_barrier_set', { flowRunId: activeFlowRunId, sessionId: activeSessionId });
     }
     setCancelInFlight(true);
     setBusy(true);
+    let cancelCompleted = false;
     logCollectionEvent('cancel_requested', { sessionId: activeSessionId });
     try {
+      logCollectionEvent('native_cancel_attempt_started', { sessionId: activeSessionId });
       await tapToPayBridge.cancelTapToPayPayment().catch(() => undefined);
       await fetch('/api/dashboard/internal-settlement/cancel', {
         method: 'POST',
@@ -1387,6 +1502,7 @@ export default function InternalSettlementModule({
           flow_run_id: flowRunIdRef.current,
         }),
       });
+      logCollectionEvent('native_cancel_confirmed', { sessionId: activeSessionId });
       logCollectionEvent('cancel_succeeded', { sessionId: activeSessionId });
       setState('canceled');
       quickChargeAttemptEndMsRef.current = Date.now();
@@ -1398,17 +1514,31 @@ export default function InternalSettlementModule({
       setActiveSessionId(null);
       setActiveTerminalLocationId(null);
       internalSettlementActiveRunStore.clear();
+      releaseHandoverOwner('cancel_confirmed');
+      cancelBarrierRef.current = null;
+      flowRunIdRef.current = null;
+      flowActiveRef.current = false;
+      cancelCompleted = true;
       await loadOrders();
     } catch (error: any) {
       logCollectionEvent('cancel_blocked_or_failed', { sessionId: activeSessionId, error: error?.message || 'unknown_error' });
+      logCollectionEvent('native_cancel_failed_or_unavailable', { sessionId: activeSessionId, error: error?.message || 'unknown_error' });
       setMessage('Unable to cancel right now. Please wait for the current payment phase.');
+      setState('handover');
     } finally {
       setCancelInFlight(false);
-      setBusy(false);
-      flowActiveRef.current = false;
-      flowRunIdRef.current = null;
+      if (cancelCompleted) {
+        setBusy(false);
+      } else if (cancelBarrierRef.current?.flowRunId === flowRunIdRef.current) {
+        setBusy(true);
+        flowActiveRef.current = true;
+      } else {
+        setBusy(false);
+        flowActiveRef.current = false;
+        flowRunIdRef.current = null;
+      }
     }
-  }, [activeSessionId, cancelInFlight, loadOrders, logCollectionEvent]);
+  }, [activeSessionId, cancelInFlight, loadOrders, logCollectionEvent, releaseHandoverOwner]);
 
   return (
     <section className="relative rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
