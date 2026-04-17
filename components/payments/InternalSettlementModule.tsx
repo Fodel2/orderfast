@@ -6,6 +6,10 @@ import { resolveNativeTapToPayReadiness } from '@/lib/kiosk/tapToPayNativeReadin
 import { type AppFlowState } from '@/lib/app/launcherBootstrap';
 import { internalSettlementActiveRunStore } from '@/lib/payments/internalSettlementActiveRunStore';
 import { buildCombinedTapToPayDiagnosticsPayload } from '@/lib/payments/tapToPayDiagnostics';
+import {
+  resolveContactlessEligibility,
+  type ContactlessEligibilityResult,
+} from '@/lib/payments/contactlessEligibility';
 import NativeTapToPayPreHandoverOverlay from '@/components/payments/NativeTapToPayPreHandoverOverlay';
 import {
   canCloseNativeTapToPayPreHandoverOverlay,
@@ -144,6 +148,7 @@ export default function InternalSettlementModule({
   const [tapAvailabilityLoading, setTapAvailabilityLoading] = useState(true);
   const [tapAvailabilityReady, setTapAvailabilityReady] = useState(false);
   const [tapAvailabilityReason, setTapAvailabilityReason] = useState('');
+  const [contactlessEligibility, setContactlessEligibility] = useState<ContactlessEligibilityResult | null>(null);
   const [nativeReadinessLoading, setNativeReadinessLoading] = useState(false);
   const [nativeReadinessReady, setNativeReadinessReady] = useState(false);
   const [nativeReadinessReason, setNativeReadinessReason] = useState('');
@@ -298,10 +303,24 @@ export default function InternalSettlementModule({
         const available = payload?.tap_to_pay_available === true;
         setTapAvailabilityReady(available);
         setTapAvailabilityReason(available ? '' : String(payload?.reason || 'Tap to Pay is not available for this restaurant.'));
+        const eligibilityResolved = await resolveContactlessEligibility({
+          entryPoint,
+          restaurantAllowsContactless: available,
+          entryPointSupportsContactless: true,
+        });
+        if (!active) return;
+        setContactlessEligibility(eligibilityResolved);
       } catch (error: any) {
         if (!active) return;
         setTapAvailabilityReady(false);
         setTapAvailabilityReason(error?.message || 'Tap to Pay availability could not be confirmed.');
+        const eligibilityResolved = await resolveContactlessEligibility({
+          entryPoint,
+          restaurantAllowsContactless: false,
+          entryPointSupportsContactless: true,
+        });
+        if (!active) return;
+        setContactlessEligibility(eligibilityResolved);
       } finally {
         if (active) setTapAvailabilityLoading(false);
       }
@@ -311,7 +330,17 @@ export default function InternalSettlementModule({
     return () => {
       active = false;
     };
-  }, []);
+  }, [entryPoint]);
+
+  useEffect(() => {
+    console.info('[payments][contactless_eligibility]', 'rendered_payment_methods', {
+      entryPoint,
+      runtime: contactlessEligibility?.runtime || null,
+      eligible: contactlessEligibility?.eligible === true,
+      reason: contactlessEligibility?.reason || null,
+      methods: contactlessEligibility?.eligible ? ['contactless'] : [],
+    });
+  }, [contactlessEligibility, entryPoint]);
 
   const applyBootstrapState = useCallback((readiness: Awaited<ReturnType<typeof resolveNativeTapToPayReadiness>>) => {
     if (!readiness.supported) {
@@ -1939,21 +1968,23 @@ export default function InternalSettlementModule({
           </div>
 
           <div className="flex flex-wrap gap-3">
-            <button
-              type="button"
-              disabled={
-                busy ||
-                tapAvailabilityLoading ||
-                nativeReadinessLoading ||
-                !tapAvailabilityReady ||
-                amountCents <= 0 ||
-                (mode === 'order_payment' && !selectedOrderId)
-              }
-              onClick={handleCollectContactless}
-              className="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
-            >
-              {busy ? 'Collecting…' : state === 'setup_failed' ? 'Resolve setup & collect' : 'Collect contactless'}
-            </button>
+            {contactlessEligibility?.eligible ? (
+              <button
+                type="button"
+                disabled={
+                  busy ||
+                  tapAvailabilityLoading ||
+                  nativeReadinessLoading ||
+                  !tapAvailabilityReady ||
+                  amountCents <= 0 ||
+                  (mode === 'order_payment' && !selectedOrderId)
+                }
+                onClick={handleCollectContactless}
+                className="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+              >
+                {busy ? 'Collecting…' : state === 'setup_failed' ? 'Resolve setup & collect' : 'Collect contactless'}
+              </button>
+            ) : null}
             <button
               type="button"
               disabled={busy || !activeSessionId}

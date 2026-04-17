@@ -14,6 +14,10 @@ import {
   type KioskPaymentMethod,
   type KioskPaymentSettingsRow,
 } from '@/lib/kiosk/paymentSettings';
+import {
+  resolveContactlessEligibility,
+  type ContactlessEligibilityResult,
+} from '@/lib/payments/contactlessEligibility';
 import { resolveNativeTapToPayReadiness } from '@/lib/kiosk/tapToPayNativeReadiness';
 import { tapToPayBridge, type TapToPayResult, type TapToPayStatus } from '@/lib/kiosk/tapToPayBridge';
 import type { KioskTerminalMode } from '@/lib/kiosk/terminalMode';
@@ -197,6 +201,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   const [restaurantLoading, setRestaurantLoading] = useState(true);
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [enabledMethods, setEnabledMethods] = useState<KioskPaymentMethod[]>(['pay_at_counter']);
+  const [contactlessEligibility, setContactlessEligibility] = useState<ContactlessEligibilityResult | null>(null);
   const [stage, setStage] = useState<PaymentStage>('method_picker');
   const [contactlessStatus, setContactlessStatus] = useState<TapToPayStatus>('idle');
   const [contactlessBusy, setContactlessBusy] = useState(false);
@@ -387,7 +392,15 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
 
         const normalized = normalizeKioskPaymentSettings((data as KioskPaymentSettingsRow | null) || null);
         setTerminalMode(normalized.terminalMode);
-        const nextMethods = normalized.enabledMethods;
+        const contactlessResolved = await resolveContactlessEligibility({
+          entryPoint: 'kiosk',
+          restaurantAllowsContactless: normalized.enableContactless,
+          entryPointSupportsContactless: true,
+        });
+        setContactlessEligibility(contactlessResolved);
+        const nextMethods = normalized.enabledMethods.filter((method) =>
+          method === 'contactless' ? contactlessResolved.eligible : true
+        );
         setEnabledMethods(nextMethods);
 
         if (preferredStageFromQuery === 'method_picker' && nextMethods.length > 1) {
@@ -410,6 +423,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       } catch (err) {
         if (!active) return;
         console.error('[kiosk] failed to resolve kiosk payment methods', err);
+        setContactlessEligibility(null);
         setEnabledMethods(['pay_at_counter']);
         setStage('pay_at_counter');
       } finally {
@@ -423,6 +437,18 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       active = false;
     };
   }, [preferredStageFromQuery, restaurantId]);
+
+  useEffect(() => {
+    if (settingsLoading) return;
+    console.info('[payments][contactless_eligibility]', 'rendered_payment_methods', {
+      entryPoint: 'kiosk',
+      runtime: contactlessEligibility?.runtime || null,
+      eligible: contactlessEligibility?.eligible === true,
+      reason: contactlessEligibility?.reason || null,
+      methods: enabledMethods,
+      stage,
+    });
+  }, [contactlessEligibility, enabledMethods, settingsLoading, stage]);
 
   useEffect(() => {
     stageRef.current = stage;
@@ -1789,17 +1815,9 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   }, [CONTACTLESS_SESSION_STORAGE_KEY, contactlessSessionId, logContactlessState, releaseContactlessOwner, restaurantId]);
 
   const renderMethodPicker = () => (
-    <section
-      className="w-full rounded-[2rem] border bg-white/95 p-5 shadow-xl shadow-slate-200/70 sm:p-8"
-      style={{ borderColor: paymentTheme.ring }}
-    >
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Kiosk checkout</p>
-      <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">Choose how you want to pay</h1>
-      <p className="mt-3 text-sm leading-relaxed text-slate-600 sm:text-base">
-        Select your payment method to continue checkout.
-      </p>
-
-      <div className="mt-6 grid gap-3 sm:grid-cols-2">
+    <section className="w-full">
+      <h1 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">Choose payment</h1>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
         {enabledMethods.map((method) => {
           const meta = PAYMENT_METHOD_META[method];
           const Icon = meta.icon;
@@ -1834,7 +1852,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
                 <Icon className="h-6 w-6" />
               </div>
               <p className="mt-4 text-lg font-semibold text-slate-900">{meta.title}</p>
-              <p className="mt-1 text-sm text-slate-600">{meta.subtitle}</p>
+              {method !== 'pay_at_counter' ? <p className="mt-1 text-sm text-slate-600">{meta.subtitle}</p> : null}
             </button>
           );
         })}
@@ -1900,7 +1918,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
                 }}
                 className="rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-slate-800"
               >
-                Back to kiosk cart
+                Back to cart
               </button>
             </div>
           </div>
@@ -1913,6 +1931,11 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
           {!settingsLoading && paymentNotice ? (
             <section className="w-full rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
               {paymentNotice}
+            </section>
+          ) : null}
+          {!settingsLoading && stage === 'method_picker' && contactlessEligibility && !contactlessEligibility.eligible ? (
+            <section className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+              Contactless is unavailable on this device/runtime.
             </section>
           ) : null}
           {!settingsLoading && orderSubmitError ? (
