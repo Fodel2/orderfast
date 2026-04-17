@@ -21,7 +21,7 @@ import { setKioskLastRealOrderNumber } from '@/utils/kiosk/orders';
 import { requestPrintJobCreation } from '@/lib/print-jobs/request';
 import NativeTapToPayPreHandoverOverlay from '@/components/payments/NativeTapToPayPreHandoverOverlay';
 import {
-  isNativeTapToPayCancelableOverlayPhase,
+  canCloseNativeTapToPayPreHandoverOverlay,
   isNativeTapToPayOverlayVisiblePhase,
   POST_HANDOVER_PROGRESS_LINES,
   PRE_HANDOVER_PROGRESS_LINES,
@@ -218,6 +218,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   const [suppressStageAutoSubmit, setSuppressStageAutoSubmit] = useState(false);
   const [prepMessageIndex, setPrepMessageIndex] = useState(0);
   const [successTickVisible, setSuccessTickVisible] = useState(false);
+  const [terminalVisualState, setTerminalVisualState] = useState<'success' | 'canceled' | 'failed' | null>(null);
   const [terminalMode, setTerminalMode] = useState<KioskTerminalMode>('real_tap_to_pay');
   const [contactlessTerminalState, setContactlessTerminalState] = useState<ContactlessTerminalState>('idle');
   const [preHandoverOverlayOwned, setPreHandoverOverlayOwned] = useState(false);
@@ -229,6 +230,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   const flowLockRef = useRef(false);
   const orderSubmitLockRef = useRef(false);
   const cancelLockRef = useRef(false);
+  const terminalTransitionLockRef = useRef(false);
   const contactlessOwnerRef = useRef<{ id: string; active: boolean; cancelRequested: boolean } | null>(null);
   const contactlessTerminalRouteCommittedRef = useRef(false);
   const contactlessOverlayVisibleRef = useRef(false);
@@ -1475,17 +1477,23 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       stage === 'contactless' &&
       (isNativeTapToPayOverlayVisiblePhase(contactlessStatus) ||
         successTickVisible ||
+        terminalVisualState === 'canceled' ||
+        terminalVisualState === 'failed' ||
         contactlessTerminalState === 'in_progress' ||
         preHandoverOverlayOwned),
-    [contactlessStatus, contactlessTerminalState, preHandoverOverlayOwned, stage, successTickVisible]
+    [contactlessStatus, contactlessTerminalState, preHandoverOverlayOwned, stage, successTickVisible, terminalVisualState]
   );
   const canCloseSharedTransitionOverlay = useMemo(
-    () =>
-      stage === 'contactless' &&
-      !contactlessBusy &&
-      contactlessStatus !== 'collecting' &&
-      (preHandoverOverlayOwned || isNativeTapToPayCancelableOverlayPhase(contactlessStatus)),
-    [contactlessBusy, contactlessStatus, preHandoverOverlayOwned, stage]
+    () => {
+      if (stage !== 'contactless') return false;
+      return canCloseNativeTapToPayPreHandoverOverlay({
+        state: contactlessStatus,
+        inCancelTransition: cancelLockRef.current,
+        inSuccessTransition: successTickVisible || terminalVisualState === 'canceled' || terminalVisualState === 'failed',
+        preHandoverOverlayOwned,
+      });
+    },
+    [contactlessStatus, preHandoverOverlayOwned, stage, successTickVisible, terminalVisualState]
   );
   const transitionLines = useMemo(
     () =>
@@ -1570,6 +1578,29 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   useEffect(() => {
     if (stage !== 'contactless') return;
     if (!showSharedTransitionOverlay) return;
+    logContactlessState('close_affordance_eligibility_evaluated', {
+      canCloseSharedTransitionOverlay,
+      phase: contactlessUiPhase,
+      status: contactlessStatus,
+      preHandoverOverlayOwned,
+      contactlessBusy,
+      terminalVisualState,
+    });
+  }, [
+    canCloseSharedTransitionOverlay,
+    contactlessBusy,
+    contactlessStatus,
+    contactlessUiPhase,
+    logContactlessState,
+    preHandoverOverlayOwned,
+    showSharedTransitionOverlay,
+    stage,
+    terminalVisualState,
+  ]);
+
+  useEffect(() => {
+    if (stage !== 'contactless') return;
+    if (!showSharedTransitionOverlay) return;
     if (!canCloseSharedTransitionOverlay) return;
     logContactlessState('kiosk_exit_cross_rendered', {
       phase: contactlessUiPhase,
@@ -1628,6 +1659,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     contactlessTerminalRouteCommittedRef.current = true;
     logContactlessState('kiosk_terminal_route_selected', { terminalType: 'success', destination: 'order_confirmation' });
     setSuccessTickVisible(true);
+    setTerminalVisualState('success');
     const timeout = window.setTimeout(() => {
       setAutoSubmitAttemptedMethod('contactless');
       logContactlessState('kiosk_terminal_route_committed', { terminalType: 'success', destination: 'order_confirmation' });
@@ -1636,6 +1668,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     return () => {
       window.clearTimeout(timeout);
       setSuccessTickVisible(false);
+      setTerminalVisualState(null);
     };
   }, [autoSubmitAttemptedMethod, contactlessStatus, contactlessTerminalState, logContactlessState, orderSubmitting, submitOrderAndRedirect]);
 
@@ -1648,14 +1681,27 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     if (stage !== 'contactless') return;
     if (contactlessBusy) return;
     if (contactlessStatus !== 'failed' && contactlessStatus !== 'canceled') return;
-    const message =
-      contactlessStatus === 'canceled'
-        ? 'Payment cancelled'
-        : contactlessUnsupportedDevice
-          ? 'This kiosk device does not support Tap to Pay on this hardware. Please use another payment method.'
-          : contactlessError || 'Payment failed, please try again or choose another payment method.';
-    returnToFallback(message);
-  }, [contactlessBusy, contactlessError, contactlessStatus, contactlessUnsupportedDevice, returnToFallback, stage]);
+    if (terminalTransitionLockRef.current) return;
+    terminalTransitionLockRef.current = true;
+    const visual = contactlessStatus === 'canceled' ? 'canceled' : 'failed';
+    setTerminalVisualState(visual);
+    logContactlessState('terminal_visual_state_selected', { terminalType: visual, stage });
+    const timeout = window.setTimeout(() => {
+      const message =
+        contactlessStatus === 'canceled'
+          ? 'Payment cancelled'
+          : contactlessUnsupportedDevice
+            ? 'This kiosk device does not support Tap to Pay on this hardware. Please use another payment method.'
+            : contactlessError || 'Payment failed, please try again or choose another payment method.';
+      setTerminalVisualState(null);
+      terminalTransitionLockRef.current = false;
+      returnToFallback(message);
+    }, 900);
+    return () => {
+      window.clearTimeout(timeout);
+      terminalTransitionLockRef.current = false;
+    };
+  }, [contactlessBusy, contactlessError, contactlessStatus, contactlessUnsupportedDevice, logContactlessState, returnToFallback, stage]);
 
   useEffect(() => {
     if (stage !== 'contactless' || !restaurantId) return;
@@ -1924,8 +1970,9 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
               showSuccessTick={successTickVisible}
               canClose={canCloseSharedTransitionOverlay}
               onClose={() => {
-                void cancelTapToPay().then(() => returnToFallback('Payment cancelled'));
+                void cancelTapToPay();
               }}
+              terminalState={terminalVisualState}
             />
           ) : null}
           {!settingsLoading && orderSubmitting ? renderOrderSubmittingOverlay() : null}

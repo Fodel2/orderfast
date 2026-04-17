@@ -58,6 +58,22 @@ export const isNativeTapToPayCancelableOverlayPhase = (state: string) => {
   return phase !== 'stripe_live_payment' && isNativeTapToPayOverlayVisiblePhase(state);
 };
 
+export const canCloseNativeTapToPayPreHandoverOverlay = ({
+  state,
+  inCancelTransition = false,
+  inSuccessTransition = false,
+  preHandoverOverlayOwned = false,
+}: {
+  state: string;
+  inCancelTransition?: boolean;
+  inSuccessTransition?: boolean;
+  preHandoverOverlayOwned?: boolean;
+}) => {
+  if (inCancelTransition || inSuccessTransition) return false;
+  if (preHandoverOverlayOwned) return true;
+  return isNativeTapToPayCancelableOverlayPhase(state);
+};
+
 export const PRE_HANDOVER_PROGRESS_LINES = [
   'Warming up the payment rails…',
   'Calling in the tap-to-pay orchestra…',
