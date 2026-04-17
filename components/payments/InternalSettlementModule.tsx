@@ -172,6 +172,8 @@ export default function InternalSettlementModule({
   const handoverOwnerRef = useRef<{ flowRunId: string; active: boolean; cancelRequested: boolean } | null>(null);
   const cancelBarrierRef = useRef<{ flowRunId: string; requestedAt: number } | null>(null);
   const suppressRecoveryRef = useRef<{ reason: 'canceled' | 'failed'; at: number } | null>(null);
+  const deadRunFlowIdsRef = useRef<Set<string>>(new Set());
+  const deadRunLockRef = useRef<{ flowRunId: string | null; reason: 'canceled'; at: number } | null>(null);
   const overlayPhaseEnteredAtMsRef = useRef<number | null>(null);
   const quickChargeAttemptStartMsRef = useRef<number | null>(null);
   const quickChargeAttemptEndMsRef = useRef<number | null>(null);
@@ -181,15 +183,12 @@ export default function InternalSettlementModule({
 
   const selectedOrder = useMemo(() => orders.find((order) => order.id === selectedOrderId) || null, [orders, selectedOrderId]);
   const uiPhase = useMemo(() => resolveNativeTapToPayUiPhase(state), [state]);
-  const showTransitionOverlay = useMemo(
-    () =>
-      isNativeTapToPayOverlayVisiblePhase(state) ||
-      showSuccessTick ||
-      preHandoverOverlayOwned ||
-      terminalVisualState === 'canceled' ||
-      terminalVisualState === 'failed',
-    [preHandoverOverlayOwned, showSuccessTick, state, terminalVisualState]
-  );
+  const showTransitionOverlay = useMemo(() => {
+    const showTerminalBeat = terminalVisualState === 'canceled' || terminalVisualState === 'failed';
+    const showLoader = isNativeTapToPayOverlayVisiblePhase(state) || showSuccessTick || preHandoverOverlayOwned;
+    if (deadRunLockRef.current && showLoader) return showTerminalBeat;
+    return showLoader || showTerminalBeat;
+  }, [preHandoverOverlayOwned, showSuccessTick, state, terminalVisualState]);
   const canCloseOverlay = useMemo(
     () =>
       canCloseNativeTapToPayPreHandoverOverlay({
@@ -341,6 +340,14 @@ export default function InternalSettlementModule({
   const refreshNativeReadiness = useCallback(
     async (promptIfNeeded: boolean, options?: { suppressStateUpdates?: boolean }) => {
       const suppressStateUpdates = options?.suppressStateUpdates === true;
+      if (deadRunLockRef.current) {
+        console.info('[internal-settlement][take-payment][quick-charge][tap-to-pay]', 'readiness_refresh_blocked_dead_run', {
+          flowRunId: deadRunLockRef.current.flowRunId,
+          reason: deadRunLockRef.current.reason,
+          promptIfNeeded,
+        });
+        return null;
+      }
       if (!nativeRestaurantId) {
         setNativeReadinessReady(false);
         setNativeReadinessReason('Restaurant context is missing. Return to launcher and open Take Payment again.');
@@ -392,6 +399,18 @@ export default function InternalSettlementModule({
     const onForeground = () => {
       if (document.visibilityState !== 'visible') return;
       void (async () => {
+        if (deadRunLockRef.current) {
+          console.info(
+            '[internal-settlement][take-payment][quick-charge][tap-to-pay]',
+            'readiness_refresh_blocked_dead_run',
+            {
+              flowRunId: deadRunLockRef.current.flowRunId,
+              reason: deadRunLockRef.current.reason,
+              stage: 'foreground',
+            }
+          );
+          return;
+        }
         const nativeState = await tapToPayBridge.getActivePaymentRunState().catch(() => null);
         const nativeFlowInFlight = nativeState != null && (nativeState.activeRun === true || nativeState.inFlight === true);
         if (nativeFlowInFlight) {
@@ -455,6 +474,11 @@ export default function InternalSettlementModule({
 
   const establishHandoverOwner = useCallback(
     (flowRunId: string, reason: string) => {
+      if (deadRunFlowIdsRef.current.has(flowRunId)) {
+        logCollectionEvent('owner_recreate_blocked_dead_run', { flowRunId, reason });
+        logCollectionEvent('dead_run_guard_triggered', { flowRunId, guard: 'owner_recreate', reason });
+        return false;
+      }
       if (suppressRecoveryRef.current) {
         logCollectionEvent('owner_recreated_after_terminal_cancel', {
           flowRunId,
@@ -468,6 +492,7 @@ export default function InternalSettlementModule({
       setPreHandoverOverlayOwned(true);
       logCollectionEvent('handover_owner_established', { flowRunId, reason });
       logCollectionEvent('take_payment_overlay_owner_established', { flowRunId, reason });
+      return true;
     },
     [logCollectionEvent]
   );
@@ -495,6 +520,12 @@ export default function InternalSettlementModule({
   const shouldBlockRunContinuation = useCallback(
     (flowRunId: string | null | undefined, label: string) => {
       if (!flowRunId) return true;
+      if (deadRunFlowIdsRef.current.has(flowRunId)) {
+        logCollectionEvent('late_callback_ignored_dead_run', { flowRunId, label });
+        logCollectionEvent('stripe_handover_blocked_dead_run', { flowRunId, label });
+        logCollectionEvent('dead_run_guard_triggered', { flowRunId, guard: 'run_continuation', label });
+        return true;
+      }
       const owner = handoverOwnerRef.current;
       const barrier = cancelBarrierRef.current;
       const blocked =
@@ -543,6 +574,17 @@ export default function InternalSettlementModule({
 
   useEffect(() => {
     if (!showTransitionOverlay) {
+      if (deadRunLockRef.current && (isNativeTapToPayOverlayVisiblePhase(state) || showSuccessTick || preHandoverOverlayOwned)) {
+        logCollectionEvent('overlay_show_blocked_dead_run', {
+          flowRunId: deadRunLockRef.current.flowRunId,
+          reason: deadRunLockRef.current.reason,
+        });
+        logCollectionEvent('dead_run_guard_triggered', {
+          flowRunId: deadRunLockRef.current.flowRunId,
+          guard: 'overlay_show_hidden_branch',
+          reason: deadRunLockRef.current.reason,
+        });
+      }
       setOverlayMessageIndex(0);
       overlayPhaseEnteredAtMsRef.current = null;
       logCollectionEvent('overlay_hidden', { phase: uiPhase });
@@ -553,6 +595,18 @@ export default function InternalSettlementModule({
       return;
     }
     overlayPhaseEnteredAtMsRef.current = Date.now();
+    if (deadRunLockRef.current && (isNativeTapToPayOverlayVisiblePhase(state) || showSuccessTick || preHandoverOverlayOwned)) {
+      logCollectionEvent('overlay_show_blocked_dead_run', {
+        flowRunId: deadRunLockRef.current.flowRunId,
+        reason: deadRunLockRef.current.reason,
+      });
+      logCollectionEvent('dead_run_guard_triggered', {
+        flowRunId: deadRunLockRef.current.flowRunId,
+        guard: 'overlay_show',
+        reason: deadRunLockRef.current.reason,
+      });
+      return;
+    }
     logCollectionEvent('overlay_shown', { phase: uiPhase });
     if (suppressRecoveryRef.current) {
       logCollectionEvent('overlay_shown_after_terminal_cancel', {
@@ -591,6 +645,13 @@ export default function InternalSettlementModule({
   useEffect(() => {
     if (state !== 'canceled' && state !== 'failed') return;
     suppressRecoveryRef.current = { reason: state, at: Date.now() };
+    if (state === 'canceled') {
+      const flowRunId = flowRunIdRef.current;
+      const committedAt = Date.now();
+      deadRunLockRef.current = { flowRunId, reason: 'canceled', at: committedAt };
+      if (flowRunId) deadRunFlowIdsRef.current.add(flowRunId);
+      logCollectionEvent('terminal_cancel_committed', { flowRunId, committedAt, source: 'state_effect' });
+    }
     logCollectionEvent('cancel_terminal_committed', { reason: state });
   }, [logCollectionEvent, state]);
 
@@ -632,6 +693,13 @@ export default function InternalSettlementModule({
       showSuccessTick,
       terminalVisualState,
     });
+    if (canCloseOverlay) {
+      if (entryPoint === 'pos') {
+        logCollectionEvent('kiosk_close_affordance_rendered', { phase: uiPhase });
+      } else {
+        logCollectionEvent('take_payment_close_affordance_rendered', { phase: uiPhase });
+      }
+    }
   }, [cancelInFlight, canCloseOverlay, entryPoint, logCollectionEvent, preHandoverOverlayOwned, showSuccessTick, showTransitionOverlay, terminalVisualState, uiPhase]);
 
   const classifyNativeFailure = useCallback((nativeResult: Awaited<ReturnType<typeof tapToPayBridge.startTapToPayPayment>>) => {
@@ -678,6 +746,7 @@ export default function InternalSettlementModule({
 
   const handleCollectContactless = useCallback(async () => {
     if (busy) return;
+    deadRunLockRef.current = null;
     suppressRecoveryRef.current = null;
     setQuickChargeFailureSnapshot(null);
     setQuickChargeSuccessSnapshot(null);
@@ -728,7 +797,15 @@ export default function InternalSettlementModule({
     let keepFlowActiveAfterError = false;
     const flowRunId = flowRunIdRef.current;
     if (flowRunId) {
-      establishHandoverOwner(flowRunId, 'collect_contactless_started');
+      const ownerEstablished = establishHandoverOwner(flowRunId, 'collect_contactless_started');
+      if (!ownerEstablished) {
+        setBusy(false);
+        flowActiveRef.current = false;
+        flowRunIdRef.current = null;
+        setState('canceled');
+        setMessage('Payment canceled.');
+        return;
+      }
     }
     const persistFlowOutcome = async (input: {
       sessionId: string;
@@ -750,6 +827,13 @@ export default function InternalSettlementModule({
     };
     try {
       logCollectionEvent('readiness_refresh.start');
+      if (flowRunId && deadRunFlowIdsRef.current.has(flowRunId)) {
+        logCollectionEvent('readiness_refresh_blocked_dead_run', { flowRunId, stage: 'before_server_refresh' });
+        logCollectionEvent('dead_run_guard_triggered', { flowRunId, guard: 'readiness_refresh' });
+        setState('canceled');
+        setMessage('Payment canceled.');
+        return;
+      }
       const readinessRes = await fetch('/api/dashboard/internal-settlement/tap-to-pay-availability');
       const readinessPayload = await readinessRes.json().catch(() => ({}));
       if (!readinessRes.ok || !readinessPayload?.tap_to_pay_available) {
@@ -769,6 +853,10 @@ export default function InternalSettlementModule({
       });
 
       const nativeReadiness = await refreshNativeReadiness(false, { suppressStateUpdates: true });
+      if (shouldBlockRunContinuation(flowRunId, 'after_native_readiness')) {
+        releaseHandoverOwner('readiness_refresh_blocked_dead_run');
+        return;
+      }
       if (!nativeReadiness || !nativeReadiness.supported || !nativeReadiness.ready) {
         setState('failed');
         setMessage(nativeReadiness?.reason || 'Tap to Pay setup is incomplete on this device.');
@@ -792,6 +880,10 @@ export default function InternalSettlementModule({
         }),
       });
       const createPayload = await createRes.json().catch(() => ({}));
+      if (shouldBlockRunContinuation(flowRunId, 'after_create_session')) {
+        releaseHandoverOwner('create_session_blocked_dead_run');
+        return;
+      }
       if (!createRes.ok) {
         logCollectionEvent('session_create.error', {
           httpStatus: createRes.status,
@@ -827,6 +919,10 @@ export default function InternalSettlementModule({
         body: JSON.stringify({ session_id: sessionId, flow_run_id: flowRunId }),
       });
       const intentPayload = await intentRes.json().catch(() => ({}));
+      if (shouldBlockRunContinuation(flowRunId, 'after_payment_intent_prepare')) {
+        releaseHandoverOwner('payment_intent_prepare_blocked_dead_run');
+        return;
+      }
       if (!intentRes.ok) {
         logCollectionEvent('process_error', {
           stage: 'create_payment_intent',
@@ -862,6 +958,10 @@ export default function InternalSettlementModule({
         terminalLocationId,
         flowRunId: flowRunId || undefined,
       });
+      if (shouldBlockRunContinuation(flowRunId, 'after_native_prepare')) {
+        releaseHandoverOwner('native_prepare_blocked_dead_run');
+        return;
+      }
       if (prepared.status === 'failed' || prepared.status === 'unavailable') {
         logCollectionEvent('prepare_result', { stage: 'native_prepare', ok: false, sessionId, result: prepared });
         setState(isUnsupportedDeviceError(prepared.code) ? 'unsupported_device' : 'failed');
@@ -877,6 +977,10 @@ export default function InternalSettlementModule({
 
       const readinessRecheckRes = await fetch('/api/dashboard/internal-settlement/tap-to-pay-availability');
       const readinessRecheckPayload = await readinessRecheckRes.json().catch(() => ({}));
+      if (shouldBlockRunContinuation(flowRunId, 'after_readiness_recheck')) {
+        releaseHandoverOwner('readiness_recheck_blocked_dead_run');
+        return;
+      }
       if (!readinessRecheckRes.ok || !readinessRecheckPayload?.tap_to_pay_available) {
         setState('failed');
         setMessage(readinessRecheckPayload?.reason || 'Tap to Pay availability changed. Retry to start a new payment session.');
@@ -1370,6 +1474,15 @@ export default function InternalSettlementModule({
       await loadOrders();
     } catch (error: any) {
       logCollectionEvent('collection_exception', { message: error?.message || 'unknown_exception' });
+      if (shouldBlockRunContinuation(flowRunId, 'collection_exception')) {
+        logCollectionEvent('late_callback_ignored_dead_run', {
+          flowRunId,
+          label: 'collection_exception',
+          message: error?.message || 'unknown_exception',
+        });
+        releaseHandoverOwner('collection_exception_blocked_dead_run');
+        return;
+      }
       let nativeRunStillActive = false;
       let nativeRunStatus: string | null = null;
       if (sessionIdForCleanup) {
@@ -1449,6 +1562,13 @@ export default function InternalSettlementModule({
   useEffect(() => {
     if (!nativeRestaurantId) return;
     const recover = async (source: 'mount' | 'resume') => {
+      if (deadRunLockRef.current) {
+        logCollectionEvent('late_callback_ignored_dead_run', {
+          flowRunId: deadRunLockRef.current.flowRunId,
+          label: `recover_${source}`,
+        });
+        return;
+      }
       if (suppressRecoveryRef.current) {
         logCollectionEvent('overlay_recovery_blocked_after_terminal_cancel', {
           source,
@@ -1462,6 +1582,18 @@ export default function InternalSettlementModule({
         return;
       }
       const activeRun = internalSettlementActiveRunStore.get();
+      if (activeRun?.flowRunId && deadRunFlowIdsRef.current.has(activeRun.flowRunId)) {
+        logCollectionEvent('owner_recreate_blocked_dead_run', {
+          flowRunId: activeRun.flowRunId,
+          reason: `recover_${source}`,
+        });
+        logCollectionEvent('dead_run_guard_triggered', {
+          flowRunId: activeRun.flowRunId,
+          guard: 'recover_owner_recreate',
+          source,
+        });
+        return;
+      }
       const nativeState = await tapToPayBridge.getActivePaymentRunState();
       if (source === 'resume' && nativeState.inFlight === true && nativeState.status === 'processing') {
         logCollectionEvent('app_resume_recovery_skipped_process_in_flight', {
@@ -1617,6 +1749,11 @@ export default function InternalSettlementModule({
       });
       logCollectionEvent('native_cancel_confirmed', { sessionId: activeSessionId });
       logCollectionEvent('cancel_succeeded', { sessionId: activeSessionId });
+      if (activeFlowRunId) {
+        deadRunFlowIdsRef.current.add(activeFlowRunId);
+      }
+      deadRunLockRef.current = { flowRunId: activeFlowRunId || null, reason: 'canceled', at: Date.now() };
+      logCollectionEvent('terminal_cancel_committed', { flowRunId: activeFlowRunId || null, source: 'handle_cancel_success' });
       setState('canceled');
       quickChargeAttemptEndMsRef.current = Date.now();
       setMessage('Payment canceled.');
@@ -1628,7 +1765,7 @@ export default function InternalSettlementModule({
       setActiveTerminalLocationId(null);
       internalSettlementActiveRunStore.clear();
       releaseHandoverOwner('cancel_confirmed');
-      cancelBarrierRef.current = null;
+      cancelBarrierRef.current = activeFlowRunId ? { flowRunId: activeFlowRunId, requestedAt: Date.now() } : null;
       flowRunIdRef.current = null;
       flowActiveRef.current = false;
       cancelCompleted = true;
