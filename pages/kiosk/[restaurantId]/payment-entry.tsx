@@ -1479,6 +1479,14 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         preHandoverOverlayOwned),
     [contactlessStatus, contactlessTerminalState, preHandoverOverlayOwned, stage, successTickVisible]
   );
+  const canCloseSharedTransitionOverlay = useMemo(
+    () =>
+      stage === 'contactless' &&
+      !contactlessBusy &&
+      contactlessStatus !== 'collecting' &&
+      (preHandoverOverlayOwned || isNativeTapToPayCancelableOverlayPhase(contactlessStatus)),
+    [contactlessBusy, contactlessStatus, preHandoverOverlayOwned, stage]
+  );
   const transitionLines = useMemo(
     () =>
       contactlessUiPhase === 'processing_returned_result' ||
@@ -1558,6 +1566,16 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       status: contactlessStatus,
     });
   }, [contactlessStatus, contactlessUiPhase, logContactlessState, showSharedTransitionOverlay, stage]);
+
+  useEffect(() => {
+    if (stage !== 'contactless') return;
+    if (!showSharedTransitionOverlay) return;
+    if (!canCloseSharedTransitionOverlay) return;
+    logContactlessState('kiosk_exit_cross_rendered', {
+      phase: contactlessUiPhase,
+      status: contactlessStatus,
+    });
+  }, [canCloseSharedTransitionOverlay, contactlessStatus, contactlessUiPhase, logContactlessState, showSharedTransitionOverlay, stage]);
 
   useEffect(() => {
     if (stage !== 'contactless') return;
@@ -1683,6 +1701,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     setContactlessBusy(true);
     setContactlessDebug('canceling');
     logContactlessState('exit_cross_clicked', { sessionId: contactlessSessionId });
+    logContactlessState('kiosk_exit_cross_clicked', { sessionId: contactlessSessionId });
     if (contactlessOwnerRef.current?.active) {
       contactlessOwnerRef.current = { ...contactlessOwnerRef.current, active: false, cancelRequested: true };
       logContactlessState('cancel_barrier_set', { ownerId: contactlessOwnerRef.current.id, sessionId: contactlessSessionId });
@@ -1903,7 +1922,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
               lines={transitionLines}
               lineIndex={prepMessageIndex}
               showSuccessTick={successTickVisible}
-              canClose={isNativeTapToPayCancelableOverlayPhase(contactlessStatus) && !contactlessBusy}
+              canClose={canCloseSharedTransitionOverlay}
               onClose={() => {
                 void cancelTapToPay().then(() => returnToFallback('Payment cancelled'));
               }}
