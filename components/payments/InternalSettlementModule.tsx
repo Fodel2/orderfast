@@ -326,11 +326,14 @@ export default function InternalSettlementModule({
   }, []);
 
   const refreshNativeReadiness = useCallback(
-    async (promptIfNeeded: boolean) => {
+    async (promptIfNeeded: boolean, options?: { suppressStateUpdates?: boolean }) => {
+      const suppressStateUpdates = options?.suppressStateUpdates === true;
       if (!nativeRestaurantId) {
         setNativeReadinessReady(false);
         setNativeReadinessReason('Restaurant context is missing. Return to launcher and open Take Payment again.');
-        setState('failed');
+        if (!suppressStateUpdates) {
+          setState('failed');
+        }
         return null;
       }
 
@@ -340,18 +343,24 @@ export default function InternalSettlementModule({
         if (!readiness.supported || !readiness.ready) {
           setNativeReadinessReady(false);
           setNativeReadinessReason(readiness.reason);
-          applyBootstrapState(readiness);
+          if (!suppressStateUpdates) {
+            applyBootstrapState(readiness);
+          }
           return readiness;
         }
         setNativeReadinessReady(true);
         setNativeReadinessReason('');
-        setState('ready');
+        if (!suppressStateUpdates) {
+          setState('ready');
+        }
         return readiness;
       } catch (error: any) {
         const reason = error?.message || 'Tap to Pay setup check failed.';
         setNativeReadinessReady(false);
         setNativeReadinessReason(reason);
-        setState('failed');
+        if (!suppressStateUpdates) {
+          setState('failed');
+        }
         return null;
       } finally {
         setNativeReadinessLoading(false);
@@ -437,14 +446,24 @@ export default function InternalSettlementModule({
       cancelBarrierRef.current = null;
       setPreHandoverOverlayOwned(true);
       logCollectionEvent('handover_owner_established', { flowRunId, reason });
+      logCollectionEvent('take_payment_overlay_owner_established', { flowRunId, reason });
     },
     [logCollectionEvent]
   );
 
   const releaseHandoverOwner = useCallback(
     (reason: string) => {
-      if (handoverOwnerRef.current) {
-        logCollectionEvent('handover_owner_released', { flowRunId: handoverOwnerRef.current.flowRunId, reason });
+      const owner = handoverOwnerRef.current;
+      if (owner) {
+        logCollectionEvent('handover_owner_released', { flowRunId: owner.flowRunId, reason });
+        logCollectionEvent('take_payment_overlay_owner_released', { flowRunId: owner.flowRunId, reason });
+        if (reason.includes('stripe_handover') || reason.includes('verified_finalized') || reason === 'completed') {
+          logCollectionEvent('owner_released_due_to_stripe_takeover', { flowRunId: owner.flowRunId, reason });
+        } else if (reason.includes('cancel')) {
+          logCollectionEvent('owner_released_due_to_cancel', { flowRunId: owner.flowRunId, reason });
+        } else {
+          logCollectionEvent('owner_released_due_to_failure', { flowRunId: owner.flowRunId, reason });
+        }
       }
       handoverOwnerRef.current = null;
       setPreHandoverOverlayOwned(false);
@@ -508,6 +527,7 @@ export default function InternalSettlementModule({
       logCollectionEvent('overlay_hidden', { phase: uiPhase });
       if (preHandoverOverlayOwned) {
         logCollectionEvent('overlay_hidden_while_handover_active', { phase: uiPhase, state });
+        logCollectionEvent('take_payment_overlay_hidden_while_handover_active', { phase: uiPhase, state });
       }
       return;
     }
@@ -546,12 +566,21 @@ export default function InternalSettlementModule({
         state,
         flowRunId: handoverOwnerRef.current.flowRunId,
       });
+      logCollectionEvent('take_payment_payment_options_revealed_while_handover_active', {
+        state,
+        flowRunId: handoverOwnerRef.current.flowRunId,
+      });
     }
   }, [logCollectionEvent, state]);
 
   useEffect(() => {
     if (!showTransitionOverlay || !preHandoverOverlayOwned) return;
     logCollectionEvent('duplicate_prehandover_render_attempt', {
+      state,
+      phase: uiPhase,
+      flowRunId: handoverOwnerRef.current?.flowRunId || null,
+    });
+    logCollectionEvent('take_payment_duplicate_prehandover_render_attempt', {
       state,
       phase: uiPhase,
       flowRunId: handoverOwnerRef.current?.flowRunId || null,
@@ -691,7 +720,7 @@ export default function InternalSettlementModule({
         terminalLocationId: readinessPayload?.terminal_location_id || null,
       });
 
-      const nativeReadiness = await refreshNativeReadiness(false);
+      const nativeReadiness = await refreshNativeReadiness(false, { suppressStateUpdates: true });
       if (!nativeReadiness || !nativeReadiness.supported || !nativeReadiness.ready) {
         setState('failed');
         setMessage(nativeReadiness?.reason || 'Tap to Pay setup is incomplete on this device.');
@@ -824,6 +853,7 @@ export default function InternalSettlementModule({
         return;
       }
 
+      logCollectionEvent('stripe_takeover_started', { sessionId, flowRunId });
       let nativeResult = await tapToPayBridge.startTapToPayPayment({
         restaurantId: nativeRestaurantId,
         sessionId,
