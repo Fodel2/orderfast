@@ -2,6 +2,14 @@ import { resolveNativeTapToPayReadiness } from '@/lib/kiosk/tapToPayNativeReadin
 
 export type ContactlessEntryPoint = 'kiosk' | 'pos' | 'take_payment';
 export type ContactlessRuntime = 'native' | 'web' | 'server';
+export type ContactlessAudience = 'customer' | 'staff';
+export type ContactlessEligibilityCheckpoint =
+  | 'app_launch'
+  | 'screen_entry'
+  | 'session_start'
+  | 'before_render'
+  | 'selection'
+  | 'before_native_start';
 export type ContactlessIneligibilityReason =
   | 'restaurant_setting_disabled'
   | 'entry_point_not_supported'
@@ -12,11 +20,21 @@ export type ContactlessIneligibilityReason =
 export type ContactlessEligibilityResult = {
   eligible: boolean;
   runtime: ContactlessRuntime;
+  audience: ContactlessAudience;
+  checkpoint: ContactlessEligibilityCheckpoint;
   reason: ContactlessIneligibilityReason | null;
   detail: string;
 };
 
+export type ContactlessOptionPresentation = 'enabled' | 'disabled' | 'hidden';
+
+export type ContactlessEligibilityPresentation = ContactlessEligibilityResult & {
+  presentation: ContactlessOptionPresentation;
+};
+
 type ResolveContactlessEligibilityInput = {
+  checkpoint: ContactlessEligibilityCheckpoint;
+  audience: ContactlessAudience;
   entryPoint: ContactlessEntryPoint;
   restaurantAllowsContactless: boolean;
   entryPointSupportsContactless: boolean;
@@ -42,9 +60,11 @@ export const resolveContactlessEligibility = async (
   input: ResolveContactlessEligibilityInput
 ): Promise<ContactlessEligibilityResult> => {
   const runtime = resolveRuntime();
-  logEligibility(input.entryPoint, 'runtime_detected', { runtime });
+  logEligibility(input.entryPoint, 'runtime_detected', { runtime, checkpoint: input.checkpoint, audience: input.audience });
   logEligibility(input.entryPoint, 'eligibility_evaluation_started', {
     runtime,
+    checkpoint: input.checkpoint,
+    audience: input.audience,
     restaurantAllowsContactless: input.restaurantAllowsContactless,
     entryPointSupportsContactless: input.entryPointSupportsContactless,
   });
@@ -53,6 +73,8 @@ export const resolveContactlessEligibility = async (
     const result: ContactlessEligibilityResult = {
       eligible: false,
       runtime,
+      audience: input.audience,
+      checkpoint: input.checkpoint,
       reason: 'restaurant_setting_disabled',
       detail: 'Restaurant settings disabled contactless.',
     };
@@ -64,6 +86,8 @@ export const resolveContactlessEligibility = async (
     const result: ContactlessEligibilityResult = {
       eligible: false,
       runtime,
+      audience: input.audience,
+      checkpoint: input.checkpoint,
       reason: 'entry_point_not_supported',
       detail: 'This payment entry point does not support contactless.',
     };
@@ -75,6 +99,8 @@ export const resolveContactlessEligibility = async (
     const result: ContactlessEligibilityResult = {
       eligible: false,
       runtime,
+      audience: input.audience,
+      checkpoint: input.checkpoint,
       reason: 'runtime_not_native',
       detail: 'Contactless is unavailable outside the native app runtime.',
     };
@@ -87,6 +113,8 @@ export const resolveContactlessEligibility = async (
     const result: ContactlessEligibilityResult = {
       eligible: false,
       runtime,
+      audience: input.audience,
+      checkpoint: input.checkpoint,
       reason: 'native_device_not_supported',
       detail: readiness.reason || 'Native Tap to Pay is not supported on this device/runtime.',
     };
@@ -98,6 +126,8 @@ export const resolveContactlessEligibility = async (
     const result: ContactlessEligibilityResult = {
       eligible: false,
       runtime,
+      audience: input.audience,
+      checkpoint: input.checkpoint,
       reason: 'native_setup_not_ready',
       detail: readiness.reason || 'Native Tap to Pay setup is not ready.',
     };
@@ -108,9 +138,23 @@ export const resolveContactlessEligibility = async (
   const result: ContactlessEligibilityResult = {
     eligible: true,
     runtime,
+    audience: input.audience,
+    checkpoint: input.checkpoint,
     reason: null,
     detail: 'Contactless is eligible and can be rendered.',
   };
   logEligibility(input.entryPoint, 'eligibility_resolved', result);
   return result;
+};
+
+export const resolveContactlessPresentation = (
+  result: ContactlessEligibilityResult
+): ContactlessEligibilityPresentation => {
+  if (result.eligible) {
+    return { ...result, presentation: 'enabled' };
+  }
+  if (result.audience === 'staff') {
+    return { ...result, presentation: 'disabled' };
+  }
+  return { ...result, presentation: 'hidden' };
 };
