@@ -8,6 +8,7 @@ import { internalSettlementActiveRunStore } from '@/lib/payments/internalSettlem
 import { buildCombinedTapToPayDiagnosticsPayload } from '@/lib/payments/tapToPayDiagnostics';
 import {
   resolveContactlessEligibility,
+  resolveContactlessPresentation,
   type ContactlessEligibilityResult,
 } from '@/lib/payments/contactlessEligibility';
 import NativeTapToPayPreHandoverOverlay from '@/components/payments/NativeTapToPayPreHandoverOverlay';
@@ -295,15 +296,25 @@ export default function InternalSettlementModule({
 
     const loadAvailability = async () => {
       setTapAvailabilityLoading(true);
+      console.info('[payments][contactless_eligibility]', 'eligibility_checked_at_app_launch', {
+        entryPoint,
+      });
       try {
         const response = await fetch('/api/dashboard/internal-settlement/tap-to-pay-availability');
         const payload = await response.json().catch(() => ({}));
         if (!active) return;
         if (!response.ok) throw new Error(payload?.message || `HTTP ${response.status}`);
+        console.info('[payments][contactless_eligibility]', 'eligibility_checked_at_page_render', {
+          entryPoint,
+          tapToPayAvailable: payload?.tap_to_pay_available === true,
+          reason: payload?.reason || null,
+        });
         const available = payload?.tap_to_pay_available === true;
         setTapAvailabilityReady(available);
         setTapAvailabilityReason(available ? '' : String(payload?.reason || 'Tap to Pay is not available for this restaurant.'));
         const eligibilityResolved = await resolveContactlessEligibility({
+          checkpoint: 'screen_entry',
+          audience: 'staff',
           entryPoint,
           restaurantAllowsContactless: available,
           entryPointSupportsContactless: true,
@@ -315,6 +326,8 @@ export default function InternalSettlementModule({
         setTapAvailabilityReady(false);
         setTapAvailabilityReason(error?.message || 'Tap to Pay availability could not be confirmed.');
         const eligibilityResolved = await resolveContactlessEligibility({
+          checkpoint: 'screen_entry',
+          audience: 'staff',
           entryPoint,
           restaurantAllowsContactless: false,
           entryPointSupportsContactless: true,
@@ -794,6 +807,24 @@ export default function InternalSettlementModule({
       setMessage(tapAvailabilityReason || 'Tap to Pay is not available for this restaurant.');
       return;
     }
+    const selectionEligibility = await resolveContactlessEligibility({
+      checkpoint: 'selection',
+      audience: 'staff',
+      entryPoint,
+      restaurantAllowsContactless: tapAvailabilityReady,
+      entryPointSupportsContactless: true,
+    });
+    setContactlessEligibility(selectionEligibility);
+    if (!selectionEligibility.eligible) {
+      setState('failed');
+      setMessage(selectionEligibility.detail || 'Tap to Pay is not available for this account/device.');
+      console.info('[payments][contactless_eligibility]', 'contactless_start_blocked_by_eligibility_guard', {
+        entryPoint,
+        checkpoint: 'selection',
+        reason: selectionEligibility.reason,
+      });
+      return;
+    }
     if (mode === 'order_payment' && !selectedOrderId) {
       setState('failed');
       setMessage('Select an unpaid order first.');
@@ -1023,6 +1054,25 @@ export default function InternalSettlementModule({
         setActiveTerminalLocationId(null);
         internalSettlementActiveRunStore.clear();
         releaseHandoverOwner('readiness_changed_before_handover');
+        return;
+      }
+      const nativeStartEligibility = await resolveContactlessEligibility({
+        checkpoint: 'before_native_start',
+        audience: 'staff',
+        entryPoint,
+        restaurantAllowsContactless: true,
+        entryPointSupportsContactless: true,
+      });
+      setContactlessEligibility(nativeStartEligibility);
+      if (!nativeStartEligibility.eligible) {
+        logCollectionEvent('contactless_start_blocked_by_eligibility_guard', {
+          checkpoint: 'before_native_start',
+          reason: nativeStartEligibility.reason,
+          detail: nativeStartEligibility.detail,
+        });
+        setState('failed');
+        setMessage(nativeStartEligibility.detail || 'Tap to Pay is unavailable right now.');
+        releaseHandoverOwner('before_native_start_ineligible');
         return;
       }
 
@@ -1583,6 +1633,7 @@ export default function InternalSettlementModule({
     shouldBlockRunContinuation,
     tapAvailabilityReady,
     tapAvailabilityReason,
+    entryPoint,
     establishHandoverOwner,
   ]);
 
@@ -1689,6 +1740,7 @@ export default function InternalSettlementModule({
       entryPoint,
       restaurantId: nativeRestaurantId,
     });
+    console.info('[payments][contactless_eligibility]', 'terminal_outcome_selected', { entryPoint, outcome: 'success' });
     const timeout = window.setTimeout(() => {
       const target = nativeRestaurantId
         ? `/pos/${nativeRestaurantId}?stage=paymentComplete&source=${entryPoint === 'pos' ? 'pos-contactless' : 'take-payment'}`
@@ -1702,11 +1754,21 @@ export default function InternalSettlementModule({
           entryPoint,
           route: 'stay_on_take_payment_reset_to_ready',
         });
+        console.info('[payments][contactless_eligibility]', 'terminal_route_committed', {
+          entryPoint,
+          outcome: 'success',
+          destination: 'reset_to_ready',
+        });
         setState('idle');
         setMessage('Ready to collect payment.');
         return;
       }
       logCollectionEvent('terminal_route_committed', { terminalType: 'success', entryPoint, route: target });
+      console.info('[payments][contactless_eligibility]', 'terminal_route_committed', {
+        entryPoint,
+        outcome: 'success',
+        destination: target,
+      });
       router.push(target).catch(() => undefined);
     }, 900);
     return () => window.clearTimeout(timeout);
@@ -1730,11 +1792,24 @@ export default function InternalSettlementModule({
       entryPoint,
       restaurantId: nativeRestaurantId,
     });
+    console.info('[payments][contactless_eligibility]', 'terminal_outcome_selected', {
+      entryPoint,
+      outcome: visualState === 'canceled' ? 'canceled' : 'failed',
+    });
     const timeout = window.setTimeout(() => {
       logCollectionEvent('terminal_route_committed', {
         terminalType: visualState,
         entryPoint,
         route: 'stay_on_take_payment_reset_to_ready',
+      });
+      console.info('[payments][contactless_eligibility]', 'terminal_route_committed', {
+        entryPoint,
+        outcome: visualState === 'canceled' ? 'canceled' : 'failed',
+        destination: 'reset_to_ready',
+      });
+      console.info('[payments][contactless_eligibility]', 'failure_or_ineligible_returned_to_payment_options', {
+        entryPoint,
+        outcome: visualState === 'canceled' ? 'canceled' : 'failed',
       });
       setTerminalVisualState(null);
       setState('idle');
@@ -1968,23 +2043,28 @@ export default function InternalSettlementModule({
           </div>
 
           <div className="flex flex-wrap gap-3">
-            {contactlessEligibility?.eligible ? (
-              <button
-                type="button"
-                disabled={
-                  busy ||
-                  tapAvailabilityLoading ||
-                  nativeReadinessLoading ||
-                  !tapAvailabilityReady ||
-                  amountCents <= 0 ||
-                  (mode === 'order_payment' && !selectedOrderId)
-                }
-                onClick={handleCollectContactless}
-                className="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
-              >
-                {busy ? 'Collecting…' : state === 'setup_failed' ? 'Resolve setup & collect' : 'Collect contactless'}
-              </button>
-            ) : null}
+            {(() => {
+              const presentation = contactlessEligibility ? resolveContactlessPresentation(contactlessEligibility) : null;
+              const unavailable = presentation?.presentation === 'disabled';
+              return (
+                <button
+                  type="button"
+                  disabled={
+                    unavailable ||
+                    busy ||
+                    tapAvailabilityLoading ||
+                    nativeReadinessLoading ||
+                    !tapAvailabilityReady ||
+                    amountCents <= 0 ||
+                    (mode === 'order_payment' && !selectedOrderId)
+                  }
+                  onClick={handleCollectContactless}
+                  className="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                >
+                  {busy ? 'Collecting…' : unavailable ? 'Contactless unavailable' : state === 'setup_failed' ? 'Resolve setup & collect' : 'Collect contactless'}
+                </button>
+              );
+            })()}
             <button
               type="button"
               disabled={busy || !activeSessionId}
