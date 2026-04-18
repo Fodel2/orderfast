@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import {
   BanknotesIcon,
   BuildingStorefrontIcon,
+  ChevronLeftIcon,
   CreditCardIcon,
 } from '@heroicons/react/24/outline';
 import KioskLayout from '@/components/layouts/KioskLayout';
@@ -14,6 +15,10 @@ import {
   type KioskPaymentMethod,
   type KioskPaymentSettingsRow,
 } from '@/lib/kiosk/paymentSettings';
+import {
+  resolveContactlessEligibility,
+  type ContactlessEligibilityResult,
+} from '@/lib/payments/contactlessEligibility';
 import { resolveNativeTapToPayReadiness } from '@/lib/kiosk/tapToPayNativeReadiness';
 import { tapToPayBridge, type TapToPayResult, type TapToPayStatus } from '@/lib/kiosk/tapToPayBridge';
 import type { KioskTerminalMode } from '@/lib/kiosk/terminalMode';
@@ -197,6 +202,9 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   const [restaurantLoading, setRestaurantLoading] = useState(true);
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [enabledMethods, setEnabledMethods] = useState<KioskPaymentMethod[]>(['pay_at_counter']);
+  const [contactlessEligibility, setContactlessEligibility] = useState<ContactlessEligibilityResult | null>(null);
+  const [sessionContactlessAllowed, setSessionContactlessAllowed] = useState(false);
+  const [restaurantAllowsContactless, setRestaurantAllowsContactless] = useState(false);
   const [stage, setStage] = useState<PaymentStage>('method_picker');
   const [contactlessStatus, setContactlessStatus] = useState<TapToPayStatus>('idle');
   const [contactlessBusy, setContactlessBusy] = useState(false);
@@ -387,7 +395,17 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
 
         const normalized = normalizeKioskPaymentSettings((data as KioskPaymentSettingsRow | null) || null);
         setTerminalMode(normalized.terminalMode);
-        const nextMethods = normalized.enabledMethods;
+        setRestaurantAllowsContactless(normalized.enableContactless);
+        const contactlessResolved = await resolveContactlessEligibility({
+          entryPoint: 'kiosk',
+          restaurantAllowsContactless: normalized.enableContactless,
+          entryPointSupportsContactless: true,
+        });
+        setContactlessEligibility(contactlessResolved);
+        setSessionContactlessAllowed(contactlessResolved.eligible);
+        const nextMethods = normalized.enabledMethods.filter((method) =>
+          method === 'contactless' ? contactlessResolved.eligible : true
+        );
         setEnabledMethods(nextMethods);
 
         if (preferredStageFromQuery === 'method_picker' && nextMethods.length > 1) {
@@ -410,6 +428,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       } catch (err) {
         if (!active) return;
         console.error('[kiosk] failed to resolve kiosk payment methods', err);
+        setContactlessEligibility(null);
         setEnabledMethods(['pay_at_counter']);
         setStage('pay_at_counter');
       } finally {
@@ -423,6 +442,72 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       active = false;
     };
   }, [preferredStageFromQuery, restaurantId]);
+
+  useEffect(() => {
+    if (settingsLoading) return;
+    console.info('[payments][contactless_eligibility]', 'rendered_payment_methods', {
+      entryPoint: 'kiosk',
+      runtime: contactlessEligibility?.runtime || null,
+      eligible: contactlessEligibility?.eligible === true,
+      reason: contactlessEligibility?.reason || null,
+      methods: enabledMethods,
+      stage,
+    });
+  }, [contactlessEligibility, enabledMethods, settingsLoading, stage]);
+
+  const recheckContactlessEligibility = useCallback(
+    async (checkpoint: 'page_render' | 'selection' | 'pre_native_start' | 'runtime_change') => {
+      const resolved = await resolveContactlessEligibility({
+        entryPoint: 'kiosk',
+        restaurantAllowsContactless,
+        entryPointSupportsContactless: true,
+      });
+      setContactlessEligibility(resolved);
+      console.info('[payments][contactless_eligibility]', 'eligibility_checkpoint_checked', {
+        entryPoint: 'kiosk',
+        checkpoint,
+        runtime: resolved.runtime,
+        eligible: resolved.eligible,
+        reason: resolved.reason,
+      });
+      return resolved;
+    },
+    [restaurantAllowsContactless]
+  );
+
+  useEffect(() => {
+    if (settingsLoading) return;
+    void recheckContactlessEligibility('page_render');
+  }, [recheckContactlessEligibility, settingsLoading]);
+
+  useEffect(() => {
+    if (!sessionContactlessAllowed) return;
+    if (typeof window === 'undefined') return;
+    const handleRuntimeChange = () => {
+      void (async () => {
+        const resolved = await recheckContactlessEligibility('runtime_change');
+        if (resolved.eligible) return;
+        console.info('[payments][contactless_eligibility]', 'runtime_readiness_change_detected', {
+          entryPoint: 'kiosk',
+          reason: resolved.reason,
+        });
+        setEnabledMethods((prev) => prev.filter((method) => method !== 'contactless'));
+        if (stageRef.current === 'contactless') {
+          setContactlessStatus('failed');
+          setContactlessTerminalState('failed');
+          setContactlessError('Contactless is unavailable right now. Please choose another method.');
+        } else {
+          setPaymentNotice('Contactless is currently unavailable.');
+        }
+      })();
+    };
+    window.addEventListener('focus', handleRuntimeChange);
+    document.addEventListener('visibilitychange', handleRuntimeChange);
+    return () => {
+      window.removeEventListener('focus', handleRuntimeChange);
+      document.removeEventListener('visibilitychange', handleRuntimeChange);
+    };
+  }, [recheckContactlessEligibility, sessionContactlessAllowed]);
 
   useEffect(() => {
     stageRef.current = stage;
@@ -630,6 +715,19 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
 
   const runTapToPay = useCallback(async () => {
     if (!restaurantId || amountCents <= 0 || contactlessBusy || flowLockRef.current) return;
+    const preStartEligibility = await recheckContactlessEligibility('pre_native_start');
+    if (!preStartEligibility.eligible) {
+      console.info('[payments][contactless_eligibility]', 'contactless_start_blocked_by_guard', {
+        entryPoint: 'kiosk',
+        checkpoint: 'pre_native_start',
+        reason: preStartEligibility.reason,
+      });
+      setEnabledMethods((prev) => prev.filter((method) => method !== 'contactless'));
+      setContactlessStatus('failed');
+      setContactlessTerminalState('failed');
+      setContactlessError('Contactless is unavailable right now. Please choose another method.');
+      return;
+    }
     flowLockRef.current = true;
     const ownerId = establishContactlessOwner('contactless_started');
     setContactlessBusy(true);
@@ -1251,6 +1349,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     isVerifiedPaidPayload,
     loadServerSessionTruth,
     logContactlessState,
+    recheckContactlessEligibility,
     reconcileSession,
     releaseContactlessOwner,
     restaurantId,
@@ -1296,13 +1395,37 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       releaseContactlessOwner('return_to_method_picker');
       contactlessTerminalRouteCommittedRef.current = true;
       logContactlessState('kiosk_terminal_route_committed', { terminalType: 'cancel_or_failure', destination: 'method_picker' });
+      console.info('[payments][contactless_eligibility]', 'failure_or_ineligible_returned_to_payment_options', {
+        entryPoint: 'kiosk',
+        message,
+        reason: contactlessEligibility?.reason || null,
+      });
       setStage('method_picker');
       if (typeof window !== 'undefined') {
         window.localStorage.removeItem(CONTACTLESS_SESSION_STORAGE_KEY);
       }
     },
-    [CONTACTLESS_SESSION_STORAGE_KEY, logContactlessState, releaseContactlessOwner]
+    [CONTACTLESS_SESSION_STORAGE_KEY, contactlessEligibility?.reason, logContactlessState, releaseContactlessOwner]
   );
+
+  const handleSelectContactless = useCallback(async () => {
+    setOrderSubmitError('');
+    setAutoSubmitAttemptedMethod(null);
+    setPaymentNotice('');
+    const resolved = await recheckContactlessEligibility('selection');
+    if (!resolved.eligible) {
+      console.info('[payments][contactless_eligibility]', 'contactless_start_blocked_by_guard', {
+        entryPoint: 'kiosk',
+        checkpoint: 'selection',
+        reason: resolved.reason,
+      });
+      setEnabledMethods((prev) => prev.filter((method) => method !== 'contactless'));
+      setPaymentNotice('Contactless is unavailable right now. Please choose another method.');
+      setStage('method_picker');
+      return;
+    }
+    setStage('contactless');
+  }, [recheckContactlessEligibility]);
 
   const submitOrderAndRedirect = useCallback(
     async (method: 'cash' | 'pay_at_counter' | 'contactless') => {
@@ -1504,6 +1627,23 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         : PRE_HANDOVER_PROGRESS_LINES,
     [contactlessUiPhase]
   );
+  const headerContent = useMemo(() => {
+    if (!restaurantId) return null;
+    return (
+      <div className="mx-auto flex h-full w-full max-w-5xl items-start justify-between gap-3 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+12px)] sm:px-6">
+        <button
+          type="button"
+          onClick={() => {
+            router.push(`/kiosk/${restaurantId}/cart`).catch(() => undefined);
+          }}
+          className="inline-flex min-h-[3rem] items-center gap-2 rounded-full bg-white/95 px-4 py-2.5 text-base font-semibold text-neutral-900 shadow-md shadow-slate-300/70 ring-1 ring-slate-200 transition hover:-translate-y-[1px] hover:shadow-lg sm:text-lg"
+        >
+          <ChevronLeftIcon className="h-6 w-6" />
+          Back
+        </button>
+      </div>
+    );
+  }, [restaurantId, router]);
 
   useEffect(() => {
     if (stage !== 'contactless') {
@@ -1789,17 +1929,8 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   }, [CONTACTLESS_SESSION_STORAGE_KEY, contactlessSessionId, logContactlessState, releaseContactlessOwner, restaurantId]);
 
   const renderMethodPicker = () => (
-    <section
-      className="w-full rounded-[2rem] border bg-white/95 p-5 shadow-xl shadow-slate-200/70 sm:p-8"
-      style={{ borderColor: paymentTheme.ring }}
-    >
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Kiosk checkout</p>
-      <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">Choose how you want to pay</h1>
-      <p className="mt-3 text-sm leading-relaxed text-slate-600 sm:text-base">
-        Select your payment method to continue checkout.
-      </p>
-
-      <div className="mt-6 grid gap-3 sm:grid-cols-2">
+    <section className="w-full">
+      <div className="mt-2 grid gap-3 sm:grid-cols-2">
         {enabledMethods.map((method) => {
           const meta = PAYMENT_METHOD_META[method];
           const Icon = meta.icon;
@@ -1811,8 +1942,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
                 setOrderSubmitError('');
                 setAutoSubmitAttemptedMethod(null);
                 if (method === 'contactless') {
-                  setPaymentNotice('');
-                  setStage('contactless');
+                  void handleSelectContactless();
                   return;
                 }
                 if (method === 'cash') {
@@ -1821,10 +1951,10 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
                 }
                 setStage('pay_at_counter');
               }}
-              className="group relative overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-slate-100 px-5 py-6 text-left shadow-sm transition hover:-translate-y-[2px] hover:border-slate-300 hover:shadow-lg"
+              className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white px-5 py-5 text-left shadow-sm transition hover:-translate-y-[1px] hover:border-slate-300 hover:shadow-md"
               style={{
                 borderColor: paymentTheme.ring,
-                backgroundImage: `linear-gradient(135deg, #ffffff 0%, ${paymentTheme.primarySoft} 100%)`,
+                backgroundImage: `linear-gradient(150deg, #ffffff 0%, ${paymentTheme.primarySoft} 100%)`,
               }}
             >
               <div
@@ -1833,8 +1963,8 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
               >
                 <Icon className="h-6 w-6" />
               </div>
-              <p className="mt-4 text-lg font-semibold text-slate-900">{meta.title}</p>
-              <p className="mt-1 text-sm text-slate-600">{meta.subtitle}</p>
+              <p className="mt-3 text-lg font-semibold text-slate-900">{meta.title}</p>
+              {method !== 'pay_at_counter' ? <p className="mt-1 text-sm text-slate-600">{meta.subtitle}</p> : null}
             </button>
           );
         })}
@@ -1860,50 +1990,24 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   );
 
   return (
-    <KioskLayout restaurantId={restaurantId} restaurant={restaurant} restaurantLoading={restaurantLoading}>
-      <div
-        className="mx-auto flex min-h-[58vh] w-full max-w-4xl items-center px-4 py-6 sm:px-6 sm:py-8"
-        style={
-          stage === 'contactless'
-            ? {
-                backgroundImage: `linear-gradient(155deg, ${hexToRgba(paymentTheme.primary, 0.08)}, ${hexToRgba(paymentTheme.secondary, 0.05)})`,
-                borderRadius: '1.5rem',
-              }
-            : undefined
-        }
-      >
-        <div className="w-full space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <button
-              type="button"
-              onClick={handleHiddenOperatorTap}
-              className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500"
-              aria-label="Payment stage"
-            >
-              {stageLabel}
-            </button>
-            <div className="flex gap-2">
-              {stage !== 'method_picker' && enabledMethods.length > 1 ? (
-                <button
-                  type="button"
-                  onClick={() => setStage('method_picker')}
-                  className="rounded-full border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-                >
-                  Change method
-                </button>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => {
-                  if (!restaurantId) return;
-                  router.push(`/kiosk/${restaurantId}/cart`).catch(() => undefined);
-                }}
-                className="rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-slate-800"
-              >
-                Back to kiosk cart
-              </button>
-            </div>
-          </div>
+    <KioskLayout
+      restaurantId={restaurantId}
+      restaurant={restaurant}
+      restaurantLoading={restaurantLoading}
+      customHeaderContent={headerContent}
+    >
+      <div className="mx-auto w-full max-w-5xl space-y-4 pb-28 pt-1 sm:space-y-5 sm:pt-2">
+        <div className="-mt-1 space-y-1 px-2 sm:-mt-1.5 sm:px-0">
+          <button
+            type="button"
+            onClick={handleHiddenOperatorTap}
+            className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500"
+            aria-label="Payment stage"
+          >
+            {stageLabel}
+          </button>
+          <h1 className="text-2xl font-semibold text-slate-900 sm:text-[26px]">Choose payment</h1>
+        </div>
 
           {settingsLoading ? (
             <section className="w-full rounded-3xl border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-sm">
@@ -1913,6 +2017,11 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
           {!settingsLoading && paymentNotice ? (
             <section className="w-full rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
               {paymentNotice}
+            </section>
+          ) : null}
+          {!settingsLoading && stage === 'method_picker' && contactlessEligibility && !contactlessEligibility.eligible ? (
+            <section className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+              Contactless is unavailable on this device/runtime.
             </section>
           ) : null}
           {!settingsLoading && orderSubmitError ? (
@@ -1976,7 +2085,6 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
             />
           ) : null}
           {!settingsLoading && orderSubmitting ? renderOrderSubmittingOverlay() : null}
-        </div>
       </div>
     </KioskLayout>
   );
