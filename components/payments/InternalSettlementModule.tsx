@@ -11,6 +11,7 @@ import {
   resolveContactlessPresentation,
   type ContactlessEligibilityResult,
 } from '@/lib/payments/contactlessEligibility';
+import { resolveStaffTapToPayAvailability } from '@/lib/payments/staffTapToPayAvailability';
 import NativeTapToPayPreHandoverOverlay from '@/components/payments/NativeTapToPayPreHandoverOverlay';
 import {
   canCloseNativeTapToPayPreHandoverOverlay,
@@ -292,37 +293,12 @@ export default function InternalSettlementModule({
   }, [loadOrders]);
 
   const resolveStaffContactlessAvailability = useCallback(
-    async (checkpoint: 'screen_entry' | 'selection' | 'before_native_start') => {
-      console.info('[payments][contactless_eligibility]', 'staff_availability_check_started', {
-        entryPoint,
+    async (checkpoint: 'screen_entry' | 'selection' | 'before_native_start') =>
+      resolveStaffTapToPayAvailability({
         checkpoint,
-        source: 'live_server_and_native',
-      });
-      const response = await fetch('/api/dashboard/internal-settlement/tap-to-pay-availability', { cache: 'no-store' });
-      const payload = await response.json().catch(() => ({}));
-      const serverAvailable = response.ok && payload?.tap_to_pay_available === true;
-      const serverReason = response.ok
-        ? (serverAvailable ? '' : String(payload?.reason || 'Tap to Pay is not available for this restaurant.'))
-        : String(payload?.message || `HTTP ${response.status}`);
-      const resolved = await resolveContactlessEligibility({
-        checkpoint,
-        audience: 'staff',
         entryPoint,
-        restaurantAllowsContactless: serverAvailable,
-        entryPointSupportsContactless: true,
-      });
-      console.info('[payments][contactless_eligibility]', 'staff_availability_checked', {
-        entryPoint,
-        checkpoint,
-        source: 'live_server_and_native',
-        httpStatus: response.status,
-        serverAvailable,
-        serverReason: serverReason || null,
-        nativeEligibility: resolved.eligible,
-        nativeReason: resolved.reason,
-      });
-      return { resolved, serverAvailable, serverReason };
-    },
+        source: 'internal_settlement',
+      }),
     [entryPoint]
   );
 
@@ -386,6 +362,17 @@ export default function InternalSettlementModule({
       methods: contactlessEligibility?.eligible ? ['contactless'] : [],
     });
   }, [contactlessEligibility, entryPoint]);
+
+  useEffect(() => {
+    const presentation = contactlessEligibility ? resolveContactlessPresentation(contactlessEligibility) : null;
+    console.info('[payments][contactless_eligibility]', 'pos_take_payment_contactless_presentation_resolved_from_live_availability', {
+      entryPoint,
+      presentation: presentation?.presentation || null,
+      eligible: contactlessEligibility?.eligible === true,
+      reason: presentation?.detail || null,
+    });
+  }, [contactlessEligibility, entryPoint]);
+
 
   const applyBootstrapState = useCallback((readiness: Awaited<ReturnType<typeof resolveNativeTapToPayReadiness>>) => {
     if (!readiness.supported) {
