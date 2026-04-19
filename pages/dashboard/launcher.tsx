@@ -6,6 +6,8 @@ import {
   runLauncherBootstrap,
   type LauncherBootstrapSnapshot,
 } from '@/lib/app/launcherBootstrap';
+import { resolveContactlessEligibility, resolveContactlessPresentation } from '@/lib/payments/contactlessEligibility';
+import { resolveStaffTapToPayAvailability, type StaffTapToPayAvailability } from '@/lib/payments/staffTapToPayAvailability';
 
 type RestaurantOption = {
   id: string;
@@ -69,6 +71,8 @@ export default function DashboardLauncherPage() {
   const [launchingMode, setLaunchingMode] = useState<AppMode['key'] | null>(null);
   const [bootstrapSnapshot, setBootstrapSnapshot] = useState<LauncherBootstrapSnapshot | null>(null);
   const [bootstrapRunning, setBootstrapRunning] = useState(false);
+  const [staffTakePaymentAvailability, setStaffTakePaymentAvailability] = useState<StaffTapToPayAvailability | null>(null);
+  const [staffTakePaymentLoading, setStaffTakePaymentLoading] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -171,6 +175,45 @@ export default function DashboardLauncherPage() {
     [selectedRestaurant]
   );
 
+  const evaluateLauncherStaffTakePaymentAvailability = useCallback(async () => {
+    if (!selectedRestaurant) return null;
+    setStaffTakePaymentLoading(true);
+    try {
+      const resolved = await resolveStaffTapToPayAvailability({
+        checkpoint: 'before_render',
+        entryPoint: 'take_payment',
+        source: 'launcher',
+      });
+      console.info('[payments][contactless_eligibility]', 'launcher_staff_tap_to_pay_availability_evaluated', {
+        restaurantId: selectedRestaurant.id,
+        serverAvailable: resolved.serverAvailable,
+        eligible: resolved.resolved.eligible,
+        detail: resolved.resolved.detail,
+        reason: resolved.resolved.reason,
+      });
+      setStaffTakePaymentAvailability(resolved);
+      return resolved;
+    } catch (error: any) {
+      const resolved = await resolveContactlessEligibility({
+        checkpoint: 'before_render',
+        audience: 'staff',
+        entryPoint: 'take_payment',
+        restaurantAllowsContactless: false,
+        entryPointSupportsContactless: true,
+      });
+      const fallback = {
+        resolved,
+        serverAvailable: false,
+        serverReason: error?.message || 'Tap to Pay availability could not be confirmed.',
+        httpStatus: 0,
+      };
+      setStaffTakePaymentAvailability(fallback);
+      return fallback;
+    } finally {
+      setStaffTakePaymentLoading(false);
+    }
+  }, [selectedRestaurant]);
+
   useEffect(() => {
     const existing = readLauncherBootstrapSnapshot();
     if (selectedRestaurant && existing?.restaurantId === selectedRestaurant.id) {
@@ -183,6 +226,11 @@ export default function DashboardLauncherPage() {
 
   useEffect(() => {
     if (!selectedRestaurant) return;
+    void evaluateLauncherStaffTakePaymentAvailability();
+  }, [evaluateLauncherStaffTakePaymentAvailability, selectedRestaurant]);
+
+  useEffect(() => {
+    if (!selectedRestaurant) return;
 
     APP_MODES.forEach((mode) => {
       const href = getModeHref(mode.key, selectedRestaurant.id);
@@ -192,10 +240,26 @@ export default function DashboardLauncherPage() {
 
   const handleLaunch = async (mode: AppMode['key']) => {
     if (!selectedRestaurant) return;
-    if (bootstrapRunning) return;
+    if (bootstrapRunning || staffTakePaymentLoading) return;
 
     setLaunchingMode(mode);
     try {
+      if (mode === 'take_payment') {
+        const liveAvailability = await evaluateLauncherStaffTakePaymentAvailability();
+        if (!liveAvailability?.resolved?.eligible) {
+          console.info('[payments][contactless_eligibility]', 'launcher_take_payment_action_disabled_due_to_live_unavailability', {
+            restaurantId: selectedRestaurant.id,
+            reason: liveAvailability?.resolved?.detail || null,
+          });
+          console.info('[payments][contactless_eligibility]', 'launcher_navigation_blocked_due_to_live_unavailability', {
+            mode,
+            restaurantId: selectedRestaurant.id,
+            reason: liveAvailability?.resolved?.detail || null,
+          });
+          return;
+        }
+      }
+
       const latestSnapshot = await runBootstrap(true);
       if (!latestSnapshot) return;
       const href = getModeHref(mode, selectedRestaurant.id);
@@ -204,6 +268,27 @@ export default function DashboardLauncherPage() {
       setLaunchingMode(null);
     }
   };
+
+  const takePaymentPresentation = staffTakePaymentAvailability
+    ? resolveContactlessPresentation(staffTakePaymentAvailability.resolved)
+    : null;
+  const takePaymentUnavailable = takePaymentPresentation?.presentation === 'disabled';
+
+  useEffect(() => {
+    if (!staffTakePaymentAvailability) return;
+    if (!staffTakePaymentAvailability.resolved.eligible) {
+      console.info('[payments][contactless_eligibility]', 'live_nfc_off_state_propagated_to_launcher_and_payment_actions', {
+        reason: staffTakePaymentAvailability.resolved.detail,
+      });
+    }
+  }, [staffTakePaymentAvailability]);
+
+  useEffect(() => {
+    if (!takePaymentUnavailable) return;
+    console.info('[payments][contactless_eligibility]', 'launcher_take_payment_action_disabled_due_to_live_unavailability', {
+      reason: takePaymentPresentation?.detail || null,
+    });
+  }, [takePaymentPresentation?.detail, takePaymentUnavailable]);
 
   return (
     <main
@@ -346,21 +431,28 @@ export default function DashboardLauncherPage() {
                   onClick={() => {
                     handleLaunch(mode.key).catch(() => undefined);
                   }}
-                  disabled={launchingMode !== null || bootstrapRunning}
+                  disabled={launchingMode !== null || bootstrapRunning || staffTakePaymentLoading || (mode.key === 'take_payment' && takePaymentUnavailable)}
                   style={{
                     textAlign: 'left',
-                    background: '#fff',
-                    border: '1px solid #dbeafe',
                     borderRadius: '12px',
                     padding: '0.9rem',
                     opacity: launchingMode === null || launchingMode === mode.key ? 1 : 0.65,
+                    cursor: mode.key === 'take_payment' && takePaymentUnavailable ? 'not-allowed' : 'pointer',
+                    border: mode.key === 'take_payment' && takePaymentUnavailable ? '1px solid #f1f5f9' : '1px solid #dbeafe',
+                    background: mode.key === 'take_payment' && takePaymentUnavailable ? '#f8fafc' : '#fff',
                   }}
                 >
                   <span style={{ display: 'block', fontWeight: 700 }}>
-                    {launchingMode === mode.key ? `Opening ${mode.label}…` : mode.label}
+                    {mode.key === 'take_payment' && takePaymentUnavailable
+                      ? 'Take Payment unavailable'
+                      : launchingMode === mode.key
+                        ? `Opening ${mode.label}…`
+                        : mode.label}
                   </span>
                   <span style={{ display: 'block', marginTop: '0.25rem', color: '#475569', fontSize: '0.9rem' }}>
-                    {mode.description}
+                    {mode.key === 'take_payment' && takePaymentUnavailable
+                      ? takePaymentPresentation?.detail || 'Tap to Pay is unavailable on this device right now.'
+                      : mode.description}
                   </span>
                 </button>
               ))}
