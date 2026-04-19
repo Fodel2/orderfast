@@ -2,6 +2,7 @@ import { tapToPayBridge } from '@/lib/kiosk/tapToPayBridge';
 
 export type TapToPaySetupState =
   | 'ready'
+  | 'nfc_disabled'
   | 'permission_not_requested'
   | 'permission_denied'
   | 'location_services_disabled'
@@ -14,6 +15,7 @@ export type TapToPaySetupBootstrapResult = {
   state: TapToPaySetupState;
   reason: string;
   permissionState: string | null;
+  nfcEnabled: boolean | null;
   permissionStateBeforeRequest: string | null;
   locationServicesEnabled: boolean | null;
   nativeStage: string | null;
@@ -28,10 +30,12 @@ const normalizePermissionState = (value: string | null | undefined) => {
 const deriveState = (payload: {
   ready: boolean;
   supported: boolean;
+  nfcEnabled: boolean | null;
   permissionState: string | null;
   locationServicesEnabled: boolean | null;
 }): TapToPaySetupState => {
   if (!payload.supported) return 'unsupported_device';
+  if (payload.nfcEnabled === false) return 'nfc_disabled';
 
   if (payload.permissionState === 'denied') return 'permission_denied';
 
@@ -57,6 +61,10 @@ const deriveReason = (payload: {
 
   if (payload.state === 'permission_denied') {
     return 'Location permission was denied. Allow location to use Tap to Pay.';
+  }
+
+  if (payload.state === 'nfc_disabled') {
+    return 'NFC is turned off. Turn on NFC to use Tap to Pay.';
   }
 
   if (payload.state === 'location_services_disabled') {
@@ -103,6 +111,7 @@ export const runTapToPaySetupBootstrap = async (options?: {
   const state = deriveState({
     ready,
     supported,
+    nfcEnabled: typeof readiness.nfcEnabled === 'boolean' ? readiness.nfcEnabled : null,
     permissionState,
     locationServicesEnabled,
   });
@@ -117,6 +126,7 @@ export const runTapToPaySetupBootstrap = async (options?: {
     }),
     state,
     permissionState,
+    nfcEnabled: typeof readiness.nfcEnabled === 'boolean' ? readiness.nfcEnabled : null,
     permissionStateBeforeRequest,
     locationServicesEnabled,
     nativeStage: readiness.nativeStage || requestNativeStage || locationCheck.nativeStage || supportCheck.nativeStage || null,

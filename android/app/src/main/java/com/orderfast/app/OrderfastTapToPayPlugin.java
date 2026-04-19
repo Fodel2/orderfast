@@ -7,6 +7,7 @@ import android.content.pm.ActivityInfo;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.location.LocationManager;
+import android.nfc.NfcAdapter;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
@@ -383,16 +384,21 @@ public class OrderfastTapToPayPlugin extends Plugin {
         logStartupStage("native_support_check_entered", new JSObject());
         JSObject result = new JSObject();
         boolean hasNfc = getContext().getPackageManager().hasSystemFeature(PackageManager.FEATURE_NFC);
+        boolean nfcEnabled = isNfcEnabled();
 
         if (!hasNfc) {
             result.put("supported", false);
             result.put("reason", "NFC is not available on this device.");
+        } else if (!nfcEnabled) {
+            result.put("supported", true);
+            result.put("reason", "NFC is turned off. Turn on NFC to use Tap to Pay.");
         } else {
             result.put("supported", true);
             result.put("reason", "Tap to Pay hardware prerequisites satisfied.");
         }
         result.put("permissionState", permissionStateToString(getPermissionState("location")));
         result.put("hasNfc", hasNfc);
+        result.put("nfcEnabled", nfcEnabled);
         result.put("locationServicesEnabled", isLocationServicesEnabled());
         result.put("nativeStage", "native_support_check_result");
         logStartupStage("native_support_check_result", result);
@@ -464,23 +470,32 @@ public class OrderfastTapToPayPlugin extends Plugin {
 
     private JSObject buildReadinessPayload() {
         boolean hasNfc = getContext().getPackageManager().hasSystemFeature(PackageManager.FEATURE_NFC);
+        boolean nfcEnabled = isNfcEnabled();
         PermissionState permissionState = getPermissionState("location");
         boolean hasLocationPermission = permissionState == PermissionState.GRANTED;
         boolean locationServicesEnabled = isLocationServicesEnabled();
 
         JSObject payload = new JSObject();
-        payload.put("ready", hasNfc && hasLocationPermission && locationServicesEnabled);
+        payload.put("ready", hasNfc && nfcEnabled && hasLocationPermission && locationServicesEnabled);
         payload.put("supported", hasNfc);
         payload.put("reason", !hasNfc
             ? "NFC is not available on this device."
-            : (!hasLocationPermission
-                ? "Location permission is required for Tap to Pay."
-                : (locationServicesEnabled
-                    ? "Tap to Pay device prerequisites satisfied."
-                    : "Location services must be enabled for Tap to Pay.")));
+            : (!nfcEnabled
+                ? "NFC is turned off. Turn on NFC to use Tap to Pay."
+                : (!hasLocationPermission
+                    ? "Location permission is required for Tap to Pay."
+                    : (locationServicesEnabled
+                        ? "Tap to Pay device prerequisites satisfied."
+                        : "Location services must be enabled for Tap to Pay."))));
+        payload.put("nfcEnabled", nfcEnabled);
         payload.put("permissionState", permissionStateToString(permissionState));
         payload.put("locationServicesEnabled", locationServicesEnabled);
         return payload;
+    }
+
+    private boolean isNfcEnabled() {
+        NfcAdapter adapter = NfcAdapter.getDefaultAdapter(getContext());
+        return adapter != null && adapter.isEnabled();
     }
 
     @PluginMethod

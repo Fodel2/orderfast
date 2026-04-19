@@ -291,6 +291,41 @@ export default function InternalSettlementModule({
     void loadOrders();
   }, [loadOrders]);
 
+  const resolveStaffContactlessAvailability = useCallback(
+    async (checkpoint: 'screen_entry' | 'selection' | 'before_native_start') => {
+      console.info('[payments][contactless_eligibility]', 'staff_availability_check_started', {
+        entryPoint,
+        checkpoint,
+        source: 'live_server_and_native',
+      });
+      const response = await fetch('/api/dashboard/internal-settlement/tap-to-pay-availability', { cache: 'no-store' });
+      const payload = await response.json().catch(() => ({}));
+      const serverAvailable = response.ok && payload?.tap_to_pay_available === true;
+      const serverReason = response.ok
+        ? (serverAvailable ? '' : String(payload?.reason || 'Tap to Pay is not available for this restaurant.'))
+        : String(payload?.message || `HTTP ${response.status}`);
+      const resolved = await resolveContactlessEligibility({
+        checkpoint,
+        audience: 'staff',
+        entryPoint,
+        restaurantAllowsContactless: serverAvailable,
+        entryPointSupportsContactless: true,
+      });
+      console.info('[payments][contactless_eligibility]', 'staff_availability_checked', {
+        entryPoint,
+        checkpoint,
+        source: 'live_server_and_native',
+        httpStatus: response.status,
+        serverAvailable,
+        serverReason: serverReason || null,
+        nativeEligibility: resolved.eligible,
+        nativeReason: resolved.reason,
+      });
+      return { resolved, serverAvailable, serverReason };
+    },
+    [entryPoint]
+  );
+
   useEffect(() => {
     let active = true;
 
@@ -300,27 +335,24 @@ export default function InternalSettlementModule({
         entryPoint,
       });
       try {
-        const response = await fetch('/api/dashboard/internal-settlement/tap-to-pay-availability');
-        const payload = await response.json().catch(() => ({}));
+        const availability = await resolveStaffContactlessAvailability('screen_entry');
         if (!active) return;
-        if (!response.ok) throw new Error(payload?.message || `HTTP ${response.status}`);
+        if (tapAvailabilityReady && !availability.serverAvailable) {
+          console.info('[payments][contactless_eligibility]', 'cached_result_rejected_in_favor_of_live_check', {
+            entryPoint,
+            checkpoint: 'screen_entry',
+            cachedAvailable: true,
+            liveAvailable: false,
+          });
+        }
         console.info('[payments][contactless_eligibility]', 'eligibility_checked_at_page_render', {
           entryPoint,
-          tapToPayAvailable: payload?.tap_to_pay_available === true,
-          reason: payload?.reason || null,
+          tapToPayAvailable: availability.serverAvailable,
+          reason: availability.serverReason || null,
         });
-        const available = payload?.tap_to_pay_available === true;
-        setTapAvailabilityReady(available);
-        setTapAvailabilityReason(available ? '' : String(payload?.reason || 'Tap to Pay is not available for this restaurant.'));
-        const eligibilityResolved = await resolveContactlessEligibility({
-          checkpoint: 'screen_entry',
-          audience: 'staff',
-          entryPoint,
-          restaurantAllowsContactless: available,
-          entryPointSupportsContactless: true,
-        });
-        if (!active) return;
-        setContactlessEligibility(eligibilityResolved);
+        setTapAvailabilityReady(availability.serverAvailable);
+        setTapAvailabilityReason(availability.serverReason);
+        setContactlessEligibility(availability.resolved);
       } catch (error: any) {
         if (!active) return;
         setTapAvailabilityReady(false);
@@ -343,7 +375,7 @@ export default function InternalSettlementModule({
     return () => {
       active = false;
     };
-  }, [entryPoint]);
+  }, [entryPoint, resolveStaffContactlessAvailability, tapAvailabilityReady]);
 
   useEffect(() => {
     console.info('[payments][contactless_eligibility]', 'rendered_payment_methods', {
@@ -361,6 +393,10 @@ export default function InternalSettlementModule({
       return;
     }
     if (readiness.state === 'permission_not_requested') {
+      setState('setup_failed');
+      return;
+    }
+    if (readiness.state === 'nfc_disabled') {
       setState('setup_failed');
       return;
     }
@@ -803,22 +839,51 @@ export default function InternalSettlementModule({
       quickChargePaymentIntentIdRef.current = null;
     }
     if (!tapAvailabilityReady) {
+      console.info('[payments][contactless_eligibility]', 'cached_result_rejected_in_favor_of_live_check', {
+        entryPoint,
+        checkpoint: 'selection',
+        cachedAvailable: false,
+        liveCheckRequested: true,
+      });
+    }
+    const selectionAvailability = await resolveStaffContactlessAvailability('selection').catch((error: any) => {
+      const reason = error?.message || 'Tap to Pay availability could not be confirmed.';
+      setTapAvailabilityReady(false);
+      setTapAvailabilityReason(reason);
+      console.info('[payments][contactless_eligibility]', 'contactless_start_blocked_by_eligibility_guard', {
+        entryPoint,
+        checkpoint: 'selection',
+        reason: 'live_availability_request_failed',
+        detail: reason,
+      });
+      return null;
+    });
+    if (!selectionAvailability) {
       setState('failed');
-      setMessage(tapAvailabilityReason || 'Tap to Pay is not available for this restaurant.');
+      setMessage(tapAvailabilityReason || 'Tap to Pay availability could not be confirmed.');
       return;
     }
-    const selectionEligibility = await resolveContactlessEligibility({
-      checkpoint: 'selection',
-      audience: 'staff',
-      entryPoint,
-      restaurantAllowsContactless: tapAvailabilityReady,
-      entryPointSupportsContactless: true,
-    });
+    if (tapAvailabilityReady !== selectionAvailability.serverAvailable) {
+      console.info('[payments][contactless_eligibility]', 'cached_result_rejected_in_favor_of_live_check', {
+        entryPoint,
+        checkpoint: 'selection',
+        cachedAvailable: tapAvailabilityReady,
+        liveAvailable: selectionAvailability.serverAvailable,
+      });
+    }
+    setTapAvailabilityReady(selectionAvailability.serverAvailable);
+    setTapAvailabilityReason(selectionAvailability.serverReason);
+    const selectionEligibility = selectionAvailability.resolved;
     setContactlessEligibility(selectionEligibility);
     if (!selectionEligibility.eligible) {
       setState('failed');
       setMessage(selectionEligibility.detail || 'Tap to Pay is not available for this account/device.');
       console.info('[payments][contactless_eligibility]', 'contactless_start_blocked_by_eligibility_guard', {
+        entryPoint,
+        checkpoint: 'selection',
+        reason: selectionEligibility.reason,
+      });
+      console.info('[payments][contactless_eligibility]', 'ui_disabled_or_blocked_due_to_live_unavailability', {
         entryPoint,
         checkpoint: 'selection',
         reason: selectionEligibility.reason,
@@ -894,7 +959,7 @@ export default function InternalSettlementModule({
         setMessage('Payment canceled.');
         return;
       }
-      const readinessRes = await fetch('/api/dashboard/internal-settlement/tap-to-pay-availability');
+      const readinessRes = await fetch('/api/dashboard/internal-settlement/tap-to-pay-availability', { cache: 'no-store' });
       const readinessPayload = await readinessRes.json().catch(() => ({}));
       if (!readinessRes.ok || !readinessPayload?.tap_to_pay_available) {
         logCollectionEvent('readiness_refresh.result', {
@@ -1035,7 +1100,7 @@ export default function InternalSettlementModule({
       }
       logCollectionEvent('prepare_result', { stage: 'native_prepare', ok: true, sessionId, result: prepared });
 
-      const readinessRecheckRes = await fetch('/api/dashboard/internal-settlement/tap-to-pay-availability');
+      const readinessRecheckRes = await fetch('/api/dashboard/internal-settlement/tap-to-pay-availability', { cache: 'no-store' });
       const readinessRecheckPayload = await readinessRecheckRes.json().catch(() => ({}));
       if (shouldBlockRunContinuation(flowRunId, 'after_readiness_recheck')) {
         releaseHandoverOwner('readiness_recheck_blocked_dead_run');
@@ -1056,23 +1121,39 @@ export default function InternalSettlementModule({
         releaseHandoverOwner('readiness_changed_before_handover');
         return;
       }
-      const nativeStartEligibility = await resolveContactlessEligibility({
-        checkpoint: 'before_native_start',
-        audience: 'staff',
-        entryPoint,
-        restaurantAllowsContactless: true,
-        entryPointSupportsContactless: true,
-      });
-      setContactlessEligibility(nativeStartEligibility);
-      if (!nativeStartEligibility.eligible) {
+      const beforeStartAvailability = await resolveStaffContactlessAvailability('before_native_start');
+      if (tapAvailabilityReady !== beforeStartAvailability.serverAvailable) {
+        console.info('[payments][contactless_eligibility]', 'cached_result_rejected_in_favor_of_live_check', {
+          entryPoint,
+          checkpoint: 'before_native_start',
+          cachedAvailable: tapAvailabilityReady,
+          liveAvailable: beforeStartAvailability.serverAvailable,
+        });
+      }
+      setTapAvailabilityReady(beforeStartAvailability.serverAvailable);
+      setTapAvailabilityReason(beforeStartAvailability.serverReason);
+      setContactlessEligibility(beforeStartAvailability.resolved);
+      if (!beforeStartAvailability.resolved.eligible) {
         logCollectionEvent('contactless_start_blocked_by_eligibility_guard', {
           checkpoint: 'before_native_start',
-          reason: nativeStartEligibility.reason,
-          detail: nativeStartEligibility.detail,
+          reason: beforeStartAvailability.resolved.reason,
+          detail: beforeStartAvailability.resolved.detail,
         });
         setState('failed');
-        setMessage(nativeStartEligibility.detail || 'Tap to Pay is unavailable right now.');
-        releaseHandoverOwner('before_native_start_ineligible');
+        setMessage(beforeStartAvailability.resolved.detail || 'Tap to Pay is unavailable right now.');
+        console.info('[payments][contactless_eligibility]', 'contactless_start_blocked_by_live_unavailability', {
+          entryPoint,
+          checkpoint: 'before_native_start',
+          source: 'live_server_and_native',
+          reason: beforeStartAvailability.resolved.reason,
+          detail: beforeStartAvailability.resolved.detail,
+        });
+        console.info('[payments][contactless_eligibility]', 'ui_disabled_or_blocked_due_to_live_unavailability', {
+          entryPoint,
+          checkpoint: 'before_native_start',
+          reason: beforeStartAvailability.resolved.reason,
+        });
+        releaseHandoverOwner('before_native_start_live_unavailable');
         return;
       }
 
@@ -1628,6 +1709,7 @@ export default function InternalSettlementModule({
     quickNote,
     quickReference,
     refreshNativeReadiness,
+    resolveStaffContactlessAvailability,
     releaseHandoverOwner,
     selectedOrderId,
     shouldBlockRunContinuation,
