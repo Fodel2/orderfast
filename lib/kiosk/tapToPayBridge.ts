@@ -48,6 +48,7 @@ export interface TapToPayPlugin {
     supported: boolean;
     reason?: string;
     permissionState?: string;
+    nfcEnabled?: boolean;
     locationServicesEnabled?: boolean;
     nativeStage?: string;
   }>;
@@ -55,6 +56,7 @@ export interface TapToPayPlugin {
     supported: boolean;
     reason?: string;
     permissionState?: string;
+    nfcEnabled?: boolean;
     locationServicesEnabled?: boolean;
     nativeStage?: string;
   }>;
@@ -63,6 +65,7 @@ export interface TapToPayPlugin {
     supported: boolean;
     reason?: string;
     permissionState?: string;
+    nfcEnabled?: boolean;
     locationServicesEnabled?: boolean;
     nativeStage?: string;
   }>;

@@ -6,6 +6,7 @@ export type NativeTapToPayReadiness = {
   state: TapToPaySetupState;
   reason: string;
   permissionState: string | null;
+  nfcEnabled: boolean | null;
   permissionStateBeforeRequest: string | null;
   permissionRequestAttempted: boolean;
   locationServicesEnabled: boolean | null;
@@ -23,6 +24,7 @@ export const resolveNativeTapToPayReadiness = async (options?: {
     state: setup.state,
     reason: setup.reason,
     permissionState: setup.permissionState,
+    nfcEnabled: typeof setup.nfcEnabled === 'boolean' ? setup.nfcEnabled : null,
     permissionStateBeforeRequest: setup.permissionStateBeforeRequest,
     permissionRequestAttempted: setup.permissionRequestAttempted,
     locationServicesEnabled: setup.locationServicesEnabled,

@@ -6,6 +6,7 @@ export const TAP_TO_PAY_SETUP_STORAGE_KEY = 'orderfast_kiosk_tap_to_pay_setup_re
 export type TapToPayBootstrapState =
   | 'idle'
   | 'requesting_permissions'
+  | 'nfc_disabled'
   | 'permission_not_requested'
   | 'permission_denied'
   | 'location_services_disabled'
