@@ -578,6 +578,15 @@ export default function InternalSettlementModule({
         successSource: lock.source,
         successCommittedAt: lock.at,
       });
+      logCollectionEvent(
+        outcome === 'canceled' ? 'canceled_commit_attempted_after_success' : 'failed_commit_attempted_after_success',
+        {
+          source,
+          flowRunId: candidateFlowRunId || lock.flowRunId,
+          successSource: lock.source,
+          successCommittedAt: lock.at,
+        }
+      );
       logCollectionEvent(outcome === 'canceled' ? 'canceled_suppressed_after_success' : 'failure_suppressed_after_success', {
         source,
         flowRunId: candidateFlowRunId || lock.flowRunId,

@@ -328,6 +328,19 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     [logContactlessState]
   );
 
+  const suppressLegacyPostSuccessDowngrade = useCallback(
+    (source: string, payload?: Record<string, unknown>) => {
+      if (!authoritativeSuccessRef.current.committed) return false;
+      logContactlessState('stale_route_or_state_downgrade_suppressed', {
+        source,
+        firstSuccessSource: authoritativeSuccessRef.current.source,
+        ...payload,
+      });
+      return true;
+    },
+    [logContactlessState]
+  );
+
   const commitNonSuccessOutcome = useCallback(
     (
       nextStatus: 'canceled' | 'failed',
@@ -336,6 +349,14 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       errorMessage?: string
     ) => {
       if (authoritativeSuccessRef.current.committed) {
+        logContactlessState(
+          nextStatus === 'canceled' ? 'canceled_commit_attempted_after_success' : 'failed_commit_attempted_after_success',
+          {
+            source,
+            firstSuccessSource: authoritativeSuccessRef.current.source,
+            ...payload,
+          }
+        );
         logContactlessState('terminal_outcome_override_suppressed', {
           attemptedOutcome: nextStatus,
           source,
@@ -700,11 +721,22 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         );
         return;
       }
+      if (suppressLegacyPostSuccessDowngrade('reconcile_non_terminal_state', { sessionId, reason, nextState: nextState || null })) {
+        return;
+      }
       setContactlessStatus('processing');
       setContactlessError('');
       setContactlessDebug(`reconciled:${nextState || 'unknown'}`);
     },
-    [CONTACTLESS_SESSION_STORAGE_KEY, commitAuthoritativeSuccess, commitNonSuccessOutcome, isVerifiedPaidPayload, logContactlessState, restaurantId]
+    [
+      CONTACTLESS_SESSION_STORAGE_KEY,
+      commitAuthoritativeSuccess,
+      commitNonSuccessOutcome,
+      isVerifiedPaidPayload,
+      logContactlessState,
+      restaurantId,
+      suppressLegacyPostSuccessDowngrade,
+    ]
   );
 
   const loadServerSessionTruth = useCallback(
@@ -768,12 +800,23 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         return;
       }
       if (serverState === 'processing' || serverState === 'needs_reconciliation' || serverState === 'collecting') {
+        if (suppressLegacyPostSuccessDowngrade('server_session_truth_non_terminal_state', { sessionId, reason, serverState })) {
+          return;
+        }
         setContactlessStatus('processing');
         setContactlessError('');
         setContactlessDebug(`server:${serverState}`);
       }
     },
-    [CONTACTLESS_SESSION_STORAGE_KEY, commitAuthoritativeSuccess, commitNonSuccessOutcome, isVerifiedPaidPayload, logContactlessState, restaurantId]
+    [
+      CONTACTLESS_SESSION_STORAGE_KEY,
+      commitAuthoritativeSuccess,
+      commitNonSuccessOutcome,
+      isVerifiedPaidPayload,
+      logContactlessState,
+      restaurantId,
+      suppressLegacyPostSuccessDowngrade,
+    ]
   );
 
   const runTapToPay = useCallback(async () => {
@@ -1564,7 +1607,14 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       }
       orderSubmitLockRef.current = true;
       setCurrentOrderMethod(method);
-      setOrderSubmitting(true);
+      if (method !== 'contactless') {
+        setOrderSubmitting(true);
+      } else {
+        logContactlessState('kiosk_old_loading_confirm_payment_modal_blocked', {
+          method,
+          reason: 'contactless_success_final_route_owns_ui',
+        });
+      }
       setOrderSubmitError('');
 
       const cartItems = checkoutContext?.cartItems?.length ? checkoutContext.cartItems : cart.items;
@@ -1658,6 +1708,13 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
           releaseContactlessOwner('order_confirmed');
         }
         await router.replace(`/kiosk/${restaurantId}/confirm?${params.toString()}`);
+        if (method === 'contactless') {
+          logContactlessState('final_visible_outcome_source_and_route', {
+            source: authoritativeSuccessRef.current.source || 'contactless_success',
+            destination: `/kiosk/${restaurantId}/confirm`,
+            owner: 'contactless_success_terminal_route',
+          });
+        }
       } catch (error) {
         console.error('[kiosk] failed to submit order from payment entry', error);
         if (orderId) {
@@ -1909,6 +1966,9 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         outcome: 'success',
         destination: 'order_confirmation',
       });
+      logContactlessState('kiosk_legacy_post_payment_continuation_blocked', {
+        blockedPath: 'resume_checkout_submit_waiting_to_confirm_payment',
+      });
       void submitOrderAndRedirect('contactless');
     }, 900);
     return () => {
@@ -1961,14 +2021,16 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       const parsed = JSON.parse(saved) as { sessionId?: string; restaurantId?: string };
       if (parsed?.sessionId && parsed?.restaurantId === restaurantId) {
         setContactlessSessionId(parsed.sessionId);
-        setContactlessStatus('processing');
+        if (!suppressLegacyPostSuccessDowngrade('local_restore_processing_resume', { sessionId: parsed.sessionId })) {
+          setContactlessStatus('processing');
+        }
         setContactlessError('');
         void loadServerSessionTruth(parsed.sessionId, 'local_restore');
       }
     } catch {
       window.localStorage.removeItem(CONTACTLESS_SESSION_STORAGE_KEY);
     }
-  }, [CONTACTLESS_SESSION_STORAGE_KEY, loadServerSessionTruth, restaurantId, stage]);
+  }, [CONTACTLESS_SESSION_STORAGE_KEY, loadServerSessionTruth, restaurantId, stage, suppressLegacyPostSuccessDowngrade]);
 
   useEffect(() => {
     if (stage !== 'contactless' || !restaurantId || !contactlessSessionId) return;
