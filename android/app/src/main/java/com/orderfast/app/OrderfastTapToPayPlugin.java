@@ -1697,6 +1697,12 @@ public class OrderfastTapToPayPlugin extends Plugin {
     private String classifyTerminalFailureCategory(String normalizedCode) {
         if ("canceled".equals(normalizedCode)) {
             if (cancelRequestedByApp) return "app_cancelled";
+            if (readerDisconnectedDuringActiveRun() || lifecyclePausedDuringActiveFlow || backgroundInterruptionCandidate || confirmedBackgroundInterruption) {
+                return "lifecycle_interrupted";
+            }
+            if (stripeTakeoverObserved && !isAppInBackground()) {
+                return "lifecycle_interrupted";
+            }
             if (isConfirmedLifecycleInterruption()) {
                 return "lifecycle_interrupted";
             }

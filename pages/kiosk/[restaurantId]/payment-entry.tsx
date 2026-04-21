@@ -1168,6 +1168,11 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       setContactlessStatus('collecting');
       setContactlessDebug('native_collect_process');
       console.info('[kiosk][tap_to_pay_collect_start]', { sessionId, restaurantId, terminalLocationId });
+      logContactlessState('stripe_handoff_started', {
+        sessionId,
+        ownerId,
+        overlayOwner: 'app_pre_stripe',
+      });
       setTapStartupTrace((prev) => ({ ...prev, native_start: { status: 'pending', detail: 'Starting native collection flow.' } }));
       if (!isActiveContactlessOwner(ownerId)) {
         logContactlessState('stripe_handover_attempt_blocked_due_to_cancel', { sessionId, ownerId, reason: 'owner_invalid_before_start' });
@@ -1179,6 +1184,12 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       preHandoverInFlightRef.current = false;
       setPreHandoverOverlayOwned(false);
       if (isStaleOwner('native_start_result')) return;
+      logContactlessState('stripe_handoff_committed', {
+        sessionId,
+        ownerId,
+        startedStatus: started.status,
+        startedCode: started.code || null,
+      });
       console.info('[kiosk][tap_to_pay_native_collect_raw_result]', { sessionId, restaurantId, result: started });
       updateReaderHintFromDetail(started.detail);
       const isNativeSuccessOrProcessing = started.status === 'succeeded' || started.status === 'processing';
@@ -1193,6 +1204,11 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         const reasonCategory = typeof nativeDetail?.reasonCategory === 'string' ? nativeDetail.reasonCategory : null;
         const interruptionReasonCode = typeof nativeDetail?.interruptionReasonCode === 'string' ? nativeDetail.interruptionReasonCode : null;
         const terminalCode = typeof nativeDetail?.terminalCode === 'string' ? nativeDetail.terminalCode : null;
+        const definitiveCustomerCancelSignal =
+          (typeof nativeDetail?.definitiveCustomerCancelSignal === 'boolean' && nativeDetail.definitiveCustomerCancelSignal) ||
+          (typeof (started as { definitiveCustomerCancelSignal?: unknown }).definitiveCustomerCancelSignal === 'boolean' &&
+            (started as { definitiveCustomerCancelSignal?: boolean }).definitiveCustomerCancelSignal === true);
+        const explicitAppCancelRequested = contactlessOwnerRef.current?.id === ownerId && contactlessOwnerRef.current?.cancelRequested === true;
         const lifecycleInterrupted =
           interruptionReasonCode === 'background_loss_confirmed' ||
           reasonCategory === 'lifecycle_interrupted' ||
@@ -1201,27 +1217,52 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
           started.status === 'canceled' &&
           started.code === 'canceled' &&
           terminalCode === 'CANCELED' &&
-          (reasonCategory === 'customer_cancelled' || reasonCategory === 'app_cancelled' || !lifecycleInterrupted);
+          (definitiveCustomerCancelSignal || reasonCategory === 'customer_cancelled' || reasonCategory === 'app_cancelled');
+        const ambiguousCanceledDuringHandoff = started.status === 'canceled' && !customerOrReaderCancel && !explicitAppCancelRequested;
 
         logNativeOutcome('start_non_success', {
           started,
           reasonCategory,
           interruptionReasonCode,
           terminalCode,
+          definitiveCustomerCancelSignal,
+          explicitAppCancelRequested,
           lifecycleInterrupted,
           customerOrReaderCancel,
+          ambiguousCanceledDuringHandoff,
         });
 
         setContactlessUnsupportedDevice(unsupportedDevice);
-        if (lifecycleInterrupted) {
+        if (lifecycleInterrupted || ambiguousCanceledDuringHandoff) {
+          logContactlessState('interruption_classification_received', {
+            sessionId,
+            source: lifecycleInterrupted ? 'native_lifecycle_inference' : 'ambiguous_canceled_during_handoff',
+            reasonCategory,
+            interruptionReasonCode,
+            definitiveCustomerCancelSignal,
+            explicitAppCancelRequested,
+          });
           setContactlessStatus('processing');
           setContactlessError('');
-          setContactlessDebug('native_lifecycle_interrupted');
-          setContactlessDebugDetail(`Lifecycle interruption detected. raw=${formatDetail(started)}`);
-          await reconcileSession(sessionId, 'native_lifecycle_interrupted');
+          setContactlessDebug(lifecycleInterrupted ? 'native_lifecycle_interrupted' : 'native_canceled_ambiguous_reconcile');
+          setContactlessDebugDetail(
+            `${lifecycleInterrupted ? 'Lifecycle interruption detected.' : 'Ambiguous canceled result during Stripe handoff.'} raw=${formatDetail(
+              started
+            )}`
+          );
+          await reconcileSession(sessionId, lifecycleInterrupted ? 'native_lifecycle_interrupted' : 'native_canceled_ambiguous');
           return;
         }
 
+        logContactlessState('terminal_outcome_committed', {
+          sessionId,
+          outcome: customerOrReaderCancel ? 'canceled' : 'failed',
+          source: customerOrReaderCancel ? 'authoritative_cancel_signal' : 'native_non_success',
+          definitiveCustomerCancelSignal,
+          explicitAppCancelRequested,
+          reasonCategory,
+          interruptionReasonCode,
+        });
         setContactlessStatus(customerOrReaderCancel ? 'canceled' : 'failed');
         setContactlessTerminalState(customerOrReaderCancel ? 'canceled' : 'failed');
         logContactlessState(customerOrReaderCancel ? 'kiosk_cancel_received' : 'kiosk_failure_received', {
