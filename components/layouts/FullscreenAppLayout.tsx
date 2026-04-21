@@ -18,13 +18,16 @@ type FullscreenAppLayoutProps = {
   children: ReactNode;
   promptTitle?: string;
   promptDescription?: string;
+  fullscreenBehavior?: 'auto' | 'disabled';
 };
 
 export default function FullscreenAppLayout({
   children,
   promptTitle = 'Tap to enter fullscreen',
   promptDescription = 'Tap below to stay fully immersed in the POS experience.',
+  fullscreenBehavior = 'auto',
 }: FullscreenAppLayoutProps) {
+  const fullscreenEnabled = fullscreenBehavior !== 'disabled';
   const [showFullscreenPrompt, setShowFullscreenPrompt] = useState(false);
   const fullscreenRequestInFlight = useRef(false);
   const [wakeLock, setWakeLock] = useState<WakeLockSentinel | null>(null);
@@ -106,6 +109,10 @@ export default function FullscreenAppLayout({
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    if (!fullscreenEnabled) {
+      setShowFullscreenPrompt(false);
+      return;
+    }
 
     const handleFullscreenChange = () => {
       if (isFullscreenActive()) {
@@ -126,10 +133,11 @@ export default function FullscreenAppLayout({
       window.removeEventListener('fullscreenchange', handleFullscreenChange);
       window.removeEventListener('webkitfullscreenchange', handleFullscreenChange as any);
     };
-  }, [attemptFullscreen, isFullscreenActive]);
+  }, [attemptFullscreen, fullscreenEnabled, isFullscreenActive]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    if (!fullscreenEnabled) return;
 
     const handleInteraction = async () => {
       await Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]);
@@ -145,7 +153,7 @@ export default function FullscreenAppLayout({
       window.removeEventListener('pointerdown', handleInteraction);
       window.removeEventListener('keydown', handleInteraction);
     };
-  }, [attemptFullscreen, requestWakeLock]);
+  }, [attemptFullscreen, fullscreenEnabled, requestWakeLock]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -188,7 +196,7 @@ export default function FullscreenAppLayout({
   return (
     <div className="min-h-screen w-full bg-gradient-to-b from-[#fafafa] via-white to-white text-neutral-900">
       {children}
-      {showFullscreenPrompt ? (
+      {fullscreenEnabled && showFullscreenPrompt ? (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/20 px-6 text-center">
           <div className="w-full max-w-sm rounded-3xl border border-neutral-200 bg-white p-6 shadow-2xl shadow-black/10">
             <p className="text-lg font-semibold text-neutral-900">{promptTitle}</p>

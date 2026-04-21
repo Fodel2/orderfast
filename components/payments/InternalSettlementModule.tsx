@@ -238,6 +238,8 @@ export default function InternalSettlementModule({
   }, [mode, quickAmountCents, selectedOrder?.total_price_cents]);
 
   const amountLabel = useMemo(() => formatPrice(amountCents / 100), [amountCents]);
+  const isBelowMinimumAmount = amountCents > 0 && amountCents < QUICK_CHARGE_MINIMUM_CENTS;
+  const minimumAmountMessage = `Minimum payment amount is ${formatPrice(QUICK_CHARGE_MINIMUM_CENTS / 100)}.`;
   const nativeRestaurantId = useMemo(() => {
     const value = restaurantId?.trim();
     return value ? value : null;
@@ -2327,6 +2329,7 @@ export default function InternalSettlementModule({
                     nativeReadinessLoading ||
                     !tapAvailabilityReady ||
                     amountCents <= 0 ||
+                    isBelowMinimumAmount ||
                     (mode === 'order_payment' && !selectedOrderId)
                   }
                   onClick={handleCollectContactless}
@@ -2342,6 +2345,7 @@ export default function InternalSettlementModule({
             {!nativeReadinessLoading && !nativeReadinessReady ? (
               <p className="mt-2 text-xs text-amber-700">{nativeReadinessReason || 'Location permission and location services are required.'}</p>
             ) : null}
+            {isBelowMinimumAmount ? <p className="mt-2 text-xs text-rose-700">{minimumAmountMessage}</p> : null}
             {state === 'failed' || state === 'canceled' ? <p className="mt-2 text-xs text-rose-700">{message}</p> : null}
             {busy ? (
               <button
