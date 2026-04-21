@@ -6,8 +6,6 @@ export default function DashboardTakePaymentPage() {
     <DashboardLayout>
       <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
         <InternalSettlementModule
-          eyebrow="Payments"
-          title="Take Payment"
           entryPoint="take_payment"
         />
       </div>
