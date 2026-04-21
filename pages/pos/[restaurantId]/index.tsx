@@ -89,6 +89,8 @@ export default function PosHomePage() {
   const router = useRouter();
   const { restaurantId: routeParam } = router.query;
   const stageParam = Array.isArray(router.query.stage) ? router.query.stage[0] : router.query.stage;
+  const sourceParam = Array.isArray(router.query.source) ? router.query.source[0] : router.query.source;
+  const originParam = Array.isArray(router.query.origin) ? router.query.origin[0] : router.query.origin;
   const restaurantId = Array.isArray(routeParam) ? routeParam[0] : routeParam;
   const storageKey = useMemo(
     () => (restaurantId ? `orderfast_pos_cart_${restaurantId}` : null),
@@ -453,6 +455,22 @@ export default function PosHomePage() {
       window.localStorage.removeItem(storageKey);
     }
   };
+
+  const completeReceiptFlow = useCallback(() => {
+    if (!restaurantId) {
+      startNewOrder();
+      return;
+    }
+    if (stageParam === 'paymentComplete' && (sourceParam === 'take-payment' || sourceParam === 'pos-contactless')) {
+      if (originParam === 'launcher') {
+        router.push(`/dashboard/launcher?restaurant_id=${encodeURIComponent(String(restaurantId))}`).catch(() => undefined);
+        return;
+      }
+      router.push(`/pos/${encodeURIComponent(String(restaurantId))}`).catch(() => undefined);
+      return;
+    }
+    startNewOrder();
+  }, [originParam, restaurantId, router, sourceParam, stageParam]);
 
   const handleSelectOrderType = (selection: OrderType) => {
     setOrderType(selection);
@@ -1244,7 +1262,7 @@ export default function PosHomePage() {
               {receiptChoice ? (
                 <button
                   type="button"
-                  onClick={startNewOrder}
+                  onClick={completeReceiptFlow}
                   className="mt-6 w-full rounded-full bg-teal-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700"
                 >
                   Start new order

@@ -40,6 +40,7 @@ type UnpaidOrder = {
   order_type: string | null;
   status: string;
   total_price: number | null;
+  total_price_cents?: number | null;
   created_at: string;
 };
 
@@ -48,12 +49,6 @@ const toCurrencyCode = (value?: string | null) => (value || 'GBP').toUpperCase()
 const makeIdempotencyKey = (prefix: string) => `${prefix}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
 const QUICK_CHARGE_MINIMUM_CENTS = 50;
 const QUICK_CHIPS = [500, 1000, 2000, 5000];
-
-type CapacitorWindow = Window & {
-  Capacitor?: {
-    isNativePlatform?: () => boolean;
-  };
-};
 
 const formatAmountFromCents = (cents: number) => {
   const resolved = Number.isFinite(cents) ? Math.max(0, Math.floor(cents)) : 0;
@@ -238,19 +233,15 @@ export default function InternalSettlementModule({
   }, [quickAmountDigits]);
 
   const amountCents = useMemo(() => {
-    if (mode === 'order_payment') return Number(selectedOrder?.total_price || 0);
+    if (mode === 'order_payment') return Math.max(0, Math.floor(Number(selectedOrder?.total_price_cents || 0)));
     return quickAmountCents;
-  }, [mode, quickAmountCents, selectedOrder?.total_price]);
+  }, [mode, quickAmountCents, selectedOrder?.total_price_cents]);
 
   const amountLabel = useMemo(() => formatPrice(amountCents / 100), [amountCents]);
   const nativeRestaurantId = useMemo(() => {
     const value = restaurantId?.trim();
     return value ? value : null;
   }, [restaurantId]);
-  const isNativeShell = useMemo(() => {
-    if (typeof window === 'undefined') return false;
-    return Boolean((window as CapacitorWindow).Capacitor?.isNativePlatform?.());
-  }, []);
   const quickChargeAttemptDiagnosticsPayload = useMemo(() => {
     if (mode !== 'quick_charge') return null;
     const attemptSummary =
@@ -1971,11 +1962,9 @@ export default function InternalSettlementModule({
     console.info('[payments][contactless_eligibility]', 'terminal_outcome_selected', { entryPoint, outcome: 'success' });
     const timeout = window.setTimeout(() => {
       const target = nativeRestaurantId
-        ? isNativeShell
-          ? source === 'launcher'
-            ? `/pos/${nativeRestaurantId}/payment-entry?source=launcher`
-            : `/pos/${nativeRestaurantId}`
-          : `/pos/${nativeRestaurantId}?stage=paymentComplete&source=${entryPoint === 'pos' ? 'pos-contactless' : 'take-payment'}`
+        ? `/pos/${nativeRestaurantId}?stage=paymentComplete&source=${entryPoint === 'pos' ? 'pos-contactless' : 'take-payment'}${
+            source === 'launcher' ? '&origin=launcher' : ''
+          }`
         : null;
       logCollectionEvent('success_tick_shown', { entryPoint, restaurantId: nativeRestaurantId, target });
       setShowSuccessTick(false);
@@ -2004,7 +1993,7 @@ export default function InternalSettlementModule({
       router.push(target).catch(() => undefined);
     }, 900);
     return () => window.clearTimeout(timeout);
-  }, [entryPoint, isNativeShell, logCollectionEvent, nativeRestaurantId, router, source, state]);
+  }, [entryPoint, logCollectionEvent, nativeRestaurantId, router, source, state]);
 
   useEffect(() => {
     if (state === 'completed') return;
@@ -2221,7 +2210,7 @@ export default function InternalSettlementModule({
   }, [busy, nativeRestaurantId, router, source]);
 
   return (
-    <section className="relative overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
+    <section className="relative min-h-[calc(100dvh-3.5rem)] overflow-hidden bg-white sm:min-h-0 sm:rounded-3xl sm:border sm:border-gray-200 sm:shadow-sm">
       <NativeTapToPayPreHandoverOverlay
         visible={showTransitionOverlay}
         lines={overlayLines}
@@ -2259,7 +2248,7 @@ export default function InternalSettlementModule({
         </button>
       </header>
 
-      <div className="grid gap-4 p-4 sm:p-5 lg:grid-cols-[1.1fr_0.9fr]">
+      <div className="grid min-h-[calc(100dvh-10rem)] gap-4 px-3 py-4 sm:min-h-0 sm:p-5 lg:grid-cols-[1.1fr_0.9fr]">
         <div className="space-y-4">
           <div className="rounded-3xl bg-gray-900 px-6 py-5 text-white">
             <p className="text-[11px] uppercase tracking-[0.18em] text-gray-300">{toCurrencyCode('gbp')}</p>
@@ -2324,16 +2313,6 @@ export default function InternalSettlementModule({
         </div>
 
         <div className="space-y-3 rounded-2xl border border-gray-200 bg-white p-4">
-          <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
-            {!tapAvailabilityLoading && !tapAvailabilityReady ? (
-              <p className="text-xs text-amber-700">{tapAvailabilityReason || 'Tap to Pay is not ready on this account/device.'}</p>
-            ) : null}
-            {!nativeReadinessLoading && !nativeReadinessReady ? (
-              <p className="mt-2 text-xs text-amber-700">{nativeReadinessReason || 'Location permission and location services are required.'}</p>
-            ) : null}
-            {state === 'failed' || state === 'canceled' ? <p className="mt-2 text-xs text-rose-700">{message}</p> : null}
-          </div>
-
           <div className="pt-1">
             {(() => {
               const presentation = contactlessEligibility ? resolveContactlessPresentation(contactlessEligibility) : null;
@@ -2357,6 +2336,13 @@ export default function InternalSettlementModule({
                 </button>
               );
             })()}
+            {!tapAvailabilityLoading && !tapAvailabilityReady ? (
+              <p className="mt-2 text-xs text-amber-700">{tapAvailabilityReason || 'Tap to Pay is not ready on this account/device.'}</p>
+            ) : null}
+            {!nativeReadinessLoading && !nativeReadinessReady ? (
+              <p className="mt-2 text-xs text-amber-700">{nativeReadinessReason || 'Location permission and location services are required.'}</p>
+            ) : null}
+            {state === 'failed' || state === 'canceled' ? <p className="mt-2 text-xs text-rose-700">{message}</p> : null}
             {busy ? (
               <button
                 type="button"
@@ -2405,7 +2391,7 @@ export default function InternalSettlementModule({
                   >
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-sm font-semibold text-gray-900">#{order.short_order_number ?? '—'} · {order.customer_name || 'Guest'}</p>
-                      <p className="text-sm font-semibold text-gray-900">{formatPrice(Number(order.total_price || 0) / 100)}</p>
+                      <p className="text-sm font-semibold text-gray-900">{formatPrice(Number(order.total_price_cents || 0) / 100)}</p>
                     </div>
                     <p className="mt-1 text-xs uppercase tracking-[0.08em] text-gray-500">{order.status}</p>
                   </button>
