@@ -6,7 +6,9 @@ export default function PosPaymentEntryPage() {
   const router = useRouter();
   const [flowActive, setFlowActive] = useState(false);
   const { restaurantId: routeParam } = router.query;
+  const sourceParam = Array.isArray(router.query.source) ? router.query.source[0] : router.query.source;
   const restaurantId = Array.isArray(routeParam) ? routeParam[0] : routeParam;
+  const source = sourceParam === 'launcher' ? 'launcher' : 'pos';
 
   useEffect(() => {
     router.beforePopState(() => !flowActive);
@@ -16,39 +18,15 @@ export default function PosPaymentEntryPage() {
   }, [flowActive, router]);
 
   return (
-    <div className="min-h-screen w-full bg-gradient-to-b from-[#fafafa] via-white to-white text-neutral-900">
-      <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6">
-        <div className="mb-4 flex flex-wrap gap-3">
-          <button
-            type="button"
-            onClick={() => {
-              if (flowActive) return;
-              router.push('/dashboard/launcher').catch(() => undefined);
-            }}
-            disabled={flowActive}
-            className="rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Back to Launcher
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              if (flowActive) return;
-              if (!restaurantId) return;
-              router.push(`/pos/${restaurantId}`).catch(() => undefined);
-            }}
-            disabled={flowActive || !restaurantId}
-            className="rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Back to POS
-          </button>
-        </div>
+    <div className="min-h-screen w-full bg-gray-50 text-gray-900">
+      <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
         <InternalSettlementModule
           eyebrow="POS payments"
           title="Take Payment"
           restaurantId={restaurantId || null}
           onFlowActivityChange={setFlowActive}
           entryPoint="pos"
+          source={source}
         />
       </div>
     </div>
