@@ -181,6 +181,7 @@ export default function InternalSettlementModule({
   const suppressRecoveryRef = useRef<{ reason: 'canceled' | 'failed'; at: number } | null>(null);
   const deadRunFlowIdsRef = useRef<Set<string>>(new Set());
   const deadRunLockRef = useRef<{ flowRunId: string | null; reason: 'canceled'; at: number } | null>(null);
+  const successAuthorityRef = useRef<{ flowRunId: string | null; source: string; at: number } | null>(null);
   const overlayPhaseEnteredAtMsRef = useRef<number | null>(null);
   const quickChargeAttemptStartMsRef = useRef<number | null>(null);
   const quickChargeAttemptEndMsRef = useRef<number | null>(null);
@@ -537,6 +538,55 @@ export default function InternalSettlementModule({
     }
   }, [activeSessionId, mode]);
 
+  const commitAuthoritativeSuccess = useCallback(
+    (source: string, flowRunId: string | null, payload?: Record<string, unknown>) => {
+      const existing = successAuthorityRef.current;
+      if (!existing) {
+        const committedAt = Date.now();
+        logCollectionEvent('first_authoritative_terminal_signal_received', {
+          flowRunId: flowRunId || flowRunIdRef.current,
+          source,
+          ...payload,
+        });
+        successAuthorityRef.current = { flowRunId: flowRunId || flowRunIdRef.current || null, source, at: committedAt };
+        logCollectionEvent('success_lock_committed', {
+          flowRunId: successAuthorityRef.current.flowRunId,
+          source,
+          committedAt,
+        });
+        return;
+      }
+      logCollectionEvent('authoritative_success_signal_observed_after_lock', {
+        flowRunId: existing.flowRunId,
+        originalSource: existing.source,
+        latestSource: source,
+      });
+    },
+    [logCollectionEvent]
+  );
+
+  const shouldSuppressNonSuccess = useCallback(
+    (outcome: 'canceled' | 'failed', source: string, flowRunId?: string | null) => {
+      const lock = successAuthorityRef.current;
+      const candidateFlowRunId = flowRunId ?? flowRunIdRef.current;
+      if (!lock) return false;
+      if (lock.flowRunId && candidateFlowRunId && lock.flowRunId !== candidateFlowRunId) return false;
+      logCollectionEvent('non_success_commit_attempted_after_success', {
+        attemptedOutcome: outcome,
+        source,
+        flowRunId: candidateFlowRunId || lock.flowRunId,
+        successSource: lock.source,
+        successCommittedAt: lock.at,
+      });
+      logCollectionEvent(outcome === 'canceled' ? 'canceled_suppressed_after_success' : 'failure_suppressed_after_success', {
+        source,
+        flowRunId: candidateFlowRunId || lock.flowRunId,
+      });
+      return true;
+    },
+    [logCollectionEvent]
+  );
+
   const establishHandoverOwner = useCallback(
     (flowRunId: string, reason: string) => {
       if (deadRunFlowIdsRef.current.has(flowRunId)) {
@@ -708,6 +758,23 @@ export default function InternalSettlementModule({
   }, [releaseHandoverOwner, state]);
 
   useEffect(() => {
+    if (state !== 'completed' && state !== 'canceled' && state !== 'failed') return;
+    const successLock = successAuthorityRef.current;
+    const finalUiSource =
+      state === 'completed'
+        ? successLock?.source || 'completed_without_explicit_lock'
+        : state === 'canceled'
+          ? 'explicit_or_verified_cancel'
+          : 'verified_or_native_failure';
+    logCollectionEvent('final_ui_outcome_source', {
+      state,
+      finalUiSource,
+      flowRunId: flowRunIdRef.current,
+      successLockFlowRunId: successLock?.flowRunId || null,
+    });
+  }, [logCollectionEvent, state]);
+
+  useEffect(() => {
     if (state !== 'canceled' && state !== 'failed') return;
     suppressRecoveryRef.current = { reason: state, at: Date.now() };
     if (state === 'canceled') {
@@ -811,6 +878,7 @@ export default function InternalSettlementModule({
 
   const handleCollectContactless = useCallback(async () => {
     if (busy) return;
+    successAuthorityRef.current = null;
     deadRunLockRef.current = null;
     suppressRecoveryRef.current = null;
     setQuickChargeFailureSnapshot(null);
@@ -942,8 +1010,10 @@ export default function InternalSettlementModule({
       if (flowRunId && deadRunFlowIdsRef.current.has(flowRunId)) {
         logCollectionEvent('readiness_refresh_blocked_dead_run', { flowRunId, stage: 'before_server_refresh' });
         logCollectionEvent('dead_run_guard_triggered', { flowRunId, guard: 'readiness_refresh' });
-        setState('canceled');
-        setMessage('Payment canceled.');
+        if (!shouldSuppressNonSuccess('canceled', 'readiness_refresh_blocked_dead_run', flowRunId)) {
+          setState('canceled');
+          setMessage('Payment canceled.');
+        }
         return;
       }
       const readinessRes = await fetch('/api/dashboard/internal-settlement/tap-to-pay-availability', { cache: 'no-store' });
@@ -1176,8 +1246,10 @@ export default function InternalSettlementModule({
       });
       releaseHandoverOwner('stripe_handover_returned');
       if (shouldBlockRunContinuation(flowRunId, 'after_stripe_handover_result')) {
-        setState('canceled');
-        setMessage('Payment canceled.');
+        if (!shouldSuppressNonSuccess('canceled', 'after_stripe_handover_result', flowRunId)) {
+          setState('canceled');
+          setMessage('Payment canceled.');
+        }
         setActiveSessionId(null);
         setActiveTerminalLocationId(null);
         internalSettlementActiveRunStore.clear();
@@ -1442,16 +1514,22 @@ export default function InternalSettlementModule({
         if (verifyRes?.ok === true && verifiedState === 'finalized') {
           const verificationPaid = verifyPayload?.verification?.verifiedPaid === true;
           if (!verificationPaid) {
-            setState('failed');
-            setMessage(
-              verifyPayload?.verification?.reason ||
-                'Payment did not complete successfully. Please retry or choose another method.'
-            );
+            if (!shouldSuppressNonSuccess('failed', 'verification_finalized_not_paid', flowRunId)) {
+              setState('failed');
+              setMessage(
+                verifyPayload?.verification?.reason ||
+                  'Payment did not complete successfully. Please retry or choose another method.'
+              );
+            }
             setActiveSessionId(null);
             setActiveTerminalLocationId(null);
             internalSettlementActiveRunStore.clear();
             return;
           }
+          commitAuthoritativeSuccess('server_verify_finalized_paid', flowRunId, {
+            sessionId,
+            verifiedState,
+          });
           if (mode === 'quick_charge') {
             quickChargeAttemptEndMsRef.current = Date.now();
           }
@@ -1465,7 +1543,9 @@ export default function InternalSettlementModule({
           return;
         }
 
-        setState(isUnsupportedDeviceError(nativeResult.code) ? 'unsupported_device' : 'failed');
+        if (!shouldSuppressNonSuccess('failed', 'native_failure_verified_non_paid', flowRunId)) {
+          setState(isUnsupportedDeviceError(nativeResult.code) ? 'unsupported_device' : 'failed');
+        }
         if (mode === 'quick_charge') {
           quickChargeAttemptEndMsRef.current = Date.now();
         }
@@ -1492,6 +1572,11 @@ export default function InternalSettlementModule({
         return;
       }
 
+      commitAuthoritativeSuccess('native_collect_succeeded', flowRunId, {
+        sessionId,
+        paymentIntentId: nativeResult.paymentIntentId || null,
+        paymentIntentStatus: nativeResult.paymentIntentStatus || null,
+      });
       if (mode === 'quick_charge') {
         const paymentStatusWaitingForInputCountBeforeCollectSuccess =
           typeof nativeTraceSnapshot?.paymentStatusWaitingForInputCountBeforeCollectSuccess === 'number'
@@ -1600,6 +1685,10 @@ export default function InternalSettlementModule({
       }
       logCollectionEvent('server_finalize_called', { sessionId, ok: finalizeRes.ok });
       logCollectionEvent('finalize.success', { sessionId, ok: finalizeRes.ok });
+      commitAuthoritativeSuccess('server_finalize_success', flowRunId, {
+        sessionId,
+        finalState: finalizePayload?.session?.state || null,
+      });
 
       setState('completed');
       if (mode === 'quick_charge') {
@@ -1658,6 +1747,10 @@ export default function InternalSettlementModule({
         );
         return;
       }
+      if (shouldSuppressNonSuccess('failed', 'collection_exception', flowRunId)) {
+        releaseHandoverOwner('collection_exception_suppressed_after_success');
+        return;
+      }
       setState('failed');
       if (mode === 'quick_charge') {
         quickChargeAttemptEndMsRef.current = Date.now();
@@ -1698,8 +1791,10 @@ export default function InternalSettlementModule({
     refreshNativeReadiness,
     resolveStaffContactlessAvailability,
     releaseHandoverOwner,
+    commitAuthoritativeSuccess,
     selectedOrderId,
     shouldBlockRunContinuation,
+    shouldSuppressNonSuccess,
     tapAvailabilityReady,
     tapAvailabilityReason,
     entryPoint,
@@ -1854,6 +1949,27 @@ export default function InternalSettlementModule({
 
   useEffect(() => {
     if (state !== 'canceled' && state !== 'failed') return;
+    if (!shouldSuppressNonSuccess(state, 'state_guard_effect', flowRunIdRef.current)) return;
+    logCollectionEvent('route_commit_source_suppressed_after_success', {
+      source: 'state_guard_effect',
+      attemptedOutcome: state,
+      restoredOutcome: 'completed',
+      flowRunId: flowRunIdRef.current,
+    });
+    setState('completed');
+    setMessage(mode === 'order_payment' ? 'Order payment collected successfully.' : 'Quick charge collected successfully.');
+  }, [logCollectionEvent, mode, shouldSuppressNonSuccess, state]);
+
+  useEffect(() => {
+    if (state !== 'canceled' && state !== 'failed') return;
+    if (shouldSuppressNonSuccess(state, 'terminal_route_effect', flowRunIdRef.current)) {
+      logCollectionEvent('route_commit_source_suppressed_after_success', {
+        source: 'terminal_route_effect',
+        attemptedOutcome: state,
+        flowRunId: flowRunIdRef.current,
+      });
+      return;
+    }
     const visualState = state === 'canceled' ? 'canceled' : 'failed';
     setTerminalVisualState(visualState);
     logCollectionEvent('terminal_route_selected', {
@@ -1880,15 +1996,40 @@ export default function InternalSettlementModule({
         entryPoint,
         outcome: visualState === 'canceled' ? 'canceled' : 'failed',
       });
+      if (successAuthorityRef.current) {
+        logCollectionEvent('fallback_canceled_branch_blocked_after_success', {
+          source: 'terminal_route_commit_timeout',
+          attemptedOutcome: visualState,
+          flowRunId: flowRunIdRef.current,
+          successSource: successAuthorityRef.current.source,
+        });
+        logCollectionEvent('route_commit_source_suppressed_after_success', {
+          source: 'terminal_route_commit_timeout',
+          attemptedOutcome: visualState,
+          flowRunId: flowRunIdRef.current,
+        });
+        setState('completed');
+        setMessage(mode === 'order_payment' ? 'Order payment collected successfully.' : 'Quick charge collected successfully.');
+        setTerminalVisualState(null);
+        return;
+      }
       setTerminalVisualState(null);
       setState('idle');
       setMessage('Ready to collect payment.');
     }, 900);
     return () => window.clearTimeout(timeout);
-  }, [entryPoint, logCollectionEvent, nativeRestaurantId, state]);
+  }, [entryPoint, logCollectionEvent, mode, nativeRestaurantId, shouldSuppressNonSuccess, state]);
 
   const handleCancel = useCallback(async () => {
     if (cancelInFlight) return;
+    if (shouldSuppressNonSuccess('canceled', 'handle_cancel_invoked', flowRunIdRef.current)) {
+      logCollectionEvent('route_commit_source_suppressed_after_success', {
+        source: 'handle_cancel_invoked',
+        attemptedOutcome: 'canceled',
+        flowRunId: flowRunIdRef.current,
+      });
+      return;
+    }
     logCollectionEvent('exit_cross_clicked', { sessionId: activeSessionId });
     if (!activeSessionId) {
       logCollectionEvent('native_cancel_failed_or_unavailable', { reason: 'no_active_session' });
@@ -1961,7 +2102,7 @@ export default function InternalSettlementModule({
         flowRunIdRef.current = null;
       }
     }
-  }, [activeSessionId, cancelInFlight, loadOrders, logCollectionEvent, releaseHandoverOwner]);
+  }, [activeSessionId, cancelInFlight, loadOrders, logCollectionEvent, releaseHandoverOwner, shouldSuppressNonSuccess]);
 
   return (
     <section className="relative rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
