@@ -21,6 +21,7 @@ export type UnpaidOrderSummary = {
   order_type: string | null;
   status: string;
   total_price: number | null;
+  total_price_cents: number;
   created_at: string;
 };
 
@@ -39,6 +40,33 @@ const isCollectionOperationalType = (orderType: string | null | undefined) => {
   return orderType !== 'delivery';
 };
 const QUICK_CHARGE_MINIMUM_CENTS = 50;
+
+const normalizeMoneyToCents = (value: unknown) => {
+  if (value == null) return 0;
+  if (typeof value === 'string') {
+    const sanitized = value.trim().replace(/,/g, '');
+    if (!sanitized) return 0;
+    const parsed = Number(sanitized);
+    if (!Number.isFinite(parsed)) return 0;
+    if (sanitized.includes('.')) {
+      return Math.max(0, Math.round(parsed * 100));
+    }
+    if (Math.abs(parsed) >= 1000 && parsed % 100 !== 0) {
+      return Math.max(0, Math.round(parsed));
+    }
+    return Math.max(0, Math.round(parsed * 100));
+  }
+
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 0;
+  if (!Number.isInteger(numeric)) {
+    return Math.max(0, Math.round(numeric * 100));
+  }
+  if (Math.abs(numeric) >= 1000 && numeric % 100 !== 0) {
+    return Math.max(0, Math.round(numeric));
+  }
+  return Math.max(0, Math.round(numeric * 100));
+};
 
 const updatePaidOrderWithOptionalStripeIntent = async (input: {
   orderId: string;
@@ -135,7 +163,7 @@ export const listUnpaidOrdersForSettlement = async (restaurantId: string, limit 
   if (error) throw error;
 
   return (data || [])
-    .filter((row: any) => isOrderPaymentUnpaid(row.payment_status) && Number(row.total_price || 0) > 0)
+    .filter((row: any) => isOrderPaymentUnpaid(row.payment_status) && normalizeMoneyToCents(row.total_price) > 0)
     .map((row: any) => ({
       id: String(row.id),
       short_order_number: row.short_order_number == null ? null : Number(row.short_order_number),
@@ -143,6 +171,7 @@ export const listUnpaidOrdersForSettlement = async (restaurantId: string, limit 
       order_type: row.order_type ? String(row.order_type) : null,
       status: String(row.status || 'pending'),
       total_price: row.total_price == null ? null : Number(row.total_price),
+      total_price_cents: normalizeMoneyToCents(row.total_price),
       created_at: String(row.created_at),
     }));
 };
@@ -183,7 +212,7 @@ export const createInternalSettlementSession = async (input: {
     if (!order) throw new Error('Order not found');
     if (!isOrderPaymentUnpaid(order.payment_status)) throw new Error('Order is already settled');
 
-    const orderAmount = Math.max(1, Number(order.total_price || 0));
+    const orderAmount = Math.max(1, normalizeMoneyToCents(order.total_price));
     if (orderAmount <= 0) throw new Error('Order has no outstanding amount');
 
     const pendingPayload: Record<string, unknown> = {
