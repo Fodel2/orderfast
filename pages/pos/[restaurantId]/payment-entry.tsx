@@ -18,11 +18,9 @@ export default function PosPaymentEntryPage() {
   }, [flowActive, router]);
 
   return (
-    <div className="min-h-screen w-full bg-gray-50 text-gray-900">
+    <div className="w-full bg-gray-50 text-gray-900">
       <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
         <InternalSettlementModule
-          eyebrow="POS payments"
-          title="Take Payment"
           restaurantId={restaurantId || null}
           onFlowActivityChange={setFlowActive}
           entryPoint="pos"

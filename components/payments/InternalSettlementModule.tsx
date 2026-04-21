@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
+import { ArrowLeftIcon, BackspaceIcon, ClipboardDocumentListIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { tapToPayBridge } from '@/lib/kiosk/tapToPayBridge';
 import { formatPrice } from '@/lib/orderDisplay';
 import { resolveNativeTapToPayReadiness } from '@/lib/kiosk/tapToPayNativeReadiness';
@@ -172,6 +173,7 @@ export default function InternalSettlementModule({
   const [nativeReadinessReason, setNativeReadinessReason] = useState('');
 
   const [quickAmountDigits, setQuickAmountDigits] = useState('0');
+  const [showOrdersSheet, setShowOrdersSheet] = useState(false);
 
   const [busy, setBusy] = useState(false);
   const [state, setState] = useState<CollectionState>('idle');
@@ -249,7 +251,6 @@ export default function InternalSettlementModule({
     if (typeof window === 'undefined') return false;
     return Boolean((window as CapacitorWindow).Capacitor?.isNativePlatform?.());
   }, []);
-  const backLabel = source === 'launcher' ? 'Back to Launcher' : 'Back to POS';
   const quickChargeAttemptDiagnosticsPayload = useMemo(() => {
     if (mode !== 'quick_charge') return null;
     const attemptSummary =
@@ -293,8 +294,8 @@ export default function InternalSettlementModule({
     [quickChargeAttemptDiagnosticsPayload]
   );
 
-  const loadOrders = useCallback(async () => {
-    setLoadingOrders(true);
+  const loadOrders = useCallback(async (silent = false) => {
+    if (!silent) setLoadingOrders(true);
     try {
       const response = await fetch('/api/dashboard/internal-settlement/unpaid-orders');
       const payload = await response.json().catch(() => ({}));
@@ -307,14 +308,32 @@ export default function InternalSettlementModule({
       }
     } catch (error: any) {
       setMessage(error?.message || 'Failed to load unpaid orders.');
-      setState('failed');
     } finally {
-      setLoadingOrders(false);
+      if (!silent) setLoadingOrders(false);
     }
   }, [selectedOrderId]);
 
   useEffect(() => {
     void loadOrders();
+  }, [loadOrders]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      void loadOrders(true);
+    }, 10000);
+    const onFocus = () => {
+      void loadOrders(true);
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void loadOrders(true);
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [loadOrders]);
 
   const resolveStaffContactlessAvailability = useCallback(
@@ -2180,6 +2199,7 @@ export default function InternalSettlementModule({
       setSelectedOrderId(orderId);
       if (orderId) {
         setMode('order_payment');
+        setShowOrdersSheet(false);
         return;
       }
       setMode('quick_charge');
@@ -2213,48 +2233,62 @@ export default function InternalSettlementModule({
           void handleCancel();
         }}
       />
-      <header className="flex items-center justify-between gap-3 border-b border-gray-200 bg-white px-5 py-4 sm:px-6">
+      <header className="flex items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 py-3 sm:px-5">
         <button
           type="button"
           onClick={handleBack}
           disabled={busy}
-          className="rounded-full border border-gray-200 bg-white px-4 py-2 text-xs font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+          aria-label="Back"
         >
-          {backLabel}
+          <ArrowLeftIcon className="h-5 w-5" />
         </button>
-        <div className="text-center">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-teal-600">{eyebrow}</p>
-          <h1 className="text-xl font-semibold text-gray-900 sm:text-2xl">{title}</h1>
-        </div>
-        <div className="min-w-[90px] text-right text-xs font-medium text-gray-500">{mode === 'order_payment' ? 'Unpaid order' : 'Quick amount'}</div>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => setShowOrdersSheet(true)}
+          className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+          aria-label="Open unpaid orders"
+        >
+          <ClipboardDocumentListIcon className="h-5 w-5" />
+          {orders.length > 0 ? (
+            <span className="absolute -right-1.5 -top-1.5 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-teal-600 px-1 text-[10px] font-semibold text-white">
+              {orders.length > 99 ? '99+' : orders.length}
+            </span>
+          ) : null}
+        </button>
       </header>
 
-      <div className="grid gap-6 p-5 sm:p-6 lg:grid-cols-[1.15fr_0.85fr]">
-        <div className="space-y-5">
-          <div className="rounded-3xl border border-gray-200 bg-gray-900 px-6 py-6 text-white">
-            <p className="text-xs uppercase tracking-[0.2em] text-gray-300">Amount to collect ({toCurrencyCode('gbp')})</p>
-            <p className="mt-3 text-5xl font-semibold tracking-tight sm:text-6xl">{amountLabel}</p>
+      <div className="grid gap-4 p-4 sm:p-5 lg:grid-cols-[1.1fr_0.9fr]">
+        <div className="space-y-4">
+          <div className="rounded-3xl bg-gray-900 px-6 py-5 text-white">
+            <p className="text-[11px] uppercase tracking-[0.18em] text-gray-300">{toCurrencyCode('gbp')}</p>
+            <p className="mt-2 text-5xl font-semibold tracking-tight sm:text-[54px]">{amountLabel}</p>
+            {selectedOrder ? (
+              <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-xs text-white">
+                <span>#{selectedOrder.short_order_number ?? '—'} · {selectedOrder.customer_name || 'Guest'}</span>
+                <button type="button" onClick={() => handleSelectOrder('')} className="inline-flex rounded-full p-0.5 text-gray-200 hover:bg-white/20 hover:text-white" aria-label="Clear selected order">
+                  <XMarkIcon className="h-4 w-4" />
+                </button>
+              </div>
+            ) : null}
           </div>
 
-          <div className="rounded-2xl border border-gray-200 bg-white p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.15em] text-gray-500">Quick amounts</p>
-            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="rounded-2xl border border-gray-200 bg-white p-3.5">
+            <div className="grid grid-cols-4 gap-2">
               {QUICK_CHIPS.map((chip) => (
                 <button
                   key={chip}
                   type="button"
                   disabled={busy}
                   onClick={() => setQuickAmountCents(chip)}
-                  className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-800 transition hover:border-gray-300 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded-lg bg-gray-100 px-2 py-2 text-xs font-semibold text-gray-800 transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {formatPrice(chip / 100)}
                 </button>
               ))}
             </div>
-          </div>
-
-          <div className="rounded-2xl border border-gray-200 bg-white p-4">
-            <div className="grid grid-cols-3 gap-2">
+            <div className="mt-2 grid grid-cols-3 gap-2">
               {['1', '2', '3', '4', '5', '6', '7', '8', '9', '00', '0'].map((digit) => (
                 <button
                   key={digit}
@@ -2270,33 +2304,91 @@ export default function InternalSettlementModule({
                 type="button"
                 disabled={busy}
                 onClick={backspaceAmountDigit}
-                className="rounded-xl border border-gray-200 bg-white px-3 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex items-center justify-center rounded-xl border border-gray-200 bg-white px-3 py-3 text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                aria-label="Backspace"
               >
-                Back
+                <BackspaceIcon className="h-5 w-5" />
               </button>
             </div>
-            <div className="mt-3 flex gap-2">
+            <div className="mt-2 flex justify-end">
               <button
                 type="button"
                 disabled={busy}
                 onClick={clearQuickAmount}
-                className="rounded-full border border-gray-200 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-[0.1em] text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Clear
               </button>
-              <p className="rounded-full bg-gray-100 px-3 py-2 text-xs text-gray-600">Entered: {formatAmountFromCents(quickAmountCents)}</p>
             </div>
           </div>
+        </div>
 
-          <div className="rounded-2xl border border-gray-200 bg-white p-4">
-            <div className="flex items-center justify-between gap-2">
+        <div className="space-y-3 rounded-2xl border border-gray-200 bg-white p-4">
+          <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+            {!tapAvailabilityLoading && !tapAvailabilityReady ? (
+              <p className="text-xs text-amber-700">{tapAvailabilityReason || 'Tap to Pay is not ready on this account/device.'}</p>
+            ) : null}
+            {!nativeReadinessLoading && !nativeReadinessReady ? (
+              <p className="mt-2 text-xs text-amber-700">{nativeReadinessReason || 'Location permission and location services are required.'}</p>
+            ) : null}
+            {state === 'failed' || state === 'canceled' ? <p className="mt-2 text-xs text-rose-700">{message}</p> : null}
+          </div>
+
+          <div className="pt-1">
+            {(() => {
+              const presentation = contactlessEligibility ? resolveContactlessPresentation(contactlessEligibility) : null;
+              const unavailable = presentation?.presentation === 'disabled';
+              return (
+                <button
+                  type="button"
+                  disabled={
+                    unavailable ||
+                    busy ||
+                    tapAvailabilityLoading ||
+                    nativeReadinessLoading ||
+                    !tapAvailabilityReady ||
+                    amountCents <= 0 ||
+                    (mode === 'order_payment' && !selectedOrderId)
+                  }
+                  onClick={handleCollectContactless}
+                  className="w-full rounded-2xl bg-gray-900 px-5 py-3.5 text-base font-semibold text-white shadow-sm transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-300"
+                >
+                  {busy ? 'Collecting…' : unavailable ? 'Contactless unavailable' : state === 'setup_failed' ? 'Resolve setup & collect' : 'Collect contactless'}
+                </button>
+              );
+            })()}
+            {busy ? (
+              <button
+                type="button"
+                disabled={!activeSessionId}
+                onClick={handleCancel}
+                className="mt-2 w-full rounded-xl border border-gray-200 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Cancel session
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </div>
+      {showOrdersSheet ? (
+        <div className="absolute inset-0 z-20 flex items-start justify-end bg-gray-900/20 p-3 sm:p-4">
+          <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-3 shadow-xl">
+            <div className="flex items-center justify-between gap-2 border-b border-gray-100 pb-2">
               <p className="text-sm font-semibold text-gray-900">Unpaid orders</p>
-              {loadingOrders ? <p className="text-xs text-gray-500">Loading…</p> : null}
+              <button
+                type="button"
+                onClick={() => setShowOrdersSheet(false)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100 hover:text-gray-700"
+                aria-label="Close unpaid orders"
+              >
+                <XMarkIcon className="h-5 w-5" />
+              </button>
             </div>
-            <div className="mt-3 max-h-52 space-y-2 overflow-y-auto pr-1">
+            <div className="mt-2 max-h-[56vh] space-y-2 overflow-y-auto pr-1">
+              {loadingOrders ? <p className="px-1 py-2 text-xs text-gray-500">Loading orders…</p> : null}
               {!loadingOrders && orders.length === 0 ? (
                 <p className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
-                  No unpaid pending/accepted/prepared orders are ready right now.
+                  No unpaid active orders right now.
                 </p>
               ) : null}
               {orders.map((order) => {
@@ -2322,91 +2414,7 @@ export default function InternalSettlementModule({
             </div>
           </div>
         </div>
-
-        <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4">
-          <h2 className="text-sm font-semibold text-gray-900">Payment method</h2>
-
-          <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
-            {!tapAvailabilityLoading && !tapAvailabilityReady ? (
-              <p className="text-xs text-amber-700">{tapAvailabilityReason || 'Tap to Pay is not ready on this account/device.'}</p>
-            ) : null}
-            {!nativeReadinessLoading && !nativeReadinessReady ? (
-              <p className="mt-2 text-xs text-amber-700">{nativeReadinessReason || 'Location permission and location services are required.'}</p>
-            ) : null}
-            {state === 'failed' || state === 'canceled' ? <p className="mt-2 text-xs text-rose-700">{message}</p> : null}
-            {quickChargeAttemptDiagnosticsSerialized ? (
-              <div
-                className={`mt-3 rounded-xl border bg-white/90 p-3 text-[11px] ${
-                  state === 'completed' ? 'border-emerald-300 text-emerald-900' : 'border-rose-300 text-rose-900'
-                }`}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <p className="font-semibold uppercase tracking-[0.08em]">
-                    Tap to Pay {state === 'completed' ? 'success' : 'failure'} diagnostics
-                  </p>
-                  <button
-                    type="button"
-                    className={`rounded-md px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] ${
-                      state === 'completed'
-                        ? 'border border-emerald-300 bg-emerald-50 text-emerald-800'
-                        : 'border border-rose-300 bg-rose-50 text-rose-800'
-                    }`}
-                    onClick={async () => {
-                      try {
-                        await navigator.clipboard.writeText(quickChargeAttemptDiagnosticsSerialized);
-                      } catch {
-                        // no-op: snapshot remains visible on screen for manual copy.
-                      }
-                    }}
-                  >
-                    Copy
-                  </button>
-                </div>
-                <pre
-                  className={`mt-2 whitespace-pre-wrap break-all rounded-md p-2 font-mono text-[10px] leading-4 ${
-                    state === 'completed' ? 'bg-emerald-50' : 'bg-rose-50'
-                  }`}
-                >
-                  {quickChargeAttemptDiagnosticsSerialized}
-                </pre>
-              </div>
-            ) : null}
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            {(() => {
-              const presentation = contactlessEligibility ? resolveContactlessPresentation(contactlessEligibility) : null;
-              const unavailable = presentation?.presentation === 'disabled';
-              return (
-                <button
-                  type="button"
-                  disabled={
-                    unavailable ||
-                    busy ||
-                    tapAvailabilityLoading ||
-                    nativeReadinessLoading ||
-                    !tapAvailabilityReady ||
-                    amountCents <= 0 ||
-                    (mode === 'order_payment' && !selectedOrderId)
-                  }
-                  onClick={handleCollectContactless}
-                  className="rounded-full bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-300"
-                >
-                  {busy ? 'Collecting…' : unavailable ? 'Contactless unavailable' : state === 'setup_failed' ? 'Resolve setup & collect' : 'Collect contactless'}
-                </button>
-              );
-            })()}
-            <button
-              type="button"
-              disabled={busy ? !activeSessionId : amountCents <= 0}
-              onClick={busy ? handleCancel : clearQuickAmount}
-              className="rounded-full border border-gray-200 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {busy ? 'Cancel session' : 'Reset amount'}
-            </button>
-          </div>
-        </div>
-      </div>
+      ) : null}
     </section>
   );
 }

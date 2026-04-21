@@ -109,11 +109,12 @@ const maybeAutoCompletePreparedOrder = async (input: { orderId: string; orderSta
 };
 
 export const listUnpaidOrdersForSettlement = async (restaurantId: string, limit = 80): Promise<UnpaidOrderSummary[]> => {
+  const activeUnpaidStatuses = ['pending', 'accepted', 'preparing', 'prepared', 'ready_to_collect', 'delivering'];
   const initialResult = await supaServer
     .from('orders')
     .select('id,short_order_number,customer_name,order_type,status,total_price,created_at,payment_status')
     .eq('restaurant_id', restaurantId)
-    .in('status', ['pending', 'accepted', 'prepared'])
+    .in('status', activeUnpaidStatuses)
     .order('created_at', { ascending: false })
     .limit(limit);
   let data: any[] | null = initialResult.data as any[] | null;
@@ -124,7 +125,7 @@ export const listUnpaidOrdersForSettlement = async (restaurantId: string, limit 
       .from('orders')
       .select('id,short_order_number,customer_name,order_type,status,total_price,created_at')
       .eq('restaurant_id', restaurantId)
-      .in('status', ['pending', 'accepted', 'prepared'])
+      .in('status', activeUnpaidStatuses)
       .order('created_at', { ascending: false })
       .limit(limit);
     data = fallbackResult.data as any[] | null;
