@@ -127,6 +127,8 @@ export default function PosHomePage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [menuRefreshKey, setMenuRefreshKey] = useState(0);
+  const isTakePaymentReceiptFlow =
+    stageParam === 'paymentComplete' && (sourceParam === 'take-payment' || sourceParam === 'pos-contactless');
 
   useEffect(() => {
     if (!storageKey || typeof window === 'undefined') return;
@@ -472,6 +474,17 @@ export default function PosHomePage() {
     startNewOrder();
   }, [originParam, restaurantId, router, sourceParam, stageParam]);
 
+  useEffect(() => {
+    if (!isTakePaymentReceiptFlow) return;
+    router.beforePopState(() => {
+      completeReceiptFlow();
+      return false;
+    });
+    return () => {
+      router.beforePopState(() => true);
+    };
+  }, [completeReceiptFlow, isTakePaymentReceiptFlow, router]);
+
   const handleSelectOrderType = (selection: OrderType) => {
     setOrderType(selection);
     if (selection === 'delivery') {
@@ -800,7 +813,7 @@ export default function PosHomePage() {
   }, [canConfirmPayment, isSaving, savePosOrderToSupabase]);
 
   return (
-    <FullscreenAppLayout>
+    <FullscreenAppLayout fullscreenBehavior={isTakePaymentReceiptFlow ? 'disabled' : 'auto'}>
       <div className="flex min-h-screen w-full flex-col">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-white px-6 py-4">
           <div>
@@ -1241,6 +1254,8 @@ export default function PosHomePage() {
                               console.error('[pos] failed to queue invoice print', error);
                               setToastMessage('Could not queue invoice print job.');
                             }
+                          } else {
+                            setToastMessage('Print receipt is not available for this payment.');
                           }
                         }
                         if (choice === 'digital') {
@@ -1265,7 +1280,7 @@ export default function PosHomePage() {
                   onClick={completeReceiptFlow}
                   className="mt-6 w-full rounded-full bg-teal-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700"
                 >
-                  Start new order
+                  {isTakePaymentReceiptFlow ? 'Done' : 'Start new order'}
                 </button>
               ) : null}
             </div>
