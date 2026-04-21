@@ -642,7 +642,11 @@ export default function InternalSettlementModule({
   );
 
   const shouldBlockRunContinuation = useCallback(
-    (flowRunId: string | null | undefined, label: string) => {
+    (
+      flowRunId: string | null | undefined,
+      label: string,
+      phase: 'pre_handover' | 'post_handover_confirmation' = 'pre_handover'
+    ) => {
       if (!flowRunId) return true;
       if (deadRunFlowIdsRef.current.has(flowRunId)) {
         logCollectionEvent('late_callback_ignored_dead_run', { flowRunId, label });
@@ -652,18 +656,24 @@ export default function InternalSettlementModule({
       }
       const owner = handoverOwnerRef.current;
       const barrier = cancelBarrierRef.current;
-      const blocked =
-        !owner ||
-        owner.flowRunId !== flowRunId ||
-        owner.active !== true ||
-        owner.cancelRequested === true ||
-        (barrier != null && barrier.flowRunId === flowRunId);
+      const blockedByCancelBarrier = barrier != null && barrier.flowRunId === flowRunId;
+      const blockedByOwner =
+        phase === 'pre_handover' &&
+        (!owner || owner.flowRunId !== flowRunId || owner.active !== true || owner.cancelRequested === true);
+      const blocked = blockedByOwner || blockedByCancelBarrier;
       if (blocked) {
         if ((owner?.cancelRequested === true && owner.flowRunId === flowRunId) || barrier?.flowRunId === flowRunId) {
           logCollectionEvent('late_handover_callback_ignored_after_cancel', { flowRunId, label });
         } else {
           logCollectionEvent('stripe_handover_attempt_blocked_due_to_cancel', { flowRunId, label });
         }
+        logCollectionEvent('post_stripe_confirmation_blocked', {
+          flowRunId,
+          label,
+          phase,
+          blockedByOwner,
+          blockedByCancelBarrier,
+        });
       }
       return blocked;
     },
@@ -1254,7 +1264,15 @@ export default function InternalSettlementModule({
         nativeStage: nativeResult.nativeStage || null,
       });
       releaseHandoverOwner('stripe_handover_returned');
-      if (shouldBlockRunContinuation(flowRunId, 'after_stripe_handover_result')) {
+      logCollectionEvent('post_stripe_status_confirmation_entered', {
+        sessionId,
+        flowRunId,
+        nativeStatus: nativeResult.status,
+        nativeCode: nativeResult.code || null,
+      });
+      setState('processing');
+      setMessage('Confirming payment status…');
+      if (shouldBlockRunContinuation(flowRunId, 'after_stripe_handover_result', 'post_handover_confirmation')) {
         if (!shouldSuppressNonSuccess('canceled', 'after_stripe_handover_result', flowRunId)) {
           setState('canceled');
           setMessage('Payment canceled.');
