@@ -46,6 +46,20 @@ const toCurrencyCode = (value?: string | null) => (value || 'GBP').toUpperCase()
 
 const makeIdempotencyKey = (prefix: string) => `${prefix}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
 const QUICK_CHARGE_MINIMUM_CENTS = 50;
+const QUICK_CHIPS = [500, 1000, 2000, 5000];
+
+type CapacitorWindow = Window & {
+  Capacitor?: {
+    isNativePlatform?: () => boolean;
+  };
+};
+
+const formatAmountFromCents = (cents: number) => {
+  const resolved = Number.isFinite(cents) ? Math.max(0, Math.floor(cents)) : 0;
+  const pounds = Math.floor(resolved / 100);
+  const pennies = String(resolved % 100).padStart(2, '0');
+  return `${pounds}.${pennies}`;
+};
 
 type InternalSettlementModuleProps = {
   title?: string;
@@ -53,6 +67,7 @@ type InternalSettlementModuleProps = {
   restaurantId?: string | null;
   onFlowActivityChange?: (active: boolean) => void;
   entryPoint?: 'pos' | 'take_payment';
+  source?: 'pos' | 'launcher';
 };
 
 type QuickChargeFailureSnapshot = {
@@ -141,9 +156,10 @@ export default function InternalSettlementModule({
   restaurantId = null,
   onFlowActivityChange,
   entryPoint = 'take_payment',
+  source = 'pos',
 }: InternalSettlementModuleProps) {
   const router = useRouter();
-  const [mode, setMode] = useState<SettlementMode>('order_payment');
+  const [mode, setMode] = useState<SettlementMode>('quick_charge');
   const [orders, setOrders] = useState<UnpaidOrder[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
   const [selectedOrderId, setSelectedOrderId] = useState<string>('');
@@ -155,9 +171,7 @@ export default function InternalSettlementModule({
   const [nativeReadinessReady, setNativeReadinessReady] = useState(false);
   const [nativeReadinessReason, setNativeReadinessReason] = useState('');
 
-  const [quickAmount, setQuickAmount] = useState('0.00');
-  const [quickNote, setQuickNote] = useState('');
-  const [quickReference, setQuickReference] = useState('');
+  const [quickAmountDigits, setQuickAmountDigits] = useState('0');
 
   const [busy, setBusy] = useState(false);
   const [state, setState] = useState<CollectionState>('idle');
@@ -215,18 +229,27 @@ export default function InternalSettlementModule({
     [uiPhase]
   );
 
+  const quickAmountCents = useMemo(() => {
+    const numeric = Number.parseInt(quickAmountDigits || '0', 10);
+    if (!Number.isFinite(numeric) || numeric <= 0) return 0;
+    return numeric;
+  }, [quickAmountDigits]);
+
   const amountCents = useMemo(() => {
     if (mode === 'order_payment') return Number(selectedOrder?.total_price || 0);
-    const numeric = Number(quickAmount);
-    if (!Number.isFinite(numeric) || numeric <= 0) return 0;
-    return Math.round(numeric * 100);
-  }, [mode, quickAmount, selectedOrder?.total_price]);
+    return quickAmountCents;
+  }, [mode, quickAmountCents, selectedOrder?.total_price]);
 
   const amountLabel = useMemo(() => formatPrice(amountCents / 100), [amountCents]);
   const nativeRestaurantId = useMemo(() => {
     const value = restaurantId?.trim();
     return value ? value : null;
   }, [restaurantId]);
+  const isNativeShell = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    return Boolean((window as CapacitorWindow).Capacitor?.isNativePlatform?.());
+  }, []);
+  const backLabel = source === 'launcher' ? 'Back to Launcher' : 'Back to POS';
   const quickChargeAttemptDiagnosticsPayload = useMemo(() => {
     if (mode !== 'quick_charge') return null;
     const attemptSummary =
@@ -278,8 +301,9 @@ export default function InternalSettlementModule({
       if (!response.ok) throw new Error(payload?.message || `HTTP ${response.status}`);
       const nextOrders = Array.isArray(payload?.orders) ? (payload.orders as UnpaidOrder[]) : [];
       setOrders(nextOrders);
-      if (nextOrders.length > 0 && !nextOrders.some((order) => order.id === selectedOrderId)) {
-        setSelectedOrderId(nextOrders[0].id);
+      if (selectedOrderId && !nextOrders.some((order) => order.id === selectedOrderId)) {
+        setSelectedOrderId('');
+        setMode('quick_charge');
       }
     } catch (error: any) {
       setMessage(error?.message || 'Failed to load unpaid orders.');
@@ -1076,8 +1100,6 @@ export default function InternalSettlementModule({
           order_id: mode === 'order_payment' ? selectedOrderId : null,
           amount_cents: mode === 'quick_charge' ? amountCents : undefined,
           currency: 'gbp',
-          note: mode === 'quick_charge' ? quickNote : undefined,
-          reference: mode === 'quick_charge' ? quickReference : undefined,
         }),
       });
       const createPayload = await createRes.json().catch(() => ({}));
@@ -1729,9 +1751,7 @@ export default function InternalSettlementModule({
       releaseHandoverOwner('completed');
 
       if (mode === 'quick_charge') {
-        setQuickAmount('0.00');
-        setQuickNote('');
-        setQuickReference('');
+        setQuickAmountDigits('0');
       }
 
       await loadOrders();
@@ -1813,8 +1833,6 @@ export default function InternalSettlementModule({
     loadOrders,
     mode,
     nativeRestaurantId,
-    quickNote,
-    quickReference,
     refreshNativeReadiness,
     resolveStaffContactlessAvailability,
     releaseHandoverOwner,
@@ -1934,7 +1952,11 @@ export default function InternalSettlementModule({
     console.info('[payments][contactless_eligibility]', 'terminal_outcome_selected', { entryPoint, outcome: 'success' });
     const timeout = window.setTimeout(() => {
       const target = nativeRestaurantId
-        ? `/pos/${nativeRestaurantId}?stage=paymentComplete&source=${entryPoint === 'pos' ? 'pos-contactless' : 'take-payment'}`
+        ? isNativeShell
+          ? source === 'launcher'
+            ? `/pos/${nativeRestaurantId}/payment-entry?source=launcher`
+            : `/pos/${nativeRestaurantId}`
+          : `/pos/${nativeRestaurantId}?stage=paymentComplete&source=${entryPoint === 'pos' ? 'pos-contactless' : 'take-payment'}`
         : null;
       logCollectionEvent('success_tick_shown', { entryPoint, restaurantId: nativeRestaurantId, target });
       setShowSuccessTick(false);
@@ -1963,7 +1985,7 @@ export default function InternalSettlementModule({
       router.push(target).catch(() => undefined);
     }, 900);
     return () => window.clearTimeout(timeout);
-  }, [entryPoint, logCollectionEvent, nativeRestaurantId, router, state]);
+  }, [entryPoint, isNativeShell, logCollectionEvent, nativeRestaurantId, router, source, state]);
 
   useEffect(() => {
     if (state === 'completed') return;
@@ -2131,8 +2153,55 @@ export default function InternalSettlementModule({
     }
   }, [activeSessionId, cancelInFlight, loadOrders, logCollectionEvent, releaseHandoverOwner, shouldSuppressNonSuccess]);
 
+  const setQuickAmountCents = useCallback((nextCents: number) => {
+    setQuickAmountDigits(String(Math.max(0, Math.floor(nextCents))));
+    setSelectedOrderId('');
+    setMode('quick_charge');
+  }, []);
+
+  const appendAmountDigit = useCallback(
+    (digit: string) => {
+      setQuickAmountCents(Number.parseInt(`${quickAmountDigits === '0' ? '' : quickAmountDigits}${digit}`, 10) || 0);
+    },
+    [quickAmountDigits, setQuickAmountCents]
+  );
+
+  const backspaceAmountDigit = useCallback(() => {
+    const next = quickAmountDigits.length <= 1 ? '0' : quickAmountDigits.slice(0, -1);
+    setQuickAmountCents(Number.parseInt(next, 10) || 0);
+  }, [quickAmountDigits, setQuickAmountCents]);
+
+  const clearQuickAmount = useCallback(() => {
+    setQuickAmountCents(0);
+  }, [setQuickAmountCents]);
+
+  const handleSelectOrder = useCallback(
+    (orderId: string) => {
+      setSelectedOrderId(orderId);
+      if (orderId) {
+        setMode('order_payment');
+        return;
+      }
+      setMode('quick_charge');
+    },
+    []
+  );
+
+  const handleBack = useCallback(() => {
+    if (flowActiveRef.current || busy) return;
+    if (!nativeRestaurantId) {
+      router.push('/dashboard/launcher').catch(() => undefined);
+      return;
+    }
+    if (source === 'launcher') {
+      router.push(`/dashboard/launcher?restaurant_id=${encodeURIComponent(nativeRestaurantId)}`).catch(() => undefined);
+      return;
+    }
+    router.push(`/pos/${nativeRestaurantId}`).catch(() => undefined);
+  }, [busy, nativeRestaurantId, router, source]);
+
   return (
-    <section className="relative rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+    <section className="relative overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
       <NativeTapToPayPreHandoverOverlay
         visible={showTransitionOverlay}
         lines={overlayLines}
@@ -2144,95 +2213,120 @@ export default function InternalSettlementModule({
           void handleCancel();
         }}
       />
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{eyebrow}</p>
-      <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">{title}</h1>
-
-      <div className="mt-6 flex flex-wrap gap-2 rounded-2xl bg-slate-100 p-1">
+      <header className="flex items-center justify-between gap-3 border-b border-gray-200 bg-white px-5 py-4 sm:px-6">
         <button
           type="button"
-          onClick={() => setMode('order_payment')}
-          className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
-            mode === 'order_payment' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'
-          }`}
+          onClick={handleBack}
+          disabled={busy}
+          className="rounded-full border border-gray-200 bg-white px-4 py-2 text-xs font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          Order payment
+          {backLabel}
         </button>
-        <button
-          type="button"
-          onClick={() => setMode('quick_charge')}
-          className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
-            mode === 'quick_charge' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'
-          }`}
-        >
-          Quick charge
-        </button>
-      </div>
+        <div className="text-center">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-teal-600">{eyebrow}</p>
+          <h1 className="text-xl font-semibold text-gray-900 sm:text-2xl">{title}</h1>
+        </div>
+        <div className="min-w-[90px] text-right text-xs font-medium text-gray-500">{mode === 'order_payment' ? 'Unpaid order' : 'Quick amount'}</div>
+      </header>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <div className="space-y-4 rounded-2xl border border-slate-200 p-4">
-          <h2 className="text-sm font-semibold text-slate-900">Amount</h2>
-          {mode === 'order_payment' ? (
-            <>
-              <label className="block text-xs font-medium uppercase tracking-[0.12em] text-slate-500">Unpaid order</label>
-              <select
-                value={selectedOrderId}
-                onChange={(event) => setSelectedOrderId(event.target.value)}
-                disabled={loadingOrders || busy}
-                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+      <div className="grid gap-6 p-5 sm:p-6 lg:grid-cols-[1.15fr_0.85fr]">
+        <div className="space-y-5">
+          <div className="rounded-3xl border border-gray-200 bg-gray-900 px-6 py-6 text-white">
+            <p className="text-xs uppercase tracking-[0.2em] text-gray-300">Amount to collect ({toCurrencyCode('gbp')})</p>
+            <p className="mt-3 text-5xl font-semibold tracking-tight sm:text-6xl">{amountLabel}</p>
+          </div>
+
+          <div className="rounded-2xl border border-gray-200 bg-white p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.15em] text-gray-500">Quick amounts</p>
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {QUICK_CHIPS.map((chip) => (
+                <button
+                  key={chip}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setQuickAmountCents(chip)}
+                  className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-800 transition hover:border-gray-300 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {formatPrice(chip / 100)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-gray-200 bg-white p-4">
+            <div className="grid grid-cols-3 gap-2">
+              {['1', '2', '3', '4', '5', '6', '7', '8', '9', '00', '0'].map((digit) => (
+                <button
+                  key={digit}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => appendAmountDigit(digit)}
+                  className="rounded-xl border border-gray-200 bg-white px-3 py-3 text-lg font-semibold text-gray-900 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {digit}
+                </button>
+              ))}
+              <button
+                type="button"
+                disabled={busy}
+                onClick={backspaceAmountDigit}
+                className="rounded-xl border border-gray-200 bg-white px-3 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {orders.length === 0 ? <option value="">No unpaid orders</option> : null}
-                {orders.map((order) => (
-                  <option key={order.id} value={order.id}>
-                    #{order.short_order_number ?? '—'} · {order.customer_name || 'Guest'} · {formatPrice(Number(order.total_price || 0) / 100)}
-                  </option>
-                ))}
-              </select>
-              {loadingOrders ? <p className="text-xs text-slate-500">Loading unpaid orders…</p> : null}
+                Back
+              </button>
+            </div>
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={clearQuickAmount}
+                className="rounded-full border border-gray-200 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-[0.1em] text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Clear
+              </button>
+              <p className="rounded-full bg-gray-100 px-3 py-2 text-xs text-gray-600">Entered: {formatAmountFromCents(quickAmountCents)}</p>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-gray-200 bg-white p-4">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-gray-900">Unpaid orders</p>
+              {loadingOrders ? <p className="text-xs text-gray-500">Loading…</p> : null}
+            </div>
+            <div className="mt-3 max-h-52 space-y-2 overflow-y-auto pr-1">
               {!loadingOrders && orders.length === 0 ? (
-                <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                  No unpaid pending/prepared orders are ready for collection right now.
+                <p className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                  No unpaid pending/accepted/prepared orders are ready right now.
                 </p>
               ) : null}
-            </>
-          ) : (
-            <>
-              <label className="block text-xs font-medium uppercase tracking-[0.12em] text-slate-500">Custom amount ({toCurrencyCode('gbp')})</label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={quickAmount}
-                onChange={(event) => setQuickAmount(event.target.value)}
-                disabled={busy}
-                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-              />
-              <input
-                type="text"
-                value={quickReference}
-                onChange={(event) => setQuickReference(event.target.value)}
-                disabled={busy}
-                placeholder="Reference (optional)"
-                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-              />
-              <textarea
-                value={quickNote}
-                onChange={(event) => setQuickNote(event.target.value)}
-                disabled={busy}
-                placeholder="Note (optional)"
-                className="min-h-[84px] w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-              />
-            </>
-          )}
-          <div className="rounded-2xl bg-slate-50 px-4 py-3">
-            <p className="text-xs uppercase tracking-[0.12em] text-slate-500">Amount to collect</p>
-            <p className="mt-1 text-2xl font-semibold text-slate-900">{amountLabel}</p>
+              {orders.map((order) => {
+                const active = selectedOrderId === order.id;
+                return (
+                  <button
+                    key={order.id}
+                    type="button"
+                    disabled={busy}
+                    onClick={() => handleSelectOrder(order.id)}
+                    className={`w-full rounded-xl border px-3 py-2 text-left transition ${
+                      active ? 'border-teal-500 bg-teal-50' : 'border-gray-200 bg-white hover:border-gray-300'
+                    } disabled:cursor-not-allowed disabled:opacity-60`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-gray-900">#{order.short_order_number ?? '—'} · {order.customer_name || 'Guest'}</p>
+                      <p className="text-sm font-semibold text-gray-900">{formatPrice(Number(order.total_price || 0) / 100)}</p>
+                    </div>
+                    <p className="mt-1 text-xs uppercase tracking-[0.08em] text-gray-500">{order.status}</p>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 
-        <div className="space-y-4 rounded-2xl border border-slate-200 p-4">
-          <h2 className="text-sm font-semibold text-slate-900">Payment method</h2>
+        <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4">
+          <h2 className="text-sm font-semibold text-gray-900">Payment method</h2>
 
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+          <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
             {!tapAvailabilityLoading && !tapAvailabilityReady ? (
               <p className="text-xs text-amber-700">{tapAvailabilityReason || 'Tap to Pay is not ready on this account/device.'}</p>
             ) : null}
@@ -2296,7 +2390,7 @@ export default function InternalSettlementModule({
                     (mode === 'order_payment' && !selectedOrderId)
                   }
                   onClick={handleCollectContactless}
-                  className="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                  className="rounded-full bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-300"
                 >
                   {busy ? 'Collecting…' : unavailable ? 'Contactless unavailable' : state === 'setup_failed' ? 'Resolve setup & collect' : 'Collect contactless'}
                 </button>
@@ -2304,11 +2398,11 @@ export default function InternalSettlementModule({
             })()}
             <button
               type="button"
-              disabled={busy || !activeSessionId}
-              onClick={handleCancel}
-              className="rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={busy ? !activeSessionId : amountCents <= 0}
+              onClick={busy ? handleCancel : clearQuickAmount}
+              className="rounded-full border border-gray-200 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Cancel session
+              {busy ? 'Cancel session' : 'Reset amount'}
             </button>
           </div>
         </div>
