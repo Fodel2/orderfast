@@ -14,28 +14,11 @@ import { supabase } from '../utils/supabaseClient';
 import { RestaurantProvider } from '@/lib/restaurant-context';
 import { exitDocumentFullscreen } from '@/lib/fullscreen';
 
-
-type AndroidRouteBridgeWindow = Window & {
-  OrderfastAndroidRouteBridge?: {
-    setCurrentRoute?: (route: string) => void;
-  };
-};
-
 export default function App({ Component, pageProps }: AppProps) {
   const router = useRouter();
   const isRestaurantRoute = router.pathname.startsWith('/restaurant');
   const isKioskRoute = router.pathname.startsWith('/kiosk') || router.asPath.startsWith('/kiosk');
   const manifestHref = isKioskRoute ? '/kiosk.webmanifest' : '/site.webmanifest';
-
-
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const bridge = (window as AndroidRouteBridgeWindow).OrderfastAndroidRouteBridge;
-    const setCurrentRoute = bridge?.setCurrentRoute;
-    if (typeof setCurrentRoute !== 'function') return;
-    setCurrentRoute(router.asPath || router.pathname || '/');
-  }, [router.asPath, router.pathname]);
 
   useEffect(() => {
     const currentPath = router.asPath.split('?')[0] || '';
