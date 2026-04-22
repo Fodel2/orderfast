@@ -393,6 +393,9 @@ public class MainActivity extends BridgeActivity {
         if (path.startsWith("/kiosk")) {
             return true;
         }
+        if (path.startsWith("/kod")) {
+            return true;
+        }
         if (path.startsWith("/pos")) {
             return hasPosFullscreenOptIn(uri) && !path.contains("/payment-entry");
         }
