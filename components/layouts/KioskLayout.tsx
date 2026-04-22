@@ -25,6 +25,7 @@ import {
 import { getExpressSession } from '@/utils/express/session';
 import { useCustomerAvailability } from '@/hooks/useCustomerAvailability';
 import { exitDocumentFullscreen, isDocumentFullscreenActive, requestDocumentFullscreen } from '@/lib/fullscreen';
+import { supabase } from '@/lib/supabaseClient';
 
 export const FULL_HEADER_HEIGHT = 136;
 export const COLLAPSED_HEADER_HEIGHT = 88;
@@ -911,14 +912,14 @@ export default function KioskLayout({
     };
 
     const handlePopState = () => {
-      setShowLockedNavigationNotice(true);
-      if (operatorNoticeTimerRef.current) {
-        window.clearTimeout(operatorNoticeTimerRef.current);
-      }
-      operatorNoticeTimerRef.current = window.setTimeout(() => {
-        setShowLockedNavigationNotice(false);
-      }, 2600);
-      preventBackEscape();
+      setShowLockedNavigationNotice(false);
+      setShowOperatorUnlock(false);
+      setShowFullscreenPrompt(false);
+      void (async () => {
+        await exitDocumentFullscreen();
+        await supabase.auth.signOut();
+        await router.replace('/login?kiosk_exit=1');
+      })();
     };
 
     preventBackEscape();
@@ -926,7 +927,7 @@ export default function KioskLayout({
     return () => {
       window.removeEventListener('popstate', handlePopState);
     };
-  }, [isExpressActive, restaurantId, shouldSuppressFullscreen]);
+  }, [isExpressActive, restaurantId, router, shouldSuppressFullscreen]);
 
   const headerTitle = restaurant?.website_title || restaurant?.name || 'Restaurant';
   const logoUrl = restaurant?.logo_url || null;

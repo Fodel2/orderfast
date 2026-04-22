@@ -885,11 +885,14 @@ export default function PosHomePage() {
             <button
               type="button"
               onClick={() => {
-                navigateAfterFullscreenExit('/dashboard').catch(() => undefined);
+                const launcherPath = restaurantId
+                  ? `/dashboard/launcher?restaurant_id=${encodeURIComponent(String(restaurantId))}`
+                  : '/dashboard/launcher';
+                navigateAfterFullscreenExit(launcherPath).catch(() => undefined);
               }}
               className="rounded-full border border-gray-200 bg-white px-4 py-2 text-xs font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50"
             >
-              Exit to Dashboard
+              Exit
             </button>
           </div>
         </header>

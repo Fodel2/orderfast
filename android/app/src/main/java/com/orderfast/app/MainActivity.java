@@ -123,6 +123,7 @@ public class MainActivity extends BridgeActivity {
         lastKnownOrientationValue = getResources().getConfiguration().orientation;
         lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        clearImmersiveMode();
         immersiveHandler.postDelayed(this::reevaluateImmersiveMode, 220);
         immersiveHandler.postDelayed(immersiveRouteMonitorRunnable, 400);
         configureWebViewPresentation();
@@ -157,9 +158,6 @@ public class MainActivity extends BridgeActivity {
         updateHostIntentTelemetry(getIntent());
         hostActivityCurrentOrientation = orientationToName(getResources().getConfiguration().orientation);
         lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
-        if (shouldSuppressHostUiChurn()) {
-            return;
-        }
         immersiveHandler.postDelayed(this::reevaluateImmersiveMode, 120);
         immersiveHandler.postDelayed(immersiveRouteMonitorRunnable, 400);
     }
@@ -231,10 +229,8 @@ public class MainActivity extends BridgeActivity {
             immersiveHandler.removeCallbacks(immersiveRouteMonitorRunnable);
             return;
         }
-        if (!shouldSuppressHostUiChurn()) {
-            immersiveHandler.post(this::reevaluateImmersiveMode);
-            immersiveHandler.postDelayed(immersiveRouteMonitorRunnable, 300);
-        }
+        immersiveHandler.post(this::reevaluateImmersiveMode);
+        immersiveHandler.postDelayed(immersiveRouteMonitorRunnable, 300);
     }
 
     @Override
@@ -294,15 +290,17 @@ public class MainActivity extends BridgeActivity {
             WindowInsetsController controller = getWindow().getInsetsController();
             if (controller != null) {
                 controller.show(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+                controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_DEFAULT);
             }
             return;
         }
 
-        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
     }
 
     private void reevaluateImmersiveMode() {
         if (shouldSuppressHostUiChurn()) {
+            clearImmersiveMode();
             return;
         }
         if (shouldEnforceImmersiveForRoute()) {
