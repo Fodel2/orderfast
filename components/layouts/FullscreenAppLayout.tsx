@@ -18,7 +18,7 @@ type FullscreenAppLayoutProps = {
   children: ReactNode;
   promptTitle?: string;
   promptDescription?: string;
-  fullscreenBehavior?: 'auto' | 'disabled';
+  fullscreenBehavior?: 'auto' | 'disabled' | 'manual';
 };
 
 export default function FullscreenAppLayout({
@@ -28,6 +28,7 @@ export default function FullscreenAppLayout({
   fullscreenBehavior = 'auto',
 }: FullscreenAppLayoutProps) {
   const fullscreenEnabled = fullscreenBehavior !== 'disabled';
+  const autoFullscreen = fullscreenBehavior === 'auto';
   const [showFullscreenPrompt, setShowFullscreenPrompt] = useState(false);
   const fullscreenRequestInFlight = useRef(false);
   const [wakeLock, setWakeLock] = useState<WakeLockSentinel | null>(null);
@@ -124,7 +125,9 @@ export default function FullscreenAppLayout({
       }, 150);
     };
 
-    attemptFullscreen({ allowModal: true });
+    if (autoFullscreen) {
+      attemptFullscreen({ allowModal: true });
+    }
 
     window.addEventListener('fullscreenchange', handleFullscreenChange);
     window.addEventListener('webkitfullscreenchange', handleFullscreenChange as any);
@@ -133,7 +136,7 @@ export default function FullscreenAppLayout({
       window.removeEventListener('fullscreenchange', handleFullscreenChange);
       window.removeEventListener('webkitfullscreenchange', handleFullscreenChange as any);
     };
-  }, [attemptFullscreen, fullscreenEnabled, isFullscreenActive]);
+  }, [attemptFullscreen, autoFullscreen, fullscreenEnabled, isFullscreenActive]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -143,8 +146,10 @@ export default function FullscreenAppLayout({
       await Promise.allSettled([attemptFullscreen({ allowModal: true }), requestWakeLock()]);
     };
 
-    attemptFullscreen({ allowModal: true });
-    requestWakeLock();
+    if (autoFullscreen) {
+      attemptFullscreen({ allowModal: true });
+      requestWakeLock();
+    }
 
     window.addEventListener('pointerdown', handleInteraction, { once: true });
     window.addEventListener('keydown', handleInteraction, { once: true });
@@ -153,7 +158,7 @@ export default function FullscreenAppLayout({
       window.removeEventListener('pointerdown', handleInteraction);
       window.removeEventListener('keydown', handleInteraction);
     };
-  }, [attemptFullscreen, fullscreenEnabled, requestWakeLock]);
+  }, [attemptFullscreen, autoFullscreen, fullscreenEnabled, requestWakeLock]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return;

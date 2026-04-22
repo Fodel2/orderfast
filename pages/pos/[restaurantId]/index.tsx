@@ -85,12 +85,19 @@ const orderTypeLabel: Record<OrderType, string> = {
   delivery: 'Delivery',
 };
 
+const isTruthyFullscreenFlag = (value: string | null | undefined) => {
+  if (!value) return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
+};
+
 export default function PosHomePage() {
   const router = useRouter();
   const { restaurantId: routeParam } = router.query;
   const stageParam = Array.isArray(router.query.stage) ? router.query.stage[0] : router.query.stage;
   const sourceParam = Array.isArray(router.query.source) ? router.query.source[0] : router.query.source;
   const originParam = Array.isArray(router.query.origin) ? router.query.origin[0] : router.query.origin;
+  const fullscreenParam = Array.isArray(router.query.fullscreen) ? router.query.fullscreen[0] : router.query.fullscreen;
   const restaurantId = Array.isArray(routeParam) ? routeParam[0] : routeParam;
   const storageKey = useMemo(
     () => (restaurantId ? `orderfast_pos_cart_${restaurantId}` : null),
@@ -127,8 +134,33 @@ export default function PosHomePage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [menuRefreshKey, setMenuRefreshKey] = useState(0);
+  const [posFullscreenEnabled, setPosFullscreenEnabled] = useState(false);
   const isTakePaymentReceiptFlow =
     stageParam === 'paymentComplete' && (sourceParam === 'take-payment' || sourceParam === 'pos-contactless');
+  const fullscreenPreferenceKey = useMemo(
+    () => (restaurantId ? `orderfast_pos_fullscreen_${restaurantId}` : null),
+    [restaurantId]
+  );
+  const effectivePosFullscreen = !isTakePaymentReceiptFlow && posFullscreenEnabled;
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const queryPreference = isTruthyFullscreenFlag(fullscreenParam);
+    if (queryPreference) {
+      setPosFullscreenEnabled(true);
+      return;
+    }
+    if (!fullscreenPreferenceKey) {
+      setPosFullscreenEnabled(false);
+      return;
+    }
+    setPosFullscreenEnabled(window.localStorage.getItem(fullscreenPreferenceKey) === '1');
+  }, [fullscreenParam, fullscreenPreferenceKey]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !fullscreenPreferenceKey) return;
+    window.localStorage.setItem(fullscreenPreferenceKey, posFullscreenEnabled ? '1' : '0');
+  }, [fullscreenPreferenceKey, posFullscreenEnabled]);
 
   useEffect(() => {
     if (!storageKey || typeof window === 'undefined') return;
@@ -813,7 +845,7 @@ export default function PosHomePage() {
   }, [canConfirmPayment, isSaving, savePosOrderToSupabase]);
 
   return (
-    <FullscreenAppLayout fullscreenBehavior={isTakePaymentReceiptFlow ? 'disabled' : 'auto'}>
+    <FullscreenAppLayout fullscreenBehavior={effectivePosFullscreen ? 'auto' : 'disabled'}>
       <div className="flex min-h-screen w-full flex-col">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-white px-6 py-4">
           <div>
@@ -828,6 +860,15 @@ export default function PosHomePage() {
                 className="rounded-full border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-600"
               >
                 Change order type
+              </button>
+            ) : null}
+            {!isTakePaymentReceiptFlow ? (
+              <button
+                type="button"
+                onClick={() => setPosFullscreenEnabled((prev) => !prev)}
+                className="rounded-full border border-gray-200 bg-white px-4 py-2 text-xs font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50"
+              >
+                Fullscreen: {effectivePosFullscreen ? 'On' : 'Off'}
               </button>
             ) : null}
             <button
