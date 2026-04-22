@@ -6,6 +6,7 @@ import android.os.Looper;
 import android.app.Application;
 import android.content.res.Configuration;
 import android.content.Intent;
+import android.net.Uri;
 import android.view.View;
 import android.view.WindowManager;
 import android.view.WindowInsets;
@@ -18,6 +19,13 @@ import android.webkit.WebView;
 public class MainActivity extends BridgeActivity {
     private final Handler immersiveHandler = new Handler(Looper.getMainLooper());
     private final Runnable immersiveRunnable = this::applyImmersiveMode;
+    private final Runnable immersiveRouteMonitorRunnable = new Runnable() {
+        @Override
+        public void run() {
+            reevaluateImmersiveMode();
+            immersiveHandler.postDelayed(this, 900);
+        }
+    };
     private static volatile boolean hostActivityWasPaused = false;
     private static volatile boolean hostActivityWasStopped = false;
     private static volatile boolean hostActivityWasDestroyed = false;
@@ -115,7 +123,8 @@ public class MainActivity extends BridgeActivity {
         lastKnownOrientationValue = getResources().getConfiguration().orientation;
         lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        immersiveHandler.postDelayed(immersiveRunnable, 220);
+        immersiveHandler.postDelayed(this::reevaluateImmersiveMode, 220);
+        immersiveHandler.postDelayed(immersiveRouteMonitorRunnable, 400);
         configureWebViewPresentation();
     }
 
@@ -151,7 +160,8 @@ public class MainActivity extends BridgeActivity {
         if (shouldSuppressHostUiChurn()) {
             return;
         }
-        immersiveHandler.postDelayed(immersiveRunnable, 120);
+        immersiveHandler.postDelayed(this::reevaluateImmersiveMode, 120);
+        immersiveHandler.postDelayed(immersiveRouteMonitorRunnable, 400);
     }
 
     @Override
@@ -182,6 +192,7 @@ public class MainActivity extends BridgeActivity {
         immersiveModeActive = false;
         lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
         immersiveHandler.removeCallbacks(immersiveRunnable);
+        immersiveHandler.removeCallbacks(immersiveRouteMonitorRunnable);
         super.onPause();
     }
 
@@ -191,6 +202,7 @@ public class MainActivity extends BridgeActivity {
         hostActivityLastStoppedAtMs = System.currentTimeMillis();
         lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
         immersiveHandler.removeCallbacks(immersiveRunnable);
+        immersiveHandler.removeCallbacks(immersiveRouteMonitorRunnable);
         super.onStop();
     }
 
@@ -201,6 +213,7 @@ public class MainActivity extends BridgeActivity {
         immersiveModeActive = false;
         lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
         immersiveHandler.removeCallbacks(immersiveRunnable);
+        immersiveHandler.removeCallbacks(immersiveRouteMonitorRunnable);
         super.onDestroy();
     }
 
@@ -215,10 +228,12 @@ public class MainActivity extends BridgeActivity {
         if (!hasFocus) {
             immersiveModeActive = false;
             immersiveHandler.removeCallbacks(immersiveRunnable);
+            immersiveHandler.removeCallbacks(immersiveRouteMonitorRunnable);
             return;
         }
         if (!shouldSuppressHostUiChurn()) {
-            immersiveHandler.post(immersiveRunnable);
+            immersiveHandler.post(this::reevaluateImmersiveMode);
+            immersiveHandler.postDelayed(immersiveRouteMonitorRunnable, 300);
         }
     }
 
@@ -237,9 +252,6 @@ public class MainActivity extends BridgeActivity {
     }
 
     private void applyImmersiveMode() {
-        if (shouldSuppressHostUiChurn()) {
-            return;
-        }
         if (getWindow() == null || getWindow().getDecorView() == null) {
             return;
         }
@@ -268,6 +280,36 @@ public class MainActivity extends BridgeActivity {
             | View.SYSTEM_UI_FLAG_FULLSCREEN
             | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
         getWindow().getDecorView().setSystemUiVisibility(flags);
+    }
+
+    private void clearImmersiveMode() {
+        if (getWindow() == null || getWindow().getDecorView() == null) {
+            return;
+        }
+        immersiveModeActive = false;
+        lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            getWindow().setDecorFitsSystemWindows(true);
+            WindowInsetsController controller = getWindow().getInsetsController();
+            if (controller != null) {
+                controller.show(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+            }
+            return;
+        }
+
+        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+    }
+
+    private void reevaluateImmersiveMode() {
+        if (shouldSuppressHostUiChurn()) {
+            return;
+        }
+        if (shouldEnforceImmersiveForRoute()) {
+            applyImmersiveMode();
+            return;
+        }
+        clearImmersiveMode();
     }
 
     private String orientationToName(int orientation) {
@@ -335,6 +377,55 @@ public class MainActivity extends BridgeActivity {
 
         String historyUrl = history.getItemAtIndex(currentIndex).getUrl();
         return historyUrl != null && historyUrl.contains("/payment-entry");
+    }
+
+    private boolean shouldEnforceImmersiveForRoute() {
+        WebView webView = bridge != null ? bridge.getWebView() : null;
+        String routeUrl = resolveCurrentRouteUrl(webView);
+        if (routeUrl == null || routeUrl.isEmpty()) {
+            return false;
+        }
+        Uri uri = Uri.parse(routeUrl);
+        String path = uri.getPath();
+        if (path == null) {
+            return false;
+        }
+        if (path.startsWith("/kiosk")) {
+            return true;
+        }
+        if (path.startsWith("/pos")) {
+            return hasPosFullscreenOptIn(uri) && !path.contains("/payment-entry");
+        }
+        return false;
+    }
+
+    private boolean hasPosFullscreenOptIn(Uri uri) {
+        String query = uri.getQueryParameter("fullscreen");
+        if (query == null) return false;
+        String normalized = query.trim().toLowerCase();
+        return normalized.equals("1")
+            || normalized.equals("true")
+            || normalized.equals("yes")
+            || normalized.equals("on");
+    }
+
+    private String resolveCurrentRouteUrl(WebView webView) {
+        if (webView == null) {
+            return null;
+        }
+        String currentUrl = webView.getUrl();
+        if (currentUrl != null && !currentUrl.isEmpty()) {
+            return currentUrl;
+        }
+        WebBackForwardList history = webView.copyBackForwardList();
+        if (history == null) {
+            return null;
+        }
+        int currentIndex = history.getCurrentIndex();
+        if (currentIndex < 0) {
+            return null;
+        }
+        return history.getItemAtIndex(currentIndex).getUrl();
     }
 
     private void updateHostIdentity() {
