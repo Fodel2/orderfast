@@ -19,6 +19,7 @@ import { isInStockAddonOption, isOutOfStockEntity } from '@/lib/stockAvailabilit
 import Toast from '@/components/Toast';
 import { requestPrintJobCreation } from '@/lib/print-jobs/request';
 import { buildPosPaymentEntryPath } from '@/lib/payment-entry/routes';
+import { exitDocumentFullscreen } from '@/lib/fullscreen';
 
 type OrderType = 'walk-in' | 'collection' | 'delivery';
 type PaymentMethod = 'cash' | 'card';
@@ -490,6 +491,14 @@ export default function PosHomePage() {
     }
   };
 
+  const navigateAfterFullscreenExit = useCallback(
+    async (target: string) => {
+      await exitDocumentFullscreen();
+      await router.push(target);
+    },
+    [router]
+  );
+
   const completeReceiptFlow = useCallback(() => {
     if (!restaurantId) {
       startNewOrder();
@@ -497,14 +506,16 @@ export default function PosHomePage() {
     }
     if (stageParam === 'paymentComplete' && (sourceParam === 'take-payment' || sourceParam === 'pos-contactless')) {
       if (originParam === 'launcher') {
-        router.push(`/dashboard/launcher?restaurant_id=${encodeURIComponent(String(restaurantId))}`).catch(() => undefined);
+        navigateAfterFullscreenExit(`/dashboard/launcher?restaurant_id=${encodeURIComponent(String(restaurantId))}`).catch(
+          () => undefined
+        );
         return;
       }
       router.push(`/pos/${encodeURIComponent(String(restaurantId))}`).catch(() => undefined);
       return;
     }
     startNewOrder();
-  }, [originParam, restaurantId, router, sourceParam, stageParam]);
+  }, [navigateAfterFullscreenExit, originParam, restaurantId, router, sourceParam, stageParam]);
 
   useEffect(() => {
     if (!isTakePaymentReceiptFlow) return;
@@ -873,10 +884,15 @@ export default function PosHomePage() {
             ) : null}
             <button
               type="button"
-              onClick={() => router.push('/dashboard')}
+              onClick={() => {
+                const launcherPath = restaurantId
+                  ? `/dashboard/launcher?restaurant_id=${encodeURIComponent(String(restaurantId))}`
+                  : '/dashboard/launcher';
+                navigateAfterFullscreenExit(launcherPath).catch(() => undefined);
+              }}
               className="rounded-full border border-gray-200 bg-white px-4 py-2 text-xs font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50"
             >
-              Exit to Dashboard
+              Exit
             </button>
           </div>
         </header>
@@ -1151,7 +1167,7 @@ export default function PosHomePage() {
                   <button
                     type="button"
                     onClick={() => {
-                      router.push(buildPosPaymentEntryPath(restaurantId)).catch(() => undefined);
+                      navigateAfterFullscreenExit(buildPosPaymentEntryPath(restaurantId)).catch(() => undefined);
                     }}
                     className="mt-2 text-xs font-medium text-gray-500 underline decoration-gray-300 underline-offset-2 hover:text-gray-700"
                   >

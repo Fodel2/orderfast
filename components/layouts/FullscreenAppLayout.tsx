@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import KioskActionButton from '@/components/kiosk/KioskActionButton';
+import {
+  exitDocumentFullscreen,
+  isDocumentFullscreenActive,
+  requestDocumentFullscreen,
+} from '@/lib/fullscreen';
 
 interface WakeLockSentinel {
   released: boolean;
@@ -19,6 +24,7 @@ type FullscreenAppLayoutProps = {
   promptTitle?: string;
   promptDescription?: string;
   fullscreenBehavior?: 'auto' | 'disabled' | 'manual';
+  exitFullscreenOnUnmount?: boolean;
 };
 
 export default function FullscreenAppLayout({
@@ -26,6 +32,7 @@ export default function FullscreenAppLayout({
   promptTitle = 'Tap to enter fullscreen',
   promptDescription = 'Tap below to stay fully immersed in the POS experience.',
   fullscreenBehavior = 'auto',
+  exitFullscreenOnUnmount = true,
 }: FullscreenAppLayoutProps) {
   const fullscreenEnabled = fullscreenBehavior !== 'disabled';
   const autoFullscreen = fullscreenBehavior === 'auto';
@@ -33,40 +40,31 @@ export default function FullscreenAppLayout({
   const fullscreenRequestInFlight = useRef(false);
   const [wakeLock, setWakeLock] = useState<WakeLockSentinel | null>(null);
 
-  const isFullscreenActive = useCallback(() => {
-    if (typeof document === 'undefined') return false;
-    const anyDoc = document as Document & { webkitFullscreenElement?: Element | null };
-    return Boolean(document.fullscreenElement || anyDoc.webkitFullscreenElement);
-  }, []);
-
   const attemptFullscreen = useCallback(
     async (options: { allowModal?: boolean } = {}) => {
       if (typeof document === 'undefined') return false;
-      const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> };
-      if (!el) return false;
       if (fullscreenRequestInFlight.current) {
-        return isFullscreenActive();
+        return isDocumentFullscreenActive();
       }
       fullscreenRequestInFlight.current = true;
       let success = false;
       try {
-        if (isFullscreenActive()) {
+        if (isDocumentFullscreenActive()) {
           setShowFullscreenPrompt(false);
           success = true;
         } else {
-          const request = el.requestFullscreen?.bind(el) || el.webkitRequestFullscreen?.bind(el);
-          if (!request) {
+          const requested = await requestDocumentFullscreen();
+          if (!requested) {
             if (options.allowModal) {
               setShowFullscreenPrompt(true);
             }
           } else {
-            await Promise.resolve(request());
             setShowFullscreenPrompt(false);
             success = true;
           }
         }
       } catch (err) {
-        console.debug('[pos] fullscreen request failed', err);
+        console.debug('[fullscreen] fullscreen request failed', err);
         if (options.allowModal) {
           setShowFullscreenPrompt(true);
         }
@@ -75,7 +73,7 @@ export default function FullscreenAppLayout({
       }
       return success;
     },
-    [isFullscreenActive]
+    []
   );
 
   const requestWakeLock = useCallback(async () => {
@@ -88,7 +86,7 @@ export default function FullscreenAppLayout({
       }
       return sentinel;
     } catch (err) {
-      console.debug('[pos] wake lock unavailable', err);
+      console.debug('[fullscreen] wake lock unavailable', err);
       return null;
     }
   }, []);
@@ -105,24 +103,28 @@ export default function FullscreenAppLayout({
     return () => {
       html.style.colorScheme = previousColorScheme;
       html.classList.remove('kiosk-mode');
+      if (exitFullscreenOnUnmount) {
+        void exitDocumentFullscreen();
+      }
     };
-  }, []);
+  }, [exitFullscreenOnUnmount]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return;
     if (!fullscreenEnabled) {
       setShowFullscreenPrompt(false);
+      void exitDocumentFullscreen();
       return;
     }
 
     const handleFullscreenChange = () => {
-      if (isFullscreenActive()) {
+      if (isDocumentFullscreenActive()) {
         setShowFullscreenPrompt(false);
         return;
       }
-      setTimeout(() => {
-        attemptFullscreen({ allowModal: true });
-      }, 150);
+      if (autoFullscreen) {
+        setShowFullscreenPrompt(true);
+      }
     };
 
     if (autoFullscreen) {
@@ -136,7 +138,7 @@ export default function FullscreenAppLayout({
       window.removeEventListener('fullscreenchange', handleFullscreenChange);
       window.removeEventListener('webkitfullscreenchange', handleFullscreenChange as any);
     };
-  }, [attemptFullscreen, autoFullscreen, fullscreenEnabled, isFullscreenActive]);
+  }, [attemptFullscreen, autoFullscreen, fullscreenEnabled]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -170,7 +172,7 @@ export default function FullscreenAppLayout({
           await requestWakeLock();
         }
       } catch (err) {
-        console.debug('[pos] wake lock renewal failed', err);
+        console.debug('[fullscreen] wake lock renewal failed', err);
       }
     };
 

@@ -24,6 +24,8 @@ import {
 } from '@/utils/kiosk/debug';
 import { getExpressSession } from '@/utils/express/session';
 import { useCustomerAvailability } from '@/hooks/useCustomerAvailability';
+import { exitDocumentFullscreen, isDocumentFullscreenActive, requestDocumentFullscreen } from '@/lib/fullscreen';
+import { supabase } from '@/lib/supabaseClient';
 
 export const FULL_HEADER_HEIGHT = 136;
 export const COLLAPSED_HEADER_HEIGHT = 88;
@@ -184,11 +186,9 @@ export default function KioskLayout({
     };
   }, [showOperatorUnlock]);
 
-  const isFullscreenActive = useCallback(() => {
-    if (typeof document === 'undefined') return false;
-    const anyDoc = document as Document & { webkitFullscreenElement?: Element | null };
-    return Boolean(document.fullscreenElement || anyDoc.webkitFullscreenElement);
-  }, []);
+  const [isKioskFullscreenActive, setIsKioskFullscreenActive] = useState(false);
+
+  const isFullscreenActive = useCallback(() => isDocumentFullscreenActive(), []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -272,8 +272,6 @@ export default function KioskLayout({
         setShowFullscreenPrompt(false);
         return false;
       }
-      const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> };
-      if (!el) return false;
       if (fullscreenRequestInFlight.current) {
         return isFullscreenActive();
       }
@@ -284,13 +282,12 @@ export default function KioskLayout({
           setShowFullscreenPrompt(false);
           success = true;
         } else {
-          const request = el.requestFullscreen?.bind(el) || el.webkitRequestFullscreen?.bind(el);
-          if (!request) {
+          const requested = await requestDocumentFullscreen();
+          if (!requested) {
             if (options.allowModal) {
               setShowFullscreenPrompt(true);
             }
           } else {
-            await Promise.resolve(request());
             setShowFullscreenPrompt(false);
             success = true;
           }
@@ -374,24 +371,19 @@ export default function KioskLayout({
     };
 
     const handleFullscreenChange = () => {
-      if (isFullscreenActive()) {
+      const active = isFullscreenActive();
+      setIsKioskFullscreenActive(active);
+      if (active || shouldSuppressFullscreen || !shouldAutoFullscreen) {
         setShowFullscreenPrompt(false);
         return;
       }
-      if (shouldSuppressFullscreen || !shouldAutoFullscreen) {
-        setShowFullscreenPrompt(false);
-        return;
-      }
-      setTimeout(() => {
-        if (!shouldSuppressFullscreen) {
-          attemptFullscreen({ allowModal: true });
-        }
-      }, 150);
+      setShowFullscreenPrompt(true);
     };
 
     const media = window.matchMedia?.('(display-mode: standalone)');
 
     evaluateDisplayMode();
+    setIsKioskFullscreenActive(isFullscreenActive());
     if (!shouldSuppressFullscreen) {
       attemptFullscreen({ allowModal: true });
     }
@@ -764,7 +756,9 @@ export default function KioskLayout({
     if (!restaurantId) return;
     resetOperatorUnlock();
     setShowOperatorUnlock(false);
-    await router.push(`/dashboard/launcher?restaurant_id=${encodeURIComponent(restaurantId)}`);
+    setShowFullscreenPrompt(false);
+    await exitDocumentFullscreen();
+    await router.push(`/dashboard?restaurant_id=${encodeURIComponent(restaurantId)}`);
   }, [resetOperatorUnlock, restaurantId, router]);
 
   const handleOperatorUnlockSubmit = useCallback(
@@ -865,23 +859,25 @@ export default function KioskLayout({
     );
     console.info('[kiosk-debug] force open menu requested', { targetPath, resolvedRestaurantId });
     if (!targetPath || router.asPath === targetPath) return;
-    router.push(targetPath).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      patchKioskDebugState(
-        {
-          lastNavigationTarget: targetPath,
-          navigationStatus: 'error',
-          navigationError: message,
-        },
-        'debug-force-open-menu-error'
-      );
-      console.error('[kiosk-debug] force open menu failed', { error, targetPath });
+    exitDocumentFullscreen().finally(() => {
+      router.push(targetPath).catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        patchKioskDebugState(
+          {
+            lastNavigationTarget: targetPath,
+            navigationStatus: 'error',
+            navigationError: message,
+          },
+          'debug-force-open-menu-error'
+        );
+        console.error('[kiosk-debug] force open menu failed', { error, targetPath });
+      });
     });
   }, [isExpressActive, menuPath, resolveRestaurantIdForNavigation, router]);
 
   const handleExitDebug = useCallback(() => {
     if (!restaurantId) return;
-    const targetPath = `/dashboard/launcher?restaurant_id=${encodeURIComponent(restaurantId)}`;
+    const targetPath = `/dashboard?restaurant_id=${encodeURIComponent(restaurantId)}`;
     patchKioskDebugState(
       {
         lastNavigationTarget: targetPath,
@@ -891,19 +887,47 @@ export default function KioskLayout({
       'debug-exit-kiosk'
     );
     console.info('[kiosk-debug] debug exit requested', { targetPath });
-    router.push(targetPath).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      patchKioskDebugState(
-        {
-          lastNavigationTarget: targetPath,
-          navigationStatus: 'error',
-          navigationError: message,
-        },
-        'debug-exit-kiosk-error'
-      );
-      console.error('[kiosk-debug] debug exit failed', { error, targetPath });
+    exitDocumentFullscreen().finally(() => {
+      router.push(targetPath).catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        patchKioskDebugState(
+          {
+            lastNavigationTarget: targetPath,
+            navigationStatus: 'error',
+            navigationError: message,
+          },
+          'debug-exit-kiosk-error'
+        );
+        console.error('[kiosk-debug] debug exit failed', { error, targetPath });
+      });
     });
   }, [restaurantId, router]);
+
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || shouldSuppressFullscreen || isExpressActive || !restaurantId) return;
+
+    const preventBackEscape = () => {
+      window.history.pushState({ orderfastKioskLock: true }, '', window.location.href);
+    };
+
+    const handlePopState = () => {
+      setShowLockedNavigationNotice(false);
+      setShowOperatorUnlock(false);
+      setShowFullscreenPrompt(false);
+      void (async () => {
+        await exitDocumentFullscreen();
+        await supabase.auth.signOut();
+        await router.replace('/login?kiosk_exit=1');
+      })();
+    };
+
+    preventBackEscape();
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [isExpressActive, restaurantId, router, shouldSuppressFullscreen]);
 
   const headerTitle = restaurant?.website_title || restaurant?.name || 'Restaurant';
   const logoUrl = restaurant?.logo_url || null;
@@ -1112,11 +1136,11 @@ export default function KioskLayout({
           </button>
         </div>
       ) : null}
-      {!shouldSuppressFullscreen && showFullscreenPrompt ? (
+      {!shouldSuppressFullscreen && shouldAutoFullscreen && (!isKioskFullscreenActive || showFullscreenPrompt) ? (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/20 px-6 text-center">
           <div className="w-full max-w-sm rounded-3xl border border-neutral-200 bg-white p-6 shadow-2xl shadow-black/10">
-            <p className="text-lg font-semibold text-neutral-900">Tap to enter kiosk mode</p>
-            <p className="mt-2 text-sm text-neutral-600">Tap below to stay fully immersed in the kiosk experience.</p>
+            <p className="text-lg font-semibold text-neutral-900">Tap to continue kiosk</p>
+            <p className="mt-2 text-sm text-neutral-600">Kiosk is locked until fullscreen is restored.</p>
             <KioskActionButton onClick={handleFullscreenPromptClick} className="mt-6 w-full justify-center text-base">
               Enter fullscreen
             </KioskActionButton>
@@ -1158,7 +1182,7 @@ export default function KioskLayout({
         <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/30 px-6">
           <div className="w-full max-w-sm rounded-3xl border border-neutral-200 bg-white p-6 shadow-2xl shadow-black/20">
             <p className="text-lg font-semibold text-neutral-900">Staff unlock required</p>
-            <p className="mt-2 text-sm text-neutral-600">Enter staff PIN to exit kiosk and return to launcher.</p>
+            <p className="mt-2 text-sm text-neutral-600">Enter staff PIN to exit kiosk and return to dashboard.</p>
             <form className="mt-5 space-y-4" onSubmit={handleOperatorUnlockSubmit}>
               <input
                 ref={operatorPinInputRef}
