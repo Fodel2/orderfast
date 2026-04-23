@@ -15,6 +15,7 @@ import android.view.WindowInsetsController;
 
 import com.getcapacitor.BridgeActivity;
 import android.webkit.WebView;
+import java.util.Locale;
 
 public class MainActivity extends BridgeActivity {
     private static final String TAG = "OrderfastFullscreen";
@@ -260,6 +261,14 @@ public class MainActivity extends BridgeActivity {
                     WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                 );
             }
+            getWindow().getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    | View.SYSTEM_UI_FLAG_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            );
             return;
         }
 
@@ -286,31 +295,93 @@ public class MainActivity extends BridgeActivity {
                 controller.show(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
                 controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_DEFAULT);
             }
+            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+            getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
             return;
         }
 
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
     }
 
     private void reevaluateImmersiveMode() {
+        Uri currentUri = resolveCurrentRouteUri();
+        String currentUrl = currentUri != null ? currentUri.toString() : resolveCurrentRawUrl();
+        String routePath = normalizeRoutePath(currentUri != null ? currentUri.getPath() : null);
+
         if (shouldSuppressHostUiChurn()) {
-            logImmersiveDecision("clear", "suppressed_for_tap_to_pay_or_payment_entry");
+            logImmersiveDecision("clear", "suppressed_for_tap_to_pay_or_payment_entry", currentUrl, routePath);
             clearImmersiveMode();
             return;
         }
-        String routePath = resolveCurrentRoutePath();
-        if (routePath == null) {
-            logImmersiveDecision("clear", "route_unknown");
-            clearImmersiveMode();
-            return;
-        }
-        if (shouldEnforceImmersiveForPath(routePath)) {
-            logImmersiveDecision("apply", routePath);
+
+        RouteDecision routeDecision = resolveRouteDecision(currentUri, routePath);
+        if (routeDecision.shouldApplyImmersive) {
+            logImmersiveDecision("apply", routeDecision.reason, currentUrl, routePath);
             applyImmersiveMode();
             return;
         }
-        logImmersiveDecision("clear", routePath);
+
+        logImmersiveDecision("clear", routeDecision.reason, currentUrl, routePath);
         clearImmersiveMode();
+    }
+
+    private RouteDecision resolveRouteDecision(Uri currentUri, String normalizedPath) {
+        if (normalizedPath == null) {
+            return new RouteDecision(false, "route_unknown_default_clear");
+        }
+        if (isExplicitNonImmersivePath(normalizedPath)) {
+            return new RouteDecision(false, "explicit_non_owner_route");
+        }
+        if (normalizedPath.startsWith("/kiosk")) {
+            return new RouteDecision(true, "kiosk_owner_route");
+        }
+        if (normalizedPath.startsWith("/kod")) {
+            return new RouteDecision(true, "kod_owner_route");
+        }
+        if (normalizedPath.startsWith("/pos")) {
+            boolean posFullscreenOptIn = currentUri != null && hasPosFullscreenOptIn(currentUri);
+            if (posFullscreenOptIn && !normalizedPath.contains("/payment-entry")) {
+                return new RouteDecision(true, "pos_owner_route_opt_in");
+            }
+            return new RouteDecision(false, "pos_without_opt_in_default_clear");
+        }
+        return new RouteDecision(false, "unknown_route_default_clear");
+    }
+
+    private String resolveCurrentRawUrl() {
+        WebView webView = bridge != null ? bridge.getWebView() : null;
+        if (webView == null) {
+            return null;
+        }
+        return webView.getUrl();
+    }
+
+    private String normalizeRoutePath(String path) {
+        if (path == null) {
+            return null;
+        }
+        String normalized = path.trim();
+        if (normalized.isEmpty()) {
+            return null;
+        }
+        if (!normalized.startsWith("/")) {
+            normalized = "/" + normalized;
+        }
+        if (normalized.length() > 1 && normalized.endsWith("/")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        return normalized.toLowerCase(Locale.US);
+    }
+
+    private static final class RouteDecision {
+        private final boolean shouldApplyImmersive;
+        private final String reason;
+
+        private RouteDecision(boolean shouldApplyImmersive, String reason) {
+            this.shouldApplyImmersive = shouldApplyImmersive;
+            this.reason = reason;
+        }
     }
 
     private String orientationToName(int orientation) {
@@ -342,28 +413,10 @@ public class MainActivity extends BridgeActivity {
         return path != null && path.contains("/payment-entry");
     }
 
-    private boolean shouldEnforceImmersiveForPath(String path) {
-        if (isExplicitNonImmersivePath(path)) {
-            return false;
-        }
-        if (path.startsWith("/kiosk")) {
-            return true;
-        }
-        if (path.startsWith("/kod")) {
-            return true;
-        }
-        if (path.startsWith("/pos")) {
-            Uri uri = resolveCurrentRouteUri();
-            if (uri == null) {
-                return false;
-            }
-            return hasPosFullscreenOptIn(uri) && !path.contains("/payment-entry");
-        }
-        return false;
-    }
-
     private boolean isExplicitNonImmersivePath(String path) {
-        return path.startsWith("/login")
+        return path.equals("/")
+            || path.startsWith("/launcher")
+            || path.startsWith("/login")
             || path.startsWith("/dashboard")
             || path.startsWith("/customer")
             || path.startsWith("/take-payment")
@@ -373,7 +426,7 @@ public class MainActivity extends BridgeActivity {
     private boolean hasPosFullscreenOptIn(Uri uri) {
         String query = uri.getQueryParameter("fullscreen");
         if (query == null) return false;
-        String normalized = query.trim().toLowerCase();
+        String normalized = query.trim().toLowerCase(Locale.US);
         return normalized.equals("1")
             || normalized.equals("true")
             || normalized.equals("yes")
@@ -411,18 +464,21 @@ public class MainActivity extends BridgeActivity {
         }
         try {
             Uri uri = Uri.parse(currentUrl);
-            String path = uri.getPath();
-            if (path == null || path.isEmpty()) {
-                return null;
-            }
-            return path;
+            return normalizeRoutePath(uri.getPath());
         } catch (Exception ignored) {
             return null;
         }
     }
 
-    private void logImmersiveDecision(String action, String detail) {
-        Log.d(TAG, "immersive_decision action=" + action + " detail=" + detail);
+    private void logImmersiveDecision(String action, String reason, String url, String path) {
+        Log.d(
+            TAG,
+            "immersive_decision"
+                + " action=" + action
+                + " reason=" + reason
+                + " url=" + (url != null ? url : "<null>")
+                + " parsedPath=" + (path != null ? path : "<null>")
+        );
     }
 
     private void startImmersiveRouteMonitor(long delayMs) {
