@@ -1,6 +1,7 @@
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import InternalSettlementModule from '@/components/payments/InternalSettlementModule';
+import NonFullscreenRestaurantShell from '@/components/layouts/NonFullscreenRestaurantShell';
 
 export default function PosPaymentEntryPage() {
   const router = useRouter();
@@ -18,11 +19,8 @@ export default function PosPaymentEntryPage() {
   }, [flowActive, router]);
 
   return (
-    <div
-      className="min-h-screen w-full bg-gray-900 text-gray-900"
-      style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
-    >
-      <div className="w-full px-0 pb-0 pt-2 sm:px-4 sm:py-6">
+    <NonFullscreenRestaurantShell contentClassName="pt-2 sm:pt-6" maxWidthClassName="max-w-none">
+      <div className="w-full px-0 pb-0 sm:px-4">
         <InternalSettlementModule
           restaurantId={restaurantId || null}
           onFlowActivityChange={setFlowActive}
@@ -30,6 +28,6 @@ export default function PosPaymentEntryPage() {
           source={source}
         />
       </div>
-    </div>
+    </NonFullscreenRestaurantShell>
   );
 }
