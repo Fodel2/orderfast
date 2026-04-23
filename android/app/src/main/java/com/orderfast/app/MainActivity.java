@@ -7,25 +7,18 @@ import android.app.Application;
 import android.content.res.Configuration;
 import android.content.Intent;
 import android.net.Uri;
+import android.util.Log;
 import android.view.View;
 import android.view.WindowManager;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
-import android.webkit.WebBackForwardList;
 
 import com.getcapacitor.BridgeActivity;
 import android.webkit.WebView;
 
 public class MainActivity extends BridgeActivity {
+    private static final String TAG = "OrderfastFullscreen";
     private final Handler immersiveHandler = new Handler(Looper.getMainLooper());
-    private final Runnable immersiveRunnable = this::applyImmersiveMode;
-    private final Runnable immersiveRouteMonitorRunnable = new Runnable() {
-        @Override
-        public void run() {
-            reevaluateImmersiveMode();
-            immersiveHandler.postDelayed(this, 900);
-        }
-    };
     private static volatile boolean hostActivityWasPaused = false;
     private static volatile boolean hostActivityWasStopped = false;
     private static volatile boolean hostActivityWasDestroyed = false;
@@ -125,7 +118,6 @@ public class MainActivity extends BridgeActivity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         clearImmersiveMode();
         immersiveHandler.postDelayed(this::reevaluateImmersiveMode, 220);
-        immersiveHandler.postDelayed(immersiveRouteMonitorRunnable, 400);
         configureWebViewPresentation();
     }
 
@@ -159,7 +151,6 @@ public class MainActivity extends BridgeActivity {
         hostActivityCurrentOrientation = orientationToName(getResources().getConfiguration().orientation);
         lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
         immersiveHandler.postDelayed(this::reevaluateImmersiveMode, 120);
-        immersiveHandler.postDelayed(immersiveRouteMonitorRunnable, 400);
     }
 
     @Override
@@ -189,8 +180,7 @@ public class MainActivity extends BridgeActivity {
         hostActivityLastPausedAtMs = System.currentTimeMillis();
         immersiveModeActive = false;
         lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
-        immersiveHandler.removeCallbacks(immersiveRunnable);
-        immersiveHandler.removeCallbacks(immersiveRouteMonitorRunnable);
+        immersiveHandler.removeCallbacksAndMessages(null);
         super.onPause();
     }
 
@@ -199,8 +189,7 @@ public class MainActivity extends BridgeActivity {
         hostActivityWasStopped = true;
         hostActivityLastStoppedAtMs = System.currentTimeMillis();
         lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
-        immersiveHandler.removeCallbacks(immersiveRunnable);
-        immersiveHandler.removeCallbacks(immersiveRouteMonitorRunnable);
+        immersiveHandler.removeCallbacksAndMessages(null);
         super.onStop();
     }
 
@@ -210,8 +199,7 @@ public class MainActivity extends BridgeActivity {
         hostActivityLastDestroyedAtMs = System.currentTimeMillis();
         immersiveModeActive = false;
         lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
-        immersiveHandler.removeCallbacks(immersiveRunnable);
-        immersiveHandler.removeCallbacks(immersiveRouteMonitorRunnable);
+        immersiveHandler.removeCallbacksAndMessages(null);
         super.onDestroy();
     }
 
@@ -225,12 +213,10 @@ public class MainActivity extends BridgeActivity {
         }
         if (!hasFocus) {
             immersiveModeActive = false;
-            immersiveHandler.removeCallbacks(immersiveRunnable);
-            immersiveHandler.removeCallbacks(immersiveRouteMonitorRunnable);
+            immersiveHandler.removeCallbacksAndMessages(null);
             return;
         }
         immersiveHandler.post(this::reevaluateImmersiveMode);
-        immersiveHandler.postDelayed(immersiveRouteMonitorRunnable, 300);
     }
 
     @Override
@@ -300,13 +286,22 @@ public class MainActivity extends BridgeActivity {
 
     private void reevaluateImmersiveMode() {
         if (shouldSuppressHostUiChurn()) {
+            logImmersiveDecision("clear", "suppressed_for_tap_to_pay_or_payment_entry");
             clearImmersiveMode();
             return;
         }
-        if (shouldEnforceImmersiveForRoute()) {
+        String routePath = resolveCurrentRoutePath();
+        if (routePath == null) {
+            logImmersiveDecision("clear", "route_unknown");
+            clearImmersiveMode();
+            return;
+        }
+        if (shouldEnforceImmersiveForPath(routePath)) {
+            logImmersiveDecision("apply", routePath);
             applyImmersiveMode();
             return;
         }
+        logImmersiveDecision("clear", routePath);
         clearImmersiveMode();
     }
 
@@ -330,64 +325,16 @@ public class MainActivity extends BridgeActivity {
     }
 
     private boolean isKioskRoute(WebView webView) {
-        if (webView == null) {
-            return false;
-        }
-
-        String currentUrl = webView.getUrl();
-        if (currentUrl != null && currentUrl.contains("/kiosk/")) {
-            return true;
-        }
-
-        WebBackForwardList history = webView.copyBackForwardList();
-        if (history == null) {
-            return false;
-        }
-
-        int currentIndex = history.getCurrentIndex();
-        if (currentIndex < 0) {
-            return false;
-        }
-
-        String historyUrl = history.getItemAtIndex(currentIndex).getUrl();
-        return historyUrl != null && historyUrl.contains("/kiosk/");
+        String path = resolvePathFromWebView(webView);
+        return path != null && path.startsWith("/kiosk");
     }
 
     private boolean isPosPaymentEntryRoute(WebView webView) {
-        if (webView == null) {
-            return false;
-        }
-
-        String currentUrl = webView.getUrl();
-        if (currentUrl != null && currentUrl.contains("/payment-entry")) {
-            return true;
-        }
-
-        WebBackForwardList history = webView.copyBackForwardList();
-        if (history == null) {
-            return false;
-        }
-
-        int currentIndex = history.getCurrentIndex();
-        if (currentIndex < 0) {
-            return false;
-        }
-
-        String historyUrl = history.getItemAtIndex(currentIndex).getUrl();
-        return historyUrl != null && historyUrl.contains("/payment-entry");
+        String path = resolvePathFromWebView(webView);
+        return path != null && path.contains("/payment-entry");
     }
 
-    private boolean shouldEnforceImmersiveForRoute() {
-        WebView webView = bridge != null ? bridge.getWebView() : null;
-        String routeUrl = resolveCurrentRouteUrl(webView);
-        if (routeUrl == null || routeUrl.isEmpty()) {
-            return false;
-        }
-        Uri uri = Uri.parse(routeUrl);
-        String path = uri.getPath();
-        if (path == null) {
-            return false;
-        }
+    private boolean shouldEnforceImmersiveForPath(String path) {
         if (path.startsWith("/kiosk")) {
             return true;
         }
@@ -395,6 +342,10 @@ public class MainActivity extends BridgeActivity {
             return true;
         }
         if (path.startsWith("/pos")) {
+            Uri uri = resolveCurrentRouteUri();
+            if (uri == null) {
+                return false;
+            }
             return hasPosFullscreenOptIn(uri) && !path.contains("/payment-entry");
         }
         return false;
@@ -410,23 +361,49 @@ public class MainActivity extends BridgeActivity {
             || normalized.equals("on");
     }
 
-    private String resolveCurrentRouteUrl(WebView webView) {
+    private Uri resolveCurrentRouteUri() {
+        WebView webView = bridge != null ? bridge.getWebView() : null;
         if (webView == null) {
             return null;
         }
         String currentUrl = webView.getUrl();
-        if (currentUrl != null && !currentUrl.isEmpty()) {
-            return currentUrl;
-        }
-        WebBackForwardList history = webView.copyBackForwardList();
-        if (history == null) {
+        if (currentUrl == null || currentUrl.isEmpty()) {
             return null;
         }
-        int currentIndex = history.getCurrentIndex();
-        if (currentIndex < 0) {
+        try {
+            return Uri.parse(currentUrl);
+        } catch (Exception ignored) {
             return null;
         }
-        return history.getItemAtIndex(currentIndex).getUrl();
+    }
+
+    private String resolveCurrentRoutePath() {
+        WebView webView = bridge != null ? bridge.getWebView() : null;
+        return resolvePathFromWebView(webView);
+    }
+
+    private String resolvePathFromWebView(WebView webView) {
+        if (webView == null) {
+            return null;
+        }
+        String currentUrl = webView.getUrl();
+        if (currentUrl == null || currentUrl.isEmpty()) {
+            return null;
+        }
+        try {
+            Uri uri = Uri.parse(currentUrl);
+            String path = uri.getPath();
+            if (path == null || path.isEmpty()) {
+                return null;
+            }
+            return path;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private void logImmersiveDecision(String action, String detail) {
+        Log.d(TAG, "immersive_decision action=" + action + " detail=" + detail);
     }
 
     private void updateHostIdentity() {
