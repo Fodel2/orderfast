@@ -19,6 +19,14 @@ import android.webkit.WebView;
 public class MainActivity extends BridgeActivity {
     private static final String TAG = "OrderfastFullscreen";
     private final Handler immersiveHandler = new Handler(Looper.getMainLooper());
+    private static final long IMMERSIVE_ROUTE_RECHECK_MS = 500L;
+    private final Runnable immersiveRouteMonitor = new Runnable() {
+        @Override
+        public void run() {
+            reevaluateImmersiveMode();
+            immersiveHandler.postDelayed(this, IMMERSIVE_ROUTE_RECHECK_MS);
+        }
+    };
     private static volatile boolean hostActivityWasPaused = false;
     private static volatile boolean hostActivityWasStopped = false;
     private static volatile boolean hostActivityWasDestroyed = false;
@@ -117,7 +125,7 @@ public class MainActivity extends BridgeActivity {
         lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         clearImmersiveMode();
-        immersiveHandler.postDelayed(this::reevaluateImmersiveMode, 220);
+        startImmersiveRouteMonitor(220L);
         configureWebViewPresentation();
     }
 
@@ -150,7 +158,7 @@ public class MainActivity extends BridgeActivity {
         updateHostIntentTelemetry(getIntent());
         hostActivityCurrentOrientation = orientationToName(getResources().getConfiguration().orientation);
         lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
-        immersiveHandler.postDelayed(this::reevaluateImmersiveMode, 120);
+        startImmersiveRouteMonitor(120L);
     }
 
     @Override
@@ -180,7 +188,7 @@ public class MainActivity extends BridgeActivity {
         hostActivityLastPausedAtMs = System.currentTimeMillis();
         immersiveModeActive = false;
         lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
-        immersiveHandler.removeCallbacksAndMessages(null);
+        stopImmersiveRouteMonitor();
         super.onPause();
     }
 
@@ -189,7 +197,7 @@ public class MainActivity extends BridgeActivity {
         hostActivityWasStopped = true;
         hostActivityLastStoppedAtMs = System.currentTimeMillis();
         lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
-        immersiveHandler.removeCallbacksAndMessages(null);
+        stopImmersiveRouteMonitor();
         super.onStop();
     }
 
@@ -199,7 +207,7 @@ public class MainActivity extends BridgeActivity {
         hostActivityLastDestroyedAtMs = System.currentTimeMillis();
         immersiveModeActive = false;
         lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
-        immersiveHandler.removeCallbacksAndMessages(null);
+        stopImmersiveRouteMonitor();
         super.onDestroy();
     }
 
@@ -213,10 +221,10 @@ public class MainActivity extends BridgeActivity {
         }
         if (!hasFocus) {
             immersiveModeActive = false;
-            immersiveHandler.removeCallbacksAndMessages(null);
+            stopImmersiveRouteMonitor();
             return;
         }
-        immersiveHandler.post(this::reevaluateImmersiveMode);
+        startImmersiveRouteMonitor(0L);
     }
 
     @Override
@@ -335,6 +343,9 @@ public class MainActivity extends BridgeActivity {
     }
 
     private boolean shouldEnforceImmersiveForPath(String path) {
+        if (isExplicitNonImmersivePath(path)) {
+            return false;
+        }
         if (path.startsWith("/kiosk")) {
             return true;
         }
@@ -349,6 +360,14 @@ public class MainActivity extends BridgeActivity {
             return hasPosFullscreenOptIn(uri) && !path.contains("/payment-entry");
         }
         return false;
+    }
+
+    private boolean isExplicitNonImmersivePath(String path) {
+        return path.startsWith("/login")
+            || path.startsWith("/dashboard")
+            || path.startsWith("/customer")
+            || path.startsWith("/take-payment")
+            || path.contains("/payment-entry");
     }
 
     private boolean hasPosFullscreenOptIn(Uri uri) {
@@ -404,6 +423,15 @@ public class MainActivity extends BridgeActivity {
 
     private void logImmersiveDecision(String action, String detail) {
         Log.d(TAG, "immersive_decision action=" + action + " detail=" + detail);
+    }
+
+    private void startImmersiveRouteMonitor(long delayMs) {
+        immersiveHandler.removeCallbacks(immersiveRouteMonitor);
+        immersiveHandler.postDelayed(immersiveRouteMonitor, Math.max(delayMs, 0L));
+    }
+
+    private void stopImmersiveRouteMonitor() {
+        immersiveHandler.removeCallbacks(immersiveRouteMonitor);
     }
 
     private void updateHostIdentity() {
