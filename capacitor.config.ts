@@ -5,7 +5,7 @@ const config: CapacitorConfig = {
   appName: 'OFtaptest2',
   webDir: 'www',
   server: {
-    url: 'https://orderfast.vercel.app/dashboard/launcher',
+    url: 'https://orderfast.vercel.app/',
   },
 };
 
