@@ -18,8 +18,11 @@ export default function PosPaymentEntryPage() {
   }, [flowActive, router]);
 
   return (
-    <div className="min-h-screen w-full bg-gray-50 text-gray-900">
-      <div className="w-full px-0 py-0 sm:px-4 sm:py-6">
+    <div
+      className="min-h-screen w-full bg-gray-900 text-gray-900"
+      style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+    >
+      <div className="w-full px-0 pb-0 pt-2 sm:px-4 sm:py-6">
         <InternalSettlementModule
           restaurantId={restaurantId || null}
           onFlowActivityChange={setFlowActive}

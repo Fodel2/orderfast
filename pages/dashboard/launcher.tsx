@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '@/lib/supabaseClient';
 import {
@@ -73,6 +73,8 @@ export default function DashboardLauncherPage() {
   const [bootstrapRunning, setBootstrapRunning] = useState(false);
   const [staffTakePaymentAvailability, setStaffTakePaymentAvailability] = useState<StaffTapToPayAvailability | null>(null);
   const [staffTakePaymentLoading, setStaffTakePaymentLoading] = useState(false);
+  const refreshInFlightRef = useRef(false);
+  const lastRefreshAtRef = useRef(0);
 
   useEffect(() => {
     let active = true;
@@ -214,6 +216,30 @@ export default function DashboardLauncherPage() {
     }
   }, [selectedRestaurant]);
 
+  const refreshLauncherTapToPayState = useCallback(
+    async (trigger: string, options?: { promptIfNeeded?: boolean; skipThrottle?: boolean }) => {
+      if (!selectedRestaurant) return;
+      const now = Date.now();
+      const shouldThrottle = options?.skipThrottle !== true && now - lastRefreshAtRef.current < 1200;
+      if (refreshInFlightRef.current || shouldThrottle) return;
+
+      refreshInFlightRef.current = true;
+      lastRefreshAtRef.current = now;
+      try {
+        console.info('[payments][contactless_eligibility]', 'launcher_eligibility_refresh_triggered', {
+          trigger,
+          restaurantId: selectedRestaurant.id,
+          promptIfNeeded: options?.promptIfNeeded === true,
+        });
+        await runBootstrap(options?.promptIfNeeded === true);
+        await evaluateLauncherStaffTakePaymentAvailability();
+      } finally {
+        refreshInFlightRef.current = false;
+      }
+    },
+    [evaluateLauncherStaffTakePaymentAvailability, runBootstrap, selectedRestaurant]
+  );
+
   useEffect(() => {
     const existing = readLauncherBootstrapSnapshot();
     if (selectedRestaurant && existing?.restaurantId === selectedRestaurant.id) {
@@ -221,13 +247,32 @@ export default function DashboardLauncherPage() {
       if (existing.state === 'ready') return;
     }
     if (!selectedRestaurant) return;
-    void runBootstrap(true);
-  }, [runBootstrap, selectedRestaurant]);
+    void refreshLauncherTapToPayState('launcher_selected_restaurant', { promptIfNeeded: true, skipThrottle: true });
+  }, [refreshLauncherTapToPayState, selectedRestaurant]);
 
   useEffect(() => {
-    if (!selectedRestaurant) return;
-    void evaluateLauncherStaffTakePaymentAvailability();
-  }, [evaluateLauncherStaffTakePaymentAvailability, selectedRestaurant]);
+    if (!selectedRestaurant) return undefined;
+
+    const refreshOnReturn = () => {
+      void refreshLauncherTapToPayState('launcher_visible_or_focus', { promptIfNeeded: false });
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        refreshOnReturn();
+      }
+    };
+
+    window.addEventListener('focus', refreshOnReturn);
+    window.addEventListener('pageshow', refreshOnReturn);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      window.removeEventListener('focus', refreshOnReturn);
+      window.removeEventListener('pageshow', refreshOnReturn);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [refreshLauncherTapToPayState, selectedRestaurant]);
 
   useEffect(() => {
     if (!selectedRestaurant) return;
@@ -294,17 +339,19 @@ export default function DashboardLauncherPage() {
     <main
       style={{
         minHeight: '100vh',
-        background: '#f8fafc',
+        background: 'linear-gradient(180deg, #0f172a 0px, #0f172a 136px, #f8fafc 136px, #f8fafc 100%)',
         padding: '1rem',
+        paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)',
+        paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem)',
         display: 'flex',
         justifyContent: 'center',
       }}
     >
       <div style={{ width: '100%', maxWidth: '420px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        <header style={{ marginTop: '0.5rem' }}>
-          <p style={{ margin: 0, fontSize: '0.8rem', color: '#475569', letterSpacing: '0.06em' }}>ORDERFAST</p>
-          <h1 style={{ margin: '0.25rem 0 0', fontSize: '1.5rem' }}>App launcher</h1>
-          <p style={{ margin: '0.5rem 0 0', color: '#64748b', fontSize: '0.9rem' }}>
+        <header style={{ marginTop: '0.25rem', paddingTop: '0.25rem' }}>
+          <p style={{ margin: 0, fontSize: '0.8rem', color: '#cbd5e1', letterSpacing: '0.08em' }}>ORDERFAST</p>
+          <h1 style={{ margin: '0.3rem 0 0', fontSize: '1.5rem', color: '#f8fafc' }}>App launcher</h1>
+          <p style={{ margin: '0.5rem 0 0', color: '#cbd5e1', fontSize: '0.9rem' }}>
             Choose your destination and continue with your current restaurant context.
           </p>
         </header>
