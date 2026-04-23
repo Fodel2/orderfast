@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '@/lib/supabaseClient';
-import NonFullscreenRestaurantShell from '@/components/layouts/NonFullscreenRestaurantShell';
 import {
   readLauncherBootstrapSnapshot,
   runLauncherBootstrap,
@@ -337,8 +336,18 @@ export default function DashboardLauncherPage() {
   }, [takePaymentPresentation?.detail, takePaymentUnavailable]);
 
   return (
-    <NonFullscreenRestaurantShell contentClassName="flex flex-col gap-4" maxWidthClassName="max-w-[420px]">
-      <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+    <main
+      style={{
+        minHeight: '100vh',
+        background: 'linear-gradient(180deg, #0f172a 0px, #0f172a 136px, #f8fafc 136px, #f8fafc 100%)',
+        padding: '1rem',
+        paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)',
+        paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem)',
+        display: 'flex',
+        justifyContent: 'center',
+      }}
+    >
+      <div style={{ width: '100%', maxWidth: '420px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         <header style={{ marginTop: '0.25rem', paddingTop: '0.25rem' }}>
           <p style={{ margin: 0, fontSize: '0.8rem', color: '#cbd5e1', letterSpacing: '0.08em' }}>ORDERFAST</p>
           <h1 style={{ margin: '0.3rem 0 0', fontSize: '1.5rem', color: '#f8fafc' }}>App launcher</h1>
@@ -498,6 +507,6 @@ export default function DashboardLauncherPage() {
           </>
         ) : null}
       </div>
-    </NonFullscreenRestaurantShell>
+    </main>
   );
 }
