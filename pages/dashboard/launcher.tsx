@@ -339,37 +339,48 @@ export default function DashboardLauncherPage() {
     <main
       style={{
         minHeight: '100vh',
-        background: 'linear-gradient(180deg, #0f172a 0px, #0f172a 136px, #f8fafc 136px, #f8fafc 100%)',
-        padding: '1rem',
+        background: 'linear-gradient(180deg, #0f172a 0px, #172554 188px, #eff6ff 188px, #e2e8f0 100%)',
         paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)',
-        paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem)',
+        paddingRight: '1rem',
+        paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1.4rem)',
+        paddingLeft: '1rem',
         display: 'flex',
         justifyContent: 'center',
       }}
     >
-      <div style={{ width: '100%', maxWidth: '420px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        <header style={{ marginTop: '0.25rem', paddingTop: '0.25rem' }}>
-          <p style={{ margin: 0, fontSize: '0.8rem', color: '#cbd5e1', letterSpacing: '0.08em' }}>ORDERFAST</p>
-          <h1 style={{ margin: '0.3rem 0 0', fontSize: '1.5rem', color: '#f8fafc' }}>App launcher</h1>
-          <p style={{ margin: '0.5rem 0 0', color: '#cbd5e1', fontSize: '0.9rem' }}>
-            Choose your destination and continue with your current restaurant context.
+      <div style={{ width: '100%', maxWidth: '430px', display: 'flex', flexDirection: 'column', gap: '0.95rem' }}>
+        <header
+          style={{
+            borderRadius: '18px',
+            padding: '1rem 1rem 1.05rem',
+            background: 'linear-gradient(145deg, rgba(15,23,42,0.9), rgba(30,41,59,0.76))',
+            border: '1px solid rgba(191, 219, 254, 0.2)',
+            boxShadow: '0 18px 40px rgba(15, 23, 42, 0.24)',
+            marginTop: '0.1rem',
+          }}
+        >
+          <p style={{ margin: 0, fontSize: '0.76rem', color: '#bfdbfe', letterSpacing: '0.1em', fontWeight: 700 }}>ORDERFAST</p>
+          <h1 style={{ margin: '0.35rem 0 0', fontSize: '1.45rem', color: '#f8fafc' }}>App launcher</h1>
+          <p style={{ margin: '0.55rem 0 0', color: '#dbeafe', fontSize: '0.9rem', lineHeight: 1.4 }}>
+            Choose where to continue and keep working in your current restaurant context.
           </p>
         </header>
 
-        {isLoading ? <p style={{ color: '#334155' }}>Loading your access…</p> : null}
-        {!isLoading && error ? <p style={{ color: '#b91c1c' }}>{error}</p> : null}
-        {!isLoading && !error && bootstrapRunning ? <p style={{ color: '#334155' }}>Running launcher bootstrap…</p> : null}
+        {isLoading ? <p style={{ color: '#1e293b', margin: 0, fontWeight: 600 }}>Loading your access…</p> : null}
+        {!isLoading && error ? <p style={{ color: '#b91c1c', margin: 0, fontWeight: 600 }}>{error}</p> : null}
+        {!isLoading && !error && bootstrapRunning ? <p style={{ color: '#1e293b', margin: 0 }}>Running launcher bootstrap…</p> : null}
 
         {!isLoading && !error && !selectedRestaurant && restaurants.length > 1 ? (
           <section
             style={{
-              background: '#fff',
-              border: '1px solid #e2e8f0',
-              borderRadius: '12px',
-              padding: '0.9rem',
+              background: 'rgba(255,255,255,0.92)',
+              border: '1px solid #dbeafe',
+              borderRadius: '16px',
+              padding: '0.95rem',
               display: 'flex',
               flexDirection: 'column',
               gap: '0.65rem',
+              boxShadow: '0 12px 30px rgba(30, 41, 59, 0.08)',
             }}
           >
             <h2 style={{ margin: 0, fontSize: '1rem' }}>Choose a restaurant</h2>
@@ -382,9 +393,9 @@ export default function DashboardLauncherPage() {
                   textAlign: 'left',
                   width: '100%',
                   padding: '0.75rem',
-                  borderRadius: '10px',
-                  border: '1px solid #cbd5e1',
-                  background: '#fff',
+                  borderRadius: '11px',
+                  border: '1px solid #bfdbfe',
+                  background: '#f8fafc',
                   fontWeight: 600,
                 }}
               >
@@ -398,10 +409,11 @@ export default function DashboardLauncherPage() {
           <>
             <section
               style={{
-                background: '#fff',
-                border: '1px solid #e2e8f0',
-                borderRadius: '12px',
-                padding: '0.9rem',
+                background: 'rgba(255,255,255,0.92)',
+                border: '1px solid #dbeafe',
+                borderRadius: '16px',
+                padding: '0.95rem',
+                boxShadow: '0 12px 28px rgba(30, 41, 59, 0.08)',
               }}
             >
               <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b' }}>Selected restaurant</p>
@@ -430,8 +442,8 @@ export default function DashboardLauncherPage() {
                 style={{
                   background: '#fffbeb',
                   border: '1px solid #fde68a',
-                  borderRadius: '12px',
-                  padding: '0.85rem',
+                  borderRadius: '14px',
+                  padding: '0.9rem',
                 }}
               >
                 <p style={{ margin: 0, fontWeight: 700, color: '#92400e', fontSize: '0.9rem' }}>
@@ -447,12 +459,12 @@ export default function DashboardLauncherPage() {
               disabled={launchingMode !== null || bootstrapRunning}
               style={{
                 textAlign: 'left',
-                background: 'linear-gradient(135deg, #0f172a, #1e293b)',
+                background: 'linear-gradient(135deg, #0f172a, #1e293b 68%, #1d4ed8)',
                 color: '#fff',
                 border: '1px solid #0f172a',
-                borderRadius: '14px',
-                padding: '1rem',
-                boxShadow: '0 10px 24px rgba(15, 23, 42, 0.2)',
+                borderRadius: '16px',
+                padding: '1.05rem',
+                boxShadow: '0 18px 34px rgba(15, 23, 42, 0.27)',
                 opacity: launchingMode && launchingMode !== 'kiosk' ? 0.65 : 1,
               }}
             >
@@ -481,12 +493,13 @@ export default function DashboardLauncherPage() {
                   disabled={launchingMode !== null || bootstrapRunning || staffTakePaymentLoading || (mode.key === 'take_payment' && takePaymentUnavailable)}
                   style={{
                     textAlign: 'left',
-                    borderRadius: '12px',
-                    padding: '0.9rem',
+                    borderRadius: '14px',
+                    padding: '0.95rem',
                     opacity: launchingMode === null || launchingMode === mode.key ? 1 : 0.65,
                     cursor: mode.key === 'take_payment' && takePaymentUnavailable ? 'not-allowed' : 'pointer',
-                    border: mode.key === 'take_payment' && takePaymentUnavailable ? '1px solid #f1f5f9' : '1px solid #dbeafe',
-                    background: mode.key === 'take_payment' && takePaymentUnavailable ? '#f8fafc' : '#fff',
+                    border: mode.key === 'take_payment' && takePaymentUnavailable ? '1px solid #e2e8f0' : '1px solid #bfdbfe',
+                    background: mode.key === 'take_payment' && takePaymentUnavailable ? 'rgba(248,250,252,0.9)' : 'rgba(255,255,255,0.92)',
+                    boxShadow: '0 10px 20px rgba(148, 163, 184, 0.16)',
                   }}
                 >
                   <span style={{ display: 'block', fontWeight: 700 }}>
@@ -504,6 +517,15 @@ export default function DashboardLauncherPage() {
                 </button>
               ))}
             </section>
+            <div
+              aria-hidden="true"
+              style={{
+                height: '0.8rem',
+                borderRadius: '999px',
+                background: 'linear-gradient(90deg, rgba(15,23,42,0.18), rgba(51,65,85,0.04))',
+                marginTop: '0.2rem',
+              }}
+            />
           </>
         ) : null}
       </div>
