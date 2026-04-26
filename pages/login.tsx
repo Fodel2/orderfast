@@ -45,9 +45,9 @@ export default function Login() {
       style={{
         minHeight: '100vh',
         background: 'linear-gradient(180deg, #eef2ff 0%, #f8fafc 48%, #e2e8f0 100%)',
-        paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1.4rem)',
+        paddingTop: 'calc(env(safe-area-inset-top, 0px) + 2.3rem)',
         paddingRight: '1rem',
-        paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1.6rem)',
+        paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 2.6rem)',
         paddingLeft: '1rem',
         display: 'flex',
         alignItems: 'flex-start',
@@ -122,6 +122,18 @@ export default function Login() {
           </button>
         </form>
       </section>
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'fixed',
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: 'calc(env(safe-area-inset-bottom, 0px) + 1.4rem)',
+          background: 'linear-gradient(180deg, rgba(226,232,240,0), rgba(30,41,59,0.18))',
+          pointerEvents: 'none',
+        }}
+      />
     </main>
   );
 }

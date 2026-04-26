@@ -32,14 +32,46 @@ type AppMode = {
   key: 'kiosk' | 'pos' | 'kod' | 'menu' | 'take_payment';
   label: string;
   description: string;
+  icon: string;
+  accent: string;
 };
 
 const APP_MODES: AppMode[] = [
-  { key: 'kiosk', label: 'Kiosk', description: 'Self-service ordering experience.' },
-  { key: 'pos', label: 'POS', description: 'Front-of-house point of sale tools.' },
-  { key: 'take_payment', label: 'Take Payment', description: 'Collect ad-hoc and unpaid-order card payments.' },
-  { key: 'kod', label: 'KOD', description: 'Kitchen order display workflows.' },
-  { key: 'menu', label: 'Menu', description: 'Customer menu preview and ordering.' },
+  {
+    key: 'kiosk',
+    label: 'Open Kiosk',
+    description: 'Start customer self-ordering for your selected restaurant.',
+    icon: '⌁',
+    accent: '#60a5fa',
+  },
+  {
+    key: 'pos',
+    label: 'POS',
+    description: 'Serve walk-ins, build orders, and manage front-of-house sales.',
+    icon: '▦',
+    accent: '#1d4ed8',
+  },
+  {
+    key: 'take_payment',
+    label: 'Take Payment',
+    description: 'Take quick card payments or collect unpaid orders.',
+    icon: '◉',
+    accent: '#0284c7',
+  },
+  {
+    key: 'kod',
+    label: 'KOD',
+    description: 'View live kitchen tickets and preparation status.',
+    icon: '◫',
+    accent: '#475569',
+  },
+  {
+    key: 'menu',
+    label: 'Menu',
+    description: 'Preview the customer menu and ordering experience.',
+    icon: '☰',
+    accent: '#334155',
+  },
 ];
 const RESTAURANT_SELECTION_KEY = 'orderfast_launcher_restaurant_id';
 
@@ -342,7 +374,7 @@ export default function DashboardLauncherPage() {
         background: 'linear-gradient(180deg, #0f172a 0px, #172554 188px, #eff6ff 188px, #e2e8f0 100%)',
         paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)',
         paddingRight: '1rem',
-        paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1.4rem)',
+        paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 2.45rem)',
         paddingLeft: '1rem',
         display: 'flex',
         justifyContent: 'center',
@@ -409,30 +441,56 @@ export default function DashboardLauncherPage() {
           <>
             <section
               style={{
-                background: 'rgba(255,255,255,0.92)',
-                border: '1px solid #dbeafe',
-                borderRadius: '16px',
-                padding: '0.95rem',
-                boxShadow: '0 12px 28px rgba(30, 41, 59, 0.08)',
+                background: 'rgba(255,255,255,0.78)',
+                border: '1px solid rgba(191,219,254,0.9)',
+                borderRadius: '999px',
+                padding: '0.45rem 0.8rem',
+                boxShadow: '0 8px 20px rgba(30, 41, 59, 0.08)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '0.6rem',
               }}
             >
-              <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b' }}>Selected restaurant</p>
-              <p style={{ margin: '0.3rem 0 0', fontWeight: 700 }}>{selectedRestaurant.name}</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', minWidth: 0 }}>
+                <span
+                  aria-hidden="true"
+                  style={{
+                    display: 'inline-flex',
+                    width: '1.55rem',
+                    height: '1.55rem',
+                    borderRadius: '999px',
+                    background: 'linear-gradient(145deg, #e0f2fe, #bfdbfe)',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#1e3a8a',
+                    fontWeight: 700,
+                    fontSize: '0.82rem',
+                    flexShrink: 0,
+                  }}
+                >
+                  R
+                </span>
+                <p style={{ margin: 0, fontSize: '0.86rem', color: '#1e293b', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {selectedRestaurant.name}
+                </p>
+              </div>
               {restaurants.length > 1 ? (
                 <button
                   type="button"
                   onClick={() => setSelectedRestaurantId(null)}
                   style={{
-                    marginTop: '0.6rem',
                     border: 'none',
                     background: 'transparent',
-                    color: '#2563eb',
+                    color: '#1d4ed8',
                     padding: 0,
-                    textDecoration: 'underline',
+                    fontSize: '0.82rem',
+                    fontWeight: 700,
                     cursor: 'pointer',
+                    flexShrink: 0,
                   }}
                 >
-                  Switch restaurant
+                  Switch
                 </button>
               ) : null}
             </section>
@@ -466,13 +524,37 @@ export default function DashboardLauncherPage() {
                 padding: '1.05rem',
                 boxShadow: '0 18px 34px rgba(15, 23, 42, 0.27)',
                 opacity: launchingMode && launchingMode !== 'kiosk' ? 0.65 : 1,
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '0.8rem',
               }}
             >
-              <span style={{ display: 'block', fontWeight: 700, fontSize: '1rem' }}>
-                {launchingMode === 'kiosk' ? 'Opening kiosk…' : 'Open Kiosk'}
+              <span
+                aria-hidden="true"
+                style={{
+                  width: '2rem',
+                  height: '2rem',
+                  borderRadius: '0.7rem',
+                  background: 'rgba(191,219,254,0.2)',
+                  border: '1px solid rgba(191,219,254,0.5)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#bfdbfe',
+                  fontSize: '1rem',
+                  fontWeight: 700,
+                  flexShrink: 0,
+                }}
+              >
+                {APP_MODES[0].icon}
               </span>
-              <span style={{ display: 'block', marginTop: '0.3rem', color: '#cbd5e1', fontSize: '0.88rem' }}>
-                Launches directly into the kiosk route for {selectedRestaurant.name}.
+              <span style={{ display: 'block' }}>
+                <span style={{ display: 'block', fontWeight: 700, fontSize: '1rem' }}>
+                  {launchingMode === 'kiosk' ? 'Opening kiosk…' : 'Open Kiosk'}
+                </span>
+                <span style={{ display: 'block', marginTop: '0.3rem', color: '#cbd5e1', fontSize: '0.88rem' }}>
+                  Start customer self-ordering for {selectedRestaurant.name}.
+                </span>
               </span>
             </button>
 
@@ -500,19 +582,43 @@ export default function DashboardLauncherPage() {
                     border: mode.key === 'take_payment' && takePaymentUnavailable ? '1px solid #e2e8f0' : '1px solid #bfdbfe',
                     background: mode.key === 'take_payment' && takePaymentUnavailable ? 'rgba(248,250,252,0.9)' : 'rgba(255,255,255,0.92)',
                     boxShadow: '0 10px 20px rgba(148, 163, 184, 0.16)',
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '0.72rem',
                   }}
                 >
-                  <span style={{ display: 'block', fontWeight: 700 }}>
-                    {mode.key === 'take_payment' && takePaymentUnavailable
-                      ? 'Take Payment unavailable'
-                      : launchingMode === mode.key
-                        ? `Opening ${mode.label}…`
-                        : mode.label}
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      width: '1.9rem',
+                      height: '1.9rem',
+                      borderRadius: '0.68rem',
+                      background: `linear-gradient(145deg, ${mode.accent}20, ${mode.accent}35)`,
+                      border: `1px solid ${mode.accent}55`,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: mode.accent,
+                      fontSize: '0.94rem',
+                      fontWeight: 700,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {mode.icon}
                   </span>
-                  <span style={{ display: 'block', marginTop: '0.25rem', color: '#475569', fontSize: '0.9rem' }}>
-                    {mode.key === 'take_payment' && takePaymentUnavailable
-                      ? takePaymentPresentation?.detail || 'Tap to Pay is unavailable on this device right now.'
-                      : mode.description}
+                  <span style={{ display: 'block' }}>
+                    <span style={{ display: 'block', fontWeight: 700 }}>
+                      {mode.key === 'take_payment' && takePaymentUnavailable
+                        ? 'Take Payment unavailable'
+                        : launchingMode === mode.key
+                          ? `Opening ${mode.label}…`
+                          : mode.label}
+                    </span>
+                    <span style={{ display: 'block', marginTop: '0.25rem', color: '#475569', fontSize: '0.9rem' }}>
+                      {mode.key === 'take_payment' && takePaymentUnavailable
+                        ? takePaymentPresentation?.detail || 'Tap to Pay is unavailable on this device right now.'
+                        : mode.description}
+                    </span>
                   </span>
                 </button>
               ))}
@@ -520,10 +626,10 @@ export default function DashboardLauncherPage() {
             <div
               aria-hidden="true"
               style={{
-                height: '0.8rem',
+                height: '1.1rem',
                 borderRadius: '999px',
-                background: 'linear-gradient(90deg, rgba(15,23,42,0.18), rgba(51,65,85,0.04))',
-                marginTop: '0.2rem',
+                background: 'linear-gradient(90deg, rgba(15,23,42,0.28), rgba(51,65,85,0.08))',
+                marginTop: '0.35rem',
               }}
             />
           </>
