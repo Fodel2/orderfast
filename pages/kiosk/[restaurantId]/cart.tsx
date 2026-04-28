@@ -96,24 +96,17 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   const placeOrderDisabled = cartCount === 0 || placingOrder || !availability.canSubmitActiveSession;
   const submissionInFlightRef = useRef(false);
   const isMountedRef = useRef(true);
-  const {
-    height: viewportHeight,
-    offsetTop: viewportOffsetTop,
-    obstructionHeight,
-    refresh: refreshViewport,
-  } = useKeyboardViewport(showConfirmModal);
-  const isKeyboardOpen = obstructionHeight > 0;
+  const { height: viewportHeight, refresh: refreshViewport } = useKeyboardViewport(showConfirmModal);
   const isCompactModal = viewportHeight > 0 ? viewportHeight < 520 : false;
   const modalPadding = isCompactModal ? 12 : 16;
   const modalOverlayStyle = useMemo<CSSProperties>(
     () => ({
-      top: `${viewportOffsetTop}px`,
       height: 'var(--vvh, 100dvh)',
       paddingTop: `calc(env(safe-area-inset-top) + ${modalPadding}px)`,
       paddingBottom: `calc(env(safe-area-inset-bottom) + ${modalPadding}px)`,
       overflow: 'hidden',
     }),
-    [modalPadding, viewportOffsetTop]
+    [modalPadding]
   );
   const modalCardStyle = useMemo<CSSProperties>(
     () => ({
@@ -739,7 +732,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
       <AnimatePresence>
         {showConfirmModal ? (
           <motion.div
-            className="fixed inset-x-0 z-[70] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm"
+            className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm"
             style={modalOverlayStyle}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -756,7 +749,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
               <div
                 className={`modalContent flex min-h-0 flex-1 flex-col px-6 sm:px-8 ${
                   isCompactModal ? 'py-4' : 'py-6 sm:py-8'
-                } ${isKeyboardOpen && confirmStep === 2 ? 'overflow-y-auto' : ''}`}
+                }`}
               >
                 <AnimatePresence mode="wait">
                   {confirmStep === 1 ? (

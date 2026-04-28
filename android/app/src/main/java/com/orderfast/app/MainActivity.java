@@ -8,6 +8,7 @@ import android.content.res.Configuration;
 import android.content.Intent;
 import android.net.Uri;
 import android.graphics.Color;
+import android.graphics.Rect;
 import android.util.Log;
 import android.view.View;
 import android.view.WindowManager;
@@ -129,6 +130,7 @@ public class MainActivity extends BridgeActivity {
         lastKnownOrientationValue = getResources().getConfiguration().orientation;
         lastHostLifecycleUpdateAtMs = System.currentTimeMillis();
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         clearImmersiveMode();
         startImmersiveRouteMonitor(220L);
         configureWebViewPresentation();
@@ -336,6 +338,11 @@ public class MainActivity extends BridgeActivity {
         }
 
         RouteDecision routeDecision = resolveRouteDecision(currentUri, routePath);
+        if (routeDecision.shouldApplyImmersive && isImeVisible()) {
+            logImmersiveDecision("clear", "ime_visible_keyboard_entry", currentUrl, routePath);
+            clearImmersiveMode();
+            return;
+        }
         if (routeDecision.shouldApplyImmersive) {
             logImmersiveDecision("apply", routeDecision.reason, currentUrl, routePath);
             applyImmersiveMode();
@@ -375,6 +382,24 @@ public class MainActivity extends BridgeActivity {
             return null;
         }
         return webView.getUrl();
+    }
+
+    private boolean isImeVisible() {
+        if (getWindow() == null || getWindow().getDecorView() == null) {
+            return false;
+        }
+        View decorView = getWindow().getDecorView();
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            WindowInsets rootInsets = decorView.getRootWindowInsets();
+            return rootInsets != null && rootInsets.isVisible(WindowInsets.Type.ime());
+        }
+
+        Rect visibleFrame = new Rect();
+        decorView.getWindowVisibleDisplayFrame(visibleFrame);
+        int keyboardInsetHeight = decorView.getHeight() - visibleFrame.height();
+        float density = getResources().getDisplayMetrics().density;
+        int minImeThresholdPx = Math.round(120f * density);
+        return keyboardInsetHeight > minImeThresholdPx;
     }
 
     private String normalizeRoutePath(String path) {
