@@ -6,7 +6,7 @@ import {
   CreditCardIcon,
 } from '@heroicons/react/24/outline';
 import KioskLayout from '@/components/layouts/KioskLayout';
-import { KioskSessionProvider } from '@/context/KioskSessionContext';
+import { KioskSessionProvider, useKioskSession } from '@/context/KioskSessionContext';
 import { useCart } from '@/context/CartContext';
 import { supabase } from '@/lib/supabaseClient';
 import {
@@ -199,6 +199,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   const TAP_TO_PAY_SETUP_STORAGE_KEY = 'orderfast_kiosk_tap_to_pay_setup_ready';
   const router = useRouter();
   const { cart, clearCart } = useCart();
+  const { acquireIdleSuppression } = useKioskSession();
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [restaurantLoading, setRestaurantLoading] = useState(true);
   const [settingsLoading, setSettingsLoading] = useState(true);
@@ -1918,6 +1919,34 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         : PRE_HANDOVER_PROGRESS_LINES,
     [contactlessUiPhase]
   );
+  const suppressIdleForBlockingState = useMemo(
+    () =>
+      settingsLoading ||
+      orderSubmitting ||
+      (stage === 'contactless' &&
+        (contactlessBusy ||
+          contactlessStatus !== 'idle' ||
+          contactlessTerminalState === 'in_progress' ||
+          preHandoverOverlayOwned ||
+          showSharedTransitionOverlay)),
+    [
+      contactlessBusy,
+      contactlessStatus,
+      contactlessTerminalState,
+      orderSubmitting,
+      preHandoverOverlayOwned,
+      settingsLoading,
+      showSharedTransitionOverlay,
+      stage,
+    ]
+  );
+
+  useEffect(() => {
+    if (!suppressIdleForBlockingState) return;
+    // Tap to Pay handoff, processing, and checkout finalization are non-interactive waits.
+    const release = acquireIdleSuppression('kiosk_payment_blocking_state');
+    return release;
+  }, [acquireIdleSuppression, suppressIdleForBlockingState]);
 
   useEffect(() => {
     if (stage !== 'contactless') {
