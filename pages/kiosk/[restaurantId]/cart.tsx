@@ -96,8 +96,11 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   const placeOrderDisabled = cartCount === 0 || placingOrder || !availability.canSubmitActiveSession;
   const submissionInFlightRef = useRef(false);
   const isMountedRef = useRef(true);
-  const { height: viewportHeight, refresh: refreshViewport } = useKeyboardViewport(showConfirmModal);
+  const { height: viewportHeight, obstructionHeight, refresh: refreshViewport } = useKeyboardViewport(showConfirmModal);
+  const [nameEntryInputFocused, setNameEntryInputFocused] = useState(false);
   const isCompactModal = viewportHeight > 0 ? viewportHeight < 520 : false;
+  const isNameEntryStepActive = showConfirmModal && confirmStep === 2;
+  const isNameEntryKeyboardActive = isNameEntryStepActive && (nameEntryInputFocused || obstructionHeight > 0);
   const modalPadding = isCompactModal ? 12 : 16;
   const modalOverlayStyle = useMemo<CSSProperties>(
     () => ({
@@ -110,9 +113,19 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   );
   const modalCardStyle = useMemo<CSSProperties>(
     () => ({
+      height: 'auto',
       maxHeight: '100%',
     }),
     []
+  );
+  const nameStepFormStyle = useMemo<CSSProperties | undefined>(
+    () =>
+      isNameEntryKeyboardActive
+        ? {
+            paddingBottom: `calc(env(safe-area-inset-bottom) + ${Math.max(24, obstructionHeight)}px)`,
+          }
+        : undefined,
+    [isNameEntryKeyboardActive, obstructionHeight]
   );
   useBodyScrollLock(showConfirmModal);
 
@@ -642,6 +655,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     setTableError('');
     setNamePromptMessage('');
     setSubmissionError('');
+    setNameEntryInputFocused(false);
     setShowConfirmModal(true);
   };
 
@@ -654,6 +668,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     }
     setConfirmStep(2);
     setSubmissionError('');
+    setNameEntryInputFocused(false);
   };
 
   const handlePlaceOrder = () => {
@@ -670,6 +685,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     setNameError('');
     setTableError('');
     setSubmissionError('');
+    setNameEntryInputFocused(false);
   };
 
   useEffect(() => {
@@ -747,7 +763,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
               transition={{ duration: 0.18, ease: 'easeOut' }}
             >
               <div
-                className={`modalContent flex min-h-0 flex-1 flex-col px-6 sm:px-8 ${
+                className={`modalContent flex flex-col px-6 sm:px-8 ${
                   isCompactModal ? 'py-4' : 'py-6 sm:py-8'
                 }`}
               >
@@ -759,7 +775,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -12 }}
                       transition={{ duration: 0.2, ease: 'easeOut' }}
-                      className={`flex min-h-0 flex-1 flex-col ${isCompactModal ? 'gap-4' : 'gap-6'}`}
+                      className={`flex flex-col ${isCompactModal ? 'gap-4' : 'gap-6'}`}
                     >
                       <div className={`${isCompactModal ? 'space-y-1.5' : 'space-y-2'}`}>
                         <h3 className="text-[clamp(1.35rem,2.8vw,1.625rem)] font-semibold text-neutral-900">
@@ -769,11 +785,12 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                           {confirmMessage}
                         </p>
                       </div>
-                      <div className="mt-auto grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <button
                           type="button"
                           onClick={() => {
                             registerActivity();
+                            setNameEntryInputFocused(false);
                             setShowConfirmModal(false);
                           }}
                           className={`inline-flex items-center justify-center rounded-2xl border border-neutral-200 font-semibold text-neutral-800 transition hover:bg-neutral-50 ${
@@ -799,7 +816,9 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -12 }}
                       transition={{ duration: 0.2, ease: 'easeOut' }}
-                      className={`flex min-h-0 flex-1 flex-col ${isCompactModal ? 'gap-4' : 'gap-5'}`}
+                      className={`flex flex-col ${isCompactModal ? 'gap-4' : 'gap-5'} ${
+                        isNameEntryKeyboardActive ? 'overflow-y-auto' : ''
+                      }`}
                     >
                       <div className={`${isCompactModal ? 'space-y-1.5' : 'space-y-2.5'}`}>
                         <h3 className="text-[clamp(1.35rem,2.8vw,1.625rem)] font-semibold text-neutral-900">
@@ -813,16 +832,21 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                       </div>
                       <form
                         autoComplete="off"
+                        id="kioskOrderLabelForm"
+                        name="kioskOrderLabelForm"
                         onSubmit={(event) => {
                           event.preventDefault();
                           handlePlaceOrder();
                         }}
-                        className="flex min-h-0 flex-1 flex-col gap-4"
+                        className="flex flex-col gap-4"
+                        style={nameStepFormStyle}
                       >
                         <div className="space-y-2">
                           {isExpressFlow && expressMode === 'dine_in' ? (
                             <input
                               type="text"
+                              id="kioskTableLabelInput"
+                              name="kioskTableLabelInput"
                               inputMode="numeric"
                               value={tableNumberInput}
                               onChange={(e) => {
@@ -831,7 +855,16 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                                 setTableNumberInput(numeric);
                                 patchExpressSession({ tableNumber: numeric ? Number.parseInt(numeric, 10) : null });
                               }}
-                              onFocus={() => refreshViewport()}
+                              onFocus={() => {
+                                setNameEntryInputFocused(true);
+                                refreshViewport();
+                              }}
+                              onBlur={() => setNameEntryInputFocused(false)}
+                              autoComplete="off"
+                              spellCheck={false}
+                              autoCorrect="off"
+                              autoCapitalize="off"
+                              enterKeyHint="next"
                               placeholder="Enter table number…"
                               className={`w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 font-semibold text-neutral-900 shadow-inner shadow-neutral-200/70 outline-none transition focus:border-[var(--kiosk-accent,#111827)]/60 focus:bg-white ${
                                 isCompactModal ? 'py-3 text-[1rem]' : 'py-4 text-[1.1rem]'
@@ -841,7 +874,9 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
 
                           {!isExpressFlow || expressMode !== 'dine_in' ? (
                             <input
-                              type="text"
+                              type="search"
+                              id="orderLabelInput"
+                              name="orderLabelInput"
                               inputMode="text"
                               value={customerName}
                               onChange={(e) => {
@@ -851,23 +886,29 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                                   patchExpressSession({ customerName: e.target.value || null });
                                 }
                               }}
-                              onFocus={() => refreshViewport()}
+                              onFocus={() => {
+                                setNameEntryInputFocused(true);
+                                refreshViewport();
+                              }}
+                              onBlur={() => setNameEntryInputFocused(false)}
                               autoComplete="off"
                               aria-autocomplete="none"
                               aria-haspopup="false"
                               spellCheck={false}
                               autoCorrect="off"
-                              autoCapitalize="words"
+                              autoCapitalize="off"
                               enterKeyHint="done"
                               data-ignore-autofill="true"
                               placeholder="Enter your name…"
-                              className={`w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 font-semibold text-neutral-900 shadow-inner shadow-neutral-200/70 outline-none transition focus:border-[var(--kiosk-accent,#111827)]/60 focus:bg-white ${
+                              className={`w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 font-semibold text-neutral-900 shadow-inner shadow-neutral-200/70 outline-none transition focus:border-[var(--kiosk-accent,#111827)]/60 focus:bg-white [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden ${
                                 isCompactModal ? 'py-3 text-[1rem]' : 'py-4 text-[1.1rem]'
                               }`}
                             />
                           ) : (
                             <input
-                              type="text"
+                              type="search"
+                              id="expressOrderLabelInput"
+                              name="expressOrderLabelInput"
                               inputMode="text"
                               value={customerName}
                               onChange={(e) => {
@@ -875,17 +916,21 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                                 setCustomerName(e.target.value);
                                 patchExpressSession({ customerName: e.target.value || null });
                               }}
-                              onFocus={() => refreshViewport()}
+                              onFocus={() => {
+                                setNameEntryInputFocused(true);
+                                refreshViewport();
+                              }}
+                              onBlur={() => setNameEntryInputFocused(false)}
                               autoComplete="off"
                               aria-autocomplete="none"
                               aria-haspopup="false"
                               spellCheck={false}
                               autoCorrect="off"
-                              autoCapitalize="words"
+                              autoCapitalize="off"
                               enterKeyHint="done"
                               data-ignore-autofill="true"
                               placeholder="Name (optional)…"
-                              className={`w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 font-semibold text-neutral-900 shadow-inner shadow-neutral-200/70 outline-none transition focus:border-[var(--kiosk-accent,#111827)]/60 focus:bg-white ${
+                              className={`w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 font-semibold text-neutral-900 shadow-inner shadow-neutral-200/70 outline-none transition focus:border-[var(--kiosk-accent,#111827)]/60 focus:bg-white [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden ${
                                 isCompactModal ? 'py-3 text-[1rem]' : 'py-4 text-[1.1rem]'
                               }`}
                             />
@@ -901,7 +946,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                             <p className="text-sm font-semibold text-rose-600">{submissionError}</p>
                           ) : null}
                         </div>
-                        <div className="mt-auto grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                           <button
                             type="button"
                             onClick={handleBackToReview}
