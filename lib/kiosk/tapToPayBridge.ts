@@ -107,22 +107,88 @@ export interface TapToPayPlugin {
 
 const TapToPayNative = registerPlugin<TapToPayPlugin>('OrderfastTapToPay');
 
+const CANCELED_ALIASES = new Set([
+  'canceled',
+  'cancelled',
+  'canceled_by_user',
+  'cancelled_by_user',
+  'user_canceled',
+  'user_cancelled',
+  'payment_canceled',
+  'payment_cancelled',
+  'cancelled_payment',
+  'canceled_payment',
+]);
+
+const canonicalize = (value: unknown) =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+
+const normalizeTapToPayStatus = (status: unknown): TapToPayStatus => {
+  const normalized = canonicalize(status);
+  if (CANCELED_ALIASES.has(normalized)) return 'canceled';
+  if (normalized === 'completed' || normalized === 'success' || normalized === 'succeeded') return 'succeeded';
+  if (normalized === 'error') return 'failed';
+  if (
+    normalized === 'idle' ||
+    normalized === 'preparing' ||
+    normalized === 'ready' ||
+    normalized === 'collecting' ||
+    normalized === 'processing' ||
+    normalized === 'succeeded' ||
+    normalized === 'failed' ||
+    normalized === 'canceled' ||
+    normalized === 'unavailable'
+  ) {
+    return normalized;
+  }
+  return 'failed';
+};
+
+const normalizeTapToPayErrorCode = (code: unknown): TapToPayErrorCode | undefined => {
+  const normalized = canonicalize(code);
+  if (!normalized) return undefined;
+  if (CANCELED_ALIASES.has(normalized)) return 'canceled';
+  if (
+    normalized === 'unsupported_device' ||
+    normalized === 'unsupported' ||
+    normalized === 'permission_required' ||
+    normalized === 'readiness_false' ||
+    normalized === 'network_error' ||
+    normalized === 'session_error' ||
+    normalized === 'native_busy' ||
+    normalized === 'canceled' ||
+    normalized === 'processing_error' ||
+    normalized === 'unknown_error'
+  ) {
+    return normalized;
+  }
+  return 'unknown_error';
+};
+
 const normalizeTapToPayResult = (result: TapToPayResult): TapToPayResult => {
+  const normalizedResult: TapToPayResult = {
+    ...result,
+    status: normalizeTapToPayStatus(result.status),
+    code: normalizeTapToPayErrorCode(result.code),
+  };
   if (result.code === 'unsupported_device') {
-    return result;
+    return normalizedResult;
   }
 
-  if (result.code === 'unsupported' && result.detail && typeof result.detail === 'object') {
-    const terminalCode = (result.detail as { terminalCode?: unknown }).terminalCode;
+  if (normalizedResult.code === 'unsupported' && normalizedResult.detail && typeof normalizedResult.detail === 'object') {
+    const terminalCode = (normalizedResult.detail as { terminalCode?: unknown }).terminalCode;
     if (terminalCode === 'TAP_TO_PAY_UNSUPPORTED_DEVICE') {
       return {
-        ...result,
+        ...normalizedResult,
         code: 'unsupported_device',
       };
     }
   }
 
-  return result;
+  return normalizedResult;
 };
 
 const readErrorMessage = (error: unknown) => {
@@ -244,14 +310,14 @@ export const tapToPayBridge: TapToPayPlugin = {
   },
   async cancelTapToPayPayment() {
     try {
-      return await TapToPayNative.cancelTapToPayPayment();
+      return normalizeTapToPayResult(await TapToPayNative.cancelTapToPayPayment());
     } catch {
       return webUnavailable();
     }
   },
   async getTapToPayStatus() {
     try {
-      return await TapToPayNative.getTapToPayStatus();
+      return normalizeTapToPayResult(await TapToPayNative.getTapToPayStatus());
     } catch (error) {
       return {
         status: 'unavailable',

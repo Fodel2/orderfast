@@ -17,6 +17,7 @@ import NativeTapToPayPreHandoverOverlay from '@/components/payments/NativeTapToP
 import {
   canCloseNativeTapToPayPreHandoverOverlay,
   isNativeTapToPayOverlayVisiblePhase,
+  normalizeNativeTapToPayState,
   POST_HANDOVER_PROGRESS_LINES,
   PRE_HANDOVER_PROGRESS_LINES,
   resolveNativeTapToPayUiPhase,
@@ -201,13 +202,29 @@ export default function InternalSettlementModule({
   const quickChargePaymentIntentIdRef = useRef<string | null>(null);
 
   const selectedOrder = useMemo(() => orders.find((order) => order.id === selectedOrderId) || null, [orders, selectedOrderId]);
-  const uiPhase = useMemo(() => resolveNativeTapToPayUiPhase(state), [state]);
+  const hasReturnedFromNative = useMemo(
+    () =>
+      state === 'processing' ||
+      state === 'finalizing' ||
+      state === 'completed' ||
+      state === 'canceled' ||
+      state === 'failed' ||
+      terminalVisualState === 'canceled' ||
+      terminalVisualState === 'failed' ||
+      showSuccessTick,
+    [showSuccessTick, state, terminalVisualState]
+  );
+  const uiPhase = useMemo(
+    () => resolveNativeTapToPayUiPhase(state, { hasReturnedFromNative }),
+    [hasReturnedFromNative, state]
+  );
   const showTransitionOverlay = useMemo(() => {
     const showTerminalBeat = terminalVisualState === 'canceled' || terminalVisualState === 'failed';
-    const showLoader = isNativeTapToPayOverlayVisiblePhase(state) || showSuccessTick || preHandoverOverlayOwned;
+    const showLoader =
+      isNativeTapToPayOverlayVisiblePhase(state, { hasReturnedFromNative }) || showSuccessTick || preHandoverOverlayOwned;
     if (deadRunLockRef.current && showLoader) return showTerminalBeat;
     return showLoader || showTerminalBeat;
-  }, [preHandoverOverlayOwned, showSuccessTick, state, terminalVisualState]);
+  }, [hasReturnedFromNative, preHandoverOverlayOwned, showSuccessTick, state, terminalVisualState]);
   const canCloseOverlay = useMemo(
     () =>
       canCloseNativeTapToPayPreHandoverOverlay({
@@ -215,8 +232,9 @@ export default function InternalSettlementModule({
         inCancelTransition: cancelInFlight,
         inSuccessTransition: showSuccessTick || terminalVisualState === 'canceled' || terminalVisualState === 'failed',
         preHandoverOverlayOwned,
+        hasReturnedFromNative,
       }),
-    [cancelInFlight, preHandoverOverlayOwned, showSuccessTick, state, terminalVisualState]
+    [cancelInFlight, hasReturnedFromNative, preHandoverOverlayOwned, showSuccessTick, state, terminalVisualState]
   );
   const overlayLines = useMemo(
     () =>
@@ -744,7 +762,10 @@ export default function InternalSettlementModule({
 
   useEffect(() => {
     if (!showTransitionOverlay) {
-      if (deadRunLockRef.current && (isNativeTapToPayOverlayVisiblePhase(state) || showSuccessTick || preHandoverOverlayOwned)) {
+      if (
+        deadRunLockRef.current &&
+        (isNativeTapToPayOverlayVisiblePhase(state, { hasReturnedFromNative }) || showSuccessTick || preHandoverOverlayOwned)
+      ) {
         logCollectionEvent('overlay_show_blocked_dead_run', {
           flowRunId: deadRunLockRef.current.flowRunId,
           reason: deadRunLockRef.current.reason,
@@ -765,7 +786,10 @@ export default function InternalSettlementModule({
       return;
     }
     overlayPhaseEnteredAtMsRef.current = Date.now();
-    if (deadRunLockRef.current && (isNativeTapToPayOverlayVisiblePhase(state) || showSuccessTick || preHandoverOverlayOwned)) {
+    if (
+      deadRunLockRef.current &&
+      (isNativeTapToPayOverlayVisiblePhase(state, { hasReturnedFromNative }) || showSuccessTick || preHandoverOverlayOwned)
+    ) {
       logCollectionEvent('overlay_show_blocked_dead_run', {
         flowRunId: deadRunLockRef.current.flowRunId,
         reason: deadRunLockRef.current.reason,
@@ -793,18 +817,18 @@ export default function InternalSettlementModule({
       });
     }, 3600);
     return () => window.clearInterval(interval);
-  }, [logCollectionEvent, overlayLines.length, preHandoverOverlayOwned, showTransitionOverlay, state, uiPhase]);
+  }, [hasReturnedFromNative, logCollectionEvent, overlayLines.length, preHandoverOverlayOwned, showTransitionOverlay, state, uiPhase]);
 
   useEffect(() => {
-    if (!isNativeTapToPayOverlayVisiblePhase(state)) return;
+    if (!isNativeTapToPayOverlayVisiblePhase(state, { hasReturnedFromNative })) return;
     const timeout = window.setTimeout(() => {
-      if (!isNativeTapToPayOverlayVisiblePhase(state)) return;
+      if (!isNativeTapToPayOverlayVisiblePhase(state, { hasReturnedFromNative })) return;
       logCollectionEvent('watchdog_triggered', { phase: uiPhase, state });
       setState('failed');
       setMessage('Payment transition took too long. Please close and try again.');
     }, 60000);
     return () => window.clearTimeout(timeout);
-  }, [logCollectionEvent, state, uiPhase]);
+  }, [hasReturnedFromNative, logCollectionEvent, state, uiPhase]);
 
   useEffect(() => {
     if (state === 'idle' || state === 'ready' || state === 'failed' || state === 'canceled' || state === 'completed') {
@@ -902,7 +926,9 @@ export default function InternalSettlementModule({
         : null;
     if (reasonCategoryRaw === 'customer_cancelled' || reasonCategoryRaw === 'app_cancelled') return reasonCategoryRaw;
     if (reasonCategoryRaw === 'lifecycle_interrupted') return 'ambiguous_canceled_after_takeover';
-    const canceled = nativeResult.status === 'canceled' || nativeResult.code === 'canceled';
+    const normalizedStatus = normalizeNativeTapToPayState(nativeResult.status, { hasReturnedFromNative: true });
+    const normalizedCode = normalizeNativeTapToPayState(nativeResult.code, { hasReturnedFromNative: true });
+    const canceled = normalizedStatus === 'canceled' || normalizedCode === 'canceled';
     if (canceled) {
       const interruptionReasonCode =
         typeof (nativeResult as { interruptionReasonCode?: unknown }).interruptionReasonCode === 'string'
