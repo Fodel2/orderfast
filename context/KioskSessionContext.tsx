@@ -37,7 +37,7 @@ const KioskSessionContext = createContext<KioskSessionContextValue>({
   acquireIdleSuppression: () => () => undefined,
   resetKioskToStart: () => undefined,
   showIdleModal: false,
-  idleCountdown: 12,
+  idleCountdown: 10,
   idleCountdownStarted: false,
   idleMessage: '',
   handleIdleStay: () => undefined,
@@ -55,7 +55,7 @@ export function KioskSessionProvider({
   const { clearCart } = useCart();
   const [sessionActiveState, setSessionActiveState] = useState<boolean>(() => Boolean(restaurantId && hasSeenHome(restaurantId)));
   const [showIdleModal, setShowIdleModal] = useState(false);
-  const [idleCountdown, setIdleCountdown] = useState(12);
+  const [idleCountdown, setIdleCountdown] = useState(10);
   const [idleCountdownStarted, setIdleCountdownStarted] = useState(false);
   const [idleMessage, setIdleMessage] = useState('');
   const idleTimeoutRef = useRef<number | null>(null);
@@ -95,7 +95,7 @@ export function KioskSessionProvider({
       idleCountdownBufferTimeoutRef.current = null;
     }
     setShowIdleModal(false);
-    setIdleCountdown(12);
+    setIdleCountdown(10);
     setIdleCountdownStarted(false);
     setIdleMessage('');
   }, []);
@@ -172,6 +172,23 @@ export function KioskSessionProvider({
 
   const hasIdleSuppression = useCallback(() => activeIdleSuppressionTokensRef.current.size > 0, []);
 
+  const idleMessages = useMemo(
+    () => [
+      'Just checking… did you wander off?',
+      'You still there? Or did a pigeon steal your attention?',
+      'We haven’t heard from you. Should we alert the missing-persons unit?',
+      'Do you require adult supervision?',
+      'If you don’t press something, the kiosk WILL win.',
+      'Move your finger if you can hear us.',
+      'This screen will self-destruct in 10 seconds. Kidding. Mostly.',
+      'We’re not clingy. We just need a tiny tap to know you’re alive.',
+      'If you’re thinking, take your time. If you’re napping, we’re impressed.',
+    ],
+    []
+  );
+
+  const getRandomMessage = useCallback((list: string[]) => list[Math.floor(Math.random() * list.length)], []);
+
   const handleIdleTimeout = useCallback(() => {
     const expressFlow = isExpressActive();
     clearIdleState();
@@ -195,12 +212,12 @@ export function KioskSessionProvider({
       clearTimeout(idleCountdownBufferTimeoutRef.current);
       idleCountdownBufferTimeoutRef.current = null;
     }
-    setIdleCountdown(12);
+    setIdleCountdown(10);
     setIdleCountdownStarted(false);
     idleCountdownBufferTimeoutRef.current = window.setTimeout(() => {
       idleCountdownBufferTimeoutRef.current = null;
       setIdleCountdownStarted(true);
-      setIdleCountdown(12);
+      setIdleCountdown(10);
       idleCountdownIntervalRef.current = window.setInterval(() => {
         setIdleCountdown((prev) => {
           const next = prev - 1;
@@ -237,11 +254,11 @@ export function KioskSessionProvider({
       if (hasIdleSuppression()) {
         return;
       }
-      setIdleMessage('For your privacy, this session will reset soon unless you tap below.');
+      setIdleMessage(getRandomMessage(idleMessages));
       setShowIdleModal(true);
       startIdleCountdown();
     }, 30000);
-  }, [clearIdleState, hasIdleSuppression, isExpressActive, startIdleCountdown]);
+  }, [clearIdleState, getRandomMessage, hasIdleSuppression, idleMessages, isExpressActive, startIdleCountdown]);
 
   const acquireIdleSuppression = useCallback(
     (_reason?: string) => {

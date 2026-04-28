@@ -1152,9 +1152,7 @@ export default function KioskLayout({
         <div className="IdleOverlay">
           <div className="IdleModalCard">
             <h2 className="IdleTitle">Still there?</h2>
-            <p className="IdleSubtitle">
-              {idleMessage || 'We have not seen any activity.'}
-            </p>
+            <p className="IdleSubtitle">{idleMessage}</p>
 
             <div className="IdleCountdownWrapper">
               {idleCountdownStarted ? (
