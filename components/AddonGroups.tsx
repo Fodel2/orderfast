@@ -109,10 +109,18 @@ export default function AddonGroups({
   addons,
   onChange,
   initialSelections,
+  invalidGroupIds = [],
+  attentionGroupId,
+  attentionPulse = 0,
+  registerGroupRef,
 }: {
   addons: AddonGroup[];
   onChange?: (sel: Record<string, Record<string, number>>) => void;
   initialSelections?: Record<string, Record<string, number>>;
+  invalidGroupIds?: string[];
+  attentionGroupId?: string | null;
+  attentionPulse?: number;
+  registerGroupRef?: (groupId: string, element: HTMLDivElement | null) => void;
 }) {
   const [selectedQuantities, setSelectedQuantities] = useState<
     Record<string, Record<string, number>>
@@ -123,6 +131,7 @@ export default function AddonGroups({
   const accent =
     typeof brand?.brand === 'string' && brand.brand ? brand.brand : '#EB2BB9';
   const currencyCode = brand?.currencyCode;
+  const invalidGroupSet = new Set(invalidGroupIds);
 
   useEffect(() => {
     if (process.env.NODE_ENV === 'development') {
@@ -210,7 +219,12 @@ export default function AddonGroups({
       {addons.map((group) => {
 
         const gid = group.group_id ?? group.id;
-        const hasError = Boolean(errors[gid]);
+        const validationError = errors[gid];
+        const requiredMissingValidation = validationError?.includes('Selection required');
+        const showValidationError = Boolean(validationError) && !requiredMissingValidation;
+        const isRequiredMissing = invalidGroupSet.has(gid);
+        const hasError = isRequiredMissing || showValidationError;
+        const isAttentionTarget = attentionGroupId === gid;
         const multipleChoice =
           typeof group.multiple_choice === "string"
             ? group.multiple_choice === "true"
@@ -232,11 +246,20 @@ export default function AddonGroups({
 
         return (
           <div
-            key={gid}
+            key={`${gid}:${isAttentionTarget ? attentionPulse : 0}`}
+            ref={(element) => registerGroupRef?.(gid, element)}
             className={`rounded-2xl border bg-white/95 p-3.5 shadow-sm md:px-5 md:py-4 ${
-              hasError ? 'border-rose-200' : 'border-slate-200/80'
+              hasError ? 'border-rose-500 ring-1 ring-rose-300' : 'border-slate-200/80'
             }`}
             aria-invalid={hasError || undefined}
+            style={
+              isAttentionTarget
+                ? ({
+                    animation: 'kiosk-group-shake 320ms ease-in-out',
+                    animationDelay: `${attentionPulse % 2}ms`,
+                  } as CSSProperties)
+                : undefined
+            }
           >
               <div className="mb-1.5 flex items-center justify-between">
                 <h3 className="text-lg font-semibold">
@@ -418,9 +441,24 @@ export default function AddonGroups({
                   );
                 })}
               </ScrollRow>
+              {isRequiredMissing ? (
+                <p className="mt-2 text-sm font-medium text-rose-600">
+                  Please select an option to continue.
+                </p>
+              ) : showValidationError ? (
+                <p className="mt-2 text-sm font-medium text-rose-600">{validationError}</p>
+              ) : null}
             </div>
           );
         })}
+      <style>{`
+        @keyframes kiosk-group-shake {
+          0%, 100% { transform: translateX(0); }
+          25% { transform: translateX(-5px); }
+          50% { transform: translateX(5px); }
+          75% { transform: translateX(-3px); }
+        }
+      `}</style>
       </div>
   );
 }

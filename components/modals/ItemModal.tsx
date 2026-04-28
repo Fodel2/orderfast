@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 
@@ -39,8 +39,13 @@ export default function ItemModal({ item, restaurantId, onAddToCart, isOutOfStoc
   const [qty, setQty] = useState(1);
   const [selections, setSelections] = useState<Record<string, Record<string, number>>>({});
   const [modalAnim, setModalAnim] = useState(false);
+  const [missingRequiredGroupIds, setMissingRequiredGroupIds] = useState<string[]>([]);
+  const [firstMissingGroupId, setFirstMissingGroupId] = useState<string | null>(null);
+  const [attentionPulse, setAttentionPulse] = useState(0);
   const [secText, setSecText] = useState('#fff');
   const [mix, setMix] = useState(false);
+  const groupsContainerRef = useRef<HTMLDivElement | null>(null);
+  const groupElementRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const brand = useBrand?.();
   const accent = typeof brand?.brand === 'string' && brand.brand ? brand.brand : undefined;
   const currencyCode = brand?.currencyCode;
@@ -136,6 +141,12 @@ export default function ItemModal({ item, restaurantId, onAddToCart, isOutOfStoc
     }
   }, [groups, item?.id, restaurantId]);
 
+  useEffect(() => {
+    if (!item?.id) return;
+    setMissingRequiredGroupIds([]);
+    setFirstMissingGroupId(null);
+  }, [item?.id]);
+
 
   const filteredGroups = useMemo(() => {
     return groups
@@ -205,8 +216,23 @@ export default function ItemModal({ item, restaurantId, onAddToCart, isOutOfStoc
     }
 
     const errors = validateAddonSelections(filteredGroups, selections);
+    const missingRequired = filteredGroups
+      .filter((group) => {
+        if (!group.required) return false;
+        const gid = group.group_id ?? group.id;
+        const selected = selections[gid] || {};
+        return Object.values(selected).every((quantity) => quantity <= 0);
+      })
+      .map((group) => group.group_id ?? group.id);
+
+    if (missingRequired.length) {
+      setMissingRequiredGroupIds(missingRequired);
+      setFirstMissingGroupId(missingRequired[0] ?? null);
+      setAttentionPulse((current) => current + 1);
+      return;
+    }
+
     if (Object.keys(errors).length) {
-      alert('Please complete required add-ons');
       return;
     }
 
@@ -240,6 +266,38 @@ export default function ItemModal({ item, restaurantId, onAddToCart, isOutOfStoc
     handleClose();
   };
 
+  const handleSelectionsChange = (nextSelections: Record<string, Record<string, number>>) => {
+    setSelections(nextSelections);
+
+    if (!missingRequiredGroupIds.length) return;
+
+    const remainingMissing = missingRequiredGroupIds.filter((groupId) => {
+      const selected = nextSelections[groupId] || {};
+      return Object.values(selected).every((quantity) => quantity <= 0);
+    });
+
+    if (remainingMissing.length !== missingRequiredGroupIds.length) {
+      setMissingRequiredGroupIds(remainingMissing);
+      setFirstMissingGroupId(remainingMissing[0] ?? null);
+    }
+  };
+
+  const registerGroupRef = (groupId: string, element: HTMLDivElement | null) => {
+    groupElementRefs.current[groupId] = element;
+  };
+
+  useEffect(() => {
+    if (!firstMissingGroupId) return;
+    const targetElement = groupElementRefs.current[firstMissingGroupId];
+    if (!targetElement) return;
+
+    targetElement.scrollIntoView({
+      behavior: 'smooth',
+      block: 'center',
+      inline: 'nearest',
+    });
+  }, [firstMissingGroupId, attentionPulse]);
+
   if (!mounted) {
     return null;
   }
@@ -265,7 +323,7 @@ export default function ItemModal({ item, restaurantId, onAddToCart, isOutOfStoc
           <XMarkIcon className="h-5 w-5" aria-hidden="true" />
         </button>
         <div className="max-h-[90vh] overflow-hidden rounded-3xl bg-white text-slate-900 shadow-[0_20px_60px_rgba(15,23,42,0.28)]">
-          <div className="max-h-[90vh] overflow-y-auto">
+          <div ref={groupsContainerRef} className="max-h-[90vh] overflow-y-auto">
             <div className="mx-auto flex w-full max-w-xl flex-col items-center justify-center">
               {imageUrl ? (
                 <div
@@ -307,7 +365,19 @@ export default function ItemModal({ item, restaurantId, onAddToCart, isOutOfStoc
                     <p className="text-center text-slate-500">Loading add-ons…</p>
                   ) : filteredGroups.length > 0 ? (
                     <>
-                      <AddonGroups addons={filteredGroups} onChange={setSelections} />
+                      <AddonGroups
+                        addons={filteredGroups}
+                        onChange={handleSelectionsChange}
+                        invalidGroupIds={missingRequiredGroupIds}
+                        attentionGroupId={firstMissingGroupId}
+                        attentionPulse={attentionPulse}
+                        registerGroupRef={registerGroupRef}
+                      />
+                      {missingRequiredGroupIds.length > 0 ? (
+                        <p className="mt-3 text-sm font-medium text-rose-600">
+                          Please complete required selections.
+                        </p>
+                      ) : null}
                       {requiredGroupsUnavailable ? (
                         <p className="mt-3 text-sm font-medium text-rose-600">Options unavailable right now</p>
                       ) : null}
