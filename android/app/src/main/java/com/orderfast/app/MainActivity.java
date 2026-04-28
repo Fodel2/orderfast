@@ -106,13 +106,16 @@ public class MainActivity extends BridgeActivity {
     }
 
     private boolean shouldSuppressHostUiChurn() {
+        WebView webView = bridge != null ? bridge.getWebView() : null;
+        if (isKioskPaymentEntryRoute(webView)) {
+            return false;
+        }
         if (OrderfastTapToPayPlugin.isNativeTapToPayTakeoverActive()) {
             return true;
         }
         if (OrderfastTapToPayPlugin.isNativeTapToPayProcessInFlight()) {
             return true;
         }
-        WebView webView = bridge != null ? bridge.getWebView() : null;
         return isPosPaymentEntryRoute(webView);
     }
 
@@ -423,6 +426,11 @@ public class MainActivity extends BridgeActivity {
     private boolean isKioskRoute(WebView webView) {
         String path = resolvePathFromWebView(webView);
         return path != null && path.startsWith("/kiosk");
+    }
+
+    private boolean isKioskPaymentEntryRoute(WebView webView) {
+        String path = resolvePathFromWebView(webView);
+        return path != null && path.startsWith("/kiosk/") && path.contains("/payment-entry");
     }
 
     private boolean isPosPaymentEntryRoute(WebView webView) {
