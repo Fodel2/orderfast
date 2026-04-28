@@ -159,6 +159,7 @@ export default function KioskLayout({
     resetIdleTimer,
     showIdleModal,
     idleCountdown,
+    idleCountdownStarted,
     idleMessage,
     handleIdleStay,
     handleIdleTimeout,
@@ -1151,13 +1152,21 @@ export default function KioskLayout({
         <div className="IdleOverlay">
           <div className="IdleModalCard">
             <h2 className="IdleTitle">Still there?</h2>
-            <p className="IdleSubtitle">{idleMessage}</p>
+            <p className="IdleSubtitle">
+              {idleMessage || 'We have not seen any activity.'}
+            </p>
 
             <div className="IdleCountdownWrapper">
-              <div className="IdleCountdownNumber" key={idleCountdown} style={{ color: countdownColor }}>
-                {idleCountdown}
-              </div>
-              <div className="IdleCountdownText">Resetting in {idleCountdown} seconds...</div>
+              {idleCountdownStarted ? (
+                <>
+                  <div className="IdleCountdownNumber" key={idleCountdown} style={{ color: countdownColor }}>
+                    {idleCountdown}
+                  </div>
+                  <div className="IdleCountdownText">Resetting in {idleCountdown} seconds...</div>
+                </>
+              ) : (
+                <div className="IdleCountdownText">Starting countdown in 3 seconds…</div>
+              )}
             </div>
 
             <div className="IdleButtons">

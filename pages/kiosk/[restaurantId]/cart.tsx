@@ -67,7 +67,7 @@ export default function KioskCartPage() {
 function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   const router = useRouter();
   const { cart, subtotal, clearCart } = useCart();
-  const { resetKioskToStart, registerActivity, sessionActive } = useKioskSession();
+  const { resetKioskToStart, registerActivity, sessionActive, acquireIdleSuppression } = useKioskSession();
   const cartCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [restaurantLoading, setRestaurantLoading] = useState(true);
@@ -115,6 +115,13 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     []
   );
   useBodyScrollLock(showConfirmModal);
+
+  useEffect(() => {
+    if (!showLoadingOverlay) return;
+    // Prevent timeout prompts while the order is actively being submitted/finalized.
+    const release = acquireIdleSuppression('kiosk_order_submission_loading');
+    return release;
+  }, [acquireIdleSuppression, showLoadingOverlay]);
 
   const confirmMessages = useMemo(
     () => [
