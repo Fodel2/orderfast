@@ -108,8 +108,9 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
       paddingTop: `calc(env(safe-area-inset-top) + ${modalPadding}px)`,
       paddingBottom: `calc(env(safe-area-inset-bottom) + ${modalPadding}px)`,
       overflow: 'hidden',
+      alignItems: isNameEntryKeyboardActive ? 'flex-start' : 'center',
     }),
-    [modalPadding]
+    [isNameEntryKeyboardActive, modalPadding]
   );
   const modalCardStyle = useMemo<CSSProperties>(
     () => ({
@@ -117,15 +118,6 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
       maxHeight: '100%',
     }),
     []
-  );
-  const nameStepFormStyle = useMemo<CSSProperties | undefined>(
-    () =>
-      isNameEntryKeyboardActive
-        ? {
-            paddingBottom: `calc(env(safe-area-inset-bottom) + ${Math.max(24, obstructionHeight)}px)`,
-          }
-        : undefined,
-    [isNameEntryKeyboardActive, obstructionHeight]
   );
   useBodyScrollLock(showConfirmModal);
 
@@ -816,9 +808,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -12 }}
                       transition={{ duration: 0.2, ease: 'easeOut' }}
-                      className={`flex flex-col ${isCompactModal ? 'gap-4' : 'gap-5'} ${
-                        isNameEntryKeyboardActive ? 'overflow-y-auto' : ''
-                      }`}
+                      className={`flex flex-col ${isCompactModal ? 'gap-4' : 'gap-5'}`}
                     >
                       <div className={`${isCompactModal ? 'space-y-1.5' : 'space-y-2.5'}`}>
                         <h3 className="text-[clamp(1.35rem,2.8vw,1.625rem)] font-semibold text-neutral-900">
@@ -839,7 +829,6 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                           handlePlaceOrder();
                         }}
                         className="flex flex-col gap-4"
-                        style={nameStepFormStyle}
                       >
                         <div className="space-y-2">
                           {isExpressFlow && expressMode === 'dine_in' ? (
@@ -874,7 +863,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
 
                           {!isExpressFlow || expressMode !== 'dine_in' ? (
                             <input
-                              type="search"
+                              type="text"
                               id="orderLabelInput"
                               name="orderLabelInput"
                               inputMode="text"
@@ -900,13 +889,13 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                               enterKeyHint="done"
                               data-ignore-autofill="true"
                               placeholder="Enter your name…"
-                              className={`w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 font-semibold text-neutral-900 shadow-inner shadow-neutral-200/70 outline-none transition focus:border-[var(--kiosk-accent,#111827)]/60 focus:bg-white [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden ${
+                              className={`w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 font-semibold text-neutral-900 shadow-inner shadow-neutral-200/70 outline-none transition focus:border-[var(--kiosk-accent,#111827)]/60 focus:bg-white ${
                                 isCompactModal ? 'py-3 text-[1rem]' : 'py-4 text-[1.1rem]'
                               }`}
                             />
                           ) : (
                             <input
-                              type="search"
+                              type="text"
                               id="expressOrderLabelInput"
                               name="expressOrderLabelInput"
                               inputMode="text"
@@ -930,7 +919,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                               enterKeyHint="done"
                               data-ignore-autofill="true"
                               placeholder="Name (optional)…"
-                              className={`w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 font-semibold text-neutral-900 shadow-inner shadow-neutral-200/70 outline-none transition focus:border-[var(--kiosk-accent,#111827)]/60 focus:bg-white [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden ${
+                              className={`w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 font-semibold text-neutral-900 shadow-inner shadow-neutral-200/70 outline-none transition focus:border-[var(--kiosk-accent,#111827)]/60 focus:bg-white ${
                                 isCompactModal ? 'py-3 text-[1rem]' : 'py-4 text-[1.1rem]'
                               }`}
                             />
