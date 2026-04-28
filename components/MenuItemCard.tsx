@@ -209,6 +209,7 @@ export default function MenuItemCard({
 
   const triggerFlyToCart = (event: MouseEvent<HTMLElement>) => {
     if (typeof document === 'undefined' || typeof window === 'undefined') return;
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     const selectors = window.matchMedia('(max-width: 768px)').matches
       ? ['[data-cart-anchor="fab"]', '[data-cart-anchor="desktop"]']
@@ -219,6 +220,48 @@ export default function MenuItemCard({
       .find((el) => Boolean(el));
 
     if (!anchor) return;
+
+    const showAddedConfirmation = () => {
+      const anchorRect = anchor.getBoundingClientRect();
+      const label = document.createElement('div');
+      label.className = 'cart-added-confirmation';
+      label.textContent = 'Added to plate';
+      label.style.left = `${anchorRect.left + anchorRect.width / 2}px`;
+      label.style.top = `${Math.max(18, anchorRect.top - 18)}px`;
+      document.body.appendChild(label);
+
+      const fade = label.animate(
+        [
+          { transform: 'translate(-50%, -2px) scale(0.98)', opacity: 0 },
+          { transform: 'translate(-50%, -8px) scale(1)', opacity: 1, offset: 0.2 },
+          { transform: 'translate(-50%, -16px) scale(1)', opacity: 0 },
+        ],
+        {
+          duration: 900,
+          easing: 'cubic-bezier(0.22, 0.61, 0.36, 1)',
+          fill: 'forwards',
+        }
+      );
+      fade.onfinish = () => label.remove();
+      fade.oncancel = () => label.remove();
+    };
+
+    const pulseAnchor = () => {
+      anchor.classList.add('cart-pulse');
+      anchor.addEventListener(
+        'animationend',
+        () => {
+          anchor.classList.remove('cart-pulse');
+        },
+        { once: true }
+      );
+    };
+
+    if (prefersReducedMotion) {
+      pulseAnchor();
+      showAddedConfirmation();
+      return;
+    }
 
     const startRect = event.currentTarget.getBoundingClientRect();
     const targetRect = anchor.getBoundingClientRect();
@@ -232,34 +275,36 @@ export default function MenuItemCard({
     const animation = fly.animate(
       [
         {
-          transform: 'translate(-50%, -50%) scale(1)',
-          opacity: 0.95,
+          transform: 'translate(-50%, -50%) scale(0.85)',
+          opacity: 0.85,
         },
         {
           transform: `translate(${targetRect.left + targetRect.width / 2 - (startRect.left + startRect.width / 2)}px, ${
             targetRect.top + targetRect.height / 2 - (startRect.top + startRect.height / 2)
-          }px) scale(0.3)`,
-          opacity: 0.65,
+          }px) scale(1.18)`,
+          opacity: 0.95,
+          offset: 0.62,
+        },
+        {
+          transform: `translate(${targetRect.left + targetRect.width / 2 - (startRect.left + startRect.width / 2)}px, ${
+            targetRect.top + targetRect.height / 2 - (startRect.top + startRect.height / 2)
+          }px) scale(0.42)`,
+          opacity: 0.2,
         },
       ],
       {
-        duration: 650,
+        duration: 760,
         easing: 'cubic-bezier(0.22, 0.61, 0.36, 1)',
         fill: 'forwards',
       }
     );
 
-    animation.onfinish = () => fly.remove();
+    animation.onfinish = () => {
+      fly.remove();
+      pulseAnchor();
+      showAddedConfirmation();
+    };
     animation.oncancel = () => fly.remove();
-
-    anchor.classList.add('cart-pulse');
-    anchor.addEventListener(
-      'animationend',
-      () => {
-        anchor.classList.remove('cart-pulse');
-      },
-      { once: true }
-    );
   };
 
   const handleQuickAdd = (event: MouseEvent<HTMLButtonElement>) => {
@@ -404,24 +449,43 @@ export default function MenuItemCard({
       <style jsx global>{`
         .kiosk-fly-dot {
           position: fixed;
-          width: 14px;
-          height: 14px;
+          width: 18px;
+          height: 18px;
           border-radius: 999px;
           z-index: 9999;
           pointer-events: none;
-          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+          box-shadow: 0 14px 34px rgba(15, 23, 42, 0.28);
+        }
+
+        .cart-added-confirmation {
+          position: fixed;
+          transform: translate(-50%, -50%);
+          z-index: 9999;
+          pointer-events: none;
+          border-radius: 999px;
+          padding: 6px 12px;
+          font-size: 12px;
+          font-weight: 600;
+          line-height: 1;
+          color: #fff;
+          background: rgba(15, 23, 42, 0.88);
+          box-shadow: 0 12px 26px rgba(15, 23, 42, 0.22);
+          backdrop-filter: blur(4px);
         }
 
         .cart-pulse {
-          animation: cartPulse 320ms ease-out;
+          animation: cartPulse 440ms cubic-bezier(0.2, 0.7, 0.2, 1);
         }
 
         @keyframes cartPulse {
           0% {
             transform: scale(1);
           }
-          40% {
-            transform: scale(1.08);
+          42% {
+            transform: scale(1.16);
+          }
+          74% {
+            transform: scale(0.96);
           }
           100% {
             transform: scale(1);
