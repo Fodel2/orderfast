@@ -427,7 +427,7 @@ public class MainActivity extends BridgeActivity {
 
     private boolean isPosPaymentEntryRoute(WebView webView) {
         String path = resolvePathFromWebView(webView);
-        return path != null && path.contains("/payment-entry");
+        return path != null && path.startsWith("/pos/") && path.contains("/payment-entry");
     }
 
     private boolean isExplicitNonImmersivePath(String path) {
@@ -437,7 +437,7 @@ public class MainActivity extends BridgeActivity {
             || path.startsWith("/dashboard")
             || path.startsWith("/customer")
             || path.startsWith("/take-payment")
-            || path.contains("/payment-entry");
+            || (path.startsWith("/pos/") && path.contains("/payment-entry"));
     }
 
     private boolean hasPosFullscreenOptIn(Uri uri) {

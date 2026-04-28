@@ -253,6 +253,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     at: null,
   });
   const stageRef = useRef<PaymentStage>('method_picker');
+  const contactlessStatusRef = useRef<TapToPayStatus>('idle');
   const operatorTapTimeoutRef = useRef<number | null>(null);
   const stageParam = Array.isArray(router.query.stage) ? router.query.stage[0] : router.query.stage;
   const showOperatorDetails = operatorDebugEnabled;
@@ -627,6 +628,10 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   useEffect(() => {
     stageRef.current = stage;
   }, [stage]);
+
+  useEffect(() => {
+    contactlessStatusRef.current = contactlessStatus;
+  }, [contactlessStatus]);
 
   useEffect(() => {
     const handleRouteChangeStart = (url: string) => {
@@ -1886,19 +1891,26 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     logContactlessState('old_kiosk_contactless_path_invoked', { action: 'bypassed_to_shared_overlay' });
     const statusPoll = async () => {
       const nativeStatus = await tapToPayBridge.getTapToPayStatus();
+      const latestStatus = contactlessStatusRef.current;
       setContactlessDebug(`native:${nativeStatus.status}`);
       if (
-        (contactlessStatus === 'canceled' || contactlessStatus === 'failed' || contactlessStatus === 'succeeded') &&
+        (latestStatus === 'canceled' || latestStatus === 'failed' || latestStatus === 'succeeded') &&
         nativeStatus.sessionId &&
         shouldSuppressDeadRunRevival('native_status_poll_terminal_guard', nativeStatus.sessionId)
       ) {
         return;
       }
       if (
+        (latestStatus === 'canceled' || latestStatus === 'failed' || latestStatus === 'succeeded') &&
+        (!nativeStatus.sessionId || shouldSuppressDeadRunRevival('native_status_poll_terminal_guard_fallback', contactlessSessionId))
+      ) {
+        return;
+      }
+      if (
         (nativeStatus.status === 'processing' || nativeStatus.status === 'collecting') &&
-        contactlessStatus !== 'canceled' &&
-        contactlessStatus !== 'failed' &&
-        contactlessStatus !== 'succeeded'
+        latestStatus !== 'canceled' &&
+        latestStatus !== 'failed' &&
+        latestStatus !== 'succeeded'
       ) {
         setContactlessStatus(nativeStatus.status);
       }
@@ -1907,7 +1919,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       }
     };
     void statusPoll();
-  }, [contactlessSessionId, contactlessStatus, logContactlessState, restaurantId, shouldSuppressDeadRunRevival, stage, terminalMode]);
+  }, [contactlessSessionId, logContactlessState, restaurantId, shouldSuppressDeadRunRevival, stage, terminalMode]);
 
   useEffect(() => {
     if (stage !== 'contactless') return;
@@ -2117,6 +2129,12 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       logContactlessState('cancel_barrier_set', { ownerId: contactlessOwnerRef.current.id, sessionId: contactlessSessionId });
     }
     logContactlessState('kiosk_terminal_route_selected', { terminalType: 'cancel', sessionId: contactlessSessionId });
+    if (!commitNonSuccessOutcome('canceled', 'manual_overlay_close_cancel_requested', { sessionId: contactlessSessionId }, 'Payment cancelled')) {
+      setContactlessBusy(false);
+      cancelLockRef.current = false;
+      flowLockRef.current = false;
+      return;
+    }
     try {
       logContactlessState('native_cancel_attempt_started', { sessionId: contactlessSessionId });
       await tapToPayBridge.cancelTapToPayPayment();
@@ -2125,9 +2143,6 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: contactlessSessionId, restaurant_id: restaurantId, reason: 'Canceled on kiosk' }),
       });
-      if (!commitNonSuccessOutcome('canceled', 'manual_overlay_close_cancel', { sessionId: contactlessSessionId }, 'Payment cancelled')) {
-        return;
-      }
       logContactlessState('native_cancel_confirmed', { sessionId: contactlessSessionId });
       logContactlessState('kiosk_cancel_received', { sessionId: contactlessSessionId, reason: 'manual_overlay_close' });
       setContactlessError('Payment cancelled');
@@ -2142,9 +2157,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         sessionId: contactlessSessionId,
         message: error instanceof Error ? error.message : String(error),
       });
-      setContactlessStatus('processing');
-      setContactlessTerminalState('in_progress');
-      setContactlessError('Cancel is still being processed. Please wait.');
+      logContactlessState('cancel_outcome_preserved_after_cancel_error', { sessionId: contactlessSessionId });
       setContactlessDebug('cancel_failed_or_unavailable');
     } finally {
       setContactlessBusy(false);
