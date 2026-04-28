@@ -831,6 +831,8 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                       </div>
                       <form
                         autoComplete="off"
+                        id="kioskOrderLabelForm"
+                        name="kioskOrderLabelForm"
                         onSubmit={(event) => {
                           event.preventDefault();
                           handlePlaceOrder();
@@ -842,6 +844,8 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                           {isExpressFlow && expressMode === 'dine_in' ? (
                             <input
                               type="text"
+                              id="kioskTableLabelInput"
+                              name="kioskTableLabelInput"
                               inputMode="numeric"
                               value={tableNumberInput}
                               onChange={(e) => {
@@ -855,6 +859,11 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                                 refreshViewport();
                               }}
                               onBlur={() => setNameEntryInputFocused(false)}
+                              autoComplete="off"
+                              spellCheck={false}
+                              autoCorrect="off"
+                              autoCapitalize="off"
+                              enterKeyHint="next"
                               placeholder="Enter table number…"
                               className={`w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 font-semibold text-neutral-900 shadow-inner shadow-neutral-200/70 outline-none transition focus:border-[var(--kiosk-accent,#111827)]/60 focus:bg-white ${
                                 isCompactModal ? 'py-3 text-[1rem]' : 'py-4 text-[1.1rem]'
@@ -864,7 +873,9 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
 
                           {!isExpressFlow || expressMode !== 'dine_in' ? (
                             <input
-                              type="text"
+                              type="search"
+                              id="orderLabelInput"
+                              name="orderLabelInput"
                               inputMode="text"
                               value={customerName}
                               onChange={(e) => {
@@ -884,17 +895,19 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                               aria-haspopup="false"
                               spellCheck={false}
                               autoCorrect="off"
-                              autoCapitalize="words"
+                              autoCapitalize="off"
                               enterKeyHint="done"
                               data-ignore-autofill="true"
                               placeholder="Enter your name…"
-                              className={`w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 font-semibold text-neutral-900 shadow-inner shadow-neutral-200/70 outline-none transition focus:border-[var(--kiosk-accent,#111827)]/60 focus:bg-white ${
+                              className={`w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 font-semibold text-neutral-900 shadow-inner shadow-neutral-200/70 outline-none transition focus:border-[var(--kiosk-accent,#111827)]/60 focus:bg-white [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden ${
                                 isCompactModal ? 'py-3 text-[1rem]' : 'py-4 text-[1.1rem]'
                               }`}
                             />
                           ) : (
                             <input
-                              type="text"
+                              type="search"
+                              id="expressOrderLabelInput"
+                              name="expressOrderLabelInput"
                               inputMode="text"
                               value={customerName}
                               onChange={(e) => {
@@ -912,11 +925,11 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                               aria-haspopup="false"
                               spellCheck={false}
                               autoCorrect="off"
-                              autoCapitalize="words"
+                              autoCapitalize="off"
                               enterKeyHint="done"
                               data-ignore-autofill="true"
                               placeholder="Name (optional)…"
-                              className={`w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 font-semibold text-neutral-900 shadow-inner shadow-neutral-200/70 outline-none transition focus:border-[var(--kiosk-accent,#111827)]/60 focus:bg-white ${
+                              className={`w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 font-semibold text-neutral-900 shadow-inner shadow-neutral-200/70 outline-none transition focus:border-[var(--kiosk-accent,#111827)]/60 focus:bg-white [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden ${
                                 isCompactModal ? 'py-3 text-[1rem]' : 'py-4 text-[1.1rem]'
                               }`}
                             />
