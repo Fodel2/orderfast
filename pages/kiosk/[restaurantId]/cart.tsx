@@ -730,7 +730,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
       ) : null}
 
       <AnimatePresence>
-        {showConfirmModal ? (
+        {showConfirmModal && confirmStep === 1 ? (
           <motion.div
             className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm"
             style={modalOverlayStyle}
@@ -751,184 +751,184 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                   isCompactModal ? 'py-4' : 'py-6 sm:py-8'
                 }`}
               >
-                <AnimatePresence mode="wait">
-                  {confirmStep === 1 ? (
-                    <motion.div
-                      key="confirm-step"
-                      initial={{ opacity: 0, y: 12 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -12 }}
-                      transition={{ duration: 0.2, ease: 'easeOut' }}
-                      className={`flex min-h-0 flex-1 flex-col ${isCompactModal ? 'gap-4' : 'gap-6'}`}
+                <motion.div
+                  key="confirm-step"
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -12 }}
+                  transition={{ duration: 0.2, ease: 'easeOut' }}
+                  className={`flex min-h-0 flex-1 flex-col ${isCompactModal ? 'gap-4' : 'gap-6'}`}
+                >
+                  <div className={`${isCompactModal ? 'space-y-1.5' : 'space-y-2'}`}>
+                    <h3 className="text-[clamp(1.35rem,2.8vw,1.625rem)] font-semibold text-neutral-900">
+                      Is everything correct?
+                    </h3>
+                    <p className="text-[clamp(0.95rem,2.1vw,1.125rem)] leading-relaxed text-neutral-600">{confirmMessage}</p>
+                  </div>
+                  <div className="mt-auto grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        registerActivity();
+                        setShowConfirmModal(false);
+                      }}
+                      className={`inline-flex items-center justify-center rounded-2xl border border-neutral-200 font-semibold text-neutral-800 transition hover:bg-neutral-50 ${
+                        isCompactModal ? 'px-4 py-2.5 text-[0.95rem]' : 'px-4 py-3 text-base'
+                      }`}
                     >
-                      <div className={`${isCompactModal ? 'space-y-1.5' : 'space-y-2'}`}>
-                        <h3 className="text-[clamp(1.35rem,2.8vw,1.625rem)] font-semibold text-neutral-900">
-                          Is everything correct?
-                        </h3>
-                        <p className="text-[clamp(0.95rem,2.1vw,1.125rem)] leading-relaxed text-neutral-600">
-                          {confirmMessage}
-                        </p>
-                      </div>
-                      <div className="mt-auto grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            registerActivity();
-                            setShowConfirmModal(false);
-                          }}
-                          className={`inline-flex items-center justify-center rounded-2xl border border-neutral-200 font-semibold text-neutral-800 transition hover:bg-neutral-50 ${
-                            isCompactModal ? 'px-4 py-2.5 text-[0.95rem]' : 'px-4 py-3 text-base'
-                          }`}
-                        >
-                          Go back
-                        </button>
-                        <KioskActionButton
-                          onClick={goToNameStep}
-                          className={`w-full justify-center rounded-2xl font-semibold uppercase tracking-wide shadow-lg shadow-slate-900/15 ${
-                            isCompactModal ? 'px-4 py-2.5 text-[0.95rem]' : 'px-4 py-3 text-base'
-                          }`}
-                        >
-                          Looks good!
-                        </KioskActionButton>
-                      </div>
-                    </motion.div>
-                  ) : (
-                    <motion.div
-                      key="name-step"
-                      initial={{ opacity: 0, y: 12 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -12 }}
-                      transition={{ duration: 0.2, ease: 'easeOut' }}
-                      className={`flex min-h-0 flex-1 flex-col ${isCompactModal ? 'gap-4' : 'gap-5'}`}
+                      Go back
+                    </button>
+                    <KioskActionButton
+                      onClick={goToNameStep}
+                      className={`w-full justify-center rounded-2xl font-semibold uppercase tracking-wide shadow-lg shadow-slate-900/15 ${
+                        isCompactModal ? 'px-4 py-2.5 text-[0.95rem]' : 'px-4 py-3 text-base'
+                      }`}
                     >
-                      <div className={`${isCompactModal ? 'space-y-1.5' : 'space-y-2.5'}`}>
-                        <h3 className="text-[clamp(1.35rem,2.8vw,1.625rem)] font-semibold text-neutral-900">
-                          {namePromptMessage}
-                        </h3>
-                        <p className="text-[clamp(0.95rem,2.1vw,1.125rem)] leading-relaxed text-neutral-600">
-                          {isExpressFlow && expressMode === 'dine_in'
-                            ? 'Table number is required for dine-in Express orders. Name is optional.'
-                            : 'This is the name we’ll shout when your order is ready.'}
-                        </p>
-                      </div>
-                      <form
-                        autoComplete="off"
-                        onSubmit={(event) => {
-                          event.preventDefault();
-                          handlePlaceOrder();
-                        }}
-                        className="flex min-h-0 flex-1 flex-col gap-4"
-                      >
-                        <div className="space-y-2">
-                          {isExpressFlow && expressMode === 'dine_in' ? (
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              value={tableNumberInput}
-                              onChange={(e) => {
-                                registerActivity();
-                                const numeric = e.target.value.replace(/[^0-9]/g, '');
-                                setTableNumberInput(numeric);
-                                patchExpressSession({ tableNumber: numeric ? Number.parseInt(numeric, 10) : null });
-                              }}
-                              onFocus={() => refreshViewport()}
-                              placeholder="Enter table number…"
-                              className={`w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 font-semibold text-neutral-900 shadow-inner shadow-neutral-200/70 outline-none transition focus:border-[var(--kiosk-accent,#111827)]/60 focus:bg-white ${
-                                isCompactModal ? 'py-3 text-[1rem]' : 'py-4 text-[1.1rem]'
-                              }`}
-                            />
-                          ) : null}
-
-                          {!isExpressFlow || expressMode !== 'dine_in' ? (
-                            <input
-                              type="text"
-                              inputMode="text"
-                              value={customerName}
-                              onChange={(e) => {
-                                registerActivity();
-                                setCustomerName(e.target.value);
-                                if (isExpressFlow) {
-                                  patchExpressSession({ customerName: e.target.value || null });
-                                }
-                              }}
-                              onFocus={() => refreshViewport()}
-                              autoComplete="off"
-                              aria-autocomplete="none"
-                              aria-haspopup="false"
-                              spellCheck={false}
-                              autoCorrect="off"
-                              autoCapitalize="words"
-                              enterKeyHint="done"
-                              data-ignore-autofill="true"
-                              placeholder="Enter your name…"
-                              className={`w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 font-semibold text-neutral-900 shadow-inner shadow-neutral-200/70 outline-none transition focus:border-[var(--kiosk-accent,#111827)]/60 focus:bg-white ${
-                                isCompactModal ? 'py-3 text-[1rem]' : 'py-4 text-[1.1rem]'
-                              }`}
-                            />
-                          ) : (
-                            <input
-                              type="text"
-                              inputMode="text"
-                              value={customerName}
-                              onChange={(e) => {
-                                registerActivity();
-                                setCustomerName(e.target.value);
-                                patchExpressSession({ customerName: e.target.value || null });
-                              }}
-                              onFocus={() => refreshViewport()}
-                              autoComplete="off"
-                              aria-autocomplete="none"
-                              aria-haspopup="false"
-                              spellCheck={false}
-                              autoCorrect="off"
-                              autoCapitalize="words"
-                              enterKeyHint="done"
-                              data-ignore-autofill="true"
-                              placeholder="Name (optional)…"
-                              className={`w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 font-semibold text-neutral-900 shadow-inner shadow-neutral-200/70 outline-none transition focus:border-[var(--kiosk-accent,#111827)]/60 focus:bg-white ${
-                                isCompactModal ? 'py-3 text-[1rem]' : 'py-4 text-[1.1rem]'
-                              }`}
-                            />
-                          )}
-
-                          {tableError ? (
-                            <p className="text-sm font-semibold text-rose-600">{tableError}</p>
-                          ) : null}
-                          {nameError ? (
-                            <p className="text-sm font-semibold text-rose-600">{nameError}</p>
-                          ) : null}
-                          {submissionError ? (
-                            <p className="text-sm font-semibold text-rose-600">{submissionError}</p>
-                          ) : null}
-                        </div>
-                        <div className="mt-auto grid grid-cols-1 gap-3 sm:grid-cols-2">
-                          <button
-                            type="button"
-                            onClick={handleBackToReview}
-                            className={`inline-flex items-center justify-center rounded-2xl border border-neutral-200 font-semibold text-neutral-800 transition hover:bg-neutral-50 ${
-                              isCompactModal ? 'px-4 py-2.5 text-[0.95rem]' : 'px-4 py-3 text-base'
-                            }`}
-                          >
-                            Back
-                          </button>
-                          <KioskActionButton
-                            type="submit"
-                            onClick={handlePlaceOrder}
-                            disabled={placingOrder}
-                            className={`w-full justify-center rounded-2xl font-semibold uppercase tracking-wide shadow-lg shadow-slate-900/15 ${
-                              isCompactModal ? 'px-4 py-2.5 text-[0.95rem]' : 'px-4 py-3 text-base'
-                            } ${placingOrder ? 'opacity-70' : ''}`}
-                          >
-                            {placingOrder ? 'Placing…' : 'Place order'}
-                          </KioskActionButton>
-                        </div>
-                      </form>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                      Looks good!
+                    </KioskActionButton>
+                  </div>
+                </motion.div>
               </div>
             </motion.div>
           </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showConfirmModal && confirmStep === 2 ? (
+          <motion.section
+            className="fixed inset-0 z-[70] bg-neutral-100"
+            style={modalOverlayStyle}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              key="name-step-panel"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 12 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              className="mx-auto flex h-full w-full max-w-3xl flex-col px-4 py-4 sm:px-6 sm:py-6"
+            >
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[28px] border border-white/70 bg-white shadow-2xl shadow-slate-900/15">
+                <form
+                  autoComplete="off"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    handlePlaceOrder();
+                  }}
+                  className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 py-6 sm:px-8 sm:py-8"
+                >
+                  <div className={`${isCompactModal ? 'space-y-1.5' : 'space-y-2.5'}`}>
+                    <h3 className="text-[clamp(1.35rem,2.8vw,1.625rem)] font-semibold text-neutral-900">{namePromptMessage}</h3>
+                    <p className="text-[clamp(0.95rem,2.1vw,1.125rem)] leading-relaxed text-neutral-600">
+                      {isExpressFlow && expressMode === 'dine_in'
+                        ? 'Table number is required for dine-in Express orders. Name is optional.'
+                        : 'This is the name we’ll shout when your order is ready.'}
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    {isExpressFlow && expressMode === 'dine_in' ? (
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={tableNumberInput}
+                        onChange={(e) => {
+                          registerActivity();
+                          const numeric = e.target.value.replace(/[^0-9]/g, '');
+                          setTableNumberInput(numeric);
+                          patchExpressSession({ tableNumber: numeric ? Number.parseInt(numeric, 10) : null });
+                        }}
+                        onFocus={() => refreshViewport()}
+                        placeholder="Enter table number…"
+                        className={`w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 font-semibold text-neutral-900 shadow-inner shadow-neutral-200/70 outline-none transition focus:border-[var(--kiosk-accent,#111827)]/60 focus:bg-white ${
+                          isCompactModal ? 'py-3 text-[1rem]' : 'py-4 text-[1.1rem]'
+                        }`}
+                      />
+                    ) : null}
+
+                    {!isExpressFlow || expressMode !== 'dine_in' ? (
+                      <input
+                        type="text"
+                        inputMode="text"
+                        value={customerName}
+                        onChange={(e) => {
+                          registerActivity();
+                          setCustomerName(e.target.value);
+                          if (isExpressFlow) {
+                            patchExpressSession({ customerName: e.target.value || null });
+                          }
+                        }}
+                        onFocus={() => refreshViewport()}
+                        autoComplete="off"
+                        aria-autocomplete="none"
+                        aria-haspopup="false"
+                        spellCheck={false}
+                        autoCorrect="off"
+                        autoCapitalize="words"
+                        enterKeyHint="done"
+                        data-ignore-autofill="true"
+                        placeholder="Enter your name…"
+                        className={`w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 font-semibold text-neutral-900 shadow-inner shadow-neutral-200/70 outline-none transition focus:border-[var(--kiosk-accent,#111827)]/60 focus:bg-white ${
+                          isCompactModal ? 'py-3 text-[1rem]' : 'py-4 text-[1.1rem]'
+                        }`}
+                      />
+                    ) : (
+                      <input
+                        type="text"
+                        inputMode="text"
+                        value={customerName}
+                        onChange={(e) => {
+                          registerActivity();
+                          setCustomerName(e.target.value);
+                          patchExpressSession({ customerName: e.target.value || null });
+                        }}
+                        onFocus={() => refreshViewport()}
+                        autoComplete="off"
+                        aria-autocomplete="none"
+                        aria-haspopup="false"
+                        spellCheck={false}
+                        autoCorrect="off"
+                        autoCapitalize="words"
+                        enterKeyHint="done"
+                        data-ignore-autofill="true"
+                        placeholder="Name (optional)…"
+                        className={`w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 font-semibold text-neutral-900 shadow-inner shadow-neutral-200/70 outline-none transition focus:border-[var(--kiosk-accent,#111827)]/60 focus:bg-white ${
+                          isCompactModal ? 'py-3 text-[1rem]' : 'py-4 text-[1.1rem]'
+                        }`}
+                      />
+                    )}
+
+                    {tableError ? <p className="text-sm font-semibold text-rose-600">{tableError}</p> : null}
+                    {nameError ? <p className="text-sm font-semibold text-rose-600">{nameError}</p> : null}
+                    {submissionError ? <p className="text-sm font-semibold text-rose-600">{submissionError}</p> : null}
+                  </div>
+                  <div className="mt-auto grid grid-cols-1 gap-3 pt-2 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={handleBackToReview}
+                      className={`inline-flex items-center justify-center rounded-2xl border border-neutral-200 font-semibold text-neutral-800 transition hover:bg-neutral-50 ${
+                        isCompactModal ? 'px-4 py-2.5 text-[0.95rem]' : 'px-4 py-3 text-base'
+                      }`}
+                    >
+                      Back
+                    </button>
+                    <KioskActionButton
+                      type="submit"
+                      onClick={handlePlaceOrder}
+                      disabled={placingOrder}
+                      className={`w-full justify-center rounded-2xl font-semibold uppercase tracking-wide shadow-lg shadow-slate-900/15 ${
+                        isCompactModal ? 'px-4 py-2.5 text-[0.95rem]' : 'px-4 py-3 text-base'
+                      } ${placingOrder ? 'opacity-70' : ''}`}
+                    >
+                      {placingOrder ? 'Placing…' : 'Place order'}
+                    </KioskActionButton>
+                  </div>
+                </form>
+              </div>
+            </motion.div>
+          </motion.section>
         ) : null}
       </AnimatePresence>
 
