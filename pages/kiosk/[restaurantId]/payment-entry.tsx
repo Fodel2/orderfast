@@ -1333,16 +1333,14 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
           (typeof (started as { definitiveCustomerCancelSignal?: unknown }).definitiveCustomerCancelSignal === 'boolean' &&
             (started as { definitiveCustomerCancelSignal?: boolean }).definitiveCustomerCancelSignal === true);
         const explicitAppCancelRequested = contactlessOwnerRef.current?.id === ownerId && contactlessOwnerRef.current?.cancelRequested === true;
+        const nativeReturnedCanceled = started.status === 'canceled';
         const lifecycleInterrupted =
-          interruptionReasonCode === 'background_loss_confirmed' ||
-          reasonCategory === 'lifecycle_interrupted' ||
-          reasonCategory === 'lifecycle_cancelled';
-        const customerOrReaderCancel =
-          started.status === 'canceled' &&
-          started.code === 'canceled' &&
-          terminalCode === 'CANCELED' &&
-          (definitiveCustomerCancelSignal || reasonCategory === 'customer_cancelled' || reasonCategory === 'app_cancelled');
-        const ambiguousCanceledDuringHandoff = started.status === 'canceled' && !customerOrReaderCancel && !explicitAppCancelRequested;
+          !nativeReturnedCanceled &&
+          (interruptionReasonCode === 'background_loss_confirmed' ||
+            reasonCategory === 'lifecycle_interrupted' ||
+            reasonCategory === 'lifecycle_cancelled');
+        const customerOrReaderCancel = nativeReturnedCanceled;
+        const ambiguousCanceledDuringHandoff = false;
 
         logNativeOutcome('start_non_success', {
           started,
@@ -1357,10 +1355,10 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         });
 
         setContactlessUnsupportedDevice(unsupportedDevice);
-        if (lifecycleInterrupted || ambiguousCanceledDuringHandoff) {
+        if (lifecycleInterrupted) {
           logContactlessState('interruption_classification_received', {
             sessionId,
-            source: lifecycleInterrupted ? 'native_lifecycle_inference' : 'ambiguous_canceled_during_handoff',
+            source: 'native_lifecycle_inference',
             reasonCategory,
             interruptionReasonCode,
             definitiveCustomerCancelSignal,
@@ -1368,13 +1366,11 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
           });
           setContactlessStatus('processing');
           setContactlessError('');
-          setContactlessDebug(lifecycleInterrupted ? 'native_lifecycle_interrupted' : 'native_canceled_ambiguous_reconcile');
+          setContactlessDebug('native_lifecycle_interrupted');
           setContactlessDebugDetail(
-            `${lifecycleInterrupted ? 'Lifecycle interruption detected.' : 'Ambiguous canceled result during Stripe handoff.'} raw=${formatDetail(
-              started
-            )}`
+            `Lifecycle interruption detected. raw=${formatDetail(started)}`
           );
-          await reconcileSession(sessionId, lifecycleInterrupted ? 'native_lifecycle_interrupted' : 'native_canceled_ambiguous');
+          await reconcileSession(sessionId, 'native_lifecycle_interrupted');
           return;
         }
 
@@ -1891,7 +1887,19 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     const statusPoll = async () => {
       const nativeStatus = await tapToPayBridge.getTapToPayStatus();
       setContactlessDebug(`native:${nativeStatus.status}`);
-      if (nativeStatus.status === 'processing' || nativeStatus.status === 'collecting') {
+      if (
+        (contactlessStatus === 'canceled' || contactlessStatus === 'failed' || contactlessStatus === 'succeeded') &&
+        nativeStatus.sessionId &&
+        shouldSuppressDeadRunRevival('native_status_poll_terminal_guard', nativeStatus.sessionId)
+      ) {
+        return;
+      }
+      if (
+        (nativeStatus.status === 'processing' || nativeStatus.status === 'collecting') &&
+        contactlessStatus !== 'canceled' &&
+        contactlessStatus !== 'failed' &&
+        contactlessStatus !== 'succeeded'
+      ) {
         setContactlessStatus(nativeStatus.status);
       }
       if (nativeStatus.sessionId && !contactlessSessionId) {
@@ -1899,7 +1907,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       }
     };
     void statusPoll();
-  }, [contactlessSessionId, logContactlessState, restaurantId, stage, terminalMode]);
+  }, [contactlessSessionId, contactlessStatus, logContactlessState, restaurantId, shouldSuppressDeadRunRevival, stage, terminalMode]);
 
   useEffect(() => {
     if (stage !== 'contactless') return;
