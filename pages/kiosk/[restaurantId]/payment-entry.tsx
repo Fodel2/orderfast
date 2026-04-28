@@ -244,6 +244,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     sessionId: null,
     outcome: null,
   });
+  const deadContactlessSessionIdsRef = useRef<Set<string>>(new Set());
   const contactlessTerminalRouteCommittedRef = useRef(false);
   const contactlessOverlayVisibleRef = useRef(false);
   const preHandoverInFlightRef = useRef(false);
@@ -327,6 +328,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       }
       logContactlessState('terminal_outcome_committed', { outcome: 'success', source, ...payload });
       deadContactlessSessionRef.current = { sessionId: null, outcome: null };
+      deadContactlessSessionIdsRef.current.clear();
       setContactlessStatus('succeeded');
       setContactlessTerminalState('success');
       setContactlessError('');
@@ -374,6 +376,9 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       logContactlessState('terminal_outcome_committed', { outcome: nextStatus, source, ...payload });
       const payloadSessionId = payload && typeof payload.sessionId === 'string' ? payload.sessionId : null;
       deadContactlessSessionRef.current = { sessionId: payloadSessionId, outcome: nextStatus };
+      if (payloadSessionId) {
+        deadContactlessSessionIdsRef.current.add(payloadSessionId);
+      }
       setContactlessStatus(nextStatus);
       setContactlessTerminalState(nextStatus);
       if (typeof errorMessage === 'string') {
@@ -402,6 +407,21 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       return true;
     },
     [logContactlessState]
+  );
+
+  const isDeadContactlessSession = useCallback((sessionId: string | null | undefined) => {
+    if (!sessionId) return false;
+    return deadContactlessSessionIdsRef.current.has(sessionId);
+  }, []);
+
+  const shouldBlockNonTerminalWrite = useCallback(
+    (source: string, sessionId: string | null | undefined) => {
+      if (!sessionId) return false;
+      if (!isDeadContactlessSession(sessionId)) return false;
+      logContactlessState('dead_contactless_session_non_terminal_write_blocked', { source, sessionId });
+      return true;
+    },
+    [isDeadContactlessSession, logContactlessState]
   );
 
   useEffect(() => {
@@ -685,6 +705,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     setContactlessTerminalLocationId(null);
     setContactlessTerminalState('idle');
     setSuppressStageAutoSubmit(false);
+    deadContactlessSessionIdsRef.current.clear();
     preHandoverInFlightRef.current = false;
     setPreHandoverOverlayOwned(false);
     if (typeof window !== 'undefined') {
@@ -708,6 +729,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     async (sessionId: string, reason: string) => {
       if (!restaurantId) return;
       if (shouldSuppressDeadRunRevival('reconcile_session_entry', sessionId)) return;
+      if (shouldBlockNonTerminalWrite('reconcile_session_entry', sessionId)) return;
       setContactlessDebug(`reconciling:${reason}`);
       const reconcileRes = await fetch('/api/kiosk/payments/card-present/reconcile', {
         method: 'POST',
@@ -771,6 +793,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       restaurantId,
       suppressLegacyPostSuccessDowngrade,
       shouldSuppressDeadRunRevival,
+      shouldBlockNonTerminalWrite,
     ]
   );
 
@@ -778,6 +801,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     async (sessionId: string, reason: string) => {
       if (!restaurantId) return;
       if (shouldSuppressDeadRunRevival('server_session_truth_entry', sessionId)) return;
+      if (shouldBlockNonTerminalWrite('server_session_truth_entry', sessionId)) return;
       setContactlessDebug(`session_check:${reason}`);
       const sessionRes = await fetch(
         `/api/kiosk/payments/card-present/session?session_id=${encodeURIComponent(sessionId)}&restaurant_id=${encodeURIComponent(restaurantId)}`
@@ -854,6 +878,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       restaurantId,
       suppressLegacyPostSuccessDowngrade,
       shouldSuppressDeadRunRevival,
+      shouldBlockNonTerminalWrite,
     ]
   );
 
@@ -866,6 +891,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     }
     flowLockRef.current = true;
     deadContactlessSessionRef.current = { sessionId: null, outcome: null };
+    deadContactlessSessionIdsRef.current.clear();
     const ownerId = establishContactlessOwner('contactless_started');
     setContactlessBusy(true);
     setContactlessError('');
@@ -1034,7 +1060,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       }
       setContactlessSessionId(sessionId);
       setContactlessTerminalLocationId(terminalLocationId);
-      if (typeof window !== 'undefined') {
+      if (!shouldBlockNonTerminalWrite('session_storage_write_on_create', sessionId) && typeof window !== 'undefined') {
         window.localStorage.setItem(CONTACTLESS_SESSION_STORAGE_KEY, JSON.stringify({ sessionId, restaurantId, savedAt: new Date().toISOString() }));
       }
       setContactlessDebug(`session:${sessionId.slice(0, 8)}`);
@@ -1344,7 +1370,13 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
           (interruptionReasonCode === 'background_loss_confirmed' ||
             reasonCategory === 'lifecycle_interrupted' ||
             reasonCategory === 'lifecycle_cancelled');
-        const customerOrReaderCancel = nativeReturnedCanceled;
+        const customerOrReaderCancel =
+          nativeReturnedCanceled ||
+          definitiveCustomerCancelSignal ||
+          explicitAppCancelRequested ||
+          reasonCategory === 'user_canceled' ||
+          reasonCategory === 'lifecycle_cancelled' ||
+          interruptionReasonCode === 'canceled';
         const ambiguousCanceledDuringHandoff = false;
 
         logNativeOutcome('start_non_success', {
@@ -1369,13 +1401,21 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
             definitiveCustomerCancelSignal,
             explicitAppCancelRequested,
           });
-          setContactlessStatus('processing');
-          setContactlessError('');
-          setContactlessDebug('native_lifecycle_interrupted');
-          setContactlessDebugDetail(
-            `Lifecycle interruption detected. raw=${formatDetail(started)}`
-          );
-          await reconcileSession(sessionId, 'native_lifecycle_interrupted');
+          if (
+            commitNonSuccessOutcome('canceled', 'native_lifecycle_interrupted_assumed_cancel', {
+              sessionId,
+              reasonCategory,
+              interruptionReasonCode,
+            }, 'Payment cancelled')
+          ) {
+            setContactlessDebug('native_lifecycle_interrupted_canceled');
+            setContactlessDebugDetail(`Lifecycle interruption treated as canceled. raw=${formatDetail(started)}`);
+            await fetch('/api/kiosk/payments/card-present/cancel', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ session_id: sessionId, restaurant_id: restaurantId, reason: 'Lifecycle interruption during kiosk contactless' }),
+            }).catch(() => undefined);
+          }
           return;
         }
 
@@ -1556,6 +1596,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     restaurantId,
     sessionStartContactlessEligible,
     shouldSuppressDeadRunRevival,
+    shouldBlockNonTerminalWrite,
     commitAuthoritativeSuccess,
     commitNonSuccessOutcome,
   ]);
@@ -1604,6 +1645,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       setAutoSubmitAttemptedMethod(null);
       setSuppressStageAutoSubmit(true);
       deadContactlessSessionRef.current = { sessionId: null, outcome: null };
+      deadContactlessSessionIdsRef.current.clear();
       flowLockRef.current = false;
       cancelLockRef.current = false;
       releaseContactlessOwner('return_to_method_picker');
@@ -1896,7 +1938,8 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       if (
         (latestStatus === 'canceled' || latestStatus === 'failed' || latestStatus === 'succeeded') &&
         nativeStatus.sessionId &&
-        shouldSuppressDeadRunRevival('native_status_poll_terminal_guard', nativeStatus.sessionId)
+        (shouldSuppressDeadRunRevival('native_status_poll_terminal_guard', nativeStatus.sessionId) ||
+          shouldBlockNonTerminalWrite('native_status_poll_terminal_guard', nativeStatus.sessionId))
       ) {
         return;
       }
@@ -1919,7 +1962,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       }
     };
     void statusPoll();
-  }, [contactlessSessionId, logContactlessState, restaurantId, shouldSuppressDeadRunRevival, stage, terminalMode]);
+  }, [contactlessSessionId, logContactlessState, restaurantId, shouldSuppressDeadRunRevival, shouldBlockNonTerminalWrite, stage, terminalMode]);
 
   useEffect(() => {
     if (stage !== 'contactless') return;
@@ -2079,6 +2122,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       const parsed = JSON.parse(saved) as { sessionId?: string; restaurantId?: string };
       if (parsed?.sessionId && parsed?.restaurantId === restaurantId) {
         if (shouldSuppressDeadRunRevival('local_restore_processing_resume', parsed.sessionId)) return;
+        if (shouldBlockNonTerminalWrite('local_restore_processing_resume', parsed.sessionId)) return;
         setContactlessSessionId(parsed.sessionId);
         if (!suppressLegacyPostSuccessDowngrade('local_restore_processing_resume', { sessionId: parsed.sessionId })) {
           setContactlessStatus('processing');
@@ -2089,7 +2133,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     } catch {
       window.localStorage.removeItem(CONTACTLESS_SESSION_STORAGE_KEY);
     }
-  }, [CONTACTLESS_SESSION_STORAGE_KEY, loadServerSessionTruth, restaurantId, shouldSuppressDeadRunRevival, stage, suppressLegacyPostSuccessDowngrade]);
+  }, [CONTACTLESS_SESSION_STORAGE_KEY, loadServerSessionTruth, restaurantId, shouldSuppressDeadRunRevival, shouldBlockNonTerminalWrite, stage, suppressLegacyPostSuccessDowngrade]);
 
   useEffect(() => {
     if (stage !== 'contactless' || !restaurantId || !contactlessSessionId) return;
