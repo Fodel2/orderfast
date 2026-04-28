@@ -240,6 +240,10 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   const cancelLockRef = useRef(false);
   const terminalTransitionLockRef = useRef(false);
   const contactlessOwnerRef = useRef<{ id: string; active: boolean; cancelRequested: boolean } | null>(null);
+  const deadContactlessSessionRef = useRef<{ sessionId: string | null; outcome: 'canceled' | 'failed' | null }>({
+    sessionId: null,
+    outcome: null,
+  });
   const contactlessTerminalRouteCommittedRef = useRef(false);
   const contactlessOverlayVisibleRef = useRef(false);
   const preHandoverInFlightRef = useRef(false);
@@ -321,6 +325,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         });
       }
       logContactlessState('terminal_outcome_committed', { outcome: 'success', source, ...payload });
+      deadContactlessSessionRef.current = { sessionId: null, outcome: null };
       setContactlessStatus('succeeded');
       setContactlessTerminalState('success');
       setContactlessError('');
@@ -366,11 +371,33 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         return false;
       }
       logContactlessState('terminal_outcome_committed', { outcome: nextStatus, source, ...payload });
+      const payloadSessionId = payload && typeof payload.sessionId === 'string' ? payload.sessionId : null;
+      deadContactlessSessionRef.current = { sessionId: payloadSessionId, outcome: nextStatus };
       setContactlessStatus(nextStatus);
       setContactlessTerminalState(nextStatus);
       if (typeof errorMessage === 'string') {
         setContactlessError(errorMessage);
       }
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem(CONTACTLESS_SESSION_STORAGE_KEY);
+      }
+      return true;
+    },
+    [CONTACTLESS_SESSION_STORAGE_KEY, logContactlessState]
+  );
+
+  const shouldSuppressDeadRunRevival = useCallback(
+    (source: string, sessionId: string | null | undefined) => {
+      if (authoritativeSuccessRef.current.committed) return false;
+      const deadSession = deadContactlessSessionRef.current;
+      if (!deadSession.sessionId || !deadSession.outcome || !sessionId || deadSession.sessionId !== sessionId) {
+        return false;
+      }
+      logContactlessState('dead_contactless_session_revival_suppressed', {
+        source,
+        sessionId,
+        deadOutcome: deadSession.outcome,
+      });
       return true;
     },
     [logContactlessState]
@@ -675,6 +702,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   const reconcileSession = useCallback(
     async (sessionId: string, reason: string) => {
       if (!restaurantId) return;
+      if (shouldSuppressDeadRunRevival('reconcile_session_entry', sessionId)) return;
       setContactlessDebug(`reconciling:${reason}`);
       const reconcileRes = await fetch('/api/kiosk/payments/card-present/reconcile', {
         method: 'POST',
@@ -724,6 +752,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       if (suppressLegacyPostSuccessDowngrade('reconcile_non_terminal_state', { sessionId, reason, nextState: nextState || null })) {
         return;
       }
+      if (shouldSuppressDeadRunRevival('reconcile_non_terminal_state', sessionId)) return;
       setContactlessStatus('processing');
       setContactlessError('');
       setContactlessDebug(`reconciled:${nextState || 'unknown'}`);
@@ -736,12 +765,14 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       logContactlessState,
       restaurantId,
       suppressLegacyPostSuccessDowngrade,
+      shouldSuppressDeadRunRevival,
     ]
   );
 
   const loadServerSessionTruth = useCallback(
     async (sessionId: string, reason: string) => {
       if (!restaurantId) return;
+      if (shouldSuppressDeadRunRevival('server_session_truth_entry', sessionId)) return;
       setContactlessDebug(`session_check:${reason}`);
       const sessionRes = await fetch(
         `/api/kiosk/payments/card-present/session?session_id=${encodeURIComponent(sessionId)}&restaurant_id=${encodeURIComponent(restaurantId)}`
@@ -803,6 +834,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         if (suppressLegacyPostSuccessDowngrade('server_session_truth_non_terminal_state', { sessionId, reason, serverState })) {
           return;
         }
+        if (shouldSuppressDeadRunRevival('server_session_truth_non_terminal_state', sessionId)) return;
         setContactlessStatus('processing');
         setContactlessError('');
         setContactlessDebug(`server:${serverState}`);
@@ -816,6 +848,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       logContactlessState,
       restaurantId,
       suppressLegacyPostSuccessDowngrade,
+      shouldSuppressDeadRunRevival,
     ]
   );
 
@@ -827,6 +860,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       return;
     }
     flowLockRef.current = true;
+    deadContactlessSessionRef.current = { sessionId: null, outcome: null };
     const ownerId = establishContactlessOwner('contactless_started');
     setContactlessBusy(true);
     setContactlessError('');
@@ -1431,6 +1465,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         if (nativeResolvedStatus !== 'succeeded') {
           await reconcileSession(sessionId, nativeResolvedStatus === 'processing' ? 'native_poll_timeout' : `native_poll_${nativeResolvedStatus}`);
           if (nativeResolvedStatus === 'processing') {
+            if (shouldSuppressDeadRunRevival('native_poll_timeout_processing_fallback', sessionId)) return;
             setContactlessStatus('failed');
             setContactlessTerminalState('failed');
             setContactlessError('Payment did not complete. Please try again or choose another payment method.');
@@ -1451,6 +1486,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       if (isStaleOwner('finalize_result')) return;
       const verifiedPaid = isVerifiedPaidPayload(finalized?.verification);
       if (!finalizeRes.ok || finalized?.session?.state !== 'finalized' || !verifiedPaid) {
+        if (shouldSuppressDeadRunRevival('finalize_pending_non_terminal_state', sessionId)) return;
         setContactlessStatus('processing');
         setContactlessError('');
         setContactlessDebug(finalized?.session?.state === 'finalized' && !verifiedPaid ? 'finalize_unverified' : 'finalize_pending');
@@ -1518,6 +1554,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     releaseContactlessOwner,
     restaurantId,
     sessionStartContactlessEligible,
+    shouldSuppressDeadRunRevival,
     commitAuthoritativeSuccess,
     commitNonSuccessOutcome,
   ]);
@@ -1565,6 +1602,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       setContactlessDebugDetail('');
       setAutoSubmitAttemptedMethod(null);
       setSuppressStageAutoSubmit(true);
+      deadContactlessSessionRef.current = { sessionId: null, outcome: null };
       flowLockRef.current = false;
       cancelLockRef.current = false;
       releaseContactlessOwner('return_to_method_picker');
@@ -2020,6 +2058,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     try {
       const parsed = JSON.parse(saved) as { sessionId?: string; restaurantId?: string };
       if (parsed?.sessionId && parsed?.restaurantId === restaurantId) {
+        if (shouldSuppressDeadRunRevival('local_restore_processing_resume', parsed.sessionId)) return;
         setContactlessSessionId(parsed.sessionId);
         if (!suppressLegacyPostSuccessDowngrade('local_restore_processing_resume', { sessionId: parsed.sessionId })) {
           setContactlessStatus('processing');
@@ -2030,7 +2069,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     } catch {
       window.localStorage.removeItem(CONTACTLESS_SESSION_STORAGE_KEY);
     }
-  }, [CONTACTLESS_SESSION_STORAGE_KEY, loadServerSessionTruth, restaurantId, stage, suppressLegacyPostSuccessDowngrade]);
+  }, [CONTACTLESS_SESSION_STORAGE_KEY, loadServerSessionTruth, restaurantId, shouldSuppressDeadRunRevival, stage, suppressLegacyPostSuccessDowngrade]);
 
   useEffect(() => {
     if (stage !== 'contactless' || !restaurantId || !contactlessSessionId) return;
