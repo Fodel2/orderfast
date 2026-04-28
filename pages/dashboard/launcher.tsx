@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
+import {
+  BuildingStorefrontIcon,
+  CreditCardIcon,
+  DevicePhoneMobileIcon,
+  QueueListIcon,
+  Squares2X2Icon,
+} from '@heroicons/react/24/outline';
 import { supabase } from '@/lib/supabaseClient';
 import {
   readLauncherBootstrapSnapshot,
@@ -32,45 +39,39 @@ type AppMode = {
   key: 'kiosk' | 'pos' | 'kod' | 'menu' | 'take_payment';
   label: string;
   description: string;
-  icon: string;
-  accent: string;
+  icon: any;
 };
 
 const APP_MODES: AppMode[] = [
   {
-    key: 'kiosk',
-    label: 'Open Kiosk',
-    description: 'Start customer self-ordering for your selected restaurant.',
-    icon: '⌁',
-    accent: '#60a5fa',
-  },
-  {
     key: 'pos',
     label: 'POS',
     description: 'Serve walk-ins, build orders, and manage front-of-house sales.',
-    icon: '▦',
-    accent: '#1d4ed8',
+    icon: Squares2X2Icon,
   },
   {
     key: 'take_payment',
     label: 'Take Payment',
     description: 'Take quick card payments or collect unpaid orders.',
-    icon: '◉',
-    accent: '#0284c7',
+    icon: CreditCardIcon,
+  },
+  {
+    key: 'kiosk',
+    label: 'Open Kiosk',
+    description: 'Start customer self-ordering for your selected restaurant.',
+    icon: DevicePhoneMobileIcon,
   },
   {
     key: 'kod',
     label: 'KOD',
     description: 'View live kitchen tickets and preparation status.',
-    icon: '◫',
-    accent: '#475569',
+    icon: QueueListIcon,
   },
   {
     key: 'menu',
     label: 'Menu',
     description: 'Preview the customer menu and ordering experience.',
-    icon: '☰',
-    accent: '#334155',
+    icon: BuildingStorefrontIcon,
   },
 ];
 const RESTAURANT_SELECTION_KEY = 'orderfast_launcher_restaurant_id';
@@ -371,10 +372,10 @@ export default function DashboardLauncherPage() {
     <main
       style={{
         minHeight: '100vh',
-        background: 'linear-gradient(180deg, #0f172a 0px, #172554 188px, #eff6ff 188px, #e2e8f0 100%)',
+        background: '#f8fafc',
         paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)',
         paddingRight: '1rem',
-        paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 2.45rem)',
+        paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1.2rem)',
         paddingLeft: '1rem',
         display: 'flex',
         justifyContent: 'center',
@@ -383,17 +384,17 @@ export default function DashboardLauncherPage() {
       <div style={{ width: '100%', maxWidth: '430px', display: 'flex', flexDirection: 'column', gap: '0.95rem' }}>
         <header
           style={{
-            borderRadius: '18px',
+            borderRadius: '24px',
             padding: '1rem 1rem 1.05rem',
-            background: 'linear-gradient(145deg, rgba(15,23,42,0.9), rgba(30,41,59,0.76))',
-            border: '1px solid rgba(191, 219, 254, 0.2)',
-            boxShadow: '0 18px 40px rgba(15, 23, 42, 0.24)',
+            background: '#ffffff',
+            border: '1px solid #e5e7eb',
+            boxShadow: '0 1px 3px rgba(15, 23, 42, 0.08)',
             marginTop: '0.1rem',
           }}
         >
-          <p style={{ margin: 0, fontSize: '0.76rem', color: '#bfdbfe', letterSpacing: '0.1em', fontWeight: 700 }}>ORDERFAST</p>
-          <h1 style={{ margin: '0.35rem 0 0', fontSize: '1.45rem', color: '#f8fafc' }}>App launcher</h1>
-          <p style={{ margin: '0.55rem 0 0', color: '#dbeafe', fontSize: '0.9rem', lineHeight: 1.4 }}>
+          <p style={{ margin: 0, fontSize: '0.72rem', color: '#6b7280', letterSpacing: '0.1em', fontWeight: 700 }}>ORDERFAST</p>
+          <h1 style={{ margin: '0.35rem 0 0', fontSize: '1.35rem', color: '#111827' }}>App launcher</h1>
+          <p style={{ margin: '0.55rem 0 0', color: '#4b5563', fontSize: '0.9rem', lineHeight: 1.4 }}>
             Choose where to continue and keep working in your current restaurant context.
           </p>
         </header>
@@ -406,8 +407,8 @@ export default function DashboardLauncherPage() {
           <section
             style={{
               background: 'rgba(255,255,255,0.92)',
-              border: '1px solid #dbeafe',
-              borderRadius: '16px',
+              border: '1px solid #e5e7eb',
+              borderRadius: '20px',
               padding: '0.95rem',
               display: 'flex',
               flexDirection: 'column',
@@ -426,7 +427,7 @@ export default function DashboardLauncherPage() {
                   width: '100%',
                   padding: '0.75rem',
                   borderRadius: '11px',
-                  border: '1px solid #bfdbfe',
+                  border: '1px solid #e5e7eb',
                   background: '#f8fafc',
                   fontWeight: 600,
                 }}
@@ -441,11 +442,11 @@ export default function DashboardLauncherPage() {
           <>
             <section
               style={{
-                background: 'rgba(255,255,255,0.78)',
-                border: '1px solid rgba(191,219,254,0.9)',
+                background: '#ffffff',
+                border: '1px solid #e5e7eb',
                 borderRadius: '999px',
                 padding: '0.45rem 0.8rem',
-                boxShadow: '0 8px 20px rgba(30, 41, 59, 0.08)',
+                boxShadow: '0 1px 3px rgba(15, 23, 42, 0.08)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
@@ -460,10 +461,10 @@ export default function DashboardLauncherPage() {
                     width: '1.55rem',
                     height: '1.55rem',
                     borderRadius: '999px',
-                    background: 'linear-gradient(145deg, #e0f2fe, #bfdbfe)',
+                    background: '#ccfbf1',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    color: '#1e3a8a',
+                    color: '#0f766e',
                     fontWeight: 700,
                     fontSize: '0.82rem',
                     flexShrink: 0,
@@ -482,7 +483,7 @@ export default function DashboardLauncherPage() {
                   style={{
                     border: 'none',
                     background: 'transparent',
-                    color: '#1d4ed8',
+                    color: '#0f766e',
                     padding: 0,
                     fontSize: '0.82rem',
                     fontWeight: 700,
@@ -513,17 +514,17 @@ export default function DashboardLauncherPage() {
 
             <button
               type="button"
-              onClick={() => handleLaunch('kiosk')}
+              onClick={() => handleLaunch('pos')}
               disabled={launchingMode !== null || bootstrapRunning}
               style={{
                 textAlign: 'left',
-                background: 'linear-gradient(135deg, #0f172a, #1e293b 68%, #1d4ed8)',
-                color: '#fff',
-                border: '1px solid #0f172a',
-                borderRadius: '16px',
+                background: '#ffffff',
+                color: '#111827',
+                border: '1px solid #0d9488',
+                borderRadius: '24px',
                 padding: '1.05rem',
-                boxShadow: '0 18px 34px rgba(15, 23, 42, 0.27)',
-                opacity: launchingMode && launchingMode !== 'kiosk' ? 0.65 : 1,
+                boxShadow: '0 1px 3px rgba(15, 23, 42, 0.1)',
+                opacity: launchingMode && launchingMode !== 'pos' ? 0.65 : 1,
                 display: 'flex',
                 alignItems: 'flex-start',
                 gap: '0.8rem',
@@ -535,53 +536,99 @@ export default function DashboardLauncherPage() {
                   width: '2rem',
                   height: '2rem',
                   borderRadius: '0.7rem',
-                  background: 'rgba(191,219,254,0.2)',
-                  border: '1px solid rgba(191,219,254,0.5)',
+                  background: '#ccfbf1',
+                  border: '1px solid #99f6e4',
                   display: 'inline-flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  color: '#bfdbfe',
+                  color: '#0f766e',
                   fontSize: '1rem',
                   fontWeight: 700,
                   flexShrink: 0,
                 }}
               >
-                {APP_MODES[0].icon}
+                <Squares2X2Icon style={{ width: '1.1rem', height: '1.1rem' }} />
               </span>
               <span style={{ display: 'block' }}>
                 <span style={{ display: 'block', fontWeight: 700, fontSize: '1rem' }}>
-                  {launchingMode === 'kiosk' ? 'Opening kiosk…' : 'Open Kiosk'}
+                  {launchingMode === 'pos' ? 'Opening POS…' : 'POS'}
                 </span>
-                <span style={{ display: 'block', marginTop: '0.3rem', color: '#cbd5e1', fontSize: '0.88rem' }}>
-                  Start customer self-ordering for {selectedRestaurant.name}.
+                <span style={{ display: 'block', marginTop: '0.3rem', color: '#4b5563', fontSize: '0.88rem' }}>
+                  Serve walk-ins, build orders, and manage front-of-house sales for {selectedRestaurant.name}.
                 </span>
               </span>
             </button>
 
-            <section
+            <button
+              type="button"
+              onClick={() => {
+                handleLaunch('take_payment').catch(() => undefined);
+              }}
+              disabled={launchingMode !== null || bootstrapRunning || staffTakePaymentLoading || takePaymentUnavailable}
               style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr',
-                gap: '0.75rem',
+                textAlign: 'left',
+                borderRadius: '20px',
+                padding: '1rem',
+                opacity: launchingMode === null || launchingMode === 'take_payment' ? 1 : 0.65,
+                cursor: takePaymentUnavailable ? 'not-allowed' : 'pointer',
+                border: takePaymentUnavailable ? '1px solid #e5e7eb' : '1px solid #5eead4',
+                background: takePaymentUnavailable ? '#f8fafc' : '#f0fdfa',
+                boxShadow: '0 1px 3px rgba(15, 23, 42, 0.08)',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '0.72rem',
               }}
             >
-              {APP_MODES.filter((mode) => mode.key !== 'kiosk').map((mode) => (
+              <span
+                aria-hidden="true"
+                style={{
+                  width: '1.9rem',
+                  height: '1.9rem',
+                  borderRadius: '0.68rem',
+                  background: takePaymentUnavailable ? '#f3f4f6' : '#ccfbf1',
+                  border: takePaymentUnavailable ? '1px solid #e5e7eb' : '1px solid #99f6e4',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: takePaymentUnavailable ? '#9ca3af' : '#0f766e',
+                  flexShrink: 0,
+                }}
+              >
+                <CreditCardIcon style={{ width: '1.05rem', height: '1.05rem' }} />
+              </span>
+              <span style={{ display: 'block' }}>
+                <span style={{ display: 'block', fontWeight: 700 }}>
+                  {takePaymentUnavailable
+                    ? 'Take Payment unavailable'
+                    : launchingMode === 'take_payment'
+                      ? 'Opening Take Payment…'
+                      : 'Take Payment'}
+                </span>
+                <span style={{ display: 'block', marginTop: '0.25rem', color: '#4b5563', fontSize: '0.9rem' }}>
+                  {takePaymentUnavailable
+                    ? takePaymentPresentation?.detail || 'Tap to Pay is unavailable on this device right now.'
+                    : 'Take quick card payments or collect unpaid orders.'}
+                </span>
+              </span>
+            </button>
+
+            <section style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.7rem' }}>
+              {APP_MODES.filter((mode) => mode.key !== 'pos' && mode.key !== 'take_payment').map((mode) => (
                 <button
                   key={mode.key}
                   type="button"
                   onClick={() => {
                     handleLaunch(mode.key).catch(() => undefined);
                   }}
-                  disabled={launchingMode !== null || bootstrapRunning || staffTakePaymentLoading || (mode.key === 'take_payment' && takePaymentUnavailable)}
+                  disabled={launchingMode !== null || bootstrapRunning || staffTakePaymentLoading}
                   style={{
                     textAlign: 'left',
                     borderRadius: '14px',
                     padding: '0.95rem',
                     opacity: launchingMode === null || launchingMode === mode.key ? 1 : 0.65,
-                    cursor: mode.key === 'take_payment' && takePaymentUnavailable ? 'not-allowed' : 'pointer',
-                    border: mode.key === 'take_payment' && takePaymentUnavailable ? '1px solid #e2e8f0' : '1px solid #bfdbfe',
-                    background: mode.key === 'take_payment' && takePaymentUnavailable ? 'rgba(248,250,252,0.9)' : 'rgba(255,255,255,0.92)',
-                    boxShadow: '0 10px 20px rgba(148, 163, 184, 0.16)',
+                    border: '1px solid #e5e7eb',
+                    background: '#ffffff',
+                    boxShadow: '0 1px 2px rgba(15, 23, 42, 0.08)',
                     display: 'flex',
                     alignItems: 'flex-start',
                     gap: '0.72rem',
@@ -593,45 +640,28 @@ export default function DashboardLauncherPage() {
                       width: '1.9rem',
                       height: '1.9rem',
                       borderRadius: '0.68rem',
-                      background: `linear-gradient(145deg, ${mode.accent}20, ${mode.accent}35)`,
-                      border: `1px solid ${mode.accent}55`,
+                      background: '#f3f4f6',
+                      border: '1px solid #e5e7eb',
                       display: 'inline-flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      color: mode.accent,
-                      fontSize: '0.94rem',
-                      fontWeight: 700,
+                      color: '#4b5563',
                       flexShrink: 0,
                     }}
                   >
-                    {mode.icon}
+                    <mode.icon style={{ width: '1.05rem', height: '1.05rem' }} />
                   </span>
                   <span style={{ display: 'block' }}>
                     <span style={{ display: 'block', fontWeight: 700 }}>
-                      {mode.key === 'take_payment' && takePaymentUnavailable
-                        ? 'Take Payment unavailable'
-                        : launchingMode === mode.key
-                          ? `Opening ${mode.label}…`
-                          : mode.label}
+                      {launchingMode === mode.key ? `Opening ${mode.label}…` : mode.label}
                     </span>
-                    <span style={{ display: 'block', marginTop: '0.25rem', color: '#475569', fontSize: '0.9rem' }}>
-                      {mode.key === 'take_payment' && takePaymentUnavailable
-                        ? takePaymentPresentation?.detail || 'Tap to Pay is unavailable on this device right now.'
-                        : mode.description}
+                    <span style={{ display: 'block', marginTop: '0.25rem', color: '#4b5563', fontSize: '0.9rem' }}>
+                      {mode.description}
                     </span>
                   </span>
                 </button>
               ))}
             </section>
-            <div
-              aria-hidden="true"
-              style={{
-                height: '1.1rem',
-                borderRadius: '999px',
-                background: 'linear-gradient(90deg, rgba(15,23,42,0.28), rgba(51,65,85,0.08))',
-                marginTop: '0.35rem',
-              }}
-            />
           </>
         ) : null}
       </div>

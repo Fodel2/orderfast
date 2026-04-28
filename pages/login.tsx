@@ -44,10 +44,10 @@ export default function Login() {
     <main
       style={{
         minHeight: '100vh',
-        background: 'linear-gradient(180deg, #eef2ff 0%, #f8fafc 48%, #e2e8f0 100%)',
-        paddingTop: 'calc(env(safe-area-inset-top, 0px) + 2.3rem)',
+        background: '#f8fafc',
+        paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1.15rem)',
         paddingRight: '1rem',
-        paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 2.6rem)',
+        paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1.15rem)',
         paddingLeft: '1rem',
         display: 'flex',
         alignItems: 'flex-start',
@@ -58,16 +58,16 @@ export default function Login() {
         style={{
           width: '100%',
           maxWidth: '410px',
-          background: 'rgba(255,255,255,0.94)',
-          border: '1px solid #dbeafe',
-          borderRadius: '18px',
-          boxShadow: '0 16px 38px rgba(15, 23, 42, 0.09)',
-          padding: '1.15rem',
+          background: '#ffffff',
+          border: '1px solid #e5e7eb',
+          borderRadius: '24px',
+          boxShadow: '0 1px 3px rgba(15, 23, 42, 0.09)',
+          padding: '1.25rem',
         }}
       >
-        <p style={{ margin: 0, fontSize: '0.76rem', letterSpacing: '0.08em', color: '#475569', fontWeight: 700 }}>ORDERFAST</p>
-        <h1 style={{ margin: '0.4rem 0 0', fontSize: '1.5rem', color: '#0f172a' }}>Sign in</h1>
-        <p style={{ margin: '0.45rem 0 1rem', color: '#475569', fontSize: '0.92rem' }}>Use your dashboard credentials to continue.</p>
+        <p style={{ margin: 0, fontSize: '0.72rem', letterSpacing: '0.08em', color: '#6b7280', fontWeight: 700 }}>ORDERFAST</p>
+        <h1 style={{ margin: '0.4rem 0 0', fontSize: '1.5rem', color: '#111827' }}>Sign in</h1>
+        <p style={{ margin: '0.45rem 0 1rem', color: '#4b5563', fontSize: '0.92rem' }}>Use your dashboard credentials to continue.</p>
 
         <form onSubmit={handleLogin}>
           <div style={{ marginBottom: '0.8rem' }}>
@@ -79,11 +79,12 @@ export default function Login() {
               required
               style={{
                 width: '100%',
-                padding: '0.72rem 0.82rem',
-                borderRadius: '10px',
-                border: '1px solid #cbd5e1',
-                fontSize: '0.95rem',
+                padding: '0.72rem 0.9rem',
+                borderRadius: '12px',
+                border: '1px solid #e5e7eb',
+                fontSize: '0.92rem',
                 backgroundColor: '#fff',
+                color: '#374151',
               }}
             />
           </div>
@@ -96,11 +97,12 @@ export default function Login() {
               required
               style={{
                 width: '100%',
-                padding: '0.72rem 0.82rem',
-                borderRadius: '10px',
-                border: '1px solid #cbd5e1',
-                fontSize: '0.95rem',
+                padding: '0.72rem 0.9rem',
+                borderRadius: '12px',
+                border: '1px solid #e5e7eb',
+                fontSize: '0.92rem',
                 backgroundColor: '#fff',
+                color: '#374151',
               }}
             />
           </div>
@@ -108,13 +110,14 @@ export default function Login() {
             type="submit"
             style={{
               width: '100%',
-              padding: '0.72rem 1rem',
-              background: 'linear-gradient(135deg, #0f172a, #1e293b)',
+              padding: '0.78rem 1rem',
+              background: '#0d9488',
               color: '#fff',
               border: 'none',
-              borderRadius: '10px',
-              fontSize: '0.96rem',
-              fontWeight: 600,
+              borderRadius: '999px',
+              fontSize: '0.92rem',
+              fontWeight: 700,
+              boxShadow: '0 1px 3px rgba(15, 23, 42, 0.12)',
               cursor: 'pointer',
             }}
           >
@@ -122,18 +125,6 @@ export default function Login() {
           </button>
         </form>
       </section>
-      <div
-        aria-hidden="true"
-        style={{
-          position: 'fixed',
-          left: 0,
-          right: 0,
-          bottom: 0,
-          height: 'calc(env(safe-area-inset-bottom, 0px) + 1.4rem)',
-          background: 'linear-gradient(180deg, rgba(226,232,240,0), rgba(30,41,59,0.18))',
-          pointerEvents: 'none',
-        }}
-      />
     </main>
   );
 }
