@@ -1155,16 +1155,9 @@ export default function KioskLayout({
             <p className="IdleSubtitle">{idleMessage}</p>
 
             <div className="IdleCountdownWrapper">
-              {idleCountdownStarted ? (
-                <>
-                  <div className="IdleCountdownNumber" key={idleCountdown} style={{ color: countdownColor }}>
-                    {idleCountdown}
-                  </div>
-                  <div className="IdleCountdownText">Resetting in {idleCountdown} seconds...</div>
-                </>
-              ) : (
-                <div className="IdleCountdownText">Starting countdown in 3 seconds…</div>
-              )}
+              <div className="IdleCountdownNumber" key={idleCountdownStarted ? idleCountdown : 'idle-hold-10'} style={{ color: countdownColor }}>
+                {idleCountdown}
+              </div>
             </div>
 
             <div className="IdleButtons">
