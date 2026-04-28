@@ -96,17 +96,23 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   const placeOrderDisabled = cartCount === 0 || placingOrder || !availability.canSubmitActiveSession;
   const submissionInFlightRef = useRef(false);
   const isMountedRef = useRef(true);
-  const { height: viewportHeight, refresh: refreshViewport } = useKeyboardViewport(showConfirmModal);
+  const {
+    height: viewportHeight,
+    obstructionHeight,
+    refresh: refreshViewport,
+  } = useKeyboardViewport(showConfirmModal);
+  const isKeyboardOpen = obstructionHeight > 0;
   const isCompactModal = viewportHeight > 0 ? viewportHeight < 520 : false;
   const modalPadding = isCompactModal ? 12 : 16;
+  const keyboardAwareBottomPadding = isKeyboardOpen ? obstructionHeight + 12 : modalPadding;
   const modalOverlayStyle = useMemo<CSSProperties>(
     () => ({
       height: 'var(--vvh, 100dvh)',
       paddingTop: `calc(env(safe-area-inset-top) + ${modalPadding}px)`,
-      paddingBottom: `calc(env(safe-area-inset-bottom) + ${modalPadding}px)`,
+      paddingBottom: `calc(env(safe-area-inset-bottom) + ${keyboardAwareBottomPadding}px)`,
       overflow: 'hidden',
     }),
-    [modalPadding]
+    [keyboardAwareBottomPadding, modalPadding]
   );
   const modalCardStyle = useMemo<CSSProperties>(
     () => ({
@@ -732,7 +738,9 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
       <AnimatePresence>
         {showConfirmModal ? (
           <motion.div
-            className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm"
+            className={`fixed inset-x-0 top-0 z-[70] flex justify-center bg-black/40 px-4 backdrop-blur-sm ${
+              isKeyboardOpen && confirmStep === 2 ? 'items-start' : 'items-center'
+            }`}
             style={modalOverlayStyle}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -749,7 +757,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
               <div
                 className={`modalContent flex min-h-0 flex-1 flex-col px-6 sm:px-8 ${
                   isCompactModal ? 'py-4' : 'py-6 sm:py-8'
-                }`}
+                } ${isKeyboardOpen && confirmStep === 2 ? 'overflow-y-auto' : ''}`}
               >
                 <AnimatePresence mode="wait">
                   {confirmStep === 1 ? (
