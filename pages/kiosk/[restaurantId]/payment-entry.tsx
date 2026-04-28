@@ -2276,9 +2276,12 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   }, [CONTACTLESS_SESSION_STORAGE_KEY, commitNonSuccessOutcome, contactlessSessionId, logContactlessState, releaseContactlessOwner, restaurantId]);
 
   const renderMethodPicker = () => (
-    <section className="w-full space-y-4">
-      <h1 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">Choose payment</h1>
-      <div className="grid gap-3 sm:grid-cols-2">
+    <section className="w-full space-y-5">
+      <div className="-mt-1 space-y-1 px-2 sm:-mt-1.5 sm:px-0">
+        <h1 className="text-2xl font-semibold text-slate-900 sm:text-[26px]">Choose payment</h1>
+        <p className="text-base leading-relaxed text-slate-600 sm:text-lg">Select how you’d like to complete checkout.</p>
+      </div>
+      <div className="grid gap-3 sm:gap-4">
         {enabledMethods.map((method) => {
           const meta = PAYMENT_METHOD_META[method];
           const Icon = meta.icon;
@@ -2313,20 +2316,24 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
                 }
                 setStage('pay_at_counter');
               }}
-              className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white px-5 py-5 text-left shadow-sm transition hover:-translate-y-[1px] hover:border-slate-300 hover:shadow-md"
+              className="group relative overflow-hidden rounded-3xl border border-slate-200 bg-white px-5 py-5 text-left shadow-sm transition hover:-translate-y-[1px] hover:border-slate-300 hover:shadow-md sm:px-6 sm:py-6"
               style={{
                 borderColor: paymentTheme.ring,
                 backgroundImage: `linear-gradient(135deg, #ffffff 0%, ${paymentTheme.primarySoft} 100%)`,
               }}
             >
-              <div
-                className="inline-flex h-11 w-11 items-center justify-center rounded-2xl text-white shadow-sm"
-                style={{ background: `linear-gradient(135deg, ${paymentTheme.primary}, ${paymentTheme.secondary})` }}
-              >
-                <Icon className="h-6 w-6" />
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-lg font-semibold text-slate-900 sm:text-xl">{meta.title}</p>
+                  {method !== 'pay_at_counter' ? <p className="mt-1 text-sm text-slate-600 sm:text-base">{meta.subtitle}</p> : null}
+                </div>
+                <div
+                  className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-white shadow-sm"
+                  style={{ background: `linear-gradient(135deg, ${paymentTheme.primary}, ${paymentTheme.secondary})` }}
+                >
+                  <Icon className="h-6 w-6" />
+                </div>
               </div>
-              <p className="mt-4 text-lg font-semibold text-slate-900">{meta.title}</p>
-              {method !== 'pay_at_counter' ? <p className="mt-1 text-sm text-slate-600">{meta.subtitle}</p> : null}
             </button>
           );
         })}
@@ -2354,8 +2361,8 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   return (
     <KioskLayout restaurantId={restaurantId} restaurant={restaurant} restaurantLoading={restaurantLoading}>
       <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
-        <div className="mx-auto max-w-4xl space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="mx-auto max-w-5xl space-y-4 pb-28 pt-1 sm:space-y-5 sm:pt-2">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-2 sm:px-0">
             <button
               type="button"
               onClick={handleHiddenOperatorTap}
