@@ -113,6 +113,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   );
   const modalCardStyle = useMemo<CSSProperties>(
     () => ({
+      height: 'auto',
       maxHeight: '100%',
     }),
     []
@@ -762,7 +763,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
               transition={{ duration: 0.18, ease: 'easeOut' }}
             >
               <div
-                className={`modalContent flex min-h-0 flex-1 flex-col px-6 sm:px-8 ${
+                className={`modalContent flex flex-col px-6 sm:px-8 ${
                   isCompactModal ? 'py-4' : 'py-6 sm:py-8'
                 }`}
               >
@@ -774,7 +775,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -12 }}
                       transition={{ duration: 0.2, ease: 'easeOut' }}
-                      className={`flex min-h-0 flex-1 flex-col ${isCompactModal ? 'gap-4' : 'gap-6'}`}
+                      className={`flex flex-col ${isCompactModal ? 'gap-4' : 'gap-6'}`}
                     >
                       <div className={`${isCompactModal ? 'space-y-1.5' : 'space-y-2'}`}>
                         <h3 className="text-[clamp(1.35rem,2.8vw,1.625rem)] font-semibold text-neutral-900">
@@ -784,7 +785,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                           {confirmMessage}
                         </p>
                       </div>
-                      <div className="mt-auto grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <button
                           type="button"
                           onClick={() => {
@@ -815,7 +816,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -12 }}
                       transition={{ duration: 0.2, ease: 'easeOut' }}
-                      className={`flex min-h-0 flex-1 flex-col ${isCompactModal ? 'gap-4' : 'gap-5'} ${
+                      className={`flex flex-col ${isCompactModal ? 'gap-4' : 'gap-5'} ${
                         isNameEntryKeyboardActive ? 'overflow-y-auto' : ''
                       }`}
                     >
@@ -837,7 +838,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                           event.preventDefault();
                           handlePlaceOrder();
                         }}
-                        className="flex min-h-0 flex-1 flex-col gap-4"
+                        className="flex flex-col gap-4"
                         style={nameStepFormStyle}
                       >
                         <div className="space-y-2">
@@ -945,7 +946,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                             <p className="text-sm font-semibold text-rose-600">{submissionError}</p>
                           ) : null}
                         </div>
-                        <div className={`${isNameEntryKeyboardActive ? 'grid' : 'mt-auto grid'} grid-cols-1 gap-3 sm:grid-cols-2`}>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                           <button
                             type="button"
                             onClick={handleBackToReview}
