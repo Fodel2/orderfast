@@ -26,6 +26,7 @@ export type TapToPayErrorCode =
 export type TapToPayResult = {
   status: TapToPayStatus;
   code?: TapToPayErrorCode;
+  reason?: string;
   message?: string;
   sessionId?: string;
   detail?: unknown;
