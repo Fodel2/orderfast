@@ -28,6 +28,7 @@ import NativeTapToPayPreHandoverOverlay from '@/components/payments/NativeTapToP
 import {
   canCloseNativeTapToPayPreHandoverOverlay,
   isNativeTapToPayOverlayVisiblePhase,
+  normalizeNativeTapToPayState,
   POST_HANDOVER_PROGRESS_LINES,
   PRE_HANDOVER_PROGRESS_LINES,
   resolveNativeTapToPayUiPhase,
@@ -714,7 +715,9 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   }, [CONTACTLESS_SESSION_STORAGE_KEY, logContactlessState, releaseContactlessOwner, stage]);
 
   useEffect(() => {
-    const overlayVisible = isNativeTapToPayOverlayVisiblePhase(contactlessStatus) || successTickVisible;
+    const overlayVisible = isNativeTapToPayOverlayVisiblePhase(contactlessStatus, {
+      hasReturnedFromNative: contactlessStatus === 'processing' || contactlessStatus === 'succeeded' || contactlessStatus === 'canceled' || contactlessStatus === 'failed',
+    }) || successTickVisible;
     if (!overlayVisible) {
       setPrepMessageIndex(0);
       return;
@@ -1347,7 +1350,8 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       });
       console.info('[kiosk][tap_to_pay_native_collect_raw_result]', { sessionId, restaurantId, result: started });
       updateReaderHintFromDetail(started.detail);
-      const isNativeSuccessOrProcessing = started.status === 'succeeded' || started.status === 'processing';
+      const normalizedStartedStatus = normalizeNativeTapToPayState(started.status, { hasReturnedFromNative: true });
+      const isNativeSuccessOrProcessing = normalizedStartedStatus === 'succeeded' || normalizedStartedStatus === 'processing';
       logTapStageResult(
         isNativeSuccessOrProcessing ? 'native_process_result' : 'native_collect_result',
         isNativeSuccessOrProcessing ? 'ok' : 'failed',
@@ -1364,7 +1368,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
           (typeof (started as { definitiveCustomerCancelSignal?: unknown }).definitiveCustomerCancelSignal === 'boolean' &&
             (started as { definitiveCustomerCancelSignal?: boolean }).definitiveCustomerCancelSignal === true);
         const explicitAppCancelRequested = contactlessOwnerRef.current?.id === ownerId && contactlessOwnerRef.current?.cancelRequested === true;
-        const nativeReturnedCanceled = started.status === 'canceled';
+        const nativeReturnedCanceled = normalizedStartedStatus === 'canceled';
         const lifecycleInterrupted =
           !nativeReturnedCanceled &&
           (interruptionReasonCode === 'background_loss_confirmed' ||
@@ -1455,7 +1459,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
               ? 'This device cannot use Tap to Pay. Please choose another payment method.'
               : 'Payment failed, please try again or choose another payment method.'
         );
-        setContactlessDebug(`start_failed:${started.code || started.status}`);
+        setContactlessDebug(`start_failed:${started.code || normalizedStartedStatus || started.status}`);
         setContactlessDebugDetail(
           started.detail
             ? `${started.message || started.code || started.status} | ${formatDetail(started.detail)}`
@@ -1479,7 +1483,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         return;
       }
 
-      if (started.status === 'processing') {
+      if (normalizeNativeTapToPayState(started.status, { hasReturnedFromNative: true }) === 'processing') {
         console.info('[kiosk][tap_to_pay_process_start]', { sessionId, restaurantId, started });
         const nativePollDeadline = Date.now() + 180000;
         let nativeResolvedStatus: TapToPayStatus = 'processing';
@@ -1496,9 +1500,14 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
             continue;
           }
           setContactlessDebug(`native_poll:${polledStatus.status}`);
-          if (polledStatus.status === 'succeeded' || polledStatus.status === 'failed' || polledStatus.status === 'canceled') {
-            nativeResolvedStatus = polledStatus.status;
-            logTapStageResult(polledStatus.status === 'succeeded' ? 'native_process_result' : 'native_collect_result', polledStatus.status === 'succeeded' ? 'ok' : 'failed', polledStatus);
+          const normalizedPolledStatus = normalizeNativeTapToPayState(polledStatus.status, { hasReturnedFromNative: true }) as TapToPayStatus;
+          if (normalizedPolledStatus === 'succeeded' || normalizedPolledStatus === 'failed' || normalizedPolledStatus === 'canceled') {
+            nativeResolvedStatus = normalizedPolledStatus;
+            logTapStageResult(
+              normalizedPolledStatus === 'succeeded' ? 'native_process_result' : 'native_collect_result',
+              normalizedPolledStatus === 'succeeded' ? 'ok' : 'failed',
+              { ...polledStatus, status: normalizedPolledStatus }
+            );
             break;
           }
         }
@@ -1849,17 +1858,40 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       ring: hexToRgba(primary, 0.28),
     };
   }, [restaurant?.brand_primary_color, restaurant?.brand_secondary_color]);
-  const contactlessUiPhase = useMemo(() => resolveNativeTapToPayUiPhase(contactlessStatus), [contactlessStatus]);
+  const hasReturnedFromNative = useMemo(
+    () =>
+      contactlessStatus === 'processing' ||
+      contactlessStatus === 'succeeded' ||
+      contactlessStatus === 'canceled' ||
+      contactlessStatus === 'failed' ||
+      terminalVisualState === 'success' ||
+      terminalVisualState === 'canceled' ||
+      terminalVisualState === 'failed' ||
+      successTickVisible,
+    [contactlessStatus, successTickVisible, terminalVisualState]
+  );
+  const contactlessUiPhase = useMemo(
+    () => resolveNativeTapToPayUiPhase(contactlessStatus, { hasReturnedFromNative }),
+    [contactlessStatus, hasReturnedFromNative]
+  );
   const showSharedTransitionOverlay = useMemo(
     () =>
       stage === 'contactless' &&
-      (isNativeTapToPayOverlayVisiblePhase(contactlessStatus) ||
+      (isNativeTapToPayOverlayVisiblePhase(contactlessStatus, { hasReturnedFromNative }) ||
         successTickVisible ||
         terminalVisualState === 'canceled' ||
         terminalVisualState === 'failed' ||
         contactlessTerminalState === 'in_progress' ||
         preHandoverOverlayOwned),
-    [contactlessStatus, contactlessTerminalState, preHandoverOverlayOwned, stage, successTickVisible, terminalVisualState]
+    [
+      contactlessStatus,
+      contactlessTerminalState,
+      hasReturnedFromNative,
+      preHandoverOverlayOwned,
+      stage,
+      successTickVisible,
+      terminalVisualState,
+    ]
   );
   const canCloseSharedTransitionOverlay = useMemo(
     () => {
@@ -1869,9 +1901,10 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         inCancelTransition: cancelLockRef.current,
         inSuccessTransition: successTickVisible || terminalVisualState === 'canceled' || terminalVisualState === 'failed',
         preHandoverOverlayOwned,
+        hasReturnedFromNative,
       });
     },
-    [contactlessStatus, preHandoverOverlayOwned, stage, successTickVisible, terminalVisualState]
+    [contactlessStatus, hasReturnedFromNative, preHandoverOverlayOwned, stage, successTickVisible, terminalVisualState]
   );
   const transitionLines = useMemo(
     () =>
@@ -2017,7 +2050,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   useEffect(() => {
     if (stage !== 'contactless') return;
     if (!contactlessSessionId || !restaurantId) return;
-    if (!isNativeTapToPayOverlayVisiblePhase(contactlessStatus)) return;
+    if (!isNativeTapToPayOverlayVisiblePhase(contactlessStatus, { hasReturnedFromNative })) return;
 
     const watchdog = window.setTimeout(() => {
       void (async () => {
@@ -2025,7 +2058,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
         await reconcileSession(contactlessSessionId, 'watchdog');
         window.setTimeout(() => {
           setContactlessStatus((current) => {
-            if (isNativeTapToPayOverlayVisiblePhase(current)) {
+            if (isNativeTapToPayOverlayVisiblePhase(current, { hasReturnedFromNative: true })) {
               setContactlessError('Payment did not complete. Please choose another payment method and try again.');
               return 'failed';
             }
