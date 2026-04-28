@@ -98,21 +98,22 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   const isMountedRef = useRef(true);
   const {
     height: viewportHeight,
+    offsetTop: viewportOffsetTop,
     obstructionHeight,
     refresh: refreshViewport,
   } = useKeyboardViewport(showConfirmModal);
   const isKeyboardOpen = obstructionHeight > 0;
   const isCompactModal = viewportHeight > 0 ? viewportHeight < 520 : false;
   const modalPadding = isCompactModal ? 12 : 16;
-  const keyboardAwareBottomPadding = isKeyboardOpen ? obstructionHeight + 12 : modalPadding;
   const modalOverlayStyle = useMemo<CSSProperties>(
     () => ({
+      top: `${viewportOffsetTop}px`,
       height: 'var(--vvh, 100dvh)',
       paddingTop: `calc(env(safe-area-inset-top) + ${modalPadding}px)`,
-      paddingBottom: `calc(env(safe-area-inset-bottom) + ${keyboardAwareBottomPadding}px)`,
+      paddingBottom: `calc(env(safe-area-inset-bottom) + ${modalPadding}px)`,
       overflow: 'hidden',
     }),
-    [keyboardAwareBottomPadding, modalPadding]
+    [modalPadding, viewportOffsetTop]
   );
   const modalCardStyle = useMemo<CSSProperties>(
     () => ({
@@ -738,9 +739,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
       <AnimatePresence>
         {showConfirmModal ? (
           <motion.div
-            className={`fixed inset-x-0 top-0 z-[70] flex justify-center bg-black/40 px-4 backdrop-blur-sm ${
-              isKeyboardOpen && confirmStep === 2 ? 'items-start' : 'items-center'
-            }`}
+            className="fixed inset-x-0 z-[70] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm"
             style={modalOverlayStyle}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
