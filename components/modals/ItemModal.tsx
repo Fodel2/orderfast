@@ -6,7 +6,7 @@ import { XMarkIcon } from '@heroicons/react/24/outline';
 import AddonGroups, { validateAddonSelections } from '@/components/AddonGroups';
 import PlateAdd from '@/components/icons/PlateAdd';
 import { useBrand } from '@/components/branding/BrandProvider';
-import { formatPrice, normalizePriceValue } from '@/lib/orderDisplay';
+import { calculateCartTotals, formatPrice, normalizePriceValue } from '@/lib/orderDisplay';
 import { getAddonsForItem } from '@/utils/getAddonsForItem';
 import type { AddonGroup } from '@/utils/types';
 import { toast } from '@/components/ui/toast';
@@ -174,7 +174,44 @@ export default function ItemModal({ item, restaurantId, onAddToCart, isOutOfStoc
 
   const price = typeof item?.price === 'number' ? item.price : Number(item?.price || 0);
   const normalizedPrice = normalizePriceValue(price);
-  const formattedPrice = formatPrice(normalizedPrice, currencyCode);
+  const selectedAddons = useMemo(
+    () =>
+      filteredGroups
+        .flatMap((group) => {
+          const groupId = group.group_id ?? group.id;
+          const groupSelections = selections[groupId] || {};
+          return group.addon_options
+            .map((option) => {
+              const quantity = groupSelections[option.id] || 0;
+              if (quantity <= 0) return null;
+              return {
+                option_id: option.id,
+                name: option.name,
+                price: normalizePriceValue(option.price ?? 0),
+                quantity,
+              };
+            })
+            .filter(Boolean) as Array<{
+            option_id: string;
+            name: string;
+            price: number;
+            quantity: number;
+          }>;
+        })
+        .filter(Boolean),
+    [filteredGroups, selections]
+  );
+  const liveTotal = useMemo(() => {
+    const totals = calculateCartTotals([
+      {
+        price: normalizedPrice,
+        quantity: qty,
+        addons: selectedAddons,
+      },
+    ]);
+    return normalizePriceValue(totals.total);
+  }, [normalizedPrice, qty, selectedAddons]);
+  const formattedPrice = formatPrice(liveTotal, currencyCode);
   const imageUrl = item?.image_url || undefined;
   const focalXRaw = typeof item?.menu_header_focal_x === 'number' ? item.menu_header_focal_x : undefined;
   const focalYRaw = typeof item?.menu_header_focal_y === 'number' ? item.menu_header_focal_y : undefined;
@@ -236,30 +273,9 @@ export default function ItemModal({ item, restaurantId, onAddToCart, isOutOfStoc
       return;
     }
 
-    const addons = filteredGroups
-      .flatMap((g) => {
-        const gid = g.group_id ?? g.id;
-        const opts = selections[gid] || {};
-        return g.addon_options
-          .map((opt) => {
-            const q = opts[opt.id] || 0;
-            if (q > 0) {
-              return {
-                option_id: opt.id,
-                name: opt.name,
-                price: opt.price ?? 0,
-                quantity: q,
-              };
-            }
-            return null;
-          })
-          .filter(Boolean) as any;
-      })
-      .filter(Boolean);
-
     const { __onClose, ...rest } = item || {};
 
-    onAddToCart(rest, qty, addons);
+    onAddToCart(rest, qty, selectedAddons);
 
     setQty(1);
     setSelections({});
