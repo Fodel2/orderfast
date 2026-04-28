@@ -192,6 +192,12 @@ public class OrderfastTapToPayPlugin extends Plugin {
         logFlowEvent(event, paymentRunGuardPayload(path, reason));
     }
 
+    private void logNativeTapToPayCancel(String message, JSObject payload) {
+        String session = currentSessionId == null ? "none" : currentSessionId;
+        String flowRun = currentFlowRunId == null ? "none" : currentFlowRunId;
+        Log.i(TAG, "[native-tap-to-pay-cancel] " + message + " sessionId=" + session + " flowRunId=" + flowRun + " payload=" + (payload == null ? "{}" : payload.toString()));
+    }
+
     private void cacheFinalResult(JSObject payload, String source) {
         if (payload == null) return;
         cachedFinalResult = payload;
@@ -1019,6 +1025,11 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                 @Override
                                 public void onFailure(TerminalException e) {
                                     String normalizedCode = normalizeErrorCode(e);
+                                    JSObject rawFailurePayload = new JSObject();
+                                    rawFailurePayload.put("normalizedCode", normalizedCode);
+                                    rawFailurePayload.put("terminalCode", e.getErrorCode() == null ? "UNKNOWN" : e.getErrorCode().name());
+                                    rawFailurePayload.put("errorMessage", buildErrorMessage(e));
+                                    logNativeTapToPayCancel("native cancel callback fired (processPaymentIntent.onFailure)", rawFailurePayload);
                                     quickChargeTraceSnapshot.put("processCallbackStatus", "failure");
                                     quickChargeTraceSnapshot.put("processFailureCallbackCount", quickChargeTraceSnapshot.optInt("processFailureCallbackCount", 0) + 1);
                                     quickChargeTraceSnapshot.put("processCallbackCount", quickChargeTraceSnapshot.optInt("processCallbackCount", 0) + 1);
@@ -1047,6 +1058,10 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                     postSessionState(mappedSessionState, "native_process_" + reasonCategory);
                                     JSObject payload = result(mappedPluginStatus, normalizedCode, buildErrorMessage(e));
                                     enrichOutcomePayload(payload, "native_process_result", e.getErrorCode(), "customer_cancelled".equals(reasonCategory));
+                                    if ("customer_cancelled".equals(reasonCategory) || "app_cancelled".equals(reasonCategory)) {
+                                        payload.put("reason", "user_cancelled");
+                                        payload.put("message", "Tap to Pay was cancelled.");
+                                    }
                                     payload.put("reasonCategory", reasonCategory);
                                     payload.put("mappedSessionState", mappedSessionState);
                                     payload.put("interruptionReasonCode", "lifecycle_interrupted".equals(reasonCategory) ? "background_loss_confirmed" : "none");
@@ -1079,9 +1094,18 @@ public class OrderfastTapToPayPlugin extends Plugin {
                                     quickChargeProcessCallbackPayload.put("terminalCode", e.getErrorCode() == null ? "UNKNOWN" : e.getErrorCode().name());
                                     quickChargeProcessCallbackPayload.put("processPath", "unified_process_payment_intent");
                                     logFlowEvent("quick_charge_native_process_callback", quickChargeProcessCallbackPayload);
+                                    if ("customer_cancelled".equals(reasonCategory) || "app_cancelled".equals(reasonCategory)) {
+                                        logNativeTapToPayCancel("mapped app cancel result", payload);
+                                    }
                                     logStartupStage("native_process_result", payload);
+                                    if ("customer_cancelled".equals(reasonCategory) || "app_cancelled".equals(reasonCategory)) {
+                                        logNativeTapToPayCancel("emitted bridge payload", payload);
+                                    }
                                     cacheFinalResult(payload, "process_failure");
                                     clearActivePaymentState();
+                                    if ("customer_cancelled".equals(reasonCategory) || "app_cancelled".equals(reasonCategory)) {
+                                        logNativeTapToPayCancel("cleanup completed", lifecyclePayload("process_failure_cleanup"));
+                                    }
                                     resetStatusForNextAttempt();
                                     resolveOnce(resolveGate, call, payload);
                                 }
@@ -1144,6 +1168,7 @@ public class OrderfastTapToPayPlugin extends Plugin {
         logCancelSource("plugin_method:cancelTapToPayPayment");
         logCancelOrCleanupPath("native_cancel_path_observed", "plugin_method:cancelTapToPayPayment", "explicit_staff_cancel_request");
         logStartupStage("native_cancel_result", detail("native_cancel_result", "entered", null));
+        logNativeTapToPayCancel("native cancel callback fired (plugin cancel requested)", lifecyclePayload("cancelTapToPayPayment_entered"));
         mainHandler.post(() -> {
             try {
                 if (processCancelable != null && !processCancelable.isCompleted()) {
@@ -1156,10 +1181,14 @@ public class OrderfastTapToPayPlugin extends Plugin {
                             status = "canceled";
                             postSessionState("canceled", "native_cancel");
                             JSObject payload = result("canceled", "canceled", "Tap to Pay canceled.");
+                            payload.put("reason", "user_cancelled");
                             payload.put("detail", detail("native_cancel_result", "process_cancelable_canceled", null));
+                            logNativeTapToPayCancel("mapped app result", payload);
                             logStartupStage("native_cancel_result", payload);
+                            logNativeTapToPayCancel("emitted bridge payload", payload);
                             cacheFinalResult(payload, "cancel_process_cancelable");
                             clearActivePaymentState();
+                            logNativeTapToPayCancel("cleanup completed", lifecyclePayload("cancel_process_cancelable_cleanup"));
                             resetStatusForNextAttempt();
                             call.resolve(payload);
                         }
@@ -1169,9 +1198,11 @@ public class OrderfastTapToPayPlugin extends Plugin {
                             status = "failed";
                             JSObject payload = result("failed", normalizeErrorCode(e), buildErrorMessage(e));
                             payload.put("detail", terminalErrorDetail(e, "native_cancel_result"));
+                            logNativeTapToPayCancel("raw native cancel failure", payload);
                             logStartupStage("native_cancel_result", payload);
                             cacheFinalResult(payload, "cancel_process_failure");
                             clearActivePaymentState();
+                            logNativeTapToPayCancel("cleanup completed", lifecyclePayload("cancel_process_failure_cleanup"));
                             resetStatusForNextAttempt();
                             call.resolve(payload);
                         }
@@ -1189,10 +1220,14 @@ public class OrderfastTapToPayPlugin extends Plugin {
                             status = "canceled";
                             postSessionState("canceled", "native_cancel");
                             JSObject payload = result("canceled", "canceled", "Tap to Pay canceled.");
+                            payload.put("reason", "user_cancelled");
                             payload.put("detail", detail("native_cancel_result", "payment_intent_canceled", null));
+                            logNativeTapToPayCancel("mapped app result", payload);
                             logStartupStage("native_cancel_result", payload);
+                            logNativeTapToPayCancel("emitted bridge payload", payload);
                             cacheFinalResult(payload, "cancel_payment_intent");
                             clearActivePaymentState();
+                            logNativeTapToPayCancel("cleanup completed", lifecyclePayload("cancel_payment_intent_cleanup"));
                             resetStatusForNextAttempt();
                             call.resolve(payload);
                         }
@@ -1202,9 +1237,11 @@ public class OrderfastTapToPayPlugin extends Plugin {
                             status = "failed";
                             JSObject payload = result("failed", normalizeErrorCode(e), buildErrorMessage(e));
                             payload.put("detail", terminalErrorDetail(e, "native_cancel_result"));
+                            logNativeTapToPayCancel("raw native cancel failure", payload);
                             logStartupStage("native_cancel_result", payload);
                             cacheFinalResult(payload, "cancel_payment_intent_failure");
                             clearActivePaymentState();
+                            logNativeTapToPayCancel("cleanup completed", lifecyclePayload("cancel_payment_intent_failure_cleanup"));
                             resetStatusForNextAttempt();
                             call.resolve(payload);
                         }
@@ -1215,19 +1252,25 @@ public class OrderfastTapToPayPlugin extends Plugin {
                 status = "canceled";
                 logCancelOrCleanupPath("native_cancel_path_observed", "plugin_method:no_active_payment", "no_active_payment");
                 JSObject payload = result("canceled", "canceled", "No active payment was running.");
+                payload.put("reason", "user_cancelled");
                 payload.put("detail", detail("native_cancel_result", "no_active_payment", null));
+                logNativeTapToPayCancel("mapped app result", payload);
                 logStartupStage("native_cancel_result", payload);
+                logNativeTapToPayCancel("emitted bridge payload", payload);
                 cacheFinalResult(payload, "cancel_no_active");
                 clearActivePaymentState();
+                logNativeTapToPayCancel("cleanup completed", lifecyclePayload("cancel_no_active_cleanup"));
                 resetStatusForNextAttempt();
                 call.resolve(payload);
             } catch (Exception ex) {
                 status = "failed";
                 JSObject payload = result("failed", normalizeErrorCode(ex), ex.getMessage());
                 payload.put("detail", exceptionDetail(ex, "native_cancel_result", "cancel_exception"));
+                logNativeTapToPayCancel("raw native cancel exception", payload);
                 logStartupStage("native_cancel_result", payload);
                 cacheFinalResult(payload, "cancel_exception");
                 clearActivePaymentState();
+                logNativeTapToPayCancel("cleanup completed", lifecyclePayload("cancel_exception_cleanup"));
                 resetStatusForNextAttempt();
                 call.resolve(payload);
             }
@@ -1697,15 +1740,6 @@ public class OrderfastTapToPayPlugin extends Plugin {
     private String classifyTerminalFailureCategory(String normalizedCode) {
         if ("canceled".equals(normalizedCode)) {
             if (cancelRequestedByApp) return "app_cancelled";
-            if (readerDisconnectedDuringActiveRun() || lifecyclePausedDuringActiveFlow || backgroundInterruptionCandidate || confirmedBackgroundInterruption) {
-                return "lifecycle_interrupted";
-            }
-            if (stripeTakeoverObserved && !isAppInBackground()) {
-                return "lifecycle_interrupted";
-            }
-            if (isConfirmedLifecycleInterruption()) {
-                return "lifecycle_interrupted";
-            }
             return "customer_cancelled";
         }
         return "collect_failed";

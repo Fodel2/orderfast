@@ -1367,6 +1367,8 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
           (typeof nativeDetail?.definitiveCustomerCancelSignal === 'boolean' && nativeDetail.definitiveCustomerCancelSignal) ||
           (typeof (started as { definitiveCustomerCancelSignal?: unknown }).definitiveCustomerCancelSignal === 'boolean' &&
             (started as { definitiveCustomerCancelSignal?: boolean }).definitiveCustomerCancelSignal === true);
+        const explicitNativeCancelReason =
+          typeof (started as { reason?: unknown }).reason === 'string' ? String((started as { reason?: string }).reason).toLowerCase() : null;
         const explicitAppCancelRequested = contactlessOwnerRef.current?.id === ownerId && contactlessOwnerRef.current?.cancelRequested === true;
         const nativeReturnedCanceled = normalizedStartedStatus === 'canceled';
         const lifecycleInterrupted =
@@ -1378,6 +1380,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
           nativeReturnedCanceled ||
           definitiveCustomerCancelSignal ||
           explicitAppCancelRequested ||
+          explicitNativeCancelReason === 'user_cancelled' ||
           reasonCategory === 'user_canceled' ||
           reasonCategory === 'lifecycle_cancelled' ||
           interruptionReasonCode === 'canceled';
