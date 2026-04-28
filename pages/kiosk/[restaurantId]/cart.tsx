@@ -75,12 +75,11 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   const [placingOrder, setPlacingOrder] = useState(false);
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [confirmStep, setConfirmStep] = useState<1 | 2>(1);
-  const [confirmMessage, setConfirmMessage] = useState('');
-  const [namePromptMessage, setNamePromptMessage] = useState('');
+  const [confirmMessage, setConfirmMessage] = useState(
+    'You’re almost there. Just confirm you’re not ordering by accident.'
+  );
   const [customerName, setCustomerName] = useState('');
   const [tableNumberInput, setTableNumberInput] = useState('');
-  const [nameError, setNameError] = useState('');
   const [tableError, setTableError] = useState('');
   const [submissionError, setSubmissionError] = useState('');
   const [isExpressFlow, setIsExpressFlow] = useState(false);
@@ -96,11 +95,8 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   const placeOrderDisabled = cartCount === 0 || placingOrder || !availability.canSubmitActiveSession;
   const submissionInFlightRef = useRef(false);
   const isMountedRef = useRef(true);
-  const { height: viewportHeight, obstructionHeight, refresh: refreshViewport } = useKeyboardViewport(showConfirmModal);
-  const [nameEntryInputFocused, setNameEntryInputFocused] = useState(false);
+  const { height: viewportHeight, refresh: refreshViewport } = useKeyboardViewport(showConfirmModal);
   const isCompactModal = viewportHeight > 0 ? viewportHeight < 520 : false;
-  const isNameEntryStepActive = showConfirmModal && confirmStep === 2;
-  const isNameEntryKeyboardActive = isNameEntryStepActive && (nameEntryInputFocused || obstructionHeight > 0);
   const modalPadding = isCompactModal ? 12 : 16;
   const modalOverlayStyle = useMemo<CSSProperties>(
     () => ({
@@ -108,9 +104,9 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
       paddingTop: `calc(env(safe-area-inset-top) + ${modalPadding}px)`,
       paddingBottom: `calc(env(safe-area-inset-bottom) + ${modalPadding}px)`,
       overflow: 'hidden',
-      alignItems: isNameEntryKeyboardActive ? 'flex-start' : 'center',
+      alignItems: 'center',
     }),
-    [isNameEntryKeyboardActive, modalPadding]
+    [modalPadding]
   );
   const modalCardStyle = useMemo<CSSProperties>(
     () => ({
@@ -127,49 +123,6 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     const release = acquireIdleSuppression('kiosk_order_submission_loading');
     return release;
   }, [acquireIdleSuppression, showLoadingOverlay]);
-
-  const confirmMessages = useMemo(
-    () => [
-      'Everything look right? Now’s your moment of truth.',
-      'Spot anything odd? Maybe it’s your order. Maybe it’s your life choices.',
-      'Quick check — the kitchen takes this personally.',
-      'Anything missing? Extra sauce? Emotional support items?',
-      'You’re almost there. Just confirm you’re not ordering by accident.',
-      'Is everything correct? Pretend we care — we actually do.',
-      'Before you blame the chef, double-check your order.',
-      'Review your order, because we don\'t accept responsibility for your hunger-related decisions.',
-      'Take a second look. We’ll wait. The kitchen won’t.',
-      'Everything perfect? Pinky promise?',
-      'Double-check. Triple-check. Mega-check.',
-      'Before we send this to the kitchen gods…',
-      'Final chance! The tortilla cannot be unwrapped once wrapped.',
-      'Ready? Because our chefs definitely are not.',
-    ],
-    []
-  );
-
-  const nameMessages = useMemo(
-    () => [
-      'Who we gonna call?',
-      'What name should we shout when it’s ready?',
-      'Tell us the name of the chosen one.',
-      'Who shall we summon when your order is complete?',
-      'A name, please. Preferably your own.',
-      'What do we yell when your food is done?',
-      'Write down something we can shout confidently across the room.',
-      'Give us a name worthy of a sizzling plate.',
-      'Your legendary name goes here.',
-      'Be honest. What should we call you today?',
-      'Your food needs a name. So do you.',
-      'Enter your government-approved food-collection alias.',
-    ],
-    []
-  );
-
-  const getRandomMessage = useCallback(
-    (list: string[]) => list[Math.floor(Math.random() * list.length)],
-    []
-  );
 
   useEffect(() => {
     return () => {
@@ -299,19 +252,10 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     }
 
     const trimmedName = customerName.trim();
+    const finalCustomerName = trimmedName || 'Guest';
     const parsedTableNumber = Number.parseInt(tableNumberInput, 10);
     const isDineInExpress = isExpressFlow && expressMode === 'dine_in';
     const isTakeawayExpress = isExpressFlow && expressMode === 'takeaway';
-
-    if (isTakeawayExpress && !trimmedName) {
-      setNameError('We need something to call you!');
-      return;
-    }
-
-    if (!isExpressFlow && !trimmedName) {
-      setNameError('We need something to call you!');
-      return;
-    }
 
     if (isDineInExpress) {
       if (!Number.isInteger(parsedTableNumber) || parsedTableNumber <= 0) {
@@ -326,13 +270,12 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     }
 
     if (!cart.restaurant_id || cart.restaurant_id !== restaurantId || cart.items.length === 0) {
-      setNameError('Your cart looks empty. Please add items before ordering.');
+      setSubmissionError('Your cart looks empty. Please add items before ordering.');
       return;
     }
 
     if (isExpressFlow) {
       patchExpressSession({
-        customerName: trimmedName || null,
         tableNumber: isDineInExpress && Number.isInteger(parsedTableNumber) ? parsedTableNumber : null,
       });
     }
@@ -356,7 +299,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
       if (typeof window !== 'undefined') {
         const checkoutContext = {
           restaurantId,
-          customerName: trimmedName || 'Guest',
+          customerName: finalCustomerName,
           isExpressFlow,
           tableNumber: isDineInExpress && Number.isInteger(parsedTableNumber) ? parsedTableNumber : null,
           cartItems: cart.items.map((item) => ({
@@ -422,7 +365,7 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
           .insert([
             {
               restaurant_id: restaurantId,
-              customer_name: isExpressDineIn ? trimmedName || null : trimmedName,
+              customer_name: finalCustomerName,
               order_type: 'collection',
               source: isExpressDineIn || isExpressTakeaway ? 'express' : 'kiosk',
               status: initialStatus,
@@ -604,7 +547,6 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
     }
 
     setSubmissionError('');
-    setNameError('');
     setShowConfirmModal(false);
     const timeoutParams = new URLSearchParams({ orderNumber: String(orderNumber) });
     if (isExpressFlow) timeoutParams.set('express', '1');
@@ -637,54 +579,27 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
   const openConfirmModal = () => {
     if (!availability.canSubmitActiveSession) return;
     registerActivity();
-    setConfirmStep(1);
-    setConfirmMessage(getRandomMessage(confirmMessages));
+    setConfirmMessage('You’re almost there. Just confirm you’re not ordering by accident.');
     if (!isExpressFlow) {
-      setCustomerName('');
       setTableNumberInput('');
     }
-    setNameError('');
     setTableError('');
-    setNamePromptMessage('');
     setSubmissionError('');
-    setNameEntryInputFocused(false);
     setShowConfirmModal(true);
-  };
-
-  const goToNameStep = () => {
-    registerActivity();
-    if (isExpressFlow && expressMode === 'dine_in') {
-      setNamePromptMessage('Confirm your table details');
-    } else {
-      setNamePromptMessage(getRandomMessage(nameMessages));
-    }
-    setConfirmStep(2);
-    setSubmissionError('');
-    setNameEntryInputFocused(false);
   };
 
   const handlePlaceOrder = () => {
     registerActivity();
-    setNameError('');
     setTableError('');
     setSubmissionError('');
     void placeOrder();
-  };
-
-  const handleBackToReview = () => {
-    registerActivity();
-    setConfirmStep(1);
-    setNameError('');
-    setTableError('');
-    setSubmissionError('');
-    setNameEntryInputFocused(false);
   };
 
   useEffect(() => {
     if (showConfirmModal) {
       refreshViewport();
     }
-  }, [confirmStep, refreshViewport, showConfirmModal]);
+  }, [refreshViewport, showConfirmModal]);
 
   return (
     <KioskLayout
@@ -760,205 +675,48 @@ function KioskCartScreen({ restaurantId }: { restaurantId?: string | null }) {
                 }`}
               >
                 <AnimatePresence mode="wait">
-                  {confirmStep === 1 ? (
-                    <motion.div
-                      key="confirm-step"
-                      initial={{ opacity: 0, y: 12 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -12 }}
-                      transition={{ duration: 0.2, ease: 'easeOut' }}
-                      className={`flex flex-col ${isCompactModal ? 'gap-4' : 'gap-6'}`}
-                    >
-                      <div className={`${isCompactModal ? 'space-y-1.5' : 'space-y-2'}`}>
-                        <h3 className="text-[clamp(1.35rem,2.8vw,1.625rem)] font-semibold text-neutral-900">
-                          Is everything correct?
-                        </h3>
-                        <p className="text-[clamp(0.95rem,2.1vw,1.125rem)] leading-relaxed text-neutral-600">
-                          {confirmMessage}
-                        </p>
-                      </div>
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            registerActivity();
-                            setNameEntryInputFocused(false);
-                            setShowConfirmModal(false);
-                          }}
-                          className={`inline-flex items-center justify-center rounded-2xl border border-neutral-200 font-semibold text-neutral-800 transition hover:bg-neutral-50 ${
-                            isCompactModal ? 'px-4 py-2.5 text-[0.95rem]' : 'px-4 py-3 text-base'
-                          }`}
-                        >
-                          Go back
-                        </button>
-                        <KioskActionButton
-                          onClick={goToNameStep}
-                          className={`w-full justify-center rounded-2xl font-semibold uppercase tracking-wide shadow-lg shadow-slate-900/15 ${
-                            isCompactModal ? 'px-4 py-2.5 text-[0.95rem]' : 'px-4 py-3 text-base'
-                          }`}
-                        >
-                          Looks good!
-                        </KioskActionButton>
-                      </div>
-                    </motion.div>
-                  ) : (
-                    <motion.div
-                      key="name-step"
-                      initial={{ opacity: 0, y: 12 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -12 }}
-                      transition={{ duration: 0.2, ease: 'easeOut' }}
-                      className={`flex flex-col ${isCompactModal ? 'gap-4' : 'gap-5'}`}
-                    >
-                      <div className={`${isCompactModal ? 'space-y-1.5' : 'space-y-2.5'}`}>
-                        <h3 className="text-[clamp(1.35rem,2.8vw,1.625rem)] font-semibold text-neutral-900">
-                          {namePromptMessage}
-                        </h3>
-                        <p className="text-[clamp(0.95rem,2.1vw,1.125rem)] leading-relaxed text-neutral-600">
-                          {isExpressFlow && expressMode === 'dine_in'
-                            ? 'Table number is required for dine-in Express orders. Name is optional.'
-                            : 'This is the name we’ll shout when your order is ready.'}
-                        </p>
-                      </div>
-                      <form
-                        autoComplete="off"
-                        id="kioskOrderLabelForm"
-                        name="kioskOrderLabelForm"
-                        onSubmit={(event) => {
-                          event.preventDefault();
-                          handlePlaceOrder();
+                  <motion.div
+                    key="confirm-step"
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -12 }}
+                    transition={{ duration: 0.2, ease: 'easeOut' }}
+                    className={`flex flex-col ${isCompactModal ? 'gap-4' : 'gap-6'}`}
+                  >
+                    <div className={`${isCompactModal ? 'space-y-1.5' : 'space-y-2'}`}>
+                      <h3 className="text-[clamp(1.35rem,2.8vw,1.625rem)] font-semibold text-neutral-900">
+                        Is everything correct?
+                      </h3>
+                      <p className="text-[clamp(0.95rem,2.1vw,1.125rem)] leading-relaxed text-neutral-600">
+                        {confirmMessage}
+                      </p>
+                    </div>
+                    {tableError ? <p className="text-sm font-semibold text-rose-600">{tableError}</p> : null}
+                    {submissionError ? <p className="text-sm font-semibold text-rose-600">{submissionError}</p> : null}
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          registerActivity();
+                          setShowConfirmModal(false);
                         }}
-                        className="flex flex-col gap-4"
+                        className={`inline-flex items-center justify-center rounded-2xl border border-neutral-200 font-semibold text-neutral-800 transition hover:bg-neutral-50 ${
+                          isCompactModal ? 'px-4 py-2.5 text-[0.95rem]' : 'px-4 py-3 text-base'
+                        }`}
                       >
-                        <div className="space-y-2">
-                          {isExpressFlow && expressMode === 'dine_in' ? (
-                            <input
-                              type="text"
-                              id="kioskTableLabelInput"
-                              name="kioskTableLabelInput"
-                              inputMode="numeric"
-                              value={tableNumberInput}
-                              onChange={(e) => {
-                                registerActivity();
-                                const numeric = e.target.value.replace(/[^0-9]/g, '');
-                                setTableNumberInput(numeric);
-                                patchExpressSession({ tableNumber: numeric ? Number.parseInt(numeric, 10) : null });
-                              }}
-                              onFocus={() => {
-                                setNameEntryInputFocused(true);
-                                refreshViewport();
-                              }}
-                              onBlur={() => setNameEntryInputFocused(false)}
-                              autoComplete="off"
-                              spellCheck={false}
-                              autoCorrect="off"
-                              autoCapitalize="off"
-                              enterKeyHint="next"
-                              placeholder="Enter table number…"
-                              className={`w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 font-semibold text-neutral-900 shadow-inner shadow-neutral-200/70 outline-none transition focus:border-[var(--kiosk-accent,#111827)]/60 focus:bg-white ${
-                                isCompactModal ? 'py-3 text-[1rem]' : 'py-4 text-[1.1rem]'
-                              }`}
-                            />
-                          ) : null}
-
-                          {!isExpressFlow || expressMode !== 'dine_in' ? (
-                            <input
-                              type="text"
-                              id="orderLabelInput"
-                              name="orderLabelInput"
-                              inputMode="text"
-                              value={customerName}
-                              onChange={(e) => {
-                                registerActivity();
-                                setCustomerName(e.target.value);
-                                if (isExpressFlow) {
-                                  patchExpressSession({ customerName: e.target.value || null });
-                                }
-                              }}
-                              onFocus={() => {
-                                setNameEntryInputFocused(true);
-                                refreshViewport();
-                              }}
-                              onBlur={() => setNameEntryInputFocused(false)}
-                              autoComplete="off"
-                              aria-autocomplete="none"
-                              aria-haspopup="false"
-                              spellCheck={false}
-                              autoCorrect="off"
-                              autoCapitalize="off"
-                              enterKeyHint="done"
-                              data-ignore-autofill="true"
-                              placeholder="Enter your name…"
-                              className={`w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 font-semibold text-neutral-900 shadow-inner shadow-neutral-200/70 outline-none transition focus:border-[var(--kiosk-accent,#111827)]/60 focus:bg-white ${
-                                isCompactModal ? 'py-3 text-[1rem]' : 'py-4 text-[1.1rem]'
-                              }`}
-                            />
-                          ) : (
-                            <input
-                              type="text"
-                              id="expressOrderLabelInput"
-                              name="expressOrderLabelInput"
-                              inputMode="text"
-                              value={customerName}
-                              onChange={(e) => {
-                                registerActivity();
-                                setCustomerName(e.target.value);
-                                patchExpressSession({ customerName: e.target.value || null });
-                              }}
-                              onFocus={() => {
-                                setNameEntryInputFocused(true);
-                                refreshViewport();
-                              }}
-                              onBlur={() => setNameEntryInputFocused(false)}
-                              autoComplete="off"
-                              aria-autocomplete="none"
-                              aria-haspopup="false"
-                              spellCheck={false}
-                              autoCorrect="off"
-                              autoCapitalize="off"
-                              enterKeyHint="done"
-                              data-ignore-autofill="true"
-                              placeholder="Name (optional)…"
-                              className={`w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 font-semibold text-neutral-900 shadow-inner shadow-neutral-200/70 outline-none transition focus:border-[var(--kiosk-accent,#111827)]/60 focus:bg-white ${
-                                isCompactModal ? 'py-3 text-[1rem]' : 'py-4 text-[1.1rem]'
-                              }`}
-                            />
-                          )}
-
-                          {tableError ? (
-                            <p className="text-sm font-semibold text-rose-600">{tableError}</p>
-                          ) : null}
-                          {nameError ? (
-                            <p className="text-sm font-semibold text-rose-600">{nameError}</p>
-                          ) : null}
-                          {submissionError ? (
-                            <p className="text-sm font-semibold text-rose-600">{submissionError}</p>
-                          ) : null}
-                        </div>
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                          <button
-                            type="button"
-                            onClick={handleBackToReview}
-                            className={`inline-flex items-center justify-center rounded-2xl border border-neutral-200 font-semibold text-neutral-800 transition hover:bg-neutral-50 ${
-                              isCompactModal ? 'px-4 py-2.5 text-[0.95rem]' : 'px-4 py-3 text-base'
-                            }`}
-                          >
-                            Back
-                          </button>
-                          <KioskActionButton
-                            type="submit"
-                            onClick={handlePlaceOrder}
-                            disabled={placingOrder}
-                            className={`w-full justify-center rounded-2xl font-semibold uppercase tracking-wide shadow-lg shadow-slate-900/15 ${
-                              isCompactModal ? 'px-4 py-2.5 text-[0.95rem]' : 'px-4 py-3 text-base'
-                            } ${placingOrder ? 'opacity-70' : ''}`}
-                          >
-                            {placingOrder ? 'Placing…' : 'Place order'}
-                          </KioskActionButton>
-                        </div>
-                      </form>
-                    </motion.div>
-                  )}
+                        Go back
+                      </button>
+                      <KioskActionButton
+                        onClick={handlePlaceOrder}
+                        disabled={placingOrder}
+                        className={`w-full justify-center rounded-2xl font-semibold uppercase tracking-wide shadow-lg shadow-slate-900/15 ${
+                          isCompactModal ? 'px-4 py-2.5 text-[0.95rem]' : 'px-4 py-3 text-base'
+                        } ${placingOrder ? 'opacity-70' : ''}`}
+                      >
+                        {placingOrder ? 'Placing…' : 'Looks good!'}
+                      </KioskActionButton>
+                    </div>
+                  </motion.div>
                 </AnimatePresence>
               </div>
             </motion.div>
