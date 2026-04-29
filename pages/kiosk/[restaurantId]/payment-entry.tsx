@@ -9,6 +9,7 @@ import {
 import KioskLayout from '@/components/layouts/KioskLayout';
 import { KioskSessionProvider, useKioskSession } from '@/context/KioskSessionContext';
 import { useCart } from '@/context/CartContext';
+import { formatPrice } from '@/lib/orderDisplay';
 import { supabase } from '@/lib/supabaseClient';
 import {
   normalizeKioskPaymentSettings,
@@ -270,6 +271,8 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   const currencyParam = Array.isArray(router.query.currency) ? router.query.currency[0] : router.query.currency;
   const amountCents = Number(amountParam || 0);
   const currency = (currencyParam || 'usd').toLowerCase();
+  const subtotal = checkoutContext?.subtotal ?? amountCents / 100;
+  const currencyCode = (checkoutContext?.currency || currency || 'usd').toUpperCase();
 
   const logContactlessState = useCallback((event: string, payload?: Record<string, unknown>) => {
     console.info('[kiosk][contactless_state_machine]', event, {
@@ -2279,7 +2282,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   const renderMethodPicker = () => (
     <section className="w-full space-y-5">
       <div className="-mt-1 space-y-1 px-2 sm:-mt-1.5 sm:px-0">
-        <h1 className="text-2xl font-semibold text-slate-900 sm:text-[26px]">Choose payment</h1>
+        <h1 className="text-2xl font-semibold text-slate-900 sm:text-[26px]">Choose payment method</h1>
         <p className="text-base leading-relaxed text-slate-600 sm:text-lg">Select how you’d like to complete checkout.</p>
       </div>
       <div className="grid gap-3 sm:gap-4">
@@ -2317,7 +2320,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
                 }
                 setStage('pay_at_counter');
               }}
-              className="group relative overflow-hidden rounded-3xl border border-slate-200 bg-white px-5 py-5 text-left shadow-sm transition hover:-translate-y-[1px] hover:border-slate-300 hover:shadow-md sm:px-6 sm:py-6"
+              className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white px-5 py-5 text-left shadow-sm transition hover:-translate-y-[1px] hover:border-slate-300 hover:shadow-md sm:px-6 sm:py-6"
               style={{
                 borderColor: paymentTheme.ring,
                 backgroundImage: `linear-gradient(135deg, #ffffff 0%, ${paymentTheme.primarySoft} 100%)`,
@@ -2367,9 +2370,9 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       hideHeader
       hideCartButton
     >
-      <div className="mx-auto w-full max-w-5xl px-4 py-4 sm:px-6 sm:py-5">
-        <div className="mx-auto max-w-5xl space-y-4 pb-28 pt-1 sm:space-y-5 sm:pt-2">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="mx-auto w-full max-w-5xl px-4 pb-28 pt-[calc(env(safe-area-inset-top)+12px)] sm:px-6">
+        <div className="mx-auto w-full max-w-5xl space-y-4 sm:space-y-5">
+          <div className="flex items-start justify-between gap-3">
             <button
               type="button"
               onClick={() => {
@@ -2381,15 +2384,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
               <ChevronLeftIcon className="h-6 w-6" />
               Back
             </button>
-            <button
-              type="button"
-              onClick={handleHiddenOperatorTap}
-              className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500"
-              aria-label="Payment stage"
-            >
-              {stageLabel}
-            </button>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
               {stage !== 'method_picker' && enabledMethods.length > 1 ? (
                 <button
                   type="button"
@@ -2401,6 +2396,15 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
               ) : null}
             </div>
           </div>
+          <div className="h-2 sm:h-3" />
+          <button
+            type="button"
+            onClick={handleHiddenOperatorTap}
+            className="sr-only"
+            aria-label="Payment stage"
+          >
+            {stageLabel}
+          </button>
 
           {settingsLoading ? (
             <section className="w-full rounded-3xl border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-sm">
@@ -2475,6 +2479,15 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
           {!settingsLoading && orderSubmitting ? renderOrderSubmittingOverlay() : null}
         </div>
       </div>
+      {stage === 'method_picker' ? (
+        <div className="fixed bottom-0 left-0 right-0 z-30 bg-white/95 shadow-[0_-8px_40px_rgba(15,23,42,0.14)] backdrop-blur">
+          <div className="mx-auto flex w-full max-w-5xl flex-col gap-1 px-4 py-3 sm:px-6 sm:py-3.5">
+            <span className="text-[11px] uppercase tracking-[0.12em] text-slate-500">Order subtotal</span>
+            <span className="text-xl font-semibold text-slate-900 sm:text-2xl">{formatPrice(subtotal, currencyCode)}</span>
+            <span className="text-xs text-slate-500 sm:text-sm">Choose a payment method to continue.</span>
+          </div>
+        </div>
+      ) : null}
     </KioskLayout>
   );
 }
