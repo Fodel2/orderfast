@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import {
+  ChevronLeftIcon,
   BanknotesIcon,
   BuildingStorefrontIcon,
   CreditCardIcon,
@@ -8,6 +9,7 @@ import {
 import KioskLayout from '@/components/layouts/KioskLayout';
 import { KioskSessionProvider, useKioskSession } from '@/context/KioskSessionContext';
 import { useCart } from '@/context/CartContext';
+import { formatPrice } from '@/lib/orderDisplay';
 import { supabase } from '@/lib/supabaseClient';
 import {
   normalizeKioskPaymentSettings,
@@ -269,6 +271,8 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   const currencyParam = Array.isArray(router.query.currency) ? router.query.currency[0] : router.query.currency;
   const amountCents = Number(amountParam || 0);
   const currency = (currencyParam || 'usd').toLowerCase();
+  const subtotal = checkoutContext?.subtotal ?? amountCents / 100;
+  const currencyCode = (checkoutContext?.currency || currency || 'usd').toUpperCase();
 
   const logContactlessState = useCallback((event: string, payload?: Record<string, unknown>) => {
     console.info('[kiosk][contactless_state_machine]', event, {
@@ -2276,9 +2280,12 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   }, [CONTACTLESS_SESSION_STORAGE_KEY, commitNonSuccessOutcome, contactlessSessionId, logContactlessState, releaseContactlessOwner, restaurantId]);
 
   const renderMethodPicker = () => (
-    <section className="w-full space-y-4">
-      <h1 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">Choose payment</h1>
-      <div className="grid gap-3 sm:grid-cols-2">
+    <section className="w-full space-y-5">
+      <div className="-mt-1 space-y-1 px-2 sm:-mt-1.5 sm:px-0">
+        <h1 className="text-2xl font-semibold text-slate-900 sm:text-[26px]">Choose payment method</h1>
+        <p className="text-base leading-relaxed text-slate-600 sm:text-lg">Select how you’d like to complete checkout.</p>
+      </div>
+      <div className="grid gap-3 sm:gap-4">
         {enabledMethods.map((method) => {
           const meta = PAYMENT_METHOD_META[method];
           const Icon = meta.icon;
@@ -2313,26 +2320,48 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
                 }
                 setStage('pay_at_counter');
               }}
-              className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white px-5 py-5 text-left shadow-sm transition hover:-translate-y-[1px] hover:border-slate-300 hover:shadow-md"
+              className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white px-5 py-5 text-left shadow-sm transition hover:-translate-y-[1px] hover:border-slate-300 hover:shadow-md sm:px-6 sm:py-6"
               style={{
                 borderColor: paymentTheme.ring,
                 backgroundImage: `linear-gradient(135deg, #ffffff 0%, ${paymentTheme.primarySoft} 100%)`,
               }}
             >
-              <div
-                className="inline-flex h-11 w-11 items-center justify-center rounded-2xl text-white shadow-sm"
-                style={{ background: `linear-gradient(135deg, ${paymentTheme.primary}, ${paymentTheme.secondary})` }}
-              >
-                <Icon className="h-6 w-6" />
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-lg font-semibold text-slate-900 sm:text-xl">{meta.title}</p>
+                  {method !== 'pay_at_counter' ? <p className="mt-1 text-sm text-slate-600 sm:text-base">{meta.subtitle}</p> : null}
+                </div>
+                <div
+                  className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-white shadow-sm"
+                  style={{ background: `linear-gradient(135deg, ${paymentTheme.primary}, ${paymentTheme.secondary})` }}
+                >
+                  <Icon className="h-6 w-6" />
+                </div>
               </div>
-              <p className="mt-4 text-lg font-semibold text-slate-900">{meta.title}</p>
-              {method !== 'pay_at_counter' ? <p className="mt-1 text-sm text-slate-600">{meta.subtitle}</p> : null}
             </button>
           );
         })}
       </div>
     </section>
   );
+
+  const headerContent = useMemo(() => {
+    if (!restaurantId) return null;
+    return (
+      <div className="mx-auto flex h-full w-full max-w-5xl items-start justify-between gap-3 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+12px)] sm:px-6">
+        <button
+          type="button"
+          onClick={() => {
+            router.push(`/kiosk/${restaurantId}/cart`).catch(() => undefined);
+          }}
+          className="inline-flex min-h-[3rem] items-center gap-2 rounded-full bg-white/95 px-4 py-2.5 text-base font-semibold text-neutral-900 shadow-md shadow-slate-300/70 ring-1 ring-slate-200 transition hover:-translate-y-[1px] hover:shadow-lg sm:text-lg"
+        >
+          <ChevronLeftIcon className="h-6 w-6" />
+          Back
+        </button>
+      </div>
+    );
+  }, [restaurantId, router]);
 
   const renderOrderSubmittingOverlay = () => (
     <div
@@ -2352,19 +2381,16 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   );
 
   return (
-    <KioskLayout restaurantId={restaurantId} restaurant={restaurant} restaurantLoading={restaurantLoading}>
-      <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
-        <div className="mx-auto max-w-4xl space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <button
-              type="button"
-              onClick={handleHiddenOperatorTap}
-              className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500"
-              aria-label="Payment stage"
-            >
-              {stageLabel}
-            </button>
-            <div className="flex gap-2">
+    <KioskLayout
+      restaurantId={restaurantId}
+      restaurant={restaurant}
+      restaurantLoading={restaurantLoading}
+      hideCartButton
+      customHeaderContent={headerContent}
+    >
+      <div className="mx-auto w-full max-w-5xl space-y-4 pb-28 pt-1 sm:space-y-5 sm:pt-2">
+          <div className="flex items-start justify-end gap-3 px-2 sm:px-0">
+            <div className="flex items-center gap-2">
               {stage !== 'method_picker' && enabledMethods.length > 1 ? (
                 <button
                   type="button"
@@ -2374,18 +2400,17 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
                   Change method
                 </button>
               ) : null}
-              <button
-                type="button"
-                onClick={() => {
-                  if (!restaurantId) return;
-                  router.push(`/kiosk/${restaurantId}/cart`).catch(() => undefined);
-                }}
-                className="rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-slate-800"
-              >
-                Back
-              </button>
             </div>
           </div>
+          <div className="h-1 sm:h-1.5" />
+          <button
+            type="button"
+            onClick={handleHiddenOperatorTap}
+            className="sr-only"
+            aria-label="Payment stage"
+          >
+            {stageLabel}
+          </button>
 
           {settingsLoading ? (
             <section className="w-full rounded-3xl border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-sm">
@@ -2458,8 +2483,16 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
             />
           ) : null}
           {!settingsLoading && orderSubmitting ? renderOrderSubmittingOverlay() : null}
-        </div>
       </div>
+      {stage === 'method_picker' ? (
+        <div className="fixed bottom-0 left-0 right-0 z-30 bg-white/95 shadow-[0_-8px_40px_rgba(15,23,42,0.14)] backdrop-blur">
+          <div className="mx-auto flex w-full max-w-5xl flex-col gap-1 px-4 py-3 sm:px-6 sm:py-3.5">
+            <span className="text-[11px] uppercase tracking-[0.12em] text-slate-500">Order subtotal</span>
+            <span className="text-xl font-semibold text-slate-900 sm:text-2xl">{formatPrice(subtotal, currencyCode)}</span>
+            <span className="text-xs text-slate-500 sm:text-sm">Choose a payment method to continue.</span>
+          </div>
+        </div>
+      ) : null}
     </KioskLayout>
   );
 }
