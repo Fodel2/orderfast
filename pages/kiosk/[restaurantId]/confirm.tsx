@@ -190,22 +190,24 @@ function KioskConfirmScreen({ restaurantId }: { restaurantId?: string | null }) 
       restaurant={restaurant}
       restaurantLoading={restaurantLoading}
       customHeaderContent={minimalHeader}
+      hideHeader
       hideCartButton
     >
       <section
-        className="flex min-h-[calc(var(--vvh,100dvh)-1px)] w-full items-center py-8 sm:py-10"
+        className="fixed inset-0 z-[60] flex w-full items-center justify-center px-4"
         style={{
-          paddingTop: 'max(24px, env(safe-area-inset-top))',
-          paddingBottom: 'max(24px, env(safe-area-inset-bottom))',
+          height: 'var(--vvh, 100dvh)',
+          paddingTop: 'max(18px, env(safe-area-inset-top))',
+          paddingBottom: 'max(18px, env(safe-area-inset-bottom))',
         }}
       >
-        <div className="mx-auto w-full max-w-5xl">
-          <div className="overflow-hidden rounded-[34px] border border-neutral-200/90 bg-white/95 shadow-[0_35px_80px_-40px_rgba(0,0,0,0.35)] backdrop-blur">
-            <div className="border-b border-neutral-200/80 bg-gradient-to-r from-neutral-50 via-white to-neutral-50 px-6 py-5 sm:px-10">
+        <div className="mx-auto w-full max-w-4xl">
+          <div className="overflow-hidden rounded-[34px] border border-neutral-200/90 bg-white/95 shadow-[0_30px_70px_-38px_rgba(0,0,0,0.4)] backdrop-blur">
+            <div className="border-b border-neutral-200/80 bg-gradient-to-r from-neutral-50 via-white to-neutral-50 px-6 py-4 sm:px-10">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Checkout complete</p>
             </div>
-            <div className="px-6 py-10 text-center sm:px-10 sm:py-12">
-              <div className="mx-auto mb-7 flex h-22 w-22 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 shadow-[0_20px_55px_-30px_rgba(16,185,129,0.9)]">
+            <div className="px-6 py-9 text-center sm:px-10 sm:py-11">
+              <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 shadow-[0_16px_45px_-28px_rgba(16,185,129,0.95)]">
                 <CheckIcon className="h-11 w-11" strokeWidth={2.4} />
               </div>
               <h2 className="text-4xl font-semibold tracking-tight text-neutral-900 sm:text-[42px]">Order placed</h2>
