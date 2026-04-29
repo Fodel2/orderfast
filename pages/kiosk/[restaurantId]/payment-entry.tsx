@@ -2345,6 +2345,24 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
     </section>
   );
 
+  const headerContent = useMemo(() => {
+    if (!restaurantId) return null;
+    return (
+      <div className="mx-auto flex h-full w-full max-w-5xl items-start justify-between gap-3 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+12px)] sm:px-6">
+        <button
+          type="button"
+          onClick={() => {
+            router.push(`/kiosk/${restaurantId}/cart`).catch(() => undefined);
+          }}
+          className="inline-flex min-h-[3rem] items-center gap-2 rounded-full bg-white/95 px-4 py-2.5 text-base font-semibold text-neutral-900 shadow-md shadow-slate-300/70 ring-1 ring-slate-200 transition hover:-translate-y-[1px] hover:shadow-lg sm:text-lg"
+        >
+          <ChevronLeftIcon className="h-6 w-6" />
+          Back
+        </button>
+      </div>
+    );
+  }, [restaurantId, router]);
+
   const renderOrderSubmittingOverlay = () => (
     <div
       className="fixed inset-0 z-[74] flex items-center justify-center px-4 backdrop-blur-[2px]"
@@ -2367,23 +2385,11 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
       restaurantId={restaurantId}
       restaurant={restaurant}
       restaurantLoading={restaurantLoading}
-      hideHeader
       hideCartButton
+      customHeaderContent={headerContent}
     >
-      <div className="mx-auto w-full max-w-5xl px-4 pb-28 pt-[calc(env(safe-area-inset-top)+12px)] sm:px-6">
-        <div className="mx-auto w-full max-w-5xl space-y-4 sm:space-y-5">
-          <div className="flex items-start justify-between gap-3">
-            <button
-              type="button"
-              onClick={() => {
-                if (!restaurantId) return;
-                router.push(`/kiosk/${restaurantId}/cart`).catch(() => undefined);
-              }}
-              className="inline-flex min-h-[3rem] items-center gap-2 rounded-full bg-white/95 px-4 py-2.5 text-base font-semibold text-neutral-900 shadow-md shadow-slate-300/70 ring-1 ring-slate-200 transition hover:-translate-y-[1px] hover:shadow-lg sm:text-lg"
-            >
-              <ChevronLeftIcon className="h-6 w-6" />
-              Back
-            </button>
+      <div className="mx-auto w-full max-w-5xl space-y-4 pb-28 pt-1 sm:space-y-5 sm:pt-2">
+          <div className="flex items-start justify-end gap-3 px-2 sm:px-0">
             <div className="flex items-center gap-2">
               {stage !== 'method_picker' && enabledMethods.length > 1 ? (
                 <button
@@ -2396,7 +2402,7 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
               ) : null}
             </div>
           </div>
-          <div className="h-2 sm:h-3" />
+          <div className="h-1 sm:h-1.5" />
           <button
             type="button"
             onClick={handleHiddenOperatorTap}
@@ -2477,7 +2483,6 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
             />
           ) : null}
           {!settingsLoading && orderSubmitting ? renderOrderSubmittingOverlay() : null}
-        </div>
       </div>
       {stage === 'method_picker' ? (
         <div className="fixed bottom-0 left-0 right-0 z-30 bg-white/95 shadow-[0_-8px_40px_rgba(15,23,42,0.14)] backdrop-blur">
