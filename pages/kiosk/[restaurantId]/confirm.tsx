@@ -190,52 +190,65 @@ function KioskConfirmScreen({ restaurantId }: { restaurantId?: string | null }) 
       restaurant={restaurant}
       restaurantLoading={restaurantLoading}
       customHeaderContent={minimalHeader}
+      hideHeader
+      hideCartButton
     >
-      <div
+      <section
         className="fixed inset-0 z-[60] flex w-full items-center justify-center px-4"
         style={{
           height: 'var(--vvh, 100dvh)',
-          paddingTop: 'calc(env(safe-area-inset-top) + 16px)',
-          paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)',
+          paddingTop: 'max(18px, env(safe-area-inset-top))',
+          paddingBottom: 'max(18px, env(safe-area-inset-bottom))',
         }}
       >
-        <div className="w-full max-w-2xl rounded-[32px] border border-neutral-200 bg-white/95 px-7 py-10 text-center shadow-2xl shadow-neutral-300/40 backdrop-blur sm:px-9 sm:py-12">
-          <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 shadow-[0_15px_50px_-30px_rgba(16,185,129,0.9)]">
-            <CheckIcon className="h-10 w-10" strokeWidth={2.4} />
-          </div>
-          <h2 className="text-3xl font-semibold tracking-tight text-neutral-900 sm:text-[32px]">Order placed</h2>
-          {isOpenTabConfirmation ? (
-            <>
-              <p className="mt-4 text-base leading-relaxed text-neutral-600 sm:text-lg">Order sent to kitchen.</p>
-              <p className="mt-2 text-base leading-relaxed text-neutral-600 sm:text-lg">
-                You can add more items to Table {openTabTableNumber ?? 'your table'} anytime by scanning again.
-              </p>
-            </>
-          ) : (
-            <>
-              <p className="mt-4 text-base leading-relaxed text-neutral-600 sm:text-lg">
-                Your order is being prepared. Please wait for the staff to confirm your pickup number on screen.
-              </p>
-              {displayOrderNumber ? (
-                <p className="mt-3 text-lg font-semibold text-neutral-900 sm:text-xl">
-                  Your order number is{' '}
-                  <span className="rounded-full bg-neutral-100 px-3 py-1">#{String(displayOrderNumber).padStart(4, '0')}</span>
-                </p>
-              ) : null}
-            </>
-          )}
-          {restaurantId ? (
-            <div className="mt-8 flex justify-center">
-              <KioskActionButton
-                onClick={handleStartNewOrder}
-                className="px-7 py-3 text-sm font-semibold uppercase tracking-wide sm:text-base"
-              >
-                Start New Order
-              </KioskActionButton>
+        <div className="mx-auto w-full max-w-4xl">
+          <div className="overflow-hidden rounded-[34px] border border-neutral-200/90 bg-white/95 shadow-[0_30px_70px_-38px_rgba(0,0,0,0.4)] backdrop-blur">
+            <div className="border-b border-neutral-200/80 bg-gradient-to-r from-neutral-50 via-white to-neutral-50 px-6 py-4 sm:px-10">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Checkout complete</p>
             </div>
-          ) : null}
+            <div className="px-6 py-9 text-center sm:px-10 sm:py-11">
+              <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 shadow-[0_16px_45px_-28px_rgba(16,185,129,0.95)]">
+                <CheckIcon className="h-11 w-11" strokeWidth={2.4} />
+              </div>
+              <h2 className="text-4xl font-semibold tracking-tight text-neutral-900 sm:text-[42px]">Order placed</h2>
+              {isOpenTabConfirmation ? (
+                <>
+                  <p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-neutral-600 sm:text-lg">
+                    Order sent to kitchen.
+                  </p>
+                  <p className="mx-auto mt-2 max-w-2xl text-base leading-relaxed text-neutral-600 sm:text-lg">
+                    You can add more items to Table {openTabTableNumber ?? 'your table'} anytime by scanning again.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-neutral-600 sm:text-lg">
+                    Your order is being prepared. Please wait for the staff to confirm your pickup number on screen.
+                  </p>
+                  {displayOrderNumber ? (
+                    <div className="mt-7">
+                      <p className="text-sm font-semibold uppercase tracking-[0.18em] text-neutral-500">Order number</p>
+                      <p className="mt-3 text-4xl font-semibold tracking-tight text-neutral-900 sm:text-5xl">
+                        #{String(displayOrderNumber).padStart(4, '0')}
+                      </p>
+                    </div>
+                  ) : null}
+                </>
+              )}
+              {restaurantId ? (
+                <div className="mt-10 flex justify-center">
+                  <KioskActionButton
+                    onClick={handleStartNewOrder}
+                    className="min-w-[220px] justify-center px-8 py-3.5 text-sm font-semibold uppercase tracking-wide sm:text-base"
+                  >
+                    Start New Order
+                  </KioskActionButton>
+                </div>
+              ) : null}
+            </div>
+          </div>
         </div>
-      </div>
+      </section>
     </KioskLayout>
   );
 }
