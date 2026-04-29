@@ -72,6 +72,8 @@ type KioskLayoutProps = {
   forceHome?: boolean;
   categoryBar?: ReactNode;
   customHeaderContent?: ReactNode;
+  hideHeader?: boolean;
+  hideCartButton?: boolean;
 };
 
 type FullscreenViewport = 'phone' | 'tablet' | 'desktop';
@@ -94,6 +96,8 @@ export default function KioskLayout({
   forceHome = false,
   categoryBar,
   customHeaderContent,
+  hideHeader = false,
+  hideCartButton = false,
 }: KioskLayoutProps) {
   const router = useRouter();
   const resolveExpressSessionState = useCallback(() => {
@@ -956,7 +960,7 @@ export default function KioskLayout({
   const cartScale = 1 - shrinkProgress * 0.08;
   const categoriesScale = 1 - shrinkProgress * 0.06;
   const fadeOverlayOpacity = Math.min(shrinkProgress * 1.2, 1);
-  const showHeader = !homeVisible;
+  const showHeader = !homeVisible && !hideHeader;
   const showCategoryBar = showHeader && Boolean(categoryBar);
   const headerContent = useMemo(() => {
     if (customHeaderContent) return customHeaderContent;
@@ -1003,7 +1007,7 @@ export default function KioskLayout({
             </>
           )}
         </div>
-        {restaurantId ? (
+        {restaurantId && !hideCartButton ? (
           <div
             style={{ transform: `scale(${cartScale})`, transformOrigin: 'right center' }}
             className="hidden md:block"
@@ -1302,7 +1306,7 @@ export default function KioskLayout({
           )}
         </div>
       ) : null}
-      {restaurantId ? (
+      {restaurantId && !hideCartButton ? (
         <div className="fixed bottom-4 right-4 z-40 flex items-center justify-end md:hidden">
           <KioskActionButton
             href={`/kiosk/${restaurantId}/cart${isExpressActive ? '?express=1' : ''}`}

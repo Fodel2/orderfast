@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import {
+  ChevronLeftIcon,
   BanknotesIcon,
   BuildingStorefrontIcon,
   CreditCardIcon,
@@ -2359,10 +2360,27 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
   );
 
   return (
-    <KioskLayout restaurantId={restaurantId} restaurant={restaurant} restaurantLoading={restaurantLoading}>
-      <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
+    <KioskLayout
+      restaurantId={restaurantId}
+      restaurant={restaurant}
+      restaurantLoading={restaurantLoading}
+      hideHeader
+      hideCartButton
+    >
+      <div className="mx-auto w-full max-w-5xl px-4 py-4 sm:px-6 sm:py-5">
         <div className="mx-auto max-w-5xl space-y-4 pb-28 pt-1 sm:space-y-5 sm:pt-2">
-          <div className="flex flex-wrap items-center justify-between gap-3 px-2 sm:px-0">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                if (!restaurantId) return;
+                router.push(`/kiosk/${restaurantId}/cart`).catch(() => undefined);
+              }}
+              className="inline-flex min-h-[3rem] items-center gap-2 rounded-full bg-white/95 px-4 py-2.5 text-base font-semibold text-neutral-900 shadow-md shadow-slate-300/70 ring-1 ring-slate-200 transition hover:-translate-y-[1px] hover:shadow-lg sm:text-lg"
+            >
+              <ChevronLeftIcon className="h-6 w-6" />
+              Back
+            </button>
             <button
               type="button"
               onClick={handleHiddenOperatorTap}
@@ -2381,16 +2399,6 @@ function KioskPaymentEntryScreen({ restaurantId }: { restaurantId?: string | nul
                   Change method
                 </button>
               ) : null}
-              <button
-                type="button"
-                onClick={() => {
-                  if (!restaurantId) return;
-                  router.push(`/kiosk/${restaurantId}/cart`).catch(() => undefined);
-                }}
-                className="rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-slate-800"
-              >
-                Back
-              </button>
             </div>
           </div>
 
