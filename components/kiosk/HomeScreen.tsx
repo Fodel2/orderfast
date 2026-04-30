@@ -23,6 +23,7 @@ export type KioskRestaurant = {
 interface HomeScreenProps {
   restaurant: KioskRestaurant | null;
   onStart: () => void;
+  onOperatorTapTrigger?: () => void;
   fadingOut?: boolean;
   loading?: boolean;
   closedState?: {
@@ -40,7 +41,7 @@ function formatImageUrl(url?: string | null, updatedAt?: string | null) {
   return `${normalized}?v=${ts}`;
 }
 
-export default function HomeScreen({ restaurant, onStart, fadingOut, loading, closedState }: HomeScreenProps) {
+export default function HomeScreen({ restaurant, onStart, onOperatorTapTrigger, fadingOut, loading, closedState }: HomeScreenProps) {
   const showSkeleton = Boolean(loading);
   const kioskHero = useMemo(
     () => formatImageUrl(restaurant?.kiosk_hero_image_url, restaurant?.kiosk_hero_image_updated_at),
@@ -97,7 +98,7 @@ export default function HomeScreen({ restaurant, onStart, fadingOut, loading, cl
               'linear-gradient(140deg, rgba(255,255,255,0.46), rgba(255,255,255,0.14)), linear-gradient(320deg, rgba(15,23,42,0.1), rgba(15,23,42,0.025))',
           }}
         >
-          <div className="kiosk-home-stack flex flex-col items-center gap-4">
+          <div className="kiosk-home-stack flex flex-col items-center gap-4" onPointerUp={onOperatorTapTrigger}>
             <div className={`kiosk-home-logo relative ${logoSizeClass} overflow-hidden border border-neutral-200 bg-white shadow-lg shadow-neutral-200 ${logoFrameClass}`}>
               {showSkeleton ? (
                 <div className={`h-full w-full bg-neutral-200/80 animate-pulse ${logoFrameClass}`} />

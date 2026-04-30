@@ -1111,6 +1111,7 @@ export default function KioskLayout({
         <HomeScreen
           restaurant={restaurant || null}
           onStart={startOrdering}
+          onOperatorTapTrigger={handleOperatorTapTrigger}
           fadingOut={homeFading}
           loading={restaurantLoading}
           closedState={
