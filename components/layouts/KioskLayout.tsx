@@ -38,6 +38,9 @@ const TEMP_OPERATOR_EXIT_PIN = '2580';
 const DEBUG_COLLAPSED_SIZE = 56;
 const DEBUG_PANEL_WIDTH = 320;
 const DEBUG_PANEL_HEIGHT = 280;
+const CLOSED_OVERLAY_DELAY_MS = 5 * 60 * 1000;
+const CLOSED_OVERLAY_WAKE_TAP_WINDOW_MS = 3000;
+const CLOSED_OVERLAY_WAKE_TAP_TARGET = 3;
 
 interface WakeLockSentinel {
   released: boolean;
@@ -134,6 +137,8 @@ export default function KioskLayout({
   const [shrinkProgress, setShrinkProgress] = useState(0);
   const [showFullscreenPrompt, setShowFullscreenPrompt] = useState(false);
   const [showOperatorUnlock, setShowOperatorUnlock] = useState(false);
+  const [showClosedDimOverlay, setShowClosedDimOverlay] = useState(false);
+  const [closedOverlayWakeHint, setClosedOverlayWakeHint] = useState<string | null>(null);
   const [operatorPinInput, setOperatorPinInput] = useState('');
   const [operatorPinError, setOperatorPinError] = useState<string | null>(null);
   const [showLockedNavigationNotice, setShowLockedNavigationNotice] = useState(false);
@@ -145,6 +150,9 @@ export default function KioskLayout({
   const operatorNoticeTimerRef = useRef<number | null>(null);
   const operatorTapHistoryRef = useRef<number[]>([]);
   const operatorPinInputRef = useRef<HTMLInputElement | null>(null);
+  const closedOverlayTimerRef = useRef<number | null>(null);
+  const closedOverlayWakeTapHistoryRef = useRef<number[]>([]);
+  const closedOverlayWakeHintTimerRef = useRef<number | null>(null);
   const debugDragRef = useRef({
     active: false,
     pointerId: -1,
@@ -266,6 +274,7 @@ export default function KioskLayout({
     sessionActive,
     graceMinutes: 10,
   });
+  const isClosedOnHomeScreen = homeVisible && !availability.loading && !availability.canStartNewSession;
   const shouldSuppressFullscreen = isExpressActive || isNativeShell;
 
   const shouldAutoFullscreen = fullscreenViewport !== 'phone' && !shouldSuppressFullscreen;
@@ -407,6 +416,77 @@ export default function KioskLayout({
       media?.removeEventListener?.('change', handleDisplayModeChange);
     };
   }, [attemptFullscreen, isInstalled, isFullscreenActive, shouldAutoFullscreen, shouldSuppressFullscreen]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!isClosedOnHomeScreen) {
+      if (closedOverlayTimerRef.current) {
+        window.clearTimeout(closedOverlayTimerRef.current);
+        closedOverlayTimerRef.current = null;
+      }
+      setShowClosedDimOverlay(false);
+      setClosedOverlayWakeHint(null);
+      closedOverlayWakeTapHistoryRef.current = [];
+      if (closedOverlayWakeHintTimerRef.current) {
+        window.clearTimeout(closedOverlayWakeHintTimerRef.current);
+        closedOverlayWakeHintTimerRef.current = null;
+      }
+      return;
+    }
+    if (showClosedDimOverlay || closedOverlayTimerRef.current) return;
+    closedOverlayTimerRef.current = window.setTimeout(() => {
+      setShowClosedDimOverlay(true);
+      closedOverlayTimerRef.current = null;
+    }, CLOSED_OVERLAY_DELAY_MS);
+
+    return () => {
+      if (closedOverlayTimerRef.current) {
+        window.clearTimeout(closedOverlayTimerRef.current);
+        closedOverlayTimerRef.current = null;
+      }
+    };
+  }, [isClosedOnHomeScreen, showClosedDimOverlay]);
+
+  const handleClosedOverlayWakeTap = useCallback(() => {
+    if (!showClosedDimOverlay || typeof window === 'undefined') return;
+    const now = Date.now();
+    const recentTaps = closedOverlayWakeTapHistoryRef.current.filter(
+      (timestamp) => now - timestamp <= CLOSED_OVERLAY_WAKE_TAP_WINDOW_MS
+    );
+    recentTaps.push(now);
+    closedOverlayWakeTapHistoryRef.current = recentTaps;
+    if (recentTaps.length >= CLOSED_OVERLAY_WAKE_TAP_TARGET) {
+      setShowClosedDimOverlay(false);
+      setClosedOverlayWakeHint(null);
+      closedOverlayWakeTapHistoryRef.current = [];
+      if (closedOverlayWakeHintTimerRef.current) {
+        window.clearTimeout(closedOverlayWakeHintTimerRef.current);
+        closedOverlayWakeHintTimerRef.current = null;
+      }
+      return;
+    }
+    const tapsRemaining = CLOSED_OVERLAY_WAKE_TAP_TARGET - recentTaps.length;
+    setClosedOverlayWakeHint(`Tap ${tapsRemaining} more ${tapsRemaining === 1 ? 'time' : 'times'} to wake`);
+    if (closedOverlayWakeHintTimerRef.current) {
+      window.clearTimeout(closedOverlayWakeHintTimerRef.current);
+    }
+    closedOverlayWakeHintTimerRef.current = window.setTimeout(() => {
+      setClosedOverlayWakeHint(null);
+      closedOverlayWakeHintTimerRef.current = null;
+    }, 1300);
+  }, [showClosedDimOverlay]);
+
+  useEffect(() => {
+    return () => {
+      if (typeof window === 'undefined') return;
+      if (closedOverlayTimerRef.current) {
+        window.clearTimeout(closedOverlayTimerRef.current);
+      }
+      if (closedOverlayWakeHintTimerRef.current) {
+        window.clearTimeout(closedOverlayWakeHintTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleInstallClick = useCallback(async () => {
     if (!deferredPrompt) return;
@@ -1162,7 +1242,7 @@ export default function KioskLayout({
           </div>
         </div>
       ) : null}
-      {showIdleModal ? (
+      {showIdleModal && !showClosedDimOverlay ? (
         <div className="IdleOverlay">
           <div className="IdleModalCard">
             <h2 className="IdleTitle">Still there?</h2>
@@ -1185,6 +1265,16 @@ export default function KioskLayout({
             </div>
           </div>
         </div>
+      ) : null}
+      {showClosedDimOverlay ? (
+        <button
+          type="button"
+          onClick={handleClosedOverlayWakeTap}
+          className="fixed inset-0 z-[95] flex items-end justify-center bg-black/95 pb-12 text-white/70"
+          aria-label="Kiosk dim overlay"
+        >
+          {closedOverlayWakeHint ? <span className="text-xs tracking-wide">{closedOverlayWakeHint}</span> : null}
+        </button>
       ) : null}
       {showLockedNavigationNotice && !isExpressActive ? (
         <div className="fixed left-1/2 top-5 z-[80] w-[min(92vw,560px)] -translate-x-1/2 rounded-2xl border border-neutral-900/10 bg-white/95 px-4 py-3 text-neutral-900 shadow-xl backdrop-blur">
