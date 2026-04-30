@@ -744,6 +744,14 @@ export default function KioskLayout({
     setOperatorPinError(null);
   }, []);
 
+  const resolvePostUnlockExitDestination = useCallback(() => {
+    if (!restaurantId) return null;
+    if (isNativeShell) {
+      return `/dashboard/launcher?restaurant_id=${encodeURIComponent(restaurantId)}`;
+    }
+    return `/dashboard?restaurant_id=${encodeURIComponent(restaurantId)}`;
+  }, [isNativeShell, restaurantId]);
+
   const handleOperatorTapTrigger = useCallback(() => {
     if (isExpressActive || !restaurantId) return;
     const now = Date.now();
@@ -758,13 +766,14 @@ export default function KioskLayout({
   }, [isExpressActive, resetOperatorUnlock, restaurantId]);
 
   const handleOperatorExit = useCallback(async () => {
-    if (!restaurantId) return;
+    const destination = resolvePostUnlockExitDestination();
+    if (!destination) return;
     resetOperatorUnlock();
     setShowOperatorUnlock(false);
     setShowFullscreenPrompt(false);
     await exitDocumentFullscreen();
-    await router.push(`/dashboard?restaurant_id=${encodeURIComponent(restaurantId)}`);
-  }, [resetOperatorUnlock, restaurantId, router]);
+    await router.push(destination);
+  }, [resetOperatorUnlock, resolvePostUnlockExitDestination, router]);
 
   const handleOperatorUnlockSubmit = useCallback(
     (event: FormEvent<HTMLFormElement>) => {
